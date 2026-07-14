@@ -146,11 +146,11 @@ async function createVm0Run(
   });
 }
 
-async function recordPendingUsage(args: {
+async function recordPendingUsageEvents(args: {
   readonly actor: ApiTestUser;
   readonly runId: string;
   readonly provider: string;
-  readonly quantity: number;
+  readonly quantities: readonly number[];
 }): Promise<void> {
   const api = createRunsApi(context);
   const webhooks = createWebhookCallbackApi(context);
@@ -166,21 +166,35 @@ async function recordPendingUsage(args: {
   await webhooks.requestAgentUsageEvent(
     {
       runId: args.runId,
-      events: [
-        {
+      events: args.quantities.map((quantity) => {
+        return {
           idempotencyKey: randomUUID(),
           kind: "connector",
           provider: args.provider,
           category: "credits",
-          quantity: args.quantity,
-        },
-      ],
+          quantity,
+        };
+      }),
     },
     {
       authorization: `Bearer ${api.sandboxTokenForRun(args.actor, args.runId)}`,
     },
     [200],
   );
+}
+
+async function recordPendingUsage(args: {
+  readonly actor: ApiTestUser;
+  readonly runId: string;
+  readonly provider: string;
+  readonly quantity: number;
+}): Promise<void> {
+  await recordPendingUsageEvents({
+    actor: args.actor,
+    runId: args.runId,
+    provider: args.provider,
+    quantities: [args.quantity],
+  });
 }
 
 async function processUsageEvents(): Promise<void> {
@@ -232,6 +246,49 @@ describe("Usage Allowance", () => {
 
     await expect(readOrgCredits(actor)).resolves.toBe(10);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+  });
+
+  it("settles multiple events and runs against shared allowance windows", async () => {
+    const { actor, agentId } = await vm0AllowanceActor({
+      credits: 100,
+      allowance: { shortWindowUnits: 100, weeklyWindowUnits: 90 },
+    });
+    const firstRun = await createVm0Run(actor, agentId, "batched first run");
+    const secondRun = await createVm0Run(actor, agentId, "batched second run");
+    const provider = usageProvider();
+    await recordPendingUsageEvents({
+      actor,
+      runId: firstRun.runId,
+      provider,
+      quantities: [30, 40],
+    });
+    await recordPendingUsage({
+      actor,
+      runId: secondRun.runId,
+      provider,
+      quantity: 50,
+    });
+
+    await processUsageEvents();
+
+    await expect(readOrgCredits(actor)).resolves.toBe(70);
+    await expect(readRunCreditsCharged(actor, firstRun.runId)).resolves.toBe(
+      70,
+    );
+    await expect(readRunCreditsCharged(actor, secondRun.runId)).resolves.toBe(
+      50,
+    );
+    const status = await createRunsApi(context).readBillingStatus(actor);
+    if (!status.usageAllowance) {
+      throw new Error("Expected usage allowance windows");
+    }
+    expect(
+      Object.fromEntries(
+        status.usageAllowance.windows.map((window) => {
+          return [window.kind, window.consumedUnits];
+        }),
+      ),
+    ).toStrictEqual({ short: 90, weekly: 90 });
   });
 
   it("falls back to org credits after the binding window cap is exhausted", async () => {

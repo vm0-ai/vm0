@@ -17,7 +17,7 @@ import {
   type CreditLowBalanceAlertArgs,
 } from "./zero-credit-low-balance-alert.service";
 import { triggerAutoRecharge$ } from "./zero-credit-recharge.service";
-import { applyUsageAllowanceToUsageEvent } from "./usage-allowance.service";
+import { applyUsageAllowanceToUsageEventsInLockedTransaction } from "./usage-allowance.service";
 import { publishBillingChangedForOrg } from "./zero-billing-realtime.service";
 
 const L = logger("CreditUsage");
@@ -136,6 +136,123 @@ interface ProcessOrgUsageEventsResult {
   readonly lowBalanceAlert: CreditLowBalanceAlertArgs | null;
 }
 
+type UsageEventRecord = typeof usageEvent.$inferSelect;
+type UsagePricingRecord = typeof usagePricing.$inferSelect;
+type UsageEventBillingError = "missing_pricing" | "fallback_pricing" | null;
+
+interface PricedUsageEvent {
+  readonly record: UsageEventRecord;
+  readonly grossCredits: number;
+  readonly billingError: UsageEventBillingError;
+}
+
+function priceUsageEvents(
+  records: readonly UsageEventRecord[],
+  pricingRecords: readonly UsagePricingRecord[],
+  orgId: string,
+): PricedUsageEvent[] {
+  const pricingByKey = new Map(
+    pricingRecords.map((pricing) => {
+      return [
+        `${pricing.kind}|${pricing.provider}|${pricing.category}`,
+        pricing,
+      ];
+    }),
+  );
+  const pricedEvents: PricedUsageEvent[] = [];
+  for (const record of records) {
+    const exactPricing = pricingByKey.get(
+      `${record.kind}|${record.provider}|${record.category}`,
+    );
+    const pricing =
+      exactPricing ??
+      pricingByKey.get(`${record.kind}|${record.provider}|__fallback__`);
+
+    if (!pricing) {
+      L.error("Missing usage_pricing — charged zero", {
+        ...usageUnderbillingFields("missing_pricing", "confirmed"),
+        orgId,
+        runId: record.runId,
+        idempotencyKey: record.idempotencyKey,
+        userId: record.userId,
+        kind: record.kind,
+        provider: record.provider,
+        category: record.category,
+        quantity: record.quantity,
+      });
+      pricedEvents.push({
+        record,
+        grossCredits: 0,
+        billingError: "missing_pricing",
+      });
+      continue;
+    }
+
+    if (!exactPricing) {
+      L.error("Missing usage_pricing — billed at fallback rate", {
+        ...usageUnderbillingFields("fallback_pricing", "confirmed"),
+        orgId,
+        runId: record.runId,
+        idempotencyKey: record.idempotencyKey,
+        userId: record.userId,
+        kind: record.kind,
+        provider: record.provider,
+        category: record.category,
+        quantity: record.quantity,
+        fallbackUnitPrice: pricing.unitPrice,
+      });
+    }
+
+    pricedEvents.push({
+      record,
+      grossCredits: Math.ceil(
+        (record.quantity * pricing.unitPrice) / pricing.unitSize,
+      ),
+      billingError: exactPricing ? null : "fallback_pricing",
+    });
+  }
+  return pricedEvents;
+}
+
+interface UsageEventSettlementOutcome {
+  readonly usageEventId: string;
+  readonly creditsCharged: number;
+  readonly billingError: UsageEventBillingError;
+}
+
+async function markUsageEventsProcessed(
+  tx: WriteTx,
+  outcomes: readonly UsageEventSettlementOutcome[],
+): Promise<void> {
+  if (outcomes.length === 0) {
+    return;
+  }
+
+  const usageEventIds = outcomes.map((outcome) => {
+    return outcome.usageEventId;
+  });
+  const creditsCharged = outcomes.map((outcome) => {
+    return outcome.creditsCharged;
+  });
+  const billingErrors = outcomes.map((outcome) => {
+    return outcome.billingError;
+  });
+  await tx.execute(sql`
+    UPDATE ${usageEvent}
+    SET
+      "credits_charged" = settlement.credits_charged,
+      "status" = 'processed',
+      "processed_at" = ${nowDate()},
+      "billing_error" = settlement.billing_error
+    FROM unnest(
+      ${sql.param(usageEventIds)}::uuid[],
+      ${sql.param(creditsCharged)}::bigint[],
+      ${sql.param(billingErrors)}::varchar(50)[]
+    ) AS settlement(usage_event_id, credits_charged, billing_error)
+    WHERE ${usageEvent.id} = settlement.usage_event_id
+  `);
+}
+
 async function processOrgUsageEventsInTransaction(
   tx: WriteTx,
   orgId: string,
@@ -168,83 +285,33 @@ async function processOrgUsageEventsInTransaction(
   ];
 
   const pricingRecords = await tx.select().from(usagePricing);
-  const pricingByKey = new Map(
-    pricingRecords.map((p) => {
-      return [`${p.kind}|${p.provider}|${p.category}`, p];
-    }),
-  );
+  const pricedEvents = priceUsageEvents(pendingRecords, pricingRecords, orgId);
 
+  const allowanceByUsageEvent =
+    await applyUsageAllowanceToUsageEventsInLockedTransaction(tx, {
+      orgId,
+      events: pricedEvents.map((event) => {
+        return {
+          usageEventId: event.record.id,
+          runId: event.record.runId,
+          grossUnits: event.grossCredits,
+        };
+      }),
+    });
   let billableCredits = 0;
   let allowanceCreditsApplied = 0;
-  for (const record of pendingRecords) {
-    const exactPricing = pricingByKey.get(
-      `${record.kind}|${record.provider}|${record.category}`,
-    );
-    const pricing =
-      exactPricing ??
-      pricingByKey.get(`${record.kind}|${record.provider}|__fallback__`);
-
-    if (!pricing) {
-      await tx
-        .update(usageEvent)
-        .set({
-          creditsCharged: 0,
-          status: "processed",
-          processedAt: nowDate(),
-          billingError: "missing_pricing",
-        })
-        .where(eq(usageEvent.id, record.id));
-      L.error("Missing usage_pricing — charged zero", {
-        ...usageUnderbillingFields("missing_pricing", "confirmed"),
-        orgId,
-        runId: record.runId,
-        idempotencyKey: record.idempotencyKey,
-        userId: record.userId,
-        kind: record.kind,
-        provider: record.provider,
-        category: record.category,
-        quantity: record.quantity,
-      });
-      continue;
-    }
-
-    if (!exactPricing) {
-      L.error("Missing usage_pricing — billed at fallback rate", {
-        ...usageUnderbillingFields("fallback_pricing", "confirmed"),
-        orgId,
-        runId: record.runId,
-        idempotencyKey: record.idempotencyKey,
-        userId: record.userId,
-        kind: record.kind,
-        provider: record.provider,
-        category: record.category,
-        quantity: record.quantity,
-        fallbackUnitPrice: pricing.unitPrice,
-      });
-    }
-
-    const grossCredits = Math.ceil(
-      (record.quantity * pricing.unitPrice) / pricing.unitSize,
-    );
-    const allowanceUnits = await applyUsageAllowanceToUsageEvent(tx, {
-      usageEventId: record.id,
-      orgId,
-      runId: record.runId,
-      grossUnits: grossCredits,
-    });
-    const creditsCharged = grossCredits - allowanceUnits;
+  const settlementOutcomes = pricedEvents.map((event) => {
+    const allowanceUnits = allowanceByUsageEvent.get(event.record.id) ?? 0;
+    const creditsCharged = event.grossCredits - allowanceUnits;
     allowanceCreditsApplied += allowanceUnits;
-    await tx
-      .update(usageEvent)
-      .set({
-        creditsCharged,
-        status: "processed",
-        processedAt: nowDate(),
-        billingError: exactPricing ? null : "fallback_pricing",
-      })
-      .where(eq(usageEvent.id, record.id));
     billableCredits += creditsCharged;
-  }
+    return {
+      usageEventId: event.record.id,
+      creditsCharged,
+      billingError: event.billingError,
+    };
+  });
+  await markUsageEventsProcessed(tx, settlementOutcomes);
   signal.throwIfAborted();
 
   let lowBalanceAlert: CreditLowBalanceAlertArgs | null = null;
