@@ -65,13 +65,62 @@ pub struct GcArgs {
     protect_version: Option<String>,
 }
 
+#[derive(Debug, Default, Eq, PartialEq)]
+struct GcReport {
+    freed_bytes: u64,
+    activity_count: u64,
+    removed_versions: Vec<String>,
+    version_service_locks_removed: u64,
+}
+
+impl GcReport {
+    fn cleanup(activity_count: u64, freed_bytes: u64) -> Self {
+        Self {
+            freed_bytes,
+            activity_count,
+            ..Self::default()
+        }
+    }
+
+    fn removed_versions(removed_versions: Vec<String>) -> Self {
+        Self {
+            activity_count: removed_versions.len() as u64,
+            removed_versions,
+            ..Self::default()
+        }
+    }
+
+    fn version_service_locks_removed(version_service_locks_removed: u64) -> Self {
+        Self {
+            activity_count: version_service_locks_removed,
+            version_service_locks_removed,
+            ..Self::default()
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.activity_count == 0 && self.freed_bytes == 0
+    }
+}
+
+impl std::ops::AddAssign for GcReport {
+    fn add_assign(&mut self, mut rhs: Self) {
+        self.freed_bytes += rhs.freed_bytes;
+        self.activity_count += rhs.activity_count;
+        self.removed_versions.append(&mut rhs.removed_versions);
+        self.version_service_locks_removed += rhs.version_service_locks_removed;
+    }
+}
+
 pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let home = HomePaths::new()?;
+    // Retained version and service configs protect their image pairs before
+    // version cleanup consumes the same retention analysis.
     let version_analysis =
         analyze_version_gc(&home, args.protect_version.as_deref(), args.keep_latest).await?;
     let protected_image_refs = protected_image_refs_for_gc(&home, &version_analysis).await;
 
-    let images_freed = gc_nested_images_with_protected_refs(
+    let mut report = gc_nested_images_with_protected_refs(
         &home,
         args.keep_latest,
         args.dry_run,
@@ -79,89 +128,73 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     )
     .await?;
 
-    // Workspace GC must run BEFORE orphaned lock cleanup: it reads base_dir
-    // paths from lock files to discover workspaces from dead runners. If
-    // gc_orphaned_locks runs first, it deletes those lock files and the
-    // dead runner's workspaces become undiscoverable.
-    let nbd_orphans = gc_nbd_orphans(args.dry_run).await?;
-    let workspace_gc = gc_workspace_orphans(&home, args.dry_run).await?;
+    report += gc_nbd_orphans(args.dry_run).await?;
+    report += GcReport::from(gc_workspace_orphans(&home, args.dry_run).await?);
 
-    let locks_removed =
-        gc_orphaned_locks(&home, args.dry_run).await? + workspace_gc.base_dir_locks_removed;
-    let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
-    let versions_removed = gc_versions_with_analysis(&home, args.dry_run, version_analysis).await?;
-    let version_service_locks_removed =
-        gc_orphaned_version_service_locks(&home, args.dry_run).await?;
+    // General lock GC preserves service locks needed by version cleanup.
+    report += gc_orphaned_locks(&home, args.dry_run).await?;
+    report += gc_job_logs(&home, args.dry_run).await?;
+    report += gc_versions_with_analysis(&home, args.dry_run, version_analysis).await?;
 
-    let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
+    // Version service locks become orphaned only after version cleanup.
+    report += gc_orphaned_version_service_locks(&home, args.dry_run).await?;
+    report += gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
+    report += gc_storage_cache(&home, args.dry_run).await?;
+    report += gc_r2(args.r2_keep_days, args.dry_run).await;
 
-    let storages_freed = gc_storage_cache(&home, args.dry_run).await?;
+    log_gc_summary(&report, args.dry_run);
 
-    let (r2_deleted, r2_freed) = gc_r2(args.r2_keep_days, args.dry_run).await;
+    Ok(())
+}
 
-    let total = images_freed
-        + job_logs_freed
-        + debootstrap_freed
-        + workspace_gc.bytes_freed
-        + r2_freed
-        + storages_freed;
-    if total == 0
-        && locks_removed == 0
-        && job_logs_removed == 0
-        && versions_removed.is_empty()
-        && version_service_locks_removed == 0
-        && nbd_orphans == 0
-        && workspace_gc.workspaces_cleaned == 0
-        && r2_deleted == 0
-    {
+fn log_gc_summary(report: &GcReport, dry_run: bool) {
+    if report.is_empty() {
         info!("nothing to clean up");
     } else {
-        let verb = if args.dry_run {
-            "would be freed"
-        } else {
-            "freed"
-        };
-        info!("total: {} {verb}", human_bytes(total));
-        if !versions_removed.is_empty() {
-            let list = versions_removed.join(", ");
-            if args.dry_run {
+        let verb = if dry_run { "would be freed" } else { "freed" };
+        info!("total: {} {verb}", human_bytes(report.freed_bytes));
+        if !report.removed_versions.is_empty() {
+            let list = report.removed_versions.join(", ");
+            if dry_run {
                 info!("versions that would be removed: {list}");
             } else {
                 info!("versions removed: {list}");
             }
         }
-        if version_service_locks_removed > 0 {
-            if args.dry_run {
+        if report.version_service_locks_removed > 0 {
+            if dry_run {
                 info!(
-                    "version service locks that would be removed: {version_service_locks_removed}"
+                    "version service locks that would be removed: {}",
+                    report.version_service_locks_removed
                 );
             } else {
-                info!("version service locks removed: {version_service_locks_removed}");
+                info!(
+                    "version service locks removed: {}",
+                    report.version_service_locks_removed
+                );
             }
         }
     }
-
-    Ok(())
 }
 
 /// Delete R2 image cache objects older than `keep_days`. Errors (R2 not
 /// configured, network blip, etc.) are logged and swallowed: GC must not
 /// fail the deploy because the cache layer is misconfigured. Returns the
-/// successful full-pass `(deleted_count, freed_bytes)`, or `(0, 0)` on init or
-/// scan failure. A failed scan may have already deleted earlier pages.
+/// successful full-pass report, or an empty report on init or scan failure. A
+/// failed scan may have already deleted earlier pages.
 ///
 /// Idempotent across the fleet — every host attempts the same scan; DELETE on
 /// already-absent keys is a no-op success.
-async fn gc_r2(keep_days: u64, dry_run: bool) -> (u64, u64) {
+async fn gc_r2(keep_days: u64, dry_run: bool) -> GcReport {
     let cache = match R2ImageCache::from_env().await {
         Ok(Some(c)) => c,
         Ok(None) => {
             info!("r2: cache not configured, skipping R2 GC");
-            return (0, 0);
+            return GcReport::default();
         }
         Err(e) => {
             warn!("r2: init failed ({e}), skipping R2 GC");
-            return (0, 0);
+            return GcReport::default();
         }
     };
 
@@ -170,25 +203,25 @@ async fn gc_r2(keep_days: u64, dry_run: bool) -> (u64, u64) {
         // R2 reads, and we can't filter without making the call. Surface the
         // intent and skip the destructive part.
         info!("[dry-run] would delete R2 image objects older than {keep_days} days");
-        return (0, 0);
+        return GcReport::default();
     }
 
     let max_age = std::time::Duration::from_secs(keep_days.saturating_mul(86_400));
     match cache.gc_older_than(max_age).await {
         Ok((0, _)) => {
             info!("r2: no objects older than {keep_days} days");
-            (0, 0)
+            GcReport::default()
         }
         Ok((count, bytes)) => {
             info!(
                 "r2: deleted {count} object(s) older than {keep_days} days ({})",
                 human_bytes(bytes)
             );
-            (count, bytes)
+            GcReport::cleanup(count, bytes)
         }
         Err(e) => {
             warn!("r2: GC failed ({e}); will retry on next gc invocation");
-            (0, 0)
+            GcReport::default()
         }
     }
 }
@@ -276,15 +309,19 @@ fn mark_rootfs_survives(states: &mut [RootfsState], idx: usize) {
 
 /// Try to delete an orphaned rootfs directory (no surviving snapshots).
 ///
-/// Caller must hold the exclusive rootfs lock. Returns bytes freed (0 if
-/// skipped due to age, dry-run, or deletion error).
-async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run: bool) -> u64 {
+/// Caller must hold the exclusive rootfs lock. Returns the freed bytes when
+/// deletion succeeds or would occur, including `Some(0)` for zero-byte work.
+async fn try_delete_orphan_rootfs(
+    rootfs_path: &Path,
+    rootfs_hash: &str,
+    dry_run: bool,
+) -> Option<u64> {
     match gc_path_dir_status(rootfs_path).await {
         Ok(GcDirStatus::RealDir(_)) => {}
-        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return 0,
+        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return None,
         Err(e) => {
             warn!("images/{rootfs_hash}: stat failed ({e}), skipping");
-            return 0;
+            return None;
         }
     }
 
@@ -297,7 +334,7 @@ async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run
             "images/{rootfs_hash}: orphaned but too recent ({}s), keeping",
             age.as_secs()
         );
-        return 0;
+        return None;
     }
     if dry_run {
         info!(
@@ -306,14 +343,14 @@ async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run
         );
     } else if let Err(e) = tokio::fs::remove_dir_all(rootfs_path).await {
         warn!("failed to remove orphaned rootfs images/{rootfs_hash}: {e}");
-        return 0;
+        return None;
     } else {
         info!(
             "deleted orphaned rootfs images/{rootfs_hash} ({})",
             human_bytes(rootfs_size)
         );
     }
-    rootfs_size
+    Some(rootfs_size)
 }
 
 fn template_warm_hash(name: &str) -> Option<&str> {
@@ -336,26 +373,26 @@ async fn gc_template_warm_dir(
     warm_name: &str,
     template_hash: &str,
     dry_run: bool,
-) -> u64 {
+) -> Option<u64> {
     let lock_path = home.template_lock(template_hash);
     let _lock = match probe_lock(&lock_path) {
         LockProbe::Free(lock) => lock,
         LockProbe::Held => {
             info!("images/{warm_name}: template warm dir in use, skipping");
-            return 0;
+            return None;
         }
         LockProbe::Error(e) => {
             info!("images/{warm_name}: template lock probe failed ({e}), skipping");
-            return 0;
+            return None;
         }
     };
 
     match gc_path_dir_status(warm_path).await {
         Ok(GcDirStatus::RealDir(_)) => {}
-        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return 0,
+        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return None,
         Err(e) => {
             warn!("images/{warm_name}: stat failed ({e}), skipping");
-            return 0;
+            return None;
         }
     }
 
@@ -366,7 +403,7 @@ async fn gc_template_warm_dir(
             "images/{warm_name}: template warm dir too recent ({}s), keeping",
             age.as_secs()
         );
-        return 0;
+        return None;
     }
     if dry_run {
         info!(
@@ -375,14 +412,14 @@ async fn gc_template_warm_dir(
         );
     } else if let Err(e) = tokio::fs::remove_dir_all(warm_path).await {
         warn!("failed to remove template warm dir images/{warm_name}: {e}");
-        return 0;
+        return None;
     } else {
         info!(
             "deleted template warm dir images/{warm_name} ({})",
             human_bytes(size)
         );
     }
-    size
+    Some(size)
 }
 
 /// GC for the nested image layout: `<images>/<rootfs>/snapshots/<snapshot>/`.
@@ -410,7 +447,10 @@ async fn gc_nested_images(
     dry_run: bool,
 ) -> RunnerResult<u64> {
     let protected_image_refs = ProtectedImageRefs::new();
-    gc_nested_images_with_protected_refs(home, keep_latest, dry_run, &protected_image_refs).await
+    let report =
+        gc_nested_images_with_protected_refs(home, keep_latest, dry_run, &protected_image_refs)
+            .await?;
+    Ok(report.freed_bytes)
 }
 
 async fn gc_nested_images_with_protected_refs(
@@ -418,13 +458,13 @@ async fn gc_nested_images_with_protected_refs(
     keep_latest: Option<usize>,
     dry_run: bool,
     protected_image_refs: &ProtectedImageRefs,
-) -> RunnerResult<u64> {
+) -> RunnerResult<GcReport> {
     let images_dir = home.images_dir();
     let Some(mut rootfs_entries) = read_dir_or_missing(&images_dir).await? else {
-        return Ok(0);
+        return Ok(GcReport::default());
     };
 
-    let mut total_freed = 0u64;
+    let mut report = GcReport::default();
     let mut rootfs_states: Vec<RootfsState> = Vec::new();
     let mut candidates: Vec<GcCandidate> = Vec::new();
 
@@ -451,9 +491,11 @@ async fn gc_nested_images_with_protected_refs(
         }
 
         if let Some(template_hash) = template_warm_hash(&rootfs_hash) {
-            total_freed +=
-                gc_template_warm_dir(home, &rootfs_path, &rootfs_hash, template_hash, dry_run)
-                    .await;
+            if let Some(freed_bytes) =
+                gc_template_warm_dir(home, &rootfs_path, &rootfs_hash, template_hash, dry_run).await
+            {
+                report += GcReport::cleanup(1, freed_bytes);
+            }
             continue;
         }
 
@@ -479,7 +521,11 @@ async fn gc_nested_images_with_protected_refs(
             Ok(GcDirStatus::RealDir(_)) => {}
             Ok(GcDirStatus::Missing) => {
                 // No snapshots/ subdirectory — orphaned rootfs, handle inline.
-                total_freed += try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
+                if let Some(freed_bytes) =
+                    try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await
+                {
+                    report += GcReport::cleanup(1, freed_bytes);
+                }
                 continue;
             }
             Ok(GcDirStatus::NotDirectory) => {
@@ -635,7 +681,7 @@ async fn gc_nested_images_with_protected_refs(
                 human_bytes(c.size)
             );
         }
-        total_freed += c.size;
+        report += GcReport::cleanup(1, c.size);
     }
 
     // Phase 3: any rootfs whose lock we hold AND where no snapshot survives
@@ -644,18 +690,20 @@ async fn gc_nested_images_with_protected_refs(
     // subdirs we already counted (dry-run leaves them on disk), so subtract
     // that overlap to match the real-mode total.
     for (idx, state) in rootfs_states.iter().enumerate() {
-        if !state.any_snapshot_survives {
-            let rootfs_bytes = try_delete_orphan_rootfs(&state.path, &state.hash, dry_run).await;
+        if !state.any_snapshot_survives
+            && let Some(rootfs_bytes) =
+                try_delete_orphan_rootfs(&state.path, &state.hash, dry_run).await
+        {
             let overlap = if dry_run {
                 dry_run_snapshot_bytes.get(idx).copied().unwrap_or(0)
             } else {
                 0
             };
-            total_freed += rootfs_bytes.saturating_sub(overlap);
+            report += GcReport::cleanup(1, rootfs_bytes.saturating_sub(overlap));
         }
     }
 
-    Ok(total_freed)
+    Ok(report)
 }
 
 enum LockProbe {
@@ -859,12 +907,12 @@ async fn gc_debootstrap(
     home: &HomePaths,
     keep_latest: Option<usize>,
     dry_run: bool,
-) -> RunnerResult<u64> {
+) -> RunnerResult<GcReport> {
     let dir = home.debootstrap_dir();
     if !dir.try_exists().map_err(|e| {
         RunnerError::Internal(format!("check debootstrap dir {}: {e}", dir.display()))
     })? {
-        return Ok(0);
+        return Ok(GcReport::default());
     }
 
     let lock_path = home.debootstrap_lock();
@@ -872,16 +920,16 @@ async fn gc_debootstrap(
         LockProbe::Free(lock) => lock,
         LockProbe::Held => {
             info!("debootstrap cache: in use, skipping");
-            return Ok(0);
+            return Ok(GcReport::default());
         }
         LockProbe::Error(e) => {
             info!("debootstrap cache: lock probe failed ({e}), skipping");
-            return Ok(0);
+            return Ok(GcReport::default());
         }
     };
 
     let Some(mut entries) = read_dir_or_missing(&dir).await? else {
-        return Ok(0);
+        return Ok(GcReport::default());
     };
 
     let mut files: Vec<DeBootstrapCacheFile> = Vec::new();
@@ -929,7 +977,7 @@ async fn gc_debootstrap(
     let keep = keep_latest.unwrap_or(0);
     let mut stable_seen = 0usize;
 
-    let mut freed: u64 = 0;
+    let mut report = GcReport::default();
     for file in files.iter() {
         if !file.is_temp && stable_seen < keep {
             stable_seen += 1;
@@ -951,9 +999,9 @@ async fn gc_debootstrap(
                 human_bytes(file.size)
             );
         }
-        freed += file.size;
+        report += GcReport::cleanup(1, file.size);
     }
-    Ok(freed)
+    Ok(report)
 }
 
 struct DeBootstrapCacheFile {
@@ -999,10 +1047,10 @@ fn is_debootstrap_temp_tarball_name(name: &str) -> bool {
 /// because this GC pass runs before version GC, which relies on those lock paths
 /// to coordinate with concurrent service install/uninstall commands. Stale
 /// version service locks are cleaned by a post-version-GC pass.
-async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
+async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
-        return Ok(0);
+        return Ok(GcReport::default());
     };
 
     let mut removed = 0u64;
@@ -1032,7 +1080,7 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
         }
     }
 
-    Ok(removed)
+    Ok(GcReport::cleanup(removed, 0))
 }
 
 async fn remove_unused_lock_after_probe(
@@ -1083,11 +1131,11 @@ async fn remove_lock_file(lock_path: &Path) -> bool {
 ///
 /// Covers log names matched by [`LogPaths::is_gc_eligible_log`], including
 /// per-job logs and runner instance logs.
-/// Returns `(files_removed, bytes_freed)`.
-async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
+/// Returns the successfully removed or predicted files and their freed bytes.
+async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
     let logs_dir = home.logs_dir();
     let Some(mut entries) = read_dir_or_missing(&logs_dir).await? else {
-        return Ok((0, 0));
+        return Ok(GcReport::default());
     };
 
     let now = SystemTime::now();
@@ -1138,7 +1186,7 @@ async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)
         freed += size;
     }
 
-    Ok((removed, freed))
+    Ok(GcReport::cleanup(removed, freed))
 }
 
 /// Compute total disk usage (st_blocks * 512) and last-used time for a directory.
@@ -1222,10 +1270,13 @@ async fn version_bin_is_gc_enumerable_dir(path: &Path) -> Result<bool, String> {
     }
 }
 
-async fn gc_orphaned_version_service_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
+async fn gc_orphaned_version_service_locks(
+    home: &HomePaths,
+    dry_run: bool,
+) -> RunnerResult<GcReport> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
-        return Ok(0);
+        return Ok(GcReport::default());
     };
 
     let mut removed = 0u64;
@@ -1277,7 +1328,7 @@ async fn gc_orphaned_version_service_locks(home: &HomePaths, dry_run: bool) -> R
         }
     }
 
-    Ok(removed)
+    Ok(GcReport::version_service_locks_removed(removed))
 }
 
 async fn version_newest_mtime(home: &HomePaths, bin_dir: &Path, name: &str) -> SystemTime {
@@ -1667,9 +1718,15 @@ async fn gc_versions_with_analysis(
     home: &HomePaths,
     dry_run: bool,
     analysis: VersionGcAnalysis,
-) -> RunnerResult<Vec<String>> {
-    gc_versions_with_analysis_and_uninstall(home, dry_run, analysis, real_uninstall_service_unit)
-        .await
+) -> RunnerResult<GcReport> {
+    let removed = gc_versions_with_analysis_and_uninstall(
+        home,
+        dry_run,
+        analysis,
+        real_uninstall_service_unit,
+    )
+    .await?;
+    Ok(GcReport::removed_versions(removed))
 }
 
 async fn gc_versions_with_analysis_and_uninstall(
@@ -1812,14 +1869,14 @@ async fn gc_versions_with_analysis_and_uninstall(
 
 /// Scan for lock-free NBD devices whose recorded owner task has exited and
 /// optionally disconnect them. Returns the number of orphans cleaned.
-async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
+async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<GcReport> {
     let (max_devs, orphans) = tokio::task::spawn_blocking(super::nbd::find_nbd_orphans)
         .await
         .map_err(|e| RunnerError::Internal(format!("nbd orphan scan task failed: {e}")))?;
 
     if orphans.is_empty() {
         tracing::debug!("nbd: scanned {max_devs} devices, no orphans");
-        return Ok(0);
+        return Ok(GcReport::default());
     }
 
     let found = orphans.len() as u32;
@@ -1872,7 +1929,7 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
         info!("nbd orphans: {found} found, {cleaned} cleaned");
     }
 
-    Ok(cleaned)
+    Ok(GcReport::cleanup(u64::from(cleaned), 0))
 }
 
 #[derive(Default)]
@@ -1880,6 +1937,15 @@ struct WorkspaceGcSummary {
     workspaces_cleaned: u32,
     bytes_freed: u64,
     base_dir_locks_removed: u64,
+}
+
+impl From<WorkspaceGcSummary> for GcReport {
+    fn from(summary: WorkspaceGcSummary) -> Self {
+        Self::cleanup(
+            u64::from(summary.workspaces_cleaned) + summary.base_dir_locks_removed,
+            summary.bytes_freed,
+        )
+    }
 }
 
 struct DeadRunnerBaseDirLease {
@@ -2375,8 +2441,8 @@ struct StorageEvictionResult {
 ///
 /// Missing `storages_dir` is a no-op (cold host before the cache writer
 /// in #10808 lands).
-async fn gc_storage_cache(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
-    gc_storage_cache_with_limits(
+async fn gc_storage_cache(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
+    gc_storage_cache_with_limits_report(
         home,
         STORAGE_CACHE_MAX_BYTES,
         STORAGE_CACHE_MAX_ENTRIES,
@@ -2391,18 +2457,30 @@ async fn gc_storage_cache_with_cap(
     max_bytes: u64,
     dry_run: bool,
 ) -> RunnerResult<u64> {
-    gc_storage_cache_with_limits(home, max_bytes, u64::MAX, dry_run).await
+    let report = gc_storage_cache_with_limits_report(home, max_bytes, u64::MAX, dry_run).await?;
+    Ok(report.freed_bytes)
 }
 
+#[cfg(test)]
 async fn gc_storage_cache_with_limits(
     home: &HomePaths,
     max_bytes: u64,
     max_entries: u64,
     dry_run: bool,
 ) -> RunnerResult<u64> {
+    let report = gc_storage_cache_with_limits_report(home, max_bytes, max_entries, dry_run).await?;
+    Ok(report.freed_bytes)
+}
+
+async fn gc_storage_cache_with_limits_report(
+    home: &HomePaths,
+    max_bytes: u64,
+    max_entries: u64,
+    dry_run: bool,
+) -> RunnerResult<GcReport> {
     let storages_dir = home.storages_dir();
     let Some(mut name_entries) = read_dir_or_missing(&storages_dir).await? else {
-        return Ok(0);
+        return Ok(GcReport::default());
     };
 
     let now = SystemTime::now();
@@ -2418,6 +2496,7 @@ async fn gc_storage_cache_with_limits(
     // they cannot be safely evicted in this pass.
     let mut total_entries: u64 = 0;
     let mut freed: u64 = 0;
+    let mut activity_count: u64 = 0;
     let mut scanned_entries: u64 = 0;
     let mut eligible_entries: u64 = 0;
     let mut skipped_recent: u64 = 0;
@@ -2467,17 +2546,19 @@ async fn gc_storage_cache_with_limits(
                 }
             }
             if let Some(final_version_hash) = version_str.strip_suffix(".tmp") {
-                freed = freed.saturating_add(
-                    gc_storage_staging_dir(
-                        home,
-                        name_str,
-                        final_version_hash,
-                        &version_path,
-                        now,
-                        dry_run,
-                    )
-                    .await,
-                );
+                if let Some(staging_freed) = gc_storage_staging_dir(
+                    home,
+                    name_str,
+                    final_version_hash,
+                    &version_path,
+                    now,
+                    dry_run,
+                )
+                .await
+                {
+                    freed = freed.saturating_add(staging_freed);
+                    activity_count = activity_count.saturating_add(1);
+                }
                 continue;
             }
 
@@ -2520,7 +2601,7 @@ async fn gc_storage_cache_with_limits(
     }
 
     if total_size <= max_bytes && total_entries <= max_entries {
-        return Ok(freed);
+        return Ok(GcReport::cleanup(activity_count, freed));
     }
 
     // LRU: evict oldest first until within cap.
@@ -2534,6 +2615,7 @@ async fn gc_storage_cache_with_limits(
         freed = freed.saturating_add(result.freed);
         if result.evicted {
             evicted_entries = evicted_entries.saturating_add(1);
+            activity_count = activity_count.saturating_add(1);
         }
         total_size = total_size.saturating_sub(c.size);
         if let Some(remaining_size) = result.remaining_size {
@@ -2553,7 +2635,7 @@ async fn gc_storage_cache_with_limits(
         human_bytes(max_bytes)
     );
 
-    Ok(freed)
+    Ok(GcReport::cleanup(activity_count, freed))
 }
 
 async fn evict_storage_candidate(
@@ -2749,26 +2831,26 @@ async fn gc_storage_staging_dir(
     path: &Path,
     now: SystemTime,
     dry_run: bool,
-) -> u64 {
+) -> Option<u64> {
     let lock_path = home.storage_lock_for_cache_key(name_hash, version_hash);
     let _lock = match probe_lock(&lock_path) {
         LockProbe::Free(l) => l,
         LockProbe::Held => {
             info!("storages/{name_hash}/{version_hash}.tmp: in use, skipping");
-            return 0;
+            return None;
         }
         LockProbe::Error(e) => {
             info!("storages/{name_hash}/{version_hash}.tmp: lock probe failed ({e}), skipping");
-            return 0;
+            return None;
         }
     };
 
     match gc_path_dir_status(path).await {
         Ok(GcDirStatus::RealDir(_)) => {}
-        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return 0,
+        Ok(GcDirStatus::Missing | GcDirStatus::NotDirectory) => return None,
         Err(e) => {
             warn!("storages/{name_hash}/{version_hash}.tmp: stat failed ({e}), skipping");
-            return 0;
+            return None;
         }
     }
 
@@ -2779,7 +2861,7 @@ async fn gc_storage_staging_dir(
             "storages/{name_hash}/{version_hash}.tmp: too recent ({}s), keeping",
             age.as_secs()
         );
-        return 0;
+        return None;
     }
 
     if dry_run {
@@ -2791,7 +2873,7 @@ async fn gc_storage_staging_dir(
         warn!(
             "failed to remove stale storage staging storages/{name_hash}/{version_hash}.tmp: {e}"
         );
-        return 0;
+        return None;
     } else {
         info!(
             "removed stale storage staging storages/{name_hash}/{version_hash}.tmp ({})",
@@ -2799,7 +2881,7 @@ async fn gc_storage_staging_dir(
         );
     }
 
-    size
+    Some(size)
 }
 
 fn human_bytes(bytes: u64) -> String {
@@ -2823,6 +2905,22 @@ mod tests {
     use super::*;
     use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
     use clap::Parser;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::CapturedEvents;
+
+    fn capture_gc_summary(report: &GcReport, dry_run: bool) -> Vec<String> {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        log_gc_summary(report, dry_run);
+        drop(guard);
+        captured
+            .entries()
+            .into_iter()
+            .filter_map(|event| event.fields.get("message").cloned())
+            .collect()
+    }
 
     /// `--r2-keep-days 0` would wipe even just-uploaded images. Verify the
     /// clap range validator rejects it (catches a regression if the
@@ -2858,6 +2956,66 @@ mod tests {
         assert_eq!(human_bytes(1024), "1.0 KiB");
         assert_eq!(human_bytes(1024 * 1024), "1.0 MiB");
         assert_eq!(human_bytes(1024 * 1024 * 1024), "1.0 GiB");
+    }
+
+    #[test]
+    fn gc_report_composition_preserves_all_summary_fields() {
+        let mut report = GcReport::cleanup(2, 512);
+        report += GcReport::removed_versions(vec!["v1.0.0".into(), "v2.0.0".into()]);
+        report += GcReport::version_service_locks_removed(3);
+        report += GcReport::cleanup(1, 1024);
+
+        assert_eq!(report.freed_bytes, 1536);
+        assert_eq!(report.activity_count, 8);
+        assert_eq!(report.removed_versions, ["v1.0.0", "v2.0.0"]);
+        assert_eq!(report.version_service_locks_removed, 3);
+        assert!(!report.is_empty());
+    }
+
+    #[test]
+    fn gc_summary_distinguishes_true_noop_from_nonzero_bytes() {
+        assert_eq!(
+            capture_gc_summary(&GcReport::default(), false),
+            ["nothing to clean up"]
+        );
+        assert_eq!(
+            capture_gc_summary(&GcReport::cleanup(0, 1024), false),
+            ["total: 1.0 KiB freed"]
+        );
+    }
+
+    #[test]
+    fn gc_summary_reports_zero_byte_activity_in_real_and_dry_run_modes() {
+        let report = GcReport::cleanup(1, 0);
+
+        assert_eq!(capture_gc_summary(&report, false), ["total: 0 B freed"]);
+        assert_eq!(
+            capture_gc_summary(&report, true),
+            ["total: 0 B would be freed"]
+        );
+    }
+
+    #[test]
+    fn gc_summary_reports_typed_details_in_real_and_dry_run_modes() {
+        let mut report = GcReport::removed_versions(vec!["v1.0.0".into(), "v2.0.0".into()]);
+        report += GcReport::version_service_locks_removed(2);
+
+        assert_eq!(
+            capture_gc_summary(&report, false),
+            [
+                "total: 0 B freed",
+                "versions removed: v1.0.0, v2.0.0",
+                "version service locks removed: 2",
+            ]
+        );
+        assert_eq!(
+            capture_gc_summary(&report, true),
+            [
+                "total: 0 B would be freed",
+                "versions that would be removed: v1.0.0, v2.0.0",
+                "version service locks that would be removed: 2",
+            ]
+        );
     }
 
     #[cfg(unix)]
@@ -3077,9 +3235,10 @@ mod tests {
         std::fs::write(&service_lock, "").unwrap();
         std::fs::write(&stale_lock, "").unwrap();
 
-        let removed = gc_orphaned_locks(&home, false).await.unwrap();
+        let report = gc_orphaned_locks(&home, false).await.unwrap();
 
-        assert_eq!(removed, 1);
+        assert_eq!(report.activity_count, 1);
+        assert_eq!(report.freed_bytes, 0);
         assert!(
             service_lock.exists(),
             "service locks must survive orphaned lock cleanup"
@@ -3101,9 +3260,10 @@ mod tests {
         std::fs::write(&base_dir_lock, "/data/dead-runner").unwrap();
         std::fs::write(&stale_lock, "").unwrap();
 
-        let removed = gc_orphaned_locks(&home, false).await.unwrap();
+        let report = gc_orphaned_locks(&home, false).await.unwrap();
 
-        assert_eq!(removed, 1);
+        assert_eq!(report.activity_count, 1);
+        assert_eq!(report.freed_bytes, 0);
         assert!(
             base_dir_lock.exists(),
             "base-dir locks must remain available for workspace GC retry"
@@ -3332,9 +3492,9 @@ server:
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
 
-        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+        let report = gc_debootstrap(&home, Some(0), false).await.unwrap();
 
-        assert_eq!(freed, 0);
+        assert_eq!(report, GcReport::default());
         assert!(
             !home.debootstrap_dir().exists(),
             "missing debootstrap cache dir should remain absent"
@@ -3366,9 +3526,9 @@ server:
         let lock_file = lock::open_lock_file(&home.debootstrap_lock()).unwrap();
         let _held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
 
-        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+        let report = gc_debootstrap(&home, Some(0), false).await.unwrap();
 
-        assert_eq!(freed, 0);
+        assert_eq!(report, GcReport::default());
         assert!(
             cache_tar.exists(),
             "active debootstrap cache tarball must survive GC"
@@ -3391,9 +3551,9 @@ server:
             )
             .unwrap();
 
-        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+        let report = gc_debootstrap(&home, Some(0), false).await.unwrap();
 
-        assert_eq!(freed, 0);
+        assert_eq!(report, GcReport::default());
         assert!(
             lock_path.exists(),
             "debootstrap GC must not remove its own lock file"
@@ -3418,13 +3578,42 @@ server:
             )
             .unwrap();
 
-        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+        let report = gc_debootstrap(&home, Some(0), false).await.unwrap();
 
-        assert_eq!(freed, 0);
+        assert_eq!(report, GcReport::default());
         assert!(
             unrelated.exists(),
             "debootstrap GC should only remove cache tarballs"
         );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_reports_zero_byte_removal_as_activity() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let cache_tar = debootstrap_dir.join("noble-amd64.tar");
+        std::fs::write(&cache_tar, b"").unwrap();
+        std::fs::File::open(&cache_tar)
+            .unwrap()
+            .set_times(
+                FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+            )
+            .unwrap();
+
+        let report = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert!(
+            !cache_tar.exists(),
+            "eligible empty tarball should be removed"
+        );
+        assert_eq!(report.freed_bytes, 0);
+        assert_eq!(report.activity_count, 1);
+        assert!(!report.is_empty());
     }
 
     #[tokio::test]
@@ -3453,9 +3642,10 @@ server:
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+        let report = gc_debootstrap(&home, Some(0), false).await.unwrap();
 
-        assert_eq!(freed, stale_size + legacy_size);
+        assert_eq!(report.freed_bytes, stale_size + legacy_size);
+        assert_eq!(report.activity_count, 2);
         assert!(
             !stale_tmp.exists(),
             "stale debootstrap temp tarball should be GC'd"
@@ -3494,9 +3684,10 @@ server:
             .set_times(FileTimes::new().set_modified(newer_time))
             .unwrap();
 
-        let freed = gc_debootstrap(&home, Some(1), false).await.unwrap();
+        let report = gc_debootstrap(&home, Some(1), false).await.unwrap();
 
-        assert_eq!(freed, temp_size);
+        assert_eq!(report.freed_bytes, temp_size);
+        assert_eq!(report.activity_count, 1);
         assert!(
             stable_tar.exists(),
             "keep_latest should protect the stable debootstrap tarball"
@@ -3531,9 +3722,10 @@ server:
             .set_times(FileTimes::new().set_modified(newer_time))
             .unwrap();
 
-        let freed = gc_debootstrap(&home, Some(1), false).await.unwrap();
+        let report = gc_debootstrap(&home, Some(1), false).await.unwrap();
 
-        assert_eq!(freed, temp_size);
+        assert_eq!(report.freed_bytes, temp_size);
+        assert_eq!(report.activity_count, 1);
         assert!(
             stable_tar.exists(),
             "non-pid .tmp. tarball names should remain stable debootstrap cache tarballs"
@@ -3562,8 +3754,8 @@ server:
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let (removed, _freed) = gc_job_logs(&home, false).await.unwrap();
-        assert_eq!(removed, 1);
+        let report = gc_job_logs(&home, false).await.unwrap();
+        assert_eq!(report.activity_count, 1);
         assert!(!old_file.exists());
     }
 
@@ -3577,8 +3769,8 @@ server:
         let recent = logs_dir.join("network-aabbccdd-1234-5678-9abc-def012345678.jsonl");
         std::fs::write(&recent, r#"{"timestamp":"2026-02-18T00:00:00"}"#).unwrap();
 
-        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
-        assert_eq!(removed, 0);
+        let report = gc_job_logs(&home, false).await.unwrap();
+        assert_eq!(report.activity_count, 0);
         assert!(recent.exists());
     }
 
@@ -3601,8 +3793,8 @@ server:
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
-        assert_eq!(removed, 1);
+        let report = gc_job_logs(&home, false).await.unwrap();
+        assert_eq!(report.activity_count, 1);
         assert!(!runner_log.exists());
     }
 
@@ -3617,8 +3809,8 @@ server:
         let runner_log = logs_dir.join("runner-default.2026-03-19.log");
         std::fs::write(&runner_log, "log content").unwrap();
 
-        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
-        assert_eq!(removed, 0);
+        let report = gc_job_logs(&home, false).await.unwrap();
+        assert_eq!(report.activity_count, 0);
         assert!(runner_log.exists());
     }
 
@@ -3642,8 +3834,8 @@ server:
             .set_times(FileTimes::new().set_modified(boundary_time))
             .unwrap();
 
-        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
-        assert_eq!(removed, 0);
+        let report = gc_job_logs(&home, false).await.unwrap();
+        assert_eq!(report.activity_count, 0);
         assert!(boundary.exists(), "file at max age should be kept");
     }
 
@@ -3695,7 +3887,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(removed, 1);
+        assert_eq!(removed.version_service_locks_removed, 1);
         assert!(
             !service_lock.exists(),
             "missing version bin dir should make its service lock stale"
@@ -3714,7 +3906,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(removed, 0);
+        assert_eq!(removed.version_service_locks_removed, 0);
         assert!(
             service_lock.exists(),
             "existing version dir should keep its service lock"
@@ -3734,7 +3926,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(removed, 1);
+        assert_eq!(removed.version_service_locks_removed, 1);
         assert!(
             !service_lock.exists(),
             "semver-named files are not GC-enumerable version dirs"
@@ -3757,7 +3949,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(removed, 1);
+        assert_eq!(removed.version_service_locks_removed, 1);
         assert!(
             !service_lock.exists(),
             "semver-named symlinks are not GC-enumerable version dirs"
@@ -3776,7 +3968,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(removed, 0);
+        assert_eq!(removed.version_service_locks_removed, 0);
         assert!(
             service_lock.exists(),
             "held orphaned service lock must not be removed"
@@ -3795,7 +3987,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(removed, 0);
+        assert_eq!(removed.version_service_locks_removed, 0);
         assert!(
             service_lock.exists(),
             "non-semver service locks belong outside version GC"
@@ -3817,7 +4009,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(removed, 0);
+        assert_eq!(removed.version_service_locks_removed, 0);
         assert!(
             std::fs::symlink_metadata(&service_lock)
                 .unwrap()
@@ -3838,7 +4030,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(removed, 1);
+        assert_eq!(removed.version_service_locks_removed, 1);
         assert!(
             service_lock.exists(),
             "dry-run should count but not remove stale service locks"
@@ -4332,7 +4524,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(freed, 0);
+        assert_eq!(freed.freed_bytes, 0);
         assert!(
             snapshot_dir.exists(),
             "protect-version config refs must keep the referenced snapshot"
@@ -4358,7 +4550,7 @@ server:
             .await
             .unwrap();
 
-        assert!(freed > 0);
+        assert!(freed.freed_bytes > 0);
         assert!(
             new_snapshot_dir.exists(),
             "newest retained version should protect its config snapshot"
@@ -4393,7 +4585,7 @@ server:
             .await
             .unwrap();
 
-        assert!(freed > 0);
+        assert!(freed.freed_bytes > 0);
         assert!(protected_dir.exists(), "protected snapshot must survive");
         assert!(
             newer_dir.exists(),
@@ -4420,7 +4612,7 @@ server:
             .await
             .unwrap();
 
-        assert!(freed > 0);
+        assert!(freed.freed_bytes > 0);
         assert!(
             protected_dir.exists(),
             "exact protected snapshot must survive"
@@ -4449,7 +4641,7 @@ server:
             .await
             .unwrap();
 
-        assert!(freed > 0);
+        assert!(freed.freed_bytes > 0);
         assert!(
             !snapshot_dir.exists(),
             "old removable version config should not pin image artifacts"
@@ -4495,7 +4687,7 @@ server:
             .await
             .unwrap();
 
-        assert_eq!(freed, 0);
+        assert_eq!(freed.freed_bytes, 0);
         assert!(
             snapshot_dir.exists(),
             "enabled service config refs must keep the referenced snapshot"
@@ -5044,6 +5236,38 @@ server:
         assert!(freed > 0);
     }
 
+    #[tokio::test]
+    async fn gc_nested_images_reports_zero_byte_rootfs_removal_as_activity() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+        let rootfs_dir = home.images_dir().join("empty_rootfs");
+        std::fs::create_dir_all(&rootfs_dir).unwrap();
+        std::fs::File::open(&rootfs_dir)
+            .unwrap()
+            .set_times(
+                FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+            )
+            .unwrap();
+        let (rootfs_size, _) = dir_stats(&rootfs_dir).await;
+        assert_eq!(rootfs_size, 0, "fixture must exercise zero-byte cleanup");
+
+        let report =
+            gc_nested_images_with_protected_refs(&home, None, false, &ProtectedImageRefs::new())
+                .await
+                .unwrap();
+
+        assert!(
+            !rootfs_dir.exists(),
+            "eligible empty rootfs should be removed"
+        );
+        assert_eq!(report.freed_bytes, 0);
+        assert_eq!(report.activity_count, 1);
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn try_delete_orphan_rootfs_skips_symlink_replacement() {
@@ -5060,7 +5284,7 @@ server:
 
         let freed = try_delete_orphan_rootfs(&rootfs_link, "rootfs_replaced", false).await;
 
-        assert_eq!(freed, 0);
+        assert_eq!(freed, None);
         assert_is_symlink(&rootfs_link, "symlink replacement must remain");
         assert!(
             outside_rootfs.join("rootfs.ext4").exists(),
@@ -5465,8 +5689,8 @@ server:
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let (removed, _) = gc_job_logs(&home, true).await.unwrap();
-        assert_eq!(removed, 1);
+        let report = gc_job_logs(&home, true).await.unwrap();
+        assert_eq!(report.activity_count, 1);
         assert!(old_file.exists(), "dry-run should not delete");
     }
 
@@ -5504,8 +5728,8 @@ server:
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        let (removed, _) = gc_job_logs(&home, false).await.unwrap();
-        assert_eq!(removed, 3);
+        let report = gc_job_logs(&home, false).await.unwrap();
+        assert_eq!(report.activity_count, 3);
         assert!(!system_log.exists());
         assert!(!metrics_log.exists());
         assert!(!sandbox_ops_log.exists());
@@ -5514,8 +5738,8 @@ server:
     #[tokio::test]
     async fn gc_nbd_orphans_no_devices() {
         // On CI / dev machines without NBD module, this should return 0 without panicking.
-        let count = gc_nbd_orphans(true).await.unwrap();
-        assert_eq!(count, 0);
+        let report = gc_nbd_orphans(true).await.unwrap();
+        assert_eq!(report, GcReport::default());
     }
 
     #[test]
@@ -6372,8 +6596,8 @@ server:
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         // storages_dir does not exist.
-        let freed = gc_storage_cache(&home, false).await.unwrap();
-        assert_eq!(freed, 0);
+        let report = gc_storage_cache(&home, false).await.unwrap();
+        assert_eq!(report, GcReport::default());
     }
 
     #[tokio::test]
@@ -6381,8 +6605,8 @@ server:
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         std::fs::create_dir_all(home.storages_dir()).unwrap();
-        let freed = gc_storage_cache(&home, false).await.unwrap();
-        assert_eq!(freed, 0);
+        let report = gc_storage_cache(&home, false).await.unwrap();
+        assert_eq!(report, GcReport::default());
     }
 
     #[tokio::test]
@@ -6867,6 +7091,24 @@ server:
         assert_eq!(freed, tmp_size, "stale .tmp bytes must be reported");
         assert!(real.exists(), "real entry must survive");
         assert!(!tmp.exists(), "stale .tmp staging dir must be removed");
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_reports_zero_byte_staging_removal_as_activity() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let tmp = make_storage_staging_entry(&home, "foo", "v2", &[], t_old);
+        let (tmp_size, _) = dir_stats(&tmp).await;
+        assert_eq!(tmp_size, 0, "fixture must exercise zero-byte cleanup");
+
+        let report = gc_storage_cache(&home, false).await.unwrap();
+
+        assert!(!tmp.exists(), "stale empty staging dir must be removed");
+        assert_eq!(report.freed_bytes, 0);
+        assert_eq!(report.activity_count, 1);
     }
 
     #[tokio::test]
