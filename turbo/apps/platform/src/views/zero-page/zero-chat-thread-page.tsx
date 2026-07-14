@@ -2368,7 +2368,7 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
           <span className="mt-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-foreground">
-              {queue.running.triggerBrief ?? "Running trigger event"}
+              {queue.running.triggerBrief ?? "Running automation"}
             </div>
             <div className="text-muted-foreground">
               {queue.running.status === "running" ? "Running" : "Starting"}
