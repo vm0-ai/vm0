@@ -1,10 +1,9 @@
 mod cleanup;
+mod process;
 #[cfg(test)]
 mod tests;
 
-use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 use nbd_cow::KeptCow;
 use nbd_cow::PooledNbdCowDevice;
@@ -17,7 +16,6 @@ use tracing::info;
 use crate::config::SnapshotConfig;
 use crate::network::NetnsPool;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
-use crate::process::kill_process_group;
 use crate::runtime_dirs::prepare_runtime_socket_dir;
 use crate::workspace_drive_image::prepare_workspace_drive_image;
 
@@ -26,15 +24,11 @@ use super::cow::destroy_snapshot_cow_and_cleanup_attempt_dir;
 use super::output::remove_dir_all_if_exists_sync;
 #[cfg(test)]
 use super::publish::SnapshotPublishAttempt;
-use super::runtime::{
-    SPAWN_INNER_CMD, STDERR_BUF_LINES, StderrBuf, UNSHARE_MOUNT_ARGS,
-    drain_stderr_forwarder_after_spawn_exit, kill_and_reap_firecracker, rewrap_spawn_chain_exit,
-    spawn_stderr_forwarder, spawn_stdout_forwarder,
-};
 
 #[cfg(test)]
 use self::cleanup::{AttemptWorkspaceImage, SnapshotCleanupReport};
 use self::cleanup::{SnapshotCleanupFinalizer, SnapshotCleanupResources};
+use self::process::SnapshotProcessSpawn;
 
 pub(super) async fn cleanup_existing_snapshot_sock_dir(sock_dir: &Path) {
     if sock_dir.exists()
@@ -94,7 +88,6 @@ pub(super) struct SnapshotAttempt {
     sock_paths: Option<SockPaths>,
     output: SnapshotOutputPaths,
     cleanup_resources: SnapshotCleanupResources,
-    stderr_buf: StderrBuf,
     #[cfg(test)]
     cleanup_complete_tx: Option<tokio::sync::oneshot::Sender<SnapshotCleanupReport>>,
 }
@@ -119,7 +112,6 @@ impl SnapshotAttempt {
                 cow_device,
                 workspace_image_path,
             ),
-            stderr_buf: Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES))),
             #[cfg(test)]
             cleanup_complete_tx: None,
         }
@@ -137,7 +129,6 @@ impl SnapshotAttempt {
             sock_paths: Some(sock_paths),
             output,
             cleanup_resources: SnapshotCleanupResources::without_cow_for_test(workspace_image_path),
-            stderr_buf: Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES))),
             #[cfg(test)]
             cleanup_complete_tx: None,
         }
@@ -154,17 +145,21 @@ impl SnapshotAttempt {
 
     #[cfg(test)]
     fn track_child_for_test(&mut self, child: tokio::process::Child) {
-        self.cleanup_resources.child = Some(child);
+        self.cleanup_resources.process.track_child_for_test(child);
     }
 
     #[cfg(test)]
     fn track_stdout_handle_for_test(&mut self, handle: JoinHandle<()>) {
-        self.cleanup_resources.stdout_handle = Some(handle);
+        self.cleanup_resources
+            .process
+            .track_stdout_handle_for_test(handle);
     }
 
     #[cfg(test)]
     fn track_stderr_handle_for_test(&mut self, handle: JoinHandle<()>) {
-        self.cleanup_resources.stderr_handle = Some(handle);
+        self.cleanup_resources
+            .process
+            .track_stderr_handle_for_test(handle);
     }
 
     #[cfg(test)]
@@ -354,52 +349,26 @@ impl SnapshotAttempt {
         // Spawn Firecracker inside `unshare --mount` so the COW-device bind
         // mount lives in a private mount namespace and dies with the process.
         // Mirrors the spawn pattern in `sandbox.rs::start_from_snapshot`.
-        // Inner command is [`SPAWN_INNER_CMD`].
-        let spawn_result = tokio::process::Command::new("unshare")
-            .args(UNSHARE_MOUNT_ARGS)
-            .args(["bash", "-c", SPAWN_INNER_CMD, "_"])
-            .arg(&cow_device_path) // $1
-            .arg(&drive_bind) // $2
-            .arg(&workspace_image) // $3
-            .arg(&workspace_drive_bind) // $4
-            .arg(&network_name) // $5
-            .arg(&config.binary_path) // $6
-            .arg(&api_sock) // $7
-            .current_dir(self.paths.workspace())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .process_group(0)
-            .kill_on_drop(true)
-            .spawn();
-
-        let mut child = match spawn_result {
-            Ok(child) => child,
-            Err(e) => {
-                // Release the checked-out netns before returning —
-                // `netns_pool.cleanup()` only drains queued entries, not
-                // already-acquired ones.
-                self.release_network("failed to release netns after spawn failure")
-                    .await;
-                self.cleanup_resources
-                    .destroy_cow_after_setup_error("spawn firecracker")
-                    .await;
-                return Err(SnapshotError::Process(format!("spawn firecracker: {e}")));
-            }
-        };
-
-        // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
-        // Stderr is also retained in a bounded ring buffer so that an early
-        // spawn-chain exit (mount failure inside unshare bash, etc.) can be
-        // reported with its real cause instead of just an API timeout.
-        self.cleanup_resources.stdout_handle = spawn_stdout_forwarder(&mut child);
-        // The stderr forwarder handle is retained so that, on detected early
-        // exit, we can wait a bounded time for it to drain buffered lines
-        // before snapshotting the ring buffer for the error message. Without
-        // this join, the most informative lines (mount: bind failed, etc.)
-        // can race the `try_wait` observation and be missed.
-        self.cleanup_resources.stderr_handle = spawn_stderr_forwarder(&mut child, &self.stderr_buf);
-        self.cleanup_resources.child = Some(child);
+        if let Err(e) = self.cleanup_resources.process.spawn(SnapshotProcessSpawn {
+            cow_device_path: &cow_device_path,
+            drive_bind: &drive_bind,
+            workspace_image: &workspace_image,
+            workspace_drive_bind: &workspace_drive_bind,
+            network_name: &network_name,
+            binary_path: &config.binary_path,
+            api_sock: &api_sock,
+            current_dir: self.paths.workspace(),
+        }) {
+            // Release the checked-out netns before returning —
+            // `netns_pool.cleanup()` only drains queued entries, not
+            // already-acquired ones.
+            self.release_network("failed to release netns after spawn failure")
+                .await;
+            self.cleanup_resources
+                .destroy_cow_after_setup_error("spawn firecracker")
+                .await;
+            return Err(SnapshotError::Process(format!("spawn firecracker: {e}")));
+        }
 
         Ok(())
     }
@@ -408,27 +377,11 @@ impl SnapshotAttempt {
         &mut self,
         result: Result<SnapshotConfig, SnapshotError>,
     ) -> Result<SnapshotConfig, SnapshotError> {
-        // Probe for early spawn-chain exit *before* killing the process. This
-        // distinguishes "firecracker is still running, error was an API/setup
-        // issue" (try_wait → None) from "firecracker already died, error is
-        // the downstream symptom of that" (try_wait → Some(non-zero)).
-        let child_status = self
+        let result = self
             .cleanup_resources
-            .child
-            .as_mut()
-            .map_or(Ok(None), tokio::process::Child::try_wait);
-        self.cleanup_resources.stderr_handle = drain_stderr_forwarder_after_spawn_exit(
-            &child_status,
-            self.cleanup_resources.stderr_handle.take(),
-        )
-        .await;
-        let result = rewrap_spawn_chain_exit(result, child_status, &self.stderr_buf);
-
-        // Kill Firecracker first — it holds the NBD device fd open.
-        if let Some(child) = self.cleanup_resources.child.as_mut() {
-            kill_and_reap_firecracker(child).await;
-        }
-        self.cleanup_resources.child.take();
+            .process
+            .finish_after_workflow(result)
+            .await;
 
         // Release network namespace back to the pool before teardown.
         // Without this, the namespace resources (veth, iptables) leak because
@@ -439,7 +392,7 @@ impl SnapshotAttempt {
             self.cleanup_failure().await;
         }
 
-        self.drop_forwarder_handles();
+        self.cleanup_resources.process.drop_forwarder_handles();
         result
     }
 
@@ -482,10 +435,6 @@ impl SnapshotAttempt {
         self.cleanup_resources.cleanup_publish_attempt().await
     }
 
-    fn drop_forwarder_handles(&mut self) {
-        self.cleanup_resources.drop_forwarder_handles();
-    }
-
     fn has_cleanup_work(&self) -> bool {
         self.cleanup_resources.has_cleanup_work()
     }
@@ -512,13 +461,11 @@ impl Drop for SnapshotAttempt {
         };
         let presence = finalizer.resources.presence();
 
-        if let Some(child) = finalizer.resources.child.as_ref() {
-            // The outer snapshot build lock can be released as soon as the
-            // cancelled future is dropped. Signal the process group before the
-            // async handoff so a later build of the same snapshot does not race
-            // a still-running Firecracker process. Reaping remains async.
-            kill_process_group(child);
-        }
+        // The outer snapshot build lock can be released as soon as the
+        // cancelled future is dropped. Signal the process group before the
+        // async handoff so a later build of the same snapshot does not race
+        // a still-running Firecracker process. Reaping remains async.
+        finalizer.resources.process.signal_for_drop();
 
         match tokio::runtime::Handle::try_current() {
             Ok(runtime) => {
