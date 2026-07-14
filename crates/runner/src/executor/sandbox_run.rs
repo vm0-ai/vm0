@@ -111,6 +111,8 @@ const RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_ZERO_RETRIES_MULTIPLE: &str =
     "runner_fresh_sandbox_factory_nbd_size_zero_retries_multiple";
 const RUNNER_FRESH_SANDBOX_PROXY_REGISTER: &str = "runner_fresh_sandbox_proxy_register";
 const RUNNER_FRESH_SANDBOX_START: &str = "runner_fresh_sandbox_start";
+const RUNNER_FRESH_SANDBOX_RETRY_AFTER_START_READINESS: &str =
+    "runner_fresh_sandbox_retry_after_start_readiness";
 const RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE: &str =
     "runner_fresh_sandbox_retry_without_workspace_image";
 
@@ -338,91 +340,108 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         telemetry,
     )
     .await;
-    let prepared = match create_started_sandbox(
-        factory,
-        context,
-        sandbox_id,
-        config,
-        params,
-        telemetry,
-        StartSandboxOptions {
-            workspace_image: workspace_image.as_ref(),
-            sandbox_prepared,
-        },
-    )
-    .await
-    {
-        Ok(prepared) => prepared,
-        Err(e)
-            if e.retry_without_workspace_image
-                && workspace_image
-                    .as_ref()
-                    .is_some_and(WorkspaceImageLease::is_cache_hit) =>
-        {
-            let error = e.error;
-            invalidate_workspace_cache_hit(
-                workspace_image.as_ref(),
-                context.run_id,
-                "sandbox_prepare_failed",
-            )
-            .await;
-            warn!(
-                run_id = %context.run_id,
-                sandbox_id = %sandbox_id,
-                error = %error,
-                "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
-            );
-            telemetry.record(
-                RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE,
-                Duration::ZERO,
-                true,
-                None,
-            );
-            workspace_image = None;
-            controls.session_history_restore_plan =
-                discard_local_sidecar_restore_plan_for_workspace_retry(
-                    std::mem::take(&mut controls.session_history_restore_plan),
-                    context,
-                    config,
-                    controls.cancel.clone(),
-                    telemetry,
-                );
-            match create_started_sandbox(
-                factory,
-                context,
-                sandbox_id,
-                config,
-                params,
-                telemetry,
-                StartSandboxOptions {
-                    workspace_image: None,
-                    sandbox_prepared,
-                },
-            )
-            .await
+    let mut fresh_sandbox_retry_available = true;
+    let prepared = loop {
+        let result = create_started_sandbox(
+            factory,
+            context,
+            sandbox_id,
+            config,
+            params,
+            telemetry,
+            StartSandboxOptions {
+                workspace_image: workspace_image.as_ref(),
+                sandbox_prepared,
+            },
+        )
+        .await;
+        match result {
+            Ok(prepared) => break prepared,
+            Err(e)
+                if matches!(e.retry, SandboxPrepareRetry::FreshSandbox)
+                    && fresh_sandbox_retry_available =>
             {
-                Ok(prepared) => prepared,
-                Err(e) => {
-                    let error = e.error;
-                    telemetry.record(
-                        "runner_fresh_sandbox_prepare",
-                        prepare_started.elapsed(),
-                        false,
-                        Some(&error.to_string()),
-                    );
-                    return Err(error);
+                fresh_sandbox_retry_available = false;
+                let error = e.error;
+                let discard_workspace_image = workspace_image
+                    .as_ref()
+                    .is_some_and(WorkspaceImageLease::is_cache_hit);
+                if discard_workspace_image {
+                    invalidate_workspace_cache_hit(
+                        workspace_image.as_ref(),
+                        context.run_id,
+                        "sandbox_start_readiness_failed",
+                    )
+                    .await;
+                    workspace_image = None;
+                    controls.session_history_restore_plan =
+                        discard_local_sidecar_restore_plan_for_workspace_retry(
+                            std::mem::take(&mut controls.session_history_restore_plan),
+                            context,
+                            config,
+                            controls.cancel.clone(),
+                            telemetry,
+                        );
                 }
+                warn!(
+                    run_id = %context.run_id,
+                    sandbox_id = %sandbox_id,
+                    discarded_workspace_image = discard_workspace_image,
+                    error = %error,
+                    "sandbox start readiness failed; retrying with a fresh sandbox"
+                );
+                telemetry.record(
+                    RUNNER_FRESH_SANDBOX_RETRY_AFTER_START_READINESS,
+                    Duration::ZERO,
+                    true,
+                    None,
+                );
             }
-        }
-        Err(e) => {
-            let error = e.error;
-            telemetry.record(
-                "runner_fresh_sandbox_prepare",
-                prepare_started.elapsed(),
-                false,
-                Some(&error.to_string()),
-            );
-            return Err(error);
+            Err(e)
+                if matches!(e.retry, SandboxPrepareRetry::WithoutWorkspaceImage)
+                    && workspace_image
+                        .as_ref()
+                        .is_some_and(WorkspaceImageLease::is_cache_hit) =>
+            {
+                let error = e.error;
+                invalidate_workspace_cache_hit(
+                    workspace_image.as_ref(),
+                    context.run_id,
+                    "sandbox_prepare_failed",
+                )
+                .await;
+                warn!(
+                    run_id = %context.run_id,
+                    sandbox_id = %sandbox_id,
+                    error = %error,
+                    "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
+                );
+                telemetry.record(
+                    RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE,
+                    Duration::ZERO,
+                    true,
+                    None,
+                );
+                workspace_image = None;
+                controls.session_history_restore_plan =
+                    discard_local_sidecar_restore_plan_for_workspace_retry(
+                        std::mem::take(&mut controls.session_history_restore_plan),
+                        context,
+                        config,
+                        controls.cancel.clone(),
+                        telemetry,
+                    );
+            }
+            Err(e) => {
+                let error = e.error;
+                telemetry.record(
+                    "runner_fresh_sandbox_prepare",
+                    prepare_started.elapsed(),
+                    false,
+                    Some(&error.to_string()),
+                );
+                return Err(error);
+            }
         }
     };
     telemetry.record(
@@ -459,7 +478,14 @@ pub(super) struct PreparedSandboxRun {
 
 pub(super) struct SandboxPrepareError {
     error: RunnerError,
-    retry_without_workspace_image: bool,
+    retry: SandboxPrepareRetry,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SandboxPrepareRetry {
+    None,
+    WithoutWorkspaceImage,
+    FreshSandbox,
 }
 
 pub(super) struct NewSandboxHooks<'a> {
@@ -473,17 +499,32 @@ struct StartSandboxOptions<'a> {
 }
 
 impl SandboxPrepareError {
-    fn retry(error: RunnerError) -> Self {
+    fn retry_without_workspace_image(error: RunnerError) -> Self {
         Self {
             error,
-            retry_without_workspace_image: true,
+            retry: SandboxPrepareRetry::WithoutWorkspaceImage,
+        }
+    }
+
+    fn from_start(error: sandbox::SandboxError) -> Self {
+        let retry = if matches!(
+            error,
+            sandbox::SandboxError::StartRequiresFreshSandbox { .. }
+        ) {
+            SandboxPrepareRetry::FreshSandbox
+        } else {
+            SandboxPrepareRetry::WithoutWorkspaceImage
+        };
+        Self {
+            error: error.into(),
+            retry,
         }
     }
 
     fn fatal(error: RunnerError) -> Self {
         Self {
             error,
-            retry_without_workspace_image: false,
+            retry: SandboxPrepareRetry::None,
         }
     }
 }
@@ -710,7 +751,7 @@ async fn create_started_sandbox(
                 Some(SANDBOX_FACTORY_CREATE_FAILED),
             );
             telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-            return Err(SandboxPrepareError::retry(e.into()));
+            return Err(SandboxPrepareError::retry_without_workspace_image(e.into()));
         }
     };
 
@@ -776,7 +817,7 @@ async fn create_started_sandbox(
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
         destroy_sandbox_panic_safe(factory, sandbox).await;
-        return Err(SandboxPrepareError::retry(e.into()));
+        return Err(SandboxPrepareError::from_start(e));
     }
     telemetry.record(
         RUNNER_FRESH_SANDBOX_START,
@@ -807,7 +848,7 @@ async fn create_started_sandbox(
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
         destroy_sandbox_panic_safe(factory, sandbox).await;
-        return Err(SandboxPrepareError::retry(e));
+        return Err(SandboxPrepareError::retry_without_workspace_image(e));
     }
     telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
     if let Some(notifier) = sandbox_prepared {

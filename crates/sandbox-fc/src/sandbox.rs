@@ -1582,7 +1582,7 @@ impl Sandbox for FirecrackerSandbox {
                     );
                     self.guest.lock().await.take();
                     self.runtime.kill_process().await;
-                    return Err(SandboxError::Start {
+                    return Err(SandboxError::StartRequiresFreshSandbox {
                         message: format!(
                             "guest DNS readiness for namespace {}: {error}",
                             self.network.name()

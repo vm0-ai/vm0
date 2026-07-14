@@ -29,6 +29,11 @@ pub enum SandboxError {
     #[error("sandbox start failed: {message}")]
     Start { message: String },
 
+    /// A created sandbox failed because an isolated sandbox resource was not
+    /// ready. The current sandbox must be destroyed before creating a replacement.
+    #[error("sandbox start failed: {message}")]
+    StartRequiresFreshSandbox { message: String },
+
     /// The requested action is invalid for the current runtime, factory, or
     /// sandbox state.
     #[error("invalid state for {context} (state: {state}): {message}")]

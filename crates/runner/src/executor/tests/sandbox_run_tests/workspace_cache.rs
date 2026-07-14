@@ -88,6 +88,80 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
 }
 
 #[tokio::test]
+async fn execute_inner_discards_consumed_cache_when_replacing_dns_unready_sandbox() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths.clone());
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache.clone());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(SandboxError::StartRequiresFreshSandbox {
+        message: "guest DNS readiness failed".into(),
+    }));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-dns-retry".into(),
+        r#"{"type":"init"}"#.into(),
+    ));
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    let expected_seed =
+        seed_workspace_image_cache(&cache, &runner_paths, "sess-dns-retry", 16).await;
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &params,
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert!(outcome.workspace_image.is_none());
+    let configs = overrides.create_configs();
+    assert_eq!(configs.len(), 2);
+    assert_eq!(
+        configs[0].workspace_drive,
+        Some(sandbox::WorkspaceDriveConfig {
+            size_mb: 16,
+            seed_image: Some(sandbox::WorkspaceDriveSeedImage::Move(
+                expected_seed.clone(),
+            )),
+        })
+    );
+    assert_eq!(
+        configs[1].workspace_drive,
+        Some(sandbox::WorkspaceDriveConfig {
+            size_mb: 16,
+            seed_image: None,
+        })
+    );
+    assert!(!expected_seed.exists());
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_after_start_readiness",
+        true,
+        None,
+    );
+    assert_no_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_without_workspace_image",
+    );
+}
+
+#[tokio::test]
 async fn execute_inner_uses_workspace_cache_when_configured() {
     let dir = tempfile::tempdir().unwrap();
     let runner_paths = RunnerPaths::new(dir.path().join("runner"));

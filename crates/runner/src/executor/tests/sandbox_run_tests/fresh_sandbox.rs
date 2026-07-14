@@ -514,6 +514,135 @@ async fn execute_inner_start_failure_destroy_panic_returns_start_error() {
 }
 
 #[tokio::test]
+async fn execute_new_sandbox_replaces_once_after_start_readiness_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(SandboxError::StartRequiresFreshSandbox {
+        message: "guest DNS readiness failed".into(),
+    }));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let sandbox_id = SandboxId::new_v4();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: sandbox_id,
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    let create_configs = overrides.create_configs();
+    assert_eq!(create_configs.len(), 2);
+    assert!(create_configs.iter().all(|config| config.id == sandbox_id));
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_after_start_readiness",
+        true,
+        None,
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_stops_after_second_start_readiness_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(SandboxError::StartRequiresFreshSandbox {
+        message: "first guest DNS readiness failure".into(),
+    }));
+    overrides.push_start_result(Err(SandboxError::StartRequiresFreshSandbox {
+        message: "second guest DNS readiness failure".into(),
+    }));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error = result.err().unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains("second guest DNS readiness failure"),
+        "got: {error}"
+    );
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 2);
+    assert!(overrides.start_process_calls().is_empty());
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_after_start_readiness",
+        true,
+        None,
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_does_not_replace_after_ordinary_start_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(SandboxError::Start {
+        message: "boot failed".into(),
+    }));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error = result.err().unwrap();
+    assert!(error.to_string().contains("boot failed"), "got: {error}");
+    assert_eq!(overrides.create_configs().len(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_no_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_after_start_readiness",
+    );
+    assert_proxy_registry_empty(dir.path()).await;
+}
+
+#[tokio::test]
 async fn execute_job_wraps_execute_inner() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
