@@ -12,7 +12,7 @@ import {
 import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { computed, type Computed } from "ccstate";
-import { and, eq, inArray, isNull, like } from "drizzle-orm";
+import { and, eq, isNull, like, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl } from "../external/s3";
@@ -228,8 +228,8 @@ interface StorageManifestPhaseTimingWindow {
 /**
  * Pre-fetched (orgId, userId, name, type) -> storage row map. A single run
  * resolves dozens to hundreds of volumes/artifacts; looking each up with its
- * own `SELECT storages` round-trip saturates the connection pool, so all rows
- * for the relevant orgs are loaded once and resolved from memory instead.
+ * own `SELECT storages` round-trip saturates the connection pool, so the exact
+ * requested rows are loaded once and resolved from memory instead.
  */
 type StorageIndex = ReadonlyMap<string, StorageIndexEntry>;
 
@@ -1036,11 +1036,44 @@ function storageIndexKey(
   return JSON.stringify([orgId, userId, name, type]);
 }
 
+function artifactStorageLookup(
+  orgId: string,
+  userId: string,
+  name: string,
+): StorageLookup {
+  return { orgId, userId, name, type: "artifact" };
+}
+
 async function loadStorageIndex(
   db: Db,
-  orgIds: readonly string[],
+  lookups: readonly StorageLookup[],
 ): Promise<StorageIndex> {
-  const uniqueOrgIds = [...new Set(orgIds)];
+  const lookupsByKey = new Map<string, StorageLookup>();
+  for (const lookup of lookups) {
+    lookupsByKey.set(
+      storageIndexKey(lookup.orgId, lookup.userId, lookup.name, lookup.type),
+      lookup,
+    );
+  }
+  const uniqueLookups = [...lookupsByKey.values()];
+  if (uniqueLookups.length === 0) {
+    return new Map<string, StorageIndexEntry>();
+  }
+
+  const orgIds = uniqueLookups.map((lookup) => {
+    return lookup.orgId;
+  });
+  const userIds = uniqueLookups.map((lookup) => {
+    return lookup.userId;
+  });
+  const names = uniqueLookups.map((lookup) => {
+    return lookup.name;
+  });
+  const types = uniqueLookups.map((lookup) => {
+    return lookup.type;
+  });
+  // Raw array interpolation expands to a SQL tuple in Drizzle. Keep each
+  // zipped array in one driver parameter so the statement shape stays fixed.
   const rows = await db
     .select({
       orgId: storages.orgId,
@@ -1054,8 +1087,19 @@ async function loadStorageIndex(
       fileCount: storageVersions.fileCount,
     })
     .from(storages)
-    .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
-    .where(inArray(storages.orgId, uniqueOrgIds));
+    .innerJoin(
+      sql`unnest(
+        ${sql.param(orgIds)}::text[],
+        ${sql.param(userIds)}::text[],
+        ${sql.param(names)}::varchar(256)[],
+        ${sql.param(types)}::varchar(16)[]
+      ) AS requested(org_id, user_id, name, type)`,
+      sql`${storages.orgId} = requested.org_id
+        AND ${storages.userId} = requested.user_id
+        AND ${storages.name} = requested.name
+        AND ${storages.type} = requested.type`,
+    )
+    .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id));
 
   const index = new Map<string, StorageIndexEntry>();
   for (const row of rows) {
@@ -1216,12 +1260,7 @@ function ensureArtifactStorage(
   args: EnsureArtifactStorageArgs,
 ): Computed<Promise<void>> {
   return computed(async (): Promise<void> => {
-    const lookup = {
-      orgId: args.orgId,
-      userId: args.userId,
-      name: args.name,
-      type: "artifact" as const,
-    };
+    const lookup = artifactStorageLookup(args.orgId, args.userId, args.name);
     const storage = await findOrCreateArtifactStorage(args, lookup);
     if (!storage) {
       throw new Error(`Failed to create artifact storage "${args.name}"`);
@@ -1382,6 +1421,18 @@ function volumeVersion(
   return "vasVersion" in volume ? volume.vasVersion : volume.version;
 }
 
+function volumeStorageLookup(
+  orgId: string,
+  volume: ResolvedVolume | AdditionalVolume,
+): StorageLookup {
+  return {
+    orgId,
+    userId: VOLUME_ORG_USER_ID,
+    name: volumeStorageName(volume),
+    type: "volume",
+  };
+}
+
 async function resolveVolumeStorage(args: {
   readonly db: Db;
   readonly index: StorageIndex;
@@ -1394,12 +1445,7 @@ async function resolveVolumeStorage(args: {
       resolveStorageVersion(
         args.db,
         args.index,
-        {
-          orgId: SYSTEM_ORG_ID,
-          userId: VOLUME_ORG_USER_ID,
-          name: volumeStorageName(args.volume),
-          type: "volume",
-        },
+        volumeStorageLookup(SYSTEM_ORG_ID, args.volume),
         volumeVersion(args.volume),
       ),
     );
@@ -1414,12 +1460,7 @@ async function resolveVolumeStorage(args: {
   return await resolveStorageVersion(
     args.db,
     args.index,
-    {
-      orgId: args.primaryOrgId,
-      userId: VOLUME_ORG_USER_ID,
-      name: volumeStorageName(args.volume),
-      type: "volume",
-    },
+    volumeStorageLookup(args.primaryOrgId, args.volume),
     volumeVersion(args.volume),
   );
 }
@@ -1500,12 +1541,7 @@ async function resolveArtifactStorageInput(args: {
   const resolved = await resolveStorageVersion(
     args.db,
     args.index,
-    {
-      orgId: args.runtimeOrgId,
-      userId: args.userId,
-      name: args.artifact.name,
-      type: "artifact",
-    },
+    artifactStorageLookup(args.runtimeOrgId, args.userId, args.artifact.name),
     args.artifact.version,
   );
   return { artifact: args.artifact, resolved, source: args.source };
@@ -1902,8 +1938,7 @@ async function ensureStorageManifestArtifacts(
 
 async function loadTimedStorageIndex(args: {
   readonly db: Db;
-  readonly agentOrgId: string;
-  readonly runtimeOrgId: string;
+  readonly lookups: readonly StorageLookup[];
   readonly timing?: ApiDispatchTimingCollector;
 }): Promise<StorageIndex> {
   // Resolve every volume/artifact from one pre-fetched snapshot instead of a
@@ -1914,13 +1949,40 @@ async function loadTimedStorageIndex(args: {
     "api_dispatch_prepare_storage_manifest_load_storage_index",
     "nested",
     async () => {
-      return await loadStorageIndex(args.db, [
-        args.agentOrgId,
-        args.runtimeOrgId,
-        SYSTEM_ORG_ID,
-      ]);
+      return await loadStorageIndex(args.db, args.lookups);
     },
   );
+}
+
+function storageManifestLookups(args: {
+  readonly agentOrgId: string;
+  readonly runtimeOrgId: string;
+  readonly userId: string;
+  readonly composeVolumes: readonly ResolvedVolume[];
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly artifacts: readonly ContextArtifact[];
+}): readonly StorageLookup[] {
+  const lookups: StorageLookup[] = [];
+
+  for (const volume of args.composeVolumes) {
+    if (volume.system) {
+      lookups.push(volumeStorageLookup(SYSTEM_ORG_ID, volume));
+    }
+    lookups.push(volumeStorageLookup(args.agentOrgId, volume));
+  }
+  for (const volume of args.additionalVolumes ?? []) {
+    if (volume.system) {
+      lookups.push(volumeStorageLookup(SYSTEM_ORG_ID, volume));
+    }
+    lookups.push(volumeStorageLookup(args.runtimeOrgId, volume));
+  }
+  for (const artifact of args.artifacts) {
+    lookups.push(
+      artifactStorageLookup(args.runtimeOrgId, args.userId, artifact.name),
+    );
+  }
+
+  return lookups;
 }
 
 function createStorageManifestEntryPhaseTimings(args: {
@@ -2205,8 +2267,14 @@ export function prepareAgentRunStorageManifest(
 
     const storageIndex = await loadTimedStorageIndex({
       db: args.db,
-      agentOrgId: args.agentOrgId,
-      runtimeOrgId: args.runtimeOrgId,
+      lookups: storageManifestLookups({
+        agentOrgId: args.agentOrgId,
+        runtimeOrgId: args.runtimeOrgId,
+        userId: args.userId,
+        composeVolumes,
+        additionalVolumes: args.additionalVolumes,
+        artifacts,
+      }),
       timing: args.timing,
     });
 

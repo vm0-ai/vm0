@@ -1852,6 +1852,75 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, initialized.runId, [200]);
   });
 
+  it("preserves missing-volume and artifact resolution with exact candidates", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor, runnerGroup } = await entitledRunActor();
+    const storageName = `bdd-exact-candidate-${randomUUID().slice(0, 8)}`;
+    const missingComposeName = `bdd-missing-compose-${randomUUID().slice(0, 8)}`;
+    const missingAdditionalName = `bdd-missing-additional-${randomUUID().slice(0, 8)}`;
+    const storageFile = storageTextFile(
+      "candidate.txt",
+      `exact candidate ${storageName}`,
+    );
+    const prepared = await storages.prepareStorage(actor, {
+      storageName,
+      storageType: "volume",
+      files: [storageFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName,
+      storageType: "volume",
+      versionId: prepared.versionId,
+      files: [storageFile],
+    });
+
+    const composeName = `bdd-exact-candidate-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      volumes: {
+        primary: { name: storageName, version: prepared.versionId },
+        optional: {
+          name: missingComposeName,
+          version: "latest",
+          optional: true,
+        },
+      },
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          volumes: ["primary:/primary", "optional:/optional"],
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const created = await api.createDirectRun(actor, {
+      agentComposeVersionId: compose.versionId,
+      prompt: "resolve only exact storage candidates",
+      additionalVolumes: [
+        { name: missingAdditionalName, mountPath: "/additional" },
+      ],
+    });
+    expect(created.status).toBe("pending");
+
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.storageManifest?.storages).toStrictEqual([
+      expect.objectContaining({
+        mountPath: "/primary",
+        vasStorageName: storageName,
+        vasVersionId: prepared.versionId,
+      }),
+    ]);
+    expect(
+      claim.storageManifest?.artifacts.some((artifact) => {
+        return artifact.vasStorageName === "memory";
+      }),
+    ).toBeTruthy();
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
   it("keeps a committed artifact head after initial empty artifact creation", async () => {
     const api = createRunsApi(context);
     const storages = createStoragesBddApi(context);
