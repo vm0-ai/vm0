@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.272.1](https://github.com/vm0-ai/vm0/compare/api-v1.272.0...api-v1.272.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* enforce org tier capability limits ([#21370](https://github.com/vm0-ai/vm0/issues/21370)) ([70c863e](https://github.com/vm0-ai/vm0/commit/70c863e1931a1412e588d88c8eb76ff33e981c92))
+
+
+### Refactoring
+
+* consolidate routine settle error handling ([#21382](https://github.com/vm0-ai/vm0/issues/21382)) ([f104f67](https://github.com/vm0-ai/vm0/commit/f104f67a32d10121953a2e531b38db4d50ad6585))
+
+
+### Performance Improvements
+
+* **api:** cache recurring workflow memory embeddings ([#21345](https://github.com/vm0-ai/vm0/issues/21345)) ([45eafb3](https://github.com/vm0-ai/vm0/commit/45eafb3cc1a9a1333a61e5f99e6ed19d95c35121))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.114.1
+
 ## [1.272.0](https://github.com/vm0-ai/vm0/compare/api-v1.271.1...api-v1.272.0) (2026-07-14)
 
 
