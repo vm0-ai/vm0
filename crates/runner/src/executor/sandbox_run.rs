@@ -804,23 +804,17 @@ async fn create_started_sandbox(
             Some(SANDBOX_START_FAILED),
         );
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-        let unregister_succeeded =
-            match unregister_proxy_registry(config, &source_ip, context.run_id).await {
-                Ok(()) => true,
-                Err(unregister_error) => {
-                    warn!(
-                        run_id = %context.run_id,
-                        error = %unregister_error,
-                        "failed to unregister VM from proxy after sandbox start failure"
-                    );
-                    false
-                }
-            };
-        network_log_session
-            .close_for_upload(context.run_id, &config.network_log_drain)
-            .await;
-        let destroy_succeeded = destroy_sandbox_panic_safe(factory, sandbox).await;
-        let error = if unregister_succeeded && destroy_succeeded {
+        let cleanup_succeeded = cleanup_failed_sandbox_preparation(
+            factory,
+            sandbox,
+            network_log_session,
+            config,
+            context,
+            &source_ip,
+            "sandbox_start",
+        )
+        .await;
+        let error = if cleanup_succeeded {
             SandboxPrepareError::from_start(e)
         } else {
             SandboxPrepareError::fatal(e.into())
@@ -843,23 +837,17 @@ async fn create_started_sandbox(
             false,
             Some(&e.to_string()),
         );
-        let unregister_succeeded =
-            match unregister_proxy_registry(config, &source_ip, context.run_id).await {
-                Ok(()) => true,
-                Err(unregister_error) => {
-                    warn!(
-                        run_id = %context.run_id,
-                        error = %unregister_error,
-                        "failed to unregister VM from proxy after workspace mount failure"
-                    );
-                    false
-                }
-            };
-        network_log_session
-            .close_for_upload(context.run_id, &config.network_log_drain)
-            .await;
-        let destroy_succeeded = destroy_sandbox_panic_safe(factory, sandbox).await;
-        let error = if unregister_succeeded && destroy_succeeded {
+        let cleanup_succeeded = cleanup_failed_sandbox_preparation(
+            factory,
+            sandbox,
+            network_log_session,
+            config,
+            context,
+            &source_ip,
+            "workspace_mount",
+        )
+        .await;
+        let error = if cleanup_succeeded {
             SandboxPrepareError::retry_without_workspace_image(e)
         } else {
             SandboxPrepareError::fatal(e)
@@ -912,6 +900,35 @@ pub(super) async fn destroy_sandbox_panic_safe(
         return false;
     }
     true
+}
+
+async fn cleanup_failed_sandbox_preparation(
+    factory: &dyn SandboxFactory,
+    sandbox: Box<dyn Sandbox>,
+    network_log_session: NetworkLogSession,
+    config: &ExecutorConfig,
+    context: &ExecutionContext,
+    source_ip: &str,
+    failure_stage: &'static str,
+) -> bool {
+    let unregister_succeeded =
+        match unregister_proxy_registry(config, source_ip, context.run_id).await {
+            Ok(()) => true,
+            Err(unregister_error) => {
+                warn!(
+                    run_id = %context.run_id,
+                    failure_stage,
+                    error = %unregister_error,
+                    "failed to unregister VM from proxy after sandbox preparation failure"
+                );
+                false
+            }
+        };
+    network_log_session
+        .close_for_upload(context.run_id, &config.network_log_drain)
+        .await;
+    let destroy_succeeded = destroy_sandbox_panic_safe(factory, sandbox).await;
+    unregister_succeeded && destroy_succeeded
 }
 
 /// Run a job inside a reused (kept-alive) sandbox.
