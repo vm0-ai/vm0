@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.274.0](https://github.com/vm0-ai/vm0/compare/api-v1.273.1...api-v1.274.0) (2026-07-14)
+
+
+### Features
+
+* **agent:** request planned connector permissions together ([#21424](https://github.com/vm0-ai/vm0/issues/21424)) ([a39ef20](https://github.com/vm0-ai/vm0/commit/a39ef207062eece0b44742736d55822e0683718a))
+
+
+### Bug Fixes
+
+* move claimed chat messages out of the composer queue ([#21428](https://github.com/vm0-ai/vm0/issues/21428)) ([f716c1b](https://github.com/vm0-ai/vm0/commit/f716c1bc5f5d11c823ddbc47b23c4856b7915817))
+
+
+### Refactoring
+
+* **api:** accept workflow automation callback kinds before cutover ([#21425](https://github.com/vm0-ai/vm0/issues/21425)) ([fa70e1a](https://github.com/vm0-ai/vm0/commit/fa70e1a9d70d1cb99dd4a8202fba5a8d4d34b869))
+
 ## [1.273.1](https://github.com/vm0-ai/vm0/compare/api-v1.273.0...api-v1.273.1) (2026-07-14)
 
 

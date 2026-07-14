@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.12...runner-rs-v0.144.13) (2026-07-14)
+
+
+### Performance Improvements
+
+* **runner:** copy guest logs concurrently ([#21421](https://github.com/vm0-ai/vm0/issues/21421)) ([db338e5](https://github.com/vm0-ai/vm0/commit/db338e51748e9728d6d947b5deb6c2e8d77d45b9))
+
 ## [0.144.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.11...runner-rs-v0.144.12) (2026-07-14)
 
 
