@@ -1730,6 +1730,39 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toStrictEqual([]);
   });
 
+  it("rejects invalid hostname updates without changing the connector", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const original = await connectorsApi.createCustomConnector(
+      admin,
+      customConnectorBody(uniqueSlug("hostname-update")),
+    );
+
+    const rejected = await connectorsApi.requestSaveCustomConnectorProposal(
+      admin,
+      {
+        proposal: {
+          operation: "update",
+          connectorId: original.id,
+          displayName: "BDD Invalid Hostname Update",
+          prefixTemplates: ["https://\u088f.example/v2/"],
+          fields: original.fields,
+          headerInjections: original.headerInjections,
+          queryInjections: original.queryInjections,
+        },
+        values: [],
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("vm0-uts46-16.0-v1");
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(listed).toContainEqual(original);
+
+    await connectorsApi.deleteCustomConnector(admin, original.id);
+  });
+
   it("deletes only the legacy secret value through the legacy secret endpoint", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
