@@ -1,5 +1,4 @@
 import { computed } from "ccstate";
-import { legacyCronWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/cron";
 import { legacyWebhookWorkflowAutomationContract } from "@vm0/api-contracts/contracts/webhooks";
 import { legacyZeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -8,7 +7,6 @@ import {
   workflowAutomationRouteHandlers,
   workspaceWorkflowAutomationEntries$,
 } from "./zero-workflow-automations";
-import { executeWorkflowAutomationsRoute$ } from "./cron-execute-workflow-automations";
 import { postWorkflowAutomationWebhook$ } from "./webhooks-workflow-automations";
 import { authRoute } from "../auth/auth-route";
 import type { RouteEntry } from "../route-entry";
@@ -30,10 +28,6 @@ const listWorkspaceLegacyWorkflowAutomationsHandler = authRoute(
  * not a permanent shim.
  */
 export const legacyWorkflowAutomationAliasRoutes: readonly RouteEntry[] = [
-  {
-    route: legacyCronWorkflowAutomationsContract.execute,
-    handler: executeWorkflowAutomationsRoute$,
-  },
   {
     route: legacyWebhookWorkflowAutomationContract.post,
     handler: postWorkflowAutomationWebhook$,

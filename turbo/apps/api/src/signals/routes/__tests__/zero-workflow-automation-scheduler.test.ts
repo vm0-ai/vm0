@@ -31,8 +31,6 @@ const webhooksApi = createWebhookCallbackApi(context);
 const WORKFLOW_NAME = "scheduler-workflow";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
   "/api/cron/execute-workflow-automations";
-const LEGACY_CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
-  "/api/cron/execute-workflow-triggers";
 const CRON_SECRET = "test-cron-secret";
 
 interface Scenario {
@@ -274,18 +272,6 @@ describe("zero workflow automation scheduler", () => {
     const claim = await runsApi.claimRunnerJob(run.runId);
     const environment = claim.environment ?? {};
     expect(environment.ZERO_WORKFLOW_ID).toBeUndefined();
-    await disableAutomation(automation.automationId);
-  });
-
-  it("keeps the legacy cron path working during the rollout window", async () => {
-    const scenario = await setup();
-    const automation = await createDueLoopAutomation(scenario, 60);
-
-    await executeDueWorkflowAutomations(
-      LEGACY_CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
-    );
-
-    await onlyWorkflowRunMessage(automation.threadId);
     await disableAutomation(automation.automationId);
   });
 
