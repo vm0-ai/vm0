@@ -405,15 +405,74 @@ def test_lone_surrogate_key_does_not_abort_later_selected_fields():
     assert result.values == {("usage", "input_tokens"): 7}
 
 
-def test_skips_large_unselected_string_without_storing_value():
+def test_bulk_skips_large_unselected_string_without_storing_value(monkeypatch):
+    bytewise_accept_calls = 0
+    original_accept_string_byte = JsonSelectiveExtractor._accept_string_byte
+
+    # The public result cannot reveal whether discarded bytes were scanned one
+    # at a time, so count the narrow bytewise operation as a performance contract.
+    def counting_accept_string_byte(self, state, byte):
+        nonlocal bytewise_accept_calls
+        bytewise_accept_calls += 1
+        original_accept_string_byte(self, state, byte)
+
+    monkeypatch.setattr(
+        JsonSelectiveExtractor,
+        "_accept_string_byte",
+        counting_accept_string_byte,
+    )
     extractor = JsonSelectiveExtractor(
         scalar_fields={("usage", "input_tokens"): ScalarField("int")}
     )
-    large_text = b"x" * (512 * 1024)
+    large_text = b"x" * (2 * 1024 * 1024)
+    payload = b'{"content":[{"text":"' + large_text + b'"}],"usage":{"input_tokens":7}}'
 
-    extractor.feed(b'{"content":[{"text":"')
-    extractor.feed(large_text)
-    extractor.feed(b'"}],"usage":{"input_tokens":7}}')
+    chunk_size = 64 * 1024
+    for offset in range(0, len(payload), chunk_size):
+        extractor.feed(payload[offset : offset + chunk_size])
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+    assert bytewise_accept_calls < 64
+
+
+@pytest.mark.parametrize(
+    ("invalid_suffix", "error"),
+    [
+        (b"\x01", "control character in string"),
+        (b"\\x", "invalid string escape"),
+        (b"\\u12xz", "invalid unicode escape"),
+        (b"\xff", "invalid string"),
+        (b"\xe2\x98", "invalid string"),
+    ],
+)
+def test_bulk_skip_stops_before_invalid_string_byte(invalid_suffix, error):
+    extractor = JsonSelectiveExtractor()
+
+    extractor.feed(b'{"content":"' + b"x" * (64 * 1024))
+    extractor.feed(invalid_suffix + b'"}')
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == error
+    assert result.values == {}
+
+
+@pytest.mark.parametrize(
+    ("first_suffix", "second_suffix"),
+    [
+        (b"\\", b"n"),
+        (b"\\u12", b"34"),
+    ],
+)
+def test_bulk_skip_preserves_pending_escape_state_across_chunks(first_suffix, second_suffix):
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+
+    extractor.feed(b'{"content":"' + b"x" * (64 * 1024) + first_suffix)
+    extractor.feed(second_suffix + b'","usage":{"input_tokens":7}}')
     result = _finish(extractor)
 
     assert result.complete is True
