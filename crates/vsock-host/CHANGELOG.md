@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.54](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.53...vsock-host-v0.17.54) (2026-07-14)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound lifecycle request timeout ([#21341](https://github.com/vm0-ai/vm0/issues/21341)) ([1f7051e](https://github.com/vm0-ai/vm0/commit/1f7051e9bee273fc28984c9fc31e30c2484a4560))
+
 ## [0.17.53](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.52...vsock-host-v0.17.53) (2026-07-13)
 
 
