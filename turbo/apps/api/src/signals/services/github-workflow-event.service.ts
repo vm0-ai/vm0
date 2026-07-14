@@ -8,9 +8,9 @@ import {
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import {
-  workflowUserTriggerThreads as workflowUserAutomationThreads,
+  workflowUserAutomationThreads,
   zeroWorkflowGithubProcessedEvents,
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
+  zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 

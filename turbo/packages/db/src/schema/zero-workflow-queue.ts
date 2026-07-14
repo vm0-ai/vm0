@@ -1,7 +1,7 @@
 import { pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core";
 
 import { chatThreads } from "./chat-thread";
-import { zeroWorkflows, zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations, zeroWorkflows } from "./zero-workflow";
 
 /**
  * Pending workflow trigger events.
@@ -30,7 +30,7 @@ export const zeroWorkflowQueueEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

@@ -1,4 +1,4 @@
-import { zeroWorkflowTriggerMemoryEmbeddings as zeroWorkflowAutomationMemoryEmbeddings } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowAutomationMemoryEmbeddings } from "@vm0/db/schema/zero-workflow";
 import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -57,7 +57,7 @@ export async function loadWorkflowAutomationMemoryEmbedding(
       .from(zeroWorkflowAutomationMemoryEmbeddings)
       .where(
         eq(
-          zeroWorkflowAutomationMemoryEmbeddings.workflowTriggerId,
+          zeroWorkflowAutomationMemoryEmbeddings.workflowAutomationId,
           args.workflowAutomationId,
         ),
       )
@@ -101,13 +101,13 @@ export async function loadWorkflowAutomationMemoryEmbedding(
     db
       .insert(zeroWorkflowAutomationMemoryEmbeddings)
       .values({
-        workflowTriggerId: args.workflowAutomationId,
+        workflowAutomationId: args.workflowAutomationId,
         embeddingModel: embedded.model,
         queryHash: embeddedQueryHash,
         embedding: [...embedded.embedding],
       })
       .onConflictDoUpdate({
-        target: zeroWorkflowAutomationMemoryEmbeddings.workflowTriggerId,
+        target: zeroWorkflowAutomationMemoryEmbeddings.workflowAutomationId,
         set: {
           embeddingModel: embedded.model,
           queryHash: embeddedQueryHash,

@@ -1,8 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 
 import {
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
-  zeroWorkflowWebhookTriggers as zeroWorkflowWebhookAutomations,
+  zeroWorkflowAutomations,
+  zeroWorkflowWebhookAutomations,
 } from "@vm0/db/schema/zero-workflow";
 
 import type { Db } from "../external/db";
@@ -36,7 +36,7 @@ export async function disableIneligibleWorkflowWebhookAutomationsForOrg(
     }
 
     const webhookAutomationIds = tx
-      .select({ triggerId: zeroWorkflowWebhookAutomations.triggerId })
+      .select({ automationId: zeroWorkflowWebhookAutomations.automationId })
       .from(zeroWorkflowWebhookAutomations);
     const currentTime = nowDate();
     const disabled = await tx
@@ -63,7 +63,7 @@ export async function disableIneligibleWorkflowWebhookAutomationsForOrg(
       })
       .where(
         inArray(
-          zeroWorkflowWebhookAutomations.triggerId,
+          zeroWorkflowWebhookAutomations.automationId,
           disabled.map((automation) => {
             return automation.id;
           }),

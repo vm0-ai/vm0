@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 
 import type { NotionWorkflowPendingEventContextJson } from "@vm0/db/jsonb-contracts/notion-event";
 
-import { zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations } from "./zero-workflow";
 
 export type { NotionWorkflowPendingEventContext } from "@vm0/db/jsonb-contracts/notion-event";
 
@@ -75,7 +75,7 @@ export const notionWorkflowPendingEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -83,7 +83,7 @@ export const notionWorkflowPendingEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

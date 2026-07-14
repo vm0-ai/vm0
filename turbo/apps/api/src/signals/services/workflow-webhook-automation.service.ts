@@ -6,10 +6,10 @@ import { and, eq, gte } from "drizzle-orm";
 
 import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  workflowUserTriggerThreads as workflowUserAutomationThreads,
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
   zeroWorkflowWebhookDeliveries,
-  zeroWorkflowWebhookTriggers as zeroWorkflowWebhookAutomations,
+  zeroWorkflowWebhookAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 
@@ -132,7 +132,7 @@ export async function buildWorkflowWebhookSummaryFields(
   const [webhook] = await db
     .select()
     .from(zeroWorkflowWebhookAutomations)
-    .where(eq(zeroWorkflowWebhookAutomations.triggerId, args.automation.id))
+    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id))
     .limit(1);
   if (!webhook) {
     throw new Error(
@@ -162,7 +162,7 @@ export async function revealWorkflowWebhookSecretFields(
   const [webhook] = await db
     .select()
     .from(zeroWorkflowWebhookAutomations)
-    .where(eq(zeroWorkflowWebhookAutomations.triggerId, args.automation.id))
+    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id))
     .limit(1);
   if (!webhook) {
     throw new Error(
@@ -342,7 +342,10 @@ async function loadWebhookAutomationForToken(args: {
     .from(zeroWorkflowWebhookAutomations)
     .innerJoin(
       zeroWorkflowAutomations,
-      eq(zeroWorkflowWebhookAutomations.triggerId, zeroWorkflowAutomations.id),
+      eq(
+        zeroWorkflowWebhookAutomations.automationId,
+        zeroWorkflowAutomations.id,
+      ),
     )
     .innerJoin(
       zeroWorkflows,
@@ -518,7 +521,7 @@ async function recordWebhookDeliveryDispatched(
   await db
     .update(zeroWorkflowWebhookAutomations)
     .set({ lastReceivedAt: args.currentTime, updatedAt: args.currentTime })
-    .where(eq(zeroWorkflowWebhookAutomations.triggerId, args.automationId));
+    .where(eq(zeroWorkflowWebhookAutomations.automationId, args.automationId));
 }
 
 function workflowWebhookRunError(): DispatchWorkflowWebhookResult {

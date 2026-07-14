@@ -2,8 +2,8 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import {
-  workflowUserTriggerThreads as workflowUserAutomationThreads,
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 import { command, type Computed } from "ccstate";
