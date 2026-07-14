@@ -218,6 +218,8 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
       "958d5fe6f53598ff3cb920fe6dd91433b16a4eb5cbfb10fb179ae98b15765cce",
   },
   "template:html-ppt-playful-launch-runbook": {
+    "78292a9a5c454e36a5255f22d147ac56f53c69538a4ac0897160239c2ca941e3":
+      "6a81763e63f55e2fe446957fccd8bf770d02efe6d613b1fc988fc206b697d511",
     "9c7524540e98a3605b71a35c918d1a186d9599f34f9e67aa8c86c457dc6b4582":
       "6bbcb6decd53b667eb4aae4f79b05b10eb487fd83496265105d5b4c47542c9aa",
   },
