@@ -2324,9 +2324,14 @@ describe("zero attachment chips", () => {
     ).toBeInTheDocument();
     const listDeleteButtons =
       within(commentsList).getAllByLabelText("Delete comment");
+    const heroListButton = heroListItem.closest('[role="button"]');
+    expect(heroListButton).not.toBeNull();
+    expect(heroListButton).toHaveClass("focus:border-primary");
+    expect(heroListButton).toHaveClass("focus:ring-ring/30");
     expect(listDeleteButtons).toHaveLength(2);
     expect(listDeleteButtons[0]).toHaveClass("opacity-0");
     expect(listDeleteButtons[0]).toHaveClass("group-hover/comment:opacity-100");
+    expect(listDeleteButtons[0]).toHaveClass("focus:ring-ring");
 
     fireEvent.click(heroListItem);
     await waitFor(() => {
@@ -2678,6 +2683,9 @@ describe("zero attachment chips", () => {
       expect(
         screen.getByTestId("html-dom-color-control-color"),
       ).toHaveTextContent("#ff0000");
+      expect(screen.getByTestId("html-dom-color-control-color")).toHaveClass(
+        "focus:ring-ring/25",
+      );
       expect(
         screen.getByTestId("html-dom-color-control-backgroundColor"),
       ).toHaveTextContent("#000000");
