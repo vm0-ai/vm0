@@ -1,6 +1,6 @@
 {
-  "id": "8d6e4c80-517e-41ab-85c4-3864ac623474",
-  "prevId": "02d1b60d-bbc5-4104-9eb1-658725750a53",
+  "id": "11b1945f-1179-497e-b2ac-be75887e3a53",
+  "prevId": "8d6e4c80-517e-41ab-85c4-3864ac623474",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -13661,6 +13661,13 @@
         },
         "video_generation_allowed": {
           "name": "video_generation_allowed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "workflow_webhook_trigger_allowed": {
+          "name": "workflow_webhook_trigger_allowed",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

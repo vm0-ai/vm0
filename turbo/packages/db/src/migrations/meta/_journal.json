@@ -4114,8 +4114,15 @@
     {
       "idx": 587,
       "version": "7",
-      "when": 1784009465207,
-      "tag": "0587_zippy_captain_marvel",
+      "when": 1784008452050,
+      "tag": "0587_chilly_kronos",
+      "breakpoints": true
+    },
+    {
+      "idx": 588,
+      "version": "7",
+      "when": 1784010282443,
+      "tag": "0588_fine_miek",
       "breakpoints": true
     }
   ]

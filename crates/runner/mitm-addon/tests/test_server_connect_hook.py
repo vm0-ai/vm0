@@ -6,6 +6,9 @@ import threading
 import uuid
 from unittest.mock import patch
 
+import pytest
+
+import matching
 import mitm_addon
 import upstream_admission
 import upstream_destination_binding
@@ -16,6 +19,28 @@ from tests.request_handler_helpers import (
 )
 
 _API_ADDRINFO = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))]
+
+
+def _record_authority_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[str, int]]:
+    calls: list[tuple[str, int]] = []
+    original = matching.CompiledFirewallSet.matches_ordinary_credential_authority
+
+    def counting_authority_check(
+        compiled_firewalls: matching.CompiledFirewallSet,
+        host: str,
+        port: int,
+    ) -> bool:
+        calls.append((host, port))
+        return original(compiled_firewalls, host, port)
+
+    monkeypatch.setattr(
+        matching.CompiledFirewallSet,
+        "matches_ordinary_credential_authority",
+        counting_authority_check,
+    )
+    return calls
 
 
 class _Server:
@@ -131,10 +156,11 @@ async def test_server_connect_preserves_clienthello_original_address(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_server_connect_does_not_overwrite_clienthello_binding_after_address_changes(
+async def test_server_connect_reuses_clienthello_binding_without_rechecking_authority(
     tmp_path,
     mitm_ctx,
     make_tls_data,
+    monkeypatch,
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     tls_data = make_tls_data(
@@ -143,6 +169,62 @@ async def test_server_connect_does_not_overwrite_clienthello_binding_after_addre
         sni="api.github.com",
     )
     data = _ServerConnectData(client=tls_data.context.client, server=tls_data.context.server)
+    authority_checks = _record_authority_checks(monkeypatch)
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.tls_clienthello(tls_data)
+        await mitm_addon.server_connect(data)
+
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert authority_checks == [("api.github.com", 443)]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_server_connect_wrong_kind_binding_still_checks_current_authority(
+    tmp_path,
+    mitm_ctx,
+    make_tls_data,
+    monkeypatch,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    tls_data = make_tls_data(
+        client_ip="10.200.0.5",
+        client_sni="",
+        sni="api.github.com",
+    )
+    data = _ServerConnectData(client=tls_data.context.client, server=tls_data.context.server)
+    authority_checks = _record_authority_checks(monkeypatch)
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.github.com"):
+        mitm_addon.tls_clienthello(tls_data)
+
+    api_binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert api_binding.kinds == frozenset(("api_allow",))
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.server_connect(data)
+
+    connector_binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert authority_checks == [("api.github.com", 443)]
+    assert connector_binding.kinds == frozenset(("api_allow", "connector_auth"))
+
+
+async def test_server_connect_does_not_overwrite_clienthello_binding_after_address_changes(
+    tmp_path,
+    mitm_ctx,
+    make_tls_data,
+    monkeypatch,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    tls_data = make_tls_data(
+        client_ip="10.200.0.5",
+        client_sni="",
+        sni="api.github.com",
+    )
+    data = _ServerConnectData(client=tls_data.context.client, server=tls_data.context.server)
+    authority_checks = _record_authority_checks(monkeypatch)
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.tls_clienthello(tls_data)
@@ -150,6 +232,10 @@ async def test_server_connect_does_not_overwrite_clienthello_binding_after_addre
         await mitm_addon.server_connect(data)
 
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert authority_checks == [
+        ("api.github.com", 443),
+        ("api.github.com", 443),
+    ]
     assert data.server.address == ("203.0.113.99", 443)
     assert binding.host == "api.github.com"
     assert binding.kinds == frozenset(("connector_auth",))
