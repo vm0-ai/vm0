@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.275.3](https://github.com/vm0-ai/vm0/compare/api-v1.275.2...api-v1.275.3) (2026-07-14)
+
+
+### Refactoring
+
+* retire the workflow-trigger cron endpoint ([#21505](https://github.com/vm0-ai/vm0/issues/21505)) ([56d6da0](https://github.com/vm0-ai/vm0/commit/56d6da0f7cbaeaa8c60c8177af080323c41664c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.2
+    * @vm0/core bumped to 8.431.4
+    * @vm0/db bumped to 1.115.5
+
 ## [1.275.2](https://github.com/vm0-ai/vm0/compare/api-v1.275.1...api-v1.275.2) (2026-07-14)
 
 
