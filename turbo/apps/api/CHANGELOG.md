@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.275.0](https://github.com/vm0-ai/vm0/compare/api-v1.274.1...api-v1.275.0) (2026-07-14)
+
+
+### Features
+
+* **api:** add workflow automation routes with legacy parity ([#21426](https://github.com/vm0-ai/vm0/issues/21426)) ([bc92379](https://github.com/vm0-ai/vm0/commit/bc923796f156821a399402def0d656c9419e1d84))
+* **api:** add workflow automation webhook URL ([#21465](https://github.com/vm0-ai/vm0/issues/21465)) ([a971f50](https://github.com/vm0-ai/vm0/commit/a971f5096b1e41f20b1808f07ac63ce26d6f31fc))
+
+
+### Refactoring
+
+* **api:** emit workflow automation callback kinds ([#21471](https://github.com/vm0-ai/vm0/issues/21471)) ([9f463ab](https://github.com/vm0-ai/vm0/commit/9f463ab4c8d5527613d78a644e7628926222b226))
+* **api:** rename workflow automation timing telemetry ([#21482](https://github.com/vm0-ai/vm0/issues/21482)) ([1a965f8](https://github.com/vm0-ai/vm0/commit/1a965f8ce0af64b0e0cfb34b6f8c6cdfc9764892))
+* **db:** expand automation ids for workflow event records ([#21478](https://github.com/vm0-ai/vm0/issues/21478)) ([597396b](https://github.com/vm0-ai/vm0/commit/597396b4215f4698ebcc262a79527f233bd043f0))
+* **workflows:** rename notion automation switch with rollout compatibility ([#21446](https://github.com/vm0-ai/vm0/issues/21446)) ([3a1e851](https://github.com/vm0-ai/vm0/commit/3a1e8517a3b8c904067b48166067fe672cb051c6))
+
+
+### Performance Improvements
+
+* **api:** bound storage manifest preload to requested keys ([#21454](https://github.com/vm0-ai/vm0/issues/21454)) ([317c7a8](https://github.com/vm0-ai/vm0/commit/317c7a82a3fddffcc7437d88111a4d786f07ec28))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.0
+    * @vm0/connectors bumped to 1.160.2
+    * @vm0/core bumped to 8.431.2
+    * @vm0/db bumped to 1.115.3
+
 ## [1.274.1](https://github.com/vm0-ai/vm0/compare/api-v1.274.0...api-v1.274.1) (2026-07-14)
 
 

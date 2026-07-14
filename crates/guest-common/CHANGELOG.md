@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.38](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.37...guest-common-v0.2.38) (2026-07-14)
+
+
+### Performance Improvements
+
+* **guest-common:** reuse sandbox telemetry file handle ([#21462](https://github.com/vm0-ai/vm0/issues/21462)) ([1cfd791](https://github.com/vm0-ai/vm0/commit/1cfd791c5c5eaa71e9d4e6acc4aefe18bc89b180))
+
 ## [0.2.37](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.36...guest-common-v0.2.37) (2026-07-13)
 
 ## [0.2.36](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.35...guest-common-v0.2.36) (2026-07-13)
