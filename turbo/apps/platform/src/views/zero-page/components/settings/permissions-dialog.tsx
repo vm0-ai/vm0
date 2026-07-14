@@ -49,7 +49,7 @@ import {
   permissionDraftInitialPolicyKey,
   permissionDraftMetadataKey,
   resolvePermissionDraftExpiration,
-  resolvePermissionDraftGroupExpiration,
+  resolvePermissionDraftGroupConfiguration,
   resolvePermissionDraftListPolicy,
   resolvePermissionDraftPolicy,
   resolvePermissionDraftUnknownPolicy,
@@ -596,6 +596,7 @@ function PermissionGrantPolicyControl({
   grant,
   selected,
   allowAlwaysActive,
+  allowDurationMixed = false,
   expirationStatusExpiresAt,
   readOnly,
   saving,
@@ -610,6 +611,7 @@ function PermissionGrantPolicyControl({
   grant: UserPermissionGrantResponse | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
   allowAlwaysActive: boolean;
+  allowDurationMixed?: boolean;
   expirationStatusExpiresAt?: string | null;
   readOnly?: boolean;
   saving: boolean;
@@ -625,10 +627,12 @@ function PermissionGrantPolicyControl({
   const expirationStatusValue =
     expirationStatusExpiresAt ?? allowGrant?.expiresAt ?? null;
   const showSplitPolicy = !readOnly;
-  const durationLabel = permissionDurationLabel({
-    expiresAt: expirationStatusValue,
-    selected,
-  });
+  const durationLabel = allowDurationMixed
+    ? "Mixed"
+    : permissionDurationLabel({
+        expiresAt: expirationStatusValue,
+        selected,
+      });
 
   return (
     <div className="flex shrink-0 items-center gap-2">
@@ -647,18 +651,21 @@ function PermissionGrantPolicyControl({
         </>
       ) : (
         <>
-          {policy === "allow" && (
-            <PermissionAllowDurationDropdown
-              permission={permission}
-              label={durationLabel}
-              selected={selected}
-              allowAlwaysActive={allowAlwaysActive}
-              saving={saving}
-              onSelect={(expiresIn) => {
-                onAllowDurationChange(expiresIn);
-              }}
-            />
-          )}
+          {policy === "allow" &&
+            (allowDurationMixed ? (
+              <PermissionAllowDurationStatic label={durationLabel} />
+            ) : (
+              <PermissionAllowDurationDropdown
+                permission={permission}
+                label={durationLabel}
+                selected={selected}
+                allowAlwaysActive={allowAlwaysActive}
+                saving={saving}
+                onSelect={(expiresIn) => {
+                  onAllowDurationChange(expiresIn);
+                }}
+              />
+            ))}
           {policy === "mixed" && <PermissionPolicyMixedBadge />}
           <PermissionPolicyToggle
             policy={policy}
@@ -709,6 +716,7 @@ function PermissionGroupHeader({
   draft,
   category,
   permissions,
+  explicitGrants,
   expanded,
   readOnly,
   saving,
@@ -721,6 +729,7 @@ function PermissionGroupHeader({
   draft: PermissionDraftIntent;
   category: string;
   permissions: ConnectorPermission[];
+  explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
   expanded: boolean;
   readOnly?: boolean;
   saving: boolean;
@@ -729,17 +738,16 @@ function PermissionGroupHeader({
   onGroupDeny: () => void;
   onGroupAllowDuration: (expiresIn: UserPermissionGrantExpiresIn) => void;
 }) {
-  const policy = resolvePermissionDraftListPolicy({
+  const configuration = resolvePermissionDraftGroupConfiguration({
     context,
     draft,
     permissions,
+    explicitGrants,
   });
-  const selected = resolvePermissionDraftGroupExpiration({
-    context,
-    draft,
-    category,
-    permissions,
-  });
+  const expiration =
+    configuration.policy === "allow" ? configuration.expiration : undefined;
+  const selected =
+    expiration?.kind === "selected" ? expiration.expiresIn : undefined;
   return (
     <div className="flex items-center gap-2 px-3 py-2">
       <button
@@ -758,10 +766,16 @@ function PermissionGroupHeader({
         <div className="ml-auto">
           <PermissionGrantPolicyControl
             permission={category}
-            policy={policy}
+            policy={configuration.policy}
             grant={undefined}
             selected={selected}
-            allowAlwaysActive={selected === undefined}
+            allowAlwaysActive={expiration?.kind === "always"}
+            allowDurationMixed={expiration?.kind === "mixed"}
+            expirationStatusExpiresAt={
+              expiration?.kind === "persisted"
+                ? expiration.expiresAt
+                : undefined
+            }
             showCurrentExpirationStatus={false}
             saving={saving}
             onAllowClick={onGroupAllow}
@@ -845,6 +859,7 @@ function PermissionRows({
             draft={draft}
             category={group.category}
             permissions={group.permissions}
+            explicitGrants={explicitGrants}
             expanded={expanded}
             readOnly={readOnly}
             saving={saving}
