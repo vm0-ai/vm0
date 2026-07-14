@@ -4,7 +4,7 @@ import {
   fetchHostHasBlockedAddress,
   resolveFetchHostAddresses,
 } from "../../lib/blocked-fetch-host";
-import { safeAsync, safeUrlParse } from "../utils";
+import { safeUrlParse, settle } from "../utils";
 
 interface ScrapeTargetPolicyResult {
   readonly url: URL;
@@ -80,13 +80,11 @@ export async function validateScrapeTargetUrl(
     return "internal_hostname";
   }
 
-  const result = await safeAsync(async () => {
-    return await resolveFetchHostAddresses(url.hostname);
-  });
-  if ("error" in result) {
+  const result = await settle(resolveFetchHostAddresses(url.hostname));
+  if (!result.ok) {
     return "unresolvable_hostname";
   }
-  if (fetchHostHasBlockedAddress(result.ok)) {
+  if (fetchHostHasBlockedAddress(result.value)) {
     return "blocked_address";
   }
 

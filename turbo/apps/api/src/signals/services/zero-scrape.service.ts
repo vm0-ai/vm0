@@ -9,8 +9,8 @@ import type { AuthContext } from "../../types/auth";
 import { env } from "../../lib/env";
 import { requestSignal$ } from "../context/hono";
 import {
-  safeAsync,
   safeJsonParse,
+  settle,
   startUntrackedBestEffortCleanup,
 } from "../utils";
 import {
@@ -342,37 +342,39 @@ async function fetchFirecrawlScrape(
   targetUrl: URL,
   signal: AbortSignal,
 ): Promise<FirecrawlBodyResult> {
-  const result = await safeAsync(async (): Promise<FirecrawlResponseResult> => {
-    const response = await fetch(FIRECRAWL_SCRAPE_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url: targetUrl.toString(),
-        formats: [request.format],
-        parsers: [],
-        proxy: firecrawlProxy(request.mode),
-        skipTlsVerification: false,
-        maxAge: 0,
-        storeInCache: false,
-        timeout: FIRECRAWL_PROVIDER_TIMEOUT_MS,
-      }),
-      signal: AbortSignal.any([
-        signal,
-        AbortSignal.timeout(FIRECRAWL_TRANSPORT_TIMEOUT_MS),
-      ]),
-    });
+  const result = await settle(
+    (async (): Promise<FirecrawlResponseResult> => {
+      const response = await fetch(FIRECRAWL_SCRAPE_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: targetUrl.toString(),
+          formats: [request.format],
+          parsers: [],
+          proxy: firecrawlProxy(request.mode),
+          skipTlsVerification: false,
+          maxAge: 0,
+          storeInCache: false,
+          timeout: FIRECRAWL_PROVIDER_TIMEOUT_MS,
+        }),
+        signal: AbortSignal.any([
+          signal,
+          AbortSignal.timeout(FIRECRAWL_TRANSPORT_TIMEOUT_MS),
+        ]),
+      });
 
-    const readResult = await readResponseBody(response);
-    if (readResult.kind === "error") {
-      return readResult;
-    }
-    return { kind: "response", response, body: readResult.body };
-  });
+      const readResult = await readResponseBody(response);
+      if (readResult.kind === "error") {
+        return readResult;
+      }
+      return { kind: "response", response, body: readResult.body };
+    })(),
+  );
 
-  if ("error" in result) {
+  if (!result.ok) {
     const { error } = result;
     if (
       error instanceof Error &&
@@ -385,11 +387,11 @@ async function fetchFirecrawlScrape(
     return scrapeErrorResult(badGateway("Firecrawl scrape request failed"));
   }
 
-  if (result.ok.kind === "error") {
-    return result.ok;
+  if (result.value.kind === "error") {
+    return result.value;
   }
 
-  const { response, body } = result.ok;
+  const { response, body } = result.value;
   if (!response.ok) {
     return scrapeErrorResult(badGateway(firecrawlErrorMessage(body)));
   }

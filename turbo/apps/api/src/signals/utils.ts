@@ -75,22 +75,6 @@ export function safeSync<T>(
   }
 }
 
-export function safeAsync<T>(
-  fn: () => Promise<T>,
-): Promise<{ readonly ok: T } | { readonly error: unknown }> {
-  return Promise.resolve()
-    .then(fn)
-    .then(
-      (ok) => {
-        return { ok };
-      },
-      (error: unknown) => {
-        throwIfAbort(error);
-        return { error };
-      },
-    );
-}
-
 function safeThrownValueMessage(value: unknown): string {
   const result = safeSync(() => {
     return String(value);
