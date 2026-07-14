@@ -477,6 +477,45 @@ describe("zero web-search route", () => {
     ).toBe(32_000);
   });
 
+  it("neutralizes provider control characters in returned text", async () => {
+    const actor = await webSearchEnabledActor();
+    configureProvider();
+    await seedWebSearchPricing();
+    await fundActor(actor);
+    server.use(
+      http.post(PERPLEXITY_SEARCH_URL, () => {
+        return HttpResponse.json({
+          results: [
+            {
+              title: "Result\u001b]52;c;clipboard\u0007 title",
+              url: "https://example.com/result",
+              snippet: "first line\rsecond line\u009b31m",
+              date: "2026-07-14\nforged",
+            },
+          ],
+        });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroWebSearchContract).search({
+        headers: authenticate(actor),
+        body: defaultRequest(),
+      }),
+      [200],
+    );
+
+    expect(response.body.results).toStrictEqual([
+      {
+        rank: 1,
+        title: "Result ]52;c;clipboard  title",
+        url: "https://example.com/result",
+        snippet: "first line second line 31m",
+        publishedDate: "2026-07-14 forged",
+      },
+    ]);
+  });
+
   it.each([
     ["invalid JSON", "not-json", "PERPLEXITY_INVALID_RESPONSE"],
     [
@@ -488,6 +527,19 @@ describe("zero web-search route", () => {
       "invalid URL",
       JSON.stringify({
         results: [{ title: "Bad", url: "file:///secret", snippet: "bad" }],
+      }),
+      "PERPLEXITY_INVALID_RESPONSE",
+    ],
+    [
+      "URL containing a control character",
+      JSON.stringify({
+        results: [
+          {
+            title: "Bad",
+            url: "https://exam\nple.com",
+            snippet: "bad",
+          },
+        ],
       }),
       "PERPLEXITY_INVALID_RESPONSE",
     ],
@@ -526,7 +578,7 @@ describe("zero web-search route", () => {
     server.use(
       http.post(PERPLEXITY_SEARCH_URL, () => {
         return HttpResponse.json(
-          { message: "x".repeat(5000) },
+          { message: `\u001b]52;c;clipboard\u0007${"x".repeat(5000)}` },
           { status: 500 },
         );
       }),
@@ -545,6 +597,8 @@ describe("zero web-search route", () => {
     expect(response.body.error.code).toBe("PERPLEXITY_ERROR");
     expect(response.body.error.message).toHaveLength(4096);
     expect(response.body.error.message.endsWith("...")).toBeTruthy();
+    expect(response.body.error.message).not.toContain("\u001b");
+    expect(response.body.error.message).not.toContain("\u0007");
     expect(afterCredits).toBe(beforeCredits);
   });
 

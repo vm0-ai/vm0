@@ -120,10 +120,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isControlCharacter(character: string): boolean {
+  const codeUnit = character.charCodeAt(0);
+  return codeUnit <= 0x1f || (codeUnit >= 0x7f && codeUnit <= 0x9f);
+}
+
+function sanitizeProviderText(value: string): string {
+  return Array.from(value, (character) => {
+    return isControlCharacter(character) ? " " : character;
+  }).join("");
+}
+
 function boundedErrorMessage(message: string): string {
-  return message.length <= MAX_PERPLEXITY_ERROR_MESSAGE_CHARS
-    ? message
-    : `${message.slice(0, MAX_PERPLEXITY_ERROR_MESSAGE_CHARS - 3)}...`;
+  const sanitized = sanitizeProviderText(message);
+  return sanitized.length <= MAX_PERPLEXITY_ERROR_MESSAGE_CHARS
+    ? sanitized
+    : `${sanitized.slice(0, MAX_PERPLEXITY_ERROR_MESSAGE_CHARS - 3)}...`;
 }
 
 function perplexityErrorMessage(body: unknown): string {
@@ -261,6 +273,11 @@ function normalizedHttpUrl(value: string): string | undefined {
   if (value.length > ZERO_WEB_SEARCH_MAX_URL_CHARS) {
     return undefined;
   }
+  for (const character of value) {
+    if (isControlCharacter(character)) {
+      return undefined;
+    }
+  }
   const url = safeUrlParse(value);
   return url && (url.protocol === "http:" || url.protocol === "https:")
     ? url.toString()
@@ -269,7 +286,10 @@ function normalizedHttpUrl(value: string): string | undefined {
 
 function optionalDate(value: string | null | undefined): string | undefined {
   return typeof value === "string"
-    ? truncateAtCharacterBoundary(value, ZERO_WEB_SEARCH_MAX_DATE_CHARS)
+    ? truncateAtCharacterBoundary(
+        sanitizeProviderText(value),
+        ZERO_WEB_SEARCH_MAX_DATE_CHARS,
+      )
     : undefined;
 }
 
@@ -302,14 +322,17 @@ function normalizePerplexityResponse(
       ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
       remainingSnippetChars,
     );
-    const snippet = truncateAtCharacterBoundary(result.snippet, snippetLimit);
+    const snippet = truncateAtCharacterBoundary(
+      sanitizeProviderText(result.snippet),
+      snippetLimit,
+    );
     remainingSnippetChars -= snippet.length;
     const publishedDate = optionalDate(result.date);
     const lastUpdatedDate = optionalDate(result.last_updated);
     results.push({
       rank: index + 1,
       title: truncateAtCharacterBoundary(
-        result.title,
+        sanitizeProviderText(result.title),
         ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
       ),
       url,
