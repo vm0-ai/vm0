@@ -268,7 +268,7 @@ export function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "webhook-received") {
     return "Webhook";
   }
-  return "Trigger";
+  return "Automation";
 }
 
 function agentInitials(label: string): string {

@@ -468,7 +468,7 @@ function emptyDescriptionForFilter(filter: WorkflowFilter): string {
       return "Every workflow here runs on a schedule or event.";
     }
     case "automated": {
-      return "Add a schedule or trigger to a workflow and it shows up here.";
+      return "Add an automation to a workflow and it shows up here.";
     }
     case "private": {
       return "No private workflows yet.";

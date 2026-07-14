@@ -47,9 +47,9 @@ export function WorkflowWebhookUpgradeDialog() {
           <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
             <IconLock size={19} stroke={1.6} />
           </div>
-          <DialogTitle>Upgrade for webhook triggers</DialogTitle>
+          <DialogTitle>Upgrade for webhook automations</DialogTitle>
           <DialogDescription>
-            Webhook triggers require a Team or Custom workspace.
+            Webhook automations require a Team or Custom workspace.
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-xl border border-border/60 bg-muted/30 px-4 py-3">

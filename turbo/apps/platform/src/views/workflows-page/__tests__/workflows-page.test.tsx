@@ -2539,11 +2539,13 @@ describe("workflow detail page", () => {
     click(webhookCard);
 
     const upgradeTitle = await screen.findByText(
-      "Upgrade for webhook triggers",
+      "Upgrade for webhook automations",
     );
     expect(upgradeTitle).toBeInTheDocument();
     expect(
-      screen.getByText("Webhook triggers require a Team or Custom workspace."),
+      screen.getByText(
+        "Webhook automations require a Team or Custom workspace.",
+      ),
     ).toBeInTheDocument();
     expect(buttonByText("Upgrade to Team")).toBeInTheDocument();
   });
@@ -2608,7 +2610,7 @@ describe("workflow detail page", () => {
 
     click(await screen.findByRole("switch", { name: "Enable Webhook" }));
     const upgradeTitle = await screen.findByText(
-      "Upgrade for webhook triggers",
+      "Upgrade for webhook automations",
     );
     expect(upgradeTitle).toBeInTheDocument();
     expect(
