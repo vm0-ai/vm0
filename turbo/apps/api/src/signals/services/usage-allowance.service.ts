@@ -91,7 +91,6 @@ interface UsageAllowanceCandidate {
 
 interface UsageAllowanceWindowState {
   readonly id: string;
-  readonly kind: string;
   readonly unitLimit: number;
   consumedUnits: number;
   readonly initialConsumedUnits: number;
@@ -140,7 +139,9 @@ function addSeconds(date: Date, seconds: number): Date {
   return new Date(date.getTime() + seconds * 1000);
 }
 
-function remainingUnits(window: UsageAllowanceWindow): number {
+function remainingUnits(
+  window: Pick<UsageAllowanceWindow, "unitLimit" | "consumedUnits">,
+): number {
   return Math.max(window.unitLimit - window.consumedUnits, 0);
 }
 
@@ -708,7 +709,6 @@ async function lockIssuedWindowsForRuns(
   const windows = await tx
     .select({
       id: orgUsageAllowanceWindows.id,
-      kind: orgUsageAllowanceWindows.kind,
       unitLimit: orgUsageAllowanceWindows.unitLimit,
       consumedUnits: orgUsageAllowanceWindows.consumedUnits,
       startsAt: orgUsageAllowanceWindows.startsAt,
@@ -886,6 +886,7 @@ export async function applyUsageAllowanceToUsageEventsInLockedTransaction(
   });
   const eligibleRunIds = [...runCreatedAtById.keys()];
 
+  // Preserve the existing short-before-weekly row-lock order.
   const shortWindows = await lockIssuedWindowsForRuns(tx, {
     orgId: args.orgId,
     kind: "short",
