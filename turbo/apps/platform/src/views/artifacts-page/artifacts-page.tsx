@@ -609,7 +609,7 @@ function ArtifactCardActions({
           variant="secondary"
           size="icon"
           className={cn(
-            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background",
+            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-gray-50 active:bg-gray-100",
             favorited && "text-amber-500 hover:text-amber-500",
           )}
           aria-label={
@@ -640,7 +640,7 @@ function ArtifactCardActions({
             type="button"
             variant="secondary"
             size="icon"
-            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background"
+            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-gray-50 active:bg-gray-100 data-[state=open]:bg-gray-100"
             aria-label={`More actions for ${item.filename}`}
             title={`More actions for ${item.filename}`}
           >
