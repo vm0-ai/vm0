@@ -219,7 +219,36 @@ type NotionWebhookEvent = z.infer<typeof notionWebhookEventSchema>;
 type NotionPageResponse = z.infer<typeof notionPageResponseSchema>;
 type NotionDataSourceResponse = z.infer<typeof notionDataSourceResponseSchema>;
 type NotionDatabaseResponse = z.infer<typeof notionDatabaseResponseSchema>;
-type NotionPendingRow = typeof notionWorkflowPendingEvents.$inferSelect;
+type NotionPendingRow = Omit<
+  typeof notionWorkflowPendingEvents.$inferSelect,
+  "triggerId"
+>;
+
+const notionPendingEventColumns = {
+  id: notionWorkflowPendingEvents.id,
+  automationId: notionWorkflowPendingEvents.automationId,
+  pageId: notionWorkflowPendingEvents.pageId,
+  scopeType: notionWorkflowPendingEvents.scopeType,
+  scopeId: notionWorkflowPendingEvents.scopeId,
+  eventFamily: notionWorkflowPendingEvents.eventFamily,
+  status: notionWorkflowPendingEvents.status,
+  firstNotionEventId: notionWorkflowPendingEvents.firstNotionEventId,
+  latestNotionEventId: notionWorkflowPendingEvents.latestNotionEventId,
+  firstEventAt: notionWorkflowPendingEvents.firstEventAt,
+  latestEventAt: notionWorkflowPendingEvents.latestEventAt,
+  latestEventContext: notionWorkflowPendingEvents.latestEventContext,
+  runAfter: notionWorkflowPendingEvents.runAfter,
+  attempts: notionWorkflowPendingEvents.attempts,
+  pageTitle: notionWorkflowPendingEvents.pageTitle,
+  pageUrl: notionWorkflowPendingEvents.pageUrl,
+  parentTitle: notionWorkflowPendingEvents.parentTitle,
+  parentUrl: notionWorkflowPendingEvents.parentUrl,
+  skipReason: notionWorkflowPendingEvents.skipReason,
+  lastError: notionWorkflowPendingEvents.lastError,
+  processedAt: notionWorkflowPendingEvents.processedAt,
+  createdAt: notionWorkflowPendingEvents.createdAt,
+  updatedAt: notionWorkflowPendingEvents.updatedAt,
+};
 
 interface ConnectorSecretRow {
   readonly name: string;
@@ -1306,7 +1335,6 @@ async function enqueueNotionChildPageEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: automation.id,
         automationId: automation.id,
         pageId: args.pageId,
         scopeType: "page",
@@ -1353,7 +1381,6 @@ async function enqueueNotionDatabaseItemEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: automation.id,
         automationId: automation.id,
         pageId: args.pageId,
         scopeType: "data_source",
@@ -1511,7 +1538,6 @@ async function enqueueOrRefreshNotionPageContentUpdatedEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: automation.id,
         automationId: automation.id,
         pageId: args.pageId,
         scopeType: pageContentUpdatedScopeType(config.data.scope),
@@ -1790,7 +1816,7 @@ async function loadDueNotionPendingEvents(args: {
   readonly signal: AbortSignal;
 }): Promise<readonly NotionPendingRow[]> {
   const rows = await args.db
-    .select()
+    .select(notionPendingEventColumns)
     .from(notionWorkflowPendingEvents)
     .where(
       and(
@@ -1824,7 +1850,7 @@ async function claimNotionPendingEvent(args: {
         lte(notionWorkflowPendingEvents.runAfter, args.currentTime),
       ),
     )
-    .returning();
+    .returning(notionPendingEventColumns);
   args.signal.throwIfAborted();
   return claimed ?? null;
 }
@@ -2720,7 +2746,7 @@ async function processClaimedNotionPendingEvent(args: {
 }): Promise<"executed" | "skipped"> {
   const row = await loadDueNotionAutomationRow({
     db: args.db,
-    automationId: args.pending.triggerId,
+    automationId: args.pending.automationId,
     signal: args.signal,
   });
   if (!row) {

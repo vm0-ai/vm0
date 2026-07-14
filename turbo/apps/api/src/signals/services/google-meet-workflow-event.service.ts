@@ -1386,7 +1386,6 @@ async function insertWorkspaceProcessedEvent(args: {
     .insert(googleWorkspaceProcessedEvents)
     .values({
       subscriptionStateId: args.state.id,
-      triggerId: args.automation.automation.id,
       automationId: args.automation.automation.id,
       pubsubMessageId: args.decoded.messageId,
       cloudEventId: args.event.cloudEventId,

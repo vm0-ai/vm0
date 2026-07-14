@@ -1451,7 +1451,6 @@ async function insertGoogleCalendarProcessedEvent(args: {
     .insert(googleCalendarProcessedEvents)
     .values({
       watchStateId: args.state.id,
-      triggerId: args.automation.automation.id,
       automationId: args.automation.automation.id,
       channelId: args.state.channelId,
       resourceState: args.notification.resourceState,

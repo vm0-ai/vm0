@@ -480,7 +480,6 @@ async function insertWebhookDelivery(
   const [delivery] = await db
     .insert(zeroWorkflowWebhookDeliveries)
     .values({
-      triggerId: args.automationId,
       automationId: args.automationId,
       deliveryKey: args.deliveryKey,
       bodySha256: args.bodySha256,
