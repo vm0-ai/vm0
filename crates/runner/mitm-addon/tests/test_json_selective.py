@@ -439,6 +439,18 @@ def test_bulk_skips_large_unselected_string_without_storing_value():
     assert bytewise_accept_calls < 64
 
 
+def test_bulk_skip_accepts_empty_unselected_key_and_value():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("usage", "input_tokens"): ScalarField("int")}
+    )
+
+    extractor.feed(b'{"content":{"":""},"usage":{"input_tokens":7}}')
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("usage", "input_tokens"): 7}
+
+
 @pytest.mark.parametrize(
     ("invalid_suffix", "error"),
     [

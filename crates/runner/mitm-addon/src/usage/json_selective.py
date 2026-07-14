@@ -549,6 +549,10 @@ class JsonSelectiveExtractor:
             and not state.unicode_remaining
             and not state.utf8_remaining
         ):
+            if chunk[i] == ord('"'):
+                self._finish_string(state)
+                self._string = None
+                return i + 1
             match = _DISCARDED_STRING_STATE_BYTE_RE.search(chunk, i)
             if match is None:
                 return len(chunk)
