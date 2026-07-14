@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   artifactsContract,
   type ArtifactItem,
@@ -578,6 +579,26 @@ describe("artifacts page", () => {
       height: "800px",
       width: "1280px",
     });
+  });
+
+  it("shows the full artifact name when hovering its truncated title", async () => {
+    const user = userEvent.setup();
+    setupTeam();
+    const scope = testAuthScope("filename-tooltip");
+    const filename =
+      "zero-template-picker-ui-7-final-production-hosted-site.html";
+    mockArtifacts([createArtifact({ filename })]);
+
+    setupArtifactsPage({ scope });
+
+    const title = await screen.findByRole("heading", { name: filename });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    await user.hover(title);
+
+    await expect(screen.findByRole("tooltip")).resolves.toHaveTextContent(
+      filename,
+    );
   });
 
   it("provides visible focus feedback for the agent filter", async () => {
