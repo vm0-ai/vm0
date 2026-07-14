@@ -3395,3 +3395,168 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
   }, 90_000);
 });
+
+describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
+  it("dispatches idle-thread sends by claiming the persisted message in place", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue-first sends");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatMessageQueue]: true },
+    );
+
+    const messageId = randomUUID();
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "queue-first direct dispatch",
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || !sent.body.runId) {
+      throw new Error("Expected an idle-thread queue-first send to dispatch");
+    }
+    const runId = sent.body.runId;
+
+    // The claim binds the run onto the persisted message in place: the same
+    // row gains the run id and no shadow/revoke copy is ever written.
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.body.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.id === messageId && message.runId === runId;
+        });
+      },
+    );
+    const rows = userMessages(messages.messages);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: messageId,
+      content: "queue-first direct dispatch",
+      runId,
+    });
+    expect(
+      messages.messages.some((message) => {
+        return message.revokesMessageId === messageId;
+      }),
+    ).toBeFalsy();
+
+    await cancelChatRun(actor, runId);
+  }, 90_000);
+
+  it("claims queued messages in place on auto-send and recalls by deletion", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue-first sends");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatMessageQueue]: true },
+    );
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "queue-first anchor run",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const queuedId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queue-first waits for the anchor",
+        clientMessageId: queuedId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    // A second queued message recalls by deletion: the row disappears
+    // entirely instead of being shadowed by a revoke control row.
+    const recalledId = randomUUID();
+    const toRecall = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queue-first message to recall",
+        clientMessageId: recalledId,
+      },
+      [201],
+    );
+    expect(toRecall.body).toMatchObject({ runId: null });
+    const recalled = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesMessageId: recalledId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    expect(recalled.body).toMatchObject({ runId: null });
+    const afterRecall = await chat.listThreadMessages(actor, anchor.threadId);
+    expect(
+      afterRecall.messages.some((message) => {
+        return (
+          message.id === recalledId || message.revokesMessageId === recalledId
+        );
+      }),
+    ).toBeFalsy();
+
+    // A repeated recall of the deleted message stays idempotent.
+    const repeatedRecall = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesMessageId: recalledId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    expect(repeatedRecall.body).toMatchObject({ runId: null });
+
+    // Completing the anchor auto-sends the queued message: the original row
+    // itself gains the follow-up run id (no shadow row, no revoke pointer).
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return message.id === queuedId && typeof message.runId === "string";
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.id === queuedId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued message to claim a run in place");
+    }
+    expect(promoted.content).toBe("queue-first waits for the anchor");
+    expect(
+      messages.messages.some((message) => {
+        return message.revokesMessageId === queuedId;
+      }),
+    ).toBeFalsy();
+
+    const followUp = await api.readRun(actor, promoted.runId);
+    expect(followUp.prompt).toContain("queue-first waits for the anchor");
+    await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+});
