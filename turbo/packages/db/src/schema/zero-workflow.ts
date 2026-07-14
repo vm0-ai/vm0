@@ -279,9 +279,9 @@ export const zeroWorkflowTriggerMemoryEmbeddings = pgTable(
 );
 
 export const zeroWorkflowWebhookTriggers = pgTable(
-  "zero_workflow_webhook_triggers",
+  "zero_workflow_webhook_automations",
   {
-    triggerId: uuid("trigger_id")
+    triggerId: uuid("automation_id")
       .primaryKey()
       .references(
         () => {
@@ -302,7 +302,7 @@ export const zeroWorkflowWebhookTriggers = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_zero_workflow_webhook_triggers_token_hash").on(
+      uniqueIndex("idx_zero_workflow_webhook_automations_token_hash").on(
         table.tokenHash,
       ),
     ];
