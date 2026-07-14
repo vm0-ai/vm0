@@ -147,3 +147,38 @@ def class_body_raise_may_be_suppressed(flow, manager):
 
         metadata = {}
     return metadata["connector_diagnostic_base"]
+
+
+def finally_creates_alias_on_pending_exception(flow, manager):
+    metadata = {}
+    with manager:
+        try:
+            raise RuntimeError()
+        finally:
+            metadata = flow.metadata
+    return metadata["firewall_permission"]
+
+
+def class_local_shadow_preserves_outer_failure_state(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        class Broken:
+            metadata = {}
+            raise RuntimeError()
+
+    return metadata["firewall_rule_match"]
+
+
+def finally_updates_empty_normal_path_before_raise(flow, manager):
+    metadata = {}
+    with manager:
+        try:
+            pass
+        except RuntimeError:
+            other = flow.metadata
+            return other
+        finally:
+            metadata = flow.metadata
+        raise RuntimeError()
+    return metadata["firewall_action"]

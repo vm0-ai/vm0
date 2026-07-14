@@ -7,3 +7,6 @@ context_manager_flow.py:98: use metadata_keys.FIREWALL_BASE for flow.metadata ac
 context_manager_flow.py:118: use metadata_keys.AUTH_REFRESHED_CONNECTORS for flow.metadata access
 context_manager_flow.py:138: use metadata_keys.AUTH_RESOLVED_SECRETS for flow.metadata access
 context_manager_flow.py:149: use metadata_keys.CONNECTOR_DIAGNOSTIC_BASE for flow.metadata access
+context_manager_flow.py:159: use metadata_keys.FIREWALL_PERMISSION for flow.metadata access
+context_manager_flow.py:170: use metadata_keys.FIREWALL_RULE_MATCH for flow.metadata access
+context_manager_flow.py:184: use metadata_keys.FIREWALL_ACTION for flow.metadata access
