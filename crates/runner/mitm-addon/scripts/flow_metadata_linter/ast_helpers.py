@@ -436,9 +436,19 @@ def _statement_flow(statement: ast.stmt) -> _FlowSummary:
             raises=body_flow.raises or orelse_flow.raises,
         )
     if isinstance(statement, ast.Match):
+        case_falls_through = False
+        has_unmatched_path = True
+        raises = False
+        for case in statement.cases:
+            case_flow = _body_flow(case.body)
+            case_falls_through = case_falls_through or case_flow.falls_through
+            raises = raises or case_flow.raises
+            if case.guard is None and _pattern_is_exhaustive(case.pattern):
+                has_unmatched_path = False
+                break
         return _FlowSummary(
-            falls_through=True,
-            raises=any(_body_flow(case.body).raises for case in statement.cases),
+            falls_through=has_unmatched_path or case_falls_through,
+            raises=raises,
         )
     if isinstance(statement, ast.ClassDef):
         return _body_flow(statement.body)

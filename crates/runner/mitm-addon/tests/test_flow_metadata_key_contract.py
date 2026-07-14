@@ -159,6 +159,17 @@ def test_registered_flow_metadata_guard_tracks_context_manager_exception_paths(t
     )
 
 
+def test_registered_flow_metadata_guard_tracks_match_reachability(tmp_path):
+    source_path = tmp_path / "match_reachability.py"
+    _write_python_source(source_path, "match_reachability.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "match_reachability.expected.txt"
+    )
+
+
 def test_registered_flow_metadata_guard_tracks_with_item_binding_order(tmp_path):
     source_path = tmp_path / "with_item_bindings.py"
     _write_python_source(source_path, "with_item_bindings.base.py.txt")
