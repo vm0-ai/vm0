@@ -472,7 +472,13 @@ def load_registry_state(registry_path: str) -> RegistryState:
 
 
 def load_registry(registry_path: str) -> dict:
-    """Load the proxy registry, reusing cached data when possible."""
+    """Load a lossy compatibility view containing only usable VM entries.
+
+    Invalid entries are omitted. An empty mapping can mean either that a
+    successfully loaded registry has no usable entries or that the registry is
+    unavailable after an open, stat, read, or parse failure. Use
+    `load_registry_state()` when those states must be distinguished.
+    """
     state = load_registry_state(registry_path)
     if isinstance(state, RegistryUnavailable):
         return {}
@@ -480,7 +486,12 @@ def load_registry(registry_path: str) -> dict:
 
 
 def get_vm_info(client_ip: str, registry_path: str) -> dict | None:
-    """Look up VM info by client IP address."""
+    """Look up VM info in the lossy compatibility view for a client IP.
+
+    `None` can mean that the IP is absent, its registry entry is invalid, or the
+    registry is unavailable. Use `load_registry_state()` when those states must
+    be distinguished.
+    """
     return load_registry(registry_path).get(client_ip)
 
 
@@ -488,7 +499,12 @@ def get_vm_context(
     client_ip: str,
     registry_path: str,
 ) -> VmContext | None:
-    """Look up raw VM info with compiled firewall and policy matcher sidecars."""
+    """Look up raw VM info with compiled matcher sidecars in a compatibility view.
+
+    `None` can mean that the IP is absent, its registry entry is invalid, or the
+    registry is unavailable. Use `load_registry_state()` when those states must
+    be distinguished.
+    """
     snapshot = load_registry_state(registry_path)
     if isinstance(snapshot, RegistryUnavailable):
         return None
