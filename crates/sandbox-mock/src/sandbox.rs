@@ -35,6 +35,7 @@ pub struct MockSandbox {
     read_file_calls: Mutex<Vec<ReadFileCall>>,
     copy_file_results: Mutex<VecDeque<Result<Vec<u8>>>>,
     copy_file_calls: Mutex<Vec<CopyFileCall>>,
+    copy_file_gate: Mutex<Option<MockLifecycleGate>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
     write_file_calls: Mutex<Vec<WriteFileCall>>,
     write_files_calls: Mutex<Vec<WriteFilesCall>>,
@@ -74,6 +75,7 @@ impl MockSandbox {
             read_file_calls: Mutex::new(Vec::new()),
             copy_file_results: Mutex::new(VecDeque::new()),
             copy_file_calls: Mutex::new(Vec::new()),
+            copy_file_gate: Mutex::new(None),
             write_file_results: Mutex::new(VecDeque::new()),
             write_file_calls: Mutex::new(Vec::new()),
             write_files_calls: Mutex::new(Vec::new()),
@@ -142,6 +144,14 @@ impl MockSandbox {
     /// [`MockSandboxOverrides::copy_file_calls`].
     pub fn copy_file_calls(&self) -> Vec<CopyFileCall> {
         self.copy_file_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Block every copy operation with a durable lifecycle gate.
+    ///
+    /// Calls are recorded and queued results are assigned before entering the
+    /// gate, while host publication waits for release.
+    pub fn set_copy_file_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.copy_file_gate.lock_ignoring_poison() = Some(gate);
     }
 
     /// Queue a write-operation result.
@@ -449,6 +459,10 @@ impl Sandbox for MockSandbox {
         }
 
         let queued = self.copy_file_results.lock_ignoring_poison().pop_front();
+        let gate = self.copy_file_gate.lock_ignoring_poison().clone();
+        if let Some(gate) = gate {
+            gate.enter_and_wait().await;
+        }
         let bytes = match queued {
             Some(result) => result?,
             None if options.missing_ok => {

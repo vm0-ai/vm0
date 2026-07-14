@@ -215,6 +215,39 @@ async fn sandbox_copy_file_allows_relative_host_path_without_parent() {
 }
 
 #[tokio::test]
+async fn sandbox_copy_file_lifecycle_gate_blocks_until_released() {
+    let sandbox = Arc::new(MockSandbox::new("test-1"));
+    let gate = MockLifecycleGate::new();
+    sandbox.set_copy_file_lifecycle_gate(gate.clone());
+    sandbox.push_copy_file_result(Ok(b"guest log\n".to_vec()));
+    let (_host_dir, path) = temp_host_path("gated.log");
+
+    let task = {
+        let sandbox = Arc::clone(&sandbox);
+        let task_path = path.clone();
+        tokio::spawn(async move {
+            sandbox
+                .copy_file("/tmp/system.log", &task_path, copy_file_options(false))
+                .await
+        })
+    };
+
+    gate.wait_entered(1, test_timeout()).await.unwrap();
+    assert_eq!(sandbox.copy_file_calls().len(), 1);
+    assert!(!path.exists());
+    assert!(!task.is_finished(), "copy_file must wait for gate release");
+
+    gate.release_one();
+    let result = tokio::time::timeout(test_timeout(), task)
+        .await
+        .expect("copy_file must finish after gate release")
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.bytes_copied, 10);
+    assert_eq!(std::fs::read(path).unwrap(), b"guest log\n");
+}
+
+#[tokio::test]
 async fn sandbox_read_file_applies_mock_max_bytes() {
     let sandbox = MockSandbox::new("test-1");
     sandbox.push_read_file_result(Ok(Some(b"too long".to_vec())));
