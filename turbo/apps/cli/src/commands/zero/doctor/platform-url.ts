@@ -3,19 +3,34 @@ import { getApiUrl } from "../../../lib/api/config";
 /**
  * Transform the API host to the platform (app) host.
  *
+ *   api.vm0.ai                    → app.vm0.ai
  *   www.vm0.ai                    → app.vm0.ai
  *   platform.vm0.ai               → app.vm0.ai
+ *   pr-123-api.vm6.ai             → pr-123-app.vm6.ai
  *   tunnel-user-host-www.vm7.ai   → tunnel-user-host-app.vm7.ai
+ *   pr-123-app.vm6.ai             → pr-123-app.vm6.ai
+ *   localhost:3000                → localhost:3000
  *   custom.example.com            → app.custom.example.com
  */
 export function toPlatformUrl(apiUrl: string): URL {
   const parsed = new URL(apiUrl);
   const parts = parsed.hostname.split(".");
-  if (parts[0]!.endsWith("-www")) {
-    parts[0] = parts[0]!.slice(0, -"-www".length) + "-app";
-  } else if (parts[0] === "www" || parts[0] === "platform") {
+  const serviceLabel = parts[0]!;
+  if (serviceLabel.endsWith("-www")) {
+    parts[0] = serviceLabel.slice(0, -"-www".length) + "-app";
+  } else if (serviceLabel.endsWith("-api")) {
+    parts[0] = serviceLabel.slice(0, -"-api".length) + "-app";
+  } else if (
+    serviceLabel === "api" ||
+    serviceLabel === "www" ||
+    serviceLabel === "platform"
+  ) {
     parts[0] = "app";
-  } else if (parts[0] !== "app" && parts[0] !== "localhost") {
+  } else if (
+    serviceLabel !== "app" &&
+    !serviceLabel.endsWith("-app") &&
+    serviceLabel !== "localhost"
+  ) {
     parts.unshift("app");
   }
   parsed.hostname = parts.join(".");

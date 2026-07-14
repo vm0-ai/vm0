@@ -157,13 +157,11 @@ export function stubConnectorCatalog(
 
 export function stubConnectorCatalogStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
+  origin = "http://localhost:3000",
 ) {
-  return http.get(
-    "http://localhost:3000/api/zero/connector-catalog/status",
-    () => {
-      return HttpResponse.json({ connectors });
-    },
-  );
+  return http.get(`${origin}/api/zero/connector-catalog/status`, () => {
+    return HttpResponse.json({ connectors });
+  });
 }
 
 export function stubConnectorCatalogPermissions(

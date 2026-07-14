@@ -531,28 +531,80 @@ describe("zero doctor check-connector command", () => {
       },
     );
 
-    it("transforms a www API origin into app links", async () => {
-      const baseUrl = "https://www.vm0.ai";
-      vi.stubEnv("VM0_API_BACKEND_URL", baseUrl);
-      stubDiagnostic(resolvedEnvironment(), undefined, baseUrl);
-      stubResolvedDependencies("github", {
-        connector: null,
-        enabledTypes: [],
-        baseUrl,
-      });
+    it.each([
+      {
+        name: "production API",
+        baseUrl: "https://api.vm0.ai",
+        platformOrigin: "https://app.vm0.ai",
+      },
+      {
+        name: "legacy production web",
+        baseUrl: "https://www.vm0.ai",
+        platformOrigin: "https://app.vm0.ai",
+      },
+      {
+        name: "legacy production platform",
+        baseUrl: "https://platform.vm0.ai",
+        platformOrigin: "https://app.vm0.ai",
+      },
+      {
+        name: "canonical production app",
+        baseUrl: "https://app.vm0.ai",
+        platformOrigin: "https://app.vm0.ai",
+      },
+      {
+        name: "preview API",
+        baseUrl: "https://pr-123-api.vm6.ai",
+        platformOrigin: "https://pr-123-app.vm6.ai",
+      },
+      {
+        name: "legacy preview web",
+        baseUrl: "https://pr-123-www.vm6.ai",
+        platformOrigin: "https://pr-123-app.vm6.ai",
+      },
+      {
+        name: "canonical preview app",
+        baseUrl: "https://pr-123-app.vm6.ai",
+        platformOrigin: "https://pr-123-app.vm6.ai",
+      },
+      {
+        name: "tunnel API",
+        baseUrl: "https://tunnel-user-host-api.vm7.ai",
+        platformOrigin: "https://tunnel-user-host-app.vm7.ai",
+      },
+      {
+        name: "localhost with a port",
+        baseUrl: "http://localhost:4310",
+        platformOrigin: "http://localhost:4310",
+      },
+      {
+        name: "custom host",
+        baseUrl: "https://custom.example.com",
+        platformOrigin: "https://app.custom.example.com",
+      },
+    ])(
+      "maps $name links to the platform origin",
+      async ({ baseUrl, platformOrigin }) => {
+        vi.stubEnv("VM0_API_BACKEND_URL", baseUrl);
+        stubDiagnostic(resolvedEnvironment(), undefined, baseUrl);
+        stubResolvedDependencies("github", {
+          connector: null,
+          enabledTypes: [],
+          baseUrl,
+        });
 
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+        ]);
 
-      expect(getOutput()).toContain(
-        `[Authorize GitHub](https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID})`,
-      );
-      expect(getOutput()).not.toContain("https://www.vm0.ai/connectors");
-    });
+        expect(getOutput()).toContain(
+          `[Authorize GitHub](${platformOrigin}/connectors/github/authorize?agentId=${AGENT_ID})`,
+        );
+      },
+    );
 
     it.each([
       {

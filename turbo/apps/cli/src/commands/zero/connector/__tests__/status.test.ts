@@ -55,28 +55,33 @@ function stubConnector(
   body: Record<string, unknown>,
   status = 200,
   type = "github",
+  origin = "http://localhost:3000",
 ) {
   if (status === 200) {
-    return stubConnectorCatalogStatus([statusItemFromConnector(body)]);
+    return stubConnectorCatalogStatus([statusItemFromConnector(body)], origin);
   }
   if (status === 404) {
-    return stubConnectorCatalogStatus([
-      catalogStatusItem({
-        connectorRef: type,
-        authMethods: [authCodeMethod("oauth")],
-      }),
-    ]);
+    return stubConnectorCatalogStatus(
+      [
+        catalogStatusItem({
+          connectorRef: type,
+          authMethods: [authCodeMethod("oauth")],
+        }),
+      ],
+      origin,
+    );
   }
-  return http.get(
-    "http://localhost:3000/api/zero/connector-catalog/status",
-    () => {
-      return HttpResponse.json(body, { status });
-    },
-  );
+  return http.get(`${origin}/api/zero/connector-catalog/status`, () => {
+    return HttpResponse.json(body, { status });
+  });
 }
 
-function stubAgent(id: string, displayName: string | null) {
-  return http.get(`http://localhost:3000/api/zero/agents/${id}`, () => {
+function stubAgent(
+  id: string,
+  displayName: string | null,
+  origin = "http://localhost:3000",
+) {
+  return http.get(`${origin}/api/zero/agents/${id}`, () => {
     return HttpResponse.json({
       agentId: id,
       ownerId: "owner-1",
@@ -88,13 +93,14 @@ function stubAgent(id: string, displayName: string | null) {
   });
 }
 
-function stubUserConnectors(id: string, enabledTypes: string[]) {
-  return http.get(
-    `http://localhost:3000/api/zero/agents/${id}/user-connectors`,
-    () => {
-      return HttpResponse.json({ enabledTypes });
-    },
-  );
+function stubUserConnectors(
+  id: string,
+  enabledTypes: string[],
+  origin = "http://localhost:3000",
+) {
+  return http.get(`${origin}/api/zero/agents/${id}/user-connectors`, () => {
+    return HttpResponse.json({ enabledTypes });
+  });
 }
 
 function stubAvailableConnectors(types: string[]) {
@@ -248,6 +254,29 @@ describe("zero connector status command", () => {
       expect(logCalls).not.toContain("is not connected");
       expect(logCalls).not.toContain("[Connect github]");
       expect(logCalls).not.toContain("zero doctor check-connector");
+    });
+
+    it("uses the production app origin in authorization links", async () => {
+      const apiOrigin = "https://api.vm0.ai";
+      vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
+      server.use(
+        stubConnector(connectedGithub, 200, "github", apiOrigin),
+        stubAgent(AGENT_UUID, "maya", apiOrigin),
+        stubUserConnectors(AGENT_UUID, [], apiOrigin),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        `[Authorize github](https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_UUID})`,
+      );
     });
 
     it("shows connect link when connector is not connected", async () => {
