@@ -1,6 +1,8 @@
 """Tests for bounded selective JSON extraction."""
 
 import json
+import sys
+from types import FrameType
 
 import pytest
 
@@ -405,22 +407,17 @@ def test_lone_surrogate_key_does_not_abort_later_selected_fields():
     assert result.values == {("usage", "input_tokens"): 7}
 
 
-def test_bulk_skips_large_unselected_string_without_storing_value(monkeypatch):
+def test_bulk_skips_large_unselected_string_without_storing_value():
     bytewise_accept_calls = 0
-    original_accept_string_byte = JsonSelectiveExtractor._accept_string_byte
+    accept_string_byte_code = JsonSelectiveExtractor._accept_string_byte.__code__
 
-    # The public result cannot reveal whether discarded bytes were scanned one
-    # at a time, so count the narrow bytewise operation as a performance contract.
-    def counting_accept_string_byte(self, state, byte):
+    # Profile the public parser operation so the real implementation stays in
+    # place while bytewise calls provide a deterministic performance contract.
+    def count_bytewise_accept_calls(frame: FrameType, event: str, _arg: object) -> None:
         nonlocal bytewise_accept_calls
-        bytewise_accept_calls += 1
-        original_accept_string_byte(self, state, byte)
+        if event == "call" and frame.f_code is accept_string_byte_code:
+            bytewise_accept_calls += 1
 
-    monkeypatch.setattr(
-        JsonSelectiveExtractor,
-        "_accept_string_byte",
-        counting_accept_string_byte,
-    )
     extractor = JsonSelectiveExtractor(
         scalar_fields={("usage", "input_tokens"): ScalarField("int")}
     )
@@ -428,8 +425,13 @@ def test_bulk_skips_large_unselected_string_without_storing_value(monkeypatch):
     payload = b'{"content":[{"text":"' + large_text + b'"}],"usage":{"input_tokens":7}}'
 
     chunk_size = 64 * 1024
-    for offset in range(0, len(payload), chunk_size):
-        extractor.feed(payload[offset : offset + chunk_size])
+    previous_profile = sys.getprofile()
+    sys.setprofile(count_bytewise_accept_calls)
+    try:
+        for offset in range(0, len(payload), chunk_size):
+            extractor.feed(payload[offset : offset + chunk_size])
+    finally:
+        sys.setprofile(previous_profile)
     result = _finish(extractor)
 
     assert result.complete is True
