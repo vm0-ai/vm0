@@ -3985,9 +3985,7 @@ function useChatComposerModel(
     ? { selectedModel: selectedModelResolved }
     : null;
   const modelSelection =
-    baseModelSelection &&
-    baseModelSelection.selectedModel === "gpt-5.5" &&
-    codexFastModeActive
+    baseModelSelection && codexFastModeActive
       ? {
           ...baseModelSelection,
           codexServiceTier: "fast" as const,

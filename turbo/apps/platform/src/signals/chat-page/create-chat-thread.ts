@@ -579,9 +579,6 @@ function createModelSelection(
       return false;
     }
     const selectedModel = await get(selectedModel$);
-    if (selectedModel !== "gpt-5.5") {
-      return false;
-    }
     const policies = await get(orgModelPolicies$);
     if (
       !isCodexFastModeAvailableForSelection({
@@ -668,8 +665,7 @@ function createModelSelectionForSend({
         toast.error("The selected model is not available");
         return { available: false };
       }
-      const codexFastModeActive =
-        selectedModel === "gpt-5.5" && (await get(codexFastModeActive$));
+      const codexFastModeActive = await get(codexFastModeActive$);
       signal.throwIfAborted();
       return {
         available: true,
