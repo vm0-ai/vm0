@@ -44,7 +44,7 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
-use event_delivery::{AckedEventPrefix, PreparedEvent};
+use event_delivery::{PreparedEvent, run_event_sender};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
@@ -491,7 +491,7 @@ impl CliEventIngestor {
             let payload =
                 events::prepare_event_payload_for_run_id(event, self.seq, masker, &self.run_id);
             if event_tx
-                .send(PreparedEvent::Webhook {
+                .send(PreparedEvent {
                     sequence: self.seq,
                     payload,
                 })
@@ -733,35 +733,13 @@ async fn execute_cli_inner(
     // Background event sender: HTTP POSTs happen here, never in the
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
+    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
-    let event_http = http.clone();
-    let event_error_flag = runtime.event_error_flag.to_string();
-    let event_sender = tokio::spawn(async move {
-        let mut acked_prefix = AckedEventPrefix::default();
-        while let Some(event) = event_rx.recv().await {
-            match event {
-                PreparedEvent::Webhook { sequence, payload } => {
-                    match events::post_event_with_error_flag(
-                        &event_http,
-                        &payload,
-                        &event_error_flag,
-                    )
-                    .await
-                    {
-                        Ok(()) => {
-                            acked_prefix.record_success(sequence);
-                        }
-                        Err(e) => {
-                            acked_prefix.record_failure(sequence);
-                            log_warn!(LOG_TAG, "Event send failed: {e}");
-                        }
-                    }
-                }
-            }
-        }
-        acked_prefix.last_contiguous()
-    });
+    let event_sender = tokio::spawn(run_event_sender(
+        event_rx,
+        http.clone(),
+        runtime.event_error_flag.to_string(),
+    ));
 
     let mut heartbeat_done = false;
     let mut cli_exit_at: Option<Instant> = None;
