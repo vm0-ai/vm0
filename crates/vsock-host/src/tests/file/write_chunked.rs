@@ -980,8 +980,7 @@ async fn write_file_chunked_tracks_one_operation_until_rename_result() {
 }
 
 #[tokio::test]
-async fn write_file_chunked_rename_result_before_connection_close_keeps_tracker_closed_not_not_parkable()
- {
+async fn write_file_chunked_rename_result_before_connection_close_keeps_tracker_closed() {
     let mut fixture = ChunkedWriteFixture::new("/tmp/big.bin").await;
     let write_task = fixture.spawn_write(ChunkedWriteFixture::two_chunk_content(), false);
 
@@ -1002,11 +1001,14 @@ async fn write_file_chunked_rename_result_before_connection_close_keeps_tracker_
     .await;
     let host = Arc::clone(&fixture.host);
     drop(fixture.guest);
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
 
     write_task.await.unwrap().unwrap();
-    assert_ne!(
+    assert_eq!(
         normal_operation_readiness(&host),
-        NormalOperationReadiness::NotParkable
+        NormalOperationReadiness::Closed
     );
 }
 
