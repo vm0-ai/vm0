@@ -266,7 +266,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
   });
 
   it("auto-disables only enabled webhooks after an effective Stripe downgrade", async () => {
-    const { workflowId, subscriptionId } = await setupFixture();
+    const { fixture, workflowId, subscriptionId } = await setupFixture();
     const enabled = await accept(
       triggersClient().create({
         headers: authHeaders(),
