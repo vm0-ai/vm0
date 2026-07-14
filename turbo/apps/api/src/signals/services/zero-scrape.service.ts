@@ -388,7 +388,7 @@ async function fetchFirecrawlScrape(
 }
 
 function dataFromFirecrawlBody(body: unknown): FirecrawlScrapeData | null {
-  if (!isRecord(body) || !isRecord(body.data)) {
+  if (!isRecord(body) || body.success !== true || !isRecord(body.data)) {
     return null;
   }
 

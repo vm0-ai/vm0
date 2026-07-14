@@ -939,7 +939,7 @@ describe("zero scrape route", () => {
     expect(afterCredits).toBe(beforeCredits);
   });
 
-  it("does not treat provider JSON as an internal scrape error", async () => {
+  it("rejects provider data without an explicit success marker", async () => {
     const actor = await scrapeEnabledActor();
     allowExampleDotCom();
     configureProvider();
@@ -955,6 +955,9 @@ describe("zero scrape route", () => {
               message: "Provider controlled error",
               code: "PROVIDER_CONTROLLED",
             },
+          },
+          data: {
+            markdown: "# Provider controlled content",
           },
         });
       }),
