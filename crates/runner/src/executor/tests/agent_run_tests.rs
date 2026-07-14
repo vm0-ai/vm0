@@ -2448,10 +2448,31 @@ async fn run_in_sandbox_records_mismatch_fallback_and_restores_prestarted_histor
     let cases = [
         (
             RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::RequestedSmaller,
+            ),
+            "session_history_identity_mismatch_history_hash",
+            Some("session_history_identity_mismatch_history_hash_requested_smaller"),
+        ),
+        (
+            RestoredSessionIdentityMismatchReason::HistoryHash(
                 RestoredSessionHistoryHashSizeRelationship::RequestedEqual,
             ),
             "session_history_identity_mismatch_history_hash",
             Some("session_history_identity_mismatch_history_hash_requested_equal"),
+        ),
+        (
+            RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
+            ),
+            "session_history_identity_mismatch_history_hash",
+            Some("session_history_identity_mismatch_history_hash_requested_larger"),
+        ),
+        (
+            RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::SizeUnknown,
+            ),
+            "session_history_identity_mismatch_history_hash",
+            Some("session_history_identity_mismatch_history_hash_size_unknown"),
         ),
         (
             RestoredSessionIdentityMismatchReason::SessionIdentity,
