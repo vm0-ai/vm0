@@ -283,6 +283,9 @@ describe("zero scrape route", () => {
     const actor = await scrapeEnabledActor();
     let firecrawlRequests = 0;
     configureProvider();
+    context.mocks.dns.lookupOverrides.set("private.example.test", [
+      { address: "10.0.0.5", family: 4 },
+    ]);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
         firecrawlRequests += 1;
@@ -290,20 +293,26 @@ describe("zero scrape route", () => {
       }),
     );
 
-    const response = await accept(
-      client()(zeroScrapeContract).scrape({
-        headers: authenticate(actor),
-        body: {
-          url: "http://127.0.0.1:3000/admin",
-          format: "markdown",
-          mode: "standard",
-        },
-      }),
-      [400],
-    );
+    for (const url of [
+      "http://127.0.0.1:3000/admin",
+      "http://localhost/admin",
+      "https://private.example.test/admin",
+    ]) {
+      const response = await accept(
+        client()(zeroScrapeContract).scrape({
+          headers: authenticate(actor),
+          body: {
+            url,
+            format: "markdown",
+            mode: "standard",
+          },
+        }),
+        [400],
+      );
 
-    expectApiError(response.body);
-    expect(response.body.error.code).toBe("INVALID_SCRAPE_TARGET");
+      expectApiError(response.body);
+      expect(response.body.error.code).toBe("INVALID_SCRAPE_TARGET");
+    }
     expect(firecrawlRequests).toBe(0);
   });
 
