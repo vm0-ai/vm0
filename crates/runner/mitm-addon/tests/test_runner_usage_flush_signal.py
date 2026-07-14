@@ -43,7 +43,7 @@ class RunnerUsageFlushFiles:
     jsonl_flush_state_path: Path
     network_log_path: Path
     proxy_log_path: Path
-    addon_file: Path
+    lifecycle_file: Path
 
     def write_usage_flush_request(
         self, *, flush_request_id: str = _DEFAULT_USAGE_FLUSH_REQUEST_ID
@@ -88,7 +88,7 @@ def runner_usage_flush_files(tmp_path: Path) -> Iterator[RunnerUsageFlushFiles]:
         jsonl_flush_state_path=tmp_path / "jsonl-flush-state",
         network_log_path=tmp_path / "network.jsonl",
         proxy_log_path=tmp_path / "proxy.jsonl",
-        addon_file=tmp_path / "mitm_addon.py",
+        lifecycle_file=tmp_path / "runner_flush_lifecycle.py",
     )
     usage.set_pending_path(str(files.pending_path), usage_state_id=_RUNNER_USAGE_STATE_ID)
     try:
@@ -193,7 +193,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
             patch.object(usage.webhook, "usage_executor", mock_executor),
@@ -279,7 +279,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
             patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
         ):
@@ -306,7 +306,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
             patch.object(logging_utils, "flush_log_path") as flush_log_path,
         ):
@@ -323,7 +323,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
             patch.object(logging_utils, "flush_log_path") as flush_log_path,
         ):
@@ -340,7 +340,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
             patch.object(logging_utils, "flush_log_path", side_effect=RuntimeError("secret")),
             patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
@@ -378,7 +378,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
             patch.object(jsonl_writer, "_append_lines", side_effect=append_lines),
             patch.object(
@@ -423,7 +423,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
             patch.object(logging_utils, "flush_log_path") as flush_log_path,
             patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
@@ -445,7 +445,7 @@ class TestRunnerUsageFlushSignal:
 
         with (
             patch.object(
-                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.lifecycle_file)
             ),
             patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
         ):
