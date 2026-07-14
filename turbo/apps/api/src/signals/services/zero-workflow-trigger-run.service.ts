@@ -29,7 +29,7 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import {
   admitWorkflowTriggerEvent,
   workflowQueueEnabledForOwner,
-} from "./zero-workflow-queue.service";
+} from "./chat-message-queue.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 
 export type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;

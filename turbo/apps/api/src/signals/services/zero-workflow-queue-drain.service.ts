@@ -18,7 +18,7 @@ import {
   pendingWorkflowQueueThreadIds,
   restoreWorkflowQueueEventAndPause,
   type ClaimedWorkflowQueueEvent,
-} from "./zero-workflow-queue.service";
+} from "./chat-message-queue.service";
 import { runWorkflowTriggerNow$ } from "./zero-workflow-trigger-run.service";
 
 const log = logger("ZeroWorkflowQueueDrain");
