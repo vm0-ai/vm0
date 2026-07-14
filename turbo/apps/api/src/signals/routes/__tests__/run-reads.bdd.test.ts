@@ -3882,6 +3882,10 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         .sort(),
     ).toStrictEqual([webRun.runId, secondAgentRun.runId].sort());
 
+    const removedAutomationSource =
+      await reads.requestListLogsWithRemovedAutomationSource(actor);
+    expectApiError(removedAutomationSource.body);
+
     const noSourceMatch = await reads.requestListLogs(
       actor,
       { triggerSource: "telegram" },
