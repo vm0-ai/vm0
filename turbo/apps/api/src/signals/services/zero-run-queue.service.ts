@@ -1,8 +1,6 @@
 import { command } from "ccstate";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { and, count, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
@@ -28,6 +26,7 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import { tapError } from "../utils";
 
 const L = logger("ZeroRunQueue");
@@ -37,25 +36,13 @@ const QUEUED_RUN_EXPIRED_REASON = "Queued run expired (exceeded queue TTL)";
 const QUEUED_RUN_LAUNCH_ORPHAN_REASON =
   "Queued run timed out before queue entry was persisted";
 
-const TIER_CONCURRENCY_LIMITS: Readonly<Record<OrgTier, number>> =
-  Object.freeze({
-    free: 1,
-    "limited-free-1": 1,
-    "pro-suspend": 0,
-    pro: 2,
-    team: 10,
-    custom: 10,
-  });
-
 async function effectiveOrgConcurrencyLimit(
   db: Pick<Db, "select">,
   orgId: string,
-  tier: OrgTier | null | undefined,
 ): Promise<number> {
+  const capabilities = await loadOrgPlanCapabilities(db, orgId);
   const baseLimit = cappedBaseConcurrencyLimit(
-    tier
-      ? TIER_CONCURRENCY_LIMITS[tier]
-      : TIER_CONCURRENCY_LIMITS["pro-suspend"],
+    capabilities?.baseConcurrencyLimit ?? 0,
   );
   const paidSlots = await activePaidConcurrencySlots(db, orgId);
   return totalConcurrencyLimit({ baseLimit, paidSlots });
@@ -211,16 +198,7 @@ async function loadDrainCandidates(
   return await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
-    const [orgRow] = await tx
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-    const limit = await effectiveOrgConcurrencyLimit(
-      tx,
-      orgId,
-      orgRow?.tier as OrgTier | null | undefined,
-    );
+    const limit = await effectiveOrgConcurrencyLimit(tx, orgId);
 
     const activeCount = await activeConcurrencyCount(tx, orgId);
     if (activeCount >= limit) {
@@ -255,16 +233,7 @@ async function promoteQueuedCandidate(
       sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
     );
 
-    const [orgRow] = await tx
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, args.orgId))
-      .limit(1);
-    const limit = await effectiveOrgConcurrencyLimit(
-      tx,
-      args.orgId,
-      orgRow?.tier as OrgTier | null | undefined,
-    );
+    const limit = await effectiveOrgConcurrencyLimit(tx, args.orgId);
 
     const activeCount = await activeConcurrencyCount(tx, args.orgId);
     if (activeCount >= limit) {

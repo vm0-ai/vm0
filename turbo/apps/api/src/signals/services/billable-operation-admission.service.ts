@@ -18,7 +18,7 @@ export const checkBillableOperationCredits$ = command(
 
     return (
       availability !== null &&
-      availability.tier !== "pro-suspend" &&
+      availability.status === "active" &&
       availability.spendableCredits > 0
     );
   },

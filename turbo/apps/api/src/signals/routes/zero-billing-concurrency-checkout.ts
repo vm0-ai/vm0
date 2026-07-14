@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { zeroBillingConcurrencyCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
@@ -14,6 +12,7 @@ import {
   activeConcurrencyPriceId,
   createConcurrencyCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -44,13 +43,9 @@ const concurrencyCheckoutAuthed$ = command(
     const { quantity, successUrl, cancelUrl } = bodyResult.data;
 
     const db = get(db$);
-    const [org] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, auth.orgId))
-      .limit(1);
+    const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
     signal.throwIfAborted();
-    if (org?.tier !== "team" && org?.tier !== "custom") {
+    if (capabilities?.canBuyConcurrency !== true) {
       return badRequestMessage(
         "Additional concurrency is only available for Team or Custom workspaces",
       );

@@ -2,10 +2,9 @@ import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 
 import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
   workflowUserTriggerThreads,
   zeroWorkflowTriggers,
@@ -37,7 +36,7 @@ import {
 } from "./zero-workflow-trigger-run.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
-import { WORKFLOW_WEBHOOK_TRIGGER_ELIGIBLE_TIERS } from "./workflow-webhook-trigger-entitlement.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 export const WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES = 1_000_000;
 const WORKFLOW_WEBHOOK_BODY_PREVIEW_CHARS = 16_000;
@@ -349,7 +348,6 @@ async function loadWebhookTriggerForToken(args: {
       zeroWorkflows,
       eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
     )
-    .innerJoin(orgMetadata, eq(zeroWorkflowTriggers.orgId, orgMetadata.orgId))
     .leftJoin(
       workflowUserTriggerThreads,
       and(
@@ -370,12 +368,19 @@ async function loadWebhookTriggerForToken(args: {
         eq(zeroWorkflowTriggers.kind, "event"),
         eq(zeroWorkflowTriggers.eventType, "webhook-received"),
         eq(zeroWorkflowTriggers.enabled, true),
-        inArray(orgMetadata.tier, WORKFLOW_WEBHOOK_TRIGGER_ELIGIBLE_TIERS),
       ),
     )
     .limit(1);
   args.signal.throwIfAborted();
   if (!row) {
+    return null;
+  }
+  const capabilities = await loadOrgPlanCapabilities(
+    args.db,
+    row.trigger.orgId,
+  );
+  args.signal.throwIfAborted();
+  if (capabilities?.workflowWebhookTriggerAllowed !== true) {
     return null;
   }
   const canFire = await workflowTriggerCanFire(args.db, {

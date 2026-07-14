@@ -22,10 +22,10 @@ import { nowDate } from "../../lib/time";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
   activeConcurrencySubscriptions,
-  displayBaseConcurrencyLimitForTier,
   totalConcurrencyLimit,
   type ActiveConcurrencySubscription,
 } from "./org-concurrency-entitlements.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 const TIER_MONTHLY_CREDITS = Object.freeze<Record<PlanCreditTier, number>>({
   pro: 20_000,
@@ -539,6 +539,7 @@ function billingStatusResponse(args: {
   activeRecords: readonly ActiveCreditRecord[];
   concurrencySubscriptions: readonly ActiveConcurrencySubscription[];
   usageAllowance: UsageAllowanceStatus | null;
+  baseConcurrencyLimit: number;
 }): BillingStatusResponse {
   const org = args.org ?? DEFAULT_BILLING_ORG;
   const displayedCredits = org.credits - args.unsettledExpired;
@@ -572,7 +573,7 @@ function billingStatusResponse(args: {
     }),
     creditGrants: creditGrants(args.activeRecords),
     concurrencyLimit: totalConcurrencyLimit({
-      baseLimit: displayBaseConcurrencyLimitForTier(org.tier),
+      baseLimit: args.baseConcurrencyLimit,
       paidSlots: paidConcurrencySlots,
     }),
     concurrencySubscriptions: args.concurrencySubscriptions.map(
@@ -602,6 +603,7 @@ export function zeroBillingStatus(
       activeRecords,
       concurrencySubscriptions,
       usageAllowance,
+      capabilities,
     ] = await Promise.all([
       db
         .select({
@@ -656,6 +658,7 @@ export function zeroBillingStatus(
         .orderBy(desc(creditExpiresRecord.createdAt)),
       activeConcurrencySubscriptions(db, orgId, currentTime),
       activeUsageAllowanceStatus(db, orgId, currentTime),
+      loadOrgPlanCapabilities(db, orgId),
     ]);
 
     return billingStatusResponse({
@@ -665,6 +668,7 @@ export function zeroBillingStatus(
       activeRecords,
       concurrencySubscriptions,
       usageAllowance,
+      baseConcurrencyLimit: capabilities?.baseConcurrencyLimit ?? 0,
     });
   });
 }
