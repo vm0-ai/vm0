@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowTriggersContract as legacyWorkflowAutomationsContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -42,8 +42,8 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function legacyAutomationsClient() {
+  return setupApp({ context })(legacyWorkflowAutomationsContract);
 }
 
 function automationsClient() {
@@ -96,7 +96,7 @@ function capturedRunContextSnapshot(
   return [];
 }
 
-const WORKFLOW_NAME = "trigger-workflow";
+const WORKFLOW_NAME = "automation-workflow";
 const OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
 const SEMANTIC_EMBEDDING_TIMING_ACTION =
   "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding";
@@ -111,7 +111,7 @@ const FORBIDDEN_MEMORY_CACHE_TIMING_KEYS = [
   "workflow_id",
   "workflowId",
   "workflow_trigger_id",
-  "workflowTriggerId",
+  "workflowAutomationId",
   "workflow_name",
   "workflowName",
   "model",
@@ -151,7 +151,7 @@ interface ObservedEmbeddingRequest {
   readonly input: string;
 }
 
-interface TriggerScenario {
+interface AutomationScenario {
   readonly fixture: WorkflowsFixture;
   readonly actor: ApiTestUser;
   readonly agentId: string;
@@ -201,14 +201,14 @@ async function enableWorkflowRuntimeMemory(
   });
 }
 
-async function runWorkflowTriggerAndReadContext(
+async function runWorkflowAutomationAndReadContext(
   actor: ApiTestUser,
-  triggerId: string,
+  automationId: string,
 ): Promise<{ readonly runId: string; readonly appendSystemPrompt: string }> {
   const run = await accept(
-    triggersClient().run({
+    legacyAutomationsClient().run({
       headers: authHeaders(),
-      params: { id: triggerId },
+      params: { id: automationId },
     }),
     [201],
   );
@@ -217,7 +217,7 @@ async function runWorkflowTriggerAndReadContext(
   );
   const runContext = await runs.requestRunContext(actor, run.body.runId, [200]);
   if (runContext.status !== 200) {
-    throw new Error("Expected workflow trigger run context");
+    throw new Error("Expected workflow automation run context");
   }
   return {
     runId: run.body.runId,
@@ -225,7 +225,7 @@ async function runWorkflowTriggerAndReadContext(
   };
 }
 
-async function cancelWorkflowTriggerRun(
+async function cancelWorkflowAutomationRun(
   actor: ApiTestUser,
   runId: string,
 ): Promise<void> {
@@ -476,10 +476,10 @@ function configureNotionDatabaseMock(args?: {
   );
 }
 
-describe("zero workflow triggers", () => {
+describe("zero workflow automations", () => {
   async function setupFixture(
     tier: "pro" | "team" = "pro",
-  ): Promise<TriggerScenario> {
+  ): Promise<AutomationScenario> {
     const { actor, customerId, subscriptionId } = await wf.setupWorkflowOrg({
       tier,
     });
@@ -487,7 +487,7 @@ describe("zero workflow triggers", () => {
       throw new Error("Expected an org-scoped workflow actor");
     }
     const agent = await wf.createAgent(actor, {
-      displayName: "Trigger Agent",
+      displayName: "Automation Agent",
     });
     const workflowId = await wf.createWorkflow(actor, {
       agentId: agent.agentId,
@@ -511,7 +511,7 @@ describe("zero workflow triggers", () => {
    * owned by another org member, then restores the scenario owner's session.
    */
   async function createAgentWithWorkflow(
-    scenario: TriggerScenario,
+    scenario: AutomationScenario,
     options: {
       readonly agentDisplayName?: string;
       readonly workflowName?: string;
@@ -527,7 +527,7 @@ describe("zero workflow triggers", () => {
         })
       : scenario.actor;
     const agent = await wf.createAgent(owner, {
-      displayName: options.agentDisplayName ?? "Second Trigger Agent",
+      displayName: options.agentDisplayName ?? "Second Automation Agent",
       visibility: options.visibility,
     });
     const workflowId = await wf.createWorkflow(owner, {
@@ -543,7 +543,7 @@ describe("zero workflow triggers", () => {
     return { agentId: agent.agentId, workflowId };
   }
 
-  async function connectGmail(scenario: TriggerScenario): Promise<string> {
+  async function connectGmail(scenario: AutomationScenario): Promise<string> {
     mockGmailConnectorOAuth({ email: GMAIL_EMAIL });
     await wf.connectConnector(scenario.actor, "gmail");
     const connector = await connectorsApi.readConnectorByType(
@@ -559,7 +559,7 @@ describe("zero workflow triggers", () => {
   }
 
   async function connectGoogleCalendar(
-    scenario: TriggerScenario,
+    scenario: AutomationScenario,
   ): Promise<string> {
     mockGoogleCalendarConnectorOAuth({ email: GOOGLE_CALENDAR_EMAIL });
     await wf.connectConnector(scenario.actor, "google-calendar");
@@ -575,7 +575,7 @@ describe("zero workflow triggers", () => {
     return connector.id;
   }
 
-  async function connectNotion(scenario: TriggerScenario): Promise<string> {
+  async function connectNotion(scenario: AutomationScenario): Promise<string> {
     mockNotionConnectorOAuth();
     await wf.connectConnector(scenario.actor, "notion");
     const connector = await connectorsApi.readConnectorByType(
@@ -590,7 +590,7 @@ describe("zero workflow triggers", () => {
     return connector.id;
   }
 
-  it("keeps automation routes in parity with legacy trigger aliases", async () => {
+  it("keeps automation routes in parity with legacy automation aliases", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const scenario = await setupFixture("team");
     const { actor, workflowId } = scenario;
@@ -615,7 +615,7 @@ describe("zero workflow triggers", () => {
         [200],
       ),
       accept(
-        triggersClient().get({
+        legacyAutomationsClient().get({
           headers: authHeaders(),
           params: { id: created.body.id },
         }),
@@ -633,7 +633,7 @@ describe("zero workflow triggers", () => {
         [200],
       ),
       accept(
-        triggersClient().list({
+        legacyAutomationsClient().list({
           headers: authHeaders(),
           params: { workflowId },
         }),
@@ -651,7 +651,7 @@ describe("zero workflow triggers", () => {
         [200],
       ),
       accept(
-        triggersClient().listForChatThread({
+        legacyAutomationsClient().listForChatThread({
           headers: authHeaders(),
           params: { threadId: created.body.chatThreadId },
         }),
@@ -665,7 +665,10 @@ describe("zero workflow triggers", () => {
         automationsClient().listWorkspace({ headers: authHeaders() }),
         [200],
       ),
-      accept(triggersClient().listWorkspace({ headers: authHeaders() }), [200]),
+      accept(
+        legacyAutomationsClient().listWorkspace({ headers: authHeaders() }),
+        [200],
+      ),
     ]);
     expect(automationWorkspaceList.body).toStrictEqual(
       legacyWorkspaceList.body.map(({ workflow, trigger }) => {
@@ -700,7 +703,7 @@ describe("zero workflow triggers", () => {
       [200],
     );
     const readDisabled = await accept(
-      triggersClient().get({
+      legacyAutomationsClient().get({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -716,7 +719,7 @@ describe("zero workflow triggers", () => {
       [200],
     );
     const readEnabled = await accept(
-      triggersClient().get({
+      legacyAutomationsClient().get({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -731,9 +734,9 @@ describe("zero workflow triggers", () => {
       }),
       [201],
     );
-    await cancelWorkflowTriggerRun(actor, automationRun.body.runId);
+    await cancelWorkflowAutomationRun(actor, automationRun.body.runId);
     const legacyRun = await accept(
-      triggersClient().run({
+      legacyAutomationsClient().run({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -743,7 +746,7 @@ describe("zero workflow triggers", () => {
       ...legacyRun.body,
       runId: "<dynamic>",
     });
-    await cancelWorkflowTriggerRun(actor, legacyRun.body.runId);
+    await cancelWorkflowAutomationRun(actor, legacyRun.body.runId);
 
     const webhook = await accept(
       automationsClient().create({
@@ -763,7 +766,7 @@ describe("zero workflow triggers", () => {
         [200],
       ),
       accept(
-        triggersClient().revealWebhookSecret({
+        legacyAutomationsClient().revealWebhookSecret({
           headers: authHeaders(),
           params: { id: webhook.body.id },
           body: undefined,
@@ -788,7 +791,7 @@ describe("zero workflow triggers", () => {
         [404],
       ),
       accept(
-        triggersClient().list({
+        legacyAutomationsClient().list({
           headers: authHeaders(),
           params: { workflowId: hidden.workflowId },
         }),
@@ -805,14 +808,14 @@ describe("zero workflow triggers", () => {
       [204],
     );
     await accept(
-      triggersClient().get({
+      legacyAutomationsClient().get({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
       [404],
     );
     await accept(
-      triggersClient().delete({
+      legacyAutomationsClient().delete({
         headers: authHeaders(),
         params: { id: webhook.body.id },
       }),
@@ -820,12 +823,12 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("creates a cron trigger and eagerly binds a chat thread", async () => {
+  it("creates a cron automation and eagerly binds a chat thread", async () => {
     const { workflowId } = await setupFixture();
 
     context.mocks.ably.publish.mockClear();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -856,15 +859,15 @@ describe("zero workflow triggers", () => {
       null,
     );
     if (created.body.kind !== "schedule") {
-      throw new Error("Expected a schedule trigger");
+      throw new Error("Expected a schedule automation");
     }
     expect(created.body.scheduleSummary.length).toBeGreaterThan(0);
   });
 
-  it("lists thread-bound workflow triggers", async () => {
+  it("lists thread-bound workflow automations", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 60 } },
@@ -872,7 +875,7 @@ describe("zero workflow triggers", () => {
       [201],
     );
     const second = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -887,12 +890,12 @@ describe("zero workflow triggers", () => {
     );
     const threadId = created.body.chatThreadId;
     if (!threadId) {
-      throw new Error("Expected the workflow trigger to bind a chat thread");
+      throw new Error("Expected the workflow automation to bind a chat thread");
     }
     expect(second.body.chatThreadId).toBe(threadId);
 
     const listed = await accept(
-      triggersClient().listForChatThread({
+      legacyAutomationsClient().listForChatThread({
         headers: authHeaders(),
         params: { threadId },
       }),
@@ -901,13 +904,13 @@ describe("zero workflow triggers", () => {
 
     expect(listed.body).toHaveLength(2);
     expect(
-      listed.body.map((trigger) => {
+      listed.body.map((automation) => {
         return {
-          id: trigger.id,
-          kind: trigger.kind,
-          scheduleSummary: trigger.scheduleSummary,
-          chatThreadId: trigger.chatThreadId,
-          workflow: trigger.workflow,
+          id: automation.id,
+          kind: automation.kind,
+          scheduleSummary: automation.scheduleSummary,
+          chatThreadId: automation.chatThreadId,
+          workflow: automation.workflow,
         };
       }),
     ).toStrictEqual([
@@ -934,11 +937,11 @@ describe("zero workflow triggers", () => {
     ]);
   });
 
-  it("lists thread-bound webhook triggers", async () => {
+  it("lists thread-bound webhook automations", async () => {
     const { workflowId } = await setupFixture("team");
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -950,18 +953,18 @@ describe("zero workflow triggers", () => {
       created.body.eventType !== "webhook-received" ||
       !created.body.chatThreadId
     ) {
-      throw new Error("Expected a thread-bound webhook trigger");
+      throw new Error("Expected a thread-bound webhook automation");
     }
 
     const listed = await accept(
-      triggersClient().listForChatThread({
+      legacyAutomationsClient().listForChatThread({
         headers: authHeaders(),
         params: { threadId: created.body.chatThreadId },
       }),
       [200],
     );
-    const [listedTrigger] = listed.body;
-    expect(listedTrigger).toMatchObject({
+    const [listedAutomation] = listed.body;
+    expect(listedAutomation).toMatchObject({
       id: created.body.id,
       kind: "event",
       eventType: "webhook-received",
@@ -977,20 +980,20 @@ describe("zero workflow triggers", () => {
       workflow: expect.objectContaining({ id: workflowId }),
     });
     if (
-      !listedTrigger ||
-      listedTrigger.kind !== "event" ||
-      listedTrigger.eventType !== "webhook-received"
+      !listedAutomation ||
+      listedAutomation.kind !== "event" ||
+      listedAutomation.eventType !== "webhook-received"
     ) {
-      throw new Error("Expected the webhook trigger to be listed");
+      throw new Error("Expected the webhook automation to be listed");
     }
-    expect(listedTrigger.webhookUrl).toBeUndefined();
-    expect(listedTrigger.webhookSecret).toBeUndefined();
+    expect(listedAutomation.webhookUrl).toBeUndefined();
+    expect(listedAutomation.webhookSecret).toBeUndefined();
   });
 
-  it("stores trigger chat threads at the workflow-user level", async () => {
+  it("stores automation chat threads at the workflow-user level", async () => {
     const { workflowId } = await setupFixture();
     const first = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 60 } },
@@ -998,7 +1001,7 @@ describe("zero workflow triggers", () => {
       [201],
     );
     const second = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 120 } },
@@ -1006,11 +1009,11 @@ describe("zero workflow triggers", () => {
       [201],
     );
 
-    // Both triggers share the workflow-user thread, and both are listed on
+    // Both automations share the workflow-user thread, and both are listed on
     // the workflow.
     expect(second.body.chatThreadId).toBe(first.body.chatThreadId);
     const listed = await accept(
-      triggersClient().list({
+      legacyAutomationsClient().list({
         headers: authHeaders(),
         params: { workflowId },
       }),
@@ -1018,8 +1021,8 @@ describe("zero workflow triggers", () => {
     );
     expect(listed.body).toHaveLength(2);
     expect(
-      listed.body.map((trigger) => {
-        return trigger.chatThreadId;
+      listed.body.map((automation) => {
+        return automation.chatThreadId;
       }),
     ).toStrictEqual([first.body.chatThreadId, first.body.chatThreadId]);
   });
@@ -1029,7 +1032,7 @@ describe("zero workflow triggers", () => {
     const { workflowId } = await setupFixture();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1051,7 +1054,7 @@ describe("zero workflow triggers", () => {
     expect(created.body.nextRunAt).toBe("2026-06-22T07:55:00.000Z");
 
     const updated = await accept(
-      triggersClient().update({
+      legacyAutomationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -1072,10 +1075,10 @@ describe("zero workflow triggers", () => {
     });
     expect(updated.body.nextRunAt).toBe("2026-06-22T08:05:00.000Z");
 
-    // Disable so the past-dated one-time trigger never becomes a stale due
+    // Disable so the past-dated one-time automation never becomes a stale due
     // candidate for later cron sweeps in the shared database.
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -1086,7 +1089,7 @@ describe("zero workflow triggers", () => {
   it("rejects creation on a workflow the caller cannot see", async () => {
     const scenario = await setupFixture();
     // A private workflow under another user's private agent is invisible to
-    // this member, so trigger creation is rejected as not-found.
+    // this member, so automation creation is rejected as not-found.
     const otherUserId = `user_${randomUUID()}`;
     const hidden = await createAgentWithWorkflow(scenario, {
       userId: otherUserId,
@@ -1096,7 +1099,7 @@ describe("zero workflow triggers", () => {
     });
 
     await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: hidden.workflowId },
         body: {
@@ -1111,7 +1114,7 @@ describe("zero workflow triggers", () => {
     const { workflowId } = await setupFixture();
 
     await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1126,7 +1129,7 @@ describe("zero workflow triggers", () => {
     );
 
     await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1141,11 +1144,11 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("makes a loop trigger due immediately when enabled", async () => {
+  it("makes a loop automation due immediately when enabled", async () => {
     const { workflowId } = await setupFixture();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 1800 } },
@@ -1160,12 +1163,12 @@ describe("zero workflow triggers", () => {
     expect(created.body.nextRunAt).toBeTruthy();
   });
 
-  it("requires Team or Custom for webhook trigger creation", async () => {
+  it("requires Team or Custom for webhook automation creation", async () => {
     const { actor, customerId, subscriptionId, workflowId } =
       await setupFixture();
 
     const proRejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1174,7 +1177,7 @@ describe("zero workflow triggers", () => {
     );
     expect(proRejected.body.error).toStrictEqual({
       code: "TEAM_REQUIRED",
-      message: "Webhook triggers require a Team or Custom workspace",
+      message: "Webhook automations require a Team or Custom workspace",
     });
 
     await runs.grantProEntitlement(actor, {
@@ -1183,7 +1186,7 @@ describe("zero workflow triggers", () => {
       tier: "team",
     });
     const teamCreated = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1201,7 +1204,7 @@ describe("zero workflow triggers", () => {
 
     const [created] = await Promise.all([
       accept(
-        triggersClient().create({
+        legacyAutomationsClient().create({
           headers: authHeaders(),
           params: { workflowId },
           body: { kind: "event", eventType: "webhook-received" },
@@ -1219,7 +1222,7 @@ describe("zero workflow triggers", () => {
     ]);
 
     if (created.status === 201) {
-      await expect(wf.readTrigger(created.body.id)).resolves.toMatchObject({
+      await expect(wf.readAutomation(created.body.id)).resolves.toMatchObject({
         enabled: false,
         disabledReason: "paid_plan_required",
       });
@@ -1228,16 +1231,16 @@ describe("zero workflow triggers", () => {
     }
   });
 
-  it("lists owned workflow triggers across visible workflows", async () => {
+  it("lists owned workflow automations across visible workflows", async () => {
     const scenario = await setupFixture();
     const { agentId, workflowId } = scenario;
     const { agentId: secondAgentId, workflowId: secondWorkflowId } =
       await createAgentWithWorkflow(scenario, {
-        agentDisplayName: "Second Trigger Agent",
+        agentDisplayName: "Second Automation Agent",
       });
 
     const first = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 60 } },
@@ -1245,7 +1248,7 @@ describe("zero workflow triggers", () => {
       [201],
     );
     const second = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: secondWorkflowId },
         body: {
@@ -1260,14 +1263,14 @@ describe("zero workflow triggers", () => {
     );
 
     const listed = await accept(
-      triggersClient().listWorkspace({ headers: authHeaders() }),
+      legacyAutomationsClient().listWorkspace({ headers: authHeaders() }),
       [200],
     );
 
     expect(
       listed.body.map((entry) => {
         return {
-          triggerId: entry.trigger.id,
+          automationId: entry.trigger.id,
           workflowId: entry.workflow.id,
           workflowName: entry.workflow.name,
           agentId: entry.workflow.agentId,
@@ -1276,13 +1279,13 @@ describe("zero workflow triggers", () => {
     ).toStrictEqual(
       expect.arrayContaining([
         {
-          triggerId: first.body.id,
+          automationId: first.body.id,
           workflowId,
           workflowName: WORKFLOW_NAME,
           agentId,
         },
         {
-          triggerId: second.body.id,
+          automationId: second.body.id,
           workflowId: secondWorkflowId,
           workflowName: WORKFLOW_NAME,
           agentId: secondAgentId,
@@ -1293,11 +1296,11 @@ describe("zero workflow triggers", () => {
     expect("fileContents" in listed.body[0]!.workflow).toBeFalsy();
   });
 
-  it("creates webhook event triggers with a signed endpoint secret shown once", async () => {
+  it("creates webhook event automations with a signed endpoint secret shown once", async () => {
     const { workflowId } = await setupFixture("team");
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1324,7 +1327,7 @@ describe("zero workflow triggers", () => {
       created.body.kind !== "event" ||
       created.body.eventType !== "webhook-received"
     ) {
-      throw new Error("Expected a webhook trigger");
+      throw new Error("Expected a webhook automation");
     }
     expect(created.body.webhookUrl).toContain(
       "/api/webhooks/workflow-automations/whk_",
@@ -1335,28 +1338,28 @@ describe("zero workflow triggers", () => {
     );
 
     const listed = await accept(
-      triggersClient().list({
+      legacyAutomationsClient().list({
         headers: authHeaders(),
         params: { workflowId },
       }),
       [200],
     );
-    const listedWebhook = listed.body.find((trigger) => {
-      return trigger.id === created.body.id;
+    const listedWebhook = listed.body.find((automation) => {
+      return automation.id === created.body.id;
     });
     if (
       !listedWebhook ||
       listedWebhook.kind !== "event" ||
       listedWebhook.eventType !== "webhook-received"
     ) {
-      throw new Error("Expected created webhook trigger to be listed");
+      throw new Error("Expected created webhook automation to be listed");
     }
     expect(listedWebhook.webhookUrl).toBeUndefined();
     expect(listedWebhook.secretLastFour).toBe(created.body.secretLastFour);
     expect(listedWebhook.webhookSecret).toBeUndefined();
 
     const revealed = await accept(
-      triggersClient().revealWebhookSecret({
+      legacyAutomationsClient().revealWebhookSecret({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1373,7 +1376,7 @@ describe("zero workflow triggers", () => {
     const { actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1381,7 +1384,7 @@ describe("zero workflow triggers", () => {
       [201],
     );
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1399,7 +1402,7 @@ describe("zero workflow triggers", () => {
     await runs.grantProEntitlement(actor, { customerId, subscriptionId });
 
     const teamRequired = await accept(
-      triggersClient().enable({
+      legacyAutomationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1412,7 +1415,7 @@ describe("zero workflow triggers", () => {
   it("serializes webhook re-enable with an effective downgrade", async () => {
     const { subscriptionId, workflowId } = await setupFixture("team");
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1420,7 +1423,7 @@ describe("zero workflow triggers", () => {
       [201],
     );
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1430,7 +1433,7 @@ describe("zero workflow triggers", () => {
 
     const [enabled] = await Promise.all([
       accept(
-        triggersClient().enable({
+        legacyAutomationsClient().enable({
           headers: authHeaders(),
           params: { id: created.body.id },
           body: undefined,
@@ -1447,7 +1450,7 @@ describe("zero workflow triggers", () => {
       ),
     ]);
 
-    const after = await wf.readTrigger(created.body.id);
+    const after = await wf.readAutomation(created.body.id);
     expect(after.enabled).toBeFalsy();
     if (enabled.status === 200) {
       expect(after).toMatchObject({
@@ -1462,7 +1465,7 @@ describe("zero workflow triggers", () => {
     const { actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1473,7 +1476,7 @@ describe("zero workflow triggers", () => {
       created.body.kind !== "event" ||
       created.body.eventType !== "webhook-received"
     ) {
-      throw new Error("Expected a webhook trigger");
+      throw new Error("Expected a webhook automation");
     }
     await webhookCallbacks.postStripeEvent(
       {
@@ -1483,7 +1486,7 @@ describe("zero workflow triggers", () => {
       },
       [200],
     );
-    const disabled = await wf.readTrigger(created.body.id);
+    const disabled = await wf.readAutomation(created.body.id);
     expect(disabled).toMatchObject({
       enabled: false,
       disabledReason: "paid_plan_required",
@@ -1495,7 +1498,7 @@ describe("zero workflow triggers", () => {
     });
 
     const enabled = await accept(
-      triggersClient().enable({
+      legacyAutomationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1507,7 +1510,7 @@ describe("zero workflow triggers", () => {
       disabledReason: null,
     });
     const revealed = await accept(
-      triggersClient().revealWebhookSecret({
+      legacyAutomationsClient().revealWebhookSecret({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1520,11 +1523,11 @@ describe("zero workflow triggers", () => {
     });
   });
 
-  it("requires a connected Gmail account for Gmail event triggers", async () => {
+  it("requires a connected Gmail account for Gmail event automations", async () => {
     const { workflowId } = await setupFixture();
     mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1537,14 +1540,14 @@ describe("zero workflow triggers", () => {
     );
 
     expect(rejected.body.error.message).toBe(
-      "Connect Gmail before adding a Gmail event trigger",
+      "Connect Gmail before adding a Gmail event automation",
     );
   });
 
-  it("requires a connected Google Calendar account for Google Calendar event triggers", async () => {
+  it("requires a connected Google Calendar account for Google Calendar event automations", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1556,14 +1559,14 @@ describe("zero workflow triggers", () => {
     );
 
     expect(rejected.body.error.message).toBe(
-      "Connect Google Calendar before adding a Google Calendar event trigger",
+      "Connect Google Calendar before adding a Google Calendar event automation",
     );
   });
 
-  it("rejects Notion child page triggers when Notion trigger creation is disabled", async () => {
+  it("rejects Notion child page automations when Notion automation creation is disabled", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1584,10 +1587,10 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("rejects Notion database item triggers when Notion trigger creation is disabled", async () => {
+  it("rejects Notion database item automations when Notion automation creation is disabled", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1608,10 +1611,10 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("rejects Notion page content updated triggers when Notion trigger creation is disabled", async () => {
+  it("rejects Notion page content updated automations when Notion automation creation is disabled", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1632,12 +1635,12 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("requires a connected Notion account for Notion child page triggers", async () => {
+  it("requires a connected Notion account for Notion child page automations", async () => {
     const { fixture, workflowId } = await setupFixture();
     await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1654,16 +1657,16 @@ describe("zero workflow triggers", () => {
     );
 
     expect(rejected.body.error.message).toBe(
-      "Connect Notion before adding a Notion event trigger",
+      "Connect Notion before adding a Notion event automation",
     );
   });
 
-  it("requires a connected Notion account for Notion database item triggers", async () => {
+  it("requires a connected Notion account for Notion database item automations", async () => {
     const { fixture, workflowId } = await setupFixture();
     await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1680,16 +1683,16 @@ describe("zero workflow triggers", () => {
     );
 
     expect(rejected.body.error.message).toBe(
-      "Connect Notion before adding a Notion event trigger",
+      "Connect Notion before adding a Notion event automation",
     );
   });
 
-  it("requires a connected Notion account for Notion page content updated triggers", async () => {
+  it("requires a connected Notion account for Notion page content updated automations", async () => {
     const { fixture, workflowId } = await setupFixture();
     await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1706,17 +1709,17 @@ describe("zero workflow triggers", () => {
     );
 
     expect(rejected.body.error.message).toBe(
-      "Connect Notion before adding a Notion event trigger",
+      "Connect Notion before adding a Notion event automation",
     );
   });
 
-  it("requires a standard notion.so page URL for Notion child page triggers", async () => {
+  it("requires a standard notion.so page URL for Notion child page automations", async () => {
     const scenario = await setupFixture();
     await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
 
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1737,13 +1740,13 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("requires a standard notion.so database URL for Notion database item triggers", async () => {
+  it("requires a standard notion.so database URL for Notion database item automations", async () => {
     const scenario = await setupFixture();
     await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
 
     const rejected = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1764,14 +1767,14 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("creates Notion child page triggers by validating and storing the parent page", async () => {
+  it("creates Notion child page automations by validating and storing the parent page", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
     await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionPageMock();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1809,14 +1812,14 @@ describe("zero workflow triggers", () => {
     expect(created.body.chatThreadId).toBeTruthy();
   });
 
-  it("creates Notion database item triggers by validating and storing the data source", async () => {
+  it("creates Notion database item automations by validating and storing the data source", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
     await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionDatabaseMock();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1854,14 +1857,14 @@ describe("zero workflow triggers", () => {
     expect(created.body.chatThreadId).toBeTruthy();
   });
 
-  it("creates Notion page content updated triggers for a page scope", async () => {
+  it("creates Notion page content updated automations for a page scope", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
     await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionPageMock();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1902,14 +1905,14 @@ describe("zero workflow triggers", () => {
     expect(created.body.chatThreadId).toBeTruthy();
   });
 
-  it("creates Notion page content updated triggers for a database scope", async () => {
+  it("creates Notion page content updated automations for a database scope", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
     await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionDatabaseMock();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1950,11 +1953,11 @@ describe("zero workflow triggers", () => {
     expect(created.body.chatThreadId).toBeTruthy();
   });
 
-  it("rejects removed Gmail event trigger match fields", async () => {
+  it("rejects removed Gmail event automation match fields", async () => {
     const { workflowId } = await setupFixture();
 
     const response = await createApp({ signal: context.signal }).request(
-      `/api/zero/workflows/${workflowId}/triggers`,
+      `/api/zero/workflows/${workflowId}/automations`,
       {
         method: "POST",
         headers: {
@@ -1978,13 +1981,13 @@ describe("zero workflow triggers", () => {
     expect(body.error?.code).toBe("BAD_REQUEST");
   });
 
-  it("creates Gmail event triggers with a watch and agent connector grant", async () => {
+  it("creates Gmail event automations with a watch and agent connector grant", async () => {
     const scenario = await setupFixture();
     await connectGmail(scenario);
     const watchRecorder = configureGmailWatchMock();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2020,7 +2023,7 @@ describe("zero workflow triggers", () => {
     expect(watchRecorder.calls).toBe(1);
 
     const updated = await accept(
-      triggersClient().update({
+      legacyAutomationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2038,14 +2041,14 @@ describe("zero workflow triggers", () => {
       updated.body.kind !== "event" ||
       updated.body.eventType !== "gmail-new-message"
     ) {
-      throw new Error("Expected a Gmail event trigger");
+      throw new Error("Expected a Gmail event automation");
     }
     expect(updated.body.eventConfig.match).toStrictEqual({
       from: { contains: "billing@example.com" },
     });
   });
 
-  it("creates Google Calendar event-created triggers with a watch and baseline", async () => {
+  it("creates Google Calendar event-created automations with a watch and baseline", async () => {
     const scenario = await setupFixture();
     await connectGoogleCalendar(scenario);
     const watchRecorder = configureGoogleCalendarWatchMock({
@@ -2064,7 +2067,7 @@ describe("zero workflow triggers", () => {
     });
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2098,14 +2101,14 @@ describe("zero workflow triggers", () => {
     expect(watchRecorder.baselineCalls).toBe(1);
   });
 
-  it("creates and updates Gmail label applied triggers by label name", async () => {
+  it("creates and updates Gmail label applied automations by label name", async () => {
     const scenario = await setupFixture();
     await connectGmail(scenario);
     configureGmailLabelsMock([{ id: "Label_support", name: "Support" }]);
     configureGmailWatchMock();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2138,7 +2141,7 @@ describe("zero workflow triggers", () => {
 
     configureGmailLabelsMock([{ id: "Label_escalated", name: "Escalated" }]);
     const updated = await accept(
-      triggersClient().update({
+      legacyAutomationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2157,7 +2160,7 @@ describe("zero workflow triggers", () => {
       updated.body.kind !== "event" ||
       updated.body.eventType !== "gmail-label-applied"
     ) {
-      throw new Error("Expected a Gmail label applied trigger");
+      throw new Error("Expected a Gmail label applied automation");
     }
     expect(updated.body.eventConfig).toStrictEqual({
       provider: "gmail",
@@ -2167,11 +2170,11 @@ describe("zero workflow triggers", () => {
     });
   });
 
-  it("creates and updates GitHub label applied triggers", async () => {
+  it("creates and updates GitHub label applied automations", async () => {
     const scenario = await setupFixture();
     await gh.installGithubApp(scenario.actor, scenario.agentId, {
       oauthCode: {
-        code: `wf-triggers-${randomUUID().slice(0, 8)}`,
+        code: `wf-automations-${randomUUID().slice(0, 8)}`,
         githubUserId: "101",
       },
     });
@@ -2182,7 +2185,7 @@ describe("zero workflow triggers", () => {
     );
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2221,7 +2224,7 @@ describe("zero workflow triggers", () => {
     });
 
     const updated = await accept(
-      triggersClient().update({
+      legacyAutomationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2244,7 +2247,7 @@ describe("zero workflow triggers", () => {
       updated.body.kind !== "event" ||
       updated.body.eventType !== "github-label-applied"
     ) {
-      throw new Error("Expected a GitHub label applied trigger");
+      throw new Error("Expected a GitHub label applied automation");
     }
     expect(updated.body.eventConfig).toStrictEqual({
       provider: "github",
@@ -2257,7 +2260,7 @@ describe("zero workflow triggers", () => {
     });
   });
 
-  it("rejects GitHub label applied triggers with actor me when GitHub user is not connected", async () => {
+  it("rejects GitHub label applied automations with actor me when GitHub user is not connected", async () => {
     const scenario = await setupFixture();
     // Install without an OAuth code: the org gets an installation but the
     // member has no linked GitHub user.
@@ -2269,7 +2272,7 @@ describe("zero workflow triggers", () => {
     );
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2293,16 +2296,16 @@ describe("zero workflow triggers", () => {
       error: {
         code: "BAD_REQUEST",
         message:
-          "Connect your GitHub account before using Triggered by me for GitHub label workflow triggers",
+          "Connect your GitHub account before using Triggered by me for GitHub label workflow automations",
       },
     });
   });
 
-  it("returns created triggers from list and workflow detail", async () => {
+  it("returns created automations from list and workflow detail", async () => {
     const { workflowId } = await setupFixture();
 
     await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2317,19 +2320,19 @@ describe("zero workflow triggers", () => {
     );
 
     const listed = await accept(
-      triggersClient().list({
+      legacyAutomationsClient().list({
         headers: authHeaders(),
         params: { workflowId },
       }),
       [200],
     );
     expect(listed.body).toHaveLength(1);
-    const [listedTrigger] = listed.body;
-    expect(listedTrigger?.kind).toBe("schedule");
-    if (listedTrigger?.kind !== "schedule") {
-      throw new Error("Expected a schedule trigger");
+    const [listedAutomation] = listed.body;
+    expect(listedAutomation?.kind).toBe("schedule");
+    if (listedAutomation?.kind !== "schedule") {
+      throw new Error("Expected a schedule automation");
     }
-    expect(listedTrigger.schedule.type).toBe("once");
+    expect(listedAutomation.schedule.type).toBe("once");
 
     const detail = await accept(
       detailClient().get({
@@ -2341,10 +2344,10 @@ describe("zero workflow triggers", () => {
     expect(detail.body.triggers).toHaveLength(1);
   });
 
-  it("updates the schedule of an existing trigger", async () => {
+  it("updates the schedule of an existing automation", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2355,7 +2358,7 @@ describe("zero workflow triggers", () => {
     );
 
     const updated = await accept(
-      triggersClient().update({
+      legacyAutomationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2375,12 +2378,12 @@ describe("zero workflow triggers", () => {
     });
   });
 
-  it("schedules updated loop triggers from the last run interval", async () => {
+  it("schedules updated loop automations from the last run interval", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     mockNow(Date.parse("2026-06-28T06:00:00.000Z"));
     const { workflowId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2393,7 +2396,7 @@ describe("zero workflow triggers", () => {
     // A real manual run through the public run route stamps lastRunAt.
     mockNow(Date.parse("2026-06-28T06:05:00.000Z"));
     await accept(
-      triggersClient().run({
+      legacyAutomationsClient().run({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2402,7 +2405,7 @@ describe("zero workflow triggers", () => {
 
     mockNow(Date.parse("2026-06-28T06:10:00.000Z"));
     const updated = await accept(
-      triggersClient().update({
+      legacyAutomationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2414,9 +2417,9 @@ describe("zero workflow triggers", () => {
 
     expect(updated.body.nextRunAt).toBe("2026-06-28T07:05:00.000Z");
 
-    // Keep the past-dated loop trigger out of later global cron sweeps.
+    // Keep the past-dated loop automation out of later global cron sweeps.
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2427,7 +2430,7 @@ describe("zero workflow triggers", () => {
   it("clears next run on disable and recomputes it on enable", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2442,7 +2445,7 @@ describe("zero workflow triggers", () => {
     );
 
     const disabled = await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2452,7 +2455,7 @@ describe("zero workflow triggers", () => {
     expect(disabled.body.nextRunAt).toBeNull();
 
     const enabled = await accept(
-      triggersClient().enable({
+      legacyAutomationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2462,12 +2465,12 @@ describe("zero workflow triggers", () => {
     expect(enabled.body.nextRunAt).toBeTruthy();
   });
 
-  it("keeps enabled loop triggers scheduled from the last run interval", async () => {
+  it("keeps enabled loop automations scheduled from the last run interval", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     mockNow(Date.parse("2026-06-28T06:00:00.000Z"));
     const { workflowId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2481,14 +2484,14 @@ describe("zero workflow triggers", () => {
     // to recompute the next run from the last run interval.
     mockNow(Date.parse("2026-06-28T06:05:00.000Z"));
     await accept(
-      triggersClient().run({
+      legacyAutomationsClient().run({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
       [201],
     );
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2497,7 +2500,7 @@ describe("zero workflow triggers", () => {
 
     mockNow(Date.parse("2026-06-28T06:10:00.000Z"));
     const enabled = await accept(
-      triggersClient().enable({
+      legacyAutomationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2508,7 +2511,7 @@ describe("zero workflow triggers", () => {
     expect(enabled.body.nextRunAt).toBe("2026-06-28T06:35:00.000Z");
 
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2516,10 +2519,10 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("treats a deleted workflow's trigger as not found on enable", async () => {
+  it("treats a deleted workflow's automation as not found on enable", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2530,7 +2533,7 @@ describe("zero workflow triggers", () => {
     );
 
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2546,7 +2549,7 @@ describe("zero workflow triggers", () => {
     );
 
     await accept(
-      triggersClient().enable({
+      legacyAutomationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2554,10 +2557,10 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("allows another org member to manage only their own triggers", async () => {
+  it("allows another org member to manage only their own automations", async () => {
     const { fixture, workflowId } = await setupFixture();
-    const ownerTrigger = await accept(
-      triggersClient().create({
+    const ownerAutomation = await accept(
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2567,13 +2570,13 @@ describe("zero workflow triggers", () => {
       [201],
     );
 
-    // A different member of the same org can create their own trigger on the
-    // public workflow + public agent, but cannot modify the owner's trigger.
+    // A different member of the same org can create their own automation on the
+    // public workflow + public agent, but cannot modify the owner's automation.
     const otherUserId = `user_${randomUUID()}`;
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
 
     await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2584,18 +2587,18 @@ describe("zero workflow triggers", () => {
     );
 
     await accept(
-      triggersClient().delete({
+      legacyAutomationsClient().delete({
         headers: authHeaders(),
-        params: { id: ownerTrigger.body.id },
+        params: { id: ownerAutomation.body.id },
       }),
       [403],
     );
   });
 
-  it("keeps the bound chat thread when a trigger is deleted", async () => {
+  it("keeps the bound chat thread when an automation is deleted", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2609,7 +2612,7 @@ describe("zero workflow triggers", () => {
 
     context.mocks.ably.publish.mockClear();
     await accept(
-      triggersClient().delete({
+      legacyAutomationsClient().delete({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2620,14 +2623,14 @@ describe("zero workflow triggers", () => {
       null,
     );
 
-    // The bound chat thread survives the trigger deletion and still carries
+    // The bound chat thread survives the automation deletion and still carries
     // the org default model selection.
     await expect(wf.readThreadSelectedModel(String(threadId))).resolves.toBe(
       "claude-sonnet-4-6",
     );
   });
 
-  it("reuses recurring trigger query embeddings while keeping memory retrieval fresh", async () => {
+  it("reuses recurring automation query embeddings while keeping memory retrieval fresh", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { fixture, actor, workflowId } = await setupFixture();
     await enableWorkflowRuntimeMemory(fixture);
@@ -2650,7 +2653,7 @@ describe("zero workflow triggers", () => {
       [200],
     );
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 3600 } },
@@ -2659,7 +2662,7 @@ describe("zero workflow triggers", () => {
     );
     const initialQuery = `/${WORKFLOW_NAME}`;
 
-    const first = await runWorkflowTriggerAndReadContext(
+    const first = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2675,7 +2678,7 @@ describe("zero workflow triggers", () => {
       cacheResult: "miss_absent",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, first.runId);
+    await cancelWorkflowAutomationRun(actor, first.runId);
 
     const freshMemoryText =
       "The recurring report must include the newly approved launch control.";
@@ -2691,7 +2694,7 @@ describe("zero workflow triggers", () => {
       }),
       [200],
     );
-    const second = await runWorkflowTriggerAndReadContext(
+    const second = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2708,9 +2711,9 @@ describe("zero workflow triggers", () => {
       cacheResult: "hit",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, second.runId);
+    await cancelWorkflowAutomationRun(actor, second.runId);
 
-    const renamedWorkflow = "renamed-trigger-workflow";
+    const renamedWorkflow = "renamed-automation-workflow";
     await accept(
       detailClient().update({
         headers: authHeaders(),
@@ -2720,7 +2723,7 @@ describe("zero workflow triggers", () => {
       [200],
     );
     const renamedQuery = `/${renamedWorkflow}`;
-    const renamed = await runWorkflowTriggerAndReadContext(
+    const renamed = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2736,10 +2739,10 @@ describe("zero workflow triggers", () => {
       cacheResult: "miss_query_changed",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, renamed.runId);
+    await cancelWorkflowAutomationRun(actor, renamed.runId);
 
     mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", changedEmbeddingModel);
-    const changedModel = await runWorkflowTriggerAndReadContext(
+    const changedModel = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2755,23 +2758,23 @@ describe("zero workflow triggers", () => {
       cacheResult: "miss_model_changed",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, changedModel.runId);
+    await cancelWorkflowAutomationRun(actor, changedModel.runId);
 
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
       [200],
     );
     await accept(
-      triggersClient().enable({
+      legacyAutomationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
       [200],
     );
-    const reenabled = await runWorkflowTriggerAndReadContext(
+    const reenabled = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2787,10 +2790,10 @@ describe("zero workflow triggers", () => {
       cacheResult: "hit",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, reenabled.runId);
+    await cancelWorkflowAutomationRun(actor, reenabled.runId);
 
     await accept(
-      triggersClient().update({
+      legacyAutomationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2804,7 +2807,7 @@ describe("zero workflow triggers", () => {
       [200],
     );
     await accept(
-      triggersClient().update({
+      legacyAutomationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2817,7 +2820,7 @@ describe("zero workflow triggers", () => {
       }),
       [200],
     );
-    const afterCleanup = await runWorkflowTriggerAndReadContext(
+    const afterCleanup = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2833,9 +2836,9 @@ describe("zero workflow triggers", () => {
       cacheResult: "miss_absent",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, afterCleanup.runId);
+    await cancelWorkflowAutomationRun(actor, afterCleanup.runId);
 
-    const cronHit = await runWorkflowTriggerAndReadContext(
+    const cronHit = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2851,10 +2854,10 @@ describe("zero workflow triggers", () => {
       cacheResult: "hit",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, cronHit.runId);
+    await cancelWorkflowAutomationRun(actor, cronHit.runId);
   });
 
-  it("keeps one-time and event trigger embeddings outside the recurring cache", async () => {
+  it("keeps one-time and event automation embeddings outside the recurring cache", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { fixture, actor, workflowId } = await setupFixture("team");
     await enableWorkflowRuntimeMemory(fixture);
@@ -2867,16 +2870,16 @@ describe("zero workflow triggers", () => {
       memoryClient().createMemory({
         headers: authHeaders(),
         body: {
-          text: "Use the direct provider path for ineligible trigger runs.",
+          text: "Use the direct provider path for ineligible automation runs.",
           kind: "preference",
           confidence: 95,
-          entityDisplayName: "Trigger behavior",
+          entityDisplayName: "Automation behavior",
         },
       }),
       [200],
     );
-    const onceTrigger = await accept(
-      triggersClient().create({
+    const onceAutomation = await accept(
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2891,39 +2894,39 @@ describe("zero workflow triggers", () => {
     );
     const query = `/${WORKFLOW_NAME}`;
 
-    const firstOnce = await runWorkflowTriggerAndReadContext(
+    const firstOnce = await runWorkflowAutomationAndReadContext(
       actor,
-      onceTrigger.body.id,
+      onceAutomation.body.id,
     );
     expectSemanticEmbeddingTiming(firstOnce.runId, {
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, firstOnce.runId);
-    const secondOnce = await runWorkflowTriggerAndReadContext(
+    await cancelWorkflowAutomationRun(actor, firstOnce.runId);
+    const secondOnce = await runWorkflowAutomationAndReadContext(
       actor,
-      onceTrigger.body.id,
+      onceAutomation.body.id,
     );
     expectSemanticEmbeddingTiming(secondOnce.runId, {
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, secondOnce.runId);
+    await cancelWorkflowAutomationRun(actor, secondOnce.runId);
 
-    const eventTrigger = await accept(
-      triggersClient().create({
+    const eventAutomation = await accept(
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
       }),
       [201],
     );
-    const eventRun = await runWorkflowTriggerAndReadContext(
+    const eventRun = await runWorkflowAutomationAndReadContext(
       actor,
-      eventTrigger.body.id,
+      eventAutomation.body.id,
     );
     expectSemanticEmbeddingTiming(eventRun.runId, {
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, eventRun.runId);
+    await cancelWorkflowAutomationRun(actor, eventRun.runId);
 
     expect(
       embeddingRequests.filter((request) => {
@@ -2932,7 +2935,7 @@ describe("zero workflow triggers", () => {
     ).toHaveLength(3);
   });
 
-  it("retries a recurring trigger embedding after the provider fails open", async () => {
+  it("retries a recurring automation embedding after the provider fails open", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { fixture, actor, workflowId } = await setupFixture();
     await enableWorkflowRuntimeMemory(fixture);
@@ -2963,7 +2966,7 @@ describe("zero workflow triggers", () => {
       [200],
     );
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 3600 } },
@@ -2971,7 +2974,7 @@ describe("zero workflow triggers", () => {
       [201],
     );
 
-    const failed = await runWorkflowTriggerAndReadContext(
+    const failed = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2980,10 +2983,10 @@ describe("zero workflow triggers", () => {
       cacheResult: "miss_absent",
       embeddingResult: "empty",
     });
-    await cancelWorkflowTriggerRun(actor, failed.runId);
+    await cancelWorkflowAutomationRun(actor, failed.runId);
 
     embeddingShouldFail = false;
-    const retried = await runWorkflowTriggerAndReadContext(
+    const retried = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -2992,9 +2995,9 @@ describe("zero workflow triggers", () => {
       cacheResult: "miss_absent",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, retried.runId);
+    await cancelWorkflowAutomationRun(actor, retried.runId);
 
-    const cached = await runWorkflowTriggerAndReadContext(
+    const cached = await runWorkflowAutomationAndReadContext(
       actor,
       created.body.id,
     );
@@ -3003,7 +3006,7 @@ describe("zero workflow triggers", () => {
       cacheResult: "hit",
       embeddingResult: "present",
     });
-    await cancelWorkflowTriggerRun(actor, cached.runId);
+    await cancelWorkflowAutomationRun(actor, cached.runId);
 
     expect(
       embeddingRequests.filter((request) => {
@@ -3012,11 +3015,11 @@ describe("zero workflow triggers", () => {
     ).toHaveLength(2);
   });
 
-  it("runs a one-time trigger immediately in its bound chat thread", async () => {
+  it("runs a one-time automation immediately in its bound chat thread", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { workflowId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -3031,11 +3034,11 @@ describe("zero workflow triggers", () => {
     );
     const threadId = created.body.chatThreadId;
     if (!threadId) {
-      throw new Error("Expected trigger creation to bind a chat thread");
+      throw new Error("Expected automation creation to bind a chat thread");
     }
 
     const run = await accept(
-      triggersClient().run({
+      legacyAutomationsClient().run({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -3049,7 +3052,7 @@ describe("zero workflow triggers", () => {
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_agent_run",
           trigger_source: "workflow-schedule",
-          zero_run_origin: "workflow_trigger",
+          zero_run_origin: "workflow_automation",
         }),
       ]),
     );
@@ -3076,16 +3079,16 @@ describe("zero workflow triggers", () => {
           op_type:
             "api_dispatch_pre_create_zero_workflow_automation_create_run",
           trigger_source: "workflow-schedule",
-          zero_run_origin: "workflow_trigger",
+          zero_run_origin: "workflow_automation",
           span_kind: "nested",
         }),
       ]),
     );
     expect(JSON.stringify(timingEvents)).not.toContain(WORKFLOW_NAME);
 
-    const trigger = await wf.readTrigger(created.body.id);
-    expect(typeof trigger.lastRunAt).toBe("string");
-    expect(trigger.nextRunAt).toBe(created.body.nextRunAt);
+    const automation = await wf.readAutomation(created.body.id);
+    expect(typeof automation.lastRunAt).toBe("string");
+    expect(automation.nextRunAt).toBe(created.body.nextRunAt);
 
     // The run landed in the bound thread as the workflow slash-command user
     // message, linked to the created run id.

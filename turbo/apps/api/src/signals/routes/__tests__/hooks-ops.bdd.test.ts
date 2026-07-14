@@ -6,7 +6,7 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
 import {
   FeatureSwitchKey,
-  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY,
+  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY as LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY,
 } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -205,7 +205,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(admin),
         body: {
           switches: {
-            [LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY]: true,
+            [LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY]: true,
           },
         },
       }),
@@ -216,7 +216,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeTruthy();
     expect(
       legacyUpdate.body.switches[
-        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+        LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY
       ],
     ).toBeTruthy();
 
@@ -231,7 +231,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeTruthy();
     expect(
       readAfterLegacyUpdate.body.switches[
-        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+        LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY
       ],
     ).toBeTruthy();
 
@@ -240,7 +240,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(admin),
         body: {
           switches: {
-            [LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY]: true,
+            [LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY]: true,
             [FeatureSwitchKey.NotionWorkflowAutomations]: false,
           },
         },
@@ -254,7 +254,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeFalsy();
     expect(
       conflictingUpdate.body.switches[
-        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+        LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY
       ],
     ).toBeFalsy();
     expect(
@@ -264,7 +264,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeFalsy();
     expect(
       conflictingUpdate.body.effectiveSwitches[
-        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+        LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY
       ],
     ).toBeFalsy();
 
@@ -279,7 +279,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeFalsy();
     expect(
       readAfterConflictingUpdate.body.switches[
-        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+        LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY
       ],
     ).toBeFalsy();
   });

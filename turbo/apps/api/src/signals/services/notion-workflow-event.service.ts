@@ -26,8 +26,8 @@ import {
 } from "@vm0/db/schema/notion-event";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
-  workflowUserTriggerThreads,
-  zeroWorkflowTriggers,
+  workflowUserTriggerThreads as workflowUserAutomationThreads,
+  zeroWorkflowTriggers as zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
@@ -45,12 +45,12 @@ import {
   encryptStoredSecretValue,
 } from "./crypto.utils";
 import {
-  buildChatOnlyWorkflowTriggerCallbacks,
-  runWorkflowTriggerNow$,
-  type RunWorkflowTriggerNowArgs,
-  type RunWorkflowTriggerResult,
-  type TriggerRow,
-} from "./zero-workflow-trigger-run.service";
+  buildChatOnlyWorkflowAutomationCallbacks,
+  runWorkflowAutomationNow$,
+  type RunWorkflowAutomationNowArgs,
+  type RunWorkflowAutomationResult,
+  type AutomationRow,
+} from "./zero-workflow-automation-run.service";
 import { recordNotionPageMemorySource } from "./notion-memory-source.service";
 
 const log = logger("api:notion-workflow-event");
@@ -281,23 +281,23 @@ type ExecuteDueNotionEventsResult = {
   readonly skipped: number;
 };
 
-type DueNotionTriggerRow = {
-  readonly trigger: TriggerRow;
+type DueNotionAutomationRow = {
+  readonly automation: AutomationRow;
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string | null;
 };
-type NotionTriggerEventType =
+type NotionAutomationEventType =
   | "notion-child-page-created"
   | "notion-database-item-created"
   | "notion-page-content-updated";
 type NotionRunStarter = (
-  args: RunWorkflowTriggerNowArgs,
+  args: RunWorkflowAutomationNowArgs,
   signal: AbortSignal,
-) => Promise<RunWorkflowTriggerResult>;
+) => Promise<RunWorkflowAutomationResult>;
 interface ProcessClaimedNotionPendingEventArgs {
   readonly db: Db;
-  readonly row: DueNotionTriggerRow;
+  readonly row: DueNotionAutomationRow;
   readonly pending: NotionPendingRow;
   readonly signal: AbortSignal;
   readonly startRun: NotionRunStarter;
@@ -566,7 +566,7 @@ async function refreshNotionAccessToken(args: {
     });
     return {
       kind: "bad_request",
-      message: "Reconnect Notion before using Notion event triggers",
+      message: "Reconnect Notion before using Notion event automations",
     };
   }
 
@@ -643,13 +643,13 @@ export async function resolveNotionAccess(args: {
   if (!connector) {
     return {
       kind: "bad_request",
-      message: "Connect Notion before adding a Notion event trigger",
+      message: "Connect Notion before adding a Notion event automation",
     };
   }
   if (connector.needsReconnect) {
     return {
       kind: "bad_request",
-      message: "Reconnect Notion before using Notion event triggers",
+      message: "Reconnect Notion before using Notion event automations",
     };
   }
 
@@ -658,7 +658,7 @@ export async function resolveNotionAccess(args: {
   if (!accessSecret) {
     return {
       kind: "bad_request",
-      message: "Reconnect Notion before using Notion event triggers",
+      message: "Reconnect Notion before using Notion event automations",
     };
   }
 
@@ -683,7 +683,7 @@ export async function resolveNotionAccess(args: {
     });
     return {
       kind: "bad_request",
-      message: "Reconnect Notion before using Notion event triggers",
+      message: "Reconnect Notion before using Notion event automations",
     };
   }
 
@@ -1233,54 +1233,54 @@ async function insertNotionWebhookEvent(args: {
   return inserted !== undefined;
 }
 
-async function loadNotionChildPageTriggers(args: {
+async function loadNotionChildPageAutomations(args: {
   readonly db: Db;
   readonly signal: AbortSignal;
-}): Promise<readonly TriggerRow[]> {
+}): Promise<readonly AutomationRow[]> {
   const rows = await args.db
     .select()
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowTriggers.kind, "event"),
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.eventType, "notion-child-page-created"),
+        eq(zeroWorkflowAutomations.kind, "event"),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.eventType, "notion-child-page-created"),
       ),
     );
   args.signal.throwIfAborted();
   return rows;
 }
 
-async function loadNotionDatabaseItemTriggers(args: {
+async function loadNotionDatabaseItemAutomations(args: {
   readonly db: Db;
   readonly signal: AbortSignal;
-}): Promise<readonly TriggerRow[]> {
+}): Promise<readonly AutomationRow[]> {
   const rows = await args.db
     .select()
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowTriggers.kind, "event"),
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.eventType, "notion-database-item-created"),
+        eq(zeroWorkflowAutomations.kind, "event"),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.eventType, "notion-database-item-created"),
       ),
     );
   args.signal.throwIfAborted();
   return rows;
 }
 
-async function loadNotionPageContentUpdatedTriggers(args: {
+async function loadNotionPageContentUpdatedAutomations(args: {
   readonly db: Db;
   readonly signal: AbortSignal;
-}): Promise<readonly TriggerRow[]> {
+}): Promise<readonly AutomationRow[]> {
   const rows = await args.db
     .select()
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowTriggers.kind, "event"),
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.eventType, "notion-page-content-updated"),
+        eq(zeroWorkflowAutomations.kind, "event"),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.eventType, "notion-page-content-updated"),
       ),
     );
   args.signal.throwIfAborted();
@@ -1294,11 +1294,11 @@ async function enqueueNotionChildPageEvents(args: {
   readonly parentPageId: string;
   readonly signal: AbortSignal;
 }): Promise<number> {
-  const triggers = await loadNotionChildPageTriggers(args);
+  const automations = await loadNotionChildPageAutomations(args);
   let pending = 0;
-  for (const trigger of triggers) {
+  for (const automation of automations) {
     const config = notionChildPageCreatedEventConfigSchema.safeParse(
-      trigger.eventConfig,
+      automation.eventConfig,
     );
     if (!config.success || config.data.parentPage.id !== args.parentPageId) {
       continue;
@@ -1306,8 +1306,8 @@ async function enqueueNotionChildPageEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: trigger.id,
-        automationId: trigger.id,
+        triggerId: automation.id,
+        automationId: automation.id,
         pageId: args.pageId,
         scopeType: "page",
         scopeId: args.parentPageId,
@@ -1341,11 +1341,11 @@ async function enqueueNotionDatabaseItemEvents(args: {
   readonly dataSourceId: string;
   readonly signal: AbortSignal;
 }): Promise<number> {
-  const triggers = await loadNotionDatabaseItemTriggers(args);
+  const automations = await loadNotionDatabaseItemAutomations(args);
   let pending = 0;
-  for (const trigger of triggers) {
+  for (const automation of automations) {
     const config = notionDatabaseItemCreatedEventConfigSchema.safeParse(
-      trigger.eventConfig,
+      automation.eventConfig,
     );
     if (!config.success || config.data.dataSource.id !== args.dataSourceId) {
       continue;
@@ -1353,8 +1353,8 @@ async function enqueueNotionDatabaseItemEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: trigger.id,
-        automationId: trigger.id,
+        triggerId: automation.id,
+        automationId: automation.id,
         pageId: args.pageId,
         scopeType: "data_source",
         scopeId: args.dataSourceId,
@@ -1404,7 +1404,7 @@ function pageContentUpdatedScopeParent(scope: NotionPageContentUpdatedScope): {
 
 async function dataSourceIdForContentUpdatedEvent(args: {
   readonly db: Db;
-  readonly trigger: TriggerRow;
+  readonly automation: AutomationRow;
   readonly config: NotionPageContentUpdatedEventConfig;
   readonly event: NotionWebhookEvent;
   readonly pageId: string;
@@ -1417,8 +1417,8 @@ async function dataSourceIdForContentUpdatedEvent(args: {
 
   const accessResult = await resolveNotionAccess({
     db: args.db,
-    orgId: args.trigger.orgId,
-    userId: args.trigger.ownerUserId,
+    orgId: args.automation.orgId,
+    userId: args.automation.ownerUserId,
     connectorId: args.config.connectorId,
     signal: args.signal,
   });
@@ -1437,9 +1437,9 @@ async function dataSourceIdForContentUpdatedEvent(args: {
     : null;
 }
 
-async function contentUpdatedTriggerMatchesEvent(args: {
+async function contentUpdatedAutomationMatchesEvent(args: {
   readonly db: Db;
-  readonly trigger: TriggerRow;
+  readonly automation: AutomationRow;
   readonly config: NotionPageContentUpdatedEventConfig;
   readonly event: NotionWebhookEvent;
   readonly pageId: string;
@@ -1458,20 +1458,20 @@ async function enqueueOrRefreshNotionPageContentUpdatedEvents(args: {
   readonly pageId: string;
   readonly signal: AbortSignal;
 }): Promise<{ readonly pending: number; readonly refreshed: number }> {
-  const triggers = await loadNotionPageContentUpdatedTriggers(args);
+  const automations = await loadNotionPageContentUpdatedAutomations(args);
   let pending = 0;
   let refreshed = 0;
-  for (const trigger of triggers) {
+  for (const automation of automations) {
     const config = notionPageContentUpdatedEventConfigSchema.safeParse(
-      trigger.eventConfig,
+      automation.eventConfig,
     );
     if (!config.success) {
       continue;
     }
     if (
-      !(await contentUpdatedTriggerMatchesEvent({
+      !(await contentUpdatedAutomationMatchesEvent({
         db: args.db,
-        trigger,
+        automation,
         config: config.data,
         event: args.event,
         pageId: args.pageId,
@@ -1494,7 +1494,7 @@ async function enqueueOrRefreshNotionPageContentUpdatedEvents(args: {
       })
       .where(
         and(
-          eq(notionWorkflowPendingEvents.automationId, trigger.id),
+          eq(notionWorkflowPendingEvents.automationId, automation.id),
           eq(notionWorkflowPendingEvents.pageId, args.pageId),
           eq(notionWorkflowPendingEvents.eventFamily, "page_content_updated"),
           eq(notionWorkflowPendingEvents.status, "pending"),
@@ -1511,8 +1511,8 @@ async function enqueueOrRefreshNotionPageContentUpdatedEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: trigger.id,
-        automationId: trigger.id,
+        triggerId: automation.id,
+        automationId: automation.id,
         pageId: args.pageId,
         scopeType: pageContentUpdatedScopeType(config.data.scope),
         scopeId: pageContentUpdatedScopeId(config.data.scope),
@@ -1829,35 +1829,38 @@ async function claimNotionPendingEvent(args: {
   return claimed ?? null;
 }
 
-async function loadDueNotionTriggerRow(args: {
+async function loadDueNotionAutomationRow(args: {
   readonly db: Db;
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly signal: AbortSignal;
-}): Promise<DueNotionTriggerRow | null> {
+}): Promise<DueNotionAutomationRow | null> {
   const [row] = await args.db
     .select({
-      trigger: zeroWorkflowTriggers,
+      automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
-      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+      chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .innerJoin(
       zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
     )
     .leftJoin(
-      workflowUserTriggerThreads,
+      workflowUserAutomationThreads,
       and(
-        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
-        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
         eq(
-          workflowUserTriggerThreads.workflowId,
-          zeroWorkflowTriggers.workflowId,
+          workflowUserAutomationThreads.userId,
+          zeroWorkflowAutomations.ownerUserId,
+        ),
+        eq(
+          workflowUserAutomationThreads.workflowId,
+          zeroWorkflowAutomations.workflowId,
         ),
       ),
     )
-    .where(eq(zeroWorkflowTriggers.id, args.triggerId))
+    .where(eq(zeroWorkflowAutomations.id, args.automationId))
     .limit(1);
   args.signal.throwIfAborted();
   return row ?? null;
@@ -1934,7 +1937,7 @@ async function markPendingEventProcessed(args: {
 }
 
 function buildNotionChildPageWorkflowEventSystemPrompt(args: {
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly config: NotionChildPageCreatedEventConfig;
   readonly page: NotionPageResponse;
   readonly parent: NotionPageReference;
@@ -1944,15 +1947,15 @@ function buildNotionChildPageWorkflowEventSystemPrompt(args: {
   const pageTitle = notionTitleFromProperties(args.page.properties);
   return [
     "# Current context",
-    'You are running because a Notion "New Notion child page" workflow event trigger matched a new direct child page under the configured parent page.',
+    'You are running because a Notion "New Notion child page" workflow event automation matched a new direct child page under the configured parent page.',
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The Notion page body is not included in this trigger context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
+    "The Notion page body is not included in this automation context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
     "",
     "# Notion event",
     JSON.stringify(
       {
-        triggerId: args.triggerId,
+        automationId: args.automationId,
         event: args.config.event,
         connectorId: args.config.connectorId,
         page: {
@@ -1977,7 +1980,7 @@ function buildNotionChildPageWorkflowEventSystemPrompt(args: {
 }
 
 function buildNotionDatabaseItemWorkflowEventSystemPrompt(args: {
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly config: NotionDatabaseItemCreatedEventConfig;
   readonly page: NotionPageResponse;
   readonly dataSource: NotionDataSourceReference;
@@ -1987,15 +1990,15 @@ function buildNotionDatabaseItemWorkflowEventSystemPrompt(args: {
   const pageTitle = notionTitleFromProperties(args.page.properties);
   return [
     "# Current context",
-    'You are running because a Notion "New Notion database item" workflow event trigger matched a new page inside the configured Notion database.',
+    'You are running because a Notion "New Notion database item" workflow event automation matched a new page inside the configured Notion database.',
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The Notion page body is not included in this trigger context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
+    "The Notion page body is not included in this automation context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
     "",
     "# Notion event",
     JSON.stringify(
       {
-        triggerId: args.triggerId,
+        automationId: args.automationId,
         event: args.config.event,
         connectorId: args.config.connectorId,
         page: {
@@ -2021,7 +2024,7 @@ function buildNotionDatabaseItemWorkflowEventSystemPrompt(args: {
 }
 
 function buildNotionPageContentUpdatedWorkflowEventSystemPrompt(args: {
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly config: NotionPageContentUpdatedEventConfig;
   readonly page: NotionPageResponse;
   readonly scope: NotionPageContentUpdatedScope;
@@ -2050,15 +2053,15 @@ function buildNotionPageContentUpdatedWorkflowEventSystemPrompt(args: {
         };
   return [
     "# Current context",
-    'You are running because a Notion "Page content updated" workflow event trigger matched a content update on a configured Notion page or database item.',
+    'You are running because a Notion "Page content updated" workflow event automation matched a content update on a configured Notion page or database item.',
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The Notion page body is not included in this trigger context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
+    "The Notion page body is not included in this automation context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
     "",
     "# Notion event",
     JSON.stringify(
       {
-        triggerId: args.triggerId,
+        automationId: args.automationId,
         event: args.config.event,
         connectorId: args.config.connectorId,
         page: {
@@ -2080,7 +2083,7 @@ function buildNotionPageContentUpdatedWorkflowEventSystemPrompt(args: {
   ].join("\n");
 }
 
-function buildNotionChildPageWorkflowTriggerBrief(args: {
+function buildNotionChildPageWorkflowAutomationBrief(args: {
   readonly page: NotionPageResponse;
   readonly parent: NotionPageReference;
 }): string {
@@ -2089,7 +2092,7 @@ function buildNotionChildPageWorkflowTriggerBrief(args: {
   return `New Notion child page${pageTitle ? ` "${pageTitle}"` : ""} under ${parentTitle}`;
 }
 
-function buildNotionDatabaseItemWorkflowTriggerBrief(args: {
+function buildNotionDatabaseItemWorkflowAutomationBrief(args: {
   readonly page: NotionPageResponse;
   readonly dataSource: NotionDataSourceReference;
 }): string {
@@ -2098,7 +2101,7 @@ function buildNotionDatabaseItemWorkflowTriggerBrief(args: {
   return `New Notion database item${pageTitle ? ` "${pageTitle}"` : ""} in ${dataSourceTitle}`;
 }
 
-function buildNotionPageContentUpdatedWorkflowTriggerBrief(args: {
+function buildNotionPageContentUpdatedWorkflowAutomationBrief(args: {
   readonly page: NotionPageResponse;
   readonly scope: NotionPageContentUpdatedScope;
 }): string {
@@ -2112,7 +2115,7 @@ function buildNotionPageContentUpdatedWorkflowTriggerBrief(args: {
 
 function notionRunFailureMessage(
   result: Exclude<
-    RunWorkflowTriggerResult,
+    RunWorkflowAutomationResult,
     { readonly kind: "ok" } | { readonly kind: "enqueued" }
   >,
 ): string {
@@ -2131,7 +2134,7 @@ function notionMemoryEventType(
 
 async function recordNotionPendingPageMemorySource(args: {
   readonly db: Db;
-  readonly row: DueNotionTriggerRow;
+  readonly row: DueNotionAutomationRow;
   readonly pending: NotionPendingRow;
   readonly connectorId: string;
   readonly page: NotionPageResponse;
@@ -2143,8 +2146,8 @@ async function recordNotionPendingPageMemorySource(args: {
   const context = args.pending.latestEventContext;
   return await recordNotionPageMemorySource({
     db: args.db,
-    orgId: args.row.trigger.orgId,
-    userId: args.row.trigger.ownerUserId,
+    orgId: args.row.automation.orgId,
+    userId: args.row.automation.ownerUserId,
     connectorId: args.connectorId,
     page: {
       id: args.page.id,
@@ -2260,17 +2263,17 @@ function pageContentUpdatedScopeStillMatches(args: {
 }
 
 async function startNotionWorkflowRun(args: {
-  readonly row: DueNotionTriggerRow;
+  readonly row: DueNotionAutomationRow;
   readonly chatThreadId: string;
   readonly appendSystemPrompt: string;
   readonly triggerBrief: string;
   readonly signal: AbortSignal;
   readonly startRun: NotionRunStarter;
-}): Promise<RunWorkflowTriggerResult> {
+}): Promise<RunWorkflowAutomationResult> {
   return await args.startRun(
     {
       due: {
-        trigger: args.row.trigger,
+        automation: args.row.automation,
         agentId: args.row.agentId,
         workflowName: args.row.workflowName,
         chatThreadId: args.chatThreadId,
@@ -2279,7 +2282,7 @@ async function startNotionWorkflowRun(args: {
       triggerSource: "workflow-event",
       appendSystemPrompt: args.appendSystemPrompt,
       triggerBrief: args.triggerBrief,
-      callbacks: buildChatOnlyWorkflowTriggerCallbacks(
+      callbacks: buildChatOnlyWorkflowAutomationCallbacks(
         args.chatThreadId,
         args.row.agentId,
       ),
@@ -2292,14 +2295,14 @@ async function startNotionWorkflowRun(args: {
   );
 }
 
-function notionTriggerIsActive(
-  row: DueNotionTriggerRow,
-  eventType: NotionTriggerEventType,
+function notionAutomationIsActive(
+  row: DueNotionAutomationRow,
+  eventType: NotionAutomationEventType,
 ): boolean {
   return (
-    row.trigger.kind === "event" &&
-    row.trigger.eventType === eventType &&
-    row.trigger.enabled
+    row.automation.kind === "event" &&
+    row.automation.eventType === eventType &&
+    row.automation.enabled
   );
 }
 
@@ -2307,20 +2310,20 @@ async function processClaimedNotionChildPagePendingEvent(
   args: ProcessClaimedNotionPendingEventArgs,
 ): Promise<"executed" | "skipped"> {
   if (
-    !notionTriggerIsActive(args.row, "notion-child-page-created") ||
+    !notionAutomationIsActive(args.row, "notion-child-page-created") ||
     !args.row.chatThreadId
   ) {
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,
-      reason: "Trigger is no longer active",
+      reason: "Automation is no longer active",
       signal: args.signal,
     });
     return "skipped";
   }
 
   const config = notionChildPageCreatedEventConfigSchema.safeParse(
-    args.row.trigger.eventConfig,
+    args.row.automation.eventConfig,
   );
   if (
     !config.success ||
@@ -2330,15 +2333,15 @@ async function processClaimedNotionChildPagePendingEvent(
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,
-      reason: "Trigger config no longer matches",
+      reason: "Automation config no longer matches",
       signal: args.signal,
     });
     return "skipped";
   }
   const accessResult = await resolveNotionAccess({
     db: args.db,
-    orgId: args.row.trigger.orgId,
-    userId: args.row.trigger.ownerUserId,
+    orgId: args.row.automation.orgId,
+    userId: args.row.automation.ownerUserId,
     connectorId: config.data.connectorId,
     signal: args.signal,
   });
@@ -2389,14 +2392,14 @@ async function processClaimedNotionChildPagePendingEvent(
     row: args.row,
     chatThreadId: args.row.chatThreadId,
     appendSystemPrompt: buildNotionChildPageWorkflowEventSystemPrompt({
-      triggerId: args.row.trigger.id,
+      automationId: args.row.automation.id,
       config: config.data,
       page: childPage,
       parent,
       firstEventAt: args.pending.firstEventAt,
       latestEventAt: args.pending.latestEventAt,
     }),
-    triggerBrief: buildNotionChildPageWorkflowTriggerBrief({
+    triggerBrief: buildNotionChildPageWorkflowAutomationBrief({
       page: childPage,
       parent,
     }),
@@ -2428,20 +2431,20 @@ async function processClaimedNotionDatabaseItemPendingEvent(
   args: ProcessClaimedNotionPendingEventArgs,
 ): Promise<"executed" | "skipped"> {
   if (
-    !notionTriggerIsActive(args.row, "notion-database-item-created") ||
+    !notionAutomationIsActive(args.row, "notion-database-item-created") ||
     !args.row.chatThreadId
   ) {
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,
-      reason: "Trigger is no longer active",
+      reason: "Automation is no longer active",
       signal: args.signal,
     });
     return "skipped";
   }
 
   const config = notionDatabaseItemCreatedEventConfigSchema.safeParse(
-    args.row.trigger.eventConfig,
+    args.row.automation.eventConfig,
   );
   if (
     !config.success ||
@@ -2451,7 +2454,7 @@ async function processClaimedNotionDatabaseItemPendingEvent(
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,
-      reason: "Trigger config no longer matches",
+      reason: "Automation config no longer matches",
       signal: args.signal,
     });
     return "skipped";
@@ -2460,8 +2463,8 @@ async function processClaimedNotionDatabaseItemPendingEvent(
 
   const accessResult = await resolveNotionAccess({
     db: args.db,
-    orgId: args.row.trigger.orgId,
-    userId: args.row.trigger.ownerUserId,
+    orgId: args.row.automation.orgId,
+    userId: args.row.automation.ownerUserId,
     connectorId: config.data.connectorId,
     signal: args.signal,
   });
@@ -2512,14 +2515,14 @@ async function processClaimedNotionDatabaseItemPendingEvent(
     row: args.row,
     chatThreadId: args.row.chatThreadId,
     appendSystemPrompt: buildNotionDatabaseItemWorkflowEventSystemPrompt({
-      triggerId: args.row.trigger.id,
+      automationId: args.row.automation.id,
       config: config.data,
       page,
       dataSource,
       firstEventAt: args.pending.firstEventAt,
       latestEventAt: args.pending.latestEventAt,
     }),
-    triggerBrief: buildNotionDatabaseItemWorkflowTriggerBrief({
+    triggerBrief: buildNotionDatabaseItemWorkflowAutomationBrief({
       page,
       dataSource,
     }),
@@ -2584,20 +2587,20 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
   args: ProcessClaimedNotionPendingEventArgs,
 ): Promise<"executed" | "skipped"> {
   if (
-    !notionTriggerIsActive(args.row, "notion-page-content-updated") ||
+    !notionAutomationIsActive(args.row, "notion-page-content-updated") ||
     !args.row.chatThreadId
   ) {
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,
-      reason: "Trigger is no longer active",
+      reason: "Automation is no longer active",
       signal: args.signal,
     });
     return "skipped";
   }
 
   const config = notionPageContentUpdatedEventConfigSchema.safeParse(
-    args.row.trigger.eventConfig,
+    args.row.automation.eventConfig,
   );
   if (
     !config.success ||
@@ -2607,7 +2610,7 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
     await skipPendingEvent({
       db: args.db,
       pendingId: args.pending.id,
-      reason: "Trigger config no longer matches",
+      reason: "Automation config no longer matches",
       signal: args.signal,
     });
     return "skipped";
@@ -2615,8 +2618,8 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
 
   const accessResult = await resolveNotionAccess({
     db: args.db,
-    orgId: args.row.trigger.orgId,
-    userId: args.row.trigger.ownerUserId,
+    orgId: args.row.automation.orgId,
+    userId: args.row.automation.ownerUserId,
     connectorId: config.data.connectorId,
     signal: args.signal,
   });
@@ -2673,7 +2676,7 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
     row: args.row,
     chatThreadId: args.row.chatThreadId,
     appendSystemPrompt: buildNotionPageContentUpdatedWorkflowEventSystemPrompt({
-      triggerId: args.row.trigger.id,
+      automationId: args.row.automation.id,
       config: config.data,
       page,
       scope,
@@ -2681,7 +2684,7 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
       latestEventAt: args.pending.latestEventAt,
       latestEventContext: args.pending.latestEventContext ?? null,
     }),
-    triggerBrief: buildNotionPageContentUpdatedWorkflowTriggerBrief({
+    triggerBrief: buildNotionPageContentUpdatedWorkflowAutomationBrief({
       page,
       scope,
     }),
@@ -2715,9 +2718,9 @@ async function processClaimedNotionPendingEvent(args: {
   readonly signal: AbortSignal;
   readonly startRun: NotionRunStarter;
 }): Promise<"executed" | "skipped"> {
-  const row = await loadDueNotionTriggerRow({
+  const row = await loadDueNotionAutomationRow({
     db: args.db,
-    triggerId: args.pending.triggerId,
+    automationId: args.pending.triggerId,
     signal: args.signal,
   });
   if (!row) {
@@ -2769,7 +2772,7 @@ export const executeDueNotionWorkflowEvents$ = command(
         pending: claimed,
         signal,
         startRun: (input, childSignal) => {
-          return set(runWorkflowTriggerNow$, input, childSignal);
+          return set(runWorkflowAutomationNow$, input, childSignal);
         },
       });
       if (outcome === "executed") {

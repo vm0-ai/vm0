@@ -24,9 +24,9 @@ function pad2(value: number): string {
 
 function displayTimezone(args: {
   readonly userTimezone: string | null;
-  readonly triggerTimezone: string | null;
+  readonly automationTimezone: string | null;
 }): string {
-  const candidates = [args.userTimezone, args.triggerTimezone, "UTC"];
+  const candidates = [args.userTimezone, args.automationTimezone, "UTC"];
   return (
     candidates.find((candidate) => {
       return candidate !== null && isValidTimeZone(candidate);
@@ -40,16 +40,19 @@ function formatClockTime(hour: number, minute: number): string {
   return `${h12}:${pad2(minute)} ${ampm}`;
 }
 
-type WorkflowTriggerDateTimeInput = Date | string | number;
+type WorkflowAutomationDateTimeInput = Date | string | number;
 
-function normalizeWorkflowTriggerDateTime(
-  value: WorkflowTriggerDateTimeInput,
+function normalizeWorkflowAutomationDateTime(
+  value: WorkflowAutomationDateTimeInput,
 ): Date | null {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function formatWorkflowTriggerDateTime(date: Date, timezone: string): string {
+function formatWorkflowAutomationDateTime(
+  date: Date,
+  timezone: string,
+): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     month: "short",
@@ -241,7 +244,7 @@ function cronWallTimeInTimezone(args: {
 
 function formatCronRule(args: {
   readonly cronExpression: string;
-  readonly triggerTimezone: string;
+  readonly automationTimezone: string;
   readonly displayTimezone: string;
   readonly referenceDate: Date;
 }): string {
@@ -251,12 +254,12 @@ function formatCronRule(args: {
   const dayOfMonth = parts[2] ?? "*";
   const dayOfWeek = parts[4] ?? "*";
   if (parts.length !== 5 || hour === null || minute === null) {
-    return `${args.cronExpression} (${args.triggerTimezone})`;
+    return `${args.cronExpression} (${args.automationTimezone})`;
   }
   const converted = cronWallTimeInTimezone({
     hour,
     minute,
-    sourceTimezone: args.triggerTimezone,
+    sourceTimezone: args.automationTimezone,
     displayTimezone: args.displayTimezone,
     referenceDate: args.referenceDate,
   });
@@ -268,12 +271,12 @@ function formatCronRule(args: {
     );
     return displayDayOfMonth
       ? `Every month on day ${displayDayOfMonth} at ${time}`
-      : `${args.cronExpression} (${args.triggerTimezone})`;
+      : `${args.cronExpression} (${args.automationTimezone})`;
   }
   if (dayOfMonth === "*" && dayOfWeek !== "*") {
     const days = parseCronDayOfWeekList(dayOfWeek);
     if (!days) {
-      return `${args.cronExpression} (${args.triggerTimezone})`;
+      return `${args.cronExpression} (${args.automationTimezone})`;
     }
     const displayDays = shiftCronDays(days, converted.dayOffset);
     if (sameNumberList(displayDays, [1, 2, 3, 4, 5])) {
@@ -298,31 +301,31 @@ function formatCronRule(args: {
   if (dayOfMonth === "*" && dayOfWeek === "*") {
     return `Every day at ${time}`;
   }
-  return `${args.cronExpression} (${args.triggerTimezone})`;
+  return `${args.cronExpression} (${args.automationTimezone})`;
 }
 
-export function buildWorkflowScheduleTriggerBrief(args: {
-  readonly createdAt: WorkflowTriggerDateTimeInput;
+export function buildWorkflowScheduleAutomationBrief(args: {
+  readonly createdAt: WorkflowAutomationDateTimeInput;
   readonly scheduleType: string | null;
   readonly cronExpression: string | null;
   readonly intervalSeconds: number | null;
-  readonly atTime: WorkflowTriggerDateTimeInput | null;
-  readonly triggerTimezone: string | null;
+  readonly atTime: WorkflowAutomationDateTimeInput | null;
+  readonly automationTimezone: string | null;
   readonly userTimezone: string | null;
 }): string | null {
   if (args.scheduleType === null) {
     return null;
   }
   const timezone = displayTimezone(args);
-  const triggerTimezone =
-    args.triggerTimezone !== null && isValidTimeZone(args.triggerTimezone)
-      ? args.triggerTimezone
+  const automationTimezone =
+    args.automationTimezone !== null && isValidTimeZone(args.automationTimezone)
+      ? args.automationTimezone
       : timezone;
-  const createdAt = normalizeWorkflowTriggerDateTime(args.createdAt);
+  const createdAt = normalizeWorkflowAutomationDateTime(args.createdAt);
   if (createdAt === null) {
     return null;
   }
-  const triggeredAt = formatWorkflowTriggerDateTime(createdAt, timezone);
+  const triggeredAt = formatWorkflowAutomationDateTime(createdAt, timezone);
   if (args.scheduleType === "cron") {
     const cronExpression = args.cronExpression?.trim();
     if (!cronExpression) {
@@ -332,7 +335,7 @@ export function buildWorkflowScheduleTriggerBrief(args: {
       `Triggered at ${triggeredAt}`,
       `Schedule: ${formatCronRule({
         cronExpression,
-        triggerTimezone,
+        automationTimezone,
         displayTimezone: timezone,
         referenceDate: createdAt,
       })}`,
@@ -350,7 +353,7 @@ export function buildWorkflowScheduleTriggerBrief(args: {
   const onceDate =
     args.atTime === null
       ? createdAt
-      : (normalizeWorkflowTriggerDateTime(args.atTime) ?? createdAt);
-  const onceAt = formatWorkflowTriggerDateTime(onceDate, timezone);
+      : (normalizeWorkflowAutomationDateTime(args.atTime) ?? createdAt);
+  const onceAt = formatWorkflowAutomationDateTime(onceDate, timezone);
   return `Once at ${onceAt}`;
 }

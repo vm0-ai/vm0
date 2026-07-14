@@ -1,8 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 
 import {
-  zeroWorkflowTriggers,
-  zeroWorkflowWebhookTriggers,
+  zeroWorkflowTriggers as zeroWorkflowAutomations,
+  zeroWorkflowWebhookTriggers as zeroWorkflowWebhookAutomations,
 } from "@vm0/db/schema/zero-workflow";
 
 import type { Db } from "../external/db";
@@ -11,7 +11,7 @@ import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-export async function lockWorkflowWebhookTriggerTierEligibleForOrg(
+export async function lockWorkflowWebhookAutomationTierEligibleForOrg(
   tx: DbTransaction,
   args: { readonly orgId: string; readonly signal: AbortSignal },
 ): Promise<boolean> {
@@ -19,15 +19,15 @@ export async function lockWorkflowWebhookTriggerTierEligibleForOrg(
     forUpdate: true,
   });
   args.signal.throwIfAborted();
-  return capabilities?.workflowWebhookTriggerAllowed === true;
+  return capabilities?.workflowWebhookAutomationAllowed === true;
 }
 
-export async function disableIneligibleWorkflowWebhookTriggersForOrg(
+export async function disableIneligibleWorkflowWebhookAutomationsForOrg(
   db: Db,
   args: { readonly orgId: string; readonly signal: AbortSignal },
 ): Promise<number> {
   return await db.transaction(async (tx) => {
-    const tierEligible = await lockWorkflowWebhookTriggerTierEligibleForOrg(
+    const tierEligible = await lockWorkflowWebhookAutomationTierEligibleForOrg(
       tx,
       args,
     );
@@ -35,37 +35,37 @@ export async function disableIneligibleWorkflowWebhookTriggersForOrg(
       return 0;
     }
 
-    const webhookTriggerIds = tx
-      .select({ triggerId: zeroWorkflowWebhookTriggers.triggerId })
-      .from(zeroWorkflowWebhookTriggers);
+    const webhookAutomationIds = tx
+      .select({ triggerId: zeroWorkflowWebhookAutomations.triggerId })
+      .from(zeroWorkflowWebhookAutomations);
     const currentTime = nowDate();
     const disabled = await tx
-      .update(zeroWorkflowTriggers)
+      .update(zeroWorkflowAutomations)
       .set({ enabled: false, updatedAt: currentTime })
       .where(
         and(
-          eq(zeroWorkflowTriggers.orgId, args.orgId),
-          eq(zeroWorkflowTriggers.enabled, true),
-          inArray(zeroWorkflowTriggers.id, webhookTriggerIds),
+          eq(zeroWorkflowAutomations.orgId, args.orgId),
+          eq(zeroWorkflowAutomations.enabled, true),
+          inArray(zeroWorkflowAutomations.id, webhookAutomationIds),
         ),
       )
-      .returning({ id: zeroWorkflowTriggers.id });
+      .returning({ id: zeroWorkflowAutomations.id });
     args.signal.throwIfAborted();
     if (disabled.length === 0) {
       return 0;
     }
 
     await tx
-      .update(zeroWorkflowWebhookTriggers)
+      .update(zeroWorkflowWebhookAutomations)
       .set({
         disabledReason: "paid_plan_required",
         updatedAt: currentTime,
       })
       .where(
         inArray(
-          zeroWorkflowWebhookTriggers.triggerId,
-          disabled.map((trigger) => {
-            return trigger.id;
+          zeroWorkflowWebhookAutomations.triggerId,
+          disabled.map((automation) => {
+            return automation.id;
           }),
         ),
       );

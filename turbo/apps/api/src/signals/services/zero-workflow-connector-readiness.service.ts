@@ -13,7 +13,7 @@ import {
 } from "@vm0/connectors/connectors";
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
-  zeroWorkflowTriggers,
+  zeroWorkflowTriggers as zeroWorkflowAutomations,
   type ZeroWorkflowEventType,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
@@ -62,26 +62,26 @@ type DetectWorkflowConnectorReadinessResult =
       readonly message: string;
     };
 
-interface TriggerConnectorDependency {
+interface AutomationConnectorDependency {
   readonly connectorRef: ConnectorType;
   readonly reason: string;
 }
 
-function triggerConnectorDependency(
+function automationConnectorDependency(
   eventType: ZeroWorkflowEventType,
-): TriggerConnectorDependency | null {
+): AutomationConnectorDependency | null {
   switch (eventType) {
     case "gmail-new-message":
     case "gmail-label-applied": {
       return {
         connectorRef: "gmail",
-        reason: "This workflow has a Gmail event trigger.",
+        reason: "This workflow has a Gmail event automation.",
       };
     }
     case "github-label-applied": {
       return {
         connectorRef: "github",
-        reason: "This workflow has a GitHub event trigger.",
+        reason: "This workflow has a GitHub event automation.",
       };
     }
     case "google-calendar-event-created":
@@ -89,13 +89,13 @@ function triggerConnectorDependency(
     case "google-calendar-event-cancelled": {
       return {
         connectorRef: "google-calendar",
-        reason: "This workflow has a Google Calendar event trigger.",
+        reason: "This workflow has a Google Calendar event automation.",
       };
     }
     case "google-meet-transcript-generated": {
       return {
         connectorRef: "google-meet",
-        reason: "This workflow has a Google Meet event trigger.",
+        reason: "This workflow has a Google Meet event automation.",
       };
     }
     case "notion-child-page-created":
@@ -103,7 +103,7 @@ function triggerConnectorDependency(
     case "notion-page-content-updated": {
       return {
         connectorRef: "notion",
-        reason: "This workflow has a Notion event trigger.",
+        reason: "This workflow has a Notion event automation.",
       };
     }
     default: {
@@ -133,31 +133,31 @@ function workflowInputLength(input: WorkflowConnectorReadinessInput): number {
   );
 }
 
-async function loadTriggerConnectorDependencies(
+async function loadAutomationConnectorDependencies(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly workflowId: string;
   },
-): Promise<ReadonlyMap<ConnectorType, TriggerConnectorDependency>> {
-  const triggers = await db
-    .select({ eventType: zeroWorkflowTriggers.eventType })
-    .from(zeroWorkflowTriggers)
+): Promise<ReadonlyMap<ConnectorType, AutomationConnectorDependency>> {
+  const automations = await db
+    .select({ eventType: zeroWorkflowAutomations.eventType })
+    .from(zeroWorkflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-        eq(zeroWorkflowTriggers.workflowId, args.workflowId),
+        eq(zeroWorkflowAutomations.orgId, args.orgId),
+        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+        eq(zeroWorkflowAutomations.workflowId, args.workflowId),
       ),
     );
 
-  const dependencies = new Map<ConnectorType, TriggerConnectorDependency>();
-  for (const trigger of triggers) {
-    if (!trigger.eventType) {
+  const dependencies = new Map<ConnectorType, AutomationConnectorDependency>();
+  for (const automation of automations) {
+    if (!automation.eventType) {
       continue;
     }
-    const dependency = triggerConnectorDependency(trigger.eventType);
+    const dependency = automationConnectorDependency(automation.eventType);
     if (dependency && !dependencies.has(dependency.connectorRef)) {
       dependencies.set(dependency.connectorRef, dependency);
     }
@@ -165,8 +165,8 @@ async function loadTriggerConnectorDependencies(
   return dependencies;
 }
 
-function triggerConnectorFallbackMetadata(
-  dependencies: ReadonlyMap<ConnectorType, TriggerConnectorDependency>,
+function automationConnectorFallbackMetadata(
+  dependencies: ReadonlyMap<ConnectorType, AutomationConnectorDependency>,
 ): ReadonlyMap<
   ConnectorCatalogRef,
   {
@@ -298,8 +298,8 @@ export const detectWorkflowConnectorReadiness$ = command(
     }
 
     const db = get(db$);
-    const [connectorState, agentScope, triggerDependencies] = await Promise.all(
-      [
+    const [connectorState, agentScope, automationDependencies] =
+      await Promise.all([
         get(
           zeroConnectorList({
             orgId: args.orgId,
@@ -312,13 +312,12 @@ export const detectWorkflowConnectorReadiness$ = command(
           userId: args.userId,
           agentId: args.agentId,
         }),
-        loadTriggerConnectorDependencies(db, {
+        loadAutomationConnectorDependencies(db, {
           orgId: args.orgId,
           userId: args.userId,
           workflowId: args.workflowId,
         }),
-      ],
-    );
+      ]);
     signal.throwIfAborted();
 
     const statusCatalog = await listPublicConnectorCatalogStatus({
@@ -355,17 +354,18 @@ export const detectWorkflowConnectorReadiness$ = command(
     const mergedDependencies = new Map<ConnectorCatalogRef, string>(
       modelDependencies,
     );
-    for (const dependency of triggerDependencies.values()) {
+    for (const dependency of automationDependencies.values()) {
       mergedDependencies.set(dependency.connectorRef, dependency.reason);
     }
-    const triggerFallbackMetadata =
-      triggerConnectorFallbackMetadata(triggerDependencies);
+    const automationFallbackMetadata = automationConnectorFallbackMetadata(
+      automationDependencies,
+    );
 
     const connectors: ZeroWorkflowConnectorReadinessEntry[] = [];
     for (const [connectorRef, reason] of mergedDependencies) {
       const catalogEntry = statusByRef.get(connectorRef);
       if (!catalogEntry) {
-        const fallbackMetadata = triggerFallbackMetadata.get(connectorRef);
+        const fallbackMetadata = automationFallbackMetadata.get(connectorRef);
         if (!fallbackMetadata) {
           throw new Error(
             `Missing connector catalog metadata: ${connectorRef}`,
