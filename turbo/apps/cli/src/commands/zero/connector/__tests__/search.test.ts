@@ -219,7 +219,7 @@ describe("zero connector search command", () => {
       // Keyword "chat" exercises three scoring tiers against the real catalog
       // and pins the priority ordering contract so future refactors of
       // scoreConnector cannot silently reorder them:
-      //   - slack:    tag-exact "chat"             => 70
+      //   - microsoft-365, slack: tag-exact "chat" => 70, sorted by type
       //   - chatwoot: type-substring "chatwoot"    => 50
       //   - openai:   tag-substring "chatgpt"      => 25
       await searchCommand.parseAsync(["node", "cli", "chat", "--limit", "10"]);
@@ -229,10 +229,12 @@ describe("zero connector search command", () => {
       const types = dataRows.map((row) => {
         return row.split(/\s+/)[0];
       });
+      const microsoft365Idx = types.indexOf("microsoft-365");
       const slackIdx = types.indexOf("slack");
       const chatwootIdx = types.indexOf("chatwoot");
       const openaiIdx = types.indexOf("openai");
-      expect(slackIdx).toBe(0);
+      expect(microsoft365Idx).toBe(0);
+      expect(slackIdx).toBe(1);
       expect(chatwootIdx).toBeGreaterThan(slackIdx);
       expect(openaiIdx).toBeGreaterThan(chatwootIdx);
     });
