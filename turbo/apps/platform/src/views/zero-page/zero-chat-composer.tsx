@@ -4621,6 +4621,7 @@ function TemplatePickerCategoryNav({
       <nav
         role="tablist"
         aria-label="Template categories"
+        aria-orientation="vertical"
         data-template-picker-sidebar=""
         className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-gray-50 p-3 sm:flex"
       >
