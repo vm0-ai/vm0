@@ -35,14 +35,14 @@ import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-que
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   zeroWorkflowsCollectionContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   type ChatThreadWorkflowAutomation,
   type ZeroWorkflowAutomationUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  createMockWorkflowTrigger,
-  setMockWorkflowTriggers,
-} from "../../../mocks/handlers/workflow-triggers-store.ts";
+  createMockWorkflowAutomation,
+  setMockWorkflowAutomations,
+} from "../../../mocks/handlers/workflow-automations-store.ts";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
@@ -444,20 +444,20 @@ function mockAutomationThread(): void {
   });
 }
 
-function mockWorkflowTriggerUpdate(
+function mockWorkflowAutomationUpdate(
   onUpdate: (
-    triggerId: string,
+    automationId: string,
     body: ZeroWorkflowAutomationUpdateRequest,
   ) => void,
 ): void {
   context.mocks.api(
-    zeroWorkflowTriggersContract.update,
+    zeroWorkflowAutomationsContract.update,
     ({ body, params, respond }) => {
       onUpdate(params.id, body);
       if ("schedule" in body) {
         return respond(
           200,
-          createMockWorkflowTrigger({
+          createMockWorkflowAutomation({
             id: params.id,
             chatThreadId: AUTOMATION_THREAD_ID,
             kind: "schedule",
@@ -467,7 +467,7 @@ function mockWorkflowTriggerUpdate(
       }
       return respond(
         200,
-        createMockWorkflowTrigger({
+        createMockWorkflowAutomation({
           id: params.id,
           chatThreadId: AUTOMATION_THREAD_ID,
           kind: "event",
@@ -649,11 +649,11 @@ function selectOptionByLabel(
   click(screen.getByRole("option", { name: option }));
 }
 
-async function openAutomationSidebarWithWorkflowTrigger(
-  trigger: ReturnType<typeof createMockWorkflowTrigger>,
+async function openAutomationSidebarWithWorkflowAutomation(
+  automation: ReturnType<typeof createMockWorkflowAutomation>,
 ): Promise<HTMLElement> {
   mockAutomationThread();
-  setMockWorkflowTriggers([trigger]);
+  setMockWorkflowAutomations([automation]);
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, { runs: [] });
   });
@@ -881,7 +881,7 @@ function mockThinkingTypewriterLayout({
   );
 }
 
-function mockResizeObserver(): { triggerAll: () => void } {
+function mockResizeObserver(): { automationAll: () => void } {
   const originalDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
     "ResizeObserver",
@@ -909,7 +909,7 @@ function mockResizeObserver(): { triggerAll: () => void } {
       this.observedTarget = null;
     }
 
-    trigger(): void {
+    automation(): void {
       if (!this.observedTarget) {
         return;
       }
@@ -945,9 +945,9 @@ function mockResizeObserver(): { triggerAll: () => void } {
   );
 
   return {
-    triggerAll: () => {
+    automationAll: () => {
       for (const observer of observers) {
-        observer.trigger();
+        observer.automation();
       }
     },
   };
@@ -3542,7 +3542,7 @@ describe("chat lifecycle", () => {
       scrollHeight: 1200,
       clientHeight: 300,
     });
-    resizeObserver.triggerAll();
+    resizeObserver.automationAll();
     expect(restoredScrollContainer.scrollTop).toBe(480);
     expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
 
@@ -4634,8 +4634,8 @@ describe("chat lifecycle", () => {
 
   it("lists workflow automations in the sidebar", async () => {
     mockAutomationThread();
-    setMockWorkflowTriggers([
-      createMockWorkflowTrigger({
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
         id: "e0000001-0000-4000-a000-000000000002",
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "schedule",
@@ -4701,7 +4701,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows webhook automations in the sidebar without edit controls", async () => {
-    const trigger: ChatThreadWorkflowAutomation = {
+    const automation: ChatThreadWorkflowAutomation = {
       id: "e0000001-0000-4000-a000-000000000006",
       ownerUserId: "test-user-123",
       enabled: true,
@@ -4729,7 +4729,8 @@ describe("chat lifecycle", () => {
       lastReceivedAt: null,
     };
 
-    const sidebar = await openAutomationSidebarWithWorkflowTrigger(trigger);
+    const sidebar =
+      await openAutomationSidebarWithWorkflowAutomation(automation);
 
     expect(within(sidebar).getByText("Webhook sync")).toBeInTheDocument();
     expect(within(sidebar).getByText("Webhook automation")).toBeInTheDocument();
@@ -4740,11 +4741,11 @@ describe("chat lifecycle", () => {
 
   it("updates a schedule workflow automation from the sidebar", async () => {
     const updateBodies: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
-    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
-      createMockWorkflowTrigger({
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
         id: "e0000001-0000-4000-a000-000000000003",
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "schedule",
@@ -4752,8 +4753,8 @@ describe("chat lifecycle", () => {
         scheduleSummary: "Every 3600s",
       }),
     );
-    mockWorkflowTriggerUpdate((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockWorkflowAutomationUpdate((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
@@ -4766,7 +4767,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: "e0000001-0000-4000-a000-000000000003",
+        automationId: "e0000001-0000-4000-a000-000000000003",
         body: {
           schedule: {
             type: "loop",
@@ -4779,11 +4780,11 @@ describe("chat lifecycle", () => {
 
   it("updates a Gmail workflow automation match from the sidebar", async () => {
     const updateBodies: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
-    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
-      createMockWorkflowTrigger({
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
         id: "e0000001-0000-4000-a000-000000000004",
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "event",
@@ -4797,11 +4798,11 @@ describe("chat lifecycle", () => {
         },
       }),
     );
-    // Event triggers must not show a "Next run" row — only schedule triggers do.
+    // Event automations must not show a "Next run" row — only schedule automations do.
     expect(within(sidebar).queryByText("Next run")).not.toBeInTheDocument();
     expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
-    mockWorkflowTriggerUpdate((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockWorkflowAutomationUpdate((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
@@ -4815,7 +4816,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: "e0000001-0000-4000-a000-000000000004",
+        automationId: "e0000001-0000-4000-a000-000000000004",
         body: {
           eventConfig: {
             provider: "gmail",
@@ -4833,11 +4834,11 @@ describe("chat lifecycle", () => {
 
   it("updates a Gmail label workflow automation from the sidebar", async () => {
     const updateBodies: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
-    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
-      createMockWorkflowTrigger({
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
         id: "e0000001-0000-4000-a000-000000000005",
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "event",
@@ -4849,8 +4850,8 @@ describe("chat lifecycle", () => {
         },
       }),
     );
-    mockWorkflowTriggerUpdate((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockWorkflowAutomationUpdate((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
@@ -4863,7 +4864,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: "e0000001-0000-4000-a000-000000000005",
+        automationId: "e0000001-0000-4000-a000-000000000005",
         body: {
           eventConfig: {
             provider: "gmail",
@@ -5323,7 +5324,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("renders workflow trigger user messages with the workflow title and brief", async () => {
+  it("renders workflow automation user messages with the workflow title and brief", async () => {
     const threadId = "thread-workflow-user-message-marker";
     const workflowPrompt = "/daily-workflow";
 

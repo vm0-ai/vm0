@@ -101,7 +101,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import {
   agentVisibleWorkflows$,
-  allWorkflowTriggerEntries$,
+  allWorkflowAutomationEntries$,
   copyWorkflow$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -128,7 +128,7 @@ import {
 } from "../components/detail-page-layout.tsx";
 import {
   WorkflowListPanel,
-  workflowTriggerEntryMap,
+  workflowAutomationEntryMap,
 } from "../workflows-page/workflows-page.tsx";
 
 // ---------------------------------------------------------------------------
@@ -869,16 +869,18 @@ function JobInstructionsTab() {
 
 function AgentWorkflowsTab({ agentId }: { readonly agentId: string }) {
   const workflowsLoadable = useLastLoadable(agentVisibleWorkflows$(agentId));
-  const triggerEntriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
+  const automationEntriesLoadable = useLastLoadable(
+    allWorkflowAutomationEntries$,
+  );
   const preferences = useLastResolved(userPreferences$);
   const loading =
     workflowsLoadable.state === "loading" ||
-    triggerEntriesLoadable.state === "loading";
+    automationEntriesLoadable.state === "loading";
   const workflows =
     workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
-  const triggerEntries =
-    triggerEntriesLoadable.state === "hasData"
-      ? triggerEntriesLoadable.data
+  const automationEntries =
+    automationEntriesLoadable.state === "hasData"
+      ? automationEntriesLoadable.data
       : [];
   const displayTimezone =
     preferences?.timezone ??
@@ -890,7 +892,9 @@ function AgentWorkflowsTab({ agentId }: { readonly agentId: string }) {
         workflows={workflows}
         loading={loading}
         emptyDescription="Create a workflow for this agent from chat or save one from a useful run."
-        triggerEntriesByWorkflowId={workflowTriggerEntryMap(triggerEntries)}
+        automationEntriesByWorkflowId={workflowAutomationEntryMap(
+          automationEntries,
+        )}
         displayTimezone={displayTimezone}
         showAgentColumn={false}
       />

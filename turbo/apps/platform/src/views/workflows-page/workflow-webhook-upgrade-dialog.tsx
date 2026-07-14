@@ -36,7 +36,7 @@ export function WorkflowWebhookUpgradeDialog() {
     detach(
       setSettingsDialogOpen(true, pageSignal),
       Reason.DomCallback,
-      "open Team billing plans for webhook triggers",
+      "open Team billing plans for webhook automations",
     );
   };
 

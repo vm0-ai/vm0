@@ -89,74 +89,74 @@ import {
   changeWorkflowVisibility$,
   checkWorkflowConnectorReadiness$,
   createNotionPageContentUpdatedScope$,
-  createWorkflowGithubLabelAppliedTrigger$,
-  createWorkflowGoogleCalendarEventTrigger$,
-  createWorkflowGoogleMeetTranscriptGeneratedTrigger$,
-  createWorkflowGmailLabelAppliedTrigger$,
-  createWorkflowGmailNewMessageTrigger$,
-  createWorkflowNotionChildPageTrigger$,
-  createWorkflowNotionDatabaseItemTrigger$,
-  createWorkflowNotionPageContentUpdatedTrigger$,
-  createWorkflowWebhookTrigger$,
+  createWorkflowGithubLabelAppliedAutomation$,
+  createWorkflowGoogleCalendarEventAutomation$,
+  createWorkflowGoogleMeetTranscriptGeneratedAutomation$,
+  createWorkflowGmailLabelAppliedAutomation$,
+  createWorkflowGmailNewMessageAutomation$,
+  createWorkflowNotionChildPageAutomation$,
+  createWorkflowNotionDatabaseItemAutomation$,
+  createWorkflowNotionPageContentUpdatedAutomation$,
+  createWorkflowWebhookAutomation$,
   createGithubLabelActor$,
   createScheduleCronFields$,
-  createWorkflowScheduleTrigger$,
-  createdWorkflowWebhookTrigger$,
+  createWorkflowScheduleAutomation$,
+  createdWorkflowWebhookAutomation$,
   currentWorkflowId$,
   copyWorkflow$,
   defaultWorkflowCronFields,
   deleteWorkflow$,
-  deleteWorkflowTrigger$,
+  deleteWorkflowAutomation$,
   editingScheduleCronFields$,
   editingGithubLabelActors$,
-  editingWorkflowTriggerId$,
+  editingWorkflowAutomationId$,
   patchWorkflowMetadataForm$,
   openWorkflowChat$,
-  pauseWorkflowTriggers$,
+  pauseWorkflowAutomations$,
   reloadWorkflows$,
-  revealWebhookSecretTriggerId$,
+  revealWebhookSecretAutomationId$,
   revealWorkflowWebhookSecret$,
   resetWorkflowMetadataForm$,
-  runWorkflowTriggerNow$,
+  runWorkflowAutomationNow$,
   selectedWorkflowFilePath$,
   setCreateGithubLabelActor$,
   setCreateNotionPageContentUpdatedScope$,
   setCreateScheduleCronFields$,
-  setCreatedWorkflowWebhookTrigger$,
+  setCreatedWorkflowWebhookAutomation$,
   setEditingGithubLabelActor$,
   setEditingScheduleCronFields$,
-  setEditingWorkflowTriggerId$,
-  setRevealWebhookSecretTriggerId$,
+  setEditingWorkflowAutomationId$,
+  setRevealWebhookSecretAutomationId$,
   setSelectedWorkflowFilePath$,
   setWorkflowActionDialog$,
   setWorkflowDetailActiveTab$,
   setWorkflowFileDraft$,
   setWorkflowCopyForm$,
-  setWorkflowTriggerCreateDialog$,
-  setWorkflowTriggerEnabled$,
-  updateWorkflowGithubLabelAppliedTrigger$,
-  updateWorkflowGmailNewMessageTrigger$,
-  updateWorkflowGmailLabelAppliedTrigger$,
-  updateWorkflowScheduleTrigger$,
+  setWorkflowAutomationCreateDialog$,
+  setWorkflowAutomationEnabled$,
+  updateWorkflowGithubLabelAppliedAutomation$,
+  updateWorkflowGmailNewMessageAutomation$,
+  updateWorkflowGmailLabelAppliedAutomation$,
+  updateWorkflowScheduleAutomation$,
   updateWorkflow$,
   workflowActionDialog$,
   workflowDemoteConfirmOpen$,
   setWorkflowDemoteConfirmOpen$,
-  setWorkflowTriggerPickerCategory$,
-  setWorkflowTriggerPickerOpen$,
+  setWorkflowAutomationPickerCategory$,
+  setWorkflowAutomationPickerOpen$,
   setWorkflowWebhookUpgradeDialogOpen$,
   workflowCopyForm$,
   workflowDetailActiveTab$,
-  workflowTriggerCreateDialog$,
-  workflowTriggerPickerCategory$,
-  workflowTriggerPickerOpen$,
+  workflowAutomationCreateDialog$,
+  workflowAutomationPickerCategory$,
+  workflowAutomationPickerOpen$,
   workflowFileDraft$,
   workflowDetail,
   type WorkflowCopyFormState,
   type WorkflowCronFields,
   type WorkflowCronFrequency,
   type WorkflowDetailTab,
-  type WorkflowTriggerCreateDialog,
+  type WorkflowAutomationCreateDialog,
   type NotionPageContentUpdatedScopeMode,
   workflowMetadataPatch$,
   workflowConnectorReadiness$,
@@ -204,41 +204,41 @@ import {
   formatWorkflowIntervalSeconds,
   getWorkflowIntervalSecondOptions,
   isMarkdownPath,
-  triggerKindLabel,
+  automationKindLabel,
   workflowTitle,
 } from "./workflow-shared.tsx";
 import { WorkflowHoverContent } from "./workflows-page.tsx";
-import { TriggerListIcon } from "../zero-page/workflow-trigger-automations-page.tsx";
+import { AutomationListIcon } from "../zero-page/workflow-automations-page.tsx";
 import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
 const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
-const TRIGGER_FIELD_CLASS =
+const AUTOMATION_FIELD_CLASS =
   "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
 const WORKFLOW_EDIT_TEXTAREA_CLASS =
   "min-h-24 w-full resize-y rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50";
-const TRIGGER_TIMEZONE = "UTC";
+const AUTOMATION_TIMEZONE = "UTC";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
 type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
-type GmailWorkflowTriggerSummary = Extract<
+type GmailWorkflowAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType: "gmail-new-message" | "gmail-label-applied";
   }
 >;
-type GithubWorkflowTriggerSummary = Extract<
+type GithubWorkflowAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType: "github-label-applied";
   }
 >;
-type WebhookWorkflowTriggerSummary = Extract<
+type WebhookWorkflowAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
@@ -315,28 +315,31 @@ const WORKFLOW_CRON_FREQUENCY_TO_TIME_OPTION: Readonly<
   every_month: "every-month",
 });
 
-function isGmailWorkflowTrigger(
-  trigger: ZeroWorkflowAutomationSummary,
-): trigger is GmailWorkflowTriggerSummary {
+function isGmailWorkflowAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is GmailWorkflowAutomationSummary {
   return (
-    trigger.kind === "event" &&
-    (trigger.eventType === "gmail-new-message" ||
-      trigger.eventType === "gmail-label-applied")
+    automation.kind === "event" &&
+    (automation.eventType === "gmail-new-message" ||
+      automation.eventType === "gmail-label-applied")
   );
 }
 
-function isGithubWorkflowTrigger(
-  trigger: ZeroWorkflowAutomationSummary,
-): trigger is GithubWorkflowTriggerSummary {
+function isGithubWorkflowAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is GithubWorkflowAutomationSummary {
   return (
-    trigger.kind === "event" && trigger.eventType === "github-label-applied"
+    automation.kind === "event" &&
+    automation.eventType === "github-label-applied"
   );
 }
 
-function isWebhookWorkflowTrigger(
-  trigger: ZeroWorkflowAutomationSummary,
-): trigger is WebhookWorkflowTriggerSummary {
-  return trigger.kind === "event" && trigger.eventType === "webhook-received";
+function isWebhookWorkflowAutomation(
+  automation: ZeroWorkflowAutomationSummary,
+): automation is WebhookWorkflowAutomationSummary {
+  return (
+    automation.kind === "event" && automation.eventType === "webhook-received"
+  );
 }
 
 function copyText(value: string): void {
@@ -444,12 +447,12 @@ function BreadcrumbLink({
 }
 
 function WorkflowHeaderIcon({
-  trigger,
+  automation,
 }: {
-  readonly trigger: ZeroWorkflowAutomationSummary | undefined;
+  readonly automation: ZeroWorkflowAutomationSummary | undefined;
 }) {
-  if (trigger) {
-    return <TriggerListIcon trigger={trigger} size="md" />;
+  if (automation) {
+    return <AutomationListIcon automation={automation} size="md" />;
   }
   return (
     <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-muted-foreground sm:h-16 sm:w-16">
@@ -473,7 +476,7 @@ function DetailHeader({
         <>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <WorkflowHeaderIcon trigger={detail.triggers[0]} />
+              <WorkflowHeaderIcon automation={detail.triggers[0]} />
               <div className="flex min-w-0 flex-col justify-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
@@ -506,7 +509,7 @@ function DetailHeader({
           </div>
           <div className="mt-4 flex items-center gap-2 sm:mt-6">
             <WorkflowTabNav activeTab={activeTab} onTabChange={onTabChange} />
-            {activeTab === "automations" ? <TriggerCreateAction /> : null}
+            {activeTab === "automations" ? <AutomationCreateAction /> : null}
             {activeTab === "instructions" ? (
               <WorkflowFilePicker detail={detail} />
             ) : null}
@@ -579,8 +582,8 @@ function WorkflowTabNav({
   );
 }
 
-function TriggerCreateAction() {
-  const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
+function AutomationCreateAction() {
+  const setCreateDialog = useSet(setWorkflowAutomationCreateDialog$);
   const setWebhookUpgradeDialogOpen = useSet(
     setWorkflowWebhookUpgradeDialogOpen$,
   );
@@ -594,7 +597,7 @@ function TriggerCreateAction() {
     features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
 
   return (
-    <TriggerCreateMenu
+    <AutomationCreateMenu
       onSelect={(kind) => {
         if (kind === "webhook" && !webhookTierEligible) {
           setWebhookUpgradeDialogOpen(true);
@@ -602,9 +605,9 @@ function TriggerCreateAction() {
         }
         setCreateDialog(kind);
       }}
-      githubLabelTriggersEnabled
-      googleCalendarTriggersEnabled
-      googleMeetTriggersEnabled
+      githubLabelAutomationsEnabled
+      googleCalendarAutomationsEnabled
+      googleMeetAutomationsEnabled
       notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
       webhookTierEligible={webhookTierEligible}
     />
@@ -657,7 +660,7 @@ function WorkflowTabContent({
   const content = (() => {
     switch (activeTab) {
       case "automations": {
-        return <TriggersSection detail={detail} />;
+        return <AutomationsSection detail={detail} />;
       }
       case "instructions": {
         return <WorkflowInstructionsTab detail={detail} />;
@@ -1495,17 +1498,17 @@ interface WorkflowCopyAgent {
 }
 
 function workflowCopyRemovalDescription({
-  enabledSourceTriggerCount,
+  enabledSourceAutomationCount,
   sourceAgentName,
 }: {
-  readonly enabledSourceTriggerCount: number;
+  readonly enabledSourceAutomationCount: number;
   readonly sourceAgentName: string;
 }): string {
-  if (enabledSourceTriggerCount === 0) {
+  if (enabledSourceAutomationCount === 0) {
     return `This workflow is deleted from ${sourceAgentName}.`;
   }
-  return `${enabledSourceTriggerCount} ${
-    enabledSourceTriggerCount === 1 ? "automation is" : "automations are"
+  return `${enabledSourceAutomationCount} ${
+    enabledSourceAutomationCount === 1 ? "automation is" : "automations are"
   } paused on ${sourceAgentName} and this workflow is deleted.`;
 }
 
@@ -1515,14 +1518,14 @@ function WorkflowCopyForm({
   form,
   onChange,
   sourceAgentName,
-  enabledSourceTriggerCount,
+  enabledSourceAutomationCount,
 }: {
   readonly agents: readonly WorkflowCopyAgent[];
   readonly agentsLoaded: boolean;
   readonly form: WorkflowCopyFormState;
   readonly onChange: (form: WorkflowCopyFormState) => void;
   readonly sourceAgentName: string;
-  readonly enabledSourceTriggerCount: number;
+  readonly enabledSourceAutomationCount: number;
 }) {
   const noAgents = agentsLoaded && agents.length === 0;
 
@@ -1573,7 +1576,7 @@ function WorkflowCopyForm({
           <AlertTitle>This deletes the original</AlertTitle>
           <AlertDescription>
             {workflowCopyRemovalDescription({
-              enabledSourceTriggerCount,
+              enabledSourceAutomationCount,
               sourceAgentName,
             })}
           </AlertDescription>
@@ -1597,8 +1600,8 @@ function WorkflowCopyDialog({
   const form = useGet(workflowCopyForm$);
   const setForm = useSet(setWorkflowCopyForm$);
   const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
-  const [pauseLoadable, pauseWorkflowTriggers] = useLoadableSet(
-    pauseWorkflowTriggers$,
+  const [pauseLoadable, pauseWorkflowAutomations] = useLoadableSet(
+    pauseWorkflowAutomations$,
   );
   const [deleteLoadable, deleteWorkflow] = useLoadableSet(deleteWorkflow$);
   const agentsLoadable = useLoadable(agents$);
@@ -1613,12 +1616,12 @@ function WorkflowCopyDialog({
     pauseLoadable.state === "loading" ||
     deleteLoadable.state === "loading";
   const sourceAgentName = agentLabel(detail);
-  const enabledSourceTriggerIds = detail.triggers
-    .filter((trigger) => {
-      return trigger.enabled;
+  const enabledSourceAutomationIds = detail.triggers
+    .filter((automation) => {
+      return automation.enabled;
     })
-    .map((trigger) => {
-      return trigger.id;
+    .map((automation) => {
+      return automation.id;
     });
   const selectedAgent = agents.find((agent) => {
     return agent.id === form.selectedAgentId;
@@ -1639,8 +1642,11 @@ function WorkflowCopyDialog({
           pageSignal,
         );
         if (removeOriginal) {
-          if (enabledSourceTriggerIds.length > 0) {
-            await pauseWorkflowTriggers(enabledSourceTriggerIds, pageSignal);
+          if (enabledSourceAutomationIds.length > 0) {
+            await pauseWorkflowAutomations(
+              enabledSourceAutomationIds,
+              pageSignal,
+            );
           }
           await deleteWorkflow(detail.id, pageSignal);
         }
@@ -1685,7 +1691,7 @@ function WorkflowCopyDialog({
           form={form}
           onChange={setForm}
           sourceAgentName={sourceAgentName}
-          enabledSourceTriggerCount={enabledSourceTriggerIds.length}
+          enabledSourceAutomationCount={enabledSourceAutomationIds.length}
         />
         <WorkflowCopyDialogFooter
           submitting={submitting}
@@ -2328,7 +2334,7 @@ function parseWorkflowCronFields(
   const converted = cronWallTimeInTimezone(
     hour,
     minute,
-    schedule.timezone || TRIGGER_TIMEZONE,
+    schedule.timezone || AUTOMATION_TIMEZONE,
     displayTimezone,
   );
   const base = {
@@ -2388,7 +2394,7 @@ function buildUtcCronExpressionFromFields(
     fields.hour,
     fields.minute,
     displayTimezone,
-    TRIGGER_TIMEZONE,
+    AUTOMATION_TIMEZONE,
   );
   const minute = String(converted.minute);
   const hour = String(converted.hour);
@@ -2421,13 +2427,13 @@ function buildUtcCronExpressionFromFields(
 }
 
 function workflowScheduleTitle(
-  trigger: ZeroWorkflowAutomationSummary,
+  automation: ZeroWorkflowAutomationSummary,
   displayTimezone: string,
 ): string {
-  if (trigger.kind !== "schedule") {
-    return workflowTriggerTitle(trigger);
+  if (automation.kind !== "schedule") {
+    return workflowAutomationTitle(automation);
   }
-  const schedule = trigger.schedule;
+  const schedule = automation.schedule;
   if (schedule.type === "loop") {
     return `Every ${formatWorkflowIntervalSeconds(schedule.intervalSeconds)}`;
   }
@@ -2441,7 +2447,7 @@ function workflowScheduleTitle(
 
   const fields = parseWorkflowCronFields(schedule, displayTimezone);
   if (fields.frequency === "custom") {
-    return `${schedule.cronExpression} (${TRIGGER_TIMEZONE})`;
+    return `${schedule.cronExpression} (${AUTOMATION_TIMEZONE})`;
   }
   const time = formatClockTime(fields.hour, fields.minute);
   if (fields.frequency === "every_day") {
@@ -2464,10 +2470,10 @@ function workflowScheduleTitle(
     .join(", ");
   return dayLabels
     ? `Every week on ${dayLabels} at ${time}`
-    : trigger.scheduleSummary;
+    : automation.scheduleSummary;
 }
 
-function buildTriggerSchedule(
+function buildAutomationSchedule(
   type: ZeroWorkflowScheduleType,
   fields: {
     readonly cronFields: WorkflowCronFields;
@@ -2482,7 +2488,7 @@ function buildTriggerSchedule(
       displayTimezone,
     );
     return cronExpression
-      ? { type: "cron", cronExpression, timezone: TRIGGER_TIMEZONE }
+      ? { type: "cron", cronExpression, timezone: AUTOMATION_TIMEZONE }
       : null;
   }
   if (type === "loop") {
@@ -2500,7 +2506,7 @@ function buildTriggerSchedule(
     : {
         type: "once",
         atTime: atTime.toISOString(),
-        timezone: TRIGGER_TIMEZONE,
+        timezone: AUTOMATION_TIMEZONE,
       };
 }
 
@@ -2572,7 +2578,7 @@ function buildGmailLabelAppliedEventConfig(
   };
 }
 
-type GoogleCalendarTriggerEventType =
+type GoogleCalendarAutomationEventType =
   | "google-calendar-event-created"
   | "google-calendar-event-updated"
   | "google-calendar-event-cancelled";
@@ -2674,88 +2680,90 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
 }
 
-function workflowTriggerTitle(trigger: ZeroWorkflowAutomationSummary): string {
-  if (trigger.kind === "schedule") {
-    return trigger.scheduleSummary;
+function workflowAutomationTitle(
+  automation: ZeroWorkflowAutomationSummary,
+): string {
+  if (automation.kind === "schedule") {
+    return automation.scheduleSummary;
   }
-  if (trigger.eventType === "gmail-new-message") {
+  if (automation.eventType === "gmail-new-message") {
     return "Gmail new message";
   }
-  if (trigger.eventType === "gmail-label-applied") {
+  if (automation.eventType === "gmail-label-applied") {
     return "Gmail label applied";
   }
-  if (trigger.eventType === "github-label-applied") {
+  if (automation.eventType === "github-label-applied") {
     return "GitHub label applied";
   }
-  if (trigger.eventType === "google-calendar-event-created") {
+  if (automation.eventType === "google-calendar-event-created") {
     return "Google Calendar event created";
   }
-  if (trigger.eventType === "google-calendar-event-updated") {
+  if (automation.eventType === "google-calendar-event-updated") {
     return "Google Calendar event updated";
   }
-  if (trigger.eventType === "google-calendar-event-cancelled") {
+  if (automation.eventType === "google-calendar-event-cancelled") {
     return "Google Calendar event cancelled";
   }
-  if (trigger.eventType === "google-meet-transcript-generated") {
+  if (automation.eventType === "google-meet-transcript-generated") {
     return "Google Meet transcript ready";
   }
-  if (trigger.eventType === "notion-child-page-created") {
+  if (automation.eventType === "notion-child-page-created") {
     return "New Notion child page";
   }
-  if (trigger.eventType === "notion-database-item-created") {
+  if (automation.eventType === "notion-database-item-created") {
     return "New Notion database item";
   }
-  if (trigger.eventType === "notion-page-content-updated") {
+  if (automation.eventType === "notion-page-content-updated") {
     return "Notion page content updated";
   }
   return "Webhook";
 }
 
-function workflowTriggerSummary(
-  trigger: ZeroWorkflowAutomationSummary,
+function workflowAutomationSummary(
+  automation: ZeroWorkflowAutomationSummary,
 ): string | null {
-  if (trigger.kind !== "event") {
+  if (automation.kind !== "event") {
     return null;
   }
-  if (trigger.eventType === "gmail-new-message") {
-    return formatGmailMatchSummary(trigger.eventConfig);
+  if (automation.eventType === "gmail-new-message") {
+    return formatGmailMatchSummary(automation.eventConfig);
   }
-  if (trigger.eventType === "gmail-label-applied") {
-    return `Label ${quote(trigger.eventConfig.labelName)}`;
+  if (automation.eventType === "gmail-label-applied") {
+    return `Label ${quote(automation.eventConfig.labelName)}`;
   }
-  if (trigger.eventType === "github-label-applied") {
+  if (automation.eventType === "github-label-applied") {
     const subject =
       GITHUB_SUBJECT_OPTIONS.find((option) => {
-        return option.value === trigger.eventConfig.filters.subject;
+        return option.value === automation.eventConfig.filters.subject;
       })?.label ?? "Issues and pull requests";
     const actor =
-      trigger.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
-    return `Label ${quote(trigger.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
+      automation.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
+    return `Label ${quote(automation.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
   }
   if (
-    trigger.eventType === "google-calendar-event-created" ||
-    trigger.eventType === "google-calendar-event-updated" ||
-    trigger.eventType === "google-calendar-event-cancelled"
+    automation.eventType === "google-calendar-event-created" ||
+    automation.eventType === "google-calendar-event-updated" ||
+    automation.eventType === "google-calendar-event-cancelled"
   ) {
-    return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
+    return `Calendar ${quote(automation.eventConfig.calendarId)}`;
   }
-  if (trigger.eventType === "google-meet-transcript-generated") {
+  if (automation.eventType === "google-meet-transcript-generated") {
     return "Meetings you organize";
   }
-  if (trigger.eventType === "notion-child-page-created") {
-    const title = trigger.eventConfig.parentPage.title;
+  if (automation.eventType === "notion-child-page-created") {
+    const title = automation.eventConfig.parentPage.title;
     return title ? `Parent page ${quote(title)}` : "Configured parent page";
   }
-  if (trigger.eventType === "notion-database-item-created") {
-    const title = trigger.eventConfig.dataSource.title;
+  if (automation.eventType === "notion-database-item-created") {
+    const title = automation.eventConfig.dataSource.title;
     return title ? `Database ${quote(title)}` : "Configured database";
   }
-  if (trigger.eventType === "notion-page-content-updated") {
-    if (trigger.eventConfig.scope.type === "page") {
-      const title = trigger.eventConfig.scope.page.title;
+  if (automation.eventType === "notion-page-content-updated") {
+    if (automation.eventConfig.scope.type === "page") {
+      const title = automation.eventConfig.scope.page.title;
       return title ? `Page ${quote(title)}` : "Configured page";
     }
-    const title = trigger.eventConfig.scope.dataSource.title;
+    const title = automation.eventConfig.scope.dataSource.title;
     return title ? `Database ${quote(title)}` : "Configured database";
   }
   return null;
@@ -2769,7 +2777,7 @@ function gmailMatcherDefaultValue(
   return config.match?.[field]?.[key] ?? "";
 }
 
-type TriggerCreateDialogKind =
+type AutomationCreateDialogKind =
   | "interval"
   | "scheduled"
   | "once"
@@ -2785,37 +2793,37 @@ type TriggerCreateDialogKind =
   | "notion-page-content-updated"
   | "webhook";
 
-type TriggerCategoryKey =
+type AutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
   | "notion"
   | "integrations";
 
-type TriggerCreateOption = {
-  readonly kind: TriggerCreateDialogKind;
+type AutomationCreateOption = {
+  readonly kind: AutomationCreateDialogKind;
   readonly title: string;
   readonly description: string;
   readonly icon: typeof IconClock;
   readonly badge?: string;
 };
 
-type TriggerCreateCategory = {
-  readonly key: TriggerCategoryKey;
+type AutomationCreateCategory = {
+  readonly key: AutomationCategoryKey;
   readonly label: string;
   readonly icon: typeof IconClock;
-  readonly options: readonly TriggerCreateOption[];
+  readonly options: readonly AutomationCreateOption[];
 };
 
-function buildIntegrationTriggerOptions({
-  githubLabelTriggersEnabled,
+function buildIntegrationAutomationOptions({
+  githubLabelAutomationsEnabled,
   webhookTierEligible,
 }: {
-  readonly githubLabelTriggersEnabled: boolean;
+  readonly githubLabelAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
-}): TriggerCreateOption[] {
-  const integrationOptions: TriggerCreateOption[] = [];
-  if (githubLabelTriggersEnabled) {
+}): AutomationCreateOption[] {
+  const integrationOptions: AutomationCreateOption[] = [];
+  if (githubLabelAutomationsEnabled) {
     integrationOptions.push({
       kind: "github-label",
       title: "GitHub label applied",
@@ -2833,9 +2841,9 @@ function buildIntegrationTriggerOptions({
   return integrationOptions;
 }
 
-function buildNotionTriggerOptions(
+function buildNotionAutomationOptions(
   notionWorkflowAutomationsEnabled: boolean,
-): TriggerCreateOption[] {
+): AutomationCreateOption[] {
   if (!notionWorkflowAutomationsEnabled) {
     return [];
   }
@@ -2863,30 +2871,31 @@ function buildNotionTriggerOptions(
 
 // Each category owns a single hue that colours only the card icon chip on the
 // right; the category rail stays neutral and mirrors the app sidebar.
-const TRIGGER_CATEGORY_CHIP: Readonly<Record<TriggerCategoryKey, string>> =
-  Object.freeze({
-    schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-    calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    notion: "bg-gray-500/10 text-gray-700 dark:text-gray-300",
-    integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
-  });
+const AUTOMATION_CATEGORY_CHIP: Readonly<
+  Record<AutomationCategoryKey, string>
+> = Object.freeze({
+  schedule: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  email: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  calendar: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  notion: "bg-gray-500/10 text-gray-700 dark:text-gray-300",
+  integrations: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
+});
 
-function buildTriggerCreateCategories({
-  githubLabelTriggersEnabled,
-  googleCalendarTriggersEnabled,
-  googleMeetTriggersEnabled,
+function buildAutomationCreateCategories({
+  githubLabelAutomationsEnabled,
+  googleCalendarAutomationsEnabled,
+  googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   webhookTierEligible,
 }: {
-  readonly githubLabelTriggersEnabled: boolean;
-  readonly googleCalendarTriggersEnabled: boolean;
-  readonly googleMeetTriggersEnabled: boolean;
+  readonly githubLabelAutomationsEnabled: boolean;
+  readonly googleCalendarAutomationsEnabled: boolean;
+  readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
-}): readonly TriggerCreateCategory[] {
-  const calendarOptions: TriggerCreateOption[] = [];
-  if (googleCalendarTriggersEnabled) {
+}): readonly AutomationCreateCategory[] {
+  const calendarOptions: AutomationCreateOption[] = [];
+  if (googleCalendarAutomationsEnabled) {
     calendarOptions.push(
       {
         kind: "google-calendar-created",
@@ -2908,7 +2917,7 @@ function buildTriggerCreateCategories({
       },
     );
   }
-  if (googleMeetTriggersEnabled) {
+  if (googleMeetAutomationsEnabled) {
     calendarOptions.push({
       kind: "google-meet-transcript-generated",
       title: "Google Meet transcript ready",
@@ -2917,15 +2926,15 @@ function buildTriggerCreateCategories({
     });
   }
 
-  const integrationOptions = buildIntegrationTriggerOptions({
-    githubLabelTriggersEnabled,
+  const integrationOptions = buildIntegrationAutomationOptions({
+    githubLabelAutomationsEnabled,
     webhookTierEligible,
   });
-  const notionOptions = buildNotionTriggerOptions(
+  const notionOptions = buildNotionAutomationOptions(
     notionWorkflowAutomationsEnabled,
   );
 
-  const categories: readonly TriggerCreateCategory[] = [
+  const categories: readonly AutomationCreateCategory[] = [
     {
       key: "schedule",
       label: "Schedule",
@@ -2995,12 +3004,12 @@ function buildTriggerCreateCategories({
   });
 }
 
-function TriggerCreateCategoryButton({
+function AutomationCreateCategoryButton({
   category,
   active,
   onSelect,
 }: {
-  readonly category: TriggerCreateCategory;
+  readonly category: AutomationCreateCategory;
   readonly active: boolean;
   readonly onSelect: () => void;
 }) {
@@ -3025,12 +3034,12 @@ function TriggerCreateCategoryButton({
   );
 }
 
-function TriggerCreateOptionCard({
+function AutomationCreateOptionCard({
   option,
   accentChip,
   onSelect,
 }: {
-  readonly option: TriggerCreateOption;
+  readonly option: AutomationCreateOption;
   readonly accentChip: string;
   readonly onSelect: () => void;
 }) {
@@ -3064,29 +3073,29 @@ function TriggerCreateOptionCard({
   );
 }
 
-function TriggerCreateMenu({
+function AutomationCreateMenu({
   onSelect,
-  githubLabelTriggersEnabled,
-  googleCalendarTriggersEnabled,
-  googleMeetTriggersEnabled,
+  githubLabelAutomationsEnabled,
+  googleCalendarAutomationsEnabled,
+  googleMeetAutomationsEnabled,
   notionWorkflowAutomationsEnabled,
   webhookTierEligible,
 }: {
-  readonly onSelect: (kind: TriggerCreateDialogKind) => void;
-  readonly githubLabelTriggersEnabled: boolean;
-  readonly googleCalendarTriggersEnabled: boolean;
-  readonly googleMeetTriggersEnabled: boolean;
+  readonly onSelect: (kind: AutomationCreateDialogKind) => void;
+  readonly githubLabelAutomationsEnabled: boolean;
+  readonly googleCalendarAutomationsEnabled: boolean;
+  readonly googleMeetAutomationsEnabled: boolean;
   readonly notionWorkflowAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
-  const open = useGet(workflowTriggerPickerOpen$);
-  const setOpen = useSet(setWorkflowTriggerPickerOpen$);
-  const activeKey = useGet(workflowTriggerPickerCategory$);
-  const setActiveKey = useSet(setWorkflowTriggerPickerCategory$);
-  const categories = buildTriggerCreateCategories({
-    githubLabelTriggersEnabled,
-    googleCalendarTriggersEnabled,
-    googleMeetTriggersEnabled,
+  const open = useGet(workflowAutomationPickerOpen$);
+  const setOpen = useSet(setWorkflowAutomationPickerOpen$);
+  const activeKey = useGet(workflowAutomationPickerCategory$);
+  const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
+  const categories = buildAutomationCreateCategories({
+    githubLabelAutomationsEnabled,
+    googleCalendarAutomationsEnabled,
+    googleMeetAutomationsEnabled,
     notionWorkflowAutomationsEnabled,
     webhookTierEligible,
   });
@@ -3095,7 +3104,7 @@ function TriggerCreateMenu({
       return category.key === activeKey;
     }) ?? categories[0];
   const activeChip = activeCategory
-    ? TRIGGER_CATEGORY_CHIP[activeCategory.key]
+    ? AUTOMATION_CATEGORY_CHIP[activeCategory.key]
     : "";
 
   return (
@@ -3113,14 +3122,14 @@ function TriggerCreateMenu({
         <DialogHeader>
           <DialogTitle>Add automation</DialogTitle>
           <DialogDescription>
-            Choose a trigger to start this workflow.
+            Choose an automation to start this workflow.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-5 sm:min-h-[20rem] sm:flex-row sm:gap-7">
           <nav className="-ml-2 flex gap-1 overflow-x-auto pb-1 sm:w-44 sm:shrink-0 sm:flex-col sm:gap-1 sm:overflow-visible sm:border-r sm:border-border/60 sm:pb-0 sm:pr-4">
             {categories.map((category) => {
               return (
-                <TriggerCreateCategoryButton
+                <AutomationCreateCategoryButton
                   key={category.key}
                   category={category}
                   active={category.key === activeCategory?.key}
@@ -3134,7 +3143,7 @@ function TriggerCreateMenu({
           <div className="grid min-w-0 flex-1 auto-rows-min grid-cols-1 content-start gap-4 sm:grid-cols-2">
             {activeCategory?.options.map((option) => {
               return (
-                <TriggerCreateOptionCard
+                <AutomationCreateOptionCard
                   key={option.kind}
                   option={option}
                   accentChip={activeChip}
@@ -3152,18 +3161,18 @@ function TriggerCreateMenu({
   );
 }
 
-function GoogleCalendarTriggerDialogs({
+function GoogleCalendarAutomationDialogs({
   workflowId,
   createDialog,
   setCreateDialog,
 }: {
   readonly workflowId: string;
-  readonly createDialog: TriggerCreateDialogKind | null;
-  readonly setCreateDialog: (dialog: TriggerCreateDialogKind | null) => void;
+  readonly createDialog: AutomationCreateDialogKind | null;
+  readonly setCreateDialog: (dialog: AutomationCreateDialogKind | null) => void;
 }) {
   return (
     <>
-      <CreateGoogleCalendarEventTriggerDialog
+      <CreateGoogleCalendarEventAutomationDialog
         workflowId={workflowId}
         eventType="google-calendar-event-created"
         open={createDialog === "google-calendar-created"}
@@ -3171,7 +3180,7 @@ function GoogleCalendarTriggerDialogs({
           setCreateDialog(open ? "google-calendar-created" : null);
         }}
       />
-      <CreateGoogleCalendarEventTriggerDialog
+      <CreateGoogleCalendarEventAutomationDialog
         workflowId={workflowId}
         eventType="google-calendar-event-updated"
         open={createDialog === "google-calendar-updated"}
@@ -3179,7 +3188,7 @@ function GoogleCalendarTriggerDialogs({
           setCreateDialog(open ? "google-calendar-updated" : null);
         }}
       />
-      <CreateGoogleCalendarEventTriggerDialog
+      <CreateGoogleCalendarEventAutomationDialog
         workflowId={workflowId}
         eventType="google-calendar-event-cancelled"
         open={createDialog === "google-calendar-cancelled"}
@@ -3191,7 +3200,7 @@ function GoogleCalendarTriggerDialogs({
   );
 }
 
-function CreateGoogleMeetTranscriptGeneratedTriggerDialog({
+function CreateGoogleMeetTranscriptGeneratedAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -3201,8 +3210,8 @@ function CreateGoogleMeetTranscriptGeneratedTriggerDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createGoogleMeetTrigger] = useLoadableSet(
-    createWorkflowGoogleMeetTranscriptGeneratedTrigger$,
+  const [createLoadable, createGoogleMeetAutomation] = useLoadableSet(
+    createWorkflowGoogleMeetTranscriptGeneratedAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -3223,7 +3232,7 @@ function CreateGoogleMeetTranscriptGeneratedTriggerDialog({
             event.preventDefault();
             detach(
               (async () => {
-                await createGoogleMeetTrigger(
+                await createGoogleMeetAutomation(
                   {
                     workflowId,
                     eventConfig: {
@@ -3270,33 +3279,33 @@ function CreateGoogleMeetTranscriptGeneratedTriggerDialog({
   );
 }
 
-function TriggersSection({
+function AutomationsSection({
   detail,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
-  const createDialog = useGet(workflowTriggerCreateDialog$);
-  const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
+  const createDialog = useGet(workflowAutomationCreateDialog$);
+  const setCreateDialog = useSet(setWorkflowAutomationCreateDialog$);
   const userLoadable = useLoadable(user$);
   const preferences = useLastResolved(userPreferences$);
   const currentUserId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const displayTimezone = preferences?.timezone ?? browserTimezone();
-  const triggers = detail.triggers;
+  const automations = detail.triggers;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
       <div className="flex flex-col gap-2">
-        {triggers.length > 0 ? (
+        {automations.length > 0 ? (
           <div className="zero-card overflow-visible">
-            {triggers.map((trigger, index) => {
+            {automations.map((automation, index) => {
               return (
-                <TriggerRow
-                  key={trigger.id}
-                  trigger={trigger}
-                  canManage={trigger.ownerUserId === currentUserId}
+                <AutomationRow
+                  key={automation.id}
+                  automation={automation}
+                  canManage={automation.ownerUserId === currentUserId}
                   displayTimezone={displayTimezone}
-                  showDivider={index < triggers.length - 1}
+                  showDivider={index < automations.length - 1}
                 />
               );
             })}
@@ -3312,12 +3321,13 @@ function TriggersSection({
               No automations
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Add an automation to run this workflow whenever its trigger fires.
+              Add an automation to run this workflow whenever its automation
+              fires.
             </p>
           </div>
         )}
       </div>
-      <WorkflowTriggerCreateDialogs
+      <WorkflowAutomationCreateDialogs
         workflowId={detail.id}
         displayTimezone={displayTimezone}
         createDialog={createDialog}
@@ -3327,7 +3337,7 @@ function TriggersSection({
   );
 }
 
-function WorkflowTriggerCreateDialogs({
+function WorkflowAutomationCreateDialogs({
   workflowId,
   displayTimezone,
   createDialog,
@@ -3335,19 +3345,19 @@ function WorkflowTriggerCreateDialogs({
 }: {
   readonly workflowId: string;
   readonly displayTimezone: string;
-  readonly createDialog: WorkflowTriggerCreateDialog;
-  readonly setCreateDialog: (dialog: WorkflowTriggerCreateDialog) => void;
+  readonly createDialog: WorkflowAutomationCreateDialog;
+  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
 }) {
   return (
     <>
-      <CreateIntervalTriggerDialog
+      <CreateIntervalAutomationDialog
         workflowId={workflowId}
         open={createDialog === "interval"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "interval" : null);
         }}
       />
-      <CreateScheduledTriggerDialog
+      <CreateScheduledAutomationDialog
         workflowId={workflowId}
         displayTimezone={displayTimezone}
         open={createDialog === "scheduled"}
@@ -3355,7 +3365,7 @@ function WorkflowTriggerCreateDialogs({
           setCreateDialog(open ? "scheduled" : null);
         }}
       />
-      <CreateOnceTriggerDialog
+      <CreateOnceAutomationDialog
         workflowId={workflowId}
         displayTimezone={displayTimezone}
         open={createDialog === "once"}
@@ -3363,61 +3373,61 @@ function WorkflowTriggerCreateDialogs({
           setCreateDialog(open ? "once" : null);
         }}
       />
-      <CreateGmailNewMessageTriggerDialog
+      <CreateGmailNewMessageAutomationDialog
         workflowId={workflowId}
         open={createDialog === "gmail"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail" : null);
         }}
       />
-      <CreateGmailLabelAppliedTriggerDialog
+      <CreateGmailLabelAppliedAutomationDialog
         workflowId={workflowId}
         open={createDialog === "gmail-label"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail-label" : null);
         }}
       />
-      <CreateGithubLabelAppliedTriggerDialog
+      <CreateGithubLabelAppliedAutomationDialog
         workflowId={workflowId}
         open={createDialog === "github-label"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "github-label" : null);
         }}
       />
-      <GoogleCalendarTriggerDialogs
+      <GoogleCalendarAutomationDialogs
         workflowId={workflowId}
         createDialog={createDialog}
         setCreateDialog={setCreateDialog}
       />
-      <CreateGoogleMeetTranscriptGeneratedTriggerDialog
+      <CreateGoogleMeetTranscriptGeneratedAutomationDialog
         workflowId={workflowId}
         open={createDialog === "google-meet-transcript-generated"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "google-meet-transcript-generated" : null);
         }}
       />
-      <CreateNotionChildPageTriggerDialog
+      <CreateNotionChildPageAutomationDialog
         workflowId={workflowId}
         open={createDialog === "notion-child-page"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "notion-child-page" : null);
         }}
       />
-      <CreateNotionDatabaseItemTriggerDialog
+      <CreateNotionDatabaseItemAutomationDialog
         workflowId={workflowId}
         open={createDialog === "notion-database-item"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "notion-database-item" : null);
         }}
       />
-      <CreateNotionPageContentUpdatedTriggerDialog
+      <CreateNotionPageContentUpdatedAutomationDialog
         workflowId={workflowId}
         open={createDialog === "notion-page-content-updated"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "notion-page-content-updated" : null);
         }}
       />
-      <CreateWebhookTriggerDialog
+      <CreateWebhookAutomationDialog
         workflowId={workflowId}
         open={createDialog === "webhook"}
         onOpenChange={(open) => {
@@ -3429,7 +3439,7 @@ function WorkflowTriggerCreateDialogs({
   );
 }
 
-function CreateNotionDatabaseItemTriggerDialog({
+function CreateNotionDatabaseItemAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -3439,8 +3449,8 @@ function CreateNotionDatabaseItemTriggerDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createNotionTrigger] = useLoadableSet(
-    createWorkflowNotionDatabaseItemTrigger$,
+  const [createLoadable, createNotionAutomation] = useLoadableSet(
+    createWorkflowNotionDatabaseItemAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -3465,7 +3475,7 @@ function CreateNotionDatabaseItemTriggerDialog({
             }
             detach(
               (async () => {
-                await createNotionTrigger(
+                await createNotionAutomation(
                   {
                     workflowId,
                     eventConfig: {
@@ -3601,7 +3611,7 @@ function NotionPageContentUpdatedScopeFields({
   );
 }
 
-function CreateNotionPageContentUpdatedTriggerDialog({
+function CreateNotionPageContentUpdatedAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -3613,8 +3623,8 @@ function CreateNotionPageContentUpdatedTriggerDialog({
   const pageSignal = useGet(pageSignal$);
   const scope = useGet(createNotionPageContentUpdatedScope$);
   const setScope = useSet(setCreateNotionPageContentUpdatedScope$);
-  const [createLoadable, createNotionTrigger] = useLoadableSet(
-    createWorkflowNotionPageContentUpdatedTrigger$,
+  const [createLoadable, createNotionAutomation] = useLoadableSet(
+    createWorkflowNotionPageContentUpdatedAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -3642,7 +3652,7 @@ function CreateNotionPageContentUpdatedTriggerDialog({
             }
             detach(
               (async () => {
-                await createNotionTrigger(
+                await createNotionAutomation(
                   {
                     workflowId,
                     eventConfig,
@@ -3686,7 +3696,7 @@ function CreateNotionPageContentUpdatedTriggerDialog({
   );
 }
 
-function CreateNotionChildPageTriggerDialog({
+function CreateNotionChildPageAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -3696,8 +3706,8 @@ function CreateNotionChildPageTriggerDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createNotionTrigger] = useLoadableSet(
-    createWorkflowNotionChildPageTrigger$,
+  const [createLoadable, createNotionAutomation] = useLoadableSet(
+    createWorkflowNotionChildPageAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -3723,7 +3733,7 @@ function CreateNotionChildPageTriggerDialog({
             }
             detach(
               (async () => {
-                await createNotionTrigger(
+                await createNotionAutomation(
                   {
                     workflowId,
                     eventConfig: {
@@ -3777,7 +3787,7 @@ function CreateNotionChildPageTriggerDialog({
   );
 }
 
-function CreateIntervalTriggerDialog({
+function CreateIntervalAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -3787,8 +3797,8 @@ function CreateIntervalTriggerDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createScheduleTrigger] = useLoadableSet(
-    createWorkflowScheduleTrigger$,
+  const [createLoadable, createScheduleAutomation] = useLoadableSet(
+    createWorkflowScheduleAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -3807,21 +3817,21 @@ function CreateIntervalTriggerDialog({
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
-            const schedule = buildTriggerSchedule(
+            const schedule = buildAutomationSchedule(
               "loop",
               {
                 cronFields: defaultWorkflowCronFields(),
                 intervalSeconds: String(form.get("intervalSeconds") ?? ""),
                 atTime: "",
               },
-              TRIGGER_TIMEZONE,
+              AUTOMATION_TIMEZONE,
             );
             if (!schedule) {
               return;
             }
             detach(
               (async () => {
-                await createScheduleTrigger(
+                await createScheduleAutomation(
                   { workflowId, schedule },
                   pageSignal,
                 );
@@ -3857,7 +3867,7 @@ function CreateIntervalTriggerDialog({
   );
 }
 
-function CreateScheduledTriggerDialog({
+function CreateScheduledAutomationDialog({
   workflowId,
   displayTimezone,
   open,
@@ -3871,8 +3881,8 @@ function CreateScheduledTriggerDialog({
   const cronFields = useGet(createScheduleCronFields$);
   const setCronFields = useSet(setCreateScheduleCronFields$);
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createScheduleTrigger] = useLoadableSet(
-    createWorkflowScheduleTrigger$,
+  const [createLoadable, createScheduleAutomation] = useLoadableSet(
+    createWorkflowScheduleAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -3891,7 +3901,7 @@ function CreateScheduledTriggerDialog({
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
-            const schedule = buildTriggerSchedule(
+            const schedule = buildAutomationSchedule(
               "cron",
               {
                 cronFields,
@@ -3905,7 +3915,7 @@ function CreateScheduledTriggerDialog({
             }
             detach(
               (async () => {
-                await createScheduleTrigger(
+                await createScheduleAutomation(
                   { workflowId, schedule },
                   pageSignal,
                 );
@@ -3915,7 +3925,7 @@ function CreateScheduledTriggerDialog({
             );
           }}
         >
-          <ScheduleTriggerFields
+          <ScheduleAutomationFields
             scheduleType="cron"
             cronFields={cronFields}
             setCronFields={setCronFields}
@@ -3947,7 +3957,7 @@ function CreateScheduledTriggerDialog({
   );
 }
 
-function CreateOnceTriggerDialog({
+function CreateOnceAutomationDialog({
   workflowId,
   displayTimezone,
   open,
@@ -3960,8 +3970,8 @@ function CreateOnceTriggerDialog({
 }) {
   const pageSignal = useGet(pageSignal$);
   const setCronFields = useSet(setCreateScheduleCronFields$);
-  const [createLoadable, createScheduleTrigger] = useLoadableSet(
-    createWorkflowScheduleTrigger$,
+  const [createLoadable, createScheduleAutomation] = useLoadableSet(
+    createWorkflowScheduleAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -3980,7 +3990,7 @@ function CreateOnceTriggerDialog({
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
-            const schedule = buildTriggerSchedule(
+            const schedule = buildAutomationSchedule(
               "once",
               {
                 cronFields: defaultWorkflowCronFields(),
@@ -3994,7 +4004,7 @@ function CreateOnceTriggerDialog({
             }
             detach(
               (async () => {
-                await createScheduleTrigger(
+                await createScheduleAutomation(
                   { workflowId, schedule },
                   pageSignal,
                 );
@@ -4004,7 +4014,7 @@ function CreateOnceTriggerDialog({
             );
           }}
         >
-          <ScheduleTriggerFields
+          <ScheduleAutomationFields
             scheduleType="once"
             cronFields={defaultWorkflowCronFields()}
             setCronFields={setCronFields}
@@ -4036,7 +4046,7 @@ function CreateOnceTriggerDialog({
   );
 }
 
-function ScheduleTriggerFields({
+function ScheduleAutomationFields({
   scheduleType,
   cronFields,
   setCronFields,
@@ -4422,7 +4432,7 @@ function WorkflowDayOfWeekPicker({
   );
 }
 
-function CreateGmailNewMessageTriggerDialog({
+function CreateGmailNewMessageAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -4432,8 +4442,8 @@ function CreateGmailNewMessageTriggerDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createGmailTrigger] = useLoadableSet(
-    createWorkflowGmailNewMessageTrigger$,
+  const [createLoadable, createGmailAutomation] = useLoadableSet(
+    createWorkflowGmailNewMessageAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -4454,7 +4464,7 @@ function CreateGmailNewMessageTriggerDialog({
             const form = new FormData(event.currentTarget);
             detach(
               (async () => {
-                await createGmailTrigger(
+                await createGmailAutomation(
                   {
                     workflowId,
                     eventConfig: buildGmailNewMessageEventConfig(form),
@@ -4514,10 +4524,13 @@ function CreateGmailNewMessageTriggerDialog({
 }
 
 function signedWebhookCurlExample(
-  trigger: Pick<WebhookWorkflowTriggerSummary, "webhookSecret" | "webhookUrl">,
+  automation: Pick<
+    WebhookWorkflowAutomationSummary,
+    "webhookSecret" | "webhookUrl"
+  >,
 ): string {
-  const secret = trigger.webhookSecret ?? "<signing-secret>";
-  const webhookUrl = trigger.webhookUrl ?? "<webhook-url>";
+  const secret = automation.webhookSecret ?? "<signing-secret>";
+  const webhookUrl = automation.webhookUrl ?? "<webhook-url>";
   return [
     `BODY='{"hello":"world"}'`,
     "TIMESTAMP=$(date +%s)",
@@ -4530,7 +4543,7 @@ function signedWebhookCurlExample(
   ].join("\n");
 }
 
-function CreateGmailLabelAppliedTriggerDialog({
+function CreateGmailLabelAppliedAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -4540,8 +4553,8 @@ function CreateGmailLabelAppliedTriggerDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createGmailLabelTrigger] = useLoadableSet(
-    createWorkflowGmailLabelAppliedTrigger$,
+  const [createLoadable, createGmailLabelAutomation] = useLoadableSet(
+    createWorkflowGmailLabelAppliedAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -4566,7 +4579,7 @@ function CreateGmailLabelAppliedTriggerDialog({
             }
             detach(
               (async () => {
-                await createGmailLabelTrigger(
+                await createGmailLabelAutomation(
                   { workflowId, eventConfig },
                   pageSignal,
                 );
@@ -4611,7 +4624,7 @@ function CreateGmailLabelAppliedTriggerDialog({
   );
 }
 
-function GithubLabelTriggerFields({
+function GithubLabelAutomationFields({
   disabled,
   actor,
   defaultConfig,
@@ -4685,7 +4698,7 @@ function GithubLabelTriggerFields({
   );
 }
 
-function GithubLabelTriggerAvailabilityMessages({
+function GithubLabelAutomationAvailabilityMessages({
   githubLoaded,
   isInstalled,
   needsConnection,
@@ -4753,7 +4766,7 @@ function GithubLoadErrorNotice() {
   );
 }
 
-function CreateGithubLabelAppliedTriggerDialog({
+function CreateGithubLabelAppliedAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -4768,8 +4781,8 @@ function CreateGithubLabelAppliedTriggerDialog({
     githubLoadable.state === "hasData" ? githubLoadable.data : null;
   const actor = useGet(createGithubLabelActor$);
   const setActor = useSet(setCreateGithubLabelActor$);
-  const [createLoadable, createGithubLabelTrigger] = useLoadableSet(
-    createWorkflowGithubLabelAppliedTrigger$,
+  const [createLoadable, createGithubLabelAutomation] = useLoadableSet(
+    createWorkflowGithubLabelAppliedAutomation$,
   );
   const [connectLoadable, connectGithub] = useLoadableSet(
     connectGithubInstallation$,
@@ -4826,7 +4839,7 @@ function CreateGithubLabelAppliedTriggerDialog({
             }
             detach(
               (async () => {
-                await createGithubLabelTrigger(
+                await createGithubLabelAutomation(
                   { workflowId, eventConfig },
                   pageSignal,
                 );
@@ -4836,12 +4849,12 @@ function CreateGithubLabelAppliedTriggerDialog({
             );
           }}
         >
-          <GithubLabelTriggerFields
+          <GithubLabelAutomationFields
             disabled={creating || loadingGithub || githubLoadError}
             actor={actor}
             onActorChange={setActor}
           />
-          <GithubLabelTriggerAvailabilityMessages
+          <GithubLabelAutomationAvailabilityMessages
             githubLoaded={githubLoadable.state === "hasData"}
             isInstalled={isInstalled}
             needsConnection={needsConnection}
@@ -4873,20 +4886,20 @@ function CreateGithubLabelAppliedTriggerDialog({
   );
 }
 
-function CreateGoogleCalendarEventTriggerDialog({
+function CreateGoogleCalendarEventAutomationDialog({
   workflowId,
   eventType,
   open,
   onOpenChange,
 }: {
   readonly workflowId: string;
-  readonly eventType: GoogleCalendarTriggerEventType;
+  readonly eventType: GoogleCalendarAutomationEventType;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createGoogleCalendarTrigger] = useLoadableSet(
-    createWorkflowGoogleCalendarEventTrigger$,
+  const [createLoadable, createGoogleCalendarAutomation] = useLoadableSet(
+    createWorkflowGoogleCalendarEventAutomation$,
   );
   const creating = createLoadable.state === "loading";
   const isUpdated = eventType === "google-calendar-event-updated";
@@ -4915,7 +4928,7 @@ function CreateGoogleCalendarEventTriggerDialog({
               (async () => {
                 const calendarId = googleCalendarIdFromForm(form);
                 if (eventType === "google-calendar-event-created") {
-                  await createGoogleCalendarTrigger(
+                  await createGoogleCalendarAutomation(
                     {
                       workflowId,
                       eventType: "google-calendar-event-created",
@@ -4928,7 +4941,7 @@ function CreateGoogleCalendarEventTriggerDialog({
                     pageSignal,
                   );
                 } else if (eventType === "google-calendar-event-updated") {
-                  await createGoogleCalendarTrigger(
+                  await createGoogleCalendarAutomation(
                     {
                       workflowId,
                       eventType: "google-calendar-event-updated",
@@ -4941,7 +4954,7 @@ function CreateGoogleCalendarEventTriggerDialog({
                     pageSignal,
                   );
                 } else {
-                  await createGoogleCalendarTrigger(
+                  await createGoogleCalendarAutomation(
                     {
                       workflowId,
                       eventType: "google-calendar-event-cancelled",
@@ -4995,7 +5008,7 @@ function CreateGoogleCalendarEventTriggerDialog({
   );
 }
 
-function CreateWebhookTriggerDialog({
+function CreateWebhookAutomationDialog({
   workflowId,
   open,
   onOpenChange,
@@ -5005,11 +5018,11 @@ function CreateWebhookTriggerDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const createdTrigger = useGet(createdWorkflowWebhookTrigger$);
-  const setCreatedTrigger = useSet(setCreatedWorkflowWebhookTrigger$);
+  const createdAutomation = useGet(createdWorkflowWebhookAutomation$);
+  const setCreatedAutomation = useSet(setCreatedWorkflowWebhookAutomation$);
   const reloadWorkflows = useSet(reloadWorkflows$);
-  const [createLoadable, createWebhookTrigger] = useLoadableSet(
-    createWorkflowWebhookTrigger$,
+  const [createLoadable, createWebhookAutomation] = useLoadableSet(
+    createWorkflowWebhookAutomation$,
   );
   const creating = createLoadable.state === "loading";
 
@@ -5018,10 +5031,10 @@ function CreateWebhookTriggerDialog({
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
-          if (createdTrigger) {
+          if (createdAutomation) {
             reloadWorkflows();
           }
-          setCreatedTrigger(null);
+          setCreatedAutomation(null);
         }
         onOpenChange(nextOpen);
       }}
@@ -5033,17 +5046,17 @@ function CreateWebhookTriggerDialog({
             Create a signed endpoint for this workflow.
           </DialogDescription>
         </DialogHeader>
-        {createdTrigger ? (
-          <CreatedWebhookTriggerView
-            trigger={createdTrigger}
+        {createdAutomation ? (
+          <CreatedWebhookAutomationView
+            automation={createdAutomation}
             onDone={() => {
               reloadWorkflows();
-              setCreatedTrigger(null);
+              setCreatedAutomation(null);
               onOpenChange(false);
             }}
           />
         ) : (
-          <CreateWebhookTriggerView
+          <CreateWebhookAutomationView
             creating={creating}
             onCancel={() => {
               onOpenChange(false);
@@ -5051,12 +5064,12 @@ function CreateWebhookTriggerDialog({
             onCreate={() => {
               detach(
                 (async () => {
-                  const trigger = await createWebhookTrigger(
+                  const automation = await createWebhookAutomation(
                     { workflowId },
                     pageSignal,
                   );
-                  if (trigger) {
-                    setCreatedTrigger(trigger);
+                  if (automation) {
+                    setCreatedAutomation(automation);
                   }
                 })(),
                 Reason.DomCallback,
@@ -5069,34 +5082,34 @@ function CreateWebhookTriggerDialog({
   );
 }
 
-function CreatedWebhookTriggerView({
-  trigger,
+function CreatedWebhookAutomationView({
+  automation,
   onDone,
 }: {
-  readonly trigger: WebhookWorkflowTriggerSummary;
+  readonly automation: WebhookWorkflowAutomationSummary;
   readonly onDone: () => void;
 }) {
-  const curlExample = signedWebhookCurlExample(trigger);
+  const curlExample = signedWebhookCurlExample(automation);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
         Webhook URL
-        {trigger.webhookUrl ? (
+        {automation.webhookUrl ? (
           <WebhookReadonlyField
-            value={trigger.webhookUrl}
+            value={automation.webhookUrl}
             onCopy={() => {
-              copyText(trigger.webhookUrl ?? "");
+              copyText(automation.webhookUrl ?? "");
             }}
           />
         ) : null}
       </label>
-      {trigger.webhookSecret ? (
+      {automation.webhookSecret ? (
         <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
           Signing secret
           <WebhookReadonlyField
-            value={trigger.webhookSecret}
+            value={automation.webhookSecret}
             onCopy={() => {
-              copyText(trigger.webhookSecret ?? "");
+              copyText(automation.webhookSecret ?? "");
             }}
           />
         </label>
@@ -5148,10 +5161,10 @@ function WebhookReadonlyField({
 }
 
 function RevealWebhookSecretDialog({
-  trigger,
+  automation,
   onOpenChange,
 }: {
-  readonly trigger: WebhookWorkflowTriggerSummary;
+  readonly automation: WebhookWorkflowAutomationSummary;
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -5170,7 +5183,7 @@ function RevealWebhookSecretDialog({
           <DialogTitle>View webhook secret</DialogTitle>
           <DialogDescription>
             Reveal the signed endpoint and secret ending in{" "}
-            {trigger.secretLastFour}.
+            {automation.secretLastFour}.
           </DialogDescription>
         </DialogHeader>
         {secret ? (
@@ -5238,7 +5251,10 @@ function RevealWebhookSecretDialog({
               onClick={() => {
                 detach(
                   (async () => {
-                    await revealSecret({ triggerId: trigger.id }, pageSignal);
+                    await revealSecret(
+                      { automationId: automation.id },
+                      pageSignal,
+                    );
                   })(),
                   Reason.DomCallback,
                   "reveal workflow webhook secret",
@@ -5259,7 +5275,7 @@ function RevealWebhookSecretDialog({
   );
 }
 
-function CreateWebhookTriggerView({
+function CreateWebhookAutomationView({
   creating,
   onCancel,
   onCreate,
@@ -5291,7 +5307,7 @@ function CreateWebhookTriggerView({
   );
 }
 
-function TriggerRunStat({
+function AutomationRunStat({
   icon,
   label,
   value,
@@ -5322,30 +5338,30 @@ function TriggerRunStat({
   );
 }
 
-function TriggerRow({
-  trigger,
+function AutomationRow({
+  automation,
   canManage,
   displayTimezone,
   showDivider,
 }: {
-  readonly trigger: ZeroWorkflowAutomationSummary;
+  readonly automation: ZeroWorkflowAutomationSummary;
   readonly canManage: boolean;
   readonly displayTimezone: string;
   readonly showDivider: boolean;
 }) {
-  const editingTriggerId = useGet(editingWorkflowTriggerId$);
-  const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
-  const editing = editingTriggerId === trigger.id;
-  const title = workflowScheduleTitle(trigger, displayTimezone);
-  const subtitle = workflowTriggerSubtitle(trigger);
-  const hasLastRun = hasValidRunTimestamp(trigger.lastRunAt);
-  const hasNextRun = hasValidRunTimestamp(trigger.nextRunAt);
-  const lastRunLabel = formatWorkflowTriggerRun(
-    trigger.lastRunAt,
+  const editingAutomationId = useGet(editingWorkflowAutomationId$);
+  const setEditingAutomationId = useSet(setEditingWorkflowAutomationId$);
+  const editing = editingAutomationId === automation.id;
+  const title = workflowScheduleTitle(automation, displayTimezone);
+  const subtitle = workflowAutomationSubtitle(automation);
+  const hasLastRun = hasValidRunTimestamp(automation.lastRunAt);
+  const hasNextRun = hasValidRunTimestamp(automation.nextRunAt);
+  const lastRunLabel = formatWorkflowAutomationRun(
+    automation.lastRunAt,
     displayTimezone,
   );
-  const nextRunLabel = formatWorkflowTriggerNextRun(
-    trigger.nextRunAt,
+  const nextRunLabel = formatWorkflowAutomationNextRun(
+    automation.nextRunAt,
     displayTimezone,
   );
 
@@ -5354,11 +5370,11 @@ function TriggerRow({
       <div
         className={cn(
           "group grid min-w-0 grid-cols-1 gap-3 px-5 py-4 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-gray-50 sm:grid-cols-[minmax(0,1.2fr)_minmax(9rem,0.9fr)_minmax(13.5rem,1.1fr)_auto_7.75rem] sm:items-center sm:gap-4",
-          !trigger.enabled && "opacity-75",
+          !automation.enabled && "opacity-75",
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <TriggerListIcon trigger={trigger} size="sm" />
+          <AutomationListIcon automation={automation} size="sm" />
           <div className="min-w-0">
             <div
               className="truncate text-sm font-medium text-foreground"
@@ -5376,14 +5392,14 @@ function TriggerRow({
             ) : null}
           </div>
         </div>
-        <TriggerRunStat
+        <AutomationRunStat
           icon={<IconHistory size={14} stroke={1.5} />}
           label="Last"
           value={lastRunLabel}
           emphasized={hasLastRun}
         />
-        {trigger.kind === "schedule" ? (
-          <TriggerRunStat
+        {automation.kind === "schedule" ? (
+          <AutomationRunStat
             icon={<IconClock size={14} stroke={1.5} />}
             label="Next"
             value={nextRunLabel}
@@ -5392,14 +5408,14 @@ function TriggerRow({
         ) : (
           <div aria-hidden="true" />
         )}
-        <TriggerStatusSwitch
-          trigger={trigger}
+        <AutomationStatusSwitch
+          automation={automation}
           title={title}
           canManage={canManage}
         />
         {canManage ? (
-          <TriggerControls
-            trigger={trigger}
+          <AutomationControls
+            automation={automation}
             displayTimezone={displayTimezone}
           />
         ) : (
@@ -5410,13 +5426,13 @@ function TriggerRow({
         <div className="mx-5 h-px bg-border/50" aria-hidden="true" />
       ) : null}
       {canManage ? (
-        <EditWorkflowTriggerDialog
-          trigger={trigger}
+        <EditWorkflowAutomationDialog
+          automation={automation}
           displayTimezone={displayTimezone}
           open={editing}
           onOpenChange={(open) => {
             if (!open) {
-              setEditingTriggerId(null);
+              setEditingAutomationId(null);
             }
           }}
         />
@@ -5425,23 +5441,23 @@ function TriggerRow({
   );
 }
 
-function workflowTriggerSubtitle(
-  trigger: ZeroWorkflowAutomationSummary,
+function workflowAutomationSubtitle(
+  automation: ZeroWorkflowAutomationSummary,
 ): string | null {
   if (
-    isWebhookWorkflowTrigger(trigger) &&
-    trigger.disabledReason === "paid_plan_required"
+    isWebhookWorkflowAutomation(automation) &&
+    automation.disabledReason === "paid_plan_required"
   ) {
     return "Disabled — paid plan required";
   }
-  const matchSummary = workflowTriggerSummary(trigger);
+  const matchSummary = workflowAutomationSummary(automation);
   if (matchSummary) {
     return matchSummary;
   }
-  if (isWebhookWorkflowTrigger(trigger)) {
+  if (isWebhookWorkflowAutomation(automation)) {
     return "Webhook URL hidden";
   }
-  return triggerKindLabel(trigger);
+  return automationKindLabel(automation);
 }
 
 function hasValidRunTimestamp(value: string | null): boolean {
@@ -5452,7 +5468,7 @@ function hasValidRunTimestamp(value: string | null): boolean {
   return !Number.isNaN(new Date(value).getTime());
 }
 
-function formatWorkflowTriggerRun(
+function formatWorkflowAutomationRun(
   value: string | null,
   displayTimezone: string,
 ): string {
@@ -5472,7 +5488,7 @@ function formatWorkflowTriggerRun(
   });
 }
 
-function formatWorkflowTriggerNextRun(
+function formatWorkflowAutomationNextRun(
   value: string | null,
   displayTimezone: string,
 ): string {
@@ -5480,34 +5496,34 @@ function formatWorkflowTriggerNextRun(
     return "No upcoming run";
   }
 
-  return formatWorkflowTriggerRun(value, displayTimezone);
+  return formatWorkflowAutomationRun(value, displayTimezone);
 }
 
-function TriggerStatusSwitch({
-  trigger,
+function AutomationStatusSwitch({
+  automation,
   title,
   canManage,
 }: {
-  readonly trigger: ZeroWorkflowAutomationSummary;
+  readonly automation: ZeroWorkflowAutomationSummary;
   readonly title: string;
   readonly canManage: boolean;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [enabledLoadable, setEnabled] = useLoadableSet(
-    setWorkflowTriggerEnabled$,
+    setWorkflowAutomationEnabled$,
   );
   const toggling = enabledLoadable.state === "loading";
 
   return (
     <div className="flex items-center justify-start sm:justify-center">
       <LoadingSwitch
-        checked={trigger.enabled}
+        checked={automation.enabled}
         loading={toggling}
         disabled={!canManage}
-        ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
+        ariaLabel={`${automation.enabled ? "Disable" : "Enable"} ${title}`}
         onCheckedChange={(enabled) => {
           detach(
-            setEnabled({ triggerId: trigger.id, enabled }, pageSignal),
+            setEnabled({ automationId: automation.id, enabled }, pageSignal),
             Reason.DomCallback,
           );
         }}
@@ -5516,28 +5532,30 @@ function TriggerStatusSwitch({
   );
 }
 
-function TriggerControls({
-  trigger,
+function AutomationControls({
+  automation,
   displayTimezone,
 }: {
-  readonly trigger: ZeroWorkflowAutomationSummary;
+  readonly automation: ZeroWorkflowAutomationSummary;
   readonly displayTimezone: string;
 }) {
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
-  const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
+  const setEditingAutomationId = useSet(setEditingWorkflowAutomationId$);
   const setEditingScheduleCronFields = useSet(setEditingScheduleCronFields$);
-  const revealWebhookSecretTriggerId = useGet(revealWebhookSecretTriggerId$);
-  const setRevealWebhookSecretTriggerId = useSet(
-    setRevealWebhookSecretTriggerId$,
+  const revealWebhookSecretAutomationId = useGet(
+    revealWebhookSecretAutomationId$,
   );
-  const [runNowLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
+  const setRevealWebhookSecretAutomationId = useSet(
+    setRevealWebhookSecretAutomationId$,
+  );
+  const [runNowLoadable, runNow] = useLoadableSet(runWorkflowAutomationNow$);
   const busy = runNowLoadable.state === "loading";
   const running = busy;
-  const canEdit = canEditWorkflowTrigger(trigger);
+  const canEdit = canEditWorkflowAutomation(automation);
   const revealWebhookSecretOpen =
-    revealWebhookSecretTriggerId === trigger.id &&
-    isWebhookWorkflowTrigger(trigger);
+    revealWebhookSecretAutomationId === automation.id &&
+    isWebhookWorkflowAutomation(automation);
 
   return (
     <div className="flex min-w-0 items-center justify-end pr-1.5">
@@ -5555,13 +5573,13 @@ function TriggerControls({
                 onClick={() => {
                   detach(
                     (async () => {
-                      const result = await runNow(trigger.id, pageSignal);
+                      const result = await runNow(automation.id, pageSignal);
                       navigate(ROUTES.chat, {
                         pathParams: { threadId: result.chatThreadId },
                       });
                     })(),
                     Reason.DomCallback,
-                    "run workflow trigger now",
+                    "run workflow automation now",
                   );
                 }}
               >
@@ -5588,17 +5606,17 @@ function TriggerControls({
                   className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-gray-200 hover:text-foreground"
                   onClick={() => {
                     if (
-                      trigger.kind === "schedule" &&
-                      trigger.schedule.type === "cron"
+                      automation.kind === "schedule" &&
+                      automation.schedule.type === "cron"
                     ) {
                       setEditingScheduleCronFields(
                         parseWorkflowCronFields(
-                          trigger.schedule,
+                          automation.schedule,
                           displayTimezone,
                         ),
                       );
                     }
-                    setEditingTriggerId(trigger.id);
+                    setEditingAutomationId(automation.id);
                   }}
                 >
                   <IconPencil size={14} stroke={1.5} />
@@ -5609,25 +5627,25 @@ function TriggerControls({
               </TooltipContent>
             </Tooltip>
           ) : null}
-          <TriggerMoreActionsMenu
-            trigger={trigger}
+          <AutomationMoreActionsMenu
+            automation={automation}
             disabled={busy}
             onRevealWebhookSecret={
-              isWebhookWorkflowTrigger(trigger)
+              isWebhookWorkflowAutomation(automation)
                 ? () => {
-                    setRevealWebhookSecretTriggerId(trigger.id);
+                    setRevealWebhookSecretAutomationId(automation.id);
                   }
                 : undefined
             }
           />
         </div>
       </TooltipProvider>
-      {revealWebhookSecretOpen && isWebhookWorkflowTrigger(trigger) ? (
+      {revealWebhookSecretOpen && isWebhookWorkflowAutomation(automation) ? (
         <RevealWebhookSecretDialog
-          trigger={trigger}
+          automation={automation}
           onOpenChange={(open) => {
             if (!open) {
-              setRevealWebhookSecretTriggerId(null);
+              setRevealWebhookSecretAutomationId(null);
             }
           }}
         />
@@ -5636,18 +5654,18 @@ function TriggerControls({
   );
 }
 
-function TriggerMoreActionsMenu({
-  trigger,
+function AutomationMoreActionsMenu({
+  automation,
   disabled,
   onRevealWebhookSecret,
 }: {
-  readonly trigger: ZeroWorkflowAutomationSummary;
+  readonly automation: ZeroWorkflowAutomationSummary;
   readonly disabled: boolean;
   readonly onRevealWebhookSecret?: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [deleteLoadable, deleteTrigger] = useLoadableSet(
-    deleteWorkflowTrigger$,
+  const [deleteLoadable, deleteAutomation] = useLoadableSet(
+    deleteWorkflowAutomation$,
   );
   const deleting = deleteLoadable.state === "loading";
 
@@ -5687,7 +5705,10 @@ function TriggerMoreActionsMenu({
           disabled={deleting}
           className="gap-2 text-destructive focus:text-destructive"
           onClick={() => {
-            detach(deleteTrigger(trigger.id, pageSignal), Reason.DomCallback);
+            detach(
+              deleteAutomation(automation.id, pageSignal),
+              Reason.DomCallback,
+            );
           }}
         >
           {deleting ? (
@@ -5702,36 +5723,36 @@ function TriggerMoreActionsMenu({
   );
 }
 
-function canEditWorkflowTrigger(
-  trigger: ZeroWorkflowAutomationSummary,
+function canEditWorkflowAutomation(
+  automation: ZeroWorkflowAutomationSummary,
 ): boolean {
   return (
-    trigger.kind === "schedule" ||
-    isGmailWorkflowTrigger(trigger) ||
-    isGithubWorkflowTrigger(trigger)
+    automation.kind === "schedule" ||
+    isGmailWorkflowAutomation(automation) ||
+    isGithubWorkflowAutomation(automation)
   );
 }
 
-function editWorkflowTriggerTitle(
-  trigger: ZeroWorkflowAutomationSummary,
+function editWorkflowAutomationTitle(
+  automation: ZeroWorkflowAutomationSummary,
 ): string {
-  if (trigger.kind === "schedule") {
+  if (automation.kind === "schedule") {
     return "Edit schedule";
   }
 
-  if (trigger.eventType === "gmail-new-message") {
+  if (automation.eventType === "gmail-new-message") {
     return "Edit match";
   }
   return "Edit label";
 }
 
-function EditWorkflowTriggerDialog({
-  trigger,
+function EditWorkflowAutomationDialog({
+  automation,
   displayTimezone,
   open,
   onOpenChange,
 }: {
-  readonly trigger: ZeroWorkflowAutomationSummary;
+  readonly automation: ZeroWorkflowAutomationSummary;
   readonly displayTimezone: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -5744,40 +5765,41 @@ function EditWorkflowTriggerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={
-          trigger.kind === "event" && trigger.eventType === "gmail-new-message"
+          automation.kind === "event" &&
+          automation.eventType === "gmail-new-message"
             ? "max-w-2xl"
             : ""
         }
       >
         <DialogHeader>
-          <DialogTitle>{editWorkflowTriggerTitle(trigger)}</DialogTitle>
+          <DialogTitle>{editWorkflowAutomationTitle(automation)}</DialogTitle>
           <DialogDescription>Update this automation.</DialogDescription>
         </DialogHeader>
-        {trigger.kind === "schedule" ? (
-          <UpdateScheduleTriggerForm
-            trigger={trigger}
+        {automation.kind === "schedule" ? (
+          <UpdateScheduleAutomationForm
+            automation={automation}
             displayTimezone={displayTimezone}
             onCancel={close}
           />
         ) : null}
-        {trigger.kind === "event" &&
-        trigger.eventType === "gmail-new-message" ? (
-          <UpdateGmailNewMessageTriggerForm
-            trigger={trigger}
+        {automation.kind === "event" &&
+        automation.eventType === "gmail-new-message" ? (
+          <UpdateGmailNewMessageAutomationForm
+            automation={automation}
             onCancel={close}
           />
         ) : null}
-        {trigger.kind === "event" &&
-        trigger.eventType === "gmail-label-applied" ? (
-          <UpdateGmailLabelAppliedTriggerForm
-            trigger={trigger}
+        {automation.kind === "event" &&
+        automation.eventType === "gmail-label-applied" ? (
+          <UpdateGmailLabelAppliedAutomationForm
+            automation={automation}
             onCancel={close}
           />
         ) : null}
-        {trigger.kind === "event" &&
-        trigger.eventType === "github-label-applied" ? (
-          <UpdateGithubLabelAppliedTriggerForm
-            trigger={trigger}
+        {automation.kind === "event" &&
+        automation.eventType === "github-label-applied" ? (
+          <UpdateGithubLabelAppliedAutomationForm
+            automation={automation}
             onCancel={close}
           />
         ) : null}
@@ -5786,12 +5808,12 @@ function EditWorkflowTriggerDialog({
   );
 }
 
-function UpdateScheduleTriggerForm({
-  trigger,
+function UpdateScheduleAutomationForm({
+  automation,
   displayTimezone,
   onCancel,
 }: {
-  readonly trigger: Extract<
+  readonly automation: Extract<
     ZeroWorkflowAutomationSummary,
     { kind: "schedule" }
   >;
@@ -5801,11 +5823,11 @@ function UpdateScheduleTriggerForm({
   const cronFields = useGet(editingScheduleCronFields$);
   const setCronFields = useSet(setEditingScheduleCronFields$);
   const pageSignal = useGet(pageSignal$);
-  const [updateLoadable, updateScheduleTrigger] = useLoadableSet(
-    updateWorkflowScheduleTrigger$,
+  const [updateLoadable, updateScheduleAutomation] = useLoadableSet(
+    updateWorkflowScheduleAutomation$,
   );
   const saving = updateLoadable.state === "loading";
-  const schedule = trigger.schedule;
+  const schedule = automation.schedule;
 
   return (
     <form
@@ -5814,7 +5836,7 @@ function UpdateScheduleTriggerForm({
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
-        const scheduleValue = buildTriggerSchedule(
+        const scheduleValue = buildAutomationSchedule(
           schedule.type,
           {
             cronFields,
@@ -5828,9 +5850,9 @@ function UpdateScheduleTriggerForm({
         }
         detach(
           (async () => {
-            await updateScheduleTrigger(
+            await updateScheduleAutomation(
               {
-                triggerId: trigger.id,
+                automationId: automation.id,
                 schedule: scheduleValue,
               },
               pageSignal,
@@ -5841,7 +5863,7 @@ function UpdateScheduleTriggerForm({
         );
       }}
     >
-      <ScheduleTriggerFields
+      <ScheduleAutomationFields
         scheduleType={schedule.type}
         cronFields={cronFields}
         setCronFields={setCronFields}
@@ -5878,19 +5900,19 @@ function UpdateScheduleTriggerForm({
   );
 }
 
-function UpdateGmailNewMessageTriggerForm({
-  trigger,
+function UpdateGmailNewMessageAutomationForm({
+  automation,
   onCancel,
 }: {
-  readonly trigger: Extract<
+  readonly automation: Extract<
     ZeroWorkflowAutomationSummary,
     { eventType: "gmail-new-message" }
   >;
   readonly onCancel: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [updateLoadable, updateGmailTrigger] = useLoadableSet(
-    updateWorkflowGmailNewMessageTrigger$,
+  const [updateLoadable, updateGmailAutomation] = useLoadableSet(
+    updateWorkflowGmailNewMessageAutomation$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -5903,12 +5925,12 @@ function UpdateGmailNewMessageTriggerForm({
         const form = new FormData(event.currentTarget);
         detach(
           (async () => {
-            await updateGmailTrigger(
+            await updateGmailAutomation(
               {
-                triggerId: trigger.id,
+                automationId: automation.id,
                 eventConfig: buildGmailNewMessageEventConfig(
                   form,
-                  trigger.eventConfig,
+                  automation.eventConfig,
                 ),
               },
               pageSignal,
@@ -5927,25 +5949,25 @@ function UpdateGmailNewMessageTriggerForm({
                 name={`${field}Contains`}
                 aria-label={`${label} contains`}
                 defaultValue={gmailMatcherDefaultValue(
-                  trigger.eventConfig,
+                  automation.eventConfig,
                   field,
                   "contains",
                 )}
                 disabled={saving}
                 placeholder={`${label} contains`}
-                className={TRIGGER_FIELD_CLASS}
+                className={AUTOMATION_FIELD_CLASS}
               />
               <input
                 name={`${field}DoesNotContain`}
                 aria-label={`${label} does not contain`}
                 defaultValue={gmailMatcherDefaultValue(
-                  trigger.eventConfig,
+                  automation.eventConfig,
                   field,
                   "doesNotContain",
                 )}
                 disabled={saving}
                 placeholder={`${label} does not contain`}
-                className={TRIGGER_FIELD_CLASS}
+                className={AUTOMATION_FIELD_CLASS}
               />
             </div>
           );
@@ -5973,19 +5995,19 @@ function UpdateGmailNewMessageTriggerForm({
   );
 }
 
-function UpdateGmailLabelAppliedTriggerForm({
-  trigger,
+function UpdateGmailLabelAppliedAutomationForm({
+  automation,
   onCancel,
 }: {
-  readonly trigger: Extract<
+  readonly automation: Extract<
     ZeroWorkflowAutomationSummary,
     { eventType: "gmail-label-applied" }
   >;
   readonly onCancel: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [updateLoadable, updateGmailLabelTrigger] = useLoadableSet(
-    updateWorkflowGmailLabelAppliedTrigger$,
+  const [updateLoadable, updateGmailLabelAutomation] = useLoadableSet(
+    updateWorkflowGmailLabelAppliedAutomation$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -6002,9 +6024,9 @@ function UpdateGmailLabelAppliedTriggerForm({
         }
         detach(
           (async () => {
-            await updateGmailLabelTrigger(
+            await updateGmailLabelAutomation(
               {
-                triggerId: trigger.id,
+                automationId: automation.id,
                 eventConfig,
               },
               pageSignal,
@@ -6021,10 +6043,10 @@ function UpdateGmailLabelAppliedTriggerForm({
           name="labelName"
           aria-label="Label name"
           required
-          defaultValue={trigger.eventConfig.labelName}
+          defaultValue={automation.eventConfig.labelName}
           disabled={saving}
           placeholder="Support"
-          className={TRIGGER_FIELD_CLASS}
+          className={AUTOMATION_FIELD_CLASS}
         />
       </label>
       <DialogFooter>
@@ -6049,11 +6071,11 @@ function UpdateGmailLabelAppliedTriggerForm({
   );
 }
 
-function UpdateGithubLabelAppliedTriggerForm({
-  trigger,
+function UpdateGithubLabelAppliedAutomationForm({
+  automation,
   onCancel,
 }: {
-  readonly trigger: Extract<
+  readonly automation: Extract<
     ZeroWorkflowAutomationSummary,
     { eventType: "github-label-applied" }
   >;
@@ -6066,10 +6088,10 @@ function UpdateGithubLabelAppliedTriggerForm({
   const editingGithubLabelActors = useGet(editingGithubLabelActors$);
   const setEditingGithubLabelActor = useSet(setEditingGithubLabelActor$);
   const actor =
-    editingGithubLabelActors[trigger.id] ??
-    trigger.eventConfig.filters.actor.type;
-  const [updateLoadable, updateGithubLabelTrigger] = useLoadableSet(
-    updateWorkflowGithubLabelAppliedTrigger$,
+    editingGithubLabelActors[automation.id] ??
+    automation.eventConfig.filters.actor.type;
+  const [updateLoadable, updateGithubLabelAutomation] = useLoadableSet(
+    updateWorkflowGithubLabelAppliedAutomation$,
   );
   const [connectLoadable, connectGithub] = useLoadableSet(
     connectGithubInstallation$,
@@ -6106,16 +6128,16 @@ function UpdateGithubLabelAppliedTriggerForm({
         const form = new FormData(event.currentTarget);
         const eventConfig = buildGithubLabelAppliedEventConfig(
           form,
-          trigger.eventConfig,
+          automation.eventConfig,
         );
         if (!eventConfig) {
           return;
         }
         detach(
           (async () => {
-            await updateGithubLabelTrigger(
+            await updateGithubLabelAutomation(
               {
-                triggerId: trigger.id,
+                automationId: automation.id,
                 eventConfig,
               },
               pageSignal,
@@ -6126,18 +6148,18 @@ function UpdateGithubLabelAppliedTriggerForm({
         );
       }}
     >
-      <GithubLabelTriggerFields
+      <GithubLabelAutomationFields
         disabled={saving || loadingGithub || githubLoadError}
         actor={actor}
-        defaultConfig={trigger.eventConfig}
+        defaultConfig={automation.eventConfig}
         onActorChange={(nextActor) => {
           setEditingGithubLabelActor({
-            triggerId: trigger.id,
+            automationId: automation.id,
             actor: nextActor,
           });
         }}
       />
-      <GithubLabelTriggerAvailabilityMessages
+      <GithubLabelAutomationAvailabilityMessages
         githubLoaded={githubLoadable.state === "hasData"}
         isInstalled={isInstalled}
         needsConnection={needsConnection}
