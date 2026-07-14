@@ -418,6 +418,16 @@ def test_compiled_ordinary_credential_authority_index_skips_static_candidates(mo
                 "auth": {"headers": {"Authorization": "Bearer token"}},
                 "permissions": [{"name": "read", "rules": ["GET /items"]}],
             },
+            {
+                "base": "http://{subdomain}.insecure.example.com/items",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            },
+            {
+                "base": "https://{subdomain}.auth-base.example.com/items",
+                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            },
         ]
     )
     raw_auth_check_count = 0
