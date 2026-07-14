@@ -28,7 +28,6 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
 import { inferMimetype } from "../../lib/mimetype";
-import { logger } from "../../lib/log";
 import { now, nowDate } from "../external/time";
 import { publishUserSignal } from "../external/realtime";
 import { putS3Object } from "../external/s3";
@@ -37,7 +36,7 @@ import {
   sendAgentPhoneMessage,
   sendAgentPhoneTypingIndicator,
 } from "../external/agentphone-client";
-import { safeUrlParse, settle } from "../utils";
+import { bestEffort, safeUrlParse } from "../utils";
 import {
   describeAgentPhoneHandleShape,
   formatAgentPhoneAuditLink,
@@ -67,7 +66,6 @@ import {
   userModelPreference,
 } from "./zero-user-data.service";
 
-const log = logger("api:agentphone");
 const MAX_CONNECT_AGE_SECONDS = 600;
 const MAX_WEBHOOK_AGE_SECONDS = 300;
 const SIGNATURE_PREFIX = "sha256=";
@@ -1222,15 +1220,10 @@ async function refreshTypingIfSupported(
   }
   const conversationId = event.conversationId;
 
-  const result = await settle(
+  await bestEffort(
     sendAgentPhoneTypingIndicator({ conversationId }, signal),
+    signal,
   );
-  if (!result.ok) {
-    log.debug("Failed to send AgentPhone typing indicator", {
-      conversationId: event.conversationId,
-      error: result.error,
-    });
-  }
 }
 
 function formatConnectPrompt(event: AgentPhoneMessageEvent): string {
@@ -2018,13 +2011,5 @@ export const handleAgentPhoneMessage$ = command(
 export async function publishAgentPhoneUserChanged(
   userId: string,
 ): Promise<void> {
-  const result = await settle(
-    publishUserSignal([userId], "agentphone:changed"),
-  );
-  if (!result.ok) {
-    log.warn("Failed to publish AgentPhone user signal", {
-      userId,
-      error: result.error,
-    });
-  }
+  await bestEffort(publishUserSignal([userId], "agentphone:changed"));
 }

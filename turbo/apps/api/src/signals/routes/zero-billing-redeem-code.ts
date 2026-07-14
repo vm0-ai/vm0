@@ -8,7 +8,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
 import type { RouteEntry } from "../route-entry";
-import { settle } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
@@ -127,12 +127,11 @@ async function atomRedeemErrorMessage(
 ): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("json")) {
-    const bodyResult = await settle(
-      response.json() as Promise<unknown>,
-      signal,
-    );
-    if (bodyResult.ok) {
-      const code = atomRedeemErrorCode(bodyResult.value);
+    const responseText = await tapError(response.text());
+    signal.throwIfAborted();
+    const body = safeJsonParse(responseText ?? "");
+    if (body !== undefined) {
+      const code = atomRedeemErrorCode(body);
       if (code) {
         const message =
           ATOM_REDEEM_CODE_ERROR_MESSAGES[normalizeAtomErrorCode(code)];

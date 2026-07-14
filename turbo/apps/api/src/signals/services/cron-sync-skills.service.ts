@@ -36,7 +36,7 @@ import {
   listS3ObjectsUnderPrefix,
   putS3Object,
 } from "../external/s3";
-import { createDeferredPromise, safeSync, settle } from "../utils";
+import { createDeferredPromise, safeSync, tapError } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 
 interface SyncSkillsResult {
@@ -620,7 +620,7 @@ function removeOrphanedSkills(
 
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     for (const storage of orphanStorages) {
-      const cleanupResult = await settle(
+      await tapError(
         (async () => {
           const objects = await get(
             listS3ObjectsUnderPrefix(bucket, storage.s3Prefix),
@@ -638,16 +638,13 @@ function removeOrphanedSkills(
             signal.throwIfAborted();
           }
         })(),
+        (error) => {
+          log.warn("Failed to clean up S3 objects for removed skill", {
+            s3Prefix: storage.s3Prefix,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        },
       );
-      if (!cleanupResult.ok) {
-        log.warn("Failed to clean up S3 objects for removed skill", {
-          s3Prefix: storage.s3Prefix,
-          error:
-            cleanupResult.error instanceof Error
-              ? cleanupResult.error.message
-              : String(cleanupResult.error),
-        });
-      }
     }
 
     log.debug("Removed orphaned skills", {

@@ -48,7 +48,7 @@ import {
   isCodexAuthJsonShapeError,
   parseCodexAuthJson,
 } from "../services/codex-auth-json-parser";
-import { settle } from "../utils";
+import { safeSync } from "../utils";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -432,16 +432,11 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if ("authJson" in bodyResult.data) {
     const { authJson } = bodyResult.data;
-    // parseCodexAuthJson is synchronous and throws on invalid input — wrap
-    // in an async IIFE so the throw becomes a rejection settle can observe.
-    const parsedResult = await settle(
-      (async (): Promise<ReturnType<typeof parseCodexAuthJson>> => {
-        await Promise.resolve();
-        return parseCodexAuthJson(authJson);
-      })(),
-    );
+    const parsedResult = safeSync(() => {
+      return parseCodexAuthJson(authJson);
+    });
     signal.throwIfAborted();
-    if (!parsedResult.ok) {
+    if ("error" in parsedResult) {
       if (isCodexAuthJsonFreePlanError(parsedResult.error)) {
         return stringError(400, "Free plan rejected by parser");
       }
@@ -454,7 +449,7 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
       throw parsedResult.error;
     }
 
-    const parsed = parsedResult.value;
+    const parsed = parsedResult.ok;
     await set(
       upsertOrgMultiAuthModelProvider$,
       {

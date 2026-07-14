@@ -20,7 +20,7 @@ import { generateText, isLlmConfigured } from "../external/openrouter";
 import { createSlackClient } from "../external/slack-message-client";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 import {
   fetchGmailMessageContextById,
   messageIsInbound,
@@ -336,31 +336,25 @@ async function applyRelationshipExtraction(args: {
     entityId: graphEntityId,
     limit: 12,
   });
-  const extractionResult = await settle(
+  const extraction = (await tapError(
     extractRelationshipMemory({
       target: args.target,
       existingSummary: existing.summary,
       evidence: args.evidence,
       existingMemories: graphCandidates,
     }),
-  );
-  const extraction = extractionResult.ok
-    ? extractionResult.value
-    : {
-        summary: null,
-        relationshipType: null,
-        interactionSummary: null,
-        items: [],
-      };
-  if (!extractionResult.ok) {
-    log.warn(args.failureLogMessage, {
-      ...args.logContext,
-      error:
-        extractionResult.error instanceof Error
-          ? extractionResult.error.message
-          : String(extractionResult.error),
-    });
-  }
+    (error) => {
+      log.warn(args.failureLogMessage, {
+        ...args.logContext,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  )) ?? {
+    summary: null,
+    relationshipType: null,
+    interactionSummary: null,
+    items: [],
+  };
 
   const { summary, relationshipType } = relationshipStateText({
     extraction,

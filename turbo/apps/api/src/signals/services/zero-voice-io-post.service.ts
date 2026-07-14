@@ -15,7 +15,7 @@ import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { putS3Object } from "../external/s3";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
@@ -281,13 +281,13 @@ function bytePlusAudioCodec(file: File): string | undefined {
 async function providerErrorBodyForLog(
   response: Response,
 ): Promise<string | undefined> {
-  const result = await settle(response.text());
-  if (!result.ok || !result.value) {
+  const body = await tapError(response.text());
+  if (!body) {
     return undefined;
   }
-  return result.value.length > BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH
-    ? `${result.value.slice(0, BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH)}...`
-    : result.value;
+  return body.length > BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH
+    ? `${body.slice(0, BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH)}...`
+    : body;
 }
 
 function bytePlusTranscriptionStatus(response: Response): string | null {

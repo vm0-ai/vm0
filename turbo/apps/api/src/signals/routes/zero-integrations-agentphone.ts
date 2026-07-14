@@ -35,7 +35,7 @@ import {
   type AgentPhoneChannel,
   type AgentPhoneMessageEvent,
 } from "../services/zero-agentphone.service";
-import { safeJsonParse, settle, tapError } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 
 interface AgentPhoneConfig {
   readonly agentphoneAgentId: string | null;
@@ -164,11 +164,6 @@ function maskPhoneHandle(value: string): string {
   return `***${normalized.slice(-4)}`;
 }
 
-async function safeResponseText(response: Response): Promise<string> {
-  const settled = await settle(response.text());
-  return settled.ok ? settled.value : "[unavailable]";
-}
-
 function truncateForLog(value: string): string {
   return value.length > 500 ? `${value.slice(0, 500)}...` : value;
 }
@@ -199,7 +194,9 @@ async function sendAgentPhoneVerificationMessage(params: {
       phoneHandle: maskPhoneHandle(params.toNumber),
       status: response.status,
       statusText: response.statusText,
-      body: truncateForLog(await safeResponseText(response)),
+      body: truncateForLog(
+        (await tapError(response.text())) ?? "[unavailable]",
+      ),
     });
     return false;
   }

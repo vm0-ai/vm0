@@ -10,7 +10,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import { db$, type ReadonlyDb } from "../external/db";
 import { notFound } from "../../lib/error";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { fetchClaudeCodeSubscriptionMetadata } from "./claude-code-usage.service";
 import {
   consumeCodexRateLimitResetCredit,
@@ -247,27 +247,29 @@ export const refreshPersonalModelProviderSubscriptionUsage$ = command(
 
     const refreshed = await Promise.all(
       args.result.modelProviders.map(async (provider) => {
-        const result = await settle(
-          refreshProvider({
-            db: database,
-            orgId: args.orgId,
-            userId: args.userId,
-            provider,
-            featureSwitchContext,
-            signal,
-          }),
-          signal,
+        return (
+          (await tapError(
+            refreshProvider({
+              db: database,
+              orgId: args.orgId,
+              userId: args.userId,
+              provider,
+              featureSwitchContext,
+              signal,
+            }),
+            (error) => {
+              L.warn(
+                "failed to refresh personal model provider subscription usage",
+                {
+                  error,
+                  orgId: args.orgId,
+                  providerType: provider.type,
+                  userId: args.userId,
+                },
+              );
+            },
+          )) ?? provider
         );
-        if (result.ok) {
-          return result.value;
-        }
-        L.warn("failed to refresh personal model provider subscription usage", {
-          error: result.error,
-          orgId: args.orgId,
-          providerType: provider.type,
-          userId: args.userId,
-        });
-        return provider;
       }),
     );
     signal.throwIfAborted();

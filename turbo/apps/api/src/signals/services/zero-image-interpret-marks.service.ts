@@ -10,7 +10,7 @@ import {
   type OpenRouterContentPart,
   type OpenRouterUsage,
 } from "../external/openrouter";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 
 const log = logger("api:zero-image-interpret-marks");
 export const INTERPRET_MARKS_MODEL = "google/gemini-3.5-flash";
@@ -128,7 +128,7 @@ export async function interpretRegionMarks(args: {
     { type: "image_url", image_url: { url: args.imageUrl } },
   ];
 
-  const generated = await settle(
+  const generated = await tapError(
     generateTextWithUsage(
       INTERPRET_MARKS_MODEL,
       [
@@ -137,27 +137,26 @@ export async function interpretRegionMarks(args: {
       ],
       INTERPRET_MARKS_MAX_TOKENS,
     ),
+    (error) => {
+      log.warn("Failed to interpret region marks", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
   );
 
-  if (!generated.ok) {
-    log.warn("Failed to interpret region marks", {
-      error:
-        generated.error instanceof Error
-          ? generated.error.message
-          : String(generated.error),
-    });
+  if (generated === undefined) {
     return { regions: fallback };
   }
-  if (generated.value === null) {
+  if (generated === null) {
     return { regions: fallback };
   }
 
-  const results = parseResults(generated.value.text, args.regions);
+  const results = parseResults(generated.text, args.regions);
   if (results === null) {
     log.warn("Region mark interpretation returned unparseable JSON");
     return { regions: fallback };
   }
-  return generated.value.usage === undefined
+  return generated.usage === undefined
     ? { regions: results }
-    : { regions: results, usage: generated.value.usage };
+    : { regions: results, usage: generated.usage };
 }

@@ -21,7 +21,7 @@ import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { getLocalToday, resolveUserTimezones } from "./local-day";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const L = logger("CronAggregateInsights");
 const OTHER_USAGE_AGENT_NAME = "Other usage";
@@ -700,34 +700,33 @@ async function queryClerkOrgMemberUserIds(
 ): Promise<string[] | null> {
   const userIds: string[] = [];
   for (let offset = 0; ; offset += ORG_MEMBERSHIP_PAGE_SIZE) {
-    const result = await settle(
+    const result = await tapError(
       clerk.organizations.getOrganizationMembershipList({
         organizationId: orgId,
         limit: ORG_MEMBERSHIP_PAGE_SIZE,
         offset,
       }),
+      (error) => {
+        L.warn("Failed to query Clerk organization memberships", {
+          orgId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
     );
     signal.throwIfAborted();
 
-    if (!result.ok) {
-      L.warn("Failed to query Clerk organization memberships", {
-        orgId,
-        error:
-          result.error instanceof Error
-            ? result.error.message
-            : String(result.error),
-      });
+    if (!result) {
       return null;
     }
 
-    for (const membership of result.value.data) {
+    for (const membership of result.data) {
       const userId = membership.publicUserData?.userId;
       if (userId) {
         userIds.push(userId);
       }
     }
 
-    if (result.value.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
+    if (result.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
       return userIds;
     }
   }
@@ -1133,25 +1132,23 @@ function queryWindowNetworkData(
 | project runId, host, firewall_name, firewall_permission, action
 | limit 100000`;
 
-    const axiomResult = await settle(
-      (async (): Promise<readonly unknown[]> => {
-        const rows = (await get(queryAxiom(apl))) as unknown;
-        if (!Array.isArray(rows)) {
-          throw new Error("Axiom network query returned non-array result");
-        }
-        return rows;
-      })(),
-    );
-    const rawNetworkRows = axiomResult.ok ? axiomResult.value : [];
-    const axiomDegraded = !axiomResult.ok;
-    if (!axiomResult.ok) {
-      L.error("Failed to query Axiom for network logs", {
-        error:
-          axiomResult.error instanceof Error
-            ? axiomResult.error.message
-            : String(axiomResult.error),
-      });
-    }
+    let axiomDegraded = false;
+    const rawNetworkRows =
+      (await tapError(
+        (async (): Promise<readonly unknown[]> => {
+          const rows = (await get(queryAxiom(apl))) as unknown;
+          if (!Array.isArray(rows)) {
+            throw new Error("Axiom network query returned non-array result");
+          }
+          return rows;
+        })(),
+        (error) => {
+          axiomDegraded = true;
+          L.error("Failed to query Axiom for network logs", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        },
+      )) ?? [];
     signal.throwIfAborted();
 
     const normalizedNetworkRows = normalizeNetworkInsightRows(rawNetworkRows);

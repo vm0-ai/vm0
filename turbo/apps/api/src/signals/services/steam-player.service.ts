@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 
 class SteamUpstreamError extends Error {
   constructor(message: string) {
@@ -176,11 +176,12 @@ async function fetchSteamJson<T>(
     );
   }
 
-  const textResult = await settle(response.text(), signal);
-  if (!textResult.ok) {
+  const text = await tapError(response.text());
+  signal.throwIfAborted();
+  if (text === undefined) {
     throw new SteamUpstreamError("Steam API response is not valid JSON");
   }
-  const body = safeJsonParse(textResult.value);
+  const body = safeJsonParse(text);
   if (body === undefined) {
     throw new SteamUpstreamError("Steam API response is not valid JSON");
   }

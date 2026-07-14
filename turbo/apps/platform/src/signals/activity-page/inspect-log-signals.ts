@@ -4,7 +4,7 @@ import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import type { AgentEvent } from "../zero-page/log-types.ts";
 import { parseInspectLog, type InspectLogMeta } from "./inspect-log-parser.ts";
 import { logger } from "../log.ts";
-import { settle } from "../utils.ts";
+import { tapError } from "../utils.ts";
 import {
   groupVisibleMessages,
   type GroupedMessage,
@@ -73,20 +73,21 @@ export const loadInspectLogFile$ = command(
       return;
     }
 
-    const textResult = await settle(file.text(), signal);
+    const text = await tapError(file.text(), (error) => {
+      L.warn("Failed to read inspect log file", file.name, error);
+    });
     signal.throwIfAborted();
     if (generation !== get(internalInspectLogLoadGeneration$)) {
       return;
     }
-    if (!textResult.ok) {
-      L.warn("Failed to read inspect log file", file.name, textResult.error);
+    if (text === undefined) {
       set(internalInspectLogData$, null);
       set(internalInspectLogLoadError$, inspectLogLoadErrorMessage());
       set(internalInspectStepSearch$, "");
       return;
     }
 
-    const data = parseInspectLog(textResult.value);
+    const data = parseInspectLog(text);
     if (!data) {
       L.warn("Failed to parse inspect log file", file.name);
       set(internalInspectLogData$, null);

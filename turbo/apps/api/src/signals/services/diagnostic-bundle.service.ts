@@ -18,7 +18,13 @@ import { clerk$ } from "../external/clerk";
 import { getDatasetName, queryAxiom } from "../external/axiom";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { db$, type Db } from "../external/db";
-import { createDeferredPromise, safeSync, settle, tapError } from "../utils";
+import {
+  createDeferredPromise,
+  onRejection,
+  safeSync,
+  settle,
+  tapError,
+} from "../utils";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { createPlainSupportThread } from "./plain-support.service";
 import { normalizeRunContextSnapshot } from "./run-context-snapshot.service";
@@ -148,10 +154,12 @@ async function assembleZip(
   }
 
   const finalized = (async () => {
-    const result = await settle(archive.finalize(), signal);
-    if (!result.ok && !done.settled()) {
-      done.reject(result.error);
-    }
+    await onRejection(archive.finalize(), (error) => {
+      if (!done.settled()) {
+        done.reject(error);
+      }
+    });
+    signal.throwIfAborted();
     return await done.promise;
   })();
   return await Promise.race([done.promise, finalized]);
@@ -557,23 +565,23 @@ function collectSystemLog(
 | where runId in (${runIdList})
 | order by _time asc`;
 
-    const queried = await settle(
-      (async (): Promise<string> => {
-        const events = (await get(queryAxiom(apl))) as { log: string }[];
-        return events
-          .map((event) => {
-            return event.log;
-          })
-          .join("");
-      })(),
+    return (
+      (await tapError(
+        (async (): Promise<string> => {
+          const events = (await get(queryAxiom(apl))) as { log: string }[];
+          return events
+            .map((event) => {
+              return event.log;
+            })
+            .join("");
+        })(),
+        (error) => {
+          log.warn("Failed to collect system log from Axiom", {
+            error: String(error),
+          });
+        },
+      )) ?? ""
     );
-    if (!queried.ok) {
-      log.warn("Failed to collect system log from Axiom", {
-        error: String(queried.error),
-      });
-      return "";
-    }
-    return queried.value;
   });
 }
 
@@ -595,18 +603,18 @@ function collectNetworkLog(
 | where runId in (${runIdList})
 | order by _time asc`;
 
-    const queried = await settle(
-      (async (): Promise<Record<string, unknown>[]> => {
-        return (await get(queryAxiom(apl))) as Record<string, unknown>[];
-      })(),
+    return (
+      (await tapError(
+        (async (): Promise<Record<string, unknown>[]> => {
+          return (await get(queryAxiom(apl))) as Record<string, unknown>[];
+        })(),
+        (error) => {
+          log.warn("Failed to collect network log from Axiom", {
+            error: String(error),
+          });
+        },
+      )) ?? []
     );
-    if (!queried.ok) {
-      log.warn("Failed to collect network log from Axiom", {
-        error: String(queried.error),
-      });
-      return [];
-    }
-    return queried.value;
   });
 }
 
@@ -639,21 +647,21 @@ function collectAgentEvents(
 | order by _time asc, sequenceNumber asc
 | limit 2000`;
 
-    const queried = await settle(
-      (async (): Promise<ChatHistoryEvent[]> => {
-        const events = await get(
-          queryAxiom<ChatHistoryEvent>(apl, { noCache: true }),
-        );
-        return [...events];
-      })(),
+    return (
+      (await tapError(
+        (async (): Promise<ChatHistoryEvent[]> => {
+          const events = await get(
+            queryAxiom<ChatHistoryEvent>(apl, { noCache: true }),
+          );
+          return [...events];
+        })(),
+        (error) => {
+          log.warn("Failed to collect agent events from Axiom", {
+            error: String(error),
+          });
+        },
+      )) ?? []
     );
-    if (!queried.ok) {
-      log.warn("Failed to collect agent events from Axiom", {
-        error: String(queried.error),
-      });
-      return [];
-    }
-    return queried.value;
   });
 }
 
@@ -836,23 +844,23 @@ function queryAgentEvents(
 | order by _time asc, sequenceNumber asc
 | limit 5000`;
 
-    const queried = await settle(
-      (async (): Promise<AxiomAgentEvent[]> => {
-        const events = await get(
-          queryAxiom<AxiomAgentEvent>(apl, {
-            noCache: true,
-          }),
-        );
-        return [...events];
-      })(),
+    return (
+      (await tapError(
+        (async (): Promise<AxiomAgentEvent[]> => {
+          const events = await get(
+            queryAxiom<AxiomAgentEvent>(apl, {
+              noCache: true,
+            }),
+          );
+          return [...events];
+        })(),
+        (error) => {
+          log.warn("Failed to collect agent telemetry", {
+            error: String(error),
+          });
+        },
+      )) ?? []
     );
-    if (!queried.ok) {
-      log.warn("Failed to collect agent telemetry", {
-        error: String(queried.error),
-      });
-      return [];
-    }
-    return queried.value;
   });
 }
 
@@ -866,18 +874,17 @@ function queryNetworkLogs(
 | order by _time asc
 | limit 5000`;
 
-    const queried = await settle(
+    const networkLogs = await tapError(
       (async (): Promise<AxiomNetworkEvent[]> => {
         return (await get(queryAxiom(apl))) as AxiomNetworkEvent[];
       })(),
+      (error) => {
+        log.warn("Failed to collect network logs", {
+          error: String(error),
+        });
+      },
     );
-    if (!queried.ok) {
-      log.warn("Failed to collect network logs", {
-        error: String(queried.error),
-      });
-      return [];
-    }
-    return queried.value;
+    return networkLogs === undefined ? [] : networkLogs;
   });
 }
 

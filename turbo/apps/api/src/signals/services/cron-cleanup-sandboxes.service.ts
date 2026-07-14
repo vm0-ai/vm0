@@ -18,7 +18,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
-import { settle, tapError } from "../utils";
+import { bestEffort, settle, tapError } from "../utils";
 import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
 import {
   cleanupExpiredQueueEntries$,
@@ -97,45 +97,21 @@ async function publishQueueChangedSafely(
   orgId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const result = await settle(publishOrgSignal(orgId, "queue:changed"), signal);
-  if (!result.ok) {
-    L.warn("Failed to publish queue changed signal", {
-      orgId,
-      error: result.error,
-    });
-  }
+  await bestEffort(publishOrgSignal(orgId, "queue:changed"), signal);
 }
 
 async function publishQueueMarkerNotificationSafely(
   notification: QueueMarkerRevokeNotification,
   signal: AbortSignal,
 ): Promise<void> {
-  const messageResult = await settle(
+  await bestEffort(
     publishUserSignal(
       [notification.userId],
       `chatThreadMessageCreated:${notification.chatThreadId}`,
     ),
     signal,
   );
-  if (!messageResult.ok) {
-    L.warn("Failed to publish queue marker revocation signal", {
-      userId: notification.userId,
-      chatThreadId: notification.chatThreadId,
-      error: messageResult.error,
-    });
-  }
-
-  const threadListResult = await settle(
-    publishThreadListChanged(notification.userId),
-    signal,
-  );
-  if (!threadListResult.ok) {
-    L.warn("Failed to publish queue marker thread list signal", {
-      userId: notification.userId,
-      chatThreadId: notification.chatThreadId,
-      error: threadListResult.error,
-    });
-  }
+  await bestEffort(publishThreadListChanged(notification.userId), signal);
 }
 
 const cleanupExportJobs$ = command(
@@ -485,19 +461,15 @@ async function cleanupExpiredCustomConnectorAuthRefsSafely(
   db: Db,
   signal: AbortSignal,
 ): Promise<number> {
-  const result = await settle(
+  const deleted = await tapError(
     cleanupExpiredCustomConnectorAuthRefs(db, signal),
-    signal,
+    (error) => {
+      L.error("Failed to cleanup expired custom connector auth refs", {
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    },
   );
-  if (result.ok) {
-    return result.value;
-  }
-
-  L.error("Failed to cleanup expired custom connector auth refs", {
-    error:
-      result.error instanceof Error ? result.error.message : "Unknown error",
-  });
-  return 0;
+  return deleted ?? 0;
 }
 
 export const cleanupSandboxes$ = command(

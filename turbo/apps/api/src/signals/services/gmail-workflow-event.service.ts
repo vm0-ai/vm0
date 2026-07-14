@@ -30,7 +30,7 @@ import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -1549,7 +1549,7 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
   }
 
   if (message.occurredAt) {
-    const relationshipJob = await settle(
+    await tapError(
       enqueueGmailRelationshipRefreshJob(args.db, {
         orgId: args.state.orgId,
         userId: args.state.userId,
@@ -1568,17 +1568,14 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
           bodyText: message.bodyText,
         },
       }),
+      (error) => {
+        log.warn("Failed to enqueue Gmail relationship memory refresh", {
+          watchStateId: args.state.id,
+          messageId: message.messageId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
     );
-    if (!relationshipJob.ok) {
-      log.warn("Failed to enqueue Gmail relationship memory refresh", {
-        watchStateId: args.state.id,
-        messageId: message.messageId,
-        error:
-          relationshipJob.error instanceof Error
-            ? relationshipJob.error.message
-            : String(relationshipJob.error),
-      });
-    }
   } else {
     log.warn("Skipped Gmail relationship memory refresh without message time", {
       watchStateId: args.state.id,

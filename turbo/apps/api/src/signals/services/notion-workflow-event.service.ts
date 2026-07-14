@@ -38,7 +38,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { safeJsonParse, safeUrlParse, settle } from "../utils";
+import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -738,15 +738,17 @@ async function notionFetchJson<T>(
     };
   }
 
-  const jsonResult = await settle(response.json() as Promise<unknown>, signal);
-  if (!jsonResult.ok) {
+  const responseText = await tapError(response.text());
+  signal.throwIfAborted();
+  const json = safeJsonParse(responseText ?? "");
+  if (json === undefined) {
     return {
       kind: "transient_error",
       status: response.status,
       message: "Failed to parse Notion API response",
     };
   }
-  const parsed = schema.safeParse(jsonResult.value);
+  const parsed = schema.safeParse(json);
   if (!parsed.success) {
     return {
       kind: "transient_error",

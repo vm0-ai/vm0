@@ -26,7 +26,6 @@ import {
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
 import { ensureUserArtifactStorage } from "./agent-run-storage.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
@@ -1276,13 +1275,8 @@ export const publishTeamsChanged$ = command(
       return;
     }
 
-    const publishResult = await settle(
-      publishUserSignal([...userIds], "teams:changed", args.payload),
-    );
+    await publishUserSignal([...userIds], "teams:changed", args.payload);
     signal.throwIfAborted();
-    if (!publishResult.ok) {
-      throw publishResult.error;
-    }
   },
 );
 

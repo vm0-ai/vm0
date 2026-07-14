@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { logger } from "../../lib/log";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
@@ -141,7 +141,7 @@ export const triggerAutoRecharge$ = command(
 
     const stripe = getStripeClient();
 
-    const outcome = await settle(
+    await tapError(
       (async (): Promise<void> => {
         const paymentMethodId = await resolvePaymentMethod(stripe, org);
         signal.throwIfAborted();
@@ -184,17 +184,14 @@ export const triggerAutoRecharge$ = command(
           invoiceId: invoice.id,
         });
       })(),
+      async (error) => {
+        L.warn("Auto-recharge Stripe call failed, clearing pending flag", {
+          orgId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await clearPendingFlag();
+      },
     );
-
     signal.throwIfAborted();
-
-    if (!outcome.ok) {
-      const { error } = outcome;
-      L.warn("Auto-recharge Stripe call failed, clearing pending flag", {
-        orgId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await clearPendingFlag();
-    }
   },
 );

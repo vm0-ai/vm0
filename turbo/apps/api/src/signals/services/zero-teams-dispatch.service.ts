@@ -40,7 +40,7 @@ import {
   type TeamsGraphMessage,
   type TeamsGraphUserInfo,
 } from "../external/teams-bot-client";
-import { safeJsonParse, settle } from "../utils";
+import { bestEffort, safeJsonParse } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -691,12 +691,10 @@ async function sendTeamsRunStartIndicator(args: {
   readonly signal: AbortSignal;
 }): Promise<void> {
   const activityId = args.activity.activityId;
-  let mode: "typing" | "reaction";
   let indicator:
     | ReturnType<typeof sendTeamsTypingActivity>
     | ReturnType<typeof sendTeamsReaction>;
   if (isTeamsDirectMessage(args.activity) || !activityId) {
-    mode = "typing";
     indicator = sendTeamsTypingActivity({
       serviceUrl: args.activity.serviceUrl,
       conversationId: args.activity.conversationId,
@@ -704,7 +702,6 @@ async function sendTeamsRunStartIndicator(args: {
       signal: args.signal,
     });
   } else {
-    mode = "reaction";
     indicator = sendTeamsReaction({
       serviceUrl: args.activity.serviceUrl,
       conversationId: args.activity.conversationId,
@@ -714,21 +711,7 @@ async function sendTeamsRunStartIndicator(args: {
       signal: args.signal,
     });
   }
-  const result = await settle(indicator, args.signal);
-  const error = !result.ok
-    ? result.error
-    : result.value.kind === "teams-error"
-      ? result.value.error
-      : undefined;
-  if (error !== undefined) {
-    L.debug("Failed to send Teams run start indicator", {
-      tenantId: args.activity.tenantId,
-      conversationId: args.activity.conversationId,
-      activityId: args.activity.activityId,
-      mode,
-      error,
-    });
-  }
+  await bestEffort(indicator, args.signal);
 }
 
 async function getUserAgentPreference(

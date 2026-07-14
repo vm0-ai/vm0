@@ -29,7 +29,7 @@ import {
 } from "../services/zero-teams-connect.service";
 import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.service";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import { safeJsonParse, settle, tapError } from "../utils";
+import { bestEffort, safeJsonParse, tapError } from "../utils";
 
 const L = logger("TeamsBot");
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
@@ -174,7 +174,7 @@ async function clearTeamsThinkingReactionForActivity(args: {
     return;
   }
 
-  const result = await settle(
+  await bestEffort(
     deleteTeamsReaction({
       serviceUrl: args.activity.serviceUrl,
       conversationId: args.activity.conversationId,
@@ -185,19 +185,6 @@ async function clearTeamsThinkingReactionForActivity(args: {
     }),
     args.signal,
   );
-  const error = !result.ok
-    ? result.error
-    : result.value.kind === "teams-error"
-      ? result.value.error
-      : undefined;
-  if (error !== undefined) {
-    L.debug("Failed to clear Teams thinking reaction after dispatch failure", {
-      tenantId: args.activity.tenantId,
-      conversationId: args.activity.conversationId,
-      activityId: args.activity.activityId,
-      error,
-    });
-  }
 }
 
 const dispatchTeamsMessageAndReply$ = command(

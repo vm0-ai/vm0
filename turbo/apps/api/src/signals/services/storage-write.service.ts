@@ -18,7 +18,7 @@ import {
   s3ObjectExists,
   verifyS3FilesExist,
 } from "../external/s3";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
@@ -339,22 +339,20 @@ function resolvePreparedFiles(args: {
       return args.input.files;
     }
 
-    const mergeResult = await settle(
-      get(
-        mergeWithBaseVersion({
-          db: args.db,
-          bucket: args.bucket,
-          storageId: args.storageId,
-          files: args.input.files,
-          baseVersion,
-          changes,
-          signal: args.signal,
-        }),
-      ),
+    const files = await get(
+      mergeWithBaseVersion({
+        db: args.db,
+        bucket: args.bucket,
+        storageId: args.storageId,
+        files: args.input.files,
+        baseVersion,
+        changes,
+        signal: args.signal,
+      }),
     );
     args.signal.throwIfAborted();
 
-    return mergeResult.ok ? mergeResult.value : args.input.files;
+    return files;
   });
 }
 
@@ -651,7 +649,7 @@ async function recordStorageLineage(args: {
     return;
   }
 
-  const result = await settle(
+  await tapError(
     args.db.insert(storageVersionLineage).values({
       storageId: args.storageId,
       versionId: args.versionId,
@@ -659,17 +657,14 @@ async function recordStorageLineage(args: {
       runId,
       storageType: args.storageType,
     }),
+    (error) => {
+      L.error(
+        `Failed to record lineage for ${args.versionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    },
   );
-
-  if (!result.ok) {
-    L.error(
-      `Failed to record lineage for ${args.versionId}: ${
-        result.error instanceof Error
-          ? result.error.message
-          : String(result.error)
-      }`,
-    );
-  }
 }
 
 export const prepareStorageUploadForAuth$ = command(

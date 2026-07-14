@@ -7,7 +7,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { bootstrapGoalRun$ } from "../services/zero-goal-continuation.service";
 import {
@@ -130,30 +130,29 @@ const createGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
   signal.throwIfAborted();
   if (result.kind === "ok") {
-    if (result.bootstrapGoal) {
-      const bootstrap = await settle(
+    const bootstrapGoal = result.bootstrapGoal;
+    if (bootstrapGoal) {
+      const bootstrap = await tapError(
         set(
           bootstrapGoalRun$,
           {
-            goal: result.bootstrapGoal,
+            goal: bootstrapGoal,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           },
           signal,
         ),
-        signal,
+        (error) => {
+          log.warn("Failed to bootstrap goal run for provisioned thread", {
+            goalId: bootstrapGoal.goalId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        },
       );
-      if (!bootstrap.ok) {
-        log.warn("Failed to bootstrap goal run for provisioned thread", {
-          goalId: result.bootstrapGoal.goalId,
-          error:
-            bootstrap.error instanceof Error
-              ? bootstrap.error.message
-              : String(bootstrap.error),
-        });
-      } else if (bootstrap.value.kind !== "ok") {
+      signal.throwIfAborted();
+      if (bootstrap && bootstrap.kind !== "ok") {
         log.warn("Goal bootstrap run was not enqueued", {
-          goalId: result.bootstrapGoal.goalId,
-          reason: bootstrap.value.kind,
+          goalId: bootstrapGoal.goalId,
+          reason: bootstrap.kind,
         });
       }
     }

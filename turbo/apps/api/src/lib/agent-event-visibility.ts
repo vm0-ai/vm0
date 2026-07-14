@@ -15,7 +15,7 @@ import {
   queryAxiomDirect,
   type QueryAxiomOptions,
 } from "../signals/external/axiom";
-import { settle } from "../signals/utils";
+import { tapError } from "../signals/utils";
 import { escapeAplString } from "./axiom-apl";
 import { logger } from "./log";
 
@@ -158,12 +158,16 @@ async function waitForAgentEventPrefixVisible(
     // A query failure here is virtually guaranteed to repeat against the
     // events query that follows (same Axiom service, same dataset). Bail
     // out immediately so the caller's next call surfaces the real error
-    // without burning the remainder of the timeout window. settle
+    // without burning the remainder of the timeout window. tapError
     // re-raises AbortError so cancellation still propagates.
-    const queried = await settle(
+    let queryError: unknown;
+    const events = await tapError(
       queryFn<AxiomAgentEventSequence>(apl, { noCache: true }),
+      (error) => {
+        queryError = error;
+      },
     );
-    if (!queried.ok) {
+    if (!events) {
       return {
         visible: false,
         visibleThrough,
@@ -171,11 +175,9 @@ async function waitForAgentEventPrefixVisible(
         attempts,
         elapsedMs: nowFn() - startedAt,
         reason: "query_error",
-        error: queried.error,
+        error: queryError,
       };
     }
-
-    const events = queried.value;
     const previousVisibleThrough = visibleThrough;
     visibleThrough = advanceVisiblePrefix(events, visibleThrough);
 

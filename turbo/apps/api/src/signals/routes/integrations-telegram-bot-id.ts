@@ -19,7 +19,7 @@ import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { telegramIntegrationBotStatus } from "../services/zero-telegram-data.service";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
-import { settle } from "../utils";
+import { bestEffort, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 
 const log = logger("api:telegram:integration-bot");
@@ -102,15 +102,11 @@ const updateOfficialBot$ = command(
       });
     signal.throwIfAborted();
 
-    const publishResult = await settle(
+    await bestEffort(
       publishUserSignal([args.auth.userId], "telegram:changed"),
+      signal,
     );
     signal.throwIfAborted();
-    if (!publishResult.ok) {
-      log.warn("Failed to publish Telegram user change", {
-        error: publishResult.error,
-      });
-    }
 
     const status = await get(
       telegramIntegrationBotStatus({
@@ -183,15 +179,11 @@ const updateCustomBot$ = command(
       );
     signal.throwIfAborted();
 
-    const publishResult = await settle(
+    await bestEffort(
       publishOrgSignal(installation.orgId, "telegram:changed"),
+      signal,
     );
     signal.throwIfAborted();
-    if (!publishResult.ok) {
-      log.warn("Failed to publish Telegram org change", {
-        error: publishResult.error,
-      });
-    }
 
     const status = await get(
       telegramIntegrationBotStatus({
@@ -284,28 +276,21 @@ const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     ),
   );
   signal.throwIfAborted();
-  const webhookResult = await settle(deleteWebhook(botToken));
+  await tapError(deleteWebhook(botToken), (error) => {
+    log.warn("Failed to remove Telegram webhook", { error });
+  });
   signal.throwIfAborted();
-  if (!webhookResult.ok) {
-    log.warn("Failed to remove Telegram webhook", {
-      error: webhookResult.error,
-    });
-  }
 
   await writeDb
     .delete(telegramInstallations)
     .where(eq(telegramInstallations.telegramBotId, installation.telegramBotId));
   signal.throwIfAborted();
 
-  const publishResult = await settle(
+  await bestEffort(
     publishOrgSignal(installation.orgId, "telegram:changed"),
+    signal,
   );
   signal.throwIfAborted();
-  if (!publishResult.ok) {
-    log.warn("Failed to publish Telegram org change", {
-      error: publishResult.error,
-    });
-  }
 
   return { status: 204 as const, body: undefined };
 });

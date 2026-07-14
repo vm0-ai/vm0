@@ -141,19 +141,21 @@ export async function bestEffort(
 }
 
 /**
- * Await `p` and invoke `onError` on non-abort rejection. Abort propagates.
- * Replaces `await foo().catch((e) => { L.error("...", e); })` patterns.
+ * Await `p` and return undefined on non-abort rejection. If supplied,
+ * `onError` runs before resolving. Abort propagates. Replaces
+ * `await foo().catch((e) => { L.error("...", e); })` and silent optional-value
+ * fallback patterns.
  */
 export async function tapError<T>(
   p: Promise<T>,
-  onError: (error: unknown) => void,
+  onError?: (error: unknown) => unknown,
 ): Promise<T | undefined> {
   // eslint-disable-next-line no-restricted-syntax -- centralized .catch replacement
   try {
     return await p;
   } catch (error) {
     throwIfAbort(error);
-    onError(error);
+    await onError?.(error);
     return undefined;
   }
 }
@@ -167,14 +169,14 @@ export async function tapError<T>(
  */
 export async function onRejection<T>(
   p: Promise<T>,
-  fn: (error: unknown) => void,
+  fn: (error: unknown) => unknown,
 ): Promise<T> {
   // eslint-disable-next-line no-restricted-syntax -- centralized .catch replacement
   try {
     return await p;
     // eslint-disable-next-line api/no-catch-abort -- fn must run before abort propagates so cleanup happens on cancellation
   } catch (error) {
-    fn(error);
+    await fn(error);
     throw error;
   }
 }

@@ -10,7 +10,13 @@ import { ApiError, accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
-import { onRef, resetSignal, settle, setLoop } from "../../utils.ts";
+import {
+  bestEffort,
+  onRef,
+  resetSignal,
+  settle,
+  setLoop,
+} from "../../utils.ts";
 import { writeToClipboard } from "../clipboard.ts";
 import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
 
@@ -389,7 +395,7 @@ function createCodexClose$(ctx: CodexDeviceAuthSignalContext) {
       return;
     }
 
-    await settle(set(cancelCodexDeviceAuth$, sessionToken, signal), signal);
+    await bestEffort(set(cancelCodexDeviceAuth$, sessionToken, signal), signal);
     signal.throwIfAborted();
   });
 }

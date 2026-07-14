@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   embedZeroMemoryText,
   isValidMemoryEmbedding,
@@ -47,7 +47,7 @@ export async function loadGoalMemoryEmbedding(
 ): Promise<LoadedMemoryEmbedding> {
   const model = zeroMemoryEmbeddingModel();
   const queryHash = memoryEmbeddingContentHash({ model, text: args.query });
-  const loaded = await settle(
+  const loaded = await tapError(
     db
       .select({
         embeddingModel: threadGoalMemoryEmbeddings.embeddingModel,
@@ -57,14 +57,16 @@ export async function loadGoalMemoryEmbedding(
       .from(threadGoalMemoryEmbeddings)
       .where(eq(threadGoalMemoryEmbeddings.goalId, args.goalId))
       .limit(1),
+    () => {
+      log.warn("Failed to read goal memory embedding cache");
+    },
   );
 
   let cacheResult: MemoryEmbeddingCacheResult;
-  if (!loaded.ok) {
-    log.warn("Failed to read goal memory embedding cache");
+  if (!loaded) {
     cacheResult = "miss_read_failed";
   } else {
-    const row = loaded.value[0];
+    const row = loaded[0];
     if (
       row?.embeddingModel === model &&
       row.queryHash === queryHash &&
@@ -78,12 +80,12 @@ export async function loadGoalMemoryEmbedding(
     cacheResult = cacheMissResult({ row, model, queryHash });
   }
 
-  const embeddingResult = await settle(embedZeroMemoryText(args.query));
-  if (!embeddingResult.ok) {
+  const embedded = await tapError(embedZeroMemoryText(args.query), () => {
     log.warn("Failed to embed goal memory query");
+  });
+  if (embedded === undefined) {
     return { embedding: null, cacheResult };
   }
-  const embedded = embeddingResult.value;
   if (!embedded) {
     return { embedding: null, cacheResult };
   }
@@ -92,7 +94,7 @@ export async function loadGoalMemoryEmbedding(
     text: args.query,
   });
 
-  const persisted = await settle(
+  await tapError(
     db
       .insert(threadGoalMemoryEmbeddings)
       .values({
@@ -109,11 +111,11 @@ export async function loadGoalMemoryEmbedding(
           embedding: [...embedded.embedding],
         },
       }),
+    () => {
+      log.warn("Failed to persist goal memory embedding cache");
+      cacheResult = "miss_write_failed";
+    },
   );
-  if (!persisted.ok) {
-    log.warn("Failed to persist goal memory embedding cache");
-    cacheResult = "miss_write_failed";
-  }
 
   return { embedding: embedded, cacheResult };
 }
