@@ -8,7 +8,7 @@ import { advanceTimeTriggerAfterCompletion } from "./time-trigger";
 import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,
-  InternalRunCallbackKind,
+  NormalizedInternalRunCallbackKind,
 } from "./internal-run-callback";
 import {
   triggerCronCallbackPayloadSchema,
@@ -20,7 +20,7 @@ import {
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 type WorkflowTriggerInternalRunCallbackKind = Extract<
-  InternalRunCallbackKind,
+  NormalizedInternalRunCallbackKind,
   "workflow-trigger:cron" | "workflow-trigger:loop"
 >;
 

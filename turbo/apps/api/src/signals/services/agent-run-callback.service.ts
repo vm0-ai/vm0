@@ -41,7 +41,7 @@ import {
   internalRunCallbackKindForRecord,
   type InternalRunCallbackDispatchResult,
   type InternalRunCallbackEnvelope,
-  type InternalRunCallbackKind,
+  type NormalizedInternalRunCallbackKind,
 } from "./internal-run-callback";
 import {
   handleWorkflowTriggerInternalCallback,
@@ -92,11 +92,11 @@ interface DispatchInternalRunCallbackInput {
   readonly status: TerminalCallbackStatus;
   readonly result?: Record<string, unknown>;
   readonly error?: string;
-  readonly kind: InternalRunCallbackKind;
+  readonly kind: NormalizedInternalRunCallbackKind;
 }
 
 interface DispatchInternalCallbackInput {
-  readonly kind: InternalRunCallbackKind;
+  readonly kind: NormalizedInternalRunCallbackKind;
   readonly envelope: InternalRunCallbackEnvelope;
 }
 
@@ -451,7 +451,7 @@ async function dispatchInternalCallback(
 
 async function dispatchInternalCallbackWithoutCcstate(
   input: DispatchSingleCallbackInput,
-  kind: InternalRunCallbackKind,
+  kind: NormalizedInternalRunCallbackKind,
 ): Promise<InternalRunCallbackDispatchResult> {
   switch (kind) {
     case "agent": {

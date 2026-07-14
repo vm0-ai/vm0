@@ -17,6 +17,10 @@ import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import {
+  readAgentRunCallbacks$,
+  seedAgentRunCallback$,
+} from "./helpers/agent-run-callback";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -533,6 +537,74 @@ describe("zero workflow trigger scheduler", () => {
       throw new Error("Expected the loop trigger to be rescheduled");
     }
     expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
+    await disableTrigger(trigger.triggerId);
+  });
+
+  it("keeps legacy writes while accepting an in-flight automation callback", async () => {
+    const scenario = await setup();
+    const trigger = await createDueLoopTrigger(scenario, 300);
+
+    await executeDueWorkflowTriggers();
+    await onlyWorkflowRunMessage(trigger.threadId);
+
+    const emittedCallbacks = await store.set(
+      readAgentRunCallbacks$,
+      {
+        orgId: scenario.orgId,
+        userId: scenario.userId,
+        prompt: `/${WORKFLOW_NAME}`,
+      },
+      context.signal,
+    );
+    expect(emittedCallbacks).toContainEqual(
+      expect.objectContaining({
+        internalKind: "workflow-trigger:loop",
+        status: "pending",
+      }),
+    );
+    expect(emittedCallbacks).not.toContainEqual(
+      expect.objectContaining({ internalKind: "workflow-automation:loop" }),
+    );
+    expect((await wf.readTrigger(trigger.triggerId)).nextRunAt).toBeNull();
+
+    const futurePrompt = "complete a future workflow automation callback";
+    const futureRun = await runsApi.createRun(scenario.actor, {
+      agentId: scenario.agentId,
+      prompt: futurePrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    await store.set(
+      seedAgentRunCallback$,
+      {
+        runId: futureRun.runId,
+        internalKind: "workflow-automation:loop",
+        payload: { triggerId: trigger.triggerId },
+      },
+      context.signal,
+    );
+
+    await completeRunThroughSandbox(scenario, futureRun.runId, 0);
+
+    await expect
+      .poll(async () => {
+        return (await wf.readTrigger(trigger.triggerId)).nextRunAt;
+      })
+      .not.toBeNull();
+    const futureCallbacks = await store.set(
+      readAgentRunCallbacks$,
+      {
+        orgId: scenario.orgId,
+        userId: scenario.userId,
+        prompt: futurePrompt,
+      },
+      context.signal,
+    );
+    expect(futureCallbacks).toContainEqual(
+      expect.objectContaining({
+        internalKind: "workflow-automation:loop",
+        status: "delivered",
+      }),
+    );
     await disableTrigger(trigger.triggerId);
   });
 

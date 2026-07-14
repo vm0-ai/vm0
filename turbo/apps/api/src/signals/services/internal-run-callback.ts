@@ -1,3 +1,8 @@
+/**
+ * Persisted callback kinds accepted during the expand phase. Producers must
+ * keep emitting `workflow-trigger:*` until this acceptance release is fully
+ * deployed; the follow-up release can then switch writes safely.
+ */
 export const internalRunCallbackKinds = [
   "agent",
   "agentphone",
@@ -8,9 +13,16 @@ export const internalRunCallbackKinds = [
   "telegram",
   "workflow-trigger:cron",
   "workflow-trigger:loop",
+  "workflow-automation:cron",
+  "workflow-automation:loop",
 ] as const;
 
 export type InternalRunCallbackKind = (typeof internalRunCallbackKinds)[number];
+
+export type NormalizedInternalRunCallbackKind = Exclude<
+  InternalRunCallbackKind,
+  "workflow-automation:cron" | "workflow-automation:loop"
+>;
 
 export type InternalRunCallbackStatus = "completed" | "failed" | "progress";
 
@@ -31,9 +43,9 @@ interface InternalRunCallbackRecord {
   readonly internalKind: string | null;
 }
 
-function isInternalRunCallbackKind(
+function isNormalizedInternalRunCallbackKind(
   value: string | null,
-): value is InternalRunCallbackKind {
+): value is NormalizedInternalRunCallbackKind {
   switch (value) {
     case "agent":
     case "agentphone":
@@ -54,9 +66,22 @@ function isInternalRunCallbackKind(
 
 export function internalRunCallbackKindForRecord(
   callback: InternalRunCallbackRecord,
-): InternalRunCallbackKind | null {
-  if (isInternalRunCallbackKind(callback.internalKind)) {
+): NormalizedInternalRunCallbackKind | null {
+  if (isNormalizedInternalRunCallbackKind(callback.internalKind)) {
     return callback.internalKind;
   }
-  return null;
+
+  // Expand-phase compatibility for rows written by the follow-up emission
+  // release. Keep this normalization through the rolling-deploy drain.
+  switch (callback.internalKind) {
+    case "workflow-automation:cron": {
+      return "workflow-trigger:cron";
+    }
+    case "workflow-automation:loop": {
+      return "workflow-trigger:loop";
+    }
+    default: {
+      return null;
+    }
+  }
 }
