@@ -100,9 +100,15 @@ async function orgModelCapabilities(
   orgId: string,
 ): Promise<Pick<OrgPlanCapabilities, "restrictedVm0Models" | "supportByok">> {
   const capabilities = await loadOrgPlanCapabilities(db, orgId);
+  if (capabilities?.status !== "active") {
+    return {
+      restrictedVm0Models: false,
+      supportByok: true,
+    };
+  }
   return {
-    restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,
-    supportByok: capabilities?.supportByok ?? true,
+    restrictedVm0Models: capabilities.restrictedVm0Models,
+    supportByok: capabilities.supportByok,
   };
 }
 
