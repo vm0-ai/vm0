@@ -61,6 +61,26 @@ interface ExpirationResolutionParams {
   readonly permissionName: string;
 }
 
+type PermissionDraftGroupUniformAllowExpiration =
+  | { readonly kind: "always" }
+  | {
+      readonly kind: "selected";
+      readonly expiresIn: Exclude<UserPermissionGrantExpiresIn, "always">;
+    }
+  | { readonly kind: "persisted"; readonly expiresAt: string };
+
+type PermissionDraftGroupAllowExpiration =
+  | PermissionDraftGroupUniformAllowExpiration
+  | { readonly kind: "mixed" };
+
+type PermissionDraftGroupConfiguration =
+  | { readonly policy: "mixed" }
+  | { readonly policy: Exclude<FirewallPolicyValue, "allow"> }
+  | {
+      readonly policy: "allow";
+      readonly expiration: PermissionDraftGroupAllowExpiration;
+    };
+
 function firewallPolicyToOverlay(
   policy: FirewallPolicy | undefined,
 ): FirewallMetadataPolicyOverlay | undefined {
@@ -412,53 +432,127 @@ export function resolvePermissionDraftExpiration(
   return category ? params.draft.groupExpirations[category] : undefined;
 }
 
-export function resolvePermissionDraftGroupExpiration({
+function resolvePermissionDraftGroupAllowExpiration({
   context,
   draft,
-  category,
-  permissions,
+  permissionName,
+  grant,
 }: {
   readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
-  readonly category: string;
-  readonly permissions: readonly PermissionLike[];
-}): UserPermissionGrantExpiresIn | undefined {
-  const groupExpiration = draft.groupExpirations[category];
-  if (groupExpiration !== undefined) {
-    for (const permission of permissions) {
-      const current = resolvePermissionDraftExpiration({
-        context,
-        draft,
-        permissionName: permission.name,
-      });
-      if (current !== groupExpiration) {
-        return undefined;
-      }
-    }
-    return groupExpiration;
-  }
-  if (permissions.length === 0) {
-    return undefined;
-  }
-  const first = resolvePermissionDraftExpiration({
+  readonly permissionName: string;
+  readonly grant: UserPermissionGrantResponse | undefined;
+}): PermissionDraftGroupUniformAllowExpiration {
+  const selected = resolvePermissionDraftExpiration({
     context,
     draft,
-    permissionName: permissions[0].name,
+    permissionName,
   });
-  if (first === undefined) {
-    return undefined;
+  if (selected === "always") {
+    return { kind: "always" };
   }
-  for (let i = 1; i < permissions.length; i++) {
-    const current = resolvePermissionDraftExpiration({
-      context,
-      draft,
-      permissionName: permissions[i].name,
-    });
-    if (current !== first) {
-      return undefined;
+  if (selected !== undefined) {
+    return { kind: "selected", expiresIn: selected };
+  }
+  if (grant?.action === "allow" && grant.expiresAt) {
+    return { kind: "persisted", expiresAt: grant.expiresAt };
+  }
+  return { kind: "always" };
+}
+
+function permissionDraftGroupAllowExpirationsEqual(
+  first: PermissionDraftGroupUniformAllowExpiration,
+  second: PermissionDraftGroupUniformAllowExpiration,
+): boolean {
+  if (first.kind !== second.kind) {
+    return false;
+  }
+  switch (first.kind) {
+    case "always": {
+      return true;
+    }
+    case "selected": {
+      return second.kind === "selected" && first.expiresIn === second.expiresIn;
+    }
+    case "persisted": {
+      return (
+        second.kind === "persisted" && first.expiresAt === second.expiresAt
+      );
     }
   }
-  return first;
+}
+
+export function resolvePermissionDraftGroupConfiguration({
+  context,
+  draft,
+  permissions,
+  explicitGrants,
+}: {
+  readonly context: PermissionDraftContext;
+  readonly draft: PermissionDraftIntent;
+  readonly permissions: readonly PermissionLike[];
+  readonly explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+}): PermissionDraftGroupConfiguration {
+  if (permissions.length === 0) {
+    return { policy: "allow", expiration: { kind: "always" } };
+  }
+
+  const firstPermission = permissions[0];
+  const firstPolicy = resolvePermissionDraftPolicy({
+    context,
+    draft,
+    permissionName: firstPermission.name,
+  });
+  if (firstPolicy !== "allow") {
+    for (let i = 1; i < permissions.length; i++) {
+      const currentPolicy = resolvePermissionDraftPolicy({
+        context,
+        draft,
+        permissionName: permissions[i].name,
+      });
+      if (currentPolicy !== firstPolicy) {
+        return { policy: "mixed" };
+      }
+    }
+    return { policy: firstPolicy };
+  }
+
+  const firstExpiration = resolvePermissionDraftGroupAllowExpiration({
+    context,
+    draft,
+    permissionName: firstPermission.name,
+    grant: explicitGrants.get(firstPermission.name),
+  });
+  let expirationMixed = false;
+  for (let i = 1; i < permissions.length; i++) {
+    const permission = permissions[i];
+    const currentPolicy = resolvePermissionDraftPolicy({
+      context,
+      draft,
+      permissionName: permission.name,
+    });
+    if (currentPolicy !== "allow") {
+      return { policy: "mixed" };
+    }
+    const currentExpiration = resolvePermissionDraftGroupAllowExpiration({
+      context,
+      draft,
+      permissionName: permission.name,
+      grant: explicitGrants.get(permission.name),
+    });
+    if (
+      !permissionDraftGroupAllowExpirationsEqual(
+        firstExpiration,
+        currentExpiration,
+      )
+    ) {
+      expirationMixed = true;
+    }
+  }
+  return {
+    policy: "allow",
+    expiration: expirationMixed ? { kind: "mixed" } : firstExpiration,
+  };
 }
 
 export function setPermissionDraftPolicy({

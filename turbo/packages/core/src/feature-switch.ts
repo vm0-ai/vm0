@@ -245,6 +245,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.ZeroScrape]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable the managed Firecrawl-backed Zero Scrape API and scrape:read ZERO_TOKEN capability.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:

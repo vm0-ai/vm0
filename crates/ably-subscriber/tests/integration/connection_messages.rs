@@ -396,6 +396,66 @@ async fn message_with_json_encoding() {
 }
 
 #[tokio::test]
+async fn closed_during_initial_attach_closes_websocket() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_raw().await.unwrap();
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-1".into()),
+            connection_key: Some("conn-1!key".into()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-1!key".into()),
+                connection_state_ttl: Some(120_000),
+                max_idle_interval: Some(15_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&connected).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let attach = expect_protocol_msg(&mut conn, "initial ATTACH")
+            .await
+            .unwrap();
+        assert_eq!(attach.action, action::ATTACH);
+        assert_eq!(attach.channel.as_deref(), Some("ch"));
+
+        let closed = ProtocolMessage {
+            action: action::CLOSED,
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&closed).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+        expect_websocket_closed(&mut conn).await.unwrap();
+    });
+
+    let result = subscribe(test_config(ws_port, http.port(), "ch")).await;
+    match result {
+        Err(ably_subscriber::Error::Protocol { code, message }) => {
+            assert_eq!(code, error_code::FAILED);
+            assert_eq!(message, "Connection closed by server");
+        }
+        Err(other) => panic!("expected Protocol error, got {other:?}"),
+        Ok(_) => panic!("expected error, got Ok"),
+    }
+
+    join_server_task(server_task, "initial attach CLOSED server")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn server_error_during_handshake() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();

@@ -104,10 +104,10 @@ pub struct BuildArgs {
     /// Profile to build (determines VM resources and disk sizes)
     #[arg(long)]
     pub profile: String,
-    /// Compute and print the image hash without building
-    #[arg(long)]
+    /// Print rootfs_hash and snapshot_hash without building (incompatible with --warm-rootfs-cache)
+    #[arg(long, conflicts_with = "warm_rootfs_cache")]
     pub dry_run: bool,
-    /// Build or upload only the shared R2 template cache, without creating a snapshot
+    /// Populate only the shared R2 template cache; prints no image hashes (incompatible with --dry-run)
     #[arg(long)]
     pub warm_rootfs_cache: bool,
 }

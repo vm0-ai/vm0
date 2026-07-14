@@ -1998,7 +1998,35 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   if (!chatThread) {
     return;
   }
-  const { chatThreadId: threadId, userId } = chatThread;
+  await autoSendQueuedMessageForThread({
+    getResolvedAttachFiles: args.getResolvedAttachFiles,
+    createRun: args.createRun,
+    db: args.db,
+    chatThreadId: chatThread.chatThreadId,
+    userId: chatThread.userId,
+    agentId: args.agentId,
+    timing: args.timing,
+  });
+}
+
+/**
+ * Core user-message drain: when the thread has no in-flight run, dispatch the
+ * oldest unclaimed queued message — whoever sent it. Shared by the terminal
+ * chat callback, cancel side effects, and the send route (#21392): together
+ * these cover every path into the "idle + non-empty queue" state.
+ */
+async function autoSendQueuedMessageForThread(args: {
+  readonly getResolvedAttachFiles: ResolveAttachFiles;
+  readonly createRun: (
+    input: CreateQueuedChatRunInput,
+  ) => Promise<CreatedQueuedRun | null>;
+  readonly db: Db;
+  readonly chatThreadId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly timing: ChatCallbackPreCreateTimingCollector;
+}): Promise<void> {
+  const { chatThreadId: threadId, userId } = args;
 
   const queuedMessage = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2585,16 +2613,8 @@ export async function handleChatInternalCallbackWithoutCcstate(
   });
 }
 
-export const handleChatInternalCallback$ = command(
-  async (
-    { get, set },
-    callback: InternalRunCallbackEnvelope,
-    signal: AbortSignal,
-  ): Promise<
-    | { readonly success: true }
-    | { readonly success: false; readonly error: string }
-  > => {
-    const db = set(writeDb$);
+const buildChatCallbackDependencies$ = command(
+  ({ get, set }, { db }: { readonly db: Db }): ChatCallbackDependencies => {
     const baseDependencies: ChatCallbackDependencies = {
       insertAssistantItems: async (args, inputSignal) => {
         await set(insertAssistantEventMessages$, args, inputSignal);
@@ -2671,6 +2691,101 @@ export const handleChatInternalCallback$ = command(
         };
       },
     };
+    return dependencies;
+  },
+);
+
+/**
+ * Ensure a thread's user-message queue is draining: when the thread is idle,
+ * dispatch the queue head — whoever sent it (#21392). Trigger surface for the
+ * "idle + non-empty queue" state alongside the terminal chat callback: the
+ * send route (head is another message) and cancel side effects.
+ */
+export const drainQueuedUserMessagesForThread$ = command(
+  async (
+    { set },
+    args: { readonly chatThreadId: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    const [thread] = await db
+      .select({
+        userId: chatThreads.userId,
+        agentId: chatThreads.agentComposeId,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.chatThreadId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!thread) {
+      return;
+    }
+    const dependencies = set(buildChatCallbackDependencies$, { db });
+    const createQueuedRun = dependencies.createQueuedRun;
+    if (!createQueuedRun) {
+      return;
+    }
+    const apiStartTime = now();
+    await autoSendQueuedMessageForThread({
+      db,
+      chatThreadId: args.chatThreadId,
+      userId: thread.userId,
+      agentId: thread.agentId,
+      timing: new ChatCallbackPreCreateTimingCollector(),
+      getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
+      createRun: (input) => {
+        return createQueuedChatRun({
+          db,
+          input,
+          signal,
+          createRun: (runInput) => {
+            return createQueuedRun(runInput, apiStartTime, signal);
+          },
+        });
+      },
+    });
+  },
+);
+
+/**
+ * Cancel-side-effect hook: resolve the cancelled run's chat thread and drain
+ * its queued user messages, mirroring `drainWorkflowQueueForRun$`.
+ */
+export const drainQueuedUserMessagesForRun$ = command(
+  async (
+    { set },
+    args: { readonly runId: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    const [run] = await db
+      .select({ chatThreadId: zeroRuns.chatThreadId })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, args.runId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!run?.chatThreadId) {
+      return;
+    }
+    await set(
+      drainQueuedUserMessagesForThread$,
+      { chatThreadId: run.chatThreadId },
+      signal,
+    );
+  },
+);
+
+export const handleChatInternalCallback$ = command(
+  async (
+    { get, set },
+    callback: InternalRunCallbackEnvelope,
+    signal: AbortSignal,
+  ): Promise<
+    | { readonly success: true }
+    | { readonly success: false; readonly error: string }
+  > => {
+    const db = set(writeDb$);
+    const dependencies = set(buildChatCallbackDependencies$, { db });
     return await handleChatInternalCallback({
       db,
       callback,

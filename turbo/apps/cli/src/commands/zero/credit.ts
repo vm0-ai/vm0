@@ -1,8 +1,14 @@
 import { Command, Option } from "commander";
 import chalk from "chalk";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 
-import { createZeroCreditCheckout, getZeroOrgMembers } from "../../lib/api";
+import {
+  createZeroCreditCheckout,
+  getZeroBillingStatus,
+  getZeroOrgMembers,
+} from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
+import { decodeZeroTokenPayload } from "../../lib/api/zero-token";
 import { getPlatformOrigin } from "./doctor/platform-url";
 
 function parseCredits(value: string): number {
@@ -13,10 +19,20 @@ function parseCredits(value: string): number {
   return credits;
 }
 
+function requireZeroCapabilityForCreditAction(
+  capability: ZeroCapability,
+  message: string,
+): void {
+  const payload = decodeZeroTokenPayload();
+  if (payload && !payload.capabilities.includes(capability)) {
+    throw new Error(message);
+  }
+}
+
 export const zeroCreditCommand = new Command()
   .name("credit")
-  .description("Create a Stripe checkout link to buy credits")
-  .argument("<credits>", "Number of credits to buy", parseCredits)
+  .description("View credit balance or create a checkout link to buy credits")
+  .argument("[credits]", "Number of credits to buy", parseCredits)
   .addOption(
     new Option("--auto-recharge", "Enable auto-recharge after checkout"),
   )
@@ -33,13 +49,52 @@ export const zeroCreditCommand = new Command()
   .action(
     withErrorHandler(
       async (
-        credits: number,
+        credits: number | undefined,
         options: {
           readonly autoRecharge?: boolean;
           readonly autoRechargeThreshold?: number;
           readonly autoRechargeAmount?: number;
         },
       ) => {
+        if (credits === undefined) {
+          requireZeroCapabilityForCreditAction(
+            "billing:read",
+            "checking credit status requires billing:read capability",
+          );
+          if (
+            options.autoRecharge === true ||
+            options.autoRechargeThreshold !== undefined ||
+            options.autoRechargeAmount !== undefined
+          ) {
+            throw new Error("auto-recharge options require a credit amount");
+          }
+
+          const billing = await getZeroBillingStatus();
+          console.log(chalk.bold("Credit status:"));
+          console.log(`  Tier: ${chalk.cyan(billing.tier)}`);
+          console.log(
+            `  Available credits: ${chalk.cyan(billing.credits.toLocaleString())}`,
+          );
+          console.log(
+            `  Auto-recharge: ${
+              billing.autoRecharge.enabled ? chalk.green("enabled") : "disabled"
+            }`,
+          );
+          if (billing.autoRecharge.enabled) {
+            console.log(
+              `    Threshold: ${billing.autoRecharge.threshold?.toLocaleString() ?? "not set"}`,
+            );
+            console.log(
+              `    Amount: ${billing.autoRecharge.amount?.toLocaleString() ?? "not set"}`,
+            );
+          }
+          return;
+        }
+
+        requireZeroCapabilityForCreditAction(
+          "billing:write",
+          "buying credits requires billing:write capability",
+        );
         const members = await getZeroOrgMembers();
         if (members.role !== "admin") {
           console.log(

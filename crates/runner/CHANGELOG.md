@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.144.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.10...runner-rs-v0.144.11) (2026-07-14)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve with item binding order ([#21331](https://github.com/vm0-ai/vm0/issues/21331)) ([c317751](https://github.com/vm0-ai/vm0/commit/c317751b18f8a5de2279ef2c947251c41d47f10c))
+* **runner:** reject conflicting build modes ([#21327](https://github.com/vm0-ai/vm0/issues/21327)) ([1470ec3](https://github.com/vm0-ai/vm0/commit/1470ec3c82a0154787ff159e68c4bf6cfd88d836))
+
+
+### Documentation
+
+* **mitm-addon:** document anthropic sse extractor lifecycle ([#21402](https://github.com/vm0-ai/vm0/issues/21402)) ([704b14e](https://github.com/vm0-ai/vm0/commit/704b14e8b14386268ede8492a6d6889c1f2ad2fc))
+
 ## [0.144.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.9...runner-rs-v0.144.10) (2026-07-14)
 
 

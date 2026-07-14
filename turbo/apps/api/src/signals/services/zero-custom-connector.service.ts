@@ -14,8 +14,8 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { getBuiltinConnectorHostOwner } from "@vm0/connectors/firewall-metadata/server";
 import {
+  canonicalizeFirewallBaseUrl,
   expandHostWildcardsInBaseUrl,
-  validateBaseUrl,
 } from "@vm0/connectors/firewall-types";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
@@ -25,7 +25,7 @@ import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
-import { safeSync, safeUrlParse } from "../utils";
+import { safeSync } from "../utils";
 import {
   encryptStoredSecretValue,
   decryptStoredSecretValue,
@@ -88,6 +88,17 @@ interface ValueMarker {
   readonly connectorId: string;
   readonly kind: CustomConnectorFieldKind;
   readonly key: string;
+}
+
+export class CustomConnectorRuntimePrefixError extends Error {
+  constructor(connectorName: string | undefined) {
+    super(
+      connectorName
+        ? `Custom connector "${connectorName}" has an invalid configured hostname`
+        : "Custom connector has an invalid configured hostname",
+    );
+    this.name = "CustomConnectorRuntimePrefixError";
+  }
 }
 
 interface StoredValueRow extends ValueMarker {
@@ -489,26 +500,12 @@ function validateAndNormalizePrefixTemplate(args: {
     return templateError;
   }
 
-  const parseable = templateWithPlaceholders(trimmed);
-  const url = safeUrlParse(parseable);
-  if (!url) {
-    return badRequestMessage(`Invalid prefix URL: ${args.raw}`);
-  }
-  if (url.protocol !== "https:") {
-    return badRequestMessage(`Prefix must use https://: ${args.raw}`);
-  }
-  if (url.search || url.hash) {
-    return badRequestMessage(
-      `Prefix must not contain query or fragment: ${args.raw}`,
-    );
-  }
-
   const normalised = trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
   const validationBase = expandHostWildcardsInBaseUrl(
     templateWithPlaceholders(normalised),
   );
   const validation = safeSync(() => {
-    validateBaseUrl(validationBase, "custom connector");
+    return canonicalizeFirewallBaseUrl(validationBase, "custom connector");
   });
   if ("error" in validation) {
     const message =
@@ -517,13 +514,25 @@ function validateAndNormalizePrefixTemplate(args: {
         : "not a valid URL";
     return badRequestMessage(`Invalid prefix URL: ${args.raw}: ${message}`);
   }
+  const canonicalPrefix = validation.ok;
+  const schemeEnd = canonicalPrefix.indexOf("://");
+  const scheme = canonicalPrefix.slice(0, schemeEnd).toLowerCase();
+  if (scheme !== "https") {
+    return badRequestMessage(`Prefix must use https://: ${args.raw}`);
+  }
 
   if (!normalised.includes("{{")) {
-    const host = safeUrlParse(normalised)?.host ?? "";
+    const authorityStart = schemeEnd + 3;
+    const authorityEnd = canonicalPrefix.indexOf("/", authorityStart);
+    const host = canonicalPrefix.slice(authorityStart, authorityEnd);
     const builtinOwner = getBuiltinConnectorHostOwner(host);
     if (builtinOwner) {
+      const rawAuthority = normalised.slice(
+        "https://".length,
+        normalised.indexOf("/", "https://".length),
+      );
       return badRequestMessage(
-        `Host "${host}" is already managed by the ${builtinOwner.label} connector`,
+        `Host "${rawAuthority}" is already managed by the ${builtinOwner.label} connector`,
       );
     }
   }
@@ -772,8 +781,16 @@ function legacyColumns(definition: ValidatedDefinition): {
 }
 
 function hostSlugFromPrefixTemplate(prefix: string): string {
-  const parsed = safeUrlParse(templateWithPlaceholders(prefix));
-  const host = (parsed?.host ?? "").toLowerCase();
+  const canonicalPrefix = canonicalizeFirewallBaseUrl(
+    expandHostWildcardsInBaseUrl(templateWithPlaceholders(prefix)),
+    "custom connector",
+  );
+  const authorityStart = canonicalPrefix.indexOf("://") + 3;
+  const authorityEnd = canonicalPrefix.indexOf("/", authorityStart);
+  const host = canonicalPrefix
+    .slice(authorityStart, authorityEnd)
+    .replace(/\{hostWildcard[0-9]+\}/g, "")
+    .toLowerCase();
   return host
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -1065,6 +1082,37 @@ function validateValueInputsForDefinition(args: {
       return badRequestMessage(
         `Value for variable ${key} contains characters that are not safe in custom connector host templates`,
       );
+    }
+    if (value.kind === "variable" && prefixVariables.has(key)) {
+      for (const prefixTemplate of args.prefixTemplates) {
+        const referencesValue = extractTemplateReferences(prefixTemplate).some(
+          (reference) => {
+            return reference.namespace === "variables" && reference.key === key;
+          },
+        );
+        if (!referencesValue) {
+          continue;
+        }
+        const rendered = prefixTemplate.replaceAll(
+          TEMPLATE_REFERENCE_REGEX,
+          (_match, namespace: string, referenceKey: string) => {
+            return namespace === "variables" && referenceKey === key
+              ? value.value
+              : TEMPLATE_PLACEHOLDER_VALUE;
+          },
+        );
+        const validation = safeSync(() => {
+          return canonicalizeFirewallBaseUrl(
+            expandHostWildcardsInBaseUrl(rendered),
+            "custom connector",
+          );
+        });
+        if ("error" in validation) {
+          return badRequestMessage(
+            `Value for variable ${key} is not a valid custom connector hostname`,
+          );
+        }
+      }
     }
     seen.add(marker);
     values.push({ key, kind: value.kind, value: value.value });
@@ -1398,8 +1446,10 @@ export function renderTemplateForRuntime(args: {
 function renderPrefixTemplate(args: {
   readonly template: string;
   readonly values: Readonly<Record<string, string>>;
+  readonly connectorName?: string;
 }): string | null {
   let missing = false;
+  let invalid = false;
   const rendered = args.template.replaceAll(
     TEMPLATE_REFERENCE_REGEX,
     (_match, namespace: string, key: string) => {
@@ -1409,19 +1459,27 @@ function renderPrefixTemplate(args: {
       }
       const value =
         args.values[customConnectorValueMarkerKey({ kind: "variable", key })];
-      if (!value || !isSafeHostTemplateVariableValue(value)) {
+      if (!value) {
         missing = true;
+        return TEMPLATE_PLACEHOLDER_VALUE;
+      }
+      if (!isSafeHostTemplateVariableValue(value)) {
+        invalid = true;
         return TEMPLATE_PLACEHOLDER_VALUE;
       }
       return value;
     },
   );
+  if (invalid) {
+    throw new CustomConnectorRuntimePrefixError(args.connectorName);
+  }
   return missing ? null : rendered;
 }
 
 export function renderCustomConnectorRuntimePrefix(args: {
   readonly template: string;
   readonly values: Readonly<Record<string, string>>;
+  readonly connectorName?: string;
 }): string | null {
   const rendered = renderPrefixTemplate(args);
   if (!rendered) {
@@ -1429,9 +1487,12 @@ export function renderCustomConnectorRuntimePrefix(args: {
   }
   const base = expandHostWildcardsInBaseUrl(rendered);
   const validation = safeSync(() => {
-    validateBaseUrl(base, "custom connector");
+    return canonicalizeFirewallBaseUrl(base, "custom connector");
   });
-  return "error" in validation ? null : base;
+  if ("error" in validation) {
+    throw new CustomConnectorRuntimePrefixError(args.connectorName);
+  }
+  return validation.ok;
 }
 
 type CustomConnectorRuntimeDataTimingStep =

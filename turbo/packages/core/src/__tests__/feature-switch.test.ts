@@ -125,6 +125,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
@@ -158,6 +159,7 @@ describe("getAllFeatureStates", () => {
     // WorkflowWebhookTriggers is globally enabled, so it is on for every org
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
@@ -225,15 +227,22 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ZeroScrape,
+    );
 
     expect(
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
+        [FeatureSwitchKey.ZeroScrape]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
-    ).toStrictEqual({ [FeatureSwitchKey.Dummy]: false });
+    ).toStrictEqual({
+      [FeatureSwitchKey.ZeroScrape]: true,
+      [FeatureSwitchKey.Dummy]: false,
+    });
   });
 });
 

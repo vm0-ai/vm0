@@ -61,7 +61,8 @@ pub(crate) async fn expect_websocket_closed(
         .await
         .map_err(|_| std::io::Error::other("timed out waiting for websocket to close"))?;
     match frame {
-        None | Some(Err(_)) | Some(Ok(tungstenite::Message::Close(_))) => Ok(()),
+        None | Some(Ok(tungstenite::Message::Close(_))) => Ok(()),
+        Some(Err(error)) => Err(error.into()),
         Some(Ok(frame)) => {
             Err(std::io::Error::other(format!("expected websocket close, got {frame:?}")).into())
         }

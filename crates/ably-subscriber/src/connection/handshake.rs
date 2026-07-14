@@ -14,7 +14,7 @@ use super::errors::{
     channel_detached_message, error_or_unknown, protocol_disconnect_reason, protocol_error_message,
 };
 use super::state::ConnState;
-use super::transport::{WsRead, WsWrite, connect_and_split};
+use super::transport::{WsRead, WsTransport, connect_pending};
 
 pub(super) async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Error> {
     while let Some(frame) = ws_read.next().await {
@@ -171,15 +171,16 @@ pub(crate) async fn connect_and_attach(
     channel: &str,
     channel_params: Option<&HashMap<String, String>>,
     timing: &TimingConfig,
-) -> Result<(WsWrite, WsRead, ConnState), Error> {
+) -> Result<(WsTransport, ConnState), Error> {
     let ws_url = build_ws_url(realtime_host, &token.token, None)?;
-    let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
-    let connected_msg = wait_for_connected(&mut ws_read).await?;
+    let mut transport = connect_pending(&ws_url, timing.close_timeout).await?;
+    let connected_msg = wait_for_connected(transport.read_mut()?).await?;
     let mut conn_state = ConnState::from_connected(&connected_msg, token, timing);
     let encoded = encode_attach_for_channel(channel, channel_params, None, AttachMode::Clean)?;
-    ws_write
+    transport
+        .write_mut()?
         .send(tungstenite::Message::Binary(encoded.into()))
         .await?;
-    conn_state.channel_serial = wait_for_attached(&mut ws_read, channel).await?;
-    Ok((ws_write, ws_read, conn_state))
+    conn_state.channel_serial = wait_for_attached(transport.read_mut()?, channel).await?;
+    Ok((transport.into_transport()?, conn_state))
 }

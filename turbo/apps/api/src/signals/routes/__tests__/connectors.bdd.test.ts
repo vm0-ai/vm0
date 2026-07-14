@@ -1641,6 +1641,128 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toStrictEqual([]);
   });
 
+  it("rejects runtime-dependent custom connector hostnames at API boundaries", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    for (const host of ["\u088f.example", "xn--7xb.example"]) {
+      const definition = await connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          ...customConnectorBody(uniqueSlug("invalid-hostname")),
+          prefixes: [`https://${host}/v1/`],
+        },
+        [400],
+      );
+      expectApiError(definition.body);
+      expect(definition.body.error.message).toContain("vm0-uts46-16.0-v1");
+
+      const proposal = await connectorsApi.requestSaveCustomConnectorProposal(
+        admin,
+        {
+          proposal: {
+            operation: "create",
+            displayName: "BDD Invalid Hostname API",
+            prefixTemplates: [
+              `https://{{variables.subdomain}}.${rand}.test/v1/`,
+            ],
+            fields: [
+              {
+                key: "api_key",
+                label: "API key",
+                kind: "secret",
+                required: true,
+              },
+              {
+                key: "subdomain",
+                label: "Subdomain",
+                kind: "variable",
+                required: true,
+              },
+            ],
+            headerInjections: [
+              {
+                name: "Authorization",
+                valueTemplate: "Bearer {{secrets.api_key}}",
+              },
+            ],
+            queryInjections: [],
+          },
+          values: [
+            { key: "api_key", kind: "secret", value: "invalid-host-secret" },
+            { key: "subdomain", kind: "variable", value: host },
+          ],
+        },
+        [400],
+      );
+      expectApiError(proposal.body);
+      expect(proposal.body.error.message).toContain(
+        "not a valid custom connector hostname",
+      );
+      expectNoVisibleSecret(proposal.body, "invalid-host-secret");
+    }
+
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("preserves valid Unicode prefixes while deriving a canonical default slug", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rawPrefix = "https://münich.example/v1/";
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Unicode Host API",
+      prefixes: [rawPrefix],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+
+    expect(connector.prefixes).toStrictEqual([rawPrefix]);
+    expect(connector.prefixTemplates).toStrictEqual([rawPrefix]);
+    expect(connector.slug).toMatch(/^xn-mnich-kva-example-[a-z0-9]{6}$/);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("rejects invalid hostname updates without changing the connector", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const original = await connectorsApi.createCustomConnector(
+      admin,
+      customConnectorBody(uniqueSlug("hostname-update")),
+    );
+
+    const rejected = await connectorsApi.requestSaveCustomConnectorProposal(
+      admin,
+      {
+        proposal: {
+          operation: "update",
+          connectorId: original.id,
+          displayName: "BDD Invalid Hostname Update",
+          prefixTemplates: ["https://\u088f.example/v2/"],
+          fields: original.fields,
+          headerInjections: original.headerInjections,
+          queryInjections: original.queryInjections,
+        },
+        values: [],
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("vm0-uts46-16.0-v1");
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(listed).toContainEqual(original);
+
+    await connectorsApi.deleteCustomConnector(admin, original.id);
+  });
+
   it("deletes only the legacy secret value through the legacy secret endpoint", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });

@@ -141,6 +141,7 @@ import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
+import { zeroScrapeRoutes } from "./routes/zero-scrape";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowTriggersRoutes } from "./routes/zero-workflow-triggers";
 import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
@@ -316,6 +317,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
   ...zeroMapsRoutes,
+  ...zeroScrapeRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,

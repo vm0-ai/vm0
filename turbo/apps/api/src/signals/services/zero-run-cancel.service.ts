@@ -15,6 +15,7 @@ import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
 import { tapError } from "../utils";
 import { dispatchRunCallbacks$ } from "./agent-run-callback.service";
+import { drainQueuedUserMessagesForRun$ } from "./internal-chat-run-callback.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { drainWorkflowQueueForRun$ } from "./zero-workflow-queue-drain.service";
@@ -222,6 +223,20 @@ export const dispatchCancelSideEffects$ = command(
       ),
       (error) => {
         L.error("Failed to dispatch cancel callbacks", {
+          runId: result.runId,
+          error,
+        });
+      },
+    );
+    signal.throwIfAborted();
+
+    // Queued user messages fire as soon as the thread frees up — cancel
+    // included, symmetric with the workflow drain below. User messages keep
+    // priority by draining first (#21392).
+    await tapError(
+      set(drainQueuedUserMessagesForRun$, { runId: result.runId }, signal),
+      (error) => {
+        L.error("Failed to drain queued user messages after cancel", {
           runId: result.runId,
           error,
         });

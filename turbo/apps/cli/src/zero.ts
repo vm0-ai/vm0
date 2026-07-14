@@ -32,7 +32,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   memory: "relationship:read",
   relationship: "relationship:read",
   doctor: null,
-  credit: "billing:write",
+  credit: ["billing:read", "billing:write"],
   model: null,
   "model-provider": null,
   logs: "agent-run:read",
@@ -53,6 +53,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   video: null,
   host: ["host:read", "host:write"],
   maps: "maps:read",
+  scrape: "scrape:read",
   banking: "banking:read",
 };
 
@@ -110,7 +111,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "credit",
-    description: "Create a Stripe checkout link to buy credits",
+    description: "View or buy credits",
     load: async () => {
       return (await import("./commands/zero/credit")).zeroCreditCommand;
     },
@@ -291,6 +292,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "scrape",
+    description: "Scrape public web pages through managed zero scrape",
+    load: async () => {
+      return (await import("./commands/zero/scrape")).zeroScrapeCommand;
+    },
+  },
+  {
     name: "banking",
     description: "Use managed zero banking services",
     load: async () => {
@@ -387,8 +395,8 @@ export function buildZeroHelpText(
     "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
     ...(payload && !payload.capabilities.includes("billing:read")
       ? []
-      : ["  Check credits?         zero doctor credit"]),
-    ...(shouldHideCommand("credit", payload)
+      : ["  Check credits?         zero credit"]),
+    ...(payload && !payload.capabilities.includes("billing:write")
       ? []
       : ["  Buy credits?           zero credit 20000"]),
     "  Send a Slack message?  zero slack message send --help",
@@ -430,6 +438,9 @@ export function buildZeroHelpText(
       : [
           '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
         ]),
+    ...(shouldHideCommand("scrape", payload)
+      ? []
+      : ["  Scrape a web page?    zero scrape https://example.com --json"]),
     ...(shouldHideCommand("banking", payload)
       ? []
       : ["  Read bank data?       zero banking accounts --json"]),

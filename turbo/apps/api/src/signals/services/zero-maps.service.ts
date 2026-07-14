@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type {
   ZeroMapsDirectionsRequest,
   ZeroMapsGeocodeRequest,
@@ -8,16 +6,16 @@ import type {
   ZeroMapsResponse,
   ZeroMapsReverseGeocodeRequest,
 } from "@vm0/api-contracts/contracts/zero-maps";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { usageEvent } from "@vm0/db/schema/usage-event";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
 
 import type { AuthContext } from "../../types/auth";
 import { env } from "../../lib/env";
-import { writeDb$ } from "../external/db";
 import { safeJsonParse } from "../utils";
-import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import {
+  checkManagedCredits$,
+  recordManagedUsage$,
+  type ManagedUsageErrorResponse,
+} from "./zero-managed-usage.service";
 
 const PROVIDER = "google-maps";
 const USAGE_KIND = "maps";
@@ -48,13 +46,6 @@ const PLACE_DETAILS_PRO_FIELD_MASK =
 const PLACE_DETAILS_ENTERPRISE_FIELD_MASK = `${PLACE_DETAILS_PRO_FIELD_MASK},priceLevel,priceRange,rating,userRatingCount,regularOpeningHours,currentOpeningHours,websiteUri,nationalPhoneNumber`;
 const DEFAULT_LOCATION_BIAS_RADIUS_METERS = 50_000;
 
-interface CreditCheckRow extends Record<string, unknown> {
-  readonly credits: string | null;
-  readonly unsettled_expired: string | null;
-  readonly unit_price: string | null;
-  readonly unit_size: string | null;
-}
-
 type ErrorStatus = 400 | 402 | 502 | 503;
 type PlaceSearchFieldset = ZeroMapsPlacesSearchRequest["fields"];
 type PlaceDetailFieldset = ZeroMapsPlacesDetailsRequest["fields"];
@@ -73,6 +64,25 @@ interface MapsUsageArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId?: string;
+  readonly provider?: string;
+  readonly category: string;
+}
+
+type ZeroMapsCommandResponse =
+  | { readonly status: 200; readonly body: ZeroMapsResponse }
+  | MapsErrorResponse
+  | ManagedUsageErrorResponse;
+
+interface CompleteGoogleMapsResultArgs {
+  readonly operation: ZeroMapsResponse["operation"];
+  readonly result: unknown | MapsErrorResponse;
+  readonly billingCategory: string;
+  readonly validateLegacyGoogleStatus?: boolean;
+  readonly recordUsage: () => Promise<number>;
+}
+
+interface MapsCreditCheckArgs {
+  readonly orgId: string;
   readonly provider?: string;
   readonly category: string;
 }
@@ -100,16 +110,6 @@ function errorBody(message: string, code: string) {
 
 function badRequest(message: string): MapsErrorResponse {
   return { status: 400, body: errorBody(message, "BAD_REQUEST") };
-}
-
-function insufficientCredits(): MapsErrorResponse {
-  return {
-    status: 402,
-    body: errorBody(
-      "Insufficient credits. Please add credits to continue.",
-      "INSUFFICIENT_CREDITS",
-    ),
-  };
 }
 
 function badGateway(message: string, code = "GOOGLE_MAPS_ERROR") {
@@ -291,68 +291,26 @@ function runIdForUsage(auth: AuthContext): string | undefined {
     : undefined;
 }
 
-function estimatedCredits(unitPrice: string, unitSize: string): number {
-  return Math.ceil(Number(unitPrice) / Number(unitSize));
-}
-
 export const checkMapsCredits$ = command(
   async (
     { set },
-    args: {
-      readonly orgId: string;
-      readonly provider?: string;
-      readonly category: string;
-    },
+    args: MapsCreditCheckArgs,
     signal: AbortSignal,
-  ): Promise<MapsErrorResponse | null> => {
+  ): Promise<ManagedUsageErrorResponse | null> => {
     const provider = args.provider ?? PROVIDER;
-    const writeDb = set(writeDb$);
-    const { rows } = await writeDb.execute<CreditCheckRow>(sql`
-      WITH pricing AS (
-        SELECT unit_price, unit_size FROM usage_pricing
-        WHERE kind = ${USAGE_KIND}
-          AND provider = ${provider}
-          AND category = ${args.category}
-        LIMIT 1
-      ),
-      org AS (
-        SELECT credits FROM org_metadata
-        WHERE org_id = ${args.orgId}
-        LIMIT 1
-      ),
-      expired AS (
-        SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-        FROM credit_expires_record
-        WHERE org_id = ${args.orgId}
-          AND expires_at <= now()
-          AND remaining > 0
-      )
-      SELECT
-        (SELECT credits FROM org) AS credits,
-        (SELECT total FROM expired) AS unsettled_expired,
-        (SELECT unit_price FROM pricing) AS unit_price,
-        (SELECT unit_size FROM pricing) AS unit_size
-    `);
-    signal.throwIfAborted();
-
-    const row = rows[0];
-    if (row?.unit_price === null || row?.unit_size === null) {
-      return serviceUnavailable(
-        "Zero Maps pricing is not configured",
-        "PRICING_NOT_CONFIGURED",
-      );
-    }
-
-    if (!row || row.credits === null) {
-      return insufficientCredits();
-    }
-
-    const credits = Number(row.credits);
-    const unsettledExpired = Number(row.unsettled_expired ?? 0);
-    return credits - unsettledExpired >=
-      estimatedCredits(row.unit_price, row.unit_size)
-      ? null
-      : insufficientCredits();
+    return await set(
+      checkManagedCredits$,
+      {
+        orgId: args.orgId,
+        resource: {
+          kind: USAGE_KIND,
+          provider,
+          category: args.category,
+        },
+        label: "Zero Maps",
+      },
+      signal,
+    );
   },
 );
 
@@ -362,51 +320,50 @@ export const recordMapsUsage$ = command(
     args: MapsUsageArgs,
     signal: AbortSignal,
   ): Promise<number> => {
-    const writeDb = set(writeDb$);
-    const [run] = args.runId
-      ? await writeDb
-          .select({ id: agentRuns.id })
-          .from(agentRuns)
-          .where(
-            and(
-              eq(agentRuns.id, args.runId),
-              eq(agentRuns.orgId, args.orgId),
-              eq(agentRuns.userId, args.userId),
-            ),
-          )
-      : [];
-    signal.throwIfAborted();
-
-    const [inserted] = await writeDb
-      .insert(usageEvent)
-      .values({
-        runId: run?.id ?? null,
-        idempotencyKey: randomUUID(),
-        orgId: args.orgId,
-        userId: args.userId,
-        kind: USAGE_KIND,
-        provider: args.provider ?? PROVIDER,
-        category: args.category,
-        quantity: 1,
-      })
-      .returning({ id: usageEvent.id });
-    signal.throwIfAborted();
-
-    if (!inserted) {
-      throw new Error("Failed to insert maps usage event");
-    }
-
-    await set(processOrgUsageEvents$, args.orgId, signal);
-    signal.throwIfAborted();
-
-    const [processed] = await writeDb
-      .select({ creditsCharged: usageEvent.creditsCharged })
-      .from(usageEvent)
-      .where(eq(usageEvent.id, inserted.id));
-    signal.throwIfAborted();
-    return processed?.creditsCharged ?? 0;
+    return await set(
+      recordManagedUsage$,
+      {
+        actor: {
+          orgId: args.orgId,
+          userId: args.userId,
+          ...(args.runId ? { runId: args.runId } : {}),
+        },
+        resource: {
+          kind: USAGE_KIND,
+          provider: args.provider ?? PROVIDER,
+          category: args.category,
+        },
+        label: "maps",
+      },
+      signal,
+    );
   },
 );
+
+async function completeGoogleMapsResult(
+  args: CompleteGoogleMapsResultArgs,
+): Promise<ZeroMapsCommandResponse> {
+  if (isMapsErrorResponse(args.result)) {
+    return args.result;
+  }
+  if (args.validateLegacyGoogleStatus) {
+    const failure = legacyMapsFailure(args.result);
+    if (failure) {
+      return failure;
+    }
+  }
+
+  const creditsCharged = await args.recordUsage();
+  const body: ZeroMapsResponse = {
+    operation: args.operation,
+    provider: PROVIDER,
+    creditsCharged,
+    billingCategory: args.billingCategory,
+    billingQuantity: 1,
+    result: args.result,
+  };
+  return { status: 200 as const, body };
+}
 
 export const zeroMapsGeocode$ = command(
   async (
@@ -438,34 +395,24 @@ export const zeroMapsGeocode$ = command(
     url.searchParams.set("address", args.body.address);
     maybeSetParam(url.searchParams, "region", args.body.region);
     const result = await fetchGoogleJson(url, { signal });
-    signal.throwIfAborted();
-    if (isMapsErrorResponse(result)) {
-      return result;
-    }
-    const failure = legacyMapsFailure(result);
-    if (failure) {
-      return failure;
-    }
-
-    const creditsCharged = await set(
-      recordMapsUsage$,
-      {
-        orgId: args.auth.orgId,
-        userId: args.auth.userId,
-        runId: runIdForUsage(args.auth),
-        category: GEOCODING_CATEGORY,
-      },
-      signal,
-    );
-    const body: ZeroMapsResponse = {
+    return completeGoogleMapsResult({
       operation: "geocode",
-      provider: PROVIDER,
-      creditsCharged,
-      billingCategory: GEOCODING_CATEGORY,
-      billingQuantity: 1,
       result,
-    };
-    return { status: 200 as const, body };
+      billingCategory: GEOCODING_CATEGORY,
+      validateLegacyGoogleStatus: true,
+      recordUsage: () => {
+        return set(
+          recordMapsUsage$,
+          {
+            orgId: args.auth.orgId,
+            userId: args.auth.userId,
+            runId: runIdForUsage(args.auth),
+            category: GEOCODING_CATEGORY,
+          },
+          signal,
+        );
+      },
+    });
   },
 );
 
@@ -498,34 +445,24 @@ export const zeroMapsReverseGeocode$ = command(
     const url = withApiKey(GOOGLE_GEOCODING_URL, apiKey);
     url.searchParams.set("latlng", `${args.body.lat},${args.body.lng}`);
     const result = await fetchGoogleJson(url, { signal });
-    signal.throwIfAborted();
-    if (isMapsErrorResponse(result)) {
-      return result;
-    }
-    const failure = legacyMapsFailure(result);
-    if (failure) {
-      return failure;
-    }
-
-    const creditsCharged = await set(
-      recordMapsUsage$,
-      {
-        orgId: args.auth.orgId,
-        userId: args.auth.userId,
-        runId: runIdForUsage(args.auth),
-        category: GEOCODING_CATEGORY,
-      },
-      signal,
-    );
-    const body: ZeroMapsResponse = {
+    return completeGoogleMapsResult({
       operation: "reverse-geocode",
-      provider: PROVIDER,
-      creditsCharged,
-      billingCategory: GEOCODING_CATEGORY,
-      billingQuantity: 1,
       result,
-    };
-    return { status: 200 as const, body };
+      billingCategory: GEOCODING_CATEGORY,
+      validateLegacyGoogleStatus: true,
+      recordUsage: () => {
+        return set(
+          recordMapsUsage$,
+          {
+            orgId: args.auth.orgId,
+            userId: args.auth.userId,
+            runId: runIdForUsage(args.auth),
+            category: GEOCODING_CATEGORY,
+          },
+          signal,
+        );
+      },
+    });
   },
 );
 
@@ -570,34 +507,24 @@ export const zeroMapsDirections$ = command(
       );
     }
     const result = await fetchGoogleJson(url, { signal });
-    signal.throwIfAborted();
-    if (isMapsErrorResponse(result)) {
-      return result;
-    }
-    const failure = legacyMapsFailure(result);
-    if (failure) {
-      return failure;
-    }
-
-    const creditsCharged = await set(
-      recordMapsUsage$,
-      {
-        orgId: args.auth.orgId,
-        userId: args.auth.userId,
-        runId: runIdForUsage(args.auth),
-        category: billingCategory,
-      },
-      signal,
-    );
-    const body: ZeroMapsResponse = {
+    return completeGoogleMapsResult({
       operation: "directions",
-      provider: PROVIDER,
-      creditsCharged,
-      billingCategory,
-      billingQuantity: 1,
       result,
-    };
-    return { status: 200 as const, body };
+      billingCategory,
+      validateLegacyGoogleStatus: true,
+      recordUsage: () => {
+        return set(
+          recordMapsUsage$,
+          {
+            orgId: args.auth.orgId,
+            userId: args.auth.userId,
+            runId: runIdForUsage(args.auth),
+            category: billingCategory,
+          },
+          signal,
+        );
+      },
+    });
   },
 );
 
@@ -655,30 +582,23 @@ export const zeroMapsPlacesSearch$ = command(
         signal,
       },
     );
-    signal.throwIfAborted();
-    if (isMapsErrorResponse(result)) {
-      return result;
-    }
-
-    const creditsCharged = await set(
-      recordMapsUsage$,
-      {
-        orgId: args.auth.orgId,
-        userId: args.auth.userId,
-        runId: runIdForUsage(args.auth),
-        category: billingCategory,
-      },
-      signal,
-    );
-    const body: ZeroMapsResponse = {
+    return completeGoogleMapsResult({
       operation: "places.search",
-      provider: PROVIDER,
-      creditsCharged,
-      billingCategory,
-      billingQuantity: 1,
       result,
-    };
-    return { status: 200 as const, body };
+      billingCategory,
+      recordUsage: () => {
+        return set(
+          recordMapsUsage$,
+          {
+            orgId: args.auth.orgId,
+            userId: args.auth.userId,
+            runId: runIdForUsage(args.auth),
+            category: billingCategory,
+          },
+          signal,
+        );
+      },
+    });
   },
 );
 
@@ -723,29 +643,22 @@ export const zeroMapsPlacesDetails$ = command(
         signal,
       },
     );
-    signal.throwIfAborted();
-    if (isMapsErrorResponse(result)) {
-      return result;
-    }
-
-    const creditsCharged = await set(
-      recordMapsUsage$,
-      {
-        orgId: args.auth.orgId,
-        userId: args.auth.userId,
-        runId: runIdForUsage(args.auth),
-        category: billingCategory,
-      },
-      signal,
-    );
-    const body: ZeroMapsResponse = {
+    return completeGoogleMapsResult({
       operation: "places.details",
-      provider: PROVIDER,
-      creditsCharged,
-      billingCategory,
-      billingQuantity: 1,
       result,
-    };
-    return { status: 200 as const, body };
+      billingCategory,
+      recordUsage: () => {
+        return set(
+          recordMapsUsage$,
+          {
+            orgId: args.auth.orgId,
+            userId: args.auth.userId,
+            runId: runIdForUsage(args.auth),
+            category: billingCategory,
+          },
+          signal,
+        );
+      },
+    });
   },
 );

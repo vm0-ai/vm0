@@ -37,6 +37,7 @@ function buildCommands(): Command[] {
     new Command("web"),
     new Command("host"),
     new Command("maps"),
+    new Command("scrape"),
     new Command("banking"),
     new Command("goal"),
   ];
@@ -172,6 +173,7 @@ describe("registerZeroCommands", () => {
       "variable",
       "host",
       "maps",
+      "scrape",
       "banking",
       "goal",
     ]);
@@ -227,6 +229,32 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toContain("memory");
     expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show scrape when scrape:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["scrape:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("scrape");
+  });
+
+  it("should show credit with either billing read or billing write capability", () => {
+    for (const capability of ["billing:read", "billing:write"]) {
+      const token = buildZeroToken({
+        scope: "zero",
+        capabilities: [capability],
+      });
+      vi.stubEnv("ZERO_TOKEN", token);
+
+      const prog = buildProgram();
+
+      expect(visibleCommandNames(prog)).toContain("credit");
+    }
   });
 
   it("should hide memory when relationship:read capability is missing", () => {
@@ -541,10 +569,10 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide credit when billing:write capability is missing", () => {
+  it("should hide credit when billing capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["billing:read"],
+      capabilities: ["agent:read"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
@@ -561,6 +589,29 @@ describe("registerZeroCommands", () => {
     const help = buildZeroHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
+    expect(help).toContain("Buy credits?");
+  });
+
+  it("should show only credit status help for billing read capability", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["billing:read"],
+    });
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+
+    expect(help).toContain("Check credits?");
+    expect(help).toContain("zero credit");
+    expect(help).not.toContain("Buy credits?");
+  });
+
+  it("should show only credit purchase help for billing write capability", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["billing:write"],
+    });
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+
+    expect(help).not.toContain("Check credits?");
     expect(help).toContain("Buy credits?");
   });
 
@@ -594,6 +645,28 @@ describe("registerZeroCommands", () => {
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Get directions?",
+    );
+  });
+
+  it("should show the scrape help example when scrape:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["scrape:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Scrape a web page?",
+    );
+  });
+
+  it("should hide the scrape help example when scrape:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Scrape a web page?",
     );
   });
 

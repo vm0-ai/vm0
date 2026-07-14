@@ -44,6 +44,7 @@ export enum FeatureSwitchKey {
   PexelsConnector = "pexelsConnector",
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
+  ZeroScrape = "zeroScrape",
   Banking = "banking",
   Lab = "lab",
   WorkflowWebhookTriggers = "workflowWebhookTriggers",

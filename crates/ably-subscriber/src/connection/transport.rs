@@ -2,13 +2,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use futures_util::{Stream, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt};
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 
 use super::state::idle_deadline;
 use crate::Error;
+use crate::protocol::error_code;
 use crate::types::redact_access_token;
 
 type WsStream =
@@ -55,21 +56,96 @@ impl Stream for WsRead {
     }
 }
 
-pub(super) async fn connect_and_split(url: &str) -> Result<(WsWrite, WsRead), Error> {
-    let (ws, _resp) = tokio_tungstenite::connect_async(url).await?;
-    let (ws_write, ws_read) = ws.split();
-    Ok((ws_write, WsRead::new(ws_read)))
-}
-
 pub(crate) struct WsTransport {
     pub(super) ws_read: WsRead,
     pub(super) ws_write: WsWrite,
 }
 
 impl WsTransport {
-    pub(crate) fn new(ws_read: WsRead, ws_write: WsWrite) -> Self {
+    fn new(ws_read: WsRead, ws_write: WsWrite) -> Self {
         Self { ws_read, ws_write }
     }
+
+    pub(super) fn close_in_background(self, close_timeout: Duration) {
+        let Self {
+            ws_read,
+            mut ws_write,
+        } = self;
+        drop(ws_read);
+        let close_task = tokio::spawn(async move {
+            let result = tokio::time::timeout(close_timeout, async move {
+                let _ = ws_write.close().await;
+            })
+            .await;
+            if result.is_err() {
+                tracing::warn!(
+                    timeout_ms = close_timeout.as_millis(),
+                    "Timed out while closing websocket transport"
+                );
+            }
+        });
+        drop(close_task);
+    }
+}
+
+/// Owns a connected transport until setup commits it as active.
+///
+/// Dropping a setup future drops this guard and schedules bounded transport
+/// cleanup, so cancellation cannot silently abandon an established WebSocket.
+pub(super) struct PendingWsTransport {
+    transport: Option<WsTransport>,
+    close_timeout: Duration,
+}
+
+impl PendingWsTransport {
+    fn new(transport: WsTransport, close_timeout: Duration) -> Self {
+        Self {
+            transport: Some(transport),
+            close_timeout,
+        }
+    }
+
+    fn transport_mut(&mut self) -> Result<&mut WsTransport, Error> {
+        self.transport.as_mut().ok_or_else(|| Error::Protocol {
+            code: error_code::FAILED,
+            message: "Pending WebSocket transport is unavailable".to_string(),
+        })
+    }
+
+    pub(super) fn read_mut(&mut self) -> Result<&mut WsRead, Error> {
+        Ok(&mut self.transport_mut()?.ws_read)
+    }
+
+    pub(super) fn write_mut(&mut self) -> Result<&mut WsWrite, Error> {
+        Ok(&mut self.transport_mut()?.ws_write)
+    }
+
+    pub(super) fn into_transport(mut self) -> Result<WsTransport, Error> {
+        self.transport.take().ok_or_else(|| Error::Protocol {
+            code: error_code::FAILED,
+            message: "Pending WebSocket transport is unavailable".to_string(),
+        })
+    }
+}
+
+impl Drop for PendingWsTransport {
+    fn drop(&mut self) {
+        if let Some(transport) = self.transport.take() {
+            transport.close_in_background(self.close_timeout);
+        }
+    }
+}
+
+pub(super) async fn connect_pending(
+    url: &str,
+    close_timeout: Duration,
+) -> Result<PendingWsTransport, Error> {
+    let (ws, _resp) = tokio_tungstenite::connect_async(url).await?;
+    let (ws_write, ws_read) = ws.split();
+    Ok(PendingWsTransport::new(
+        WsTransport::new(WsRead::new(ws_read), ws_write),
+        close_timeout,
+    ))
 }
 
 pub(super) fn websocket_close_reason(frame: Option<&CloseFrame>) -> String {

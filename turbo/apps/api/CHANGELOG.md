@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.273.0](https://github.com/vm0-ai/vm0/compare/api-v1.272.1...api-v1.273.0) (2026-07-14)
+
+
+### Features
+
+* add managed zero scrape ([#20778](https://github.com/vm0-ai/vm0/issues/20778)) ([4e72f67](https://github.com/vm0-ai/vm0/commit/4e72f67713b096f72ba4cab591c440906783e68f))
+
+
+### Bug Fixes
+
+* drain queued user messages whenever a thread goes idle ([#21397](https://github.com/vm0-ai/vm0/issues/21397)) ([5ad9069](https://github.com/vm0-ai/vm0/commit/5ad9069e1beb71822539ea9d17f0a7666b873722))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.0
+    * @vm0/connectors bumped to 1.159.0
+    * @vm0/core bumped to 8.430.0
+    * @vm0/db bumped to 1.115.0
+
 ## [1.272.1](https://github.com/vm0-ai/vm0/compare/api-v1.272.0...api-v1.272.1) (2026-07-14)
 
 

@@ -3,7 +3,11 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { validateBaseUrl } from "../firewall-types";
+import { FIREWALL_HOSTNAME_POLICY_VERSION } from "../firewall-hostname-policy";
+import {
+  canonicalizeFirewallBaseUrl,
+  validateBaseUrl,
+} from "../firewall-types";
 
 const baseUrlValidationCaseSchema = z.object({
   name: z.string(),
@@ -11,10 +15,12 @@ const baseUrlValidationCaseSchema = z.object({
   note: z.string().optional(),
   base: z.string(),
   expectedValid: z.boolean(),
+  expectedCanonicalBase: z.string().optional(),
 });
 
 const contractSchema = z
   .object({
+    hostnamePolicy: z.literal(FIREWALL_HOSTNAME_POLICY_VERSION),
     baseUrlValidationCases: z.array(baseUrlValidationCaseSchema).min(1),
   })
   .superRefine((contract, ctx) => {
@@ -53,6 +59,11 @@ function assertValidationResult(testCase: BaseUrlValidationCase): void {
 
   if (testCase.expectedValid) {
     expect(validate).not.toThrow();
+    if (testCase.expectedCanonicalBase !== undefined) {
+      expect(canonicalizeFirewallBaseUrl(testCase.base, "contract")).toBe(
+        testCase.expectedCanonicalBase,
+      );
+    }
     return;
   }
 

@@ -6,8 +6,40 @@ use ably_subscriber::{Event, TimingConfig, subscribe};
 use futures_util::{SinkExt, StreamExt};
 use httpmock::prelude::*;
 use std::time::Duration;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::tungstenite;
+
+#[tokio::test]
+async fn websocket_close_assertion_preserves_protocol_error() {
+    let ws = MockAblyServer::start().await.unwrap();
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_raw().await.unwrap();
+        let error = expect_websocket_closed(&mut conn).await.unwrap_err();
+        assert!(
+            matches!(
+                error.downcast_ref::<tungstenite::Error>(),
+                Some(tungstenite::Error::Protocol(
+                    tungstenite::error::ProtocolError::UnmaskedFrameFromClient
+                ))
+            ),
+            "expected original unmasked-frame protocol error, got {error:?}"
+        );
+    });
+
+    let tcp = tokio::net::TcpStream::connect(("127.0.0.1", ws_port))
+        .await
+        .unwrap();
+    let (client, _) = tokio_tungstenite::client_async(format!("ws://127.0.0.1:{ws_port}"), tcp)
+        .await
+        .unwrap();
+    let mut tcp = client.into_inner();
+    tcp.write_all(&[0x81, 0x00]).await.unwrap();
+
+    join_server_task(server_task, "invalid websocket frame server")
+        .await
+        .unwrap();
+}
 
 #[tokio::test]
 async fn close_subscription() {

@@ -3566,4 +3566,70 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
     expect(followUp.prompt).toContain("queue-first waits for the anchor");
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
+
+  it("auto-fires queued messages when the active run is cancelled", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue-first sends");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatMessageQueue]: true },
+    );
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "queue-first anchor to cancel",
+    });
+    await claimChatRun(runnerGroup, anchor.runId);
+
+    const queuedId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queue-first fires after cancel",
+        clientMessageId: queuedId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    // Cancelling the anchor frees the thread; the cancel side effects drain
+    // the queue, so the queued message claims a fresh run in place without
+    // waiting for a completed-run callback or another send (#21392).
+    await cancelChatRun(actor, anchor.runId);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.id === queuedId &&
+            typeof message.runId === "string" &&
+            message.runId !== anchor.runId
+          );
+        });
+      },
+    );
+    const fired = userMessages(messages.messages).find((message) => {
+      return message.id === queuedId;
+    });
+    if (!fired?.runId) {
+      throw new Error("Expected the queued message to fire after cancel");
+    }
+    expect(fired.content).toBe("queue-first fires after cancel");
+    expect(
+      messages.messages.some((message) => {
+        return message.revokesMessageId === queuedId;
+      }),
+    ).toBeFalsy();
+
+    const followUp = await api.readRun(actor, fired.runId);
+    expect(followUp.prompt).toContain("queue-first fires after cancel");
+    await cancelChatRun(actor, fired.runId);
+  }, 90_000);
 });

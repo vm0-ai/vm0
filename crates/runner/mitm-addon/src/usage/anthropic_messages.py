@@ -70,8 +70,13 @@ def create_anthropic_messages_sse_usage_extractor(
       ``message.model`` identifies the model.
     - ``message_delta`` — ``usage`` contains the final ``output_tokens`` count.
 
-    Returns ``(parse_chunk, usage)`` where *parse_chunk* processes raw bytes
-    incrementally and *usage* is a dict that accumulates extracted fields.
+    Returns ``(scanner, usage)``. The callable *scanner* is an
+    ``SseUsageScanner``; callers pass arbitrary content-decoded byte chunks
+    that still contain SSE framing to *scanner* (or its ``feed()`` method) and
+    retain *usage* as a live mutable accumulator. Usage extracted at a complete
+    event boundary updates that same dict in place. After all decoded bytes
+    have been fed, callers must invoke ``scanner.finish()`` to flush a trailing
+    event without a blank-line terminator.
     """
     usage: dict = {}
     parser = SseUsageScanner(

@@ -745,10 +745,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for item in node.items:
             self._record_metadata_merge_key_violations(item.context_expr)
             self.visit(item.context_expr)
+            self._discard_alias_target(item.optional_vars)
         body_aliases = set(self._metadata_aliases)
         self._metadata_alias_scopes.append(body_aliases)
-        for item in node.items:
-            self._discard_alias_target(item.optional_vars)
         exception_state = _ExceptionAliasState()
         self._exception_alias_scopes.append(exception_state)
         body_falls_through = self._visit_current_scope_body(node.body)

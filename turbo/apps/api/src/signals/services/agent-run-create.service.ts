@@ -50,8 +50,8 @@ import {
   type FirewallPermissionIndex,
 } from "@vm0/connectors/firewall-metadata/server";
 import {
+  canonicalizeFirewallBaseUrlVarsForExecution,
   extractSecretNamesFromApis,
-  resolveFirewallBaseUrlVars,
   type ExecutionFirewallEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
@@ -139,6 +139,7 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import {
+  CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorPrefixTemplateVariableKeys,
   customConnectorSecretKey,
@@ -3353,6 +3354,7 @@ async function buildCustomConnectorRuntimeContext(args: {
       const renderedPrefix = renderCustomConnectorRuntimePrefix({
         template: prefixTemplate,
         values: decryptedValues,
+        connectorName: row.connector.displayName,
       });
       if (!renderedPrefix) {
         stats.recordInvalidPrefix();
@@ -3529,17 +3531,10 @@ function builtinFirewallEntry(
     return { kind: "builtin", name: firewall.name };
   }
 
-  const baseUrlVars: Record<string, string> = {};
-  for (const name of names) {
-    const value = vars?.[name];
-    if (!value) {
-      throw new FirewallBaseUrlResolutionError(
-        `Firewall "${firewall.name}" base URL requires variable "${name}" but it was not provided`,
-      );
-    }
-    baseUrlVars[name] = value;
-  }
-  resolveFirewallBaseUrlVars([runtimeFirewall(firewall)], vars);
+  const baseUrlVars = canonicalizeFirewallBaseUrlVarsForExecution(
+    [runtimeFirewall(firewall)],
+    vars,
+  );
   return { kind: "builtin", name: firewall.name, baseUrlVars };
 }
 
@@ -3563,32 +3558,21 @@ function builtinFirewallEntryForMetadata(
     return { kind: "builtin", name: metadata.type };
   }
 
-  const baseUrlVars: Record<string, string> = {};
-  for (const name of metadata.baseUrlVarNames) {
-    const value = vars?.[name];
-    if (!value) {
-      throw new FirewallBaseUrlResolutionError(
-        `Firewall "${metadata.type}" base URL requires variable "${name}" but it was not provided`,
-      );
-    }
-    baseUrlVars[name] = value;
-  }
-  resolveFirewallBaseUrlVars(
-    [
-      {
-        name: metadata.type,
-        apis: metadata.baseUrlTemplates.map((template) => {
-          return {
-            base: template.base,
-            ...(template.hostPolicy !== undefined
-              ? { hostPolicy: template.hostPolicy }
-              : {}),
-            auth: baseUrlValidationAuth(template.credentialed),
-            permissions: [],
-          };
-        }),
-      },
-    ],
+  const validationFirewall: Firewall = {
+    name: metadata.type,
+    apis: metadata.baseUrlTemplates.map((template) => {
+      return {
+        base: template.base,
+        ...(template.hostPolicy !== undefined
+          ? { hostPolicy: template.hostPolicy }
+          : {}),
+        auth: baseUrlValidationAuth(template.credentialed),
+        permissions: [],
+      };
+    }),
+  };
+  const baseUrlVars = canonicalizeFirewallBaseUrlVarsForExecution(
+    [validationFirewall],
     vars,
   );
   return { kind: "builtin", name: metadata.type, baseUrlVars };
@@ -3788,13 +3772,9 @@ async function buildPermissionManifest(args: {
     "api_dispatch_prepare_context_apply_custom_permission_policies",
     "nested",
     () => {
-      const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
-        (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
-        args.vars,
-      );
       return Promise.resolve(
         applyConnectorPolicies(
-          resolvedCustomConnectorFirewalls,
+          args.customConnectorFirewalls ?? [],
           args.permissionPolicies,
           inlineFirewallEntry,
           (_firewall, permissionNames) => {
@@ -6470,6 +6450,45 @@ async function prepareRunBodyContext(args: {
   };
 }
 
+async function prepareRunConnectorContexts(args: {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<
+  Awaited<ReturnType<typeof loadRunConnectorContexts>> | CreateRunErrorResult
+> {
+  const result = await settle(
+    args.timing.measure(
+      "api_dispatch_prepare_context_load_connector_contexts",
+      "nested",
+      async () => {
+        return await loadRunConnectorContexts(
+          args.db,
+          {
+            orgId: args.createArgs.orgId,
+            userId: args.createArgs.userId,
+            connectorScope: args.connectorScope,
+          },
+          args.featureSwitchContext,
+          args.timing,
+        );
+      },
+      storedConnectorTimingDimensions({
+        scopeSource: args.connectorScope.source,
+      }),
+    ),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (result.error instanceof CustomConnectorRuntimePrefixError) {
+    return badRequestMessage(result.error.message);
+  }
+  throw result.error;
+}
+
 async function prepareRunRuntimeContext(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
@@ -6498,29 +6517,21 @@ async function prepareRunRuntimeContext(args: {
   const framework = modelProvider
     ? modelProviderFramework(modelProvider)
     : requestedFramework;
+  const connectorContexts = await prepareRunConnectorContexts({
+    db: args.db,
+    createArgs: args.createArgs,
+    connectorScope: args.connectorScope,
+    featureSwitchContext,
+    timing: args.timing,
+  });
+  if (isRouteError(connectorContexts)) {
+    return connectorContexts;
+  }
   const {
     storedConnectorSnapshot,
     storedConnectorMetadataContext,
     customConnectorContext,
-  } = await args.timing.measure(
-    "api_dispatch_prepare_context_load_connector_contexts",
-    "nested",
-    async () => {
-      return await loadRunConnectorContexts(
-        args.db,
-        {
-          orgId: args.createArgs.orgId,
-          userId: args.createArgs.userId,
-          connectorScope: args.connectorScope,
-        },
-        featureSwitchContext,
-        args.timing,
-      );
-    },
-    storedConnectorTimingDimensions({
-      scopeSource: args.connectorScope.source,
-    }),
-  );
+  } = connectorContexts;
   args.signal.throwIfAborted();
 
   const storedConnectorTiming = storedConnectorTimingDimensions({
