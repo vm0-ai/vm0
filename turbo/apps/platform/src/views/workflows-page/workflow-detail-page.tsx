@@ -590,8 +590,8 @@ function TriggerCreateAction() {
     billing === undefined ||
     billing.tier === "team" ||
     billing.tier === "custom";
-  const notionWorkflowTriggersEnabled =
-    features[FeatureSwitchKey.NotionWorkflowTriggers] ?? false;
+  const notionWorkflowAutomationsEnabled =
+    features[FeatureSwitchKey.NotionWorkflowAutomations] ?? false;
 
   return (
     <TriggerCreateMenu
@@ -605,7 +605,7 @@ function TriggerCreateAction() {
       githubLabelTriggersEnabled
       googleCalendarTriggersEnabled
       googleMeetTriggersEnabled
-      notionWorkflowTriggersEnabled={notionWorkflowTriggersEnabled}
+      notionWorkflowAutomationsEnabled={notionWorkflowAutomationsEnabled}
       webhookTierEligible={webhookTierEligible}
     />
   );
@@ -2834,9 +2834,9 @@ function buildIntegrationTriggerOptions({
 }
 
 function buildNotionTriggerOptions(
-  notionWorkflowTriggersEnabled: boolean,
+  notionWorkflowAutomationsEnabled: boolean,
 ): TriggerCreateOption[] {
-  if (!notionWorkflowTriggersEnabled) {
+  if (!notionWorkflowAutomationsEnabled) {
     return [];
   }
   return [
@@ -2876,13 +2876,13 @@ function buildTriggerCreateCategories({
   githubLabelTriggersEnabled,
   googleCalendarTriggersEnabled,
   googleMeetTriggersEnabled,
-  notionWorkflowTriggersEnabled,
+  notionWorkflowAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly githubLabelTriggersEnabled: boolean;
   readonly googleCalendarTriggersEnabled: boolean;
   readonly googleMeetTriggersEnabled: boolean;
-  readonly notionWorkflowTriggersEnabled: boolean;
+  readonly notionWorkflowAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): readonly TriggerCreateCategory[] {
   const calendarOptions: TriggerCreateOption[] = [];
@@ -2922,7 +2922,7 @@ function buildTriggerCreateCategories({
     webhookTierEligible,
   });
   const notionOptions = buildNotionTriggerOptions(
-    notionWorkflowTriggersEnabled,
+    notionWorkflowAutomationsEnabled,
   );
 
   const categories: readonly TriggerCreateCategory[] = [
@@ -3069,14 +3069,14 @@ function TriggerCreateMenu({
   githubLabelTriggersEnabled,
   googleCalendarTriggersEnabled,
   googleMeetTriggersEnabled,
-  notionWorkflowTriggersEnabled,
+  notionWorkflowAutomationsEnabled,
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: TriggerCreateDialogKind) => void;
   readonly githubLabelTriggersEnabled: boolean;
   readonly googleCalendarTriggersEnabled: boolean;
   readonly googleMeetTriggersEnabled: boolean;
-  readonly notionWorkflowTriggersEnabled: boolean;
+  readonly notionWorkflowAutomationsEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }) {
   const open = useGet(workflowTriggerPickerOpen$);
@@ -3087,7 +3087,7 @@ function TriggerCreateMenu({
     githubLabelTriggersEnabled,
     googleCalendarTriggersEnabled,
     googleMeetTriggersEnabled,
-    notionWorkflowTriggersEnabled,
+    notionWorkflowAutomationsEnabled,
     webhookTierEligible,
   });
   const activeCategory =

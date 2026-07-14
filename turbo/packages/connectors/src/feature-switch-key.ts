@@ -44,7 +44,7 @@ export enum FeatureSwitchKey {
   ZeroScrape = "zeroScrape",
   Banking = "banking",
   Lab = "lab",
-  NotionWorkflowTriggers = "notionWorkflowTriggers",
+  NotionWorkflowAutomations = "notionWorkflowAutomations",
   AgentDetailWorkflowsTab = "agentDetailWorkflowsTab",
   TestOauthConnector = "testOauthConnector",
   FreshdeskConnector = "freshdeskConnector",
@@ -81,3 +81,10 @@ export enum FeatureSwitchKey {
   OrgPlanEntitlementReads = "orgPlanEntitlementReads",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
 }
+
+/**
+ * Temporary wire alias used while old platform and API versions drain.
+ * Remove after the Notion workflow automation feature-switch migration.
+ */
+export const LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY =
+  "notionWorkflowTriggers";

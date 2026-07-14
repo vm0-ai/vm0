@@ -4,7 +4,10 @@ import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  FeatureSwitchKey,
+  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY,
+} from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import apiPackage from "../../../../package.json";
@@ -189,6 +192,96 @@ describe("OPS-01: feature switches and report-error routes", () => {
     expect(
       readAfterDelete.body.switches[FeatureSwitchKey.Dummy],
     ).toBeUndefined();
+  });
+
+  it("canonicalizes the Notion automation switch while serving old clients", async () => {
+    const admin = api.user();
+    if (!admin.orgId) {
+      throw new Error("Feature switch tests require an organization");
+    }
+
+    const legacyUpdate = await accept(
+      featureSwitchesClient().update({
+        headers: headersFor(admin),
+        body: {
+          switches: {
+            [LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY]: true,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(
+      legacyUpdate.body.switches[FeatureSwitchKey.NotionWorkflowAutomations],
+    ).toBeTruthy();
+    expect(
+      legacyUpdate.body.switches[
+        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+      ],
+    ).toBeTruthy();
+
+    const readAfterLegacyUpdate = await accept(
+      featureSwitchesClient().get({ headers: headersFor(admin) }),
+      [200],
+    );
+    expect(
+      readAfterLegacyUpdate.body.switches[
+        FeatureSwitchKey.NotionWorkflowAutomations
+      ],
+    ).toBeTruthy();
+    expect(
+      readAfterLegacyUpdate.body.switches[
+        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+      ],
+    ).toBeTruthy();
+
+    const conflictingUpdate = await accept(
+      featureSwitchesClient().update({
+        headers: headersFor(admin),
+        body: {
+          switches: {
+            [LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY]: true,
+            [FeatureSwitchKey.NotionWorkflowAutomations]: false,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(
+      conflictingUpdate.body.switches[
+        FeatureSwitchKey.NotionWorkflowAutomations
+      ],
+    ).toBeFalsy();
+    expect(
+      conflictingUpdate.body.switches[
+        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+      ],
+    ).toBeFalsy();
+    expect(
+      conflictingUpdate.body.effectiveSwitches[
+        FeatureSwitchKey.NotionWorkflowAutomations
+      ],
+    ).toBeFalsy();
+    expect(
+      conflictingUpdate.body.effectiveSwitches[
+        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+      ],
+    ).toBeFalsy();
+
+    const readAfterConflictingUpdate = await accept(
+      featureSwitchesClient().get({ headers: headersFor(admin) }),
+      [200],
+    );
+    expect(
+      readAfterConflictingUpdate.body.switches[
+        FeatureSwitchKey.NotionWorkflowAutomations
+      ],
+    ).toBeFalsy();
+    expect(
+      readAfterConflictingUpdate.body.switches[
+        LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY
+      ],
+    ).toBeFalsy();
   });
 
   it("stores org-scoped feature switch overrides separately from personal overrides", async () => {

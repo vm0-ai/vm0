@@ -1,5 +1,9 @@
 import { command, computed } from "ccstate";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import {
+  FeatureSwitchKey,
+  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY,
+} from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -22,14 +26,27 @@ function featureSwitchResponseBody(params: {
   readonly userId: string;
   readonly switches: Record<string, boolean>;
 }) {
+  const effectiveSwitches = getAllFeatureStates({
+    orgId: params.orgId,
+    userId: params.userId,
+    overrides: params.switches,
+  });
+
   return {
-    switches: params.switches,
-    effectiveSwitches: getAllFeatureStates({
-      orgId: params.orgId,
-      userId: params.userId,
-      overrides: params.switches,
-    }),
+    switches: mirrorLegacyNotionWorkflowSwitch(params.switches),
+    effectiveSwitches: mirrorLegacyNotionWorkflowSwitch(effectiveSwitches),
   };
+}
+
+function mirrorLegacyNotionWorkflowSwitch(
+  switches: Readonly<Record<string, boolean>>,
+): Record<string, boolean> {
+  const result = { ...switches };
+  const value = switches[FeatureSwitchKey.NotionWorkflowAutomations];
+  if (value !== undefined) {
+    result[LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY] = value;
+  }
+  return result;
 }
 
 const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {

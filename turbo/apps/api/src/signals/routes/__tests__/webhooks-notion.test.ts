@@ -88,11 +88,11 @@ function memoryClient() {
   return setupApp({ context })(zeroMemoryContract);
 }
 
-async function enableNotionWorkflowTriggers(
+async function enableNotionWorkflowAutomations(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.NotionWorkflowTriggers]: true,
+    [FeatureSwitchKey.NotionWorkflowAutomations]: true,
   });
 }
 
@@ -510,7 +510,7 @@ describe("POST /api/webhooks/notion", () => {
   it("verifies, signs, de-duplicates, and refreshes pending child page events", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionParentPageMock(entities);
 
@@ -608,7 +608,7 @@ describe("POST /api/webhooks/notion", () => {
   it("enqueues and refreshes pending database item events", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
@@ -689,7 +689,7 @@ describe("POST /api/webhooks/notion", () => {
   it("enqueues and debounces page content updated events for a page scope", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionChildPageMock(entities);
 
@@ -788,7 +788,7 @@ describe("POST /api/webhooks/notion", () => {
     mockEnv("CRON_SECRET", CRON_SECRET);
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionChildPageMock(entities);
 
@@ -914,7 +914,7 @@ describe("POST /api/webhooks/notion", () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.NotionWorkflowTriggers]: true,
+      [FeatureSwitchKey.NotionWorkflowAutomations]: true,
       [FeatureSwitchKey.RelationshipMemory]: true,
     });
     await connectNotion(scenario);
@@ -1023,7 +1023,7 @@ describe("POST /api/webhooks/notion", () => {
   it("enqueues page content updated events for a database scope", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
@@ -1077,7 +1077,7 @@ describe("POST /api/webhooks/notion", () => {
   it("suppresses content updated events while child page creation is pending", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionParentAndChildPageMock(entities);
 
@@ -1162,7 +1162,7 @@ describe("POST /api/webhooks/notion", () => {
   it("suppresses content updated events while database item creation is pending", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
