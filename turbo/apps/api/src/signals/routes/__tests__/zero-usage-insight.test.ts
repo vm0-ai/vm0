@@ -350,7 +350,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["chat"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["slack"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["email"]).toBeGreaterThanOrEqual(50);
-    expect(totalByBucket["automation"]).toBeGreaterThanOrEqual(150);
+    expect(totalByBucket["automation"]).toBeGreaterThanOrEqual(100);
     expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 

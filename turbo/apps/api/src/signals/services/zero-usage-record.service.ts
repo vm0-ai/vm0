@@ -28,7 +28,6 @@ const MODEL_TOKEN_CATEGORIES = [
 const THREADED_SOURCES = ["chat", "automation"] as const;
 const USAGE_RECORD_KINDS = ["model", "image", "video", "connector"] as const;
 const PASSTHROUGH_TRIGGER_SOURCES = [
-  "automation",
   "slack",
   "teams",
   "telegram",

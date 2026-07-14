@@ -373,7 +373,7 @@ function queryUsageInsightSourceBuckets(db: Db, p: UsageInsightSqlParams) {
           WHEN zr.trigger_source = 'web' THEN 'chat'
           WHEN zr.trigger_source = 'slack' THEN 'slack'
           WHEN zr.trigger_source = 'email' THEN 'email'
-          WHEN zr.trigger_source IN ('automation', 'workflow-schedule', 'workflow-event') THEN 'automation'
+          WHEN zr.trigger_source IN ('workflow-schedule', 'workflow-event') THEN 'automation'
           ELSE 'others'
         END AS bucket,
         COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
@@ -613,9 +613,6 @@ export const zeroUsageInsight$ = command(
 
     return {
       buckets,
-      // Legacy schedule-automation attribution; the automations tables were
-      // removed (#20101), so these are always empty for the retained contract
-      // shape.
       automations: [],
       automationOtherCount: 0,
       automationOtherCredits: 0,

@@ -969,10 +969,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toContain("id");
 
-    // Main thread with a claimed (running) run. The linked-automation cascade
-    // leg was removed with the automation -> workflow cutover (#19959): the
-    // frozen legacy API can no longer create automations, and the
-    // chat-thread FK cascade on the frozen rows is schema-enforced.
+    // Main thread with a claimed (running) run.
     const main = await sendChatRun(actor, {
       agentId,
       prompt: "delete cascade anchor",
