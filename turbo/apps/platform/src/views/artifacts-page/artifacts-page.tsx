@@ -168,6 +168,13 @@ function artifactPreviewKind(item: ArtifactItem): ArtifactPreviewKind {
   return "file";
 }
 
+function isZipArtifact(item: ArtifactItem): boolean {
+  return (
+    item.contentType === "application/zip" ||
+    item.contentType === "application/x-zip-compressed"
+  );
+}
+
 function artifactCardImageSupportsTransform(item: ArtifactItem): boolean {
   const extension = item.filename.split(".").pop()?.toLowerCase();
   return (
@@ -677,7 +684,7 @@ function ArtifactCardActions({
             <IconHistory size={14} stroke={1.7} aria-hidden />
             View creation chat
           </DropdownMenuItem>
-          {item.contentType === "application/zip" ? (
+          {isZipArtifact(item) ? (
             <DropdownMenuItem
               onClick={() => {
                 detach(
