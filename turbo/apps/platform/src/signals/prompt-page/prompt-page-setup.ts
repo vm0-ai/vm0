@@ -23,6 +23,7 @@ import {
   resetChatPageModelSelection$,
   setChatPageModelSelection$,
 } from "../zero-page/zero-chat-page.ts";
+import { withCleanup } from "../utils.ts";
 
 function templateIdFromSearchParam(
   template: string | null,
@@ -241,8 +242,8 @@ export const setupPromptPage$ = command(
     cleaned.delete("template");
     cleaned.delete("connector");
     const rootSignal = get(rootSignal$);
-    try {
-      await set(
+    await withCleanup(
+      set(
         sendNewThread$,
         {
           agentId,
@@ -252,9 +253,10 @@ export const setupPromptPage$ = command(
           routeSearchParams: cleaned,
         },
         rootSignal,
-      );
-    } finally {
-      set(resetChatPageModelSelection$);
-    }
+      ),
+      () => {
+        set(resetChatPageModelSelection$);
+      },
+    );
   },
 );
