@@ -98,7 +98,7 @@ export const zeroWorkflows = pgTable(
  * for a workflow writes to one conversation.
  */
 export const workflowUserTriggerThreads = pgTable(
-  "workflow_user_trigger_threads",
+  "workflow_user_automation_threads",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
@@ -127,15 +127,15 @@ export const workflowUserTriggerThreads = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_workflow_user_trigger_threads_unique").on(
+      uniqueIndex("idx_workflow_user_automation_threads_unique").on(
         table.orgId,
         table.userId,
         table.workflowId,
       ),
-      index("idx_workflow_user_trigger_threads_chat_thread").on(
+      index("idx_workflow_user_automation_threads_chat_thread").on(
         table.chatThreadId,
       ),
-      index("idx_workflow_user_trigger_threads_workflow_user").on(
+      index("idx_workflow_user_automation_threads_workflow_user").on(
         table.workflowId,
         table.userId,
       ),
