@@ -202,6 +202,7 @@ assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github
 assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$production_web_env_file" "ATOM_URL="
 assert_env_absent_value "$production_web_env_file" "VM0_MACHINE_SECRET_KEY="
+assert_env_absent_value "$production_web_env_file" "github-firecrawl-token"
 assert_env_absent_value "$production_web_env_file" "github-cloudflare-browser-rendering-token"
 assert_env_absent_value "$production_web_env_file" "github-artifact-preview-waf-secret"
 
@@ -217,6 +218,7 @@ assert_env_value "$production_api_env_file" VM0_MACHINE_SECRET_KEY "github-atom-
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_ID "github-teams-bot-app-id"
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_BOT_APP_PASSWORD "github-teams-bot-app-password"
 assert_env_value "$production_api_env_file" MICROSOFT_TEAMS_APP_TENANT_ID "github-teams-app-tenant-id"
+assert_env_value "$production_api_env_file" ZERO_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
 assert_env_value "$production_api_env_file" ONBOARDING_URL "https://www.vm0.ai"
 assert_env_value "$production_api_env_file" CLOUDFLARE_BROWSER_RENDERING_API_TOKEN "github-cloudflare-browser-rendering-token"
 assert_env_value "$production_api_env_file" ARTIFACT_PREVIEW_WAF_SECRET "github-artifact-preview-waf-secret"
