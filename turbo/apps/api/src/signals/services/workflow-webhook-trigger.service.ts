@@ -70,7 +70,7 @@ function sha256Hex(value: string): string {
 
 function workflowWebhookUrlForToken(token: string): string {
   const baseUrl = env("VM0_WEB_URL").replace(/\/$/, "");
-  return `${baseUrl}/api/webhooks/workflow-triggers/${encodeURIComponent(
+  return `${baseUrl}/api/webhooks/workflow-automations/${encodeURIComponent(
     token,
   )}`;
 }

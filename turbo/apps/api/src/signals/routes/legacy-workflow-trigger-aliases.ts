@@ -1,4 +1,5 @@
 import { computed } from "ccstate";
+import { webhookWorkflowTriggerContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import {
@@ -6,6 +7,7 @@ import {
   workflowAutomationRouteHandlers,
   workspaceWorkflowAutomationEntries$,
 } from "./zero-workflow-automations";
+import { postWorkflowAutomationWebhook$ } from "./webhooks-workflow-automations";
 import { authRoute } from "../auth/auth-route";
 import type { RouteEntry } from "../route-entry";
 
@@ -21,10 +23,15 @@ const listWorkspaceLegacyWorkflowTriggersHandler = authRoute(
 
 /**
  * Temporary compatibility routes for clients using the legacy workflow-trigger
- * API. Remove this file after legacy-path traffic reaches zero for the sunset
- * window tracked in #21408.
+ * API and inbound webhook path. Remove this file after legacy-path traffic
+ * reaches zero for the sunset window tracked in #21408. The webhook alias is
+ * not a permanent shim.
  */
 export const legacyWorkflowTriggerAliasRoutes: readonly RouteEntry[] = [
+  {
+    route: webhookWorkflowTriggerContract.post,
+    handler: postWorkflowAutomationWebhook$,
+  },
   {
     route: zeroWorkflowTriggersContract.listWorkspace,
     handler: listWorkspaceLegacyWorkflowTriggersHandler,

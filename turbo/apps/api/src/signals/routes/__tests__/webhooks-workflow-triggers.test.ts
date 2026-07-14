@@ -85,20 +85,21 @@ async function postWorkflowWebhook(args: {
   readonly rawBody: string;
   readonly secret: string;
   readonly timestamp?: number;
+  readonly routeSegment?: "workflow-automations" | "workflow-triggers";
+  readonly signature?: string;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
   const timestamp = args.timestamp ?? Math.floor(now() / 1000);
+  const routeSegment = args.routeSegment ?? "workflow-automations";
   const response = await createApp({ signal: context.signal }).request(
-    `/api/webhooks/workflow-triggers/${args.token}`,
+    `/api/webhooks/${routeSegment}/${args.token}`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-VM0-Timestamp": String(timestamp),
-        "X-VM0-Signature": computeHmacSignature(
-          args.rawBody,
-          args.secret,
-          timestamp,
-        ),
+        "X-VM0-Signature":
+          args.signature ??
+          computeHmacSignature(args.rawBody, args.secret, timestamp),
       },
       body: args.rawBody,
     },
@@ -109,7 +110,7 @@ async function postWorkflowWebhook(args: {
   };
 }
 
-describe("POST /api/webhooks/workflow-triggers/:token", () => {
+describe("POST /api/webhooks/workflow-automations/:token", () => {
   it("dispatches signed webhook deliveries and de-duplicates retries", async () => {
     const { workflowId } = await setupFixture();
     const runsApi = createRunsApi(context);
@@ -136,6 +137,9 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     if (!token) {
       throw new Error("Expected webhook URL token");
     }
+    expect(new URL(created.body.webhookUrl).pathname).toBe(
+      `/api/webhooks/workflow-automations/${token}`,
+    );
 
     const rawBody = JSON.stringify({
       event: "vm0-timing-sensitive-ping",
@@ -225,7 +229,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     expect(idleAfterDuplicate.body.job).toBeNull();
   });
 
-  it("rejects invalid signatures", async () => {
+  it("keeps canonical and legacy routes in behavior and signature parity", async () => {
     const { workflowId } = await setupFixture();
 
     const created = await accept(
@@ -239,7 +243,8 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     if (
       created.body.kind !== "event" ||
       created.body.eventType !== "webhook-received" ||
-      !created.body.webhookUrl
+      !created.body.webhookUrl ||
+      !created.body.webhookSecret
     ) {
       throw new Error("Expected a webhook trigger");
     }
@@ -249,20 +254,50 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       throw new Error("Expected webhook URL token");
     }
 
-    const response = await createApp({ signal: context.signal }).request(
-      `/api/webhooks/workflow-triggers/${token}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-VM0-Timestamp": String(Math.floor(now() / 1000)),
-          "X-VM0-Signature": "not-valid",
-        },
-        body: JSON.stringify({ event: "ping" }),
-      },
-    );
+    const canonical = await postWorkflowWebhook({
+      token,
+      rawBody: JSON.stringify({ event: "canonical-route" }),
+      secret: created.body.webhookSecret,
+      routeSegment: "workflow-automations",
+    });
+    const legacy = await postWorkflowWebhook({
+      token,
+      rawBody: JSON.stringify({ event: "legacy-route" }),
+      secret: created.body.webhookSecret,
+      routeSegment: "workflow-triggers",
+    });
 
-    expect(response.status).toBe(401);
+    for (const response of [canonical, legacy]) {
+      expect(response).toMatchObject({
+        status: 200,
+        body: {
+          success: true,
+          duplicate: false,
+          runId: expect.any(String),
+        },
+      });
+    }
+
+    const invalidRequest = {
+      token,
+      rawBody: JSON.stringify({ event: "invalid-signature" }),
+      secret: created.body.webhookSecret,
+      signature: "not-valid",
+    } as const;
+    const canonicalInvalid = await postWorkflowWebhook({
+      ...invalidRequest,
+      routeSegment: "workflow-automations",
+    });
+    const legacyInvalid = await postWorkflowWebhook({
+      ...invalidRequest,
+      routeSegment: "workflow-triggers",
+    });
+
+    expect(canonicalInvalid).toStrictEqual({
+      status: 401,
+      body: { error: "Unauthorized" },
+    });
+    expect(legacyInvalid).toStrictEqual(canonicalInvalid);
   });
 
   it("auto-disables only enabled webhooks after an effective Stripe downgrade", async () => {
