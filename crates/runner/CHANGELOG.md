@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.144.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.9...runner-rs-v0.144.10) (2026-07-14)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve suppressed exception metadata paths ([#21367](https://github.com/vm0-ai/vm0/issues/21367)) ([d349831](https://github.com/vm0-ai/vm0/commit/d349831af7b16ffeab7079e1349f75617e1c9aec))
+
+
+### Performance Improvements
+
+* **mitm-addon:** stop buffering firewall rule matches ([#21372](https://github.com/vm0-ai/vm0/issues/21372)) ([0f1e1fe](https://github.com/vm0-ai/vm0/commit/0f1e1fe52b218504baa536c650ef927814aea400))
+* **python:** index credentialed firewall authorities for tls admission ([#21371](https://github.com/vm0-ai/vm0/issues/21371)) ([7a80716](https://github.com/vm0-ai/vm0/commit/7a8071658178050280487a7d4fb0e0549bf5bada))
+* **runner:** attribute history hash transitions ([#21369](https://github.com/vm0-ai/vm0/issues/21369)) ([2da9192](https://github.com/vm0-ai/vm0/commit/2da9192f6100a4c834298bff559ec758905435bd))
+
 ## [0.144.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.8...runner-rs-v0.144.9) (2026-07-14)
 
 ## [0.144.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.7...runner-rs-v0.144.8) (2026-07-14)
