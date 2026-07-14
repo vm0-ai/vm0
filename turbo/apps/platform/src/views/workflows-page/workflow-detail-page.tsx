@@ -16,7 +16,7 @@ import type {
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSchedule,
   ZeroWorkflowScheduleType,
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
@@ -225,21 +225,21 @@ type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
 type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 type GmailWorkflowTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType: "gmail-new-message" | "gmail-label-applied";
   }
 >;
 type GithubWorkflowTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   {
     readonly kind: "event";
     readonly eventType: "github-label-applied";
   }
 >;
 type WebhookWorkflowTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
 
@@ -316,7 +316,7 @@ const WORKFLOW_CRON_FREQUENCY_TO_TIME_OPTION: Readonly<
 });
 
 function isGmailWorkflowTrigger(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
 ): trigger is GmailWorkflowTriggerSummary {
   return (
     trigger.kind === "event" &&
@@ -326,7 +326,7 @@ function isGmailWorkflowTrigger(
 }
 
 function isGithubWorkflowTrigger(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
 ): trigger is GithubWorkflowTriggerSummary {
   return (
     trigger.kind === "event" && trigger.eventType === "github-label-applied"
@@ -334,7 +334,7 @@ function isGithubWorkflowTrigger(
 }
 
 function isWebhookWorkflowTrigger(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
 ): trigger is WebhookWorkflowTriggerSummary {
   return trigger.kind === "event" && trigger.eventType === "webhook-received";
 }
@@ -446,7 +446,7 @@ function BreadcrumbLink({
 function WorkflowHeaderIcon({
   trigger,
 }: {
-  readonly trigger: ZeroWorkflowTriggerSummary | undefined;
+  readonly trigger: ZeroWorkflowAutomationSummary | undefined;
 }) {
   if (trigger) {
     return <TriggerListIcon trigger={trigger} size="md" />;
@@ -2421,7 +2421,7 @@ function buildUtcCronExpressionFromFields(
 }
 
 function workflowScheduleTitle(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
   displayTimezone: string,
 ): string {
   if (trigger.kind !== "schedule") {
@@ -2674,7 +2674,7 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
 }
 
-function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
+function workflowTriggerTitle(trigger: ZeroWorkflowAutomationSummary): string {
   if (trigger.kind === "schedule") {
     return trigger.scheduleSummary;
   }
@@ -2712,7 +2712,7 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
 }
 
 function workflowTriggerSummary(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
 ): string | null {
   if (trigger.kind !== "event") {
     return null;
@@ -5328,7 +5328,7 @@ function TriggerRow({
   displayTimezone,
   showDivider,
 }: {
-  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly trigger: ZeroWorkflowAutomationSummary;
   readonly canManage: boolean;
   readonly displayTimezone: string;
   readonly showDivider: boolean;
@@ -5426,7 +5426,7 @@ function TriggerRow({
 }
 
 function workflowTriggerSubtitle(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
 ): string | null {
   if (
     isWebhookWorkflowTrigger(trigger) &&
@@ -5488,7 +5488,7 @@ function TriggerStatusSwitch({
   title,
   canManage,
 }: {
-  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly trigger: ZeroWorkflowAutomationSummary;
   readonly title: string;
   readonly canManage: boolean;
 }) {
@@ -5520,7 +5520,7 @@ function TriggerControls({
   trigger,
   displayTimezone,
 }: {
-  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly trigger: ZeroWorkflowAutomationSummary;
   readonly displayTimezone: string;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -5641,7 +5641,7 @@ function TriggerMoreActionsMenu({
   disabled,
   onRevealWebhookSecret,
 }: {
-  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly trigger: ZeroWorkflowAutomationSummary;
   readonly disabled: boolean;
   readonly onRevealWebhookSecret?: () => void;
 }) {
@@ -5702,7 +5702,9 @@ function TriggerMoreActionsMenu({
   );
 }
 
-function canEditWorkflowTrigger(trigger: ZeroWorkflowTriggerSummary): boolean {
+function canEditWorkflowTrigger(
+  trigger: ZeroWorkflowAutomationSummary,
+): boolean {
   return (
     trigger.kind === "schedule" ||
     isGmailWorkflowTrigger(trigger) ||
@@ -5710,7 +5712,9 @@ function canEditWorkflowTrigger(trigger: ZeroWorkflowTriggerSummary): boolean {
   );
 }
 
-function editWorkflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
+function editWorkflowTriggerTitle(
+  trigger: ZeroWorkflowAutomationSummary,
+): string {
   if (trigger.kind === "schedule") {
     return "Edit schedule";
   }
@@ -5727,7 +5731,7 @@ function EditWorkflowTriggerDialog({
   open,
   onOpenChange,
 }: {
-  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly trigger: ZeroWorkflowAutomationSummary;
   readonly displayTimezone: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -5787,7 +5791,10 @@ function UpdateScheduleTriggerForm({
   displayTimezone,
   onCancel,
 }: {
-  readonly trigger: Extract<ZeroWorkflowTriggerSummary, { kind: "schedule" }>;
+  readonly trigger: Extract<
+    ZeroWorkflowAutomationSummary,
+    { kind: "schedule" }
+  >;
   readonly displayTimezone: string;
   readonly onCancel: () => void;
 }) {
@@ -5876,7 +5883,7 @@ function UpdateGmailNewMessageTriggerForm({
   onCancel,
 }: {
   readonly trigger: Extract<
-    ZeroWorkflowTriggerSummary,
+    ZeroWorkflowAutomationSummary,
     { eventType: "gmail-new-message" }
   >;
   readonly onCancel: () => void;
@@ -5971,7 +5978,7 @@ function UpdateGmailLabelAppliedTriggerForm({
   onCancel,
 }: {
   readonly trigger: Extract<
-    ZeroWorkflowTriggerSummary,
+    ZeroWorkflowAutomationSummary,
     { eventType: "gmail-label-applied" }
   >;
   readonly onCancel: () => void;
@@ -6047,7 +6054,7 @@ function UpdateGithubLabelAppliedTriggerForm({
   onCancel,
 }: {
   readonly trigger: Extract<
-    ZeroWorkflowTriggerSummary,
+    ZeroWorkflowAutomationSummary,
     { eventType: "github-label-applied" }
   >;
   readonly onCancel: () => void;

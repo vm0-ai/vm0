@@ -36,8 +36,8 @@ import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowTriggersContract,
-  type ChatThreadWorkflowTrigger,
-  type ZeroWorkflowTriggerUpdateRequest,
+  type ChatThreadWorkflowAutomation,
+  type ZeroWorkflowAutomationUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   createMockWorkflowTrigger,
@@ -445,7 +445,10 @@ function mockAutomationThread(): void {
 }
 
 function mockWorkflowTriggerUpdate(
-  onUpdate: (triggerId: string, body: ZeroWorkflowTriggerUpdateRequest) => void,
+  onUpdate: (
+    triggerId: string,
+    body: ZeroWorkflowAutomationUpdateRequest,
+  ) => void,
 ): void {
   context.mocks.api(
     zeroWorkflowTriggersContract.update,
@@ -4698,7 +4701,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows webhook automations in the sidebar without edit controls", async () => {
-    const trigger: ChatThreadWorkflowTrigger = {
+    const trigger: ChatThreadWorkflowAutomation = {
       id: "e0000001-0000-4000-a000-000000000006",
       ownerUserId: "test-user-123",
       enabled: true,
@@ -4738,7 +4741,7 @@ describe("chat lifecycle", () => {
   it("updates a schedule workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const sidebar = await openAutomationSidebarWithWorkflowTrigger(
       createMockWorkflowTrigger({
@@ -4777,7 +4780,7 @@ describe("chat lifecycle", () => {
   it("updates a Gmail workflow automation match from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const sidebar = await openAutomationSidebarWithWorkflowTrigger(
       createMockWorkflowTrigger({
@@ -4831,7 +4834,7 @@ describe("chat lifecycle", () => {
   it("updates a Gmail label workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const sidebar = await openAutomationSidebarWithWorkflowTrigger(
       createMockWorkflowTrigger({

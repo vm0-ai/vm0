@@ -880,28 +880,6 @@ export type ZeroWorkflowAutomationUpdateRequest = z.infer<
 >;
 
 /**
- * Temporary compile-time aliases for downstream package migration in #21408.
- * They do not add legacy fields or routes and are removed once API and platform
- * consumers use the canonical Automation identifiers.
- */
-export const zeroWorkflowTriggerKindSchema = zeroWorkflowAutomationKindSchema;
-export type ZeroWorkflowTriggerKind = ZeroWorkflowAutomationKind;
-export const zeroWorkflowTriggerSummarySchema =
-  zeroWorkflowAutomationSummarySchema;
-export type ZeroWorkflowTriggerSummary = ZeroWorkflowAutomationSummary;
-export const chatThreadWorkflowTriggerSchema =
-  chatThreadWorkflowAutomationSchema;
-export type ChatThreadWorkflowTrigger = ChatThreadWorkflowAutomation;
-export const zeroWorkflowTriggerCreateRequestSchema =
-  zeroWorkflowAutomationCreateRequestSchema;
-export type ZeroWorkflowTriggerCreateRequest =
-  ZeroWorkflowAutomationCreateRequest;
-export const zeroWorkflowTriggerUpdateRequestSchema =
-  zeroWorkflowAutomationUpdateRequestSchema;
-export type ZeroWorkflowTriggerUpdateRequest =
-  ZeroWorkflowAutomationUpdateRequest;
-
-/**
  * Workflow summary. A workflow belongs to exactly one agent (`agentId`).
  * `canManage` reflects the caller's effective rights (agent write-permission
  * for public workflows; ownership for private ones).

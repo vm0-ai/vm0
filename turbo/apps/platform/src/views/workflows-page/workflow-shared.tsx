@@ -2,7 +2,7 @@
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 export function workflowTitle(workflow: {
@@ -54,7 +54,9 @@ export function formatWorkflowIntervalSeconds(seconds: number): string {
   return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
-export function triggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
+export function triggerKindLabel(
+  trigger: ZeroWorkflowAutomationSummary,
+): string {
   if (trigger.kind === "schedule") {
     return "Schedule automation";
   }
@@ -181,7 +183,9 @@ export function formatGmailMatchSummary(
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
 }
 
-export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
+export function gmailTriggerTitle(
+  trigger: ZeroWorkflowAutomationSummary,
+): string {
   if (trigger.kind === "schedule") {
     return trigger.scheduleSummary;
   }
@@ -219,7 +223,7 @@ export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
 }
 
 export function gmailTriggerSummary(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
 ): string | null {
   if (trigger.kind !== "event") {
     return null;

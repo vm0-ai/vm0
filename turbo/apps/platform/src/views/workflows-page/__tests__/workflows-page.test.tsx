@@ -8,12 +8,12 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
   zeroWorkflowTriggersContract,
-  type ZeroWorkflowTriggerCreateRequest,
-  type ZeroWorkflowTriggerUpdateRequest,
+  type ZeroWorkflowAutomationCreateRequest,
+  type ZeroWorkflowAutomationUpdateRequest,
   type ZeroWorkflowUpdateRequest,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
-  type ZeroWorkflowTriggerSummary,
+  type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -131,55 +131,55 @@ async function expectComposerText(text: string): Promise<void> {
 }
 
 type WorkflowScheduleTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "schedule" }
 >;
 type WorkflowGmailNewMessageTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "gmail-new-message" }
 >;
 type WorkflowWebhookTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "webhook-received" }
 >;
 type WorkflowGmailLabelAppliedTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "gmail-label-applied" }
 >;
 type WorkflowGithubLabelAppliedTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "github-label-applied" }
 >;
 type WorkflowGoogleCalendarEventCreatedTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-created" }
 >;
 type WorkflowGoogleCalendarEventUpdatedTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-updated" }
 >;
 type WorkflowGoogleCalendarEventCancelledTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-cancelled" }
 >;
 type WorkflowGoogleMeetTranscriptGeneratedTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-meet-transcript-generated" }
 >;
 type WorkflowNotionChildPageCreatedTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-child-page-created" }
 >;
 type WorkflowNotionDatabaseItemCreatedTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-database-item-created" }
 >;
 type WorkflowNotionPageContentUpdatedTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-page-content-updated" }
 >;
 
-function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
+function workflowTriggers(): ZeroWorkflowAutomationSummary[] {
   return [weekdayWorkflowTrigger()];
 }
 
@@ -451,8 +451,8 @@ function webhookWorkflowTrigger(): WorkflowWebhookTriggerSummary {
 }
 
 function publicWorkflowTrigger(
-  trigger: ZeroWorkflowTriggerSummary,
-): ZeroWorkflowTriggerSummary {
+  trigger: ZeroWorkflowAutomationSummary,
+): ZeroWorkflowAutomationSummary {
   if (trigger.kind !== "event" || trigger.eventType !== "webhook-received") {
     return trigger;
   }
@@ -673,7 +673,7 @@ function mockWorkflowApis(
   const setTriggerEnabled = (
     triggerId: string,
     enabled: boolean,
-  ): ZeroWorkflowTriggerSummary | null => {
+  ): ZeroWorkflowAutomationSummary | null => {
     for (const workflow of workflows) {
       const triggerIndex = workflow.triggers.findIndex((trigger) => {
         return trigger.id === triggerId;
@@ -853,7 +853,7 @@ function mockConnectedTriggerConnectors(): void {
 }
 
 function mockCreateWorkflowTrigger(
-  onCreate: (body: ZeroWorkflowTriggerCreateRequest) => void,
+  onCreate: (body: ZeroWorkflowAutomationCreateRequest) => void,
 ): void {
   context.mocks.api(
     zeroWorkflowTriggersContract.create,
@@ -975,7 +975,10 @@ function mockCreateWorkflowTrigger(
 }
 
 function mockUpdateWorkflowTrigger(
-  onUpdate: (triggerId: string, body: ZeroWorkflowTriggerUpdateRequest) => void,
+  onUpdate: (
+    triggerId: string,
+    body: ZeroWorkflowAutomationUpdateRequest,
+  ) => void,
 ): void {
   context.mocks.api(
     zeroWorkflowTriggersContract.update,
@@ -2212,7 +2215,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Gmail new message trigger with text match rules", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2260,7 +2263,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Gmail label applied trigger with a label name", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2301,7 +2304,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Google Calendar event-updated trigger", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2342,7 +2345,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Google Calendar event-cancelled trigger", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2383,7 +2386,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Google Meet transcript-generated trigger", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2420,7 +2423,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Notion database item trigger", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2464,7 +2467,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a webhook trigger and shows one-time signing details", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2645,7 +2648,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a cron schedule trigger from the preferred time zone", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
@@ -2684,7 +2687,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates an interval trigger from the trigger menu", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2718,7 +2721,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a one-time trigger from the trigger menu", async () => {
-    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
     mockCreateWorkflowTrigger((body) => {
       createBodies.push(body);
@@ -2757,7 +2760,7 @@ describe("workflow detail page", () => {
   it("updates a cron schedule trigger from the preferred time zone", async () => {
     const updateBodies: {
       readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
     const workflow = {
@@ -2810,7 +2813,7 @@ describe("workflow detail page", () => {
   it("updates a loop schedule trigger from the edit dialog", async () => {
     const updateBodies: {
       readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),
@@ -2860,7 +2863,7 @@ describe("workflow detail page", () => {
   it("updates a Gmail new message trigger with text match rules", async () => {
     const updateBodies: {
       readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),
@@ -2930,7 +2933,7 @@ describe("workflow detail page", () => {
   it("updates a Gmail label applied trigger with a label name", async () => {
     const updateBodies: {
       readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),

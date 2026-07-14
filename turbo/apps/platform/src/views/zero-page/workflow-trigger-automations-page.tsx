@@ -8,7 +8,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type {
   ZeroWorkflowSummary,
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconBrandGithub,
@@ -139,7 +139,7 @@ function quote(value: string): string {
 }
 
 function notionReadableTriggerRuleLabel(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
 ): string | null {
   if (trigger.kind !== "event") {
     return null;
@@ -172,7 +172,7 @@ function notionReadableTriggerRuleLabel(
 }
 
 export function humanReadableTriggerRuleLabel(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
   displayTimezone: string,
 ): string {
   if (
@@ -235,7 +235,9 @@ export function humanReadableTriggerRuleLabel(
   return gmailTriggerTitle(trigger);
 }
 
-export function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
+export function triggerTypeLabel(
+  trigger: ZeroWorkflowAutomationSummary,
+): string {
   if (trigger.kind === "schedule") {
     return "Schedule";
   }
@@ -309,7 +311,7 @@ export function TriggerListIcon({
   trigger,
   size = "md",
 }: {
-  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly trigger: ZeroWorkflowAutomationSummary;
   readonly size?: "sm" | "md";
 }) {
   const Icon = (() => {
