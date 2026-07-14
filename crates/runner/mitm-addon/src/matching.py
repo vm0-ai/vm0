@@ -1532,6 +1532,8 @@ def _reduce_selected_owner(
     for api_match in collection.api_matches:
         if decision.allowed_match is not None:
             break
+        if api_match.order not in collection.winning_rule_api_orders:
+            continue
         if api_match.order not in evaluable_api_orders:
             continue
         fw_entry = api_match.firewall

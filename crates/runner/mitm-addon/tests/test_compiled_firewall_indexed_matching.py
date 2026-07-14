@@ -354,13 +354,18 @@ def test_indexed_matching_bounds_param_capture_for_same_specificity_fallbacks(
     blocked,
     expected_capture_count,
 ):
-    repeated_rule = "GET /{path+}"
+    nonmatching_rule = "GET /{prefix}-nope/{path+}"
+    repeated_rule = "GET /{prefix}-good/{path+}"
     firewalls = wrap_firewalls(
         [
             firewall_api(
                 "https://api.example.com",
+                [firewall_permission("irrelevant", *([nonmatching_rule] * 128))],
+            ),
+            firewall_api(
+                "https://api.example.com",
                 [firewall_permission("files-read", *([repeated_rule] * 128))],
-            )
+            ),
         ],
         name="large",
     )
@@ -384,7 +389,7 @@ def test_indexed_matching_bounds_param_capture_for_same_specificity_fallbacks(
     monkeypatch.setattr(matching, "_match_compiled_path_segments", counting_capture_match)
 
     result = matching.match_compiled_firewall_request(
-        "https://api.example.com/a/b/c",
+        "https://api.example.com/a-good/b/c",
         "GET",
         compiled,
         policies,
@@ -396,7 +401,7 @@ def test_indexed_matching_bounds_param_capture_for_same_specificity_fallbacks(
     else:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "files-read"
-        assert result.params == {"path": "a/b/c"}
+        assert result.params == {"prefix": "a", "path": "b/c"}
     assert capture_count == expected_capture_count
 
 
