@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.270.0](https://github.com/vm0-ai/vm0/compare/api-v1.269.0...api-v1.270.0) (2026-07-14)
+
+
+### Features
+
+* persist image edit canvas snapshots ([#21266](https://github.com/vm0-ai/vm0/issues/21266)) ([21d21f4](https://github.com/vm0-ai/vm0/commit/21d21f4c3660652f70e9bc8c16f5756a9b1b1f5a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.191.0
+    * @vm0/core bumped to 8.427.3
+    * @vm0/db bumped to 1.112.0
+
 ## [1.269.0](https://github.com/vm0-ai/vm0/compare/api-v1.268.0...api-v1.269.0) (2026-07-14)
 
 

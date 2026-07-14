@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.7...runner-rs-v0.144.8) (2026-07-14)
+
+
+### Performance Improvements
+
+* **runner:** bound network log ready-line drain work ([#21337](https://github.com/vm0-ai/vm0/issues/21337)) ([56f6e5e](https://github.com/vm0-ai/vm0/commit/56f6e5e08587c6a57aeb996e2a0d71ac30970f42))
+
 ## [0.144.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.6...runner-rs-v0.144.7) (2026-07-14)
 
 ## [0.144.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.5...runner-rs-v0.144.6) (2026-07-14)
