@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.596.2](https://github.com/vm0-ai/vm0/compare/app-v0.596.1...app-v0.596.2) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.190.0
+    * @vm0/core bumped to 8.427.2
+
 ## [0.596.1](https://github.com/vm0-ai/vm0/compare/app-v0.596.0...app-v0.596.1) (2026-07-14)
 
 

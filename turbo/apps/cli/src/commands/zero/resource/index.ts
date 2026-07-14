@@ -120,7 +120,10 @@ export const zeroResourceCommand = new Command()
           }
 
           console.log(chalk.dim(`Pulling ${entry.id}...`));
-          const download = await getRegistryResourceDownload({ id: entry.id });
+          const download = await getRegistryResourceDownload({
+            id: entry.id,
+            expectedSha256: archive.sha256,
+          });
           if (download.sha256 !== archive.sha256) {
             throw new Error(
               `Resource archive digest metadata mismatch: expected ${archive.sha256}, got ${download.sha256}`,
