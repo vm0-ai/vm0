@@ -1,6 +1,5 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
-import { createStore } from "ccstate";
 
 import {
   zeroScrapeContract,
@@ -14,6 +13,11 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { server } from "../../../mocks/server";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
+import {
+  deleteUsagePricingRows,
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { createDeferredPromise } from "../../utils";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
@@ -25,15 +29,9 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import {
-  deleteUsagePricing$,
-  seedUsagePricing$,
-  setUsageFixtureCreditBalance$,
-} from "./helpers/zero-usage";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
-const store = createStore();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 
 const scrapeRoutes: readonly RouteEntry[] = [
@@ -112,16 +110,7 @@ async function setActorCredits(
   if (!actor.orgId) {
     throw new Error("Zero Scrape test actor must belong to an organization");
   }
-  await store.set(
-    setUsageFixtureCreditBalance$,
-    {
-      fixture: {
-        orgId: actor.orgId,
-      },
-      credits,
-    },
-    context.signal,
-  );
+  await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits });
 }
 
 async function fundActor(actor: ApiTestUser): Promise<void> {
@@ -169,24 +158,36 @@ function configureProvider(): void {
 }
 
 async function seedScrapePricing(): Promise<void> {
-  for (const [category, unitPrice] of [
-    ["standard.markdown", 4],
-    ["standard.links", 4],
-    ["enhanced.markdown", 20],
-    ["enhanced.links", 20],
-  ] as const) {
-    await store.set(
-      seedUsagePricing$,
-      {
-        kind: "scrape",
-        provider: "firecrawl",
-        category,
-        unitPrice,
-        unitSize: 1,
-      },
-      context.signal,
-    );
-  }
+  await seedUsagePricingRows([
+    {
+      kind: "scrape",
+      provider: "firecrawl",
+      category: "standard.markdown",
+      unitPrice: 4,
+      unitSize: 1,
+    },
+    {
+      kind: "scrape",
+      provider: "firecrawl",
+      category: "standard.links",
+      unitPrice: 4,
+      unitSize: 1,
+    },
+    {
+      kind: "scrape",
+      provider: "firecrawl",
+      category: "enhanced.markdown",
+      unitPrice: 20,
+      unitSize: 1,
+    },
+    {
+      kind: "scrape",
+      provider: "firecrawl",
+      category: "enhanced.links",
+      unitPrice: 20,
+      unitSize: 1,
+    },
+  ]);
 }
 
 describe("zero scrape route", () => {
@@ -717,15 +718,11 @@ describe("zero scrape route", () => {
 
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, async () => {
-        await store.set(
-          deleteUsagePricing$,
-          {
-            kind: "scrape",
-            provider: "firecrawl",
-            category: "standard.markdown",
-          },
-          context.signal,
-        );
+        await deleteUsagePricingRows({
+          kind: "scrape",
+          provider: "firecrawl",
+          categories: ["standard.markdown"],
+        });
         return HttpResponse.json({
           success: true,
           data: {
