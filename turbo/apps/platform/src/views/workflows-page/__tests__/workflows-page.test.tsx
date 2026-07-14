@@ -7,7 +7,7 @@ import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationUpdateRequest,
   type ZeroWorkflowUpdateRequest,
@@ -34,7 +34,7 @@ import {
   setWorkflowFileDraft$,
 } from "../../../signals/workflows-page/workflows-signals.ts";
 import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
-import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-trigger-automations-page.tsx";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-automations-page.tsx";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -46,13 +46,14 @@ const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const CHECKLIST_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
-const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
-const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
-const GITHUB_LABEL_TRIGGER_ID = "workflow-trigger-github-label-applied";
-const GOOGLE_CALENDAR_TRIGGER_ID = "workflow-trigger-google-calendar-created";
-const GOOGLE_MEET_TRIGGER_ID = "workflow-trigger-google-meet-transcript";
+const GMAIL_AUTOMATION_ID = "workflow-automation-gmail-new-message";
+const GMAIL_LABEL_AUTOMATION_ID = "workflow-automation-gmail-label-applied";
+const GITHUB_LABEL_AUTOMATION_ID = "workflow-automation-github-label-applied";
+const GOOGLE_CALENDAR_AUTOMATION_ID =
+  "workflow-automation-google-calendar-created";
+const GOOGLE_MEET_AUTOMATION_ID = "workflow-automation-google-meet-transcript";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
-const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
+const AUTOMATION_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
 type WorkflowDetailTestTab = "automations" | "instructions" | "info";
 
@@ -130,62 +131,62 @@ async function expectComposerText(text: string): Promise<void> {
   });
 }
 
-type WorkflowScheduleTriggerSummary = Extract<
+type WorkflowScheduleAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "schedule" }
 >;
-type WorkflowGmailNewMessageTriggerSummary = Extract<
+type WorkflowGmailNewMessageAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "gmail-new-message" }
 >;
-type WorkflowWebhookTriggerSummary = Extract<
+type WorkflowWebhookAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "webhook-received" }
 >;
-type WorkflowGmailLabelAppliedTriggerSummary = Extract<
+type WorkflowGmailLabelAppliedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "gmail-label-applied" }
 >;
-type WorkflowGithubLabelAppliedTriggerSummary = Extract<
+type WorkflowGithubLabelAppliedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "github-label-applied" }
 >;
-type WorkflowGoogleCalendarEventCreatedTriggerSummary = Extract<
+type WorkflowGoogleCalendarEventCreatedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-created" }
 >;
-type WorkflowGoogleCalendarEventUpdatedTriggerSummary = Extract<
+type WorkflowGoogleCalendarEventUpdatedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-updated" }
 >;
-type WorkflowGoogleCalendarEventCancelledTriggerSummary = Extract<
+type WorkflowGoogleCalendarEventCancelledAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-calendar-event-cancelled" }
 >;
-type WorkflowGoogleMeetTranscriptGeneratedTriggerSummary = Extract<
+type WorkflowGoogleMeetTranscriptGeneratedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "google-meet-transcript-generated" }
 >;
-type WorkflowNotionChildPageCreatedTriggerSummary = Extract<
+type WorkflowNotionChildPageCreatedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-child-page-created" }
 >;
-type WorkflowNotionDatabaseItemCreatedTriggerSummary = Extract<
+type WorkflowNotionDatabaseItemCreatedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-database-item-created" }
 >;
-type WorkflowNotionPageContentUpdatedTriggerSummary = Extract<
+type WorkflowNotionPageContentUpdatedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "notion-page-content-updated" }
 >;
 
-function workflowTriggers(): ZeroWorkflowAutomationSummary[] {
-  return [weekdayWorkflowTrigger()];
+function workflowAutomations(): ZeroWorkflowAutomationSummary[] {
+  return [weekdayWorkflowAutomation()];
 }
 
-function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
+function weekdayWorkflowAutomation(): WorkflowScheduleAutomationSummary {
   return {
-    id: "workflow-trigger-weekday-brief",
+    id: "workflow-automation-weekday-brief",
     kind: "schedule",
     schedule: {
       type: "cron",
@@ -201,9 +202,9 @@ function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
   };
 }
 
-function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
+function gmailWorkflowAutomation(): WorkflowGmailNewMessageAutomationSummary {
   return {
-    id: GMAIL_TRIGGER_ID,
+    id: GMAIL_AUTOMATION_ID,
     kind: "event",
     eventType: "gmail-new-message",
     eventConfig: {
@@ -224,9 +225,9 @@ function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
   };
 }
 
-function gmailLabelWorkflowTrigger(): WorkflowGmailLabelAppliedTriggerSummary {
+function gmailLabelWorkflowAutomation(): WorkflowGmailLabelAppliedAutomationSummary {
   return {
-    id: GMAIL_LABEL_TRIGGER_ID,
+    id: GMAIL_LABEL_AUTOMATION_ID,
     kind: "event",
     eventType: "gmail-label-applied",
     eventConfig: {
@@ -245,9 +246,9 @@ function gmailLabelWorkflowTrigger(): WorkflowGmailLabelAppliedTriggerSummary {
   };
 }
 
-function githubLabelWorkflowTrigger(): WorkflowGithubLabelAppliedTriggerSummary {
+function githubLabelWorkflowAutomation(): WorkflowGithubLabelAppliedAutomationSummary {
   return {
-    id: GITHUB_LABEL_TRIGGER_ID,
+    id: GITHUB_LABEL_AUTOMATION_ID,
     kind: "event",
     eventType: "github-label-applied",
     eventConfig: {
@@ -269,9 +270,9 @@ function githubLabelWorkflowTrigger(): WorkflowGithubLabelAppliedTriggerSummary 
   };
 }
 
-function googleCalendarWorkflowTrigger(): WorkflowGoogleCalendarEventCreatedTriggerSummary {
+function googleCalendarWorkflowAutomation(): WorkflowGoogleCalendarEventCreatedAutomationSummary {
   return {
-    id: GOOGLE_CALENDAR_TRIGGER_ID,
+    id: GOOGLE_CALENDAR_AUTOMATION_ID,
     kind: "event",
     eventType: "google-calendar-event-created",
     eventConfig: {
@@ -289,9 +290,9 @@ function googleCalendarWorkflowTrigger(): WorkflowGoogleCalendarEventCreatedTrig
   };
 }
 
-function googleCalendarUpdatedWorkflowTrigger(): WorkflowGoogleCalendarEventUpdatedTriggerSummary {
+function googleCalendarUpdatedWorkflowAutomation(): WorkflowGoogleCalendarEventUpdatedAutomationSummary {
   return {
-    id: "workflow-trigger-google-calendar-updated",
+    id: "workflow-automation-google-calendar-updated",
     kind: "event",
     eventType: "google-calendar-event-updated",
     eventConfig: {
@@ -309,9 +310,9 @@ function googleCalendarUpdatedWorkflowTrigger(): WorkflowGoogleCalendarEventUpda
   };
 }
 
-function googleCalendarCancelledWorkflowTrigger(): WorkflowGoogleCalendarEventCancelledTriggerSummary {
+function googleCalendarCancelledWorkflowAutomation(): WorkflowGoogleCalendarEventCancelledAutomationSummary {
   return {
-    id: "workflow-trigger-google-calendar-cancelled",
+    id: "workflow-automation-google-calendar-cancelled",
     kind: "event",
     eventType: "google-calendar-event-cancelled",
     eventConfig: {
@@ -329,9 +330,9 @@ function googleCalendarCancelledWorkflowTrigger(): WorkflowGoogleCalendarEventCa
   };
 }
 
-function googleMeetTranscriptGeneratedWorkflowTrigger(): WorkflowGoogleMeetTranscriptGeneratedTriggerSummary {
+function googleMeetTranscriptGeneratedWorkflowAutomation(): WorkflowGoogleMeetTranscriptGeneratedAutomationSummary {
   return {
-    id: GOOGLE_MEET_TRIGGER_ID,
+    id: GOOGLE_MEET_AUTOMATION_ID,
     kind: "event",
     eventType: "google-meet-transcript-generated",
     eventConfig: {
@@ -349,9 +350,9 @@ function googleMeetTranscriptGeneratedWorkflowTrigger(): WorkflowGoogleMeetTrans
   };
 }
 
-function notionChildPageWorkflowTrigger(): WorkflowNotionChildPageCreatedTriggerSummary {
+function notionChildPageWorkflowAutomation(): WorkflowNotionChildPageCreatedAutomationSummary {
   return {
-    id: "workflow-trigger-notion-child-page",
+    id: "workflow-automation-notion-child-page",
     kind: "event",
     eventType: "notion-child-page-created",
     eventConfig: {
@@ -374,9 +375,9 @@ function notionChildPageWorkflowTrigger(): WorkflowNotionChildPageCreatedTrigger
   };
 }
 
-function notionDatabaseItemWorkflowTrigger(): WorkflowNotionDatabaseItemCreatedTriggerSummary {
+function notionDatabaseItemWorkflowAutomation(): WorkflowNotionDatabaseItemCreatedAutomationSummary {
   return {
-    id: "workflow-trigger-notion-database-item",
+    id: "workflow-automation-notion-database-item",
     kind: "event",
     eventType: "notion-database-item-created",
     eventConfig: {
@@ -399,9 +400,9 @@ function notionDatabaseItemWorkflowTrigger(): WorkflowNotionDatabaseItemCreatedT
   };
 }
 
-function notionPageContentUpdatedWorkflowTrigger(): WorkflowNotionPageContentUpdatedTriggerSummary {
+function notionPageContentUpdatedWorkflowAutomation(): WorkflowNotionPageContentUpdatedAutomationSummary {
   return {
-    id: "workflow-trigger-notion-page-content-updated",
+    id: "workflow-automation-notion-page-content-updated",
     kind: "event",
     eventType: "notion-page-content-updated",
     eventConfig: {
@@ -427,9 +428,9 @@ function notionPageContentUpdatedWorkflowTrigger(): WorkflowNotionPageContentUpd
   };
 }
 
-function webhookWorkflowTrigger(): WorkflowWebhookTriggerSummary {
+function webhookWorkflowAutomation(): WorkflowWebhookAutomationSummary {
   return {
-    id: "workflow-trigger-webhook",
+    id: "workflow-automation-webhook",
     kind: "event",
     eventType: "webhook-received",
     eventConfig: {
@@ -444,23 +445,27 @@ function webhookWorkflowTrigger(): WorkflowWebhookTriggerSummary {
     chatThreadId: "thread_webhook",
     nextRunAt: null,
     lastRunAt: null,
-    webhookUrl: "https://api.vm0.test/api/webhooks/workflow-triggers/whk_test",
+    webhookUrl:
+      "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
     secretLastFour: "abcd",
     lastReceivedAt: null,
   };
 }
 
-function publicWorkflowTrigger(
-  trigger: ZeroWorkflowAutomationSummary,
+function publicWorkflowAutomation(
+  automation: ZeroWorkflowAutomationSummary,
 ): ZeroWorkflowAutomationSummary {
-  if (trigger.kind !== "event" || trigger.eventType !== "webhook-received") {
-    return trigger;
+  if (
+    automation.kind !== "event" ||
+    automation.eventType !== "webhook-received"
+  ) {
+    return automation;
   }
   const {
     webhookUrl: _webhookUrl,
     webhookSecret: _webhookSecret,
     ...rest
-  } = trigger;
+  } = automation;
   return rest;
 }
 
@@ -469,7 +474,7 @@ function publicWorkflowDetail(
 ): ZeroWorkflowDetailResponse {
   return {
     ...detail,
-    triggers: detail.triggers.map(publicWorkflowTrigger),
+    triggers: detail.triggers.map(publicWorkflowAutomation),
   };
 }
 
@@ -505,7 +510,7 @@ function salesResearch(): ZeroWorkflowDetailResponse {
         content: '{ "risk": "low", "tone": "direct" }',
       },
     ],
-    triggers: workflowTriggers(),
+    triggers: workflowAutomations(),
   };
 }
 
@@ -670,24 +675,24 @@ function mockWorkflowApis(
   workflows: ZeroWorkflowDetailResponse[],
   onUpdate?: (body: ZeroWorkflowUpdateRequest) => void,
 ): void {
-  const setTriggerEnabled = (
-    triggerId: string,
+  const setAutomationEnabled = (
+    automationId: string,
     enabled: boolean,
   ): ZeroWorkflowAutomationSummary | null => {
     for (const workflow of workflows) {
-      const triggerIndex = workflow.triggers.findIndex((trigger) => {
-        return trigger.id === triggerId;
+      const automationIndex = workflow.triggers.findIndex((automation) => {
+        return automation.id === automationId;
       });
-      if (triggerIndex === -1) {
+      if (automationIndex === -1) {
         continue;
       }
-      const currentTrigger = workflow.triggers[triggerIndex];
-      if (!currentTrigger) {
+      const currentAutomation = workflow.triggers[automationIndex];
+      if (!currentAutomation) {
         continue;
       }
-      const updatedTrigger = { ...currentTrigger, enabled };
-      workflow.triggers[triggerIndex] = updatedTrigger;
-      return updatedTrigger;
+      const updatedAutomation = { ...currentAutomation, enabled };
+      workflow.triggers[automationIndex] = updatedAutomation;
+      return updatedAutomation;
     }
     return null;
   };
@@ -715,25 +720,25 @@ function mockWorkflowApis(
     return respond(200, publicWorkflowDetail(detail));
   });
   context.mocks.api(
-    zeroWorkflowTriggersContract.listWorkspace,
+    zeroWorkflowAutomationsContract.listWorkspace,
     ({ respond }) => {
       return respond(
         200,
         workflows.flatMap((workflow) => {
-          return workflow.triggers.map((trigger) => {
+          return workflow.triggers.map((automation) => {
             return {
               workflow: summary(workflow),
-              trigger: publicWorkflowTrigger(trigger),
+              automation: publicWorkflowAutomation(automation),
             };
           });
-        }),
+        }) as never,
       );
     },
   );
   context.mocks.api(
-    zeroWorkflowTriggersContract.revealWebhookSecret,
+    zeroWorkflowAutomationsContract.revealWebhookSecret,
     ({ params, respond }) => {
-      const trigger = workflows
+      const automation = workflows
         .flatMap((workflow) => {
           return workflow.triggers;
         })
@@ -741,15 +746,15 @@ function mockWorkflowApis(
           return item.id === params.id;
         });
       if (
-        trigger &&
-        trigger.kind === "event" &&
-        trigger.eventType === "webhook-received"
+        automation &&
+        automation.kind === "event" &&
+        automation.eventType === "webhook-received"
       ) {
         return respond(200, {
           webhookUrl:
-            trigger.webhookUrl ??
-            "https://api.vm0.test/api/webhooks/workflow-triggers/whk_test",
-          webhookSecret: trigger.webhookSecret ?? "webhook-secret",
+            automation.webhookUrl ??
+            "https://api.vm0.test/api/webhooks/workflow-automations/whk_test",
+          webhookSecret: automation.webhookSecret ?? "webhook-secret",
         });
       }
       return respond(404, {
@@ -758,27 +763,27 @@ function mockWorkflowApis(
     },
   );
   context.mocks.api(
-    zeroWorkflowTriggersContract.enable,
+    zeroWorkflowAutomationsContract.enable,
     ({ params, respond }) => {
-      const trigger = setTriggerEnabled(params.id, true);
-      if (!trigger) {
+      const automation = setAutomationEnabled(params.id, true);
+      if (!automation) {
         return respond(404, {
           error: { code: "NOT_FOUND", message: "missing" },
         });
       }
-      return respond(200, trigger);
+      return respond(200, automation);
     },
   );
   context.mocks.api(
-    zeroWorkflowTriggersContract.disable,
+    zeroWorkflowAutomationsContract.disable,
     ({ params, respond }) => {
-      const trigger = setTriggerEnabled(params.id, false);
-      if (!trigger) {
+      const automation = setAutomationEnabled(params.id, false);
+      if (!automation) {
         return respond(404, {
           error: { code: "NOT_FOUND", message: "missing" },
         });
       }
-      return respond(200, trigger);
+      return respond(200, automation);
     },
   );
   context.mocks.api(
@@ -819,7 +824,7 @@ function mockDeleteWorkflow(
   );
 }
 
-function mockConnectedTriggerConnectors(): void {
+function mockConnectedAutomationConnectors(): void {
   context.mocks.data.connectors([
     {
       id: "10000000-0000-4000-a000-000000000001",
@@ -852,62 +857,63 @@ function mockConnectedTriggerConnectors(): void {
   ]);
 }
 
-function mockCreateWorkflowTrigger(
+function mockCreateWorkflowAutomation(
   onCreate: (body: ZeroWorkflowAutomationCreateRequest) => void,
 ): void {
   context.mocks.api(
-    zeroWorkflowTriggersContract.create,
+    zeroWorkflowAutomationsContract.create,
     ({ body, respond }) => {
       onCreate(body);
       if (body.kind !== "event") {
-        return respond(201, weekdayWorkflowTrigger());
+        return respond(201, weekdayWorkflowAutomation());
       }
       if (body.eventType === "webhook-received") {
         return respond(201, {
-          ...webhookWorkflowTrigger(),
-          eventConfig: body.eventConfig ?? webhookWorkflowTrigger().eventConfig,
+          ...webhookWorkflowAutomation(),
+          eventConfig:
+            body.eventConfig ?? webhookWorkflowAutomation().eventConfig,
           webhookSecret: "webhook-secret",
         });
       }
       if (body.eventType === "gmail-label-applied") {
         return respond(201, {
-          ...gmailLabelWorkflowTrigger(),
+          ...gmailLabelWorkflowAutomation(),
           eventConfig: body.eventConfig,
         });
       }
       if (body.eventType === "github-label-applied") {
         return respond(201, {
-          ...githubLabelWorkflowTrigger(),
+          ...githubLabelWorkflowAutomation(),
           eventConfig: body.eventConfig,
         });
       }
       if (body.eventType === "google-calendar-event-created") {
         return respond(201, {
-          ...googleCalendarWorkflowTrigger(),
+          ...googleCalendarWorkflowAutomation(),
           eventConfig: body.eventConfig,
         });
       }
       if (body.eventType === "google-calendar-event-updated") {
         return respond(201, {
-          ...googleCalendarUpdatedWorkflowTrigger(),
+          ...googleCalendarUpdatedWorkflowAutomation(),
           eventConfig: body.eventConfig,
         });
       }
       if (body.eventType === "google-calendar-event-cancelled") {
         return respond(201, {
-          ...googleCalendarCancelledWorkflowTrigger(),
+          ...googleCalendarCancelledWorkflowAutomation(),
           eventConfig: body.eventConfig,
         });
       }
       if (body.eventType === "google-meet-transcript-generated") {
         return respond(201, {
-          ...googleMeetTranscriptGeneratedWorkflowTrigger(),
+          ...googleMeetTranscriptGeneratedWorkflowAutomation(),
           eventConfig: body.eventConfig,
         });
       }
       if (body.eventType === "notion-child-page-created") {
         return respond(201, {
-          ...notionChildPageWorkflowTrigger(),
+          ...notionChildPageWorkflowAutomation(),
           eventConfig: {
             provider: "notion",
             event: "child_page_created",
@@ -923,7 +929,7 @@ function mockCreateWorkflowTrigger(
       }
       if (body.eventType === "notion-database-item-created") {
         return respond(201, {
-          ...notionDatabaseItemWorkflowTrigger(),
+          ...notionDatabaseItemWorkflowAutomation(),
           eventConfig: {
             provider: "notion",
             event: "database_item_created",
@@ -939,7 +945,7 @@ function mockCreateWorkflowTrigger(
       }
       if (body.eventType === "notion-page-content-updated") {
         return respond(201, {
-          ...notionPageContentUpdatedWorkflowTrigger(),
+          ...notionPageContentUpdatedWorkflowAutomation(),
           eventConfig: {
             provider: "notion",
             event: "page_content_updated",
@@ -967,46 +973,46 @@ function mockCreateWorkflowTrigger(
         });
       }
       return respond(201, {
-        ...gmailWorkflowTrigger(),
+        ...gmailWorkflowAutomation(),
         eventConfig: body.eventConfig,
       });
     },
   );
 }
 
-function mockUpdateWorkflowTrigger(
+function mockUpdateWorkflowAutomation(
   onUpdate: (
-    triggerId: string,
+    automationId: string,
     body: ZeroWorkflowAutomationUpdateRequest,
   ) => void,
 ): void {
   context.mocks.api(
-    zeroWorkflowTriggersContract.update,
+    zeroWorkflowAutomationsContract.update,
     ({ params, body, respond }) => {
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
         if (body.eventConfig.provider === "github") {
           return respond(200, {
-            ...githubLabelWorkflowTrigger(),
+            ...githubLabelWorkflowAutomation(),
             id: params.id,
             eventConfig: body.eventConfig,
           });
         }
         if (body.eventConfig.event === "label_applied") {
           return respond(200, {
-            ...gmailLabelWorkflowTrigger(),
+            ...gmailLabelWorkflowAutomation(),
             id: params.id,
             eventConfig: body.eventConfig,
           });
         }
         return respond(200, {
-          ...gmailWorkflowTrigger(),
+          ...gmailWorkflowAutomation(),
           id: params.id,
           eventConfig: body.eventConfig,
         });
       }
       return respond(200, {
-        ...weekdayWorkflowTrigger(),
+        ...weekdayWorkflowAutomation(),
         id: params.id,
         schedule: body.schedule,
       });
@@ -1014,25 +1020,30 @@ function mockUpdateWorkflowTrigger(
   );
 }
 
-function mockRunWorkflowTrigger(onRun: (triggerId: string) => void): void {
-  context.mocks.api(zeroWorkflowTriggersContract.run, ({ params, respond }) => {
-    onRun(params.id);
-    return respond(201, {
-      runId: "workflow-trigger-run-now",
-      chatThreadId: TRIGGER_RUN_THREAD_ID,
-    });
-  });
-}
-
-function mockDisableWorkflowTrigger(
-  onDisable: (triggerId: string) => void,
+function mockRunWorkflowAutomation(
+  onRun: (automationId: string) => void,
 ): void {
   context.mocks.api(
-    zeroWorkflowTriggersContract.disable,
+    zeroWorkflowAutomationsContract.run,
+    ({ params, respond }) => {
+      onRun(params.id);
+      return respond(201, {
+        runId: "workflow-automation-run-now",
+        chatThreadId: AUTOMATION_RUN_THREAD_ID,
+      });
+    },
+  );
+}
+
+function mockDisableWorkflowAutomation(
+  onDisable: (automationId: string) => void,
+): void {
+  context.mocks.api(
+    zeroWorkflowAutomationsContract.disable,
     ({ params, respond }) => {
       onDisable(params.id);
       return respond(200, {
-        ...weekdayWorkflowTrigger(),
+        ...weekdayWorkflowAutomation(),
         id: params.id,
         enabled: false,
       });
@@ -1113,17 +1124,17 @@ function menuItemByText(text: RoleTextMatch): HTMLElement {
   return item;
 }
 
-// The "Add automation" trigger picker is a dialog split into category tabs on
-// the left and trigger cards on the right; a card only mounts once its category
+// The "Add automation" automation picker is a dialog split into category tabs on
+// the left and automation cards on the right; a card only mounts once its category
 // is active. Select the category, then the card (matched by its leading title,
 // since cards also render a description line).
-function pickTrigger(category: string, title: RoleTextMatch): void {
+function pickAutomation(category: string, title: RoleTextMatch): void {
   const dialog = screen.getByRole("dialog");
   const tab = queryAllByRoleFast("button", dialog).find((candidate) => {
     return textFor(candidate) === category;
   });
   if (!tab) {
-    throw new Error(`${category} trigger category not found`);
+    throw new Error(`${category} automation category not found`);
   }
   click(tab);
   const card = queryAllByRoleFast("button", dialog).find((candidate) => {
@@ -1133,7 +1144,7 @@ function pickTrigger(category: string, title: RoleTextMatch): void {
       : title.test(text);
   });
   if (!card) {
-    throw new Error(`${matchLabel(title)} trigger card not found`);
+    throw new Error(`${matchLabel(title)} automation card not found`);
   }
   click(card);
 }
@@ -1223,7 +1234,7 @@ describe("workflows routes", () => {
 
   it("renders the workspace workflow detail", async () => {
     mockWorkflowApis([salesResearch()]);
-    mockConnectedTriggerConnectors();
+    mockConnectedAutomationConnectors();
 
     detachedSetupPage({
       context,
@@ -1370,7 +1381,7 @@ describe("workflows routes", () => {
     expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
     expect(screen.queryByText("Ops Playbook")).not.toBeInTheDocument();
 
-    // The trigger reflects the active agent; clearing returns everything.
+    // The automation reflects the active agent; clearing returns everything.
     click(buttonByText("Support Bot"));
     click(menuItemByText("All agents"));
     await waitFor(() => {
@@ -1405,10 +1416,10 @@ describe("workflows routes", () => {
 });
 
 describe("workflow detail page", () => {
-  it("renders the instruction, files, and triggers", async () => {
+  it("renders the instruction, files, and automations", async () => {
     context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis([salesResearch()]);
-    mockConnectedTriggerConnectors();
+    mockConnectedAutomationConnectors();
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("instructions"));
 
@@ -1513,7 +1524,7 @@ describe("workflow detail page", () => {
               connectorRef: "github",
               label: "GitHub",
               icon: connectorIcon("github"),
-              reason: "A GitHub trigger requires this connector.",
+              reason: "A GitHub automation requires this connector.",
               status: "unavailable",
             },
             {
@@ -1907,12 +1918,12 @@ describe("workflow detail page", () => {
       readonly workflowId: string;
       readonly toAgentId: string;
     }[] = [];
-    const disabledTriggerIds: string[] = [];
+    const disabledAutomationIds: string[] = [];
     const deletedWorkflowIds: string[] = [];
     mockAgentPageApis();
     mockWorkflowApis(workflows);
-    mockDisableWorkflowTrigger((triggerId) => {
-      disabledTriggerIds.push(triggerId);
+    mockDisableWorkflowAutomation((automationId) => {
+      disabledAutomationIds.push(automationId);
     });
     mockDeleteWorkflow(workflows, (workflowId) => {
       deletedWorkflowIds.push(workflowId);
@@ -1947,7 +1958,7 @@ describe("workflow detail page", () => {
       ]);
     });
     // Copy-only never touches the source workflow or its automations.
-    expect(disabledTriggerIds).toStrictEqual([]);
+    expect(disabledAutomationIds).toStrictEqual([]);
     expect(deletedWorkflowIds).toStrictEqual([]);
     // Stays on the source page and offers a link to the fresh copy.
     expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/info`);
@@ -2002,12 +2013,12 @@ describe("workflow detail page", () => {
       readonly workflowId: string;
       readonly toAgentId: string;
     }[] = [];
-    const disabledTriggerIds: string[] = [];
+    const disabledAutomationIds: string[] = [];
     const deletedWorkflowIds: string[] = [];
     mockAgentPageApis();
     mockWorkflowApis(workflows);
-    mockDisableWorkflowTrigger((triggerId) => {
-      disabledTriggerIds.push(triggerId);
+    mockDisableWorkflowAutomation((automationId) => {
+      disabledAutomationIds.push(automationId);
     });
     mockDeleteWorkflow(workflows, (workflowId) => {
       deletedWorkflowIds.push(workflowId);
@@ -2049,8 +2060,8 @@ describe("workflow detail page", () => {
       ]);
     });
     await waitFor(() => {
-      expect(disabledTriggerIds).toStrictEqual([
-        "workflow-trigger-weekday-brief",
+      expect(disabledAutomationIds).toStrictEqual([
+        "workflow-automation-weekday-brief",
       ]);
     });
     await waitFor(() => {
@@ -2162,10 +2173,10 @@ describe("workflow detail page", () => {
     expect(search()).toBe("");
   });
 
-  it("renders Gmail new message trigger match summaries", async () => {
+  it("renders Gmail new message automation match summaries", async () => {
     const workflow = {
       ...salesResearch(),
-      triggers: [...workflowTriggers(), gmailWorkflowTrigger()],
+      triggers: [...workflowAutomations(), gmailWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
 
@@ -2186,16 +2197,16 @@ describe("workflow detail page", () => {
     expect(
       screen.getByText(/subject does not contain "newsletter"/),
     ).toBeInTheDocument();
-    // Only the schedule trigger shows a "Next" run stat; event triggers omit it.
+    // Only the schedule automation shows a "Next" run stat; event automations omit it.
     expect(screen.getAllByText("Next")).toHaveLength(1);
   });
 
-  it("runs a trigger immediately and navigates to the bound chat thread", async () => {
-    const runTriggerIds: string[] = [];
+  it("runs an automation immediately and navigates to the bound chat thread", async () => {
+    const runAutomationIds: string[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockChatLifecycle(context, { threadId: TRIGGER_RUN_THREAD_ID });
-    mockRunWorkflowTrigger((triggerId) => {
-      runTriggerIds.push(triggerId);
+    mockChatLifecycle(context, { threadId: AUTOMATION_RUN_THREAD_ID });
+    mockRunWorkflowAutomation((automationId) => {
+      runAutomationIds.push(automationId);
     });
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
@@ -2206,18 +2217,20 @@ describe("workflow detail page", () => {
     click(buttonByText("Run now"));
 
     await waitFor(() => {
-      expect(runTriggerIds).toStrictEqual(["workflow-trigger-weekday-brief"]);
+      expect(runAutomationIds).toStrictEqual([
+        "workflow-automation-weekday-brief",
+      ]);
     });
     await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${TRIGGER_RUN_THREAD_ID}`);
+      expect(pathname()).toBe(`/chats/${AUTOMATION_RUN_THREAD_ID}`);
     });
     expect(search()).toBe("");
   });
 
-  it("creates a Gmail new message trigger with text match rules", async () => {
+  it("creates a Gmail new message automation with text match rules", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2231,20 +2244,20 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Email", /^Gmail new message/);
+    pickAutomation("Email", /^Gmail new message/);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add Gmail automation",
     });
     await fill(
-      within(createTriggerForm).getByLabelText("From contains"),
+      within(createAutomationForm).getByLabelText("From contains"),
       "@acme.com",
     );
     await fill(
-      within(createTriggerForm).getByLabelText("Subject does not contain"),
+      within(createAutomationForm).getByLabelText("Subject does not contain"),
       "newsletter",
     );
-    fireEvent.submit(createTriggerForm);
+    fireEvent.submit(createAutomationForm);
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2262,10 +2275,10 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("creates a Gmail label applied trigger with a label name", async () => {
+  it("creates a Gmail label applied automation with a label name", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2279,16 +2292,16 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Email", /^Gmail label applied/);
+    pickAutomation("Email", /^Gmail label applied/);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add Gmail label automation",
     });
     await fill(
-      within(createTriggerForm).getByLabelText("Label name"),
+      within(createAutomationForm).getByLabelText("Label name"),
       "Support",
     );
-    fireEvent.submit(createTriggerForm);
+    fireEvent.submit(createAutomationForm);
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2303,10 +2316,10 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("creates a Google Calendar event-updated trigger", async () => {
+  it("creates a Google Calendar event-updated automation", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2320,16 +2333,16 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Calendar", /^Google Calendar event updated/);
+    pickAutomation("Calendar", /^Google Calendar event updated/);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add Google Calendar automation",
     });
     await fill(
-      within(createTriggerForm).getByLabelText("Calendar ID"),
+      within(createAutomationForm).getByLabelText("Calendar ID"),
       "team@example.com",
     );
-    fireEvent.submit(createTriggerForm);
+    fireEvent.submit(createAutomationForm);
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2344,10 +2357,10 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("creates a Google Calendar event-cancelled trigger", async () => {
+  it("creates a Google Calendar event-cancelled automation", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2361,16 +2374,16 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Calendar", /^Google Calendar event cancelled/);
+    pickAutomation("Calendar", /^Google Calendar event cancelled/);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add Google Calendar automation",
     });
     await fill(
-      within(createTriggerForm).getByLabelText("Calendar ID"),
+      within(createAutomationForm).getByLabelText("Calendar ID"),
       "team@example.com",
     );
-    fireEvent.submit(createTriggerForm);
+    fireEvent.submit(createAutomationForm);
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2385,10 +2398,10 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("creates a Google Meet transcript-generated trigger", async () => {
+  it("creates a Google Meet transcript-generated automation", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2402,12 +2415,12 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Calendar", /^Google Meet transcript ready/);
+    pickAutomation("Calendar", /^Google Meet transcript ready/);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add Google Meet transcript automation",
     });
-    fireEvent.submit(createTriggerForm);
+    fireEvent.submit(createAutomationForm);
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2422,10 +2435,10 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("creates a Notion database item trigger", async () => {
+  it("creates a Notion database item automation", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2441,16 +2454,16 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Notion", /^New Notion database item/);
+    pickAutomation("Notion", /^New Notion database item/);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add Notion database item automation",
     });
     await fill(
-      within(createTriggerForm).getByLabelText("Database URL"),
+      within(createAutomationForm).getByLabelText("Database URL"),
       "https://www.notion.so/22222222222242228222222222222222?v=aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa",
     );
-    fireEvent.submit(createTriggerForm);
+    fireEvent.submit(createAutomationForm);
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2466,10 +2479,10 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("creates a webhook trigger and shows one-time signing details", async () => {
+  it("creates a webhook automation and shows one-time signing details", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2483,7 +2496,7 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Integrations", /^Webhook/);
+    pickAutomation("Integrations", /^Webhook/);
     await waitFor(() => {
       expect(buttonByText("Create webhook")).toBeInTheDocument();
     });
@@ -2501,11 +2514,11 @@ describe("workflow detail page", () => {
       });
     });
     const webhookUrlField = await screen.findByDisplayValue(
-      webhookWorkflowTrigger().webhookUrl ?? "",
+      webhookWorkflowAutomation().webhookUrl ?? "",
     );
     expect(webhookUrlField).toBeInTheDocument();
     expect(webhookUrlField).toHaveValue(
-      webhookWorkflowTrigger().webhookUrl ?? "",
+      webhookWorkflowAutomation().webhookUrl ?? "",
     );
     expect(webhookUrlField).toHaveClass("min-w-0");
     expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
@@ -2588,18 +2601,18 @@ describe("workflow detail page", () => {
       ...salesResearch(),
       triggers: [
         {
-          ...webhookWorkflowTrigger(),
+          ...webhookWorkflowAutomation(),
           enabled: false,
           disabledReason: "paid_plan_required" as const,
         },
       ],
     };
     mockWorkflowApis([workflow]);
-    context.mocks.api(zeroWorkflowTriggersContract.enable, ({ respond }) => {
+    context.mocks.api(zeroWorkflowAutomationsContract.enable, ({ respond }) => {
       return respond(402, {
         error: {
           code: "TEAM_REQUIRED",
-          message: "Webhook triggers require a Team or Custom workspace",
+          message: "Webhook automations require a Team or Custom workspace",
         },
       });
     });
@@ -2622,7 +2635,7 @@ describe("workflow detail page", () => {
   it("reveals an existing webhook secret on demand", async () => {
     const workflow = {
       ...salesResearch(),
-      triggers: [webhookWorkflowTrigger()],
+      triggers: [webhookWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
 
@@ -2632,14 +2645,14 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Webhook URL hidden")).toBeInTheDocument();
     });
     expect(
-      screen.queryByDisplayValue(webhookWorkflowTrigger().webhookUrl ?? ""),
+      screen.queryByDisplayValue(webhookWorkflowAutomation().webhookUrl ?? ""),
     ).not.toBeInTheDocument();
     click(buttonByText("More actions"));
     click(menuItemByText("View webhook secret"));
     click(await screen.findByText("Reveal secret"));
 
     const webhookUrlField = await screen.findByDisplayValue(
-      webhookWorkflowTrigger().webhookUrl ?? "",
+      webhookWorkflowAutomation().webhookUrl ?? "",
     );
     expect(webhookUrlField).toBeInTheDocument();
     expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
@@ -2647,11 +2660,11 @@ describe("workflow detail page", () => {
     );
   });
 
-  it("creates a cron schedule trigger from the preferred time zone", async () => {
+  it("creates a cron schedule automation from the preferred time zone", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2664,16 +2677,16 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Schedule", /^Scheduled time/u);
+    pickAutomation("Schedule", /^Scheduled time/u);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add schedule automation",
     });
     expect(
-      within(createTriggerForm).getByText("Time (Asia/Shanghai)"),
+      within(createAutomationForm).getByText("Time (Asia/Shanghai)"),
     ).toBeInTheDocument();
-    expect(within(createTriggerForm).queryByText(/Saved as/u)).toBeNull();
-    click(buttonByText("Add schedule", createTriggerForm));
+    expect(within(createAutomationForm).queryByText(/Saved as/u)).toBeNull();
+    click(buttonByText("Add schedule", createAutomationForm));
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2686,10 +2699,10 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("creates an interval trigger from the trigger menu", async () => {
+  it("creates an interval automation from the automation menu", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2702,13 +2715,13 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Schedule", /^Interval/u);
+    pickAutomation("Schedule", /^Interval/u);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add interval automation",
     });
-    selectOptionByLabel("Every", "30 minutes", createTriggerForm);
-    click(buttonByText("Add interval", createTriggerForm));
+    selectOptionByLabel("Every", "30 minutes", createAutomationForm);
+    click(buttonByText("Add interval", createAutomationForm));
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2720,10 +2733,10 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("creates a one-time trigger from the trigger menu", async () => {
+  it("creates a one-time automation from the automation menu", async () => {
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
-    mockCreateWorkflowTrigger((body) => {
+    mockCreateWorkflowAutomation((body) => {
       createBodies.push(body);
     });
 
@@ -2736,15 +2749,15 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    pickTrigger("Schedule", /^One-time run/u);
+    pickAutomation("Schedule", /^One-time run/u);
 
-    const createTriggerForm = await screen.findByRole("form", {
+    const createAutomationForm = await screen.findByRole("form", {
       name: "Add one-time automation",
     });
-    fireEvent.change(within(createTriggerForm).getByLabelText("Run at"), {
+    fireEvent.change(within(createAutomationForm).getByLabelText("Run at"), {
       target: { value: "2026-07-01T10:30" },
     });
-    click(buttonByText("Add one-time run", createTriggerForm));
+    click(buttonByText("Add one-time run", createAutomationForm));
 
     await waitFor(() => {
       expect(createBodies.at(-1)).toStrictEqual({
@@ -2757,9 +2770,9 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("updates a cron schedule trigger from the preferred time zone", async () => {
+  it("updates a cron schedule automation from the preferred time zone", async () => {
     const updateBodies: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
@@ -2767,18 +2780,18 @@ describe("workflow detail page", () => {
       ...salesResearch(),
       triggers: [
         {
-          ...weekdayWorkflowTrigger(),
+          ...weekdayWorkflowAutomation(),
           schedule: {
             type: "cron",
             cronExpression: "0 1 * * 1-5",
             timezone: "UTC",
           },
-        } satisfies WorkflowScheduleTriggerSummary,
+        } satisfies WorkflowScheduleAutomationSummary,
       ],
     };
     mockWorkflowApis([workflow]);
-    mockUpdateWorkflowTrigger((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockUpdateWorkflowAutomation((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
@@ -2789,16 +2802,16 @@ describe("workflow detail page", () => {
 
     click(buttonByText("Edit automation"));
 
-    const updateTriggerForm = screen.getByRole("form", {
+    const updateAutomationForm = screen.getByRole("form", {
       name: "Update schedule automation",
     });
-    selectOptionByLabel("Hour", "16", updateTriggerForm);
-    selectOptionByLabel("Minute", "45", updateTriggerForm);
-    click(buttonByText("Save schedule", updateTriggerForm));
+    selectOptionByLabel("Hour", "16", updateAutomationForm);
+    selectOptionByLabel("Minute", "45", updateAutomationForm);
+    click(buttonByText("Save schedule", updateAutomationForm));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: "workflow-trigger-weekday-brief",
+        automationId: "workflow-automation-weekday-brief",
         body: {
           schedule: {
             type: "cron",
@@ -2810,27 +2823,27 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("updates a loop schedule trigger from the edit dialog", async () => {
+  it("updates a loop schedule automation from the edit dialog", async () => {
     const updateBodies: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),
       triggers: [
         {
-          ...weekdayWorkflowTrigger(),
+          ...weekdayWorkflowAutomation(),
           schedule: {
             type: "loop",
             intervalSeconds: 3600,
           },
           scheduleSummary: "Every 3600s",
-        } satisfies WorkflowScheduleTriggerSummary,
+        } satisfies WorkflowScheduleAutomationSummary,
       ],
     };
     mockWorkflowApis([workflow]);
-    mockUpdateWorkflowTrigger((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockUpdateWorkflowAutomation((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
@@ -2841,15 +2854,15 @@ describe("workflow detail page", () => {
 
     click(buttonByText("Edit automation"));
 
-    const updateTriggerForm = screen.getByRole("form", {
+    const updateAutomationForm = screen.getByRole("form", {
       name: "Update schedule automation",
     });
-    selectOptionByLabel("Every", "30 minutes", updateTriggerForm);
-    fireEvent.submit(updateTriggerForm);
+    selectOptionByLabel("Every", "30 minutes", updateAutomationForm);
+    fireEvent.submit(updateAutomationForm);
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: "workflow-trigger-weekday-brief",
+        automationId: "workflow-automation-weekday-brief",
         body: {
           schedule: {
             type: "loop",
@@ -2860,16 +2873,16 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("updates a Gmail new message trigger with text match rules", async () => {
+  it("updates a Gmail new message automation with text match rules", async () => {
     const updateBodies: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),
       triggers: [
         {
-          ...gmailWorkflowTrigger(),
+          ...gmailWorkflowAutomation(),
           eventConfig: {
             provider: "gmail",
             event: "new_message",
@@ -2878,12 +2891,12 @@ describe("workflow detail page", () => {
               subject: { doesNotContain: "newsletter" },
             },
           },
-        } satisfies WorkflowGmailNewMessageTriggerSummary,
+        } satisfies WorkflowGmailNewMessageAutomationSummary,
       ],
     };
     mockWorkflowApis([workflow]);
-    mockUpdateWorkflowTrigger((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockUpdateWorkflowAutomation((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
@@ -2896,22 +2909,22 @@ describe("workflow detail page", () => {
 
     click(buttonByText("Edit automation"));
 
-    const updateTriggerForm = screen.getByRole("form", {
+    const updateAutomationForm = screen.getByRole("form", {
       name: "Update Gmail new message automation",
     });
     await fill(
-      within(updateTriggerForm).getByLabelText("From contains"),
+      within(updateAutomationForm).getByLabelText("From contains"),
       "@acme.com",
     );
     await fill(
-      within(updateTriggerForm).getByLabelText("Body contains"),
+      within(updateAutomationForm).getByLabelText("Body contains"),
       "invoice",
     );
-    fireEvent.submit(updateTriggerForm);
+    fireEvent.submit(updateAutomationForm);
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: GMAIL_TRIGGER_ID,
+        automationId: GMAIL_AUTOMATION_ID,
         body: {
           eventConfig: {
             provider: "gmail",
@@ -2930,18 +2943,18 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("updates a Gmail label applied trigger with a label name", async () => {
+  it("updates a Gmail label applied automation with a label name", async () => {
     const updateBodies: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
     const workflow = {
       ...salesResearch(),
-      triggers: [gmailLabelWorkflowTrigger()],
+      triggers: [gmailLabelWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
-    mockUpdateWorkflowTrigger((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockUpdateWorkflowAutomation((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
@@ -2952,18 +2965,18 @@ describe("workflow detail page", () => {
 
     click(buttonByText("Edit automation"));
 
-    const updateTriggerForm = screen.getByRole("form", {
+    const updateAutomationForm = screen.getByRole("form", {
       name: "Update Gmail label automation",
     });
     await fill(
-      within(updateTriggerForm).getByLabelText("Label name"),
+      within(updateAutomationForm).getByLabelText("Label name"),
       "Escalated",
     );
-    fireEvent.submit(updateTriggerForm);
+    fireEvent.submit(updateAutomationForm);
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: GMAIL_LABEL_TRIGGER_ID,
+        automationId: GMAIL_LABEL_AUTOMATION_ID,
         body: {
           eventConfig: {
             provider: "gmail",

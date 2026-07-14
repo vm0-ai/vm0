@@ -45,13 +45,13 @@ import {
   workflowAutomationAgentQuery$,
   workflowAutomationDialogIntent$,
   workflowAutomationDialogOpen$,
-} from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
+} from "../../signals/automation-page/workflow-automation-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
-  setWorkflowTriggerEnabled$,
+  setWorkflowAutomationEnabled$,
   type WorkflowAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import {
@@ -70,8 +70,8 @@ import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
-  gmailTriggerSummary,
-  gmailTriggerTitle,
+  gmailAutomationSummary,
+  gmailAutomationTitle,
   workflowTitle,
 } from "../workflows-page/workflow-shared.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
@@ -138,52 +138,52 @@ function quote(value: string): string {
   return `"${value}"`;
 }
 
-function notionReadableTriggerRuleLabel(
-  trigger: ZeroWorkflowAutomationSummary,
+function notionReadableAutomationRuleLabel(
+  automation: ZeroWorkflowAutomationSummary,
 ): string | null {
-  if (trigger.kind !== "event") {
+  if (automation.kind !== "event") {
     return null;
   }
-  if (trigger.eventType === "notion-child-page-created") {
-    const title = trigger.eventConfig.parentPage.title;
+  if (automation.eventType === "notion-child-page-created") {
+    const title = automation.eventConfig.parentPage.title;
     return title
       ? `When Notion child page is created under ${quote(title)}`
       : "When a Notion child page is created";
   }
-  if (trigger.eventType === "notion-database-item-created") {
-    const title = trigger.eventConfig.dataSource.title;
+  if (automation.eventType === "notion-database-item-created") {
+    const title = automation.eventConfig.dataSource.title;
     return title
       ? `When Notion database ${quote(title)} gets a new item`
       : "When a Notion database gets a new item";
   }
-  if (trigger.eventType !== "notion-page-content-updated") {
+  if (automation.eventType !== "notion-page-content-updated") {
     return null;
   }
-  if (trigger.eventConfig.scope.type === "page") {
-    const title = trigger.eventConfig.scope.page.title;
+  if (automation.eventConfig.scope.type === "page") {
+    const title = automation.eventConfig.scope.page.title;
     return title
       ? `When Notion page ${quote(title)} content is updated`
       : "When a Notion page content is updated";
   }
-  const title = trigger.eventConfig.scope.dataSource.title;
+  const title = automation.eventConfig.scope.dataSource.title;
   return title
     ? `When Notion database ${quote(title)} item content is updated`
     : "When Notion database item content is updated";
 }
 
-export function humanReadableTriggerRuleLabel(
-  trigger: ZeroWorkflowAutomationSummary,
+export function humanReadableAutomationRuleLabel(
+  automation: ZeroWorkflowAutomationSummary,
   displayTimezone: string,
 ): string {
   if (
-    trigger.kind === "event" &&
-    trigger.eventType === "webhook-received" &&
-    trigger.disabledReason === "paid_plan_required"
+    automation.kind === "event" &&
+    automation.eventType === "webhook-received" &&
+    automation.disabledReason === "paid_plan_required"
   ) {
     return "Disabled — paid plan required";
   }
-  if (trigger.kind === "schedule") {
-    const schedule = trigger.schedule;
+  if (automation.kind === "schedule") {
+    const schedule = automation.schedule;
     if (schedule.type === "loop") {
       return `Every ${formatWorkflowIntervalSeconds(schedule.intervalSeconds)}`;
     }
@@ -201,73 +201,73 @@ export function humanReadableTriggerRuleLabel(
     );
   }
 
-  if (trigger.eventType === "gmail-new-message") {
-    const summary = gmailTriggerSummary(trigger);
+  if (automation.eventType === "gmail-new-message") {
+    const summary = gmailAutomationSummary(automation);
     return summary && summary !== "all inbound messages"
       ? `When Gmail message matches ${summary}`
       : "When any Gmail message arrives";
   }
-  if (trigger.eventType === "gmail-label-applied") {
-    return `When Gmail label ${quote(trigger.eventConfig.labelName)} is applied`;
+  if (automation.eventType === "gmail-label-applied") {
+    return `When Gmail label ${quote(automation.eventConfig.labelName)} is applied`;
   }
-  if (trigger.eventType === "github-label-applied") {
-    return `When GitHub label ${quote(trigger.eventConfig.labelName)} is applied`;
+  if (automation.eventType === "github-label-applied") {
+    return `When GitHub label ${quote(automation.eventConfig.labelName)} is applied`;
   }
-  if (trigger.eventType === "google-calendar-event-created") {
-    return `When calendar ${quote(trigger.eventConfig.calendarId)} gets a new event`;
+  if (automation.eventType === "google-calendar-event-created") {
+    return `When calendar ${quote(automation.eventConfig.calendarId)} gets a new event`;
   }
-  if (trigger.eventType === "google-calendar-event-updated") {
-    return `When calendar ${quote(trigger.eventConfig.calendarId)} event is updated`;
+  if (automation.eventType === "google-calendar-event-updated") {
+    return `When calendar ${quote(automation.eventConfig.calendarId)} event is updated`;
   }
-  if (trigger.eventType === "google-calendar-event-cancelled") {
-    return `When calendar ${quote(trigger.eventConfig.calendarId)} event is cancelled`;
+  if (automation.eventType === "google-calendar-event-cancelled") {
+    return `When calendar ${quote(automation.eventConfig.calendarId)} event is cancelled`;
   }
-  if (trigger.eventType === "google-meet-transcript-generated") {
+  if (automation.eventType === "google-meet-transcript-generated") {
     return "When Google Meet finishes generating a transcript";
   }
-  const notionLabel = notionReadableTriggerRuleLabel(trigger);
+  const notionLabel = notionReadableAutomationRuleLabel(automation);
   if (notionLabel) {
     return notionLabel;
   }
-  if (trigger.eventType === "webhook-received") {
+  if (automation.eventType === "webhook-received") {
     return "When an inbound webhook is received";
   }
-  return gmailTriggerTitle(trigger);
+  return gmailAutomationTitle(automation);
 }
 
-export function triggerTypeLabel(
-  trigger: ZeroWorkflowAutomationSummary,
+export function automationTypeLabel(
+  automation: ZeroWorkflowAutomationSummary,
 ): string {
-  if (trigger.kind === "schedule") {
+  if (automation.kind === "schedule") {
     return "Schedule";
   }
   if (
-    trigger.eventType === "gmail-new-message" ||
-    trigger.eventType === "gmail-label-applied"
+    automation.eventType === "gmail-new-message" ||
+    automation.eventType === "gmail-label-applied"
   ) {
     return "Gmail";
   }
-  if (trigger.eventType === "github-label-applied") {
+  if (automation.eventType === "github-label-applied") {
     return "GitHub";
   }
   if (
-    trigger.eventType === "google-calendar-event-created" ||
-    trigger.eventType === "google-calendar-event-updated" ||
-    trigger.eventType === "google-calendar-event-cancelled"
+    automation.eventType === "google-calendar-event-created" ||
+    automation.eventType === "google-calendar-event-updated" ||
+    automation.eventType === "google-calendar-event-cancelled"
   ) {
     return "Google Calendar";
   }
-  if (trigger.eventType === "google-meet-transcript-generated") {
+  if (automation.eventType === "google-meet-transcript-generated") {
     return "Google Meet";
   }
   if (
-    trigger.eventType === "notion-child-page-created" ||
-    trigger.eventType === "notion-database-item-created" ||
-    trigger.eventType === "notion-page-content-updated"
+    automation.eventType === "notion-child-page-created" ||
+    automation.eventType === "notion-database-item-created" ||
+    automation.eventType === "notion-page-content-updated"
   ) {
     return "Notion";
   }
-  if (trigger.eventType === "webhook-received") {
+  if (automation.eventType === "webhook-received") {
     return "Webhook";
   }
   return "Automation";
@@ -307,50 +307,50 @@ function WorkflowAgentAvatar({
   );
 }
 
-export function TriggerListIcon({
-  trigger,
+export function AutomationListIcon({
+  automation,
   size = "md",
 }: {
-  readonly trigger: ZeroWorkflowAutomationSummary;
+  readonly automation: ZeroWorkflowAutomationSummary;
   readonly size?: "sm" | "md";
 }) {
   const Icon = (() => {
-    if (trigger.kind === "schedule") {
-      if (trigger.schedule.type === "loop") {
+    if (automation.kind === "schedule") {
+      if (automation.schedule.type === "loop") {
         return IconRepeat;
       }
-      if (trigger.schedule.type === "once") {
+      if (automation.schedule.type === "once") {
         return IconClock;
       }
       return IconCalendarTime;
     }
-    if (trigger.eventType === "webhook-received") {
+    if (automation.eventType === "webhook-received") {
       return IconLink;
     }
-    if (trigger.eventType === "github-label-applied") {
+    if (automation.eventType === "github-label-applied") {
       return IconBrandGithub;
     }
-    if (trigger.eventType === "google-meet-transcript-generated") {
+    if (automation.eventType === "google-meet-transcript-generated") {
       return IconVideo;
     }
-    if (trigger.eventType === "notion-child-page-created") {
+    if (automation.eventType === "notion-child-page-created") {
       return IconFilePlus;
     }
-    if (trigger.eventType === "notion-database-item-created") {
+    if (automation.eventType === "notion-database-item-created") {
       return IconDatabasePlus;
     }
-    if (trigger.eventType === "notion-page-content-updated") {
+    if (automation.eventType === "notion-page-content-updated") {
       return IconFilePencil;
     }
-    if (trigger.eventType === "gmail-label-applied") {
+    if (automation.eventType === "gmail-label-applied") {
       return IconTag;
     }
     return IconMail;
   })();
   const tone =
-    trigger.kind === "schedule"
+    automation.kind === "schedule"
       ? "bg-blue-50 text-blue-600"
-      : trigger.eventType === "webhook-received"
+      : automation.eventType === "webhook-received"
         ? "bg-amber-50 text-amber-700"
         : "bg-emerald-50 text-emerald-700";
 
@@ -371,7 +371,7 @@ export function TriggerListIcon({
   );
 }
 
-export function WorkflowTriggerEnabledSwitch({
+export function WorkflowAutomationEnabledSwitch({
   entry,
   size = "default",
 }: {
@@ -380,21 +380,24 @@ export function WorkflowTriggerEnabledSwitch({
 }) {
   const pageSignal = useGet(pageSignal$);
   const [enabledLoadable, setEnabled] = useLoadableSet(
-    setWorkflowTriggerEnabled$,
+    setWorkflowAutomationEnabled$,
   );
   const busy = enabledLoadable.state === "loading";
   const title = workflowTitle(entry.workflow);
 
   return (
     <Switch
-      checked={entry.trigger.enabled}
+      checked={entry.automation.enabled}
       disabled={busy || !entry.workflow.canManage}
       size={size}
-      aria-label={`${entry.trigger.enabled ? "Disable" : "Enable"} ${title}`}
+      aria-label={`${entry.automation.enabled ? "Disable" : "Enable"} ${title}`}
       className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted"
       onCheckedChange={(enabled) => {
         detach(
-          setEnabled({ triggerId: entry.trigger.id, enabled }, pageSignal),
+          setEnabled(
+            { automationId: entry.automation.id, enabled },
+            pageSignal,
+          ),
           Reason.DomCallback,
         );
       }}
@@ -657,7 +660,7 @@ export function CreateWorkflowAutomationDialog() {
     );
   };
 
-  const openWorkflowTriggers = (workflow: ZeroWorkflowSummary) => {
+  const openWorkflowAutomations = (workflow: ZeroWorkflowSummary) => {
     setOpen(false);
     navigate(ROUTES.workflowDetailAutomations, {
       pathParams: { workflowId: workflow.id },
@@ -695,7 +698,7 @@ export function CreateWorkflowAutomationDialog() {
             workflows={workflows}
             agents={agents}
             loading={workflowsLoading}
-            onSelectWorkflow={openWorkflowTriggers}
+            onSelectWorkflow={openWorkflowAutomations}
             onCreateWorkflow={startCreateWorkflow}
           />
         ) : (

@@ -12,9 +12,9 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import {
-  createMockWorkflowTrigger,
-  setMockWorkflowTriggers,
-} from "../../../mocks/handlers/workflow-triggers-store.ts";
+  createMockWorkflowAutomation,
+  setMockWorkflowAutomations,
+} from "../../../mocks/handlers/workflow-automations-store.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -75,13 +75,13 @@ async function openAutomationsPanel(
     historyMessages: [
       {
         role: "user",
-        content: "Trigger run",
+        content: "Automation run",
         createdAt: "2026-07-10T00:59:00Z",
       },
     ],
   });
-  setMockWorkflowTriggers([
-    createMockWorkflowTrigger({
+  setMockWorkflowAutomations([
+    createMockWorkflowAutomation({
       chatThreadId: THREAD_ID,
       kind: "event",
       eventType: "gmail-new-message",
