@@ -2623,7 +2623,6 @@ describe("zero workflow triggers", () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { fixture, actor, workflowId } = await setupFixture("team");
     await enableWorkflowRuntimeMemory(fixture);
-    await enableWebhookWorkflowTriggers(fixture);
     const embeddingModel = "test-workflow-embedding";
     mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", embeddingModel);
     const embeddingRequests: ObservedEmbeddingRequest[] = [];
