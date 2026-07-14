@@ -3454,6 +3454,17 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
         return message.revokesMessageId === messageId;
       }),
     ).toBeFalsy();
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return (
+            call[0] === `chatThreadMessageUpdated:${sent.body.threadId}` &&
+            (call[1] as { messageId?: string } | undefined)?.messageId ===
+              messageId
+          );
+        });
+      })
+      .toBe(true);
 
     await cancelChatRun(actor, runId);
   }, 90_000);
@@ -3561,6 +3572,17 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
         return message.revokesMessageId === queuedId;
       }),
     ).toBeFalsy();
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return (
+            call[0] === `chatThreadMessageUpdated:${anchor.threadId}` &&
+            (call[1] as { messageId?: string } | undefined)?.messageId ===
+              queuedId
+          );
+        });
+      })
+      .toBe(true);
 
     const followUp = await api.readRun(actor, promoted.runId);
     expect(followUp.prompt).toContain("queue-first waits for the anchor");

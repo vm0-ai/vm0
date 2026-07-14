@@ -5848,6 +5848,57 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("moves an in-place claimed message out of the composer queue after an update event", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000731";
+    const messageId = "00000000-0000-4000-8000-000000004031";
+    const runId = "run-queue-first-claimed";
+    const prompt = "Run this message immediately";
+    const queuedMessage: {
+      id: string;
+      role: "user";
+      content: string;
+      runId: string | undefined;
+      createdAt: string;
+    } = {
+      id: messageId,
+      role: "user",
+      content: prompt,
+      runId: undefined,
+      createdAt: "2026-06-09T10:00:00Z",
+    };
+    const fetchedMessageIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [queuedMessage],
+      activeRunIds: [runId],
+      onMessageGet: (fetchedMessageId) => {
+        fetchedMessageIds.push(fetchedMessageId);
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("1 message waiting to send")).toBeInTheDocument();
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(prompt);
+    });
+
+    queuedMessage.runId = runId;
+    context.mocks.ably.trigger(`chatThreadMessageUpdated:${threadId}`, {
+      messageId,
+    });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(messageId);
+      expect(
+        screen.queryByText("1 message waiting to send"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(screen.getByText(prompt)).toBeInTheDocument();
+    });
+  });
+
   it("catches recommended follow-ups written before realtime subscription is ready", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
