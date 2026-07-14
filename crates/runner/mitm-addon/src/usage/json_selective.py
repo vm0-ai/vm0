@@ -15,6 +15,7 @@ for keys such as ``includes.users`` and ``includes.tweets``.
 
 import json
 import json.decoder
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Literal, cast
@@ -29,6 +30,9 @@ _UNKNOWN_KEY = "\0__vm0_json_unknown_key__"
 _ARRAY_ELEMENT = "\0__vm0_json_array_element__"
 _INTERNAL_PATH_MARKERS = frozenset((_UNKNOWN_KEY, _ARRAY_ELEMENT))
 _JSON_CONTROL_CHAR_MAX = 0x20
+# These are the only bytes that can change discarded string state. Non-ASCII
+# bytes stay on the bytewise path so UTF-8 validation remains unchanged.
+_DISCARDED_STRING_STATE_BYTE_RE = re.compile(rb'[\x00-\x1f"\\\x80-\xff]')
 _UTF8_ONE_BYTE_MAX = 0x80
 _UTF8_CONT_MIN = 0x80
 _UTF8_CONT_MAX = 0xBF
@@ -539,6 +543,24 @@ class JsonSelectiveExtractor:
         if state is None:
             self._error = "missing string parser state"
             return i
+        if (
+            state.raw is None
+            and not state.escape
+            and not state.unicode_remaining
+            and not state.utf8_remaining
+        ):
+            if chunk[i] == ord('"'):
+                self._finish_string(state)
+                self._string = None
+                return i + 1
+            match = _DISCARDED_STRING_STATE_BYTE_RE.search(chunk, i)
+            if match is None:
+                return len(chunk)
+            i = match.start()
+            if chunk[i] == ord('"'):
+                self._finish_string(state)
+                self._string = None
+                return i + 1
         while i < len(chunk):
             b = chunk[i]
             i += 1
