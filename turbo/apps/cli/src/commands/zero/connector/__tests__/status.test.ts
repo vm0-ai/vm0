@@ -55,25 +55,24 @@ function stubConnector(
   body: Record<string, unknown>,
   status = 200,
   type = "github",
-  origin = "http://localhost:3000",
 ) {
   if (status === 200) {
-    return stubConnectorCatalogStatus([statusItemFromConnector(body)], origin);
+    return stubConnectorCatalogStatus([statusItemFromConnector(body)]);
   }
   if (status === 404) {
-    return stubConnectorCatalogStatus(
-      [
-        catalogStatusItem({
-          connectorRef: type,
-          authMethods: [authCodeMethod("oauth")],
-        }),
-      ],
-      origin,
-    );
+    return stubConnectorCatalogStatus([
+      catalogStatusItem({
+        connectorRef: type,
+        authMethods: [authCodeMethod("oauth")],
+      }),
+    ]);
   }
-  return http.get(`${origin}/api/zero/connector-catalog/status`, () => {
-    return HttpResponse.json(body, { status });
-  });
+  return http.get(
+    "http://localhost:3000/api/zero/connector-catalog/status",
+    () => {
+      return HttpResponse.json(body, { status });
+    },
+  );
 }
 
 function stubAgent(
@@ -260,7 +259,10 @@ describe("zero connector status command", () => {
       const apiOrigin = "https://api.vm0.ai";
       vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
       server.use(
-        stubConnector(connectedGithub, 200, "github", apiOrigin),
+        stubConnectorCatalogStatus(
+          [statusItemFromConnector(connectedGithub)],
+          apiOrigin,
+        ),
         stubAgent(AGENT_UUID, "maya", apiOrigin),
         stubUserConnectors(AGENT_UUID, [], apiOrigin),
       );
