@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
@@ -163,7 +163,7 @@ export function createWorkflowsBddApi(context: TestContext) {
     ): Promise<{ readonly agentId: string }> {
       bdd.acceptAgentStorageWrites();
       const agent = await bdd.createAgent(actor, {
-        displayName: options.displayName ?? "Workflow Trigger Agent",
+        displayName: options.displayName ?? "Workflow Automation Agent",
         ...(options.visibility ? { visibility: options.visibility } : {}),
       });
       return { agentId: agent.agentId };
@@ -192,12 +192,12 @@ export function createWorkflowsBddApi(context: TestContext) {
       return response.body.id;
     },
 
-    async readTrigger(
-      triggerId: string,
+    async readAutomation(
+      automationId: string,
     ): Promise<ZeroWorkflowAutomationSummary> {
-      const client = setupApp({ context })(zeroWorkflowTriggersContract);
+      const client = setupApp({ context })(zeroWorkflowAutomationsContract);
       const response = await accept(
-        client.get({ headers: authHeaders(), params: { id: triggerId } }),
+        client.get({ headers: authHeaders(), params: { id: automationId } }),
         [200],
       );
       return response.body;

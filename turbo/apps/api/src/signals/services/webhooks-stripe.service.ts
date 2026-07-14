@@ -43,7 +43,7 @@ import {
   CONCURRENCY_SUBSCRIPTION_PURPOSE,
   isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
-import { disableIneligibleWorkflowWebhookTriggersForOrg } from "./workflow-webhook-trigger-entitlement.service";
+import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 import {
   orgPlanEntitlementOrgIdForStripeSubscription,
   upsertOrgPlanEntitlement,
@@ -3681,7 +3681,7 @@ export const handleStripeWebhookEvent$ = command(
 
     signal.throwIfAborted();
     for (const orgId of billingChangedOrgIds) {
-      await disableIneligibleWorkflowWebhookTriggersForOrg(db, {
+      await disableIneligibleWorkflowWebhookAutomationsForOrg(db, {
         orgId,
         signal,
       });

@@ -1,4 +1,4 @@
-import { zeroWorkflowTriggerMemoryEmbeddings } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowTriggerMemoryEmbeddings as zeroWorkflowAutomationMemoryEmbeddings } from "@vm0/db/schema/zero-workflow";
 import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -13,7 +13,7 @@ import {
   zeroMemoryEmbeddingModel,
 } from "./zero-memory-embedding.service";
 
-const log = logger("zero-workflow-trigger-memory-embedding");
+const log = logger("zero-workflow-automation-memory-embedding");
 
 function cacheMissResult(args: {
   readonly row:
@@ -38,10 +38,10 @@ function cacheMissResult(args: {
   return "miss_invalid";
 }
 
-export async function loadWorkflowTriggerMemoryEmbedding(
+export async function loadWorkflowAutomationMemoryEmbedding(
   db: Db,
   args: {
-    readonly workflowTriggerId: string;
+    readonly workflowAutomationId: string;
     readonly query: string;
   },
 ): Promise<LoadedMemoryEmbedding> {
@@ -50,15 +50,15 @@ export async function loadWorkflowTriggerMemoryEmbedding(
   const loaded = await settle(
     db
       .select({
-        embeddingModel: zeroWorkflowTriggerMemoryEmbeddings.embeddingModel,
-        queryHash: zeroWorkflowTriggerMemoryEmbeddings.queryHash,
-        embedding: zeroWorkflowTriggerMemoryEmbeddings.embedding,
+        embeddingModel: zeroWorkflowAutomationMemoryEmbeddings.embeddingModel,
+        queryHash: zeroWorkflowAutomationMemoryEmbeddings.queryHash,
+        embedding: zeroWorkflowAutomationMemoryEmbeddings.embedding,
       })
-      .from(zeroWorkflowTriggerMemoryEmbeddings)
+      .from(zeroWorkflowAutomationMemoryEmbeddings)
       .where(
         eq(
-          zeroWorkflowTriggerMemoryEmbeddings.workflowTriggerId,
-          args.workflowTriggerId,
+          zeroWorkflowAutomationMemoryEmbeddings.workflowTriggerId,
+          args.workflowAutomationId,
         ),
       )
       .limit(1),
@@ -66,7 +66,7 @@ export async function loadWorkflowTriggerMemoryEmbedding(
 
   let cacheResult: MemoryEmbeddingCacheResult;
   if (!loaded.ok) {
-    log.warn("Failed to read workflow trigger memory embedding cache");
+    log.warn("Failed to read workflow automation memory embedding cache");
     cacheResult = "miss_read_failed";
   } else {
     const row = loaded.value[0];
@@ -85,7 +85,7 @@ export async function loadWorkflowTriggerMemoryEmbedding(
 
   const embeddingResult = await settle(embedZeroMemoryText(args.query));
   if (!embeddingResult.ok) {
-    log.warn("Failed to embed workflow trigger memory query");
+    log.warn("Failed to embed workflow automation memory query");
     return { embedding: null, cacheResult };
   }
   const embedded = embeddingResult.value;
@@ -99,15 +99,15 @@ export async function loadWorkflowTriggerMemoryEmbedding(
 
   const persisted = await settle(
     db
-      .insert(zeroWorkflowTriggerMemoryEmbeddings)
+      .insert(zeroWorkflowAutomationMemoryEmbeddings)
       .values({
-        workflowTriggerId: args.workflowTriggerId,
+        workflowTriggerId: args.workflowAutomationId,
         embeddingModel: embedded.model,
         queryHash: embeddedQueryHash,
         embedding: [...embedded.embedding],
       })
       .onConflictDoUpdate({
-        target: zeroWorkflowTriggerMemoryEmbeddings.workflowTriggerId,
+        target: zeroWorkflowAutomationMemoryEmbeddings.workflowTriggerId,
         set: {
           embeddingModel: embedded.model,
           queryHash: embeddedQueryHash,
@@ -116,7 +116,7 @@ export async function loadWorkflowTriggerMemoryEmbedding(
       }),
   );
   if (!persisted.ok) {
-    log.warn("Failed to persist workflow trigger memory embedding cache");
+    log.warn("Failed to persist workflow automation memory embedding cache");
     cacheResult = "miss_write_failed";
   }
 

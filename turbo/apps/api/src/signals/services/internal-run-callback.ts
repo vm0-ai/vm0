@@ -21,7 +21,7 @@ export type InternalRunCallbackKind = (typeof internalRunCallbackKinds)[number];
 
 export type NormalizedInternalRunCallbackKind = Exclude<
   InternalRunCallbackKind,
-  "workflow-automation:cron" | "workflow-automation:loop"
+  "workflow-trigger:cron" | "workflow-trigger:loop"
 >;
 
 export type InternalRunCallbackStatus = "completed" | "failed" | "progress";
@@ -54,8 +54,8 @@ function isNormalizedInternalRunCallbackKind(
     case "slack:org":
     case "teams:org":
     case "telegram":
-    case "workflow-trigger:cron":
-    case "workflow-trigger:loop": {
+    case "workflow-automation:cron":
+    case "workflow-automation:loop": {
       return true;
     }
     default: {
@@ -71,14 +71,14 @@ export function internalRunCallbackKindForRecord(
     return callback.internalKind;
   }
 
-  // Expand-phase compatibility for rows written by the follow-up emission
-  // release. Keep this normalization through the rolling-deploy drain.
+  // Contract-phase compatibility for rows written before canonical emission.
+  // Keep this normalization through the rolling-deploy drain.
   switch (callback.internalKind) {
-    case "workflow-automation:cron": {
-      return "workflow-trigger:cron";
+    case "workflow-trigger:cron": {
+      return "workflow-automation:cron";
     }
-    case "workflow-automation:loop": {
-      return "workflow-trigger:loop";
+    case "workflow-trigger:loop": {
+      return "workflow-automation:loop";
     }
     default: {
       return null;

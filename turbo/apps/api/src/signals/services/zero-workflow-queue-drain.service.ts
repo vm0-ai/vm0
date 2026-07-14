@@ -2,7 +2,7 @@ import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   zeroWorkflows,
-  zeroWorkflowTriggers,
+  zeroWorkflowTriggers as zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -19,18 +19,18 @@ import {
   restoreWorkflowQueueEventAndPause,
   type ClaimedWorkflowQueueEvent,
 } from "./chat-message-queue.service";
-import { runWorkflowTriggerNow$ } from "./zero-workflow-trigger-run.service";
+import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 
 const log = logger("ZeroWorkflowQueueDrain");
 
-// Consecutive stale events (deleted/disabled triggers) skipped per drain call
+// Consecutive stale events (deleted/disabled automations) skipped per drain call
 // before giving up; a successful run creation always stops the loop.
 const MAX_DRAIN_ATTEMPTS = 5;
 
 const DRAIN_SWEEP_LIMIT = 20;
 
 interface DequeueTarget {
-  readonly trigger: typeof zeroWorkflowTriggers.$inferSelect;
+  readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   readonly agentId: string;
   readonly workflowName: string;
 }
@@ -41,19 +41,19 @@ async function loadDequeueTarget(
 ): Promise<DequeueTarget | null> {
   const [row] = await db
     .select({
-      trigger: zeroWorkflowTriggers,
+      automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
     })
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .innerJoin(
       zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowTriggers.workflowId),
+      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
     )
     .where(
       and(
-        eq(zeroWorkflowTriggers.id, event.triggerId),
-        eq(zeroWorkflowTriggers.orgId, event.orgId),
+        eq(zeroWorkflowAutomations.id, event.triggerId),
+        eq(zeroWorkflowAutomations.orgId, event.orgId),
       ),
     )
     .limit(1);
@@ -63,7 +63,7 @@ async function loadDequeueTarget(
 /**
  * Advance the thread's workflow queue: as long as user queued messages always
  * win (enforced inside `claimNextWorkflowQueueEvent`), pop the oldest event
- * and turn it into a run. Events whose trigger disappeared or can no longer
+ * and turn it into a run. Events whose automation disappeared or can no longer
  * fire are consumed and skipped; a run-creation failure restores the event to
  * the queue head and pauses the queue so the backlog is preserved.
  */
@@ -85,7 +85,7 @@ export const drainWorkflowQueueForThread$ = command(
       const target = await loadDequeueTarget(db, event);
       signal.throwIfAborted();
       if (!target) {
-        log.debug("Dropping workflow queue event without trigger", {
+        log.debug("Dropping workflow queue event without automation", {
           eventId: event.id,
           triggerId: event.triggerId,
         });
@@ -112,10 +112,10 @@ export const drainWorkflowQueueForThread$ = command(
 
       const triggerSource = triggerSourceSchema.safeParse(event.triggerSource);
       const result = await set(
-        runWorkflowTriggerNow$,
+        runWorkflowAutomationNow$,
         {
           due: {
-            trigger: target.trigger,
+            automation: target.automation,
             agentId: target.agentId,
             workflowName: target.workflowName,
             chatThreadId: event.chatThreadId,

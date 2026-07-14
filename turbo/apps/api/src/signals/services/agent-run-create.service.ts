@@ -319,8 +319,8 @@ interface PreparedAdditionalVolumes {
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  // Run provenance for workflow schedule triggers.
-  readonly workflowTriggerId?: string;
+  // Run provenance for workflow schedule automations.
+  readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   // Stable chat run-group key for automation/workflow/goal-triggered runs.
   readonly runGroupId?: string;
@@ -4523,7 +4523,7 @@ async function insertZeroRunRecord(
   await tx.insert(zeroRuns).values({
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
-    workflowAutomationId: metadata.workflowTriggerId ?? null,
+    workflowAutomationId: metadata.workflowAutomationId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.runGroupId ?? null,
     goalId: metadata.goalId ?? null,

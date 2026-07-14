@@ -29,7 +29,7 @@ import {
   upsertOrgPlanEntitlement,
   writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
-import { disableIneligibleWorkflowWebhookTriggersForOrg } from "./workflow-webhook-trigger-entitlement.service";
+import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 
 const L = logger("CronBillingEntitlements");
 const PAID_TIERS = ["pro", "team", "custom"] as const;
@@ -1025,7 +1025,7 @@ export const reconcileBillingEntitlements$ = command(
         return subscription.orgId;
       }),
     )) {
-      await disableIneligibleWorkflowWebhookTriggersForOrg(db, {
+      await disableIneligibleWorkflowWebhookAutomationsForOrg(db, {
         orgId,
         signal,
       });

@@ -18,7 +18,7 @@ export interface OrgPlanCapabilities {
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
   readonly videoGenerationAllowed: boolean;
-  readonly workflowWebhookTriggerAllowed: boolean;
+  readonly workflowWebhookAutomationAllowed: boolean;
   readonly audioLifetimeLimit: number | null;
   readonly audioDailyRateLimit: number;
   readonly audioDailyDurationSeconds: number;
@@ -32,7 +32,7 @@ const CAPABILITY_SELECTION = {
   supportByok: orgPlanEntitlements.supportByok,
   restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
   videoGenerationAllowed: orgPlanEntitlements.videoGenerationAllowed,
-  workflowWebhookTriggerAllowed:
+  workflowWebhookAutomationAllowed:
     orgPlanEntitlements.workflowWebhookTriggerAllowed,
   audioLifetimeLimit: orgPlanEntitlements.audioLifetimeLimit,
   audioDailyRateLimit: orgPlanEntitlements.audioDailyRateLimit,
