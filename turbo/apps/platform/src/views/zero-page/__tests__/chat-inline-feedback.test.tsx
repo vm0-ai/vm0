@@ -469,6 +469,21 @@ describe("chat inline feedback", () => {
     const assistantReply = "The launch summary needs more source context.";
     const sentBodies: RunCreateCapture[] = [];
 
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000703",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",
