@@ -3285,7 +3285,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("opens the template picker without focusing the tabs on small screens", async () => {
+  it("opens the template picker with responsive category navigation", async () => {
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -3310,14 +3310,21 @@ describe("chat composer templates", () => {
     expect(tabByText("Video")).toBeInTheDocument();
     expect(screen.queryByText("Website")).not.toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
+    expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
+    expect(tabByText("Presentation")).toHaveClass("bg-card");
+    expect(tabByText("Presentation")).toHaveClass("text-foreground");
+    expect(tabByText("Illustration")).toHaveClass("text-muted-foreground");
+    expect(
+      screen.getByRole("combobox", { name: "Template category" }),
+    ).toBeInTheDocument();
 
-    const tabScroller = document.querySelector(
-      "[data-template-picker-tabs-scroll]",
+    const categorySidebar = document.querySelector(
+      "[data-template-picker-sidebar]",
     );
-    expect(tabScroller).toBeInstanceOf(HTMLElement);
-    expect(tabScroller).toHaveClass("overflow-x-auto");
-    expect(tabScroller).toHaveClass("sm:overflow-visible");
-    expect(tabScroller).toHaveClass("[scrollbar-width:thin]");
+    expect(categorySidebar).toBeInstanceOf(HTMLElement);
+    expect(categorySidebar).toHaveClass("hidden");
+    expect(categorySidebar).toHaveClass("sm:flex");
+    expect(categorySidebar).toHaveClass("bg-gray-50");
   });
 
   it("selects a presentation template from the picker", async () => {
