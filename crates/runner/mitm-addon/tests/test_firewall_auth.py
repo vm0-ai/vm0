@@ -2482,6 +2482,7 @@ class TestFetchFirewallHeaders:
     @pytest.mark.parametrize(
         "error_body",
         [
+            pytest.param(b"\xff", id="invalid-utf8"),
             b"not-json",
             b'"plain string"',
             b"[1, 2, 3]",
@@ -2673,6 +2674,28 @@ class TestFetchFirewallHeadersResourceBoundary:
             auth_client._fetch_firewall_headers_sync(_firewall_auth_request(), "https://api.vm0.ai")
 
         assert exc_info.value is http_error
+        http_error.close.assert_called_once()
+
+    def test_closes_http_error_response_when_body_has_invalid_utf8(self, mitm_ctx):
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            400,
+            "Bad Request",
+            b"\xff",
+        )
+        http_error.close = MagicMock()
+
+        with (
+            mitm_ctx(),
+            patch("platform_api.urllib.request.Request"),
+            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError) as exc_info,
+        ):
+            auth_client._fetch_firewall_headers_sync(_firewall_auth_request(), "https://api.vm0.ai")
+
+        assert exc_info.value is http_error
+        assert exc_info.value.code == 400
         http_error.close.assert_called_once()
 
     def test_closes_http_error_response_when_body_is_too_large(self, mitm_ctx):

@@ -311,7 +311,7 @@ def _fetch_firewall_headers_sync(
         with e:
             try:
                 error_body = json.loads(_read_firewall_auth_response_body(e))
-            except (json.JSONDecodeError, OSError):
+            except (UnicodeDecodeError, json.JSONDecodeError, OSError):
                 raise e from None
             if not isinstance(error_body, dict):
                 raise e from None
