@@ -8,6 +8,7 @@ import {
   type GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  isCodexFastModeModel,
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
@@ -2645,15 +2646,6 @@ function codexFastServiceTierRequested(body: NormalSendBody): boolean {
   return body.runOptions?.codexServiceTier === "fast";
 }
 
-function isCodexFastServiceTierModel(
-  model: string | null | undefined,
-): boolean {
-  const bareModel = model?.startsWith("openai/")
-    ? model.slice("openai/".length)
-    : model;
-  return bareModel === "gpt-5.5";
-}
-
 function validateCodexServiceTier(params: {
   readonly body: NormalSendBody;
   readonly modelPin: ThreadModelPin;
@@ -2670,12 +2662,12 @@ function validateCodexServiceTier(params: {
   }
   if (
     params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastServiceTierModel(params.modelPin.selectedModel)
+    isCodexFastModeModel(params.modelPin.selectedModel)
   ) {
     return undefined;
   }
   return badRequestMessage(
-    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 runs",
+    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
   );
 }
 
@@ -2688,7 +2680,7 @@ function codexServiceTierForRun(params: {
   return params.codexFastModeEnabled &&
     codexFastServiceTierRequested(params.body) &&
     params.providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastServiceTierModel(params.modelPin.selectedModel)
+    isCodexFastModeModel(params.modelPin.selectedModel)
     ? "fast"
     : undefined;
 }

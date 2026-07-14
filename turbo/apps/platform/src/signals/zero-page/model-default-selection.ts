@@ -1,4 +1,7 @@
-import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  isCodexFastModeModel,
+  type OrgModelPoliciesResponse,
+} from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 
 interface UserModelDefaultSource {
@@ -34,8 +37,7 @@ export function isCodexFastModeAvailableForSelection(params: {
 }): boolean {
   if (
     !params.codexFastModeEnabled ||
-    !params.selectedModel ||
-    params.selectedModel !== "gpt-5.5"
+    !isCodexFastModeModel(params.selectedModel)
   ) {
     return false;
   }

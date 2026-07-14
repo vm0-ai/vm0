@@ -1676,7 +1676,7 @@ describe("CHAT-02: model-first provider policies", () => {
     }
   }, 90_000);
 
-  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT 5.5 sends", async () => {
+  it("passes Codex fast mode only for feature-enabled ChatGPT subscription GPT 5.5 and GPT 5.6 sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const orgId = actor.orgId;
@@ -1696,8 +1696,15 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
         isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+      {
+        model: "gpt-5.5",
+        isDefault: false,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
         modelProviderId: null,
@@ -1718,7 +1725,7 @@ describe("CHAT-02: model-first provider policies", () => {
         agentId,
         prompt: "run codex fast with switch off",
         clientThreadId: switchOffThreadId,
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -1736,7 +1743,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const fast = await sendChatRun(actor, {
       agentId,
       prompt: "run codex fast",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       runOptions: { codexServiceTier: "fast" },
     });
     expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
@@ -1745,7 +1752,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const { claim } = await claimChatRun(runnerGroup, fast.runId);
     const environment = claimEnvironment(claim);
     expect(claim.cliAgentType).toBe("codex");
-    expect(environment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(environment.OPENAI_MODEL).toBe("gpt-5.6-sol");
     expect(environment.VM0_CODEX_SERVICE_TIER).toBe("fast");
     expect(environment.CHATGPT_ACCESS_TOKEN).toBe(
       modelProviderSecretPlaceholder(
@@ -1767,7 +1774,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expectApiError(invalidFastPatch.body);
     expect(invalidFastPatch.body.error.message).toBe(
-      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 runs",
+      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
     );
     expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
       "fast",
@@ -1828,7 +1835,7 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.message).toBe(
-      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 runs",
+      "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
     );
     await chat.requestReadThread(actor, rejectedThreadId, [404]);
   }, 90_000);
