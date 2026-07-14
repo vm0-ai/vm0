@@ -164,17 +164,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_values_inside_limits() {
-        validate_exec_boundary_sizes([
-            ExecBoundaryValue::arg("argv[0]", "/bin/bash"),
-            ExecBoundaryValue::env("HOME", "/home/vm0"),
-        ])
-        .unwrap();
-    }
-
-    #[test]
-    fn rejects_oversized_single_arg_without_value_leak() {
+    fn arg_string_limit_is_inclusive_without_value_leak() {
         let secret = "x".repeat(EXECVE_STRING_MAX_BYTES + 1);
+        let exact_limit = secret.strip_suffix('x').unwrap();
+
+        validate_exec_boundary_sizes([ExecBoundaryValue::arg("prompt", exact_limit)]).unwrap();
 
         let error =
             validate_exec_boundary_sizes([ExecBoundaryValue::arg("prompt", &secret)]).unwrap_err();
@@ -192,19 +186,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_oversized_single_env_with_key_length_included() {
-        let value = "x".repeat(EXECVE_STRING_MAX_BYTES);
+    fn env_string_limit_is_inclusive_with_key_and_separator() {
+        const KEY: &str = "BIG_ENV";
+        let exact_value_bytes = EXECVE_STRING_MAX_BYTES - KEY.len() - "=".len();
+        let value = "x".repeat(exact_value_bytes + 1);
+        let exact_limit = value.strip_suffix('x').unwrap();
+
+        validate_exec_boundary_sizes([ExecBoundaryValue::env(KEY, exact_limit)]).unwrap();
 
         let error =
-            validate_exec_boundary_sizes([ExecBoundaryValue::env("BIG_ENV", &value)]).unwrap_err();
+            validate_exec_boundary_sizes([ExecBoundaryValue::env(KEY, &value)]).unwrap_err();
 
-        assert!(matches!(
+        assert_eq!(
             error,
             ExecBoundarySizeError::StringTooLarge {
                 kind: ExecBoundaryValueKind::Env,
-                ..
+                name: KEY.to_string(),
+                bytes: EXECVE_STRING_MAX_BYTES + 1,
+                max_bytes: EXECVE_STRING_MAX_BYTES,
             }
-        ));
+        );
     }
 
     #[test]
@@ -228,49 +229,29 @@ mod tests {
     }
 
     #[test]
-    fn rejects_aggregate_overflow_from_pointer_overhead() {
-        let string_only_bytes = "/bin/bash".len() + 1 + "A=".len() + 1;
-        let error = validate_exec_boundary_sizes_with_budget(
-            [
-                ExecBoundaryValue::arg("argv[0]", "/bin/bash"),
-                ExecBoundaryValue::env("A", ""),
-            ],
-            string_only_bytes,
-        )
-        .unwrap_err();
-
-        assert!(matches!(
-            error,
-            ExecBoundarySizeError::AggregateTooLarge {
-                bytes,
-                max_bytes
-            } if bytes > string_only_bytes && max_bytes == string_only_bytes
-        ));
-    }
-
-    #[test]
-    fn aggregate_pointer_overhead_counts_argv_and_envp_null_terminators() {
+    fn aggregate_limit_is_inclusive_and_counts_all_overhead() {
         let value_count = 2usize;
-        let string_bytes = "/bin/bash".len() + 1 + "A=".len() + 1;
-        let budget_missing_envp_null =
-            string_bytes + ((value_count + 1) * EXECVE_POINTER_OVERHEAD_BYTES);
-        let expected_bytes = budget_missing_envp_null + EXECVE_POINTER_OVERHEAD_BYTES;
+        let string_only_bytes = "/bin/bash".len() + 1 + "A=".len() + 1;
+        let value_pointer_bytes = value_count * EXECVE_POINTER_OVERHEAD_BYTES;
+        let pointer_table_terminator_bytes = 2 * EXECVE_POINTER_OVERHEAD_BYTES;
+        let expected_bytes =
+            string_only_bytes + value_pointer_bytes + pointer_table_terminator_bytes;
+        let values = [
+            ExecBoundaryValue::arg("argv[0]", "/bin/bash"),
+            ExecBoundaryValue::env("A", ""),
+        ];
 
-        let error = validate_exec_boundary_sizes_with_budget(
-            [
-                ExecBoundaryValue::arg("argv[0]", "/bin/bash"),
-                ExecBoundaryValue::env("A", ""),
-            ],
-            budget_missing_envp_null,
-        )
-        .unwrap_err();
+        validate_exec_boundary_sizes_with_budget(values.clone(), expected_bytes).unwrap();
 
-        assert!(matches!(
+        let error =
+            validate_exec_boundary_sizes_with_budget(values, expected_bytes - 1).unwrap_err();
+
+        assert_eq!(
             error,
             ExecBoundarySizeError::AggregateTooLarge {
-                bytes,
-                max_bytes
-            } if bytes == expected_bytes && max_bytes == budget_missing_envp_null
-        ));
+                bytes: expected_bytes,
+                max_bytes: expected_bytes - 1,
+            }
+        );
     }
 }
