@@ -1,7 +1,7 @@
 /**
- * Persisted callback kinds accepted during the expand phase. Producers must
- * keep emitting `workflow-trigger:*` until this acceptance release is fully
- * deployed; the follow-up release can then switch writes safely.
+ * Persisted callback kinds accepted during the rolling-deploy drain. Producers
+ * emit `workflow-automation:*`; legacy `workflow-trigger:*` rows remain readable
+ * until every in-flight run from the previous release has completed.
  */
 export const internalRunCallbackKinds = [
   "agent",

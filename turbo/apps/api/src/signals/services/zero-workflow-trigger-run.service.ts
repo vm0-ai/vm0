@@ -145,13 +145,13 @@ function buildWorkflowTriggerCallbacks(
   const callbacks: InternalRunCallbackInput[] = [];
   if (trigger.scheduleType === "loop") {
     callbacks.push({
-      internalKind: "workflow-trigger:loop",
+      internalKind: "workflow-automation:loop",
       secret: generateCallbackSecret(),
       payload: { triggerId: trigger.id },
     });
   } else {
     callbacks.push({
-      internalKind: "workflow-trigger:cron",
+      internalKind: "workflow-automation:cron",
       secret: generateCallbackSecret(),
       payload: {
         triggerId: trigger.id,
