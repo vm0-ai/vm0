@@ -481,10 +481,11 @@ impl DeferredUploadPhase {
 /// agent session id is available. Park failure, cancellation before idle-pool
 /// transfer, or pool rejection falls back to destruction.
 ///
-/// Finalization returns [`BudgetOwnership`](super::job_lifecycle::BudgetOwnership)
-/// for completion. Non-accepted paths keep the active lease through provider
-/// completion and active-status removal, then release it. An accepted idle entry
-/// owns and retains the lease until reuse or destruction.
+/// The completion state returned by finalization carries
+/// [`BudgetOwnership`](super::job_lifecycle::BudgetOwnership). Non-accepted paths
+/// keep the active lease through provider completion and active-status removal,
+/// then release it. An accepted idle entry owns and retains the lease until reuse
+/// or destruction.
 pub(super) fn spawn_job(
     request: SpawnJobRequest,
     ctx: &SpawnContext,
