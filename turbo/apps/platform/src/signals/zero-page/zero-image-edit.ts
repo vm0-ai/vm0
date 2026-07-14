@@ -75,7 +75,12 @@ export type ImageEditRegionComment = {
   region: ImageEditRegion;
 };
 
-const IMAGE_EDIT_MODEL = "nano-banana-2";
+const IMAGE_EDIT_MODEL_BY_OPERATION = {
+  removeBackground: "birefnet",
+  enhance: "clarity-upscaler",
+  editRegion: "nano-banana-2",
+  styleTransfer: "nano-banana-2",
+} as const satisfies Record<ImageEditOperation, string>;
 // Region editing runs in two steps. First a multimodal model interprets a copy
 // of the source image with numbered marks drawn on each selected region,
 // turning each mark + user comment into a disambiguated, self-contained edit
@@ -100,16 +105,6 @@ const POLL_TIMEOUT_MS = 90_000;
 // (and its "Working"/Send-disabled flag) forever; the poll path is likewise
 // time-boxed via POLL_TIMEOUT_MS.
 const IMAGE_LOAD_TIMEOUT_MS = 30_000;
-
-const IMAGE_EDIT_PROMPTS = {
-  removeBackground:
-    "Remove the background completely. Keep only the main subject on a plain solid white background. Do not alter the subject.",
-  enhance:
-    "Enhance this image to high definition. Increase sharpness, clarity and fine detail while faithfully preserving the original content, composition and colors.",
-} as const satisfies Record<
-  Exclude<ImageEditOperation, "editRegion" | "styleTransfer">,
-  string
->;
 
 const IMAGE_EDIT_LOADING_TOAST = {
   removeBackground: "Removing background...",
@@ -473,13 +468,11 @@ function imageEditPrompt(args: {
   operation: ImageEditOperation;
   regionEdits?: readonly ResolvedRegionEdit[];
   stylePrompt?: string;
-}): string {
+}): string | undefined {
   switch (args.operation) {
-    case "removeBackground": {
-      return IMAGE_EDIT_PROMPTS.removeBackground;
-    }
+    case "removeBackground":
     case "enhance": {
-      return IMAGE_EDIT_PROMPTS.enhance;
+      return undefined;
     }
     case "editRegion": {
       return editRegionPrompt(args.regionEdits ?? []);
@@ -737,7 +730,7 @@ async function startImageEditGeneration({
   const accepted = await accept(
     generateClient.post({
       body: {
-        model: IMAGE_EDIT_MODEL,
+        model: IMAGE_EDIT_MODEL_BY_OPERATION[operation],
         outputFormat: regionEdit ? "png" : undefined,
         prompt: imageEditPrompt({
           operation,
