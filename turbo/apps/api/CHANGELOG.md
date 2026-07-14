@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.269.0](https://github.com/vm0-ai/vm0/compare/api-v1.268.0...api-v1.269.0) (2026-07-14)
+
+
+### Features
+
+* **api:** serve refreshed presentation runbooks compatibly ([#21321](https://github.com/vm0-ai/vm0/issues/21321)) ([eadaba4](https://github.com/vm0-ai/vm0/commit/eadaba4dff87b85de340ef49db65158113553970))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.190.0
+    * @vm0/core bumped to 8.427.2
+    * @vm0/db bumped to 1.111.6
+
 ## [1.268.0](https://github.com/vm0-ai/vm0/compare/api-v1.267.0...api-v1.268.0) (2026-07-14)
 
 

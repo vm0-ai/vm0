@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.112](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.111...sandbox-fc-v0.37.112) (2026-07-14)
+
+
+### Refactoring
+
+* **sandbox-fc:** isolate snapshot process lifecycle ([#21317](https://github.com/vm0-ai/vm0/issues/21317)) ([17f221a](https://github.com/vm0-ai/vm0/commit/17f221a436a27e948b80c293195aef606617e8e3))
+
 ## [0.37.111](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.110...sandbox-fc-v0.37.111) (2026-07-14)
 
 ## [0.37.110](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.109...sandbox-fc-v0.37.110) (2026-07-13)
