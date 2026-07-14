@@ -4159,6 +4159,13 @@
       "when": 1784031632498,
       "tag": "0593_rename_zero_workflow_trigger_memory_embeddings_to_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 594,
+      "version": "7",
+      "when": 1784032122160,
+      "tag": "0594_expand_workflow_event_automation_ids",
+      "breakpoints": true
     }
   ]
 }

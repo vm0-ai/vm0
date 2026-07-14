@@ -321,6 +321,14 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    automationId: uuid("automation_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
     deliveryKey: text("delivery_key").notNull(),
     bodySha256: text("body_sha256").notNull(),
     status: varchar("status", { length: 32 }).notNull(),
@@ -339,6 +347,14 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
         table.triggerId,
         table.receivedAt,
       ),
+      uniqueIndex("idx_zero_workflow_webhook_deliveries_automation_key").on(
+        table.automationId,
+        table.deliveryKey,
+      ),
+      index("idx_zero_workflow_webhook_deliveries_automation_received").on(
+        table.automationId,
+        table.receivedAt,
+      ),
     ];
   },
 );
@@ -348,6 +364,14 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     triggerId: uuid("trigger_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    automationId: uuid("automation_id")
       .notNull()
       .references(
         () => {
@@ -369,6 +393,10 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
     return [
       uniqueIndex("idx_zero_workflow_github_processed_delivery").on(
         table.triggerId,
+        table.githubDeliveryId,
+      ),
+      uniqueIndex("idx_zero_workflow_github_processed_automation_delivery").on(
+        table.automationId,
         table.githubDeliveryId,
       ),
       index("idx_zero_workflow_github_processed_subject").on(
