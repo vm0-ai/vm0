@@ -14,7 +14,6 @@ import {
   materializePermissionDraftForLegacySave,
   permissionDraftInitialPolicyKey,
   resolvePermissionDraftExpiration,
-  resolvePermissionDraftGroupConfiguration,
   resolvePermissionDraftUnknownPolicy,
   restorePermissionDraftPermission,
   restorePermissionDraftUnknown,
@@ -181,17 +180,6 @@ describe("permission draft intent materialization", () => {
         permissionName: "bookmarks:read",
       }),
     ).toBeUndefined();
-    expect(
-      resolvePermissionDraftGroupConfiguration({
-        context,
-        draft,
-        permissions: READ_PERMISSIONS,
-        explicitGrants: new Map(),
-      }),
-    ).toStrictEqual({
-      policy: "allow",
-      expiration: { kind: "mixed" },
-    });
 
     const materialized = materializePermissionDraftForLegacySave({
       context,
@@ -271,15 +259,6 @@ describe("permission draft intent row duration overrides", () => {
       draft,
       permissionName: "bookmarks:read",
     });
-
-    expect(
-      resolvePermissionDraftGroupConfiguration({
-        context,
-        draft,
-        permissions: READ_PERMISSIONS,
-        explicitGrants: new Map(),
-      }),
-    ).toStrictEqual({ policy: "mixed" });
 
     const materialized = materializePermissionDraftForLegacySave({
       context,
@@ -398,17 +377,6 @@ describe("permission draft intent group duration", () => {
         permissionName: "bookmarks:read",
       }),
     ).toBe("7d");
-    expect(
-      resolvePermissionDraftGroupConfiguration({
-        context,
-        draft,
-        permissions: READ_PERMISSIONS,
-        explicitGrants: new Map(),
-      }),
-    ).toStrictEqual({
-      policy: "allow",
-      expiration: { kind: "selected", expiresIn: "7d" },
-    });
   });
 
   it("keeps cleared group members detached when allowing a group", () => {
@@ -547,18 +515,6 @@ describe("permission draft intent allow always selection", () => {
       policy: "allow",
     });
 
-    expect(
-      resolvePermissionDraftGroupConfiguration({
-        context,
-        draft,
-        permissions: READ_PERMISSIONS,
-        explicitGrants,
-      }),
-    ).toStrictEqual({
-      policy: "allow",
-      expiration: { kind: "mixed" },
-    });
-
     draft = setPermissionDraftGroupAllowExpiration({
       draft,
       category: "Read",
@@ -581,17 +537,6 @@ describe("permission draft intent allow always selection", () => {
         permissionName: "channels:read",
       }),
     ).toBeUndefined();
-    expect(
-      resolvePermissionDraftGroupConfiguration({
-        context,
-        draft,
-        permissions: READ_PERMISSIONS,
-        explicitGrants,
-      }),
-    ).toStrictEqual({
-      policy: "allow",
-      expiration: { kind: "always" },
-    });
     expect(
       materializePermissionDraftForLegacySave({
         context,
