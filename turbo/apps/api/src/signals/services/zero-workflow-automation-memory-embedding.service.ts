@@ -101,7 +101,6 @@ export async function loadWorkflowAutomationMemoryEmbedding(
     db
       .insert(zeroWorkflowAutomationMemoryEmbeddings)
       .values({
-        legacyWorkflowAutomationId: args.workflowAutomationId,
         workflowAutomationId: args.workflowAutomationId,
         embeddingModel: embedded.model,
         queryHash: embeddedQueryHash,
