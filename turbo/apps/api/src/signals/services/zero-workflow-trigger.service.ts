@@ -35,6 +35,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   workflowUserTriggerThreads,
+  zeroWorkflowTriggerMemoryEmbeddings,
   zeroWorkflowTriggers,
   zeroWorkflowWebhookTriggers,
   zeroWorkflows,
@@ -2011,23 +2012,36 @@ export const updateWorkflowTrigger$ = command(
       trigger.lastRunAt,
     );
 
-    const [row] = await writeDb
-      .update(zeroWorkflowTriggers)
-      .set({
-        scheduleType: cols.scheduleType,
-        cronExpression: cols.cronExpression,
-        intervalSeconds: cols.intervalSeconds,
-        atTime: cols.atTime,
-        timezone: cols.timezone,
-        nextRunAt,
-        updatedAt: now,
-      })
-      .where(eq(zeroWorkflowTriggers.id, trigger.id))
-      .returning();
+    const row = await writeDb.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(zeroWorkflowTriggers)
+        .set({
+          scheduleType: cols.scheduleType,
+          cronExpression: cols.cronExpression,
+          intervalSeconds: cols.intervalSeconds,
+          atTime: cols.atTime,
+          timezone: cols.timezone,
+          nextRunAt,
+          updatedAt: now,
+        })
+        .where(eq(zeroWorkflowTriggers.id, trigger.id))
+        .returning();
+      if (!updated) {
+        throw new Error("Failed to update workflow trigger");
+      }
+      if (cols.scheduleType === "once") {
+        await tx
+          .delete(zeroWorkflowTriggerMemoryEmbeddings)
+          .where(
+            eq(
+              zeroWorkflowTriggerMemoryEmbeddings.workflowTriggerId,
+              trigger.id,
+            ),
+          );
+      }
+      return updated;
+    });
     signal.throwIfAborted();
-    if (!row) {
-      throw new Error("Failed to update workflow trigger");
-    }
     return { kind: "ok", summary: await rowToSummary(writeDb, row) };
   },
 );
