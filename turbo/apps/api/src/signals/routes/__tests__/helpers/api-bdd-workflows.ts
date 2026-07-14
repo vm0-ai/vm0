@@ -6,7 +6,7 @@ import {
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowTriggersContract,
-  type ZeroWorkflowTriggerSummary,
+  type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
 
@@ -192,7 +192,9 @@ export function createWorkflowsBddApi(context: TestContext) {
       return response.body.id;
     },
 
-    async readTrigger(triggerId: string): Promise<ZeroWorkflowTriggerSummary> {
+    async readTrigger(
+      triggerId: string,
+    ): Promise<ZeroWorkflowAutomationSummary> {
       const client = setupApp({ context })(zeroWorkflowTriggersContract);
       const response = await accept(
         client.get({ headers: authHeaders(), params: { id: triggerId } }),

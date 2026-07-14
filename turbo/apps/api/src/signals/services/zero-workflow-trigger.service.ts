@@ -11,7 +11,7 @@ import {
   notionDatabaseItemCreatedEventConfigSchema,
   notionPageContentUpdatedEventConfigSchema,
   webhookReceivedEventConfigSchema,
-  type ChatThreadWorkflowTrigger,
+  type ChatThreadWorkflowAutomation,
   type GmailWorkflowEventConfig,
   type GoogleCalendarWorkflowEventConfig,
   type GoogleMeetWorkflowEventConfig,
@@ -28,7 +28,7 @@ import {
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowAutomationEntry,
-  type ZeroWorkflowTriggerSummary,
+  type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -121,7 +121,7 @@ type NotionWorkflowEventType = Extract<
  * Outcome of a trigger mutation, mapped to an HTTP response by the route layer.
  */
 export type TriggerResult =
-  | { readonly kind: "ok"; readonly summary: ZeroWorkflowTriggerSummary }
+  | { readonly kind: "ok"; readonly summary: ZeroWorkflowAutomationSummary }
   | { readonly kind: "deleted" }
   | { readonly kind: "not-found" }
   | { readonly kind: "forbidden"; readonly message: string }
@@ -416,7 +416,7 @@ async function resolveTriggerChatThreadId(
 function notionChildPageRowSummary(
   row: TriggerRow,
   chatThreadId: string | null,
-): ZeroWorkflowTriggerSummary {
+): ZeroWorkflowAutomationSummary {
   return {
     ...rowSummaryBase(row, chatThreadId),
     kind: "event",
@@ -430,7 +430,7 @@ function notionChildPageRowSummary(
 function notionDatabaseItemRowSummary(
   row: TriggerRow,
   chatThreadId: string | null,
-): ZeroWorkflowTriggerSummary {
+): ZeroWorkflowAutomationSummary {
   return {
     ...rowSummaryBase(row, chatThreadId),
     kind: "event",
@@ -446,7 +446,7 @@ function notionDatabaseItemRowSummary(
 function notionPageContentUpdatedRowSummary(
   row: TriggerRow,
   chatThreadId: string | null,
-): ZeroWorkflowTriggerSummary {
+): ZeroWorkflowAutomationSummary {
   return {
     ...rowSummaryBase(row, chatThreadId),
     kind: "event",
@@ -462,7 +462,7 @@ function notionPageContentUpdatedRowSummary(
 function eventRowToSummary(
   row: TriggerRow,
   chatThreadId: string | null,
-): ZeroWorkflowTriggerSummary | null {
+): ZeroWorkflowAutomationSummary | null {
   if (row.eventType === "gmail-new-message") {
     return {
       ...rowSummaryBase(row, chatThreadId),
@@ -557,7 +557,7 @@ async function rowToSummary(
   db: ReadonlyDb,
   row: TriggerRow,
   options: RowToSummaryOptions = {},
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowAutomationSummary> {
   const chatThreadId = await resolveTriggerChatThreadId(db, row, options);
   if (row.kind === "event") {
     if (row.eventType === "webhook-received") {
@@ -593,7 +593,7 @@ async function rowToPublicSummary(
   db: ReadonlyDb,
   row: TriggerRow,
   options: { readonly chatThreadId?: string | null } = {},
-): Promise<ZeroWorkflowTriggerSummary | null> {
+): Promise<ZeroWorkflowAutomationSummary | null> {
   if (row.kind === "event" && !supportedWorkflowEventType(row.eventType)) {
     return null;
   }
@@ -733,7 +733,7 @@ export async function loadWorkflowTriggers(
     readonly workflowId: string;
     readonly userId: string;
   },
-): Promise<readonly ZeroWorkflowTriggerSummary[]> {
+): Promise<readonly ZeroWorkflowAutomationSummary[]> {
   const rows = await db
     .select()
     .from(zeroWorkflowTriggers)
@@ -836,9 +836,9 @@ export async function listWorkspaceWorkflowTriggers(
 
 function chatThreadTriggerFromSummary(args: {
   readonly workflow: WorkflowRow;
-  readonly summary: ZeroWorkflowTriggerSummary | null;
+  readonly summary: ZeroWorkflowAutomationSummary | null;
   readonly chatThreadId: string | null;
-}): readonly ChatThreadWorkflowTrigger[] {
+}): readonly ChatThreadWorkflowAutomation[] {
   const { workflow, summary, chatThreadId } = args;
   if (!summary || chatThreadId === null) {
     return [];
@@ -869,7 +869,7 @@ export async function listThreadBoundWorkflowTriggers(
     readonly userId: string;
     readonly threadId: string;
   },
-): Promise<readonly ChatThreadWorkflowTrigger[]> {
+): Promise<readonly ChatThreadWorkflowAutomation[]> {
   const rows = await db
     .select({
       trigger: zeroWorkflowTriggers,
@@ -924,7 +924,7 @@ export async function getWorkflowTrigger(
     readonly member: WorkflowMember;
     readonly triggerId: string;
   },
-): Promise<ZeroWorkflowTriggerSummary | null> {
+): Promise<ZeroWorkflowAutomationSummary | null> {
   const trigger = await loadTriggerRow(db, {
     orgId: args.orgId,
     triggerId: args.triggerId,
@@ -1101,7 +1101,7 @@ async function insertWorkflowEventTrigger(
     readonly workflowTitle: string;
     readonly currentTime: Date;
   },
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowAutomationSummary> {
   return await db.transaction(async (tx) => {
     const chatThreadId = await ensureWorkflowUserTriggerThread(tx, {
       orgId: args.input.orgId,
@@ -1149,7 +1149,7 @@ async function insertWebhookEventTrigger(
     readonly currentTime: Date;
     readonly signal: AbortSignal;
   },
-): Promise<ZeroWorkflowTriggerSummary | null> {
+): Promise<ZeroWorkflowAutomationSummary | null> {
   return await db.transaction(async (tx) => {
     const tierEligible = await lockWorkflowWebhookTriggerTierEligibleForOrg(
       tx,
@@ -1282,7 +1282,7 @@ async function insertScheduleTrigger(
     readonly nextRunAt: Date | null;
     readonly currentTime: Date;
   },
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowAutomationSummary> {
   return await db.transaction(async (tx) => {
     const chatThreadId = await ensureWorkflowUserTriggerThread(tx, {
       orgId: args.input.orgId,
@@ -1817,7 +1817,7 @@ async function updateTriggerEventConfig(
     readonly eventConfig: GmailWorkflowEventConfig | GithubWorkflowEventConfig;
     readonly signal: AbortSignal;
   },
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowAutomationSummary> {
   const [row] = await db
     .update(zeroWorkflowTriggers)
     .set({

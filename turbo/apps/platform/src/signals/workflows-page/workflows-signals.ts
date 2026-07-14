@@ -20,8 +20,8 @@ import {
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowAutomationEntry,
-  type ZeroWorkflowTriggerCreateRequest,
-  type ZeroWorkflowTriggerSummary,
+  type ZeroWorkflowAutomationCreateRequest,
+  type ZeroWorkflowAutomationSummary,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -92,7 +92,7 @@ export type WorkflowTriggerCategoryKey =
   | "notion"
   | "integrations";
 type WorkflowWebhookTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
 type WorkflowGithubLabelActor =
@@ -1042,7 +1042,7 @@ export const createWorkflowGoogleCalendarEventTrigger$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
-    const body: ZeroWorkflowTriggerCreateRequest =
+    const body: ZeroWorkflowAutomationCreateRequest =
       input.eventType === "google-calendar-event-created"
         ? {
             kind: "event",

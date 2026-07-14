@@ -1,9 +1,9 @@
-import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { ChatThreadWorkflowAutomation } from "@vm0/api-contracts/contracts/zero-workflows";
 
 // Shared in-memory store backing workflow trigger mock handlers.
-let mockWorkflowTriggers: ChatThreadWorkflowTrigger[] = [];
+let mockWorkflowTriggers: ChatThreadWorkflowAutomation[] = [];
 type MockWorkflowTriggerOverrides = Partial<
-  Omit<ChatThreadWorkflowTrigger, "workflow">
+  Omit<ChatThreadWorkflowAutomation, "workflow">
 > & {
   readonly eventType?:
     | "gmail-new-message"
@@ -15,18 +15,18 @@ type MockWorkflowTriggerOverrides = Partial<
     | "notion-child-page-created"
     | "notion-database-item-created";
   readonly eventConfig?: Extract<
-    ChatThreadWorkflowTrigger,
+    ChatThreadWorkflowAutomation,
     { kind: "event" }
   >["eventConfig"];
-  readonly workflow?: Partial<ChatThreadWorkflowTrigger["workflow"]>;
+  readonly workflow?: Partial<ChatThreadWorkflowAutomation["workflow"]>;
 };
 
-export function getMockWorkflowTriggers(): ChatThreadWorkflowTrigger[] {
+export function getMockWorkflowTriggers(): ChatThreadWorkflowAutomation[] {
   return mockWorkflowTriggers;
 }
 
 export function setMockWorkflowTriggers(
-  triggers: ChatThreadWorkflowTrigger[],
+  triggers: ChatThreadWorkflowAutomation[],
 ): void {
   mockWorkflowTriggers = triggers;
 }
@@ -42,14 +42,14 @@ type MockWorkflowTriggerBase = {
   readonly nextRunAt: string | null;
   readonly lastRunAt: string | null;
   readonly ownerUserId: string;
-  readonly workflow: ChatThreadWorkflowTrigger["workflow"];
+  readonly workflow: ChatThreadWorkflowAutomation["workflow"];
 };
 
 function createMockNotionChildPageTrigger(
   base: MockWorkflowTriggerBase,
   overrides: MockWorkflowTriggerOverrides,
-  workflow: ChatThreadWorkflowTrigger["workflow"],
-): ChatThreadWorkflowTrigger {
+  workflow: ChatThreadWorkflowAutomation["workflow"],
+): ChatThreadWorkflowAutomation {
   return {
     ...base,
     kind: "event",
@@ -68,14 +68,14 @@ function createMockNotionChildPageTrigger(
     scheduleSummary: null,
     ...overrides,
     workflow,
-  } as ChatThreadWorkflowTrigger;
+  } as ChatThreadWorkflowAutomation;
 }
 
 function createMockNotionDatabaseItemTrigger(
   base: MockWorkflowTriggerBase,
   overrides: MockWorkflowTriggerOverrides,
-  workflow: ChatThreadWorkflowTrigger["workflow"],
-): ChatThreadWorkflowTrigger {
+  workflow: ChatThreadWorkflowAutomation["workflow"],
+): ChatThreadWorkflowAutomation {
   return {
     ...base,
     kind: "event",
@@ -94,14 +94,14 @@ function createMockNotionDatabaseItemTrigger(
     scheduleSummary: null,
     ...overrides,
     workflow,
-  } as ChatThreadWorkflowTrigger;
+  } as ChatThreadWorkflowAutomation;
 }
 
 function createMockGmailLabelTrigger(
   base: MockWorkflowTriggerBase,
   overrides: MockWorkflowTriggerOverrides,
-  workflow: ChatThreadWorkflowTrigger["workflow"],
-): ChatThreadWorkflowTrigger {
+  workflow: ChatThreadWorkflowAutomation["workflow"],
+): ChatThreadWorkflowAutomation {
   return {
     ...base,
     kind: "event",
@@ -115,14 +115,14 @@ function createMockGmailLabelTrigger(
     scheduleSummary: null,
     ...overrides,
     workflow,
-  } as ChatThreadWorkflowTrigger;
+  } as ChatThreadWorkflowAutomation;
 }
 
 function createMockGithubLabelTrigger(
   base: MockWorkflowTriggerBase,
   overrides: MockWorkflowTriggerOverrides,
-  workflow: ChatThreadWorkflowTrigger["workflow"],
-): ChatThreadWorkflowTrigger {
+  workflow: ChatThreadWorkflowAutomation["workflow"],
+): ChatThreadWorkflowAutomation {
   return {
     ...base,
     kind: "event",
@@ -140,14 +140,14 @@ function createMockGithubLabelTrigger(
     scheduleSummary: null,
     ...overrides,
     workflow,
-  } as ChatThreadWorkflowTrigger;
+  } as ChatThreadWorkflowAutomation;
 }
 
 function createMockGoogleCalendarTrigger(
   base: MockWorkflowTriggerBase,
   overrides: MockWorkflowTriggerOverrides,
-  workflow: ChatThreadWorkflowTrigger["workflow"],
-): ChatThreadWorkflowTrigger {
+  workflow: ChatThreadWorkflowAutomation["workflow"],
+): ChatThreadWorkflowAutomation {
   return {
     ...base,
     kind: "event",
@@ -166,13 +166,13 @@ function createMockGoogleCalendarTrigger(
     scheduleSummary: null,
     ...overrides,
     workflow,
-  } as ChatThreadWorkflowTrigger;
+  } as ChatThreadWorkflowAutomation;
 }
 
 /** A workflow-trigger store row with sensible defaults. */
 export function createMockWorkflowTrigger(
   overrides?: MockWorkflowTriggerOverrides,
-): ChatThreadWorkflowTrigger {
+): ChatThreadWorkflowAutomation {
   const workflow = {
     id: "a0000001-0000-4000-a000-000000000001",
     agentId: "c0000000-0000-4000-a000-000000000001",
@@ -215,7 +215,7 @@ export function createMockWorkflowTrigger(
       scheduleSummary: null,
       ...overrides,
       workflow,
-    } as ChatThreadWorkflowTrigger;
+    } as ChatThreadWorkflowAutomation;
   }
   return {
     ...base,
@@ -224,7 +224,7 @@ export function createMockWorkflowTrigger(
     scheduleSummary: "Every 60s",
     ...overrides,
     workflow,
-  } as ChatThreadWorkflowTrigger;
+  } as ChatThreadWorkflowAutomation;
 }
 
 const DEFAULT_CHAT_THREAD_ID = "d0000000-0000-4000-a000-000000000001";

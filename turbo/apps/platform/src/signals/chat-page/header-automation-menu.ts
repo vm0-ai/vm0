@@ -2,7 +2,7 @@ import { command, computed, state, type Computed } from "ccstate";
 
 import {
   zeroWorkflowTriggersContract,
-  type ChatThreadWorkflowTrigger,
+  type ChatThreadWorkflowAutomation,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type ZeroWorkflowSchedule,
@@ -30,10 +30,10 @@ export interface HeaderWorkflowTriggerEntry {
   readonly workflowDisplayName: string | null;
   readonly summary: string;
   readonly timezone: string;
-  readonly trigger: ChatThreadWorkflowTrigger;
+  readonly trigger: ChatThreadWorkflowAutomation;
 }
 
-function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
+function workflowTriggerSummary(trigger: ChatThreadWorkflowAutomation): string {
   if (trigger.kind === "event") {
     if (trigger.eventType === "gmail-new-message") {
       return "Gmail new message";

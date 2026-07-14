@@ -90,7 +90,7 @@ import type {
   GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
-  ChatThreadWorkflowTrigger,
+  ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
@@ -1906,7 +1906,7 @@ function HeaderWorkflowTriggerEditDialog({
   open,
   onOpenChange,
 }: {
-  readonly trigger: ChatThreadWorkflowTrigger;
+  readonly trigger: ChatThreadWorkflowAutomation;
   readonly displayTimezone: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -1975,7 +1975,7 @@ function localDateTimeInputValue(value: string): string {
 }
 
 function scheduleFromHeaderTriggerForm(
-  trigger: Extract<ChatThreadWorkflowTrigger, { kind: "schedule" }>,
+  trigger: Extract<ChatThreadWorkflowAutomation, { kind: "schedule" }>,
   form: FormData,
 ): ZeroWorkflowSchedule | null {
   const schedule = trigger.schedule;
@@ -2014,7 +2014,7 @@ function HeaderScheduleTriggerEditForm({
   displayTimezone,
   onDone,
 }: {
-  readonly trigger: Extract<ChatThreadWorkflowTrigger, { kind: "schedule" }>;
+  readonly trigger: Extract<ChatThreadWorkflowAutomation, { kind: "schedule" }>;
   readonly displayTimezone: string;
   readonly onDone: () => void;
 }) {
@@ -2140,7 +2140,7 @@ function HeaderGmailNewMessageTriggerEditForm({
   onDone,
 }: {
   readonly trigger: Extract<
-    ChatThreadWorkflowTrigger,
+    ChatThreadWorkflowAutomation,
     { eventType: "gmail-new-message" }
   >;
   readonly onDone: () => void;
@@ -2231,7 +2231,7 @@ function HeaderGmailLabelTriggerEditForm({
   onDone,
 }: {
   readonly trigger: Extract<
-    ChatThreadWorkflowTrigger,
+    ChatThreadWorkflowAutomation,
     { eventType: "gmail-label-applied" }
   >;
   readonly onDone: () => void;

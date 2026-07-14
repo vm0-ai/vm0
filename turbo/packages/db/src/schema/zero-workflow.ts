@@ -153,7 +153,7 @@ export const workflowUserTriggerThreads = pgTable(
  * Uses the same schedule semantics as the retired automation trigger rows.
  */
 export type ZeroWorkflowScheduleType = "cron" | "loop" | "once";
-export type ZeroWorkflowTriggerKind = "schedule" | "event";
+export type ZeroWorkflowAutomationKind = "schedule" | "event";
 export type ZeroWorkflowEventType =
   | "gmail-new-message"
   | "gmail-label-applied"
@@ -196,7 +196,7 @@ export const zeroWorkflowTriggers = pgTable(
     // owner's secrets / connectors / credits.
     ownerUserId: text("owner_user_id").notNull(),
     kind: varchar("kind", { length: 16 })
-      .$type<ZeroWorkflowTriggerKind>()
+      .$type<ZeroWorkflowAutomationKind>()
       .notNull()
       .default("schedule"),
     eventType: varchar("event_type", {

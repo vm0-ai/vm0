@@ -3,12 +3,12 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   zeroWorkflowVisibilityContract,
-  type ChatThreadWorkflowTrigger,
+  type ChatThreadWorkflowAutomation,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowAutomationEntry,
-  type ZeroWorkflowTriggerCreateRequest,
-  type ZeroWorkflowTriggerSummary,
+  type ZeroWorkflowAutomationCreateRequest,
+  type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { mockApi } from "../msw-contract.ts";
@@ -46,7 +46,7 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
   };
 }
 
-function triggerSummaryBase(trigger: ChatThreadWorkflowTrigger) {
+function triggerSummaryBase(trigger: ChatThreadWorkflowAutomation) {
   return {
     id: trigger.id,
     ownerUserId: trigger.ownerUserId,
@@ -58,8 +58,8 @@ function triggerSummaryBase(trigger: ChatThreadWorkflowTrigger) {
 }
 
 function triggerSummary(
-  trigger: ChatThreadWorkflowTrigger,
-): ZeroWorkflowTriggerSummary {
+  trigger: ChatThreadWorkflowAutomation,
+): ZeroWorkflowAutomationSummary {
   if (trigger.kind === "event") {
     return {
       ...triggerSummaryBase(trigger),
@@ -68,7 +68,7 @@ function triggerSummary(
       eventConfig: trigger.eventConfig,
       schedule: null,
       scheduleSummary: null,
-    } as ZeroWorkflowTriggerSummary;
+    } as ZeroWorkflowAutomationSummary;
   }
   return {
     ...triggerSummaryBase(trigger),
@@ -79,8 +79,8 @@ function triggerSummary(
 }
 
 function publicWorkflowTrigger(
-  trigger: ZeroWorkflowTriggerSummary,
-): ZeroWorkflowTriggerSummary {
+  trigger: ZeroWorkflowAutomationSummary,
+): ZeroWorkflowAutomationSummary {
   if (trigger.kind !== "event" || trigger.eventType !== "webhook-received") {
     return trigger;
   }
@@ -320,8 +320,10 @@ function visibilityHandlers() {
 
 function updateDetailTrigger(
   triggerId: string,
-  apply: (trigger: ZeroWorkflowTriggerSummary) => ZeroWorkflowTriggerSummary,
-): ZeroWorkflowTriggerSummary | null {
+  apply: (
+    trigger: ZeroWorkflowAutomationSummary,
+  ) => ZeroWorkflowAutomationSummary,
+): ZeroWorkflowAutomationSummary | null {
   for (const workflow of mockWorkflows) {
     const triggerIndex = workflow.triggers.findIndex((trigger) => {
       return trigger.id === triggerId;
@@ -340,8 +342,10 @@ function updateDetailTrigger(
 
 function updateChatThreadTrigger(
   triggerId: string,
-  apply: (trigger: ChatThreadWorkflowTrigger) => ChatThreadWorkflowTrigger,
-): ZeroWorkflowTriggerSummary | null {
+  apply: (
+    trigger: ChatThreadWorkflowAutomation,
+  ) => ChatThreadWorkflowAutomation,
+): ZeroWorkflowAutomationSummary | null {
   const triggers = getMockWorkflowTriggers();
   const trigger = triggers.find((item) => {
     return item.id === triggerId;
@@ -382,7 +386,7 @@ function mockWorkflowTriggerExists(triggerId: string): boolean {
 
 function mockScheduleSummary(
   schedule: Extract<
-    ZeroWorkflowTriggerSummary,
+    ZeroWorkflowAutomationSummary,
     { kind: "schedule" }
   >["schedule"],
 ): string {
@@ -447,7 +451,7 @@ type WorkflowTriggerCreateBase = {
 function createNotionChildPageTriggerSummary(
   base: WorkflowTriggerCreateBase,
   parentPageUrl: string,
-): ZeroWorkflowTriggerSummary {
+): ZeroWorkflowAutomationSummary {
   return {
     ...base,
     kind: "event",
@@ -471,7 +475,7 @@ function createNotionChildPageTriggerSummary(
 function createNotionDatabaseItemTriggerSummary(
   base: WorkflowTriggerCreateBase,
   databaseUrl: string,
-): ZeroWorkflowTriggerSummary {
+): ZeroWorkflowAutomationSummary {
   return {
     ...base,
     kind: "event",
@@ -495,7 +499,7 @@ function createNotionDatabaseItemTriggerSummary(
 function createNotionPageContentUpdatedTriggerSummary(
   base: WorkflowTriggerCreateBase,
   args: { readonly pageUrl?: string; readonly databaseUrl?: string },
-): ZeroWorkflowTriggerSummary {
+): ZeroWorkflowAutomationSummary {
   return {
     ...base,
     kind: "event",
@@ -531,8 +535,8 @@ function createNotionPageContentUpdatedTriggerSummary(
 
 function createWorkflowTriggerSummaryForRequest(
   base: WorkflowTriggerCreateBase,
-  body: ZeroWorkflowTriggerCreateRequest,
-): ZeroWorkflowTriggerSummary {
+  body: ZeroWorkflowAutomationCreateRequest,
+): ZeroWorkflowAutomationSummary {
   if ("schedule" in body) {
     return {
       ...base,
@@ -602,7 +606,7 @@ function createWorkflowTriggerSummaryForRequest(
       eventConfig: body.eventConfig,
       schedule: null,
       scheduleSummary: null,
-    } as ZeroWorkflowTriggerSummary;
+    } as ZeroWorkflowAutomationSummary;
   }
   if (body.eventType === "notion-child-page-created") {
     return createNotionChildPageTriggerSummary(
@@ -737,7 +741,7 @@ function workflowTriggerUpdateHandlers() {
             return {
               ...trigger,
               eventConfig: body.eventConfig,
-            } as ChatThreadWorkflowTrigger;
+            } as ChatThreadWorkflowAutomation;
           },
         );
         if (updatedChatTrigger) {
@@ -753,7 +757,7 @@ function workflowTriggerUpdateHandlers() {
             return {
               ...trigger,
               eventConfig: body.eventConfig,
-            } as ZeroWorkflowTriggerSummary;
+            } as ZeroWorkflowAutomationSummary;
           },
         );
         return updatedDetailTrigger

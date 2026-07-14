@@ -12,7 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   zeroWorkflowTriggersContract,
-  type ZeroWorkflowTriggerSummary,
+  type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -528,7 +528,7 @@ async function setupFixture(): Promise<GmailTestFixture> {
 async function readTrigger(
   actor: ApiTestUser,
   triggerId: string,
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowAutomationSummary> {
   const response = await accept(
     triggersClient().get({
       headers: authHeaders(actor),
@@ -563,7 +563,7 @@ async function runTriggerNow(
 }
 
 function requireTriggerChatThreadId(
-  trigger: ZeroWorkflowTriggerSummary,
+  trigger: ZeroWorkflowAutomationSummary,
 ): string {
   if (!trigger.chatThreadId) {
     throw new Error(`Expected trigger ${trigger.id} to have a chat thread`);

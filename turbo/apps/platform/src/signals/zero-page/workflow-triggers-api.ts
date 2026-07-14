@@ -1,6 +1,6 @@
 import {
   zeroWorkflowTriggersContract,
-  type ChatThreadWorkflowTrigger,
+  type ChatThreadWorkflowAutomation,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { accept } from "../../lib/accept.ts";
 import type { ZeroClientFactory } from "../api-client.ts";
@@ -13,7 +13,7 @@ export async function listThreadWorkflowTriggers(
   client: ZeroClientFactory,
   params: { readonly threadId: string },
   fetchOptions?: RequestInit,
-): Promise<ChatThreadWorkflowTrigger[]> {
+): Promise<ChatThreadWorkflowAutomation[]> {
   const result = await accept(
     client(zeroWorkflowTriggersContract).listForChatThread({
       params: { threadId: params.threadId },
