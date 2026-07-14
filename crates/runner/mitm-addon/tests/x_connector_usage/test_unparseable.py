@@ -117,9 +117,13 @@ def test_invalid_json_with_no_hints_skips_billing(x_usage, tmp_path, real_flow):
 
 
 def test_non_dict_json_with_no_hints_skips_billing(x_usage, tmp_path, real_flow):
-    """A valid non-object JSON response preserves the old unparseable fallback."""
+    """A valid top-level non-object JSON response remains unparsed; without reliable
+    request hints, billing is skipped and a lost-visibility audit error is recorded."""
     flow = x_usage.make_flow(real_flow, tmp_path, body=b"[1,2,3]")
+    proxy_log = tmp_path / "proxy.jsonl"
+
     assert x_usage.call_and_get_billing(flow) == []
+    assert_lost_visibility_error(proxy_log)
 
 
 def test_array_element_fields_do_not_drive_x_billing(x_usage, tmp_path, real_flow):
