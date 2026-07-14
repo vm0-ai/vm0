@@ -771,6 +771,7 @@ jobs:
     if: >-
       ${{
         (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
         startsWith(needs.prepare.outputs.job-ref, 'pr-') &&
         needs.prepare.outputs.www-preview-url != ''
       }}
@@ -805,6 +806,7 @@ jobs:
     # cannot resolve the temporary `gh-readonly-queue/*` ref via the GitHub API).
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1142,6 +1144,7 @@ jobs:
     if: >-
       ${{
         (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
         needs.prepare.outputs.job-ref != '' && (
           needs.prepare.outputs.api-changed == 'true' ||
           needs.prepare.outputs.cli-changed == 'true' ||
@@ -1216,6 +1219,7 @@ jobs:
     if: |
       always() &&
       github.event_name != 'push' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
