@@ -126,11 +126,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Mercury banking connector",
     enabled: false,
   },
-  [FeatureSwitchKey.Microsoft365Connector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Microsoft 365 connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Neon serverless Postgres connector",
@@ -169,16 +164,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.WebflowConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Webflow site management connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.OutlookMailConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Outlook Mail connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.OutlookCalendarConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Outlook Calendar connector",
     enabled: false,
   },
   [FeatureSwitchKey.TikTokAdsConnector]: {

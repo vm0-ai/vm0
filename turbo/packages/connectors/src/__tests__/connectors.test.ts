@@ -2413,14 +2413,15 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ]);
   });
 
-  it("exposes Microsoft 365 OAuth only when its switch is enabled", () => {
+  it("exposes Microsoft OAuth connectors", () => {
     expect(
       getAvailableConnectorAuthMethodIds("microsoft-365", {}),
-    ).toStrictEqual([]);
+    ).toStrictEqual(["oauth"]);
     expect(
-      getAvailableConnectorAuthMethodIds("microsoft-365", {
-        [FeatureSwitchKey.Microsoft365Connector]: true,
-      }),
+      getAvailableConnectorAuthMethodIds("outlook-mail", {}),
+    ).toStrictEqual(["oauth"]);
+    expect(
+      getAvailableConnectorAuthMethodIds("outlook-calendar", {}),
     ).toStrictEqual(["oauth"]);
   });
 

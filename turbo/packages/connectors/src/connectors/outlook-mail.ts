@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connector-config";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const outlookMail = {
   "outlook-mail": {
@@ -8,7 +7,6 @@ export const outlookMail = {
     helpText: "Connect your Microsoft Outlook account to send and read emails",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.OutlookMailConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Microsoft to grant Outlook Mail access.",
         client: {
