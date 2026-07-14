@@ -454,35 +454,32 @@ mod tests {
         let input = b"line\n".repeat(READY_LINE_DRAIN_SLICE_SIZE + 1);
         let mut lines = TestReader::from_bytes(&input).lines();
         let handled = Arc::new(AtomicUsize::new(0));
-        let ack_pending_at_slice = Arc::new(Mutex::new(None));
-        let (ack, ack_rx) = oneshot::channel();
-        let ack_rx = Arc::new(Mutex::new(ack_rx));
+        let (ack, mut ack_rx) = oneshot::channel();
         let request = NetworkLogDrainRequest { ack };
-
-        let outcome = process_drain_request(
+        let mut on_line = |_| {
+            let handled = handled.clone();
+            async move {
+                handled.fetch_add(1, Ordering::Relaxed);
+            }
+        };
+        let mut drain = std::pin::pin!(process_drain_request(
             &mut lines,
             &cancel,
-            &mut |_| {
-                let handled = handled.clone();
-                let ack_pending_at_slice = ack_pending_at_slice.clone();
-                let ack_rx = ack_rx.clone();
-                async move {
-                    let handled = handled.fetch_add(1, Ordering::Relaxed) + 1;
-                    if handled == READY_LINE_DRAIN_SLICE_SIZE {
-                        let ack_pending = matches!(
-                            ack_rx.lock().unwrap().try_recv(),
-                            Err(oneshot::error::TryRecvError::Empty)
-                        );
-                        *ack_pending_at_slice.lock().unwrap() = Some(ack_pending);
-                    }
-                }
-            },
+            &mut on_line,
             request,
-        )
-        .await;
+        ));
 
-        assert_eq!(*ack_pending_at_slice.lock().unwrap(), Some(true));
-        ack_rx.lock().unwrap().try_recv().unwrap();
+        let mut cx = Context::from_waker(futures_util::task::noop_waker_ref());
+        assert!(matches!(drain.as_mut().poll(&mut cx), Poll::Pending));
+        assert_eq!(handled.load(Ordering::Relaxed), READY_LINE_DRAIN_SLICE_SIZE);
+        assert!(matches!(
+            ack_rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+
+        let outcome = drain.await;
+
+        ack_rx.await.unwrap();
         assert_eq!(
             handled.load(Ordering::Relaxed),
             READY_LINE_DRAIN_SLICE_SIZE + 1
