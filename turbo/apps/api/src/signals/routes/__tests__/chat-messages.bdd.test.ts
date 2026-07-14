@@ -85,7 +85,8 @@ const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
   "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
   "api_dispatch_pre_create_zero_web_chat_validate_revocation",
-  "api_dispatch_pre_create_zero_web_chat_check_active_run",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
+  "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
   "api_dispatch_pre_create_zero_web_chat_create_normal_run",
   "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
   "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
@@ -991,7 +992,17 @@ describe("CHAT-02: interrupting active chat runs", () => {
 describe("CHAT-02: queueing and recalling messages", () => {
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for legacy queue coverage");
+    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    // Keep the explicit rollback path covered now that queue-first is the
+    // default. Queue-first recall-by-deletion is covered below.
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatMessageQueue]: false },
+    );
 
     const first = await sendChatRun(actor, {
       agentId,
@@ -3104,14 +3115,12 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       anchor.threadId,
       (items) => {
         return userMessages(items).some((message) => {
-          return (
-            message.revokesMessageId === queuedId && message.runId !== undefined
-          );
+          return message.id === queuedId && message.runId !== undefined;
         });
       },
     );
     const promoted = userMessages(messages.messages).find((message) => {
-      return message.revokesMessageId === queuedId;
+      return message.id === queuedId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to auto-send into a run");
@@ -3124,6 +3133,11 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       size: 12,
       url: expect.stringContaining(`${fileId}/notes.txt`),
     });
+    expect(
+      messages.messages.some((message) => {
+        return message.revokesMessageId === queuedId;
+      }),
+    ).toBeFalsy();
 
     const followUp = await api.readRun(actor, promoted.runId);
     expect(followUp.prompt).toContain("queued with attachment");
