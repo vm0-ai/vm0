@@ -18,7 +18,7 @@ use super::super::error::{NetworkError, Result};
 use super::super::{GUEST_NETWORK, GuestNetwork};
 use super::naming::{
     MAX_NAMESPACES, MAX_POOLS, NS_PREFIX, format_hex_index, generate_veth_ip_pair,
-    make_host_device, make_ns_name, parse_netns_name,
+    make_host_device, make_host_device_iptables_pattern, make_ns_name, parse_netns_name,
 };
 use super::types::NetnsInfo;
 
@@ -102,6 +102,61 @@ async fn exec_ip(args: &[&str]) -> Result<()> {
 async fn exec_iptables(args: &[&str]) -> Result<()> {
     exec_status_with_timeout("iptables", args, NETNS_COMMAND_TIMEOUT).await?;
     Ok(())
+}
+
+/// Restrict the runner-managed DNS port to this pool's VM-facing veths.
+///
+/// dnsmasq's default socket mode avoids per-address listener churn by using
+/// wildcard sockets. These INPUT rules preserve the old kernel-level listener
+/// isolation: public, management, and other runners' interfaces see the port as
+/// unreachable, while REDIRECT traffic arriving on this pool's veths proceeds
+/// to dnsmasq. Both address families are covered because dnsmasq can create
+/// IPv4 and IPv6 wildcard sockets.
+pub(super) async fn setup_dns_input_filter(pool_index: u32, dns_port: u16) -> Result<String> {
+    let pool_idx = format_hex_index(pool_index);
+    let interface = make_host_device_iptables_pattern(&pool_idx);
+    let comment = format!("{NS_PREFIX}{pool_idx}-dns");
+    let port = dns_port.to_string();
+
+    for program in ["iptables", "ip6tables"] {
+        for protocol in ["udp", "tcp"] {
+            let args = [
+                "-I",
+                "INPUT",
+                "1",
+                "!",
+                "-i",
+                &interface,
+                "-p",
+                protocol,
+                "--dport",
+                &port,
+                "-m",
+                "comment",
+                "--comment",
+                &comment,
+                "-j",
+                "REJECT",
+            ];
+            if let Err(error) =
+                exec_status_with_timeout(program, &args, NETNS_COMMAND_TIMEOUT).await
+            {
+                if matches!(
+                    delete_pool_firewall_rules_by_comment(&comment).await,
+                    NamespaceDeleteOutcome::Abandoned
+                ) {
+                    warn!(
+                        comment,
+                        "failed to roll back partial DNS input filter; startup orphan reconciliation will retry"
+                    );
+                }
+                return Err(error.into());
+            }
+        }
+    }
+
+    info!(dns_port, interface, comment, "DNS input filter installed");
+    Ok(comment)
 }
 
 pub(super) async fn enable_host_ip_forwarding() -> Result<()> {
@@ -457,11 +512,11 @@ pub(super) async fn get_default_interface() -> Result<String> {
     Ok(iface)
 }
 
-/// Delete iptables rules that contain `comment` in nat and filter tables.
+/// Delete IPv4 iptables rules that contain `comment`.
 async fn delete_iptables_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
     let (nat, filter) = tokio::join!(
-        delete_iptables_from_table("nat", comment),
-        delete_iptables_from_table("filter", comment),
+        delete_firewall_rules_from_table("iptables", "iptables-save", "nat", comment),
+        delete_firewall_rules_from_table("iptables", "iptables-save", "filter", comment),
     );
     if matches!(nat, NamespaceDeleteOutcome::Deleted)
         && matches!(filter, NamespaceDeleteOutcome::Deleted)
@@ -472,15 +527,35 @@ async fn delete_iptables_rules_by_comment(comment: &str) -> NamespaceDeleteOutco
     }
 }
 
-async fn delete_iptables_from_table(table: &str, comment: &str) -> NamespaceDeleteOutcome {
-    let output =
-        match exec_with_timeout("iptables-save", &["-t", table], NETNS_COMMAND_TIMEOUT).await {
-            Ok(output) => output,
-            Err(e) => {
-                warn!(table, error = %e, "failed to read iptables rules, skipping cleanup");
-                return NamespaceDeleteOutcome::Abandoned;
-            }
-        };
+/// Delete pool-scoped IPv4 and IPv6 firewall rules that contain `comment`.
+pub(super) async fn delete_pool_firewall_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
+    let (ipv4, ipv6_filter) = tokio::join!(
+        delete_iptables_rules_by_comment(comment),
+        delete_firewall_rules_from_table("ip6tables", "ip6tables-save", "filter", comment),
+    );
+    if matches!(ipv4, NamespaceDeleteOutcome::Deleted)
+        && matches!(ipv6_filter, NamespaceDeleteOutcome::Deleted)
+    {
+        NamespaceDeleteOutcome::Deleted
+    } else {
+        NamespaceDeleteOutcome::Abandoned
+    }
+}
+
+async fn delete_firewall_rules_from_table(
+    command: &str,
+    save_command: &str,
+    table: &str,
+    comment: &str,
+) -> NamespaceDeleteOutcome {
+    let output = match exec_with_timeout(save_command, &["-t", table], NETNS_COMMAND_TIMEOUT).await
+    {
+        Ok(output) => output,
+        Err(e) => {
+            warn!(save_command, table, error = %e, "failed to read firewall rules, skipping cleanup");
+            return NamespaceDeleteOutcome::Abandoned;
+        }
+    };
     // Sequential: xtables lock serializes writes to the same table anyway.
     // Note: split_whitespace + trim_matches('"') is safe because namespace
     // comment values (e.g. "vm0-ns-00-0a") never contain spaces. If they
@@ -494,8 +569,7 @@ async fn delete_iptables_from_table(table: &str, comment: &str) -> NamespaceDele
         let rule = line.replacen("-A ", "-D ", 1);
         let mut args: Vec<&str> = vec!["-t", table];
         args.extend(rule.split_whitespace().map(|t| t.trim_matches('"')));
-        outcomes
-            .push(exec_ignore_errors_with_timeout("iptables", &args, NETNS_COMMAND_TIMEOUT).await);
+        outcomes.push(exec_ignore_errors_with_timeout(command, &args, NETNS_COMMAND_TIMEOUT).await);
     }
     NamespaceDeleteOutcome::from_best_effort(outcomes)
 }
@@ -740,7 +814,7 @@ async fn cleanup_namespaces_by_index(index: u32) {
     //    The Rust-side `contains()` does substring matching, so the prefix matches
     //    all namespaces in this pool. This catches rules left behind even if the
     //    namespace itself was already deleted.
-    let iptables = delete_iptables_rules_by_comment(&prefix).await;
+    let iptables = delete_pool_firewall_rules_by_comment(&prefix).await;
 
     // 2. Discover and delete any remaining namespaces (+ their veth devices).
     let Ok(output) = exec_with_timeout("ip", &["netns", "list"], NETNS_COMMAND_TIMEOUT).await

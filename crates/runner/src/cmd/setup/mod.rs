@@ -34,10 +34,12 @@ const SETUP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
-const START_SYSTEM_DEPENDENCIES: [&str; 7] = [
+const START_SYSTEM_DEPENDENCIES: [&str; 9] = [
     "ip",
     "iptables",
     "iptables-save",
+    "ip6tables",
+    "ip6tables-save",
     "sysctl",
     "dnsmasq",
     "mkfs.ext4",
@@ -1224,6 +1226,13 @@ mod tests {
     fn runner_start_dependencies_include_openssl_for_proxy_ca_validation() {
         assert!(START_SYSTEM_DEPENDENCIES.contains(&"openssl"));
         assert!(!OTHER_COMMAND_SYSTEM_DEPENDENCIES.contains(&"openssl"));
+    }
+
+    #[test]
+    fn runner_start_dependencies_include_dual_stack_firewall_tools() {
+        for dependency in ["iptables", "iptables-save", "ip6tables", "ip6tables-save"] {
+            assert!(START_SYSTEM_DEPENDENCIES.contains(&dependency));
+        }
     }
 
     #[test]
