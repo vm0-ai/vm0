@@ -1,4 +1,4 @@
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { legacyZeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -22,7 +22,7 @@ function authHeaders() {
 }
 
 function legacyAutomationsClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+  return setupApp({ context })(legacyZeroWorkflowAutomationsContract);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

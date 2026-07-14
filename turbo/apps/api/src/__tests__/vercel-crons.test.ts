@@ -11,7 +11,7 @@ import {
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
   cronDrainRelationshipMemoryContract,
-  cronExecuteWorkflowTriggersContract as cronExecuteWorkflowAutomationsContract,
+  cronExecuteWorkflowAutomationsContract,
   cronProcessUsageEventsContract,
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGmailWatchesContract,

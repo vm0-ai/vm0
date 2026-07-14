@@ -4,7 +4,7 @@ import { chatThreads } from "./chat-thread";
 import { zeroWorkflowAutomations, zeroWorkflows } from "./zero-workflow";
 
 /**
- * Pending workflow trigger events.
+ * Pending workflow automation events.
  *
  * With the workflow queue enabled, a workflow(+owner user) executes at most
  * one trigger run at a time. Events that fire while the workflow is busy (or

@@ -31,7 +31,7 @@ export const zeroRuns = pgTable(
       ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
     // Legacy column retained during the Automation ID expand window.
-    workflowTriggerId: uuid("workflow_trigger_id").references(
+    legacyWorkflowAutomationId: uuid("workflow_trigger_id").references(
       (): AnyPgColumn => {
         return zeroWorkflowAutomations.id;
       },
@@ -86,7 +86,7 @@ export const zeroRuns = pgTable(
         .on(table.chatThreadId)
         .where(sql`chat_thread_id IS NOT NULL`),
       index("idx_zero_runs_workflow_trigger")
-        .on(table.workflowTriggerId)
+        .on(table.legacyWorkflowAutomationId)
         .where(sql`workflow_trigger_id IS NOT NULL`),
       index("idx_zero_runs_workflow_automation")
         .on(table.workflowAutomationId)
