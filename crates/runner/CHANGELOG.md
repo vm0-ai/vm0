@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.15...runner-rs-v0.144.16) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** make gc summary activity-aware ([#21469](https://github.com/vm0-ai/vm0/issues/21469)) ([8253a09](https://github.com/vm0-ai/vm0/commit/8253a09a7d323611b9938f60b59f534e3e8c6a4c))
+
 ## [0.144.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.14...runner-rs-v0.144.15) (2026-07-14)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.275.1](https://github.com/vm0-ai/vm0/compare/api-v1.275.0...api-v1.275.1) (2026-07-14)
+
+
+### Refactoring
+
+* **api:** cut over zero run automation provenance ([#21480](https://github.com/vm0-ai/vm0/issues/21480)) ([9d17461](https://github.com/vm0-ai/vm0/commit/9d17461b09aec8bc5decf0025ec0c3950314ce3f))
+* **api:** read webhook deliveries by automation id ([#21481](https://github.com/vm0-ai/vm0/issues/21481)) ([b572816](https://github.com/vm0-ai/vm0/commit/b572816b499b762902af0e82771fe5c606e44177))
+
 ## [1.275.0](https://github.com/vm0-ai/vm0/compare/api-v1.274.1...api-v1.275.0) (2026-07-14)
 
 
