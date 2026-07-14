@@ -1130,7 +1130,6 @@ class _FirewallDecisionState:
         "allowed_match",
         "base_match",
         "best_base_specificity",
-        "best_rule_specificity",
         "denied_match",
         "denied_permission_names",
         "malformed_config_match",
@@ -1140,7 +1139,6 @@ class _FirewallDecisionState:
     allowed_match: _AllowedRuleMatch | None
     base_match: _BaseMatch | None
     best_base_specificity: int | None
-    best_rule_specificity: _PathSpecificity | None
     denied_match: _BlockMatch | None
     # Dict keys act as an ordered set of first-seen denied permission names.
     denied_permission_names: dict[str, None]
@@ -1151,7 +1149,6 @@ class _FirewallDecisionState:
         self.allowed_match = None
         self.base_match = None
         self.best_base_specificity = None
-        self.best_rule_specificity = None
         self.denied_match = None
         self.denied_permission_names = {}
         self.malformed_config_match = None
@@ -1170,7 +1167,6 @@ class _FirewallDecisionState:
             or api_entry.base.specificity > self.best_base_specificity
         ):
             self.best_base_specificity = api_entry.base.specificity
-            self.best_rule_specificity = None
             self.allowed_match = None
             self.base_match = None
             self.denied_match = None
@@ -1197,17 +1193,6 @@ class _FirewallDecisionState:
     def record_malformed_policy(self, match: _BlockMatch) -> None:
         if self.malformed_policy_match is None:
             self.malformed_policy_match = match
-
-    def accept_rule_specificity(self, specificity: _PathSpecificity) -> bool:
-        if self.best_rule_specificity is None or specificity > self.best_rule_specificity:
-            self.best_rule_specificity = specificity
-            self.allowed_match = None
-            self.denied_match = None
-            self.denied_permission_names = {}
-        elif specificity < self.best_rule_specificity:
-            return False
-
-        return True
 
     def record_allowed_rule(self, match: _AllowedRuleMatch) -> None:
         if self.allowed_match is None:
@@ -1441,15 +1426,11 @@ def _evaluate_selected_rule_entries(
         if permission_blocked:
             if not _compiled_path_segments_match(rel_path_segs, rule.path.segments):
                 continue
-            if not decision.accept_rule_specificity(rule.specificity):
-                continue
             decision.record_denied_rule(api_match.block_match, entry.permission)
             continue
 
         params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
         if params is None:
-            continue
-        if not decision.accept_rule_specificity(rule.specificity):
             continue
         decision.record_allowed_rule(
             _AllowedRuleMatch(
