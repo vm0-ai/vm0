@@ -557,6 +557,10 @@ class JsonSelectiveExtractor:
             if match is None:
                 return len(chunk)
             i = match.start()
+            if chunk[i] == ord('"'):
+                self._finish_string(state)
+                self._string = None
+                return i + 1
         while i < len(chunk):
             b = chunk[i]
             i += 1
