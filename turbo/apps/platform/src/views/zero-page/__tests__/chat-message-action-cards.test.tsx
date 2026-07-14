@@ -343,6 +343,140 @@ describe("chat message action cards", () => {
     });
   });
 
+  it("renders and confirms multiple permission cards from one assistant message", async () => {
+    mockNow();
+    const user = userEvent.setup({ delay: null });
+    const createPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=google-sheets&permission=spreadsheets.create&action=allow&expiresIn=1h`;
+    const writePermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=google-sheets&permission=values.write&action=allow&expiresIn=1h`;
+    const capturedPermissionGrantBodies: unknown[] = [];
+
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ params, respond }) => {
+        expect(params.connectorRef).toBe("google-sheets");
+        return respond(200, {
+          permissions: catalogPermissionDetail({
+            connectorRef: "google-sheets",
+            label: "Google Sheets",
+            permissions: [
+              {
+                name: "spreadsheets.create",
+                description: "Create spreadsheets",
+              },
+              {
+                name: "values.write",
+                description: "Write spreadsheet values",
+              },
+            ],
+          }),
+        });
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        capturedPermissionGrantBodies.push(body);
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: isoFromNowMs(60 * 60 * 1000),
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ]);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-multiple-permissions`,
+      threadTitle: "Multiple permission cards",
+      chatMessages: [
+        {
+          id: "msg-user-multiple-permissions",
+          role: "user",
+          content: "Create and populate a spreadsheet",
+          runId: "run-multiple-permissions",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-multiple-permissions",
+          role: "assistant",
+          content: `${createPermissionUrl}\n${writePermissionUrl}`,
+          runId: "run-multiple-permissions",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-multiple-permissions`,
+    });
+
+    const permissionCards = await screen.findAllByTestId(
+      "permission-action-card",
+    );
+    expect(permissionCards).toHaveLength(2);
+    const [createCard, writeCard] = permissionCards;
+    if (!createCard || !writeCard) {
+      throw new Error("Expected two permission cards");
+    }
+    await waitFor(() => {
+      expect(
+        within(createCard).getByText("Allow spreadsheets.create"),
+      ).toBeInTheDocument();
+      expect(
+        within(writeCard).getByText("Allow values.write"),
+      ).toBeInTheDocument();
+    });
+
+    await confirmPermissionAction(user, createCard);
+    await waitFor(() => {
+      expect(
+        within(createCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+    });
+    await confirmPermissionAction(user, writeCard);
+    await waitFor(() => {
+      expect(
+        within(writeCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+    });
+
+    expect(capturedPermissionGrantBodies).toStrictEqual([
+      {
+        agentId: AGENT_ID,
+        connectorRef: "google-sheets",
+        mode: "patch",
+        grants: [
+          {
+            permission: "spreadsheets.create",
+            action: "allow",
+            expiresIn: "1h",
+          },
+        ],
+      },
+      {
+        agentId: AGENT_ID,
+        connectorRef: "google-sheets",
+        mode: "patch",
+        grants: [
+          {
+            permission: "values.write",
+            action: "allow",
+            expiresIn: "1h",
+          },
+        ],
+      },
+    ]);
+  });
+
   it("omits connector action cards when catalog metadata is hidden", async () => {
     const hiddenConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
     const visibleConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
