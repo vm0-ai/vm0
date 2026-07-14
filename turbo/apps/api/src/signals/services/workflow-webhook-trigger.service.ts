@@ -425,7 +425,7 @@ async function rateLimitExceeded(args: {
     .from(zeroWorkflowWebhookDeliveries)
     .where(
       and(
-        eq(zeroWorkflowWebhookDeliveries.triggerId, args.triggerId),
+        eq(zeroWorkflowWebhookDeliveries.automationId, args.triggerId),
         gte(
           zeroWorkflowWebhookDeliveries.receivedAt,
           new Date(args.currentTime.getTime() - 60_000),
