@@ -163,17 +163,40 @@ async fn gc_paginates_across_two_pages() {
         .build();
     let empty_template_page = ListObjectsV2Output::builder().is_truncated(false).build();
 
-    let list = mock!(Client::list_objects_v2)
+    let legacy_page1_list = mock!(Client::list_objects_v2)
+        .match_requests(|req| {
+            req.prefix() == Some("runner-images/") && req.continuation_token().is_none()
+        })
         .sequence()
         .output(move || page1.clone())
+        .build();
+    let legacy_page2_list = mock!(Client::list_objects_v2)
+        .match_requests(|req| {
+            req.prefix() == Some("runner-images/") && req.continuation_token() == Some("tok1")
+        })
+        .sequence()
         .output(move || page2.clone())
+        .build();
+    let template_list = mock!(Client::list_objects_v2)
+        .match_requests(|req| {
+            req.prefix() == Some("runner-templates/") && req.continuation_token().is_none()
+        })
+        .sequence()
         .output(move || empty_template_page.clone())
         .build();
     // Quiet-mode delete responses don't echo successes; no `errors`.
     let delete =
         mock!(Client::delete_objects).then_output(|| DeleteObjectsOutput::builder().build());
 
-    let cache = mock_cache("test-bucket", &[&list, &delete]);
+    let cache = mock_cache(
+        "test-bucket",
+        &[
+            &legacy_page1_list,
+            &legacy_page2_list,
+            &template_list,
+            &delete,
+        ],
+    );
 
     let (deleted, freed) = cache
         .gc_older_than(std::time::Duration::from_secs(1))
@@ -183,7 +206,22 @@ async fn gc_paginates_across_two_pages() {
     assert_eq!(deleted, 3, "2 objects from page1 + 1 from page2");
     assert_eq!(freed, 600, "100 + 200 + 300");
     assert_eq!(
-        list.num_calls(),
+        legacy_page1_list.num_calls(),
+        1,
+        "first legacy LIST has no continuation token"
+    );
+    assert_eq!(
+        legacy_page2_list.num_calls(),
+        1,
+        "second legacy LIST carries tok1"
+    );
+    assert_eq!(
+        template_list.num_calls(),
+        1,
+        "template prefix is scanned without a continuation token"
+    );
+    assert_eq!(
+        legacy_page1_list.num_calls() + legacy_page2_list.num_calls() + template_list.num_calls(),
         3,
         "pagination followed next_token and template prefix was scanned"
     );
