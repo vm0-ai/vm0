@@ -3281,12 +3281,12 @@ const sendQueueFirstNormalMessage$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if (result.status === 201 && "runId" in result.body && result.body.runId) {
+    if (result.status === 201) {
       return result;
     }
-    // Run creation did not dispatch (validation error or insufficient
-    // credits, which persists its own marked copy of the message). Discard
-    // the queued message so history matches the legacy direct-send failure.
+    // Run creation failed validation before it could consume the queue item.
+    // Discard the queued message so history matches the legacy direct-send
+    // failure.
     await discardUnclaimedUserMessage(prepared.db, {
       threadId,
       messageId: queuedMessageId,
