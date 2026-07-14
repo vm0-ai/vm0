@@ -37,7 +37,7 @@ use super::env::{
     write_user_env_file,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
-use super::session_history_cpu::SessionHistoryCpuJob;
+use super::session_history_cpu::{SessionHistoryCpuJob, SessionHistoryPrefixOutcome};
 use super::session_history_download::{
     SessionHistoryDownloadPhaseTiming, SessionHistoryDownloadTimings,
     SessionHistoryMaterialization, SessionHistoryMaterializer,
@@ -60,7 +60,9 @@ use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
 use crate::storage_plan::build_storage_plan;
-use crate::telemetry::{JobTelemetry, SessionHistoryTelemetryMetadata};
+use crate::telemetry::{
+    JobTelemetry, SessionHistoryTelemetryMetadata, session_history_prefix_extension_action_type,
+};
 use crate::types::ExecutionContext;
 use crate::workspace_image_cache::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarRepresentation,
@@ -219,6 +221,34 @@ fn record_session_history_identity_mismatch_reason(
     }
 }
 
+fn record_session_history_prefix_outcome(
+    telemetry: &mut JobTelemetry,
+    outcome: SessionHistoryPrefixOutcome,
+) {
+    match outcome {
+        SessionHistoryPrefixOutcome::Verified { raw_extension_size } => {
+            telemetry.record(
+                "session_history_requested_larger_prefix_verified",
+                Duration::ZERO,
+                true,
+                None,
+            );
+            telemetry.record(
+                session_history_prefix_extension_action_type(raw_extension_size),
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
+        SessionHistoryPrefixOutcome::Divergent => telemetry.record(
+            "session_history_requested_larger_prefix_divergent",
+            Duration::ZERO,
+            true,
+            None,
+        ),
+    }
+}
+
 fn record_session_history_download_timings(
     telemetry: &mut JobTelemetry,
     timings: &SessionHistoryDownloadTimings,
@@ -369,6 +399,7 @@ async fn materialize_session_history_sidecar(
         .materialize(job, cancel)
         .await?
         .result
+        .map(|materialization| materialization.session)
 }
 
 async fn materialize_inline_resume_session(
@@ -395,7 +426,9 @@ async fn materialize_inline_resume_session(
                 cancel,
             )
             .await?;
-        return outcome.result.map(Some);
+        return outcome
+            .result
+            .map(|materialization| Some(materialization.session));
     }
     Ok(Some(MaterializedResumeSession::new_shared(
         resume_session.cli_agent_session_id.clone(),
@@ -1221,6 +1254,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             SessionHistoryMaterialization::NoDownloadNeeded => None,
             SessionHistoryMaterialization::Downloaded {
                 session,
+                prefix_outcome,
                 elapsed,
                 timings,
             } => {
@@ -1249,6 +1283,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     timings.metadata(),
                 );
                 record_session_history_download_timings(telemetry, &timings);
+                if let Some(prefix_outcome) = prefix_outcome {
+                    record_session_history_prefix_outcome(telemetry, prefix_outcome);
+                }
                 Some(session)
             }
             SessionHistoryMaterialization::Failed {
