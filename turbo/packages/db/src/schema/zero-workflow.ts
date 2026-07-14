@@ -254,7 +254,7 @@ export const zeroWorkflowTriggers = pgTable(
 );
 
 export const zeroWorkflowTriggerMemoryEmbeddings = pgTable(
-  "zero_workflow_trigger_memory_embeddings",
+  "zero_workflow_automation_memory_embeddings",
   {
     workflowTriggerId: uuid("workflow_trigger_id")
       .primaryKey()
@@ -271,7 +271,7 @@ export const zeroWorkflowTriggerMemoryEmbeddings = pgTable(
   (table) => {
     return [
       check(
-        "zero_workflow_trigger_memory_embeddings_dimensions_check",
+        "zero_workflow_automation_memory_embeddings_dimensions_check",
         sql`cardinality(${table.embedding}) = 1536`,
       ),
     ];
