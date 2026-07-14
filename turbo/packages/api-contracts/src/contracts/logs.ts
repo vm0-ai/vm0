@@ -44,7 +44,6 @@ const logStatusSchema = z.enum([
  * Trigger source enum — how the run was initiated
  */
 export const triggerSourceSchema = z.enum([
-  "automation",
   "web",
   "slack",
   "teams",

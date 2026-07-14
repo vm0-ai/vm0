@@ -679,10 +679,10 @@ async function latestSessionForThread(
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    // D7: only web-source runs join the thread's session-continuity chain, so a
-    // chat-mode automation run (triggerSource "automation") never resumes a web
-    // session and a later web turn never resumes an automation one. The 'web'
-    // filter (before .limit) is mirrored in latestSessionForThreadFromDb
+    // Only web-source runs join the thread's session-continuity chain, so
+    // Workflow Automation runs never resume a web session and a later web turn
+    // never resumes an automated one. The 'web' filter (before .limit) is
+    // mirrored in latestSessionForThreadFromDb
     // (internal-chat-run-callback.service.ts) and latestSessionIdForThread
     // (chat-thread-v1-send.service.ts) — keep them in sync. This is a
     // continuity filter ONLY; it must NOT be copied into activeRunExistsForThread.

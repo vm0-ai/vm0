@@ -3740,10 +3740,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
     await api.requestCancelRun(actor, cliRun.runId, [200]);
 
-    // The automation-sourced log leg was removed with the automation ->
-    // workflow cutover (#19959): the frozen legacy API can no longer create
-    // or fire automations. Trigger-source provenance for workflow runs is
-    // covered by the workflow trigger suites.
     const memberRun = await api.createRun(member, {
       agentId: memberAgent.agentId,
       prompt: "member run stays invisible",
@@ -3885,14 +3881,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         })
         .sort(),
     ).toStrictEqual([webRun.runId, secondAgentRun.runId].sort());
-
-    const automationSourceList = await reads.requestListLogs(
-      actor,
-      { triggerSource: "automation" },
-      [200],
-    );
-    mustOk(automationSourceList, "automation-source log list");
-    expect(automationSourceList.body.data).toStrictEqual([]);
 
     const noSourceMatch = await reads.requestListLogs(
       actor,

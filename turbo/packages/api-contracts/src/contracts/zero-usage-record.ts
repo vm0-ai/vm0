@@ -5,8 +5,8 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 // Where a run originated. `chat` is web chat (trigger_source 'web'); known
-// trigger sources keep their surface, and unsupported historical values are
-// grouped as `other`.
+// trigger sources keep their surface, and unsupported values are grouped as
+// `other`.
 export const usageRecordSourceSchema = z.enum([
   "chat",
   "automation",

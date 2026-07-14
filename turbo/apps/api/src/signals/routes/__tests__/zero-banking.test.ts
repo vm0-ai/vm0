@@ -46,10 +46,7 @@ interface BankingFixture {
 }
 
 interface SeedBankingFixtureArgs {
-  readonly triggerSource?:
-    | "automation"
-    | "workflow-schedule"
-    | "workflow-event";
+  readonly triggerSource?: "workflow-schedule" | "workflow-event";
   readonly operationScopes?: readonly BankingOperationScope[];
   readonly allowAutomationRuns?: boolean;
   readonly connectionStatus?: BankingConnectionStatus;
@@ -413,7 +410,7 @@ describe("POST /api/zero/banking/*", () => {
     expect(authRequestCount).toBe(0);
   });
 
-  it.each(["automation", "workflow-schedule", "workflow-event"] as const)(
+  it.each(["workflow-schedule", "workflow-event"] as const)(
     "denies %s runs unless the banking grant allows automations",
     async (triggerSource) => {
       const fixture = await seedBankingFixture({ triggerSource });
