@@ -357,6 +357,7 @@ async function insertGithubProcessedEvent(args: {
     .insert(zeroWorkflowGithubProcessedEvents)
     .values({
       triggerId: args.trigger.trigger.id,
+      automationId: args.trigger.trigger.id,
       githubDeliveryId: args.deliveryId,
       repo: args.payload.repository.full_name,
       subjectType: args.subjectKind,
