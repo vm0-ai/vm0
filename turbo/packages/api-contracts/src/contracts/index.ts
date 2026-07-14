@@ -459,7 +459,6 @@ export {
   cronDrainEmailOutboxContract,
   cronDrainEmailOutboxResponseSchema,
   cronExecuteWorkflowAutomationsContract,
-  legacyCronWorkflowAutomationsContract,
   cronRenewGmailWatchesContract,
   cronRenewGmailWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesContract,
