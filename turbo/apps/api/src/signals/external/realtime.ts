@@ -133,6 +133,21 @@ export async function publishChatThreadMessageCreatedSafely(
 }
 
 /**
+ * Notify a chat thread's UI that an existing message row changed in place.
+ * The payload lets clients refetch that exact row instead of relying on the
+ * append-only message cursor, which cannot observe updates to an older row.
+ */
+export async function publishChatThreadMessageUpdated(
+  userId: string,
+  threadId: string,
+  messageId: string,
+): Promise<void> {
+  await publishUserSignal([userId], `chatThreadMessageUpdated:${threadId}`, {
+    messageId,
+  });
+}
+
+/**
  * Notify a chat thread's UI that its linked automation set changed (created,
  * deleted, enabled, or disabled). The chat-thread header automation menu
  * subscribes to this topic and refetches its thread-scoped list.

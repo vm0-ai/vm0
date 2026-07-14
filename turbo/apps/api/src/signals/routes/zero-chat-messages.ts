@@ -42,6 +42,7 @@ import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadMessageUpdated,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -2410,6 +2411,7 @@ async function queueUnassociatedNormalMessage(params: {
   readonly userId: string;
   readonly touchThreadSort: boolean;
   readonly queueFirstOrgId: string | undefined;
+  readonly publishCreated: boolean;
 }): Promise<{
   readonly response:
     | CreatedChatMessageResponse
@@ -2430,10 +2432,12 @@ async function queueUnassociatedNormalMessage(params: {
     queueFirstOrgId: params.queueFirstOrgId,
   });
   if (message.kind === "queued" && message.inserted) {
-    await publishChatMessageCreated(
-      params.userId,
-      params.prepared.thread.threadId,
-    );
+    if (params.publishCreated) {
+      await publishChatMessageCreated(
+        params.userId,
+        params.prepared.thread.threadId,
+      );
+    }
     await publishThreadListChanged(params.userId);
   }
   const response = clientMessageIdResolutionResponse(
@@ -2615,10 +2619,14 @@ function scheduleQueueFirstMessageClaim(params: {
             });
           });
         }
-        await publishUserSignal(
-          [params.userId],
-          `chatThreadMessageCreated:${params.threadId}`,
+        await publishChatThreadMessageUpdated(
+          params.userId,
+          params.threadId,
+          params.messageId,
         );
+        if (params.appendQueueMarker) {
+          await publishChatMessageCreated(params.userId, params.threadId);
+        }
       }
       await publishUserSignal(
         [params.userId],
@@ -3174,6 +3182,7 @@ export const sendNormalMessage$ = command(
           prepared.thread.isNewThread,
         ),
         queueFirstOrgId: undefined,
+        publishCreated: true,
       });
       signal.throwIfAborted();
       return response;
@@ -3215,6 +3224,11 @@ const sendQueueFirstNormalMessage$ = command(
             prepared.thread.isNewThread,
           ),
           queueFirstOrgId: args.orgId,
+          // Queue-first inserts are an internal transition. Publish only if
+          // the dispatch decision below leaves the message genuinely queued;
+          // an idle-thread send stays in the transcript optimistically until
+          // its in-place claim is broadcast as a message update.
+          publishCreated: false,
         });
       },
     );
@@ -3242,12 +3256,16 @@ const sendQueueFirstNormalMessage$ = command(
     );
     signal.throwIfAborted();
     if (dispatch === "wait") {
+      await publishChatMessageCreated(args.userId, threadId);
+      signal.throwIfAborted();
       return response;
     }
     if (dispatch === "drain") {
       // The thread is idle but an older unclaimed message holds the queue
       // head (e.g. left behind by a cancelled run). Dispatch the head so the
       // thread keeps draining; this message stays queued behind it (#21392).
+      await publishChatMessageCreated(args.userId, threadId);
+      signal.throwIfAborted();
       await set(
         drainQueuedUserMessagesForThread$,
         { chatThreadId: threadId },
