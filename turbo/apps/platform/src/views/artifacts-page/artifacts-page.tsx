@@ -9,6 +9,7 @@ import {
   IconAlertTriangle,
   IconCarambola,
   IconCarambolaFilled,
+  IconDownload,
   IconDots,
   IconExternalLink,
   IconHistory,
@@ -98,7 +99,10 @@ import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
 } from "../zero-page/zero-file-preview-icon.tsx";
-import { publicAttachmentUrl } from "../zero-page/zero-attachment-url.ts";
+import {
+  downloadAttachmentUrl,
+  publicAttachmentUrl,
+} from "../zero-page/zero-attachment-url.ts";
 
 type ArtifactPreviewKind = "image" | "html" | "pdf" | "video" | "file";
 type ArtifactTypeIconKind = "presentation" | "html" | "image" | "video";
@@ -673,17 +677,32 @@ function ArtifactCardActions({
             <IconHistory size={14} stroke={1.7} aria-hidden />
             View creation chat
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <a
-              href={previewUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`Open preview for ${item.filename}`}
+          {item.contentType === "application/zip" ? (
+            <DropdownMenuItem
+              onClick={() => {
+                detach(
+                  downloadAttachmentUrl(item.url, undefined, item.filename),
+                  Reason.DomCallback,
+                  "artifact download",
+                );
+              }}
             >
-              <IconExternalLink size={14} stroke={1.7} aria-hidden />
-              Open a new tab
-            </a>
-          </DropdownMenuItem>
+              <IconDownload size={14} stroke={1.7} aria-hidden />
+              Download
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem asChild>
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open preview for ${item.filename}`}
+              >
+                <IconExternalLink size={14} stroke={1.7} aria-hidden />
+                Open a new tab
+              </a>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
