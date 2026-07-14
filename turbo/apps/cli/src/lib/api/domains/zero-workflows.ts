@@ -1,16 +1,28 @@
-import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
+import {
+  initClient,
+  type ServerInferRequest,
+  type ServerInferResponseBody,
+} from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   type WorkflowFileEntry,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
-  type ZeroWorkflowTriggerCreateRequest,
-  type ZeroWorkflowTriggerSummary,
-  type ZeroWorkflowTriggerUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { getClientConfig, handleError } from "../core/client-factory";
+
+export type ZeroWorkflowAutomationCreateRequest = ServerInferRequest<
+  typeof zeroWorkflowAutomationsContract.create
+>["body"];
+export type ZeroWorkflowAutomationUpdateRequest = ServerInferRequest<
+  typeof zeroWorkflowAutomationsContract.update
+>["body"];
+export type ZeroWorkflowAutomationSummary = ServerInferResponseBody<
+  typeof zeroWorkflowAutomationsContract.get,
+  200
+>;
 
 export async function listWorkflows(query: {
   agentId?: string;
@@ -87,72 +99,75 @@ export async function copyWorkflow(
   handleError(result, `Failed to copy workflow "${workflowId}"`);
 }
 
-export async function listWorkflowTriggers(
+export async function listWorkflowAutomations(
   workflowId: string,
-): Promise<readonly ZeroWorkflowTriggerSummary[]> {
+): Promise<readonly ZeroWorkflowAutomationSummary[]> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowTriggersContract, config);
+  const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.list({ params: { workflowId } });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to list triggers for workflow "${workflowId}"`);
+  handleError(
+    result,
+    `Failed to list automations for workflow "${workflowId}"`,
+  );
 }
 
-export async function createWorkflowTrigger(
+export async function createWorkflowAutomation(
   workflowId: string,
-  body: ZeroWorkflowTriggerCreateRequest,
-): Promise<ZeroWorkflowTriggerSummary> {
+  body: ZeroWorkflowAutomationCreateRequest,
+): Promise<ZeroWorkflowAutomationSummary> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowTriggersContract, config);
+  const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.create({ params: { workflowId }, body });
   if (result.status === 201) return result.body;
-  handleError(result, `Failed to add trigger to workflow "${workflowId}"`);
+  handleError(result, `Failed to add automation to workflow "${workflowId}"`);
 }
 
-export async function getWorkflowTrigger(
+export async function getWorkflowAutomation(
   id: string,
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowAutomationSummary> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowTriggersContract, config);
+  const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Workflow trigger "${id}" not found`);
+  handleError(result, `Workflow automation "${id}" not found`);
 }
 
-export async function updateWorkflowTrigger(
+export async function updateWorkflowAutomation(
   id: string,
-  body: ZeroWorkflowTriggerUpdateRequest,
-): Promise<ZeroWorkflowTriggerSummary> {
+  body: ZeroWorkflowAutomationUpdateRequest,
+): Promise<ZeroWorkflowAutomationSummary> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowTriggersContract, config);
+  const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.update({ params: { id }, body });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to update workflow trigger "${id}"`);
+  handleError(result, `Failed to update workflow automation "${id}"`);
 }
 
-export async function deleteWorkflowTrigger(id: string): Promise<void> {
+export async function deleteWorkflowAutomation(id: string): Promise<void> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowTriggersContract, config);
+  const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.delete({ params: { id } });
   if (result.status === 204) return;
-  handleError(result, `Workflow trigger "${id}" not found`);
+  handleError(result, `Workflow automation "${id}" not found`);
 }
 
-export async function enableWorkflowTrigger(
+export async function enableWorkflowAutomation(
   id: string,
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowAutomationSummary> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowTriggersContract, config);
+  const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.enable({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to enable workflow trigger "${id}"`);
+  handleError(result, `Failed to enable workflow automation "${id}"`);
 }
 
-export async function disableWorkflowTrigger(
+export async function disableWorkflowAutomation(
   id: string,
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowAutomationSummary> {
   const config = await getClientConfig();
-  const client = initClient(zeroWorkflowTriggersContract, config);
+  const client = initClient(zeroWorkflowAutomationsContract, config);
   const result = await client.disable({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to disable workflow trigger "${id}"`);
+  handleError(result, `Failed to disable workflow automation "${id}"`);
 }

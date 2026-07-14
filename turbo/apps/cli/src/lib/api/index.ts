@@ -116,19 +116,22 @@ export {
 
 // Domain modules - Zero Workflows
 export {
+  type ZeroWorkflowAutomationCreateRequest,
+  type ZeroWorkflowAutomationUpdateRequest,
+  type ZeroWorkflowAutomationSummary,
   listWorkflows,
   createWorkflow,
   getWorkflow,
   updateWorkflow,
   deleteWorkflow,
   copyWorkflow,
-  listWorkflowTriggers,
-  createWorkflowTrigger,
-  getWorkflowTrigger,
-  updateWorkflowTrigger,
-  deleteWorkflowTrigger,
-  enableWorkflowTrigger,
-  disableWorkflowTrigger,
+  listWorkflowAutomations,
+  createWorkflowAutomation,
+  getWorkflowAutomation,
+  updateWorkflowAutomation,
+  deleteWorkflowAutomation,
+  enableWorkflowAutomation,
+  disableWorkflowAutomation,
 } from "./domains/zero-workflows";
 
 // Domain modules - Zero Goals
