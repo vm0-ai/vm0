@@ -391,6 +391,10 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["enhanced.links", usd(0.02), 1],
   ]),
 
+  // Perplexity Search API — https://docs.perplexity.ai/docs/getting-started/pricing
+  // Raw provider cost is $5 per 1,000 requests with no token charge.
+  ...usageGroup("web-search", "perplexity", [["request", usd(0.005), 1]]),
+
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
   // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.
   ...usageGroup("image", "gemini-2.5-flash-image", [

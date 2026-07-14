@@ -134,6 +134,9 @@ ZERO_MAPS_GOOGLE_MAPS_TOKEN=op://Development/google/ZERO_MAPS_GOOGLE_MAPS_TOKEN
 # Optional: Zero Scrape provider (Firecrawl)
 ZERO_SCRAPE_FIRECRAWL_TOKEN=
 
+# Optional: Zero Web Search provider (Perplexity)
+ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=
+
 # Optional: Steam Web API
 STEAM_WEB_API_KEY=op://Development/steam/STEAM_WEB_API_KEY
 

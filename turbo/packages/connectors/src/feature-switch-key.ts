@@ -40,6 +40,7 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
   ZeroScrape = "zeroScrape",
+  ZeroWebSearch = "zeroWebSearch",
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",
