@@ -328,6 +328,14 @@ function dialogForElement(element: HTMLElement): HTMLElement {
   return dialog;
 }
 
+function permissionGroupHeader(element: HTMLElement): HTMLElement {
+  const header = element.closest("button")?.parentElement;
+  if (!(header instanceof HTMLElement)) {
+    throw new Error("permission group header not found");
+  }
+  return header;
+}
+
 async function findLoadedPermissionsDialog(): Promise<HTMLElement> {
   const unknownEndpoints = await screen.findByText("Other endpoints");
   return dialogForElement(unknownEndpoints);
@@ -1397,6 +1405,91 @@ describe("team page navigation", () => {
     expect(buttonByText("Restore", permissionsDialog)).toBeDisabled();
   });
 
+  it("shows aggregate persisted durations on permission category headers", async () => {
+    mockNow();
+    mockTeamAPIs();
+    const metadata = await loadFirewallPermissionMetadata("slack");
+    if (!metadata?.categories) {
+      throw new Error("slack permission categories not found");
+    }
+    const categoryByPermission = metadata.categories.categories;
+    const permissionNamesInCategory = (category: string): string[] => {
+      return metadata.permissions
+        .filter((permission) => {
+          return categoryByPermission[permission.name] === category;
+        })
+        .map((permission) => {
+          return permission.name;
+        });
+    };
+    const expiresAt = isoFromNowMs(2 * 60 * 60 * 1000);
+    const createPersistedGrant = (
+      permission: string,
+      expiration: string | null,
+    ): UserPermissionGrantResponse => {
+      return {
+        agentId: researchAgentId,
+        connectorRef: "slack",
+        permission,
+        action: "allow",
+        expiresAt: expiration,
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      };
+    };
+    const grants = [
+      ...permissionNamesInCategory("Read").map((permission) => {
+        return createPersistedGrant(permission, expiresAt);
+      }),
+      ...permissionNamesInCategory("Misc").map((permission, index) => {
+        return createPersistedGrant(permission, index === 0 ? null : expiresAt);
+      }),
+    ];
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, grants);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("@ops")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Manage Slack permissions"));
+
+    const readGroupLabel = await connectorCategoryLabel("slack", "Read");
+    const readHeader = permissionGroupHeader(
+      await screen.findByText(readGroupLabel),
+    );
+    expect(within(readHeader).getByText("2 hours")).toBeInTheDocument();
+    expect(buttonByText("Allow", readHeader)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      within(readHeader).getByLabelText("Read allow options"),
+    ).toBeInTheDocument();
+
+    const miscGroupLabel = await connectorCategoryLabel("slack", "Misc");
+    const miscHeader = permissionGroupHeader(
+      await screen.findByText(miscGroupLabel),
+    );
+    expect(within(miscHeader).getByText("Mixed")).toBeInTheDocument();
+    expect(buttonByText("Allow", miscHeader)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      within(miscHeader).queryByLabelText("Misc allow options"),
+    ).not.toBeInTheDocument();
+  });
+
   it("saves permission duration changes from an agent page", async () => {
     mockNow();
     mockTeamAPIs();
@@ -1558,10 +1651,65 @@ describe("team page navigation", () => {
       within(loadedGroupedDialog).getByText("Slack permissions"),
     ).toBeInTheDocument();
     expect(readGroupElement).toBeInTheDocument();
+    const readGroupHeader = permissionGroupHeader(readGroupElement);
     const writeGroupElement = await screen.findByText(writeGroupLabel);
     expect(writeGroupElement).toBeInTheDocument();
     const miscGroupElement = await screen.findByText(miscGroupLabel);
     expect(miscGroupElement).toBeInTheDocument();
+
+    expect(within(readGroupHeader).getByText("Mixed")).toBeInTheDocument();
+    expect(buttonByText("Allow", readGroupHeader)).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(
+      within(readGroupHeader).queryByLabelText("Read allow options"),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Allow", readGroupHeader));
+    await waitFor(() => {
+      expect(
+        within(readGroupHeader).getByLabelText("Read allow options"),
+      ).toHaveTextContent("Always");
+    });
+    click(within(readGroupHeader).getByLabelText("Read allow options"));
+    click(menuItemByText("Allow for 7d"));
+    await waitFor(() => {
+      expect(
+        within(readGroupHeader).getByLabelText("Read allow options"),
+      ).toHaveTextContent("7d");
+    });
+
+    click(readGroupElement);
+    const bookmarksReadRow = await permissionRowByName(
+      loadedGroupedDialog,
+      "bookmarks:read",
+    );
+    click(
+      within(bookmarksReadRow).getByLabelText("bookmarks:read allow options"),
+    );
+    click(menuItemByText("Allow for 1h"));
+    await waitFor(() => {
+      expect(within(readGroupHeader).getByText("Mixed")).toBeInTheDocument();
+      expect(buttonByText("Allow", readGroupHeader)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        within(readGroupHeader).queryByLabelText("Read allow options"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(
+      within(bookmarksReadRow).getByLabelText("bookmarks:read allow options"),
+    );
+    click(menuItemByText("Allow for 7d"));
+    await waitFor(() => {
+      expect(
+        within(readGroupHeader).getByLabelText("Read allow options"),
+      ).toHaveTextContent("7d");
+      expect(within(readGroupHeader).queryByText("Mixed")).toBeNull();
+    });
 
     click(screen.getByText(miscGroupLabel));
     const channelsJoinRow = await permissionRowByName(
