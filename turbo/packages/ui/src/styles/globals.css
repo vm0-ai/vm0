@@ -344,6 +344,8 @@
 @layer base {
   * {
     @apply border-border;
+    /* Keep native focus outlines stable when transition-colors is applied. */
+    outline-color: hsl(var(--ring));
   }
 
   body {

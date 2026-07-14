@@ -218,6 +218,35 @@ describe("previewPresentationHtml", () => {
     expect(injectedCss).toContain("border-radius: 0 !important");
   });
 
+  it("uses the semantic focus ring for editable presentation content", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-1",
+      html: `
+        <!doctype html>
+        <html>
+          <body>
+            <section data-vm0-slide data-slide-id="slide-1">
+              <h1 data-vm0-editable="text">Slide</h1>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const injectedCss = Array.from(doc.querySelectorAll("style"))
+      .map((style) => {
+        return style.textContent ?? "";
+      })
+      .join("\n");
+
+    expect(injectedCss).toMatch(
+      /\[data-vm0-editor-edit-id\]:hover\s*{\s*outline-color:\s*#0f82ff\s*!important;/,
+    );
+    expect(injectedCss).toMatch(
+      /\[data-vm0-editor-edit-id\]:focus\s*{\s*outline-color:\s*hsl\(var\(--ring, 15 80% 66%\)\)\s*!important;/,
+    );
+  });
+
   it("appends additional head styles to the preview document", () => {
     const previewHtml = previewPresentationHtml({
       activeSlideId: "slide-1",
