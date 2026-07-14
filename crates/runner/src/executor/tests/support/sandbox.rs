@@ -167,7 +167,6 @@ pub(in crate::executor::tests) struct CancelAtProcessBoundarySandbox {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::executor::tests) enum SandboxGatePoint {
-    Exec,
     StartProcess,
     WritePrivateFile,
 }
@@ -223,7 +222,6 @@ impl Sandbox for OperationGateSandbox {
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
-        self.wait_at(SandboxGatePoint::Exec).await;
         self.inner.exec(request).await
     }
 
@@ -232,7 +230,6 @@ impl Sandbox for OperationGateSandbox {
         request: &ExecRequest<'_>,
         label: &'static str,
     ) -> sandbox::Result<ExecResult> {
-        self.wait_at(SandboxGatePoint::Exec).await;
         self.inner.exec_with_diagnostic_label(request, label).await
     }
 
