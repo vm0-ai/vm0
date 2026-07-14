@@ -1067,6 +1067,55 @@ describe("chat composer models", () => {
     expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
+  it("shows a workflow created in the current chat without a page refresh", async () => {
+    const user = userEvent.setup({ delay: null });
+    let workflows: ReturnType<typeof workflowSummary>[] = [];
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, workflows);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadWorkflowsChanged:${THREAD_ID}`,
+        ),
+      ).toBeTruthy();
+    });
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+    await expect(
+      screen.findByText("No matching workflows"),
+    ).resolves.toBeInTheDocument();
+
+    workflows = [
+      workflowSummary({
+        name: "new-chat-workflow",
+        displayName: "New Chat Workflow",
+        description: "Created by the current chat run",
+        agentId: AGENT_ID,
+      }),
+    ];
+    act(() => {
+      context.mocks.ably.trigger(
+        `chatThreadWorkflowsChanged:${THREAD_ID}`,
+        null,
+      );
+    });
+
+    await expect(
+      screen.findByText("/new-chat-workflow"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("closes the slash workflow menu when focus leaves the composer input", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");

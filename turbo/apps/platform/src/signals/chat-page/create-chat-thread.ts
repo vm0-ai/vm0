@@ -92,6 +92,7 @@ import {
 } from "./run-group-folding.ts";
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
+import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 
 import type {
   ChatThreadSignals,
@@ -2411,6 +2412,7 @@ function createRunTracking({
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(reloadThread$);
     set(reloadArtifacts$);
+    set(reloadWorkflowData$);
     await Promise.all([
       get(remoteThreadDetail$),
       get(optimisticCreateUnsettled$)
@@ -2483,6 +2485,12 @@ function createRunTracking({
       return false;
     });
 
+    const onWorkflowsChanged$ = command(({ set }) => {
+      L.debug("onWorkflowsChanged$ fired", { threadId });
+      set(reloadWorkflowData$);
+      return false;
+    });
+
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
     const subscriptionSignal = subscriptionScope.signal;
@@ -2501,6 +2509,7 @@ function createRunTracking({
               onRunChanged$,
               onAutomationsChanged$,
               onArtifactsChanged$,
+              onWorkflowsChanged$,
               onWorkflowQueueChanged$: workflowQueueHandler(threadId),
               onSubscribed$,
             },
