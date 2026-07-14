@@ -153,19 +153,42 @@ pub(in crate::executor::tests) fn sandbox_create_error(message: impl Into<String
     }
 }
 
-pub(in crate::executor::tests) struct CancelAfterWaitSandbox {
-    pub(in crate::executor::tests) inner: Box<dyn Sandbox>,
-    pub(in crate::executor::tests) cancel: tokio_util::sync::CancellationToken,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::executor::tests) enum ProcessCancellationPoint {
+    StartResult,
+    WaitResult,
 }
 
-pub(in crate::executor::tests) struct StartProcessGateSandbox {
+pub(in crate::executor::tests) struct CancelAtProcessBoundarySandbox {
     pub(in crate::executor::tests) inner: Box<dyn Sandbox>,
+    pub(in crate::executor::tests) cancel: tokio_util::sync::CancellationToken,
+    pub(in crate::executor::tests) point: ProcessCancellationPoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::executor::tests) enum SandboxGatePoint {
+    StartProcess,
+    WritePrivateFile,
+}
+
+pub(in crate::executor::tests) struct OperationGateSandbox {
+    pub(in crate::executor::tests) inner: Box<dyn Sandbox>,
+    pub(in crate::executor::tests) point: SandboxGatePoint,
     pub(in crate::executor::tests) entered: Arc<tokio::sync::Notify>,
     pub(in crate::executor::tests) release: Arc<tokio::sync::Notify>,
 }
 
+impl OperationGateSandbox {
+    async fn wait_at(&self, point: SandboxGatePoint) {
+        if self.point == point {
+            self.entered.notify_one();
+            self.release.notified().await;
+        }
+    }
+}
+
 #[async_trait]
-impl Sandbox for StartProcessGateSandbox {
+impl Sandbox for OperationGateSandbox {
     fn id(&self) -> &str {
         self.inner.id()
     }
@@ -228,6 +251,7 @@ impl Sandbox for StartProcessGateSandbox {
     }
 
     async fn write_private_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+        self.wait_at(SandboxGatePoint::WritePrivateFile).await;
         self.inner.write_private_file(path, content).await
     }
 
@@ -235,8 +259,7 @@ impl Sandbox for StartProcessGateSandbox {
         &self,
         request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<sandbox::GuestProcessHandle> {
-        self.entered.notify_one();
-        self.release.notified().await;
+        self.wait_at(SandboxGatePoint::StartProcess).await;
         self.inner.start_process(request).await
     }
 
@@ -250,7 +273,7 @@ impl Sandbox for StartProcessGateSandbox {
 }
 
 #[async_trait]
-impl Sandbox for CancelAfterWaitSandbox {
+impl Sandbox for CancelAtProcessBoundarySandbox {
     fn id(&self) -> &str {
         self.inner.id()
     }
@@ -320,7 +343,11 @@ impl Sandbox for CancelAfterWaitSandbox {
         &self,
         request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<sandbox::GuestProcessHandle> {
-        self.inner.start_process(request).await
+        let result = self.inner.start_process(request).await;
+        if self.point == ProcessCancellationPoint::StartResult {
+            self.cancel.cancel();
+        }
+        result
     }
 
     async fn wait_process(
@@ -329,7 +356,9 @@ impl Sandbox for CancelAfterWaitSandbox {
         timeout: Duration,
     ) -> sandbox::Result<ProcessExit> {
         let result = self.inner.wait_process(handle, timeout).await;
-        self.cancel.cancel();
+        if self.point == ProcessCancellationPoint::WaitResult {
+            self.cancel.cancel();
+        }
         result
     }
 }

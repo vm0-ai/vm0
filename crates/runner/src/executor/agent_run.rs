@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::time::{Duration, Instant};
 
 use guest_contracts::diagnostics::FailureDiagnostic;
@@ -13,8 +14,8 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
 };
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
-    Sandbox, StartProcessRequest,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessHandle, ProcessControlMode,
+    ProcessOutputMode, Sandbox, StartProcessRequest,
 };
 use shell_quote::quote_shell_arg;
 use tokio::io::AsyncReadExt;
@@ -22,11 +23,12 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use super::diagnostics::{
-    AgentBootstrapAbnormalExitLogContext, AgentStdoutStreamDiagnostics, StdoutDrainReport,
-    build_agent_env_diagnostics, build_agent_env_key_diagnostics, check_host_oom,
-    collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom, drain_stdout_to_file,
-    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
-    log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
+    AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
+    StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
+    check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
+    drain_stdout_to_file, log_agent_abnormal_exit_env_diagnostics,
+    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
+    read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
     should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
@@ -42,7 +44,9 @@ use super::session_history_download::{
     SessionHistoryDownloadPhaseTiming, SessionHistoryDownloadTimings,
     SessionHistoryMaterialization, SessionHistoryMaterializer,
 };
-use super::session_restore::{MaterializedResumeSession, restore_session};
+use super::session_restore::{
+    MaterializedResumeSession, SessionRestoreDiagnostics, restore_session,
+};
 use super::storage::download_storages;
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
@@ -770,6 +774,14 @@ impl AgentExecutionResult {
         Self::failure(1, error, None)
     }
 
+    pub(super) fn cancelled() -> Self {
+        Self {
+            failure: Some(ExecutionFailure::cancelled()),
+            stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
+            reusable_session_identity: None,
+        }
+    }
+
     pub(super) fn exit_code(&self) -> i32 {
         self.failure.as_ref().map_or(0, |failure| failure.exit_code)
     }
@@ -934,6 +946,31 @@ impl RunControls {
     }
 }
 
+struct PreparedAgentProcess {
+    handle: GuestProcessHandle,
+    agent_started_at: Instant,
+    deferred_background_fill: Option<crate::storage_cache::DeferredBackgroundFill>,
+    session_restore_diagnostics: Option<SessionRestoreDiagnostics>,
+    pre_run_restored_session_identity: Option<RestoredSessionIdentity>,
+    env_diagnostics: AgentEnvDiagnostics,
+    env_pairs: Vec<(String, String)>,
+}
+
+async fn run_pre_spawn_phase<T>(
+    cancel: &CancellationToken,
+    phase: impl Future<Output = T>,
+) -> Option<T> {
+    if cancel.is_cancelled() {
+        return None;
+    }
+
+    tokio::select! {
+        biased;
+        result = phase => Some(result),
+        () = cancel.cancelled() => None,
+    }
+}
+
 pub(super) async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -970,7 +1007,15 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         session_history_restore_plan,
     } = controls;
     let has_active_input_source = active_input_source.is_some();
-    let mut deferred_background_fill = None;
+    let pre_spawn_started = Instant::now();
+    let pre_spawn_cancel = cancel.clone();
+    let pre_spawn_start = &start;
+    let pre_spawn_telemetry = &mut *telemetry;
+    let prepared_agent = run_pre_spawn_phase(&cancel, async move {
+        let cancel = pre_spawn_cancel;
+        let start = pre_spawn_start;
+        let telemetry = pre_spawn_telemetry;
+        let mut deferred_background_fill = None;
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -1475,7 +1520,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         })
         .await;
 
-    let mut handle = match handle {
+    let handle = match handle {
         Ok(h) => {
             let spawned_at = Instant::now();
             telemetry.record(
@@ -1498,6 +1543,46 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             );
             telemetry.record("agent_execute", t.elapsed(), false, Some(&e.to_string()));
             return Err(e.into());
+        }
+    };
+
+        RunnerResult::Ok(PreparedAgentProcess {
+            handle,
+            agent_started_at: t,
+            deferred_background_fill,
+            session_restore_diagnostics,
+            pre_run_restored_session_identity,
+            env_diagnostics,
+            env_pairs,
+        })
+    })
+    .await;
+    let PreparedAgentProcess {
+        mut handle,
+        agent_started_at: t,
+        deferred_background_fill,
+        session_restore_diagnostics,
+        mut pre_run_restored_session_identity,
+        env_diagnostics,
+        env_pairs,
+    } = match prepared_agent {
+        Some(result) => result?,
+        None => {
+            info!(
+                run_id = %context.run_id,
+                "cancel received before guest process started"
+            );
+            let result = AgentExecutionResult::cancelled();
+            telemetry.record(
+                "agent_execute",
+                pre_spawn_started.elapsed(),
+                false,
+                result
+                    .failure
+                    .as_ref()
+                    .map(|failure| failure.error.as_str()),
+            );
+            return Ok(result);
         }
     };
 
