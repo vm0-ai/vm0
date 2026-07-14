@@ -1396,6 +1396,72 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
+  it("starts a fresh goal session after the thread model is removed", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before the goal model is removed",
+      selectedModel: "claude-opus-4-6",
+    });
+    await createGoalForRun(
+      actor,
+      first.runId,
+      "Continue autonomously after the model policy changes",
+    );
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed on the removed model"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const goalRunId = await waitForNewGoalContinuationRunId({
+      actor,
+      threadId: first.threadId,
+      knownRunIds: new Set(),
+    });
+    const goalContext = await waitForRunContext(actor, goalRunId);
+    expect(goalContext.body.sessionId).toBeNull();
+    expect(goalContext.body.environment.ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
+    );
+
+    await api.requestCancelRun(actor, goalRunId, [200]);
+    await waitForRunStatus(actor, goalRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
   it("persists goal query embeddings, reuses them, and invalidates them with goal lifecycle changes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);

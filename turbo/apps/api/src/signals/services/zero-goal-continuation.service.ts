@@ -70,6 +70,12 @@ interface InternalRunCallbackInput {
   readonly payload: unknown;
 }
 
+interface GoalThreadSession {
+  readonly sessionId: string;
+  readonly selectedModel: string | null;
+  readonly modelProvider: string | null;
+}
+
 type ModelContext =
   | {
       readonly ok: true;
@@ -285,12 +291,16 @@ async function threadIsIdle(db: Db, chatThreadId: string): Promise<boolean> {
   return activeRun === undefined;
 }
 
-async function latestSessionIdForThread(
+async function latestSessionForThread(
   db: Db,
   chatThreadId: string,
-): Promise<string | undefined> {
+): Promise<GoalThreadSession | undefined> {
   const rows = await db
-    .select({ result: agentRuns.result })
+    .select({
+      result: agentRuns.result,
+      selectedModel: zeroRuns.selectedModel,
+      modelProvider: zeroRuns.modelProvider,
+    })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
     .where(
@@ -302,7 +312,11 @@ async function latestSessionIdForThread(
   for (const row of rows) {
     const sessionId = agentSessionIdFromResult(row.result);
     if (sessionId) {
-      return sessionId;
+      return {
+        sessionId,
+        selectedModel: row.selectedModel,
+        modelProvider: row.modelProvider,
+      };
     }
   }
   return undefined;
@@ -372,7 +386,7 @@ const runGoalNow$ = command(
     { set },
     args: {
       readonly goal: GoalBootstrap;
-      readonly sessionId?: string;
+      readonly latestSession?: GoalThreadSession;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
@@ -391,6 +405,12 @@ const runGoalNow$ = command(
       return modelContext.failure;
     }
     const { modelPin, effectiveModelProvider } = modelContext;
+    const sessionId =
+      args.latestSession?.selectedModel === modelPin.selectedModel &&
+      (args.latestSession.modelProvider ?? null) ===
+        (effectiveModelProvider ?? null)
+        ? args.latestSession.sessionId
+        : undefined;
 
     const normalizedGoal = {
       ...goal,
@@ -414,7 +434,7 @@ const runGoalNow$ = command(
         body: {
           prompt,
           agentId: goal.agentId,
-          ...(args.sessionId ? { sessionId: args.sessionId } : {}),
+          ...(sessionId ? { sessionId } : {}),
           ...(effectiveModelProvider
             ? { modelProvider: effectiveModelProvider }
             : {}),
@@ -519,7 +539,7 @@ export const continueGoalIfIdle$ = command(
     }
     signal.throwIfAborted();
 
-    const sessionId = await latestSessionIdForThread(db, run.chatThreadId);
+    const latestSession = await latestSessionForThread(db, run.chatThreadId);
     signal.throwIfAborted();
     const runResult = await set(
       runGoalNow$,
@@ -533,7 +553,7 @@ export const continueGoalIfIdle$ = command(
           objective: goal.objective,
           objectiveBrief: goal.objectiveBrief,
         },
-        ...(sessionId ? { sessionId } : {}),
+        ...(latestSession ? { latestSession } : {}),
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,

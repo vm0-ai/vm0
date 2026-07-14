@@ -36,6 +36,11 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import type {
+  ModelProviderCredentialScope,
+  ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
+import { testChatThreadStateContract } from "@vm0/api-contracts/contracts/test-chat-thread-state";
 import {
   storagesCommitContract,
   storagesDownloadContract,
@@ -69,6 +74,7 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
 import { chatThreadsV1Routes } from "../../chat-threads-v1";
+import { testChatThreadStateRoutes } from "../../test-chat-thread-state";
 import { storagesCommitRoutes } from "../../storages-commit";
 import { storagesDownloadRoutes } from "../../storages-download";
 import { storagesListRoutes } from "../../storages-list";
@@ -246,6 +252,7 @@ const chatFilesRoutes = [
   ...zeroChatThreadsArtifactsSyncRoutes,
   ...zeroChatMessagesRoutes,
   ...chatThreadsV1Routes,
+  ...testChatThreadStateRoutes,
   ...zeroUploadsPrepareRoutes,
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsHtmlDomEditSnapshotRoutes,
@@ -286,6 +293,10 @@ export function createChatFilesBddApi(context: TestContext) {
 
   function threadsClient() {
     return chatFilesApp(context)(chatThreadsContract);
+  }
+
+  function testChatThreadStateClient() {
+    return chatFilesApp(context)(testChatThreadStateContract);
   }
 
   function threadByIdClient() {
@@ -401,6 +412,21 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   return {
+    async setLegacyThreadModelState(args: {
+      readonly threadId: string;
+      readonly userId: string;
+      readonly modelProviderId: string | null;
+      readonly modelProviderType: ModelProviderType | null;
+      readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+      readonly selectedModel: string | null;
+      readonly codexServiceTier: "fast" | null;
+    }): Promise<void> {
+      await accept(
+        testChatThreadStateClient().setLegacyModelState({ body: args }),
+        [200],
+      );
+    },
+
     mockCompletedUploadObject(
       actor: ApiTestUser,
       uploadId: string,

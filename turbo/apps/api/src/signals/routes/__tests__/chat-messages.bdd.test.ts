@@ -1908,6 +1908,15 @@ describe("CHAT-02: model-first provider policies", () => {
       cliAgentType: "codex",
       lastEventSequence: 0,
     });
+    await chat.setLegacyThreadModelState({
+      threadId: first.threadId,
+      userId: actor.userId,
+      modelProviderId: null,
+      modelProviderType: "codex-oauth-token",
+      modelProviderCredentialScope: "member",
+      selectedModel: "gpt-5.5",
+      codexServiceTier: "fast",
+    });
 
     await api.updateOrgModelPolicies(actor, [
       {
