@@ -1,8 +1,3 @@
-/**
- * Persisted callback kinds accepted during the rolling-deploy drain. Producers
- * emit `workflow-automation:*`; legacy `workflow-trigger:*` rows remain readable
- * until every in-flight run from the previous release has completed.
- */
 export const internalRunCallbackKinds = [
   "agent",
   "agentphone",
@@ -11,18 +6,11 @@ export const internalRunCallbackKinds = [
   "slack:org",
   "teams:org",
   "telegram",
-  "workflow-trigger:cron",
-  "workflow-trigger:loop",
   "workflow-automation:cron",
   "workflow-automation:loop",
 ] as const;
 
 export type InternalRunCallbackKind = (typeof internalRunCallbackKinds)[number];
-
-export type NormalizedInternalRunCallbackKind = Exclude<
-  InternalRunCallbackKind,
-  "workflow-trigger:cron" | "workflow-trigger:loop"
->;
 
 export type InternalRunCallbackStatus = "completed" | "failed" | "progress";
 
@@ -43,9 +31,9 @@ interface InternalRunCallbackRecord {
   readonly internalKind: string | null;
 }
 
-function isNormalizedInternalRunCallbackKind(
+function isInternalRunCallbackKind(
   value: string | null,
-): value is NormalizedInternalRunCallbackKind {
+): value is InternalRunCallbackKind {
   switch (value) {
     case "agent":
     case "agentphone":
@@ -66,22 +54,8 @@ function isNormalizedInternalRunCallbackKind(
 
 export function internalRunCallbackKindForRecord(
   callback: InternalRunCallbackRecord,
-): NormalizedInternalRunCallbackKind | null {
-  if (isNormalizedInternalRunCallbackKind(callback.internalKind)) {
-    return callback.internalKind;
-  }
-
-  // Contract-phase compatibility for rows written before canonical emission.
-  // Keep this normalization through the rolling-deploy drain.
-  switch (callback.internalKind) {
-    case "workflow-trigger:cron": {
-      return "workflow-automation:cron";
-    }
-    case "workflow-trigger:loop": {
-      return "workflow-automation:loop";
-    }
-    default: {
-      return null;
-    }
-  }
+): InternalRunCallbackKind | null {
+  return isInternalRunCallbackKind(callback.internalKind)
+    ? callback.internalKind
+    : null;
 }
