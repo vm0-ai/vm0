@@ -902,6 +902,7 @@ PY
             "matching.py",
             "registry.py",
             "response_streaming.py",
+            "runner_flush_lifecycle.py",
             "terminal_usage.py",
             "upstream_admission.py",
             "url_utils.py",

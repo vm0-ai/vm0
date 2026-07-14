@@ -12,6 +12,7 @@ import pytest
 import jsonl_writer
 import logging_utils
 import mitm_addon
+import runner_flush_lifecycle
 import usage
 from tests.pending_helpers import assert_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
@@ -25,12 +26,12 @@ _REQUESTED_AT_MS = 1_770_000_000_000
 
 
 def wait_for_usage_flush_worker_to_stop(timeout: float = 1.0) -> None:
-    mitm_addon.wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout=timeout)
+    runner_flush_lifecycle.wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout=timeout)
 
 
 def record_stranded_runner_usage_flush_signal() -> None:
-    with patch.object(mitm_addon, "_start_usage_flush_worker"):
-        mitm_addon._handle_runner_usage_flush_signal(0, None)
+    with patch.object(runner_flush_lifecycle, "_start_usage_flush_worker"):
+        runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,7 @@ def runner_usage_flush_files(tmp_path: Path) -> Iterator[RunnerUsageFlushFiles]:
     try:
         yield files
     finally:
-        mitm_addon.reset_runner_usage_flush_state_for_tests()
+        runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
         usage.set_pending_path("")
 
 
@@ -142,7 +143,7 @@ class TestRunnerUsageFlushSignal:
                 side_effect=write_pending_snapshot,
             ),
         ):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             assert flushed.wait(timeout=1)
             assert snapshotted.wait(timeout=1)
             wait_for_usage_flush_worker_to_stop()
@@ -184,14 +185,16 @@ class TestRunnerUsageFlushSignal:
             assert state["flushRequestId"] == "jsonl-request-1"
             assert state["path"] == str(log_path)
             assert state["pending"] == 0
-            assert not mitm_addon._usage_flush_requested.is_set()
+            assert not runner_flush_lifecycle._usage_flush_requested.is_set()
 
         mock_executor = MagicMock()
         mock_executor.shutdown.side_effect = shutdown_usage_executor
         done_thread = ThreadUnderTest(target=mitm_addon.done)
 
         with (
-            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
+            patch.object(
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+            ),
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
             patch.object(usage.webhook, "usage_executor", mock_executor),
             patch.object(
@@ -210,7 +213,7 @@ class TestRunnerUsageFlushSignal:
                     message="done did not start the shutdown usage flush",
                 )
 
-                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
                 state_before_release = json.loads(runner_usage_flush_files.pending_path.read_text())
                 assert "flushRequestId" not in state_before_release
                 assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
@@ -229,7 +232,7 @@ class TestRunnerUsageFlushSignal:
             "auth-base:shutdown:False",
             "jsonl:shutdown",
         ]
-        assert not mitm_addon._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
 
     def test_signal_handler_writes_snapshot_when_flush_fails(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
@@ -255,9 +258,9 @@ class TestRunnerUsageFlushSignal:
                 "write_pending_snapshot",
                 side_effect=write_pending_snapshot,
             ),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             assert snapshotted.wait(timeout=1)
             wait_for_usage_flush_worker_to_stop()
 
@@ -275,11 +278,13 @@ class TestRunnerUsageFlushSignal:
         log_path = runner_usage_flush_files.write_jsonl_flush_request()
 
         with (
-            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
+            patch.object(
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+            ),
             patch.object(logging_utils.ctx, "log", MagicMock(), create=True),
         ):
             logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_usage_flush_worker_to_stop()
 
         entry = json.loads(log_path.read_text().strip())
@@ -300,10 +305,12 @@ class TestRunnerUsageFlushSignal:
         runner_usage_flush_files.write_jsonl_flush_request(flush_request_id="../jsonl-request-1")
 
         with (
-            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
-            patch.object(mitm_addon, "flush_log_path") as flush_log_path,
+            patch.object(
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+            ),
+            patch.object(logging_utils, "flush_log_path") as flush_log_path,
         ):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_usage_flush_worker_to_stop()
 
         flush_log_path.assert_not_called()
@@ -315,10 +322,12 @@ class TestRunnerUsageFlushSignal:
         runner_usage_flush_files.jsonl_flush_request_path.write_bytes(b"\xff")
 
         with (
-            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
-            patch.object(mitm_addon, "flush_log_path") as flush_log_path,
+            patch.object(
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+            ),
+            patch.object(logging_utils, "flush_log_path") as flush_log_path,
         ):
-            mitm_addon._flush_jsonl_for_runner_request()
+            runner_flush_lifecycle._flush_jsonl_for_runner_request()
 
         flush_log_path.assert_not_called()
         assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
@@ -330,11 +339,13 @@ class TestRunnerUsageFlushSignal:
         log = MagicMock()
 
         with (
-            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
-            patch.object(mitm_addon, "flush_log_path", side_effect=RuntimeError("secret")),
-            patch.object(mitm_addon.ctx, "log", log, create=True),
+            patch.object(
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+            ),
+            patch.object(logging_utils, "flush_log_path", side_effect=RuntimeError("secret")),
+            patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
         ):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_usage_flush_worker_to_stop()
 
         state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
@@ -366,21 +377,22 @@ class TestRunnerUsageFlushSignal:
             original_append_lines(path, content)
 
         with (
-            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
+            patch.object(
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+            ),
             patch.object(jsonl_writer, "_append_lines", side_effect=append_lines),
             patch.object(
-                mitm_addon,
+                runner_flush_lifecycle,
                 "RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS",
                 0.01,
-                create=True,
             ),
-            patch.object(mitm_addon.ctx, "log", log, create=True),
+            patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
         ):
             try:
                 logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
                 assert append_started.wait(timeout=1)
 
-                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
                 wait_for_usage_flush_worker_to_stop()
 
                 state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
@@ -393,8 +405,8 @@ class TestRunnerUsageFlushSignal:
                     "pending": 1,
                 }
 
-                with patch.object(mitm_addon, "flush_log_path") as retry_flush:
-                    mitm_addon._handle_runner_usage_flush_signal(0, None)
+                with patch.object(logging_utils, "flush_log_path") as retry_flush:
+                    runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
                     wait_for_usage_flush_worker_to_stop()
 
                 retry_flush.assert_not_called()
@@ -410,18 +422,20 @@ class TestRunnerUsageFlushSignal:
         log_path = runner_usage_flush_files.write_jsonl_flush_request()
 
         with (
-            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
-            patch.object(mitm_addon, "flush_log_path") as flush_log_path,
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+            ),
+            patch.object(logging_utils, "flush_log_path") as flush_log_path,
+            patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
         ):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_usage_flush_worker_to_stop()
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_usage_flush_worker_to_stop()
 
         flush_log_path.assert_called_once_with(
             str(log_path),
-            timeout=mitm_addon.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
+            timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
         )
 
     def test_jsonl_flush_failure_is_retryable(
@@ -430,28 +444,30 @@ class TestRunnerUsageFlushSignal:
         log_path = runner_usage_flush_files.write_jsonl_flush_request()
 
         with (
-            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(
+                runner_flush_lifecycle, "__file__", str(runner_usage_flush_files.addon_file)
+            ),
+            patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True),
         ):
             with patch.object(
-                mitm_addon,
+                logging_utils,
                 "flush_log_path",
                 side_effect=RuntimeError("flush failed"),
             ) as failed_flush:
-                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
                 wait_for_usage_flush_worker_to_stop()
 
-            with patch.object(mitm_addon, "flush_log_path") as retry_flush:
-                mitm_addon._handle_runner_usage_flush_signal(0, None)
+            with patch.object(logging_utils, "flush_log_path") as retry_flush:
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
                 wait_for_usage_flush_worker_to_stop()
 
         failed_flush.assert_called_once_with(
             str(log_path),
-            timeout=mitm_addon.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
+            timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
         )
         retry_flush.assert_called_once_with(
             str(log_path),
-            timeout=mitm_addon.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
+            timeout=runner_flush_lifecycle.RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS,
         )
         state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
         assert state["pending"] == 0
@@ -460,14 +476,14 @@ class TestRunnerUsageFlushSignal:
         log = MagicMock()
 
         with (
-            patch.object(mitm_addon.ctx, "log", log, create=True),
+            patch.object(runner_flush_lifecycle.ctx, "log", log, create=True),
             patch.object(
                 usage,
                 "flush_usage_events",
                 side_effect=RuntimeError("secret-token"),
             ),
         ):
-            mitm_addon._flush_usage_for_runner_request()
+            runner_flush_lifecycle._flush_usage_for_runner_request()
 
         log.warn.assert_called_once()
         message = log.warn.call_args.args[0]
@@ -510,8 +526,8 @@ class TestRunnerUsageFlushSignal:
             str(runner_usage_flush_files.proxy_log_path),
         )
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
-            mitm_addon._flush_usage_for_runner_request()
+        with patch.object(runner_flush_lifecycle.ctx, "log", MagicMock(), create=True):
+            runner_flush_lifecycle._flush_usage_for_runner_request()
 
         assert enqueue_calls == 1
         assert_pending(
@@ -564,7 +580,7 @@ class TestRunnerUsageFlushSignal:
                 message="timer enqueue did not start",
             )
 
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_event(
                 flush_owner_lock.blocking_acquire_started,
                 timeout=1,
@@ -654,7 +670,7 @@ class TestRunnerUsageFlushSignal:
                 message="first timer enqueue did not start",
             )
 
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_event(
                 flush_owner_lock.blocking_acquire_started,
                 timeout=1,
@@ -705,10 +721,10 @@ class TestRunnerUsageFlushSignal:
             return 0
 
         with patch.object(usage, "flush_usage_events", side_effect=flush_usage_events):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             assert first_flush_started.wait(timeout=1)
 
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             release_first_flush.set()
 
             assert second_flush_completed.wait(timeout=1)
@@ -727,11 +743,11 @@ class TestRunnerUsageFlushSignal:
         record_stranded_runner_usage_flush_signal()
         with (
             patch.object(
-                mitm_addon,
+                runner_flush_lifecycle,
                 "_flush_usage_for_runner_request",
                 side_effect=flush_usage_for_runner_request,
             ),
-            patch.object(mitm_addon, "_flush_jsonl_for_runner_request"),
+            patch.object(runner_flush_lifecycle, "_flush_jsonl_for_runner_request"),
         ):
             wait_for_usage_flush_worker_to_stop()
             assert flush_count == 1
@@ -739,9 +755,9 @@ class TestRunnerUsageFlushSignal:
     def test_reset_runner_usage_flush_state_clears_stranded_pending_signal(self):
         record_stranded_runner_usage_flush_signal()
 
-        mitm_addon.reset_runner_usage_flush_state_for_tests()
+        runner_flush_lifecycle.reset_runner_usage_flush_state_for_tests()
 
-        assert not mitm_addon._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
 
     def test_failed_signal_flush_releases_worker_for_later_signal(self, mitm_ctx):
         second_flush_completed = threading.Event()
@@ -758,10 +774,10 @@ class TestRunnerUsageFlushSignal:
             mitm_ctx() as log,
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
         ):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             wait_for_usage_flush_worker_to_stop()
 
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             assert second_flush_completed.wait(timeout=1)
             wait_for_usage_flush_worker_to_stop()
 
@@ -790,7 +806,7 @@ class TestRunnerUsageFlushSignal:
             usage_webhook_server.queue_response(500)
             usage_webhook_server.queue_response(500)
             with mitm_ctx(), patch.object(usage.webhook.time, "sleep"):
-                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
                 wait_for_usage_flush_worker_to_stop()
 
             assert usage_webhook_server.request_count == 2
@@ -805,7 +821,7 @@ class TestRunnerUsageFlushSignal:
 
             usage_webhook_server.queue_response(204)
             with mitm_ctx():
-                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
                 wait_for_usage_flush_worker_to_stop()
 
             assert usage_webhook_server.request_count == 3
