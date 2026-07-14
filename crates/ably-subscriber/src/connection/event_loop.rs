@@ -19,8 +19,8 @@ use super::message::{decode_data, message_targets_channel};
 use super::session::{SessionState, TokenRenewalFailure};
 use super::state::{ChannelLifecycleState, reconnect_spacing_delay, retry_delay};
 use super::transport::{
-    WsRead, WsTransport, WsWrite, connect_and_split, websocket_close_frame_reason,
-    websocket_close_reason, websocket_error_reason,
+    WsTransport, connect_pending, websocket_close_frame_reason, websocket_close_reason,
+    websocket_error_reason,
 };
 use crate::Error;
 use crate::protocol::{
@@ -158,8 +158,8 @@ async fn send_close_message(p: &mut EventLoopState) {
     p.session.mark_closed();
 }
 
-// Reconnect paths should only close the current WebSocket transport. Sending
-// Ably CLOSE here would terminate the resumable connection state on the server.
+// Transport-only shutdown paths must not send Ably CLOSE, which would terminate
+// resumable connection state or duplicate a server-declared CLOSED transition.
 //
 // The transport is detached synchronously so status events and reconnects are
 // not delayed by a slow close handshake. The bounded background close still
@@ -168,24 +168,7 @@ fn close_websocket_transport(p: &mut EventLoopState) {
     let Some(transport) = p.transport.take() else {
         return;
     };
-    let WsTransport {
-        ws_read: _ws_read,
-        mut ws_write,
-    } = transport;
-    let close_timeout = p.timing.close_timeout;
-    let close_task = tokio::spawn(async move {
-        let result = tokio::time::timeout(close_timeout, async move {
-            let _ = ws_write.close().await;
-        })
-        .await;
-        if result.is_err() {
-            tracing::warn!(
-                timeout_ms = close_timeout.as_millis(),
-                "Timed out while closing websocket transport"
-            );
-        }
-    });
-    drop(close_task);
+    transport.close_in_background(p.timing.close_timeout);
 }
 
 async fn send_status_event(
@@ -533,8 +516,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     connected_msg,
                     channel_serial,
                     token,
-                    ws_read,
-                    ws_write,
+                    transport,
                 }) => {
                     p.session.commit_reconnect_attached(
                         &connected_msg,
@@ -542,7 +524,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                         token,
                         p.timing.token_renewal_margin,
                     );
-                    p.transport = Some(WsTransport::new(ws_read, ws_write));
+                    p.transport = Some(transport);
                     if !send_status_event(&mut p, &mut close_rx, Event::Connected, "connected")
                         .await
                     {
@@ -553,8 +535,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 Ok(ReconnectOutcome::ChannelSuspended {
                     connected_msg,
                     token,
-                    ws_read,
-                    ws_write,
+                    transport,
                 }) => {
                     p.session.commit_reconnect_channel_suspended(
                         &connected_msg,
@@ -562,7 +543,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                         p.timing.token_renewal_margin,
                         p.timing.channel_retry_timeout,
                     );
-                    p.transport = Some(WsTransport::new(ws_read, ws_write));
+                    p.transport = Some(transport);
                     continue 'outer;
                 }
                 Ok(ReconnectOutcome::Closed) => {
@@ -615,14 +596,12 @@ enum ReconnectOutcome {
         connected_msg: ProtocolMessage,
         channel_serial: Option<String>,
         token: Option<TokenDetails>,
-        ws_read: WsRead,
-        ws_write: WsWrite,
+        transport: WsTransport,
     },
     ChannelSuspended {
         connected_msg: ProtocolMessage,
         token: Option<TokenDetails>,
-        ws_read: WsRead,
-        ws_write: WsWrite,
+        transport: WsTransport,
     },
     Closed,
 }
@@ -846,6 +825,7 @@ async fn handle_message(
         action::CLOSED => {
             tracing::info!("Connection closed by server");
             p.session.mark_closed();
+            close_websocket_transport(p);
             return LoopAction::Stop;
         }
         action::AUTH => {
@@ -966,7 +946,7 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 /// caller moves the channel into suspended retry, matching ably-js.
 async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, Error> {
     let reconnect_timeout = p.timing.reconnect_timeout;
-    let (connected_msg, mut ws_read, mut ws_write, new_token) =
+    let (connected_msg, mut transport, new_token) =
         tokio::time::timeout(reconnect_timeout, async {
             let use_resume = p.session.can_resume();
 
@@ -990,9 +970,9 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             };
 
             let ws_url = build_ws_url(&p.realtime_host, &active_token, resume.as_deref())?;
-            let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
+            let mut transport = connect_pending(&ws_url, p.timing.close_timeout).await?;
 
-            let connected_msg = wait_for_connected(&mut ws_read).await?;
+            let connected_msg = wait_for_connected(transport.read_mut()?).await?;
 
             let resumed = use_resume
                 && connected_msg.connection_id.as_deref() == p.session.connection_id()
@@ -1021,11 +1001,12 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
                 p.session.channel_serial(),
                 p.session.attach_mode(),
             )?;
-            ws_write
+            transport
+                .write_mut()?
                 .send(tungstenite::Message::Binary(data.into()))
                 .await?;
 
-            Ok::<_, Error>((connected_msg, ws_read, ws_write, new_token))
+            Ok::<_, Error>((connected_msg, transport, new_token))
         })
         .await
         .map_err(|_| Error::Protocol {
@@ -1035,7 +1016,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
 
     let attach_outcome = match tokio::time::timeout(p.timing.realtime_request_timeout, async {
         loop {
-            match wait_for_attach_outcome(&mut ws_read, &p.channel).await? {
+            match wait_for_attach_outcome(transport.read_mut()?, &p.channel).await? {
                 AttachOutcome::RetryAttach(err) => {
                     tracing::warn!(
                         code = err.code,
@@ -1048,7 +1029,8 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
                         p.session.channel_serial(),
                         p.session.attach_mode(),
                     )?;
-                    ws_write
+                    transport
+                        .write_mut()?
                         .send(tungstenite::Message::Binary(data.into()))
                         .await?;
                 }
@@ -1068,8 +1050,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             connected_msg,
             channel_serial,
             token: new_token,
-            ws_read,
-            ws_write,
+            transport: transport.into_transport()?,
         },
         AttachOutcome::Detached(err) => {
             tracing::warn!(
@@ -1079,8 +1060,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             ReconnectOutcome::ChannelSuspended {
                 connected_msg,
                 token: new_token,
-                ws_read,
-                ws_write,
+                transport: transport.into_transport()?,
             }
         }
         AttachOutcome::RetryAttach(err) => {
@@ -1105,8 +1085,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             ReconnectOutcome::ChannelSuspended {
                 connected_msg,
                 token: new_token,
-                ws_read,
-                ws_write,
+                transport: transport.into_transport()?,
             }
         }
     })
