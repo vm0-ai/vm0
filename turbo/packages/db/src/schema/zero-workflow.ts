@@ -91,13 +91,13 @@ export const zeroWorkflows = pgTable(
 );
 
 /**
- * Shared trigger chat thread for one workflow execution owner.
+ * Shared automation chat thread for one workflow execution owner.
  *
- * Trigger-fired runs use the trigger owner's identity. Keep the linked chat
- * thread at the workflow-user level so every trigger owned by the same user
- * for a workflow writes to one conversation.
+ * Automation-fired runs use the automation owner's identity. Keep the linked
+ * chat thread at the workflow-user level so every automation owned by the same
+ * user for a workflow writes to one conversation.
  */
-export const workflowUserTriggerThreads = pgTable(
+export const workflowUserAutomationThreads = pgTable(
   "workflow_user_automation_threads",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -170,16 +170,16 @@ export type ZeroWorkflowEventType =
 export type ZeroWorkflowWebhookDisabledReason = "paid_plan_required";
 
 /**
- * Workflow triggers.
+ * Workflow automations.
  *
- * A trigger answers "when" (schedule) and "where" (agent) a workflow runs; the
- * workflow's SKILL.md is the "what". Trigger chat is shared at the
- * workflow-user level by `workflow_user_trigger_threads`.
+ * An automation answers "when" a workflow runs; the workflow's SKILL.md is the
+ * "what". Automation chat is shared at the workflow-user level by
+ * `workflow_user_automation_threads`.
  *
- * Schedule triggers are polled by `next_run_at`. Event triggers keep
+ * Schedule automations are polled by `next_run_at`. Event automations keep
  * `next_run_at = NULL` and fire from their event-specific junction.
  */
-export const zeroWorkflowTriggers = pgTable(
+export const zeroWorkflowAutomations = pgTable(
   "zero_workflow_automations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -222,11 +222,11 @@ export const zeroWorkflowTriggers = pgTable(
     return [
       index("idx_zero_workflow_automations_workflow").on(table.workflowId),
       index("idx_zero_workflow_automations_org").on(table.orgId),
-      // Partial index for the time poller: enabled triggers with a due next run.
+      // Partial index for the time poller: enabled automations with a due run.
       index("idx_zero_workflow_automations_next_run")
         .on(table.nextRunAt)
         .where(sql`enabled = true`),
-      // Each trigger kind carries exactly its own config.
+      // Each automation kind carries exactly its own config.
       check(
         "zero_workflow_automations_schedule_config_check",
         sql`(
@@ -253,14 +253,14 @@ export const zeroWorkflowTriggers = pgTable(
   },
 );
 
-export const zeroWorkflowTriggerMemoryEmbeddings = pgTable(
+export const zeroWorkflowAutomationMemoryEmbeddings = pgTable(
   "zero_workflow_automation_memory_embeddings",
   {
-    workflowTriggerId: uuid("workflow_trigger_id")
+    workflowAutomationId: uuid("workflow_trigger_id")
       .primaryKey()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -278,14 +278,14 @@ export const zeroWorkflowTriggerMemoryEmbeddings = pgTable(
   },
 );
 
-export const zeroWorkflowWebhookTriggers = pgTable(
+export const zeroWorkflowWebhookAutomations = pgTable(
   "zero_workflow_webhook_automations",
   {
-    triggerId: uuid("automation_id")
+    automationId: uuid("automation_id")
       .primaryKey()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -317,7 +317,7 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -325,7 +325,7 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -367,7 +367,7 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -375,7 +375,7 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

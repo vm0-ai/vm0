@@ -10,7 +10,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
-import { zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations } from "./zero-workflow";
 import type { GoogleWorkspaceEventTypes } from "@vm0/db/jsonb-contracts/google-workspace-event";
 
 export type GoogleWorkspaceEventProvider = "google-meet";
@@ -86,7 +86,7 @@ export const googleWorkspaceProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -94,7 +94,7 @@ export const googleWorkspaceProcessedEvents = pgTable(
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),

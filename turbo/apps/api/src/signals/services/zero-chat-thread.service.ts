@@ -40,7 +40,7 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowTriggers as zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import {
   and,
   asc,

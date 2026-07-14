@@ -2,7 +2,7 @@ import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   zeroWorkflows,
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
+  zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";

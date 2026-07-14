@@ -34,10 +34,10 @@ import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
-  workflowUserTriggerThreads as workflowUserAutomationThreads,
-  zeroWorkflowTriggerMemoryEmbeddings as zeroWorkflowAutomationMemoryEmbeddings,
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
-  zeroWorkflowWebhookTriggers as zeroWorkflowWebhookAutomations,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomationMemoryEmbeddings,
+  zeroWorkflowAutomations,
+  zeroWorkflowWebhookAutomations,
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
 } from "@vm0/db/schema/zero-workflow";
@@ -1209,7 +1209,7 @@ async function insertWebhookEventAutomation(
     const token = mintWorkflowWebhookToken();
     const secret = mintWorkflowWebhookSecret();
     await tx.insert(zeroWorkflowWebhookAutomations).values({
-      triggerId: row.id,
+      automationId: row.id,
       tokenHash: hashWorkflowWebhookToken(token),
       encryptedToken: await encryptWorkflowWebhookToken(token, {
         orgId: args.input.orgId,
@@ -2023,7 +2023,7 @@ export const updateWorkflowAutomation$ = command(
           .delete(zeroWorkflowAutomationMemoryEmbeddings)
           .where(
             eq(
-              zeroWorkflowAutomationMemoryEmbeddings.workflowTriggerId,
+              zeroWorkflowAutomationMemoryEmbeddings.workflowAutomationId,
               automation.id,
             ),
           );
@@ -2321,7 +2321,7 @@ async function persistEnabledWorkflowAutomation(
         .update(zeroWorkflowWebhookAutomations)
         .set({ disabledReason: null, updatedAt: args.now })
         .where(
-          eq(zeroWorkflowWebhookAutomations.triggerId, args.automation.id),
+          eq(zeroWorkflowWebhookAutomations.automationId, args.automation.id),
         );
     }
     return { status: "ok", row: enabledRow };

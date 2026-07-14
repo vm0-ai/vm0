@@ -6,8 +6,8 @@ import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
-  workflowUserTriggerThreads as workflowUserAutomationThreads,
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
 import { zeroWorkflowQueueEvents } from "@vm0/db/schema/zero-workflow-queue";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";

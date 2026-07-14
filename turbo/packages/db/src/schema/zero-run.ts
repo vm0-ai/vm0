@@ -10,7 +10,7 @@ import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
 import { chatThreads } from "./chat-thread";
-import { zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations } from "./zero-workflow";
 import { threadGoals } from "./thread-goal";
 
 /**
@@ -33,18 +33,18 @@ export const zeroRuns = pgTable(
     // Legacy column retained during the Automation ID expand window.
     workflowTriggerId: uuid("workflow_trigger_id").references(
       (): AnyPgColumn => {
-        return zeroWorkflowTriggers.id;
+        return zeroWorkflowAutomations.id;
       },
       { onDelete: "set null" },
     ),
     // Canonical run provenance for the Automation that started this run.
     workflowAutomationId: uuid("workflow_automation_id").references(
       (): AnyPgColumn => {
-        return zeroWorkflowTriggers.id;
+        return zeroWorkflowAutomations.id;
       },
       { onDelete: "set null" },
     ),
-    // Stable grouping key copied from workflow triggers/goals for chat
+    // Stable grouping key copied from workflow automations/goals for chat
     // rendering of repeated automated runs.
     runGroupId: uuid("run_group_id"),
     // Run provenance for autonomous thread-goal continuation.

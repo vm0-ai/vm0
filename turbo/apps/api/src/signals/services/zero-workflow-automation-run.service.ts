@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowTriggers as zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { command, type Computed } from "ccstate";
 import { eq } from "drizzle-orm";
 
