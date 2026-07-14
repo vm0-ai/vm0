@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.431.2](https://github.com/vm0-ai/vm0/compare/core-v8.431.1...core-v8.431.2) (2026-07-14)
+
+
+### Refactoring
+
+* **workflows:** rename notion automation switch with rollout compatibility ([#21446](https://github.com/vm0-ai/vm0/issues/21446)) ([3a1e851](https://github.com/vm0-ai/vm0/commit/3a1e8517a3b8c904067b48166067fe672cb051c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.0
+    * @vm0/connectors bumped to 1.160.2
+
 ## [8.431.1](https://github.com/vm0-ai/vm0/compare/core-v8.431.0...core-v8.431.1) (2026-07-14)
 
 

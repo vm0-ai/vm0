@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.23...guest-write-file-v0.1.24) (2026-07-14)
+
+
+### Documentation
+
+* **rust:** document guest-write-file private and batch modes ([#21452](https://github.com/vm0-ai/vm0/issues/21452)) ([cd8e9eb](https://github.com/vm0-ai/vm0/commit/cd8e9eb464c376fecf38e24f63c0a364a9330cab))
+
 ## [0.1.23](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.22...guest-write-file-v0.1.23) (2026-07-13)
 
 ## [0.1.22](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.21...guest-write-file-v0.1.22) (2026-07-10)

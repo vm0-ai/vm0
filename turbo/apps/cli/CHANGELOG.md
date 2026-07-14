@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.240.2](https://github.com/vm0-ai/vm0/compare/cli-v9.240.1...cli-v9.240.2) (2026-07-14)
+
+
+### Bug Fixes
+
+* **cli:** map api service hosts to app links ([#21470](https://github.com/vm0-ai/vm0/issues/21470)) ([e97c63b](https://github.com/vm0-ai/vm0/commit/e97c63b9d290be9e7a63c28c6c852673f3424e0c))
+
+
+### Refactoring
+
+* **cli:** rename workflow triggers to automations ([#21464](https://github.com/vm0-ai/vm0/issues/21464)) ([b2004a9](https://github.com/vm0-ai/vm0/commit/b2004a9867e09acc514fe91f5fb2e34f5d19a3f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.194.0
+    * @vm0/connectors bumped to 1.160.2
+    * @vm0/core bumped to 8.431.2
+
 ## [9.240.1](https://github.com/vm0-ai/vm0/compare/cli-v9.240.0...cli-v9.240.1) (2026-07-14)
 
 

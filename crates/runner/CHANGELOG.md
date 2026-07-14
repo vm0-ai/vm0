@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.144.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.14...runner-rs-v0.144.15) (2026-07-14)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve original error for invalid utf-8 bodies ([#21441](https://github.com/vm0-ai/vm0/issues/21441)) ([071830a](https://github.com/vm0-ai/vm0/commit/071830ad7eba883ff289fa7d2a92eed0713783f7))
+* **mitm-addon:** stop linting after terminal exhaustive matches ([#21460](https://github.com/vm0-ai/vm0/issues/21460)) ([2a369a2](https://github.com/vm0-ai/vm0/commit/2a369a2546a3e671137c1edcba58d2f2c30f6905))
+* **runner:** avoid signaling reaped rootfs scripts ([#21476](https://github.com/vm0-ai/vm0/issues/21476)) ([2af0c09](https://github.com/vm0-ai/vm0/commit/2af0c09dc1d5087dd8b7e04b8d02faa85a5254cb))
+
+
+### Refactoring
+
+* **runner:** test storage cache through production fill path ([#21468](https://github.com/vm0-ai/vm0/issues/21468)) ([50ae892](https://github.com/vm0-ai/vm0/commit/50ae892cbdd9710655b51ecd787688538fd998d5))
+
 ## [0.144.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.13...runner-rs-v0.144.14) (2026-07-14)
 
 
