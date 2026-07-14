@@ -790,9 +790,11 @@ function appendPresentationPreviewStyle(previewDoc: Document): void {
       -webkit-user-modify: read-write-plaintext-only !important;
       caret-color: auto !important;
     }
-    [data-vm0-editor-edit-id]:hover,
-    [data-vm0-editor-edit-id]:focus {
+    [data-vm0-editor-edit-id]:hover {
       outline-color: #0f82ff !important;
+    }
+    [data-vm0-editor-edit-id]:focus {
+      outline-color: hsl(var(--ring, 15 80% 66%)) !important;
     }
   `;
   previewDoc.head.append(style);
