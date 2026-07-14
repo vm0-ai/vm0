@@ -210,9 +210,9 @@ def _parse_optional_string_list(decoded: dict[object, object], field_name: str) 
 def _parse_optional_aws_sigv4_credentials(
     decoded: dict[object, object],
 ) -> AwsSigV4Credentials | None:
-    value = decoded.get("awsSigv4")
-    if value is None:
+    if "awsSigv4" not in decoded:
         return None
+    value = decoded["awsSigv4"]
     if not isinstance(value, dict):
         raise _malformed_firewall_auth_success("awsSigv4 must be an object")
     access_key_id = value.get("accessKeyId")
@@ -221,6 +221,8 @@ def _parse_optional_aws_sigv4_credentials(
         raise _malformed_firewall_auth_success("awsSigv4.accessKeyId is required")
     if not isinstance(secret_access_key, str) or not secret_access_key:
         raise _malformed_firewall_auth_success("awsSigv4.secretAccessKey is required")
+    if "sessionToken" in value and value["sessionToken"] is None:
+        raise _malformed_firewall_auth_success("sessionToken must be a string")
     return AwsSigV4Credentials(
         access_key_id=access_key_id,
         secret_access_key=secret_access_key,

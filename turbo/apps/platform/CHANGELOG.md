@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.597.0](https://github.com/vm0-ai/vm0/compare/app-v0.596.2...app-v0.597.0) (2026-07-14)
+
+
+### Features
+
+* persist image edit canvas snapshots ([#21266](https://github.com/vm0-ai/vm0/issues/21266)) ([21d21f4](https://github.com/vm0-ai/vm0/commit/21d21f4c3660652f70e9bc8c16f5756a9b1b1f5a))
+
+
+### Bug Fixes
+
+* **platform:** show hover feedback on artifact card actions ([#21330](https://github.com/vm0-ai/vm0/issues/21330)) ([1248292](https://github.com/vm0-ai/vm0/commit/124829229647ab82ab54c307aa60a9152beeffd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.191.0
+    * @vm0/core bumped to 8.427.3
+
 ## [0.596.2](https://github.com/vm0-ai/vm0/compare/app-v0.596.1...app-v0.596.2) (2026-07-14)
 
 
