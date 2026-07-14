@@ -104,22 +104,26 @@
     }
   },
   "scripts": {
+    "firewall-hostname-contract": "tsx src/scripts/firewall-hostname-contract.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "tr46": "5.1.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "@types/tr46": "5.0.1",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
     "msw": "^2.13.2",
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.23.0",
+    "tsx": "^4.21.0",
     "typescript": "6.0.3",
     "vitest": "^4.1.9"
   }

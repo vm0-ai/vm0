@@ -58,6 +58,7 @@ import {
   enableFakeKms,
   holdOrgAdmissionLock,
   mutateRunnerJobSecretValueEnvironmentKeys,
+  replaceCustomConnectorPrefixes,
   readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
   releaseOrgAdmissionLock,
@@ -4852,7 +4853,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       kind: "builtin",
       name: "test-oauth",
       baseUrlVars: {
-        TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantId",
+        TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantid",
       },
     });
     expect(claim.environment?.TEST_OAUTH_TENANT_ID).toBe(
@@ -5825,7 +5826,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
       values: [
         { key: "api_key", kind: "secret", value: "runtime-proposal-secret" },
-        { key: "subdomain", kind: "variable", value: "acme" },
+        { key: "subdomain", kind: "variable", value: "münich" },
       ],
       agentId,
     });
@@ -5851,7 +5852,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       saved.connector.id,
       rand,
       "runtime-proposal-secret",
-      "acme",
+      "münich",
     ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
@@ -5861,7 +5862,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const secretKey = `CUSTOM_${idPart}_S_API_KEY`;
     const variableKey = `CUSTOM_${idPart}_V_SUBDOMAIN`;
     const customApis = inlineFirewallApis(claim.firewalls, internalName);
-    expect(customApis[0]?.base).toBe(`https://acme.${rand}.test/v1/`);
+    expect(customApis[0]?.base).toBe(`https://xn--mnich-kva.${rand}.test/v1/`);
     expect(customApis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
@@ -5888,7 +5889,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer runtime-proposal-secret",
     });
-    expect(resolved.body.query).toStrictEqual({ tenant: "acme" });
+    expect(resolved.body.query).toStrictEqual({ tenant: "münich" });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -6047,6 +6048,41 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("rejects a configured legacy custom connector with an invalid hostname", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const secret = "legacy-invalid-host-secret";
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: `bdd-legacy-host-${randomUUID().slice(0, 8)}`,
+      displayName: "BDD Legacy Invalid Host",
+      prefixes: ["https://valid.example.test/v1/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(actor, custom.id, secret);
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const legacyPrefix = "https://\u088f.example/v1/";
+    await replaceCustomConnectorPrefixes(context, custom.id, [legacyPrefix]);
+
+    const rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId,
+        prompt: "use the legacy invalid custom connector",
+        modelProvider: "anthropic-api-key",
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      'Custom connector "BDD Legacy Invalid Host" has an invalid configured hostname',
+    );
+    expect(JSON.stringify(rejected.body)).not.toContain(secret);
+    expect(JSON.stringify(rejected.body)).not.toContain("\u088f.example");
+  });
+
   it("keeps connector-owned vars out of custom connector base urls", async () => {
     const api = createRunsApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
@@ -6056,7 +6092,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await connectors.connectManualGrant(actor, "zendesk", "api-token", {
       ZENDESK_API_TOKEN: "zendesk-token-bdd",
       ZENDESK_EMAIL: "connector@example.com",
-      ZENDESK_SUBDOMAIN: "connector-subdomain",
+      ZENDESK_SUBDOMAIN: "münich",
     });
     await api.enableAgentConnectors(actor, agentId, ["zendesk"]);
     await authOrg.setVariable(actor, {
@@ -6094,7 +6130,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(findFirewallEntry(claim.firewalls, "zendesk")).toStrictEqual({
       kind: "builtin",
       name: "zendesk",
-      baseUrlVars: { ZENDESK_SUBDOMAIN: "connector-subdomain" },
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
     });
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 

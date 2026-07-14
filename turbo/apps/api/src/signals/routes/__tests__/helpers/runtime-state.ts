@@ -108,6 +108,18 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
   });
 }
 
+export async function replaceCustomConnectorPrefixes(
+  context: TestContext,
+  connectorId: string,
+  prefixes: readonly string[],
+): Promise<void> {
+  await postAction(context, {
+    action: "replace-custom-connector-prefixes",
+    connector_id: connectorId,
+    prefixes: [...prefixes],
+  });
+}
+
 export async function holdOrgAdmissionLock(
   context: TestContext,
   orgId: string,

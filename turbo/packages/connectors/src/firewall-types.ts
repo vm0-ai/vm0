@@ -1,10 +1,15 @@
 import { z } from "zod";
 
+import {
+  canonicalizeFirewallDnsHostname,
+  FIREWALL_HOSTNAME_POLICY_VERSION,
+} from "./firewall-hostname-policy";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
 
 const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
-const HOST_POLICY_HOST_FORBIDDEN_PATTERN = /[%*[\]/?#@\\:{}]/u;
+const HOST_POLICY_HOST_FORBIDDEN_PATTERN = /[%*[\]/?#@\\:{}<>^|]/u;
+const DNS_HOST_FORBIDDEN_ASCII_CHARS = new Set(["<", ">", "[", "]", "^", "|"]);
 
 /**
  * Proxy-side firewall configuration for token replacement.
@@ -1122,8 +1127,8 @@ function validateBaseUrlPrefixVariable({
       "must not contain unsafe path segments before a fixed path suffix",
     );
   }
-  validateBaseUrl(value, serviceName);
-  const url = new URL(value);
+  const canonicalValue = canonicalizeFirewallBaseUrl(value, serviceName);
+  const url = urlForCanonicalBaseSyntax(canonicalValue);
   if (url.search || url.hash) {
     throw baseUrlVariableError(
       base,
@@ -1346,7 +1351,7 @@ function validateBaseUrlTemplateVariable({
     validateBaseUrlPortVariable({ base, serviceName, name, value });
     return;
   }
-  if (prefixIsInsideAuthority(prefix) && suffixAuthorityPrefix(suffix) !== "") {
+  if (prefixIsInsideAuthority(prefix)) {
     validateBaseUrlAuthorityFragmentVariable({
       base,
       serviceName,
@@ -1683,24 +1688,36 @@ function validateHostPolicyShape(
   );
 }
 
-function urlForHostPolicyValidation(base: string, serviceName: string): URL {
-  if (!baseUrlAuthorityHasParams(base)) return new URL(base);
-  const schemeEnd = base.indexOf("://");
+interface HostPolicyValidationUrl {
+  readonly hostname: string;
+  readonly port: string;
+}
+
+function urlForHostPolicyValidation(
+  base: string,
+  serviceName: string,
+): HostPolicyValidationUrl {
   const authority = rawAuthorityFromBaseUrl(base);
-  if (schemeEnd === -1 || authority === null) return new URL(base);
+  if (authority === null) {
+    const url = urlForCanonicalBaseSyntax(base);
+    return { hostname: url.hostname, port: url.port };
+  }
   const authorityParts = splitParameterizedAuthority(
     authority,
     base,
     serviceName,
   );
-  const host = splitAuthorityHostSegments(authorityParts.normalizedHost)
+  const hostname = splitAuthorityHostSegments(authorityParts.normalizedHost)
     .map((segment) => {
       return hostSegmentForSyntaxValidation(segment, base, serviceName);
     })
     .join(".");
-  return new URL(
-    `${base.slice(0, schemeEnd)}://${host}${authorityParts.portSuffix}`,
-  );
+  const schemeEnd = base.indexOf("://");
+  const scheme = schemeEnd === -1 ? "https" : base.slice(0, schemeEnd);
+  const port = new URL(
+    `${scheme}://vm0-host.invalid${authorityParts.portSuffix}`,
+  ).port;
+  return { hostname, port };
 }
 
 export function validateBaseUrlHostPolicy({
@@ -1723,8 +1740,9 @@ export function validateBaseUrlHostPolicy({
     return;
   }
 
-  const authorityHasParams = baseUrlAuthorityHasParams(base);
-  const url = urlForHostPolicyValidation(base, serviceName);
+  const canonicalBase = canonicalizeFirewallBaseUrl(base, serviceName);
+  const authorityHasParams = baseUrlAuthorityHasParams(canonicalBase);
+  const url = urlForHostPolicyValidation(canonicalBase, serviceName);
   const rawAuthority = rawAuthorityFromBaseUrl(base);
   const hostname = normalizeHostPolicyHostname(url.hostname);
   if (hostPolicy.kind === "providerOwned") {
@@ -1782,9 +1800,23 @@ export function resolveFirewallBaseUrlTemplate({
   credentialed = false,
   hostPolicy,
 }: ResolveFirewallBaseUrlTemplateOptions): string {
-  if (!hasBaseUrlVars(base)) return base;
-
   try {
+    if (!hasBaseUrlVars(base)) {
+      const canonicalBase = canonicalizeFirewallBaseUrl(base, serviceName);
+      validateCredentialedBaseUrlTransportValue(
+        canonicalBase,
+        serviceName,
+        credentialed,
+      );
+      validateBaseUrlHostPolicy({
+        base,
+        diagnosticBase: base,
+        serviceName,
+        hostPolicy,
+      });
+      return canonicalBase;
+    }
+
     let resolved = "";
     let lastIndex = 0;
     for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
@@ -1810,9 +1842,9 @@ export function resolveFirewallBaseUrlTemplate({
     }
     resolved += base.slice(lastIndex);
     validateResolvedBaseUrlPathSafety(base, serviceName, resolved);
-    validateBaseUrl(resolved, serviceName);
+    const canonicalBase = canonicalizeFirewallBaseUrl(resolved, serviceName);
     validateCredentialedBaseUrlTransportValue(
-      resolved,
+      canonicalBase,
       serviceName,
       credentialed,
     );
@@ -1822,7 +1854,7 @@ export function resolveFirewallBaseUrlTemplate({
       serviceName,
       hostPolicy,
     });
-    return resolved;
+    return canonicalBase;
   } catch (error) {
     if (error instanceof FirewallBaseUrlResolutionError) {
       throw error;
@@ -1832,6 +1864,161 @@ export function resolveFirewallBaseUrlTemplate({
     }
     throw error;
   }
+}
+
+function canonicalAuthorityVariableValue(
+  value: string,
+  serviceName: string,
+): string {
+  const canonicalBase = canonicalizeFirewallBaseUrl(
+    `https://${value}`,
+    serviceName,
+  );
+  const authority = rawAuthorityFromBaseUrl(canonicalBase);
+  if (authority === null) {
+    throw new FirewallBaseUrlResolutionError(
+      `Firewall "${serviceName}" base URL variable is not a valid authority`,
+    );
+  }
+  return authority;
+}
+
+function canonicalHostFragmentVariableValue({
+  base,
+  serviceName,
+  name,
+  value,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+}): string {
+  validateHostPercentEncoding(value, base, serviceName);
+  validateHostHasNoUnsafeIdnaMappings(value, base, serviceName);
+  validateHostHasNoRawWildcards(value, base, serviceName);
+  try {
+    return canonicalizeDnsHostForExecution(value, base, serviceName);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new FirewallBaseUrlResolutionError(
+        `Firewall "${serviceName}" base URL variable "${name}" is not a valid hostname`,
+      );
+    }
+    throw error;
+  }
+}
+
+function canonicalBaseUrlVariableValue({
+  base,
+  serviceName,
+  name,
+  value,
+  prefix,
+  suffix,
+}: {
+  readonly base: string;
+  readonly serviceName: string;
+  readonly name: string;
+  readonly value: string;
+  readonly prefix: string;
+  readonly suffix: string;
+}): string {
+  validateBaseUrlTemplateVariable({
+    base,
+    serviceName,
+    name,
+    value,
+    prefix,
+    suffix,
+  });
+  if (prefix === "" && (suffix === "" || suffix.startsWith("/"))) {
+    return canonicalizeFirewallBaseUrl(value, serviceName);
+  }
+  if (prefix.endsWith("://") && (suffix === "" || suffix.startsWith("/"))) {
+    return canonicalAuthorityVariableValue(value, serviceName);
+  }
+  if (
+    prefixIsInsideAuthority(prefix) &&
+    prefix.endsWith(":") &&
+    (suffix === "" || suffix.startsWith("/"))
+  ) {
+    return value;
+  }
+  if (prefixIsInsideAuthority(prefix)) {
+    const schemeEnd = prefix.indexOf("://");
+    const authorityPrefix = prefix.slice(schemeEnd + 3);
+    const authoritySuffix = suffixAuthorityPrefix(suffix);
+    const startsAtLabelBoundary =
+      authorityPrefix === "" || authorityPrefix.endsWith(".");
+    const endsAtLabelBoundary =
+      authoritySuffix === "" ||
+      authoritySuffix.startsWith(".") ||
+      authoritySuffix.startsWith(":");
+    if (!startsAtLabelBoundary || !endsAtLabelBoundary) {
+      const decodedValue = validateBaseUrlVariablePercentEncoding({
+        base,
+        serviceName,
+        name,
+        value,
+        structureChars: PERCENT_DECODED_BOUNDARY_CHARS,
+      });
+      if (isAscii(decodedValue)) return decodedValue.toLowerCase();
+      throw new FirewallBaseUrlResolutionError(
+        `Firewall "${serviceName}" base URL variable "${name}" cannot use a non-ASCII value inside a host label`,
+      );
+    }
+    return canonicalHostFragmentVariableValue({
+      base,
+      serviceName,
+      name,
+      value,
+    });
+  }
+  return value;
+}
+
+/**
+ * Return the existing base-URL variable payload with hostname-bearing values
+ * converted to the same canonical ASCII identity used by resolved firewalls.
+ */
+export function canonicalizeFirewallBaseUrlVarsForExecution(
+  firewalls: Firewalls,
+  vars: Record<string, string> | undefined,
+): Record<string, string> {
+  resolveFirewallBaseUrlVars(firewalls, vars);
+  const canonicalVars: Record<string, string> = {};
+  for (const firewall of firewalls) {
+    for (const api of firewall.apis) {
+      for (const match of api.base.matchAll(BASE_URL_VARS_PATTERN_G)) {
+        const fullMatch = match[0];
+        const name = match[1]!;
+        const matchIndex = match.index!;
+        const value = vars?.[name];
+        if (!value) {
+          throw new FirewallBaseUrlResolutionError(
+            `Firewall "${firewall.name}" base URL requires variable "${name}" but it was not provided`,
+          );
+        }
+        const canonicalValue = canonicalBaseUrlVariableValue({
+          base: api.base,
+          serviceName: firewall.name,
+          name,
+          value,
+          prefix: api.base.slice(0, matchIndex),
+          suffix: api.base.slice(matchIndex + fullMatch.length),
+        });
+        const previousValue = canonicalVars[name];
+        if (previousValue !== undefined && previousValue !== canonicalValue) {
+          throw new FirewallBaseUrlResolutionError(
+            `Firewall "${firewall.name}" base URL variable "${name}" requires incompatible execution representations`,
+          );
+        }
+        canonicalVars[name] = canonicalValue;
+      }
+    }
+  }
+  return canonicalVars;
 }
 
 /**
@@ -1847,7 +2034,6 @@ export function resolveFirewallBaseUrlVars(
     return {
       ...fw,
       apis: fw.apis.map((api) => {
-        if (!hasBaseUrlVars(api.base)) return api;
         const resolved = resolveFirewallBaseUrlTemplate({
           serviceName: fw.name,
           base: api.base,
@@ -1855,7 +2041,18 @@ export function resolveFirewallBaseUrlVars(
           credentialed: firewallAuthInjectsCredentials(api.auth),
           hostPolicy: api.hostPolicy,
         });
-        return { ...api, base: resolved };
+        const authBase = api.auth.base;
+        return {
+          ...api,
+          base: resolved,
+          auth:
+            authBase === undefined
+              ? api.auth
+              : {
+                  ...api.auth,
+                  base: canonicalizeFirewallAuthBaseUrl(authBase, fw.name),
+                },
+        };
       }),
     };
   });
@@ -2299,6 +2496,58 @@ function baseUrlRawSyntaxTarget(base: string): string {
   return base.replace(BASE_URL_VARS_PATTERN_G, AUTH_TEMPLATE_URL_PLACEHOLDER);
 }
 
+function validateDecodedHostPercentCharacters(
+  decoded: string,
+  base: string,
+  serviceName: string,
+): void {
+  for (const char of decoded) {
+    const codeUnit = char.charCodeAt(0);
+    if (codeUnit <= 0x20 || codeUnit === 0x7f) {
+      throw new Error(
+        errMsg(
+          base,
+          serviceName,
+          "host must not contain percent-encoded control characters or whitespace",
+        ),
+      );
+    }
+    if (PERCENT_DECODED_BOUNDARY_CHARS.has(char)) {
+      throw new Error(
+        errMsg(
+          base,
+          serviceName,
+          "host must not contain percent-encoded URL structure",
+        ),
+      );
+    }
+    if (char === "{" || char === "}") {
+      throw new Error(
+        errMsg(
+          base,
+          serviceName,
+          "host must not contain percent-encoded braces",
+        ),
+      );
+    }
+    if (HOST_DOT_EQUIVALENTS.has(char)) {
+      throw new Error(
+        errMsg(base, serviceName, "host must not contain percent-encoded dots"),
+      );
+    }
+    if (char === ",") {
+      throw new Error(
+        errMsg(base, serviceName, "host must not contain commas"),
+      );
+    }
+    if (char === "*") {
+      throw new Error(
+        errMsg(base, serviceName, "host must not contain wildcard characters"),
+      );
+    }
+  }
+}
+
 function validateHostPercentEncoding(
   host: string,
   base: string,
@@ -2337,40 +2586,7 @@ function validateHostPercentEncoding(
         errMsg(base, serviceName, "host has invalid percent encoding"),
       );
     }
-    for (const char of decoded) {
-      if (char === "{" || char === "}") {
-        throw new Error(
-          errMsg(
-            base,
-            serviceName,
-            "host must not contain percent-encoded braces",
-          ),
-        );
-      }
-      if (HOST_DOT_EQUIVALENTS.has(char)) {
-        throw new Error(
-          errMsg(
-            base,
-            serviceName,
-            "host must not contain percent-encoded dots",
-          ),
-        );
-      }
-      if (char === ",") {
-        throw new Error(
-          errMsg(base, serviceName, "host must not contain commas"),
-        );
-      }
-      if (char === "*") {
-        throw new Error(
-          errMsg(
-            base,
-            serviceName,
-            "host must not contain wildcard characters",
-          ),
-        );
-      }
-    }
+    validateDecodedHostPercentCharacters(decoded, base, serviceName);
     i = end - 1;
   }
   if (host.includes("%")) {
@@ -2482,6 +2698,94 @@ function rawHostFromAuthority(authority: string): string {
   return portSeparator === -1
     ? withoutUserinfo
     : withoutUserinfo.slice(0, portSeparator);
+}
+
+function canonicalizeDnsHostForExecution(
+  rawHost: string,
+  base: string,
+  serviceName: string,
+): string {
+  if (rawHost.startsWith("[") && rawHost.endsWith("]")) {
+    return rawHost.toLowerCase();
+  }
+  const normalizedHost = validateHostHasNoEmptyLabels(
+    rawHost,
+    base,
+    serviceName,
+  );
+  let decodedHost: string;
+  try {
+    decodedHost = decodeURIComponent(normalizedHost);
+  } catch {
+    throw new Error(
+      errMsg(base, serviceName, "host has invalid percent encoding"),
+    );
+  }
+  for (const char of decodedHost) {
+    if (DNS_HOST_FORBIDDEN_ASCII_CHARS.has(char)) {
+      throw new Error(
+        errMsg(base, serviceName, "host contains a forbidden ASCII character"),
+      );
+    }
+  }
+  const canonicalHost = canonicalizeFirewallDnsHostname(decodedHost);
+  if (canonicalHost === null || canonicalHost === "") {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        `host is not valid under hostname policy ${FIREWALL_HOSTNAME_POLICY_VERSION}`,
+      ),
+    );
+  }
+  validateHostHasNoEmptyLabels(canonicalHost, base, serviceName);
+  return canonicalHost;
+}
+
+function canonicalizeAuthorityForExecution(
+  authority: string,
+  base: string,
+  serviceName: string,
+): string {
+  const rawHost = rawHostFromAuthority(authority);
+  if (rawHost.startsWith("[") && rawHost.endsWith("]")) {
+    return `${rawHost.toLowerCase()}${authority.slice(rawHost.length)}`;
+  }
+  const canonicalHost = canonicalizeDnsHostForExecution(
+    rawHost,
+    base,
+    serviceName,
+  );
+  return `${canonicalHost}${authority.slice(rawHost.length)}`;
+}
+
+function baseWithAuthority(base: string, authority: string): string {
+  const schemeEnd = base.indexOf("://");
+  const rawAuthority = rawAuthorityFromBaseUrl(base);
+  if (schemeEnd === -1 || rawAuthority === null) {
+    return base;
+  }
+  const authorityStart = schemeEnd + 3;
+  return `${base.slice(0, authorityStart)}${authority}${base.slice(
+    authorityStart + rawAuthority.length,
+  )}`;
+}
+
+function authorityForUrlSyntaxValidation(authority: string): string {
+  const rawHost = rawHostFromAuthority(authority);
+  if (rawHost.startsWith("[") && rawHost.endsWith("]")) {
+    return authority;
+  }
+  return `vm0-host.invalid${authority.slice(rawHost.length)}`;
+}
+
+function urlForCanonicalBaseSyntax(base: string): URL {
+  const authority = rawAuthorityFromBaseUrl(base);
+  return new URL(
+    authority === null
+      ? base
+      : baseWithAuthority(base, authorityForUrlSyntaxValidation(authority)),
+  );
 }
 
 function validateLabelHasNoUnsafeIdnaMappings(
@@ -2660,7 +2964,12 @@ function validateParameterizedHostUrlSyntax(
 ): void {
   const syntaxHost = splitAuthorityHostSegments(authority.normalizedHost)
     .map((seg) => {
-      return hostSegmentForSyntaxValidation(seg, base, serviceName);
+      hostSegmentForSyntaxValidation(seg, base, serviceName);
+      const parsed = parseSegment(seg);
+      if (parsed.kind === "error") {
+        throw new Error(errMsg(base, serviceName, parsed.reason));
+      }
+      return "x";
     })
     .join(".");
   try {
@@ -2774,7 +3083,7 @@ function validatePathParams(
  *   - Greedy (`+`/`*`) is rejected — it would consume the entire remaining
  *     path, leaving nothing for permission rules to match against.
  */
-function validateBaseUrlParams(base: string, serviceName: string): void {
+function validateBaseUrlParams(base: string, serviceName: string): string {
   const schemeEnd = base.indexOf("://");
   if (schemeEnd === -1) {
     throw new Error(errMsg(base, serviceName, "missing scheme"));
@@ -2814,26 +3123,87 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
     serviceName,
   );
   validateHostHasNoRawWildcards(authority.normalizedHost, base, serviceName);
+  const canonicalAuthority = {
+    normalizedHost: splitAuthorityHostSegments(authority.normalizedHost)
+      .map((segment) => {
+        const parsed = parseSegment(segment);
+        if (parsed.kind === "error") {
+          throw new Error(errMsg(base, serviceName, parsed.reason));
+        }
+        if (parsed.kind === "param") {
+          canonicalizeDnsHostForExecution(
+            `${parsed.prefix}x${parsed.suffix}`,
+            base,
+            serviceName,
+          );
+          return segment;
+        }
+        const canonicalSegment = canonicalizeDnsHostForExecution(
+          segment,
+          base,
+          serviceName,
+        );
+        if (
+          !canonicalSegment.startsWith("[") &&
+          canonicalSegment.includes(".")
+        ) {
+          throw new Error(
+            errMsg(
+              base,
+              serviceName,
+              "host label must not map to multiple labels",
+            ),
+          );
+        }
+        return canonicalSegment;
+      })
+      .join("."),
+    portSuffix: authority.portSuffix,
+  };
+  const canonicalHostSegments = splitAuthorityHostSegments(
+    canonicalAuthority.normalizedHost,
+  );
+  if (
+    hasBaseUrlParams(canonicalAuthority.normalizedHost) &&
+    canonicalHostSegments.length <= 4 &&
+    canonicalHostSegments.some((segment) => {
+      const parsed = parseSegment(segment);
+      return parsed.kind === "literal" && isIpv4NumberComponent(parsed.value);
+    }) &&
+    canonicalHostSegments.every((segment) => {
+      const parsed = parseSegment(segment);
+      return (
+        (parsed.kind === "literal" && isIpv4NumberComponent(parsed.value)) ||
+        (parsed.kind === "param" &&
+          parsed.prefix === "" &&
+          parsed.suffix === "")
+      );
+    })
+  ) {
+    throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+  }
   validateParameterizedHostUrlSyntax(
     base.slice(0, schemeEnd),
-    authority,
+    canonicalAuthority,
     base,
     serviceName,
   );
 
   const paramNames = new Set<string>();
-  validateHostParams(
-    splitAuthorityHostSegments(authority.normalizedHost),
-    paramNames,
-    base,
-    serviceName,
-  );
+  validateHostParams(canonicalHostSegments, paramNames, base, serviceName);
   if (path) {
     validatePathParams(splitPathSegments(path), paramNames, base, serviceName);
   }
+  return baseWithAuthority(
+    base,
+    `${canonicalAuthority.normalizedHost}${canonicalAuthority.portSuffix}`,
+  );
 }
 
-export function validateBaseUrl(base: string, serviceName: string): void {
+function validateAndCanonicalizeBaseUrl(
+  base: string,
+  serviceName: string,
+): string {
   if (base.includes("\\")) {
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": must not contain backslash`,
@@ -2868,19 +3238,45 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   }
 
   // Template base URLs are validated after variable resolution at compose time.
-  if (hasTemplateVars) return;
+  if (hasTemplateVars) return base;
 
   validateUrlSchemeDelimiter(base, serviceName, "base URL");
 
   // Parameterized base URLs have their own validation path.
   if (hasBaseUrlParams(base)) {
-    validateBaseUrlParams(base, serviceName);
-    return;
+    return validateBaseUrlParams(base, serviceName);
   }
 
+  const authority = rawAuthorityFromBaseUrl(base);
+  let canonicalBase = base;
+  if (authority !== null) {
+    if (authority === "") {
+      throw new Error(
+        `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    if (authorityHasEmptyPort(authority)) {
+      throw new Error(
+        `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    validateNoUserinfo(authority, base, serviceName);
+    validateHostPercentEncoding(authority, base, serviceName);
+    validateHostHasCanonicalIpv4Syntax(authority, base, serviceName);
+    validateHostHasNoUnsafeIdnaMappings(authority, base, serviceName);
+    validateHostHasNoRawWildcards(
+      rawHostFromAuthority(authority),
+      base,
+      serviceName,
+    );
+    canonicalBase = baseWithAuthority(
+      base,
+      canonicalizeAuthorityForExecution(authority, base, serviceName),
+    );
+  }
   let url: URL;
   try {
-    url = new URL(base);
+    url = urlForCanonicalBaseSyntax(canonicalBase);
   } catch {
     if (!base.includes("://")) {
       throw new Error(
@@ -2902,29 +3298,29 @@ export function validateBaseUrl(base: string, serviceName: string): void {
       `Invalid base URL "${base}" in firewall "${serviceName}": must not contain fragment`,
     );
   }
-  const authority = rawAuthorityFromBaseUrl(base);
-  if (authority !== null) {
-    if (authority === "") {
-      throw new Error(
-        `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
-      );
-    }
-    if (authorityHasEmptyPort(authority)) {
-      throw new Error(
-        `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
-      );
-    }
-    validateNoUserinfo(authority, base, serviceName);
-    validateHostPercentEncoding(authority, base, serviceName);
-    validateHostHasCanonicalIpv4Syntax(authority, base, serviceName);
-    validateHostHasNoUnsafeIdnaMappings(authority, base, serviceName);
-  }
-  validateStaticHostLabels(url.hostname, base, serviceName);
-  if (url.hostname.includes("{") || url.hostname.includes("}")) {
+  const canonicalAuthority = rawAuthorityFromBaseUrl(canonicalBase);
+  const canonicalHostname =
+    canonicalAuthority === null
+      ? url.hostname
+      : rawHostFromAuthority(canonicalAuthority);
+  validateStaticHostLabels(canonicalHostname, base, serviceName);
+  if (canonicalHostname.includes("{") || canonicalHostname.includes("}")) {
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": host must not contain braces`,
     );
   }
+  return canonicalBase;
+}
+
+export function validateBaseUrl(base: string, serviceName: string): void {
+  validateAndCanonicalizeBaseUrl(base, serviceName);
+}
+
+export function canonicalizeFirewallBaseUrl(
+  base: string,
+  serviceName: string,
+): string {
+  return validateAndCanonicalizeBaseUrl(base, serviceName);
 }
 
 interface AuthBaseStaticValidationTarget {
@@ -2990,10 +3386,10 @@ function validateDynamicAuthBaseSuffix(
   }
 }
 
-export function validateAuthBaseUrl(
+function validateAndCanonicalizeAuthBaseUrl(
   authBase: string,
   serviceName: string,
-): void {
+): string {
   if (authBase.includes("\\")) {
     throw new Error(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain backslash`,
@@ -3009,7 +3405,7 @@ export function validateAuthBaseUrl(
     serviceName,
   );
   const validationUrl = target.url;
-  if (validationUrl === null) return;
+  if (validationUrl === null) return authBase;
   if (validationUrl.includes(AUTH_TEMPLATE_START)) {
     throw new Error(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": contains unsupported template reference`,
@@ -3034,27 +3430,8 @@ export function validateAuthBaseUrl(
     authBase,
   );
 
-  let url: URL;
-  try {
-    url = new URL(validationUrl);
-  } catch {
-    throw new Error(
-      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL`,
-    );
-  }
-  if (
-    url.protocol.slice(0, -1).toLowerCase() !== REQUIRED_AUTH_BASE_URL_SCHEME
-  ) {
-    throw new Error(
-      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": scheme must be https`,
-    );
-  }
-  if (url.hash) {
-    throw new Error(
-      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain fragment`,
-    );
-  }
   const authority = rawAuthorityFromBaseUrl(validationUrl);
+  let canonicalValidationUrl = validationUrl;
   if (authority !== null) {
     if (authority === "") {
       throw new Error(
@@ -3074,8 +3451,83 @@ export function validateAuthBaseUrl(
     validateHostPercentEncoding(authority, validationUrl, serviceName);
     validateHostHasCanonicalIpv4Syntax(authority, validationUrl, serviceName);
     validateHostHasNoUnsafeIdnaMappings(authority, validationUrl, serviceName);
+    validateHostHasNoRawWildcards(
+      rawHostFromAuthority(authority),
+      validationUrl,
+      serviceName,
+    );
+    canonicalValidationUrl = baseWithAuthority(
+      validationUrl,
+      canonicalizeAuthorityForExecution(authority, validationUrl, serviceName),
+    );
   }
-  validateStaticHostLabels(url.hostname, validationUrl, serviceName);
+
+  let url: URL;
+  try {
+    url = urlForCanonicalBaseSyntax(canonicalValidationUrl);
+  } catch {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL`,
+    );
+  }
+  if (
+    url.protocol.slice(0, -1).toLowerCase() !== REQUIRED_AUTH_BASE_URL_SCHEME
+  ) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": scheme must be https`,
+    );
+  }
+  if (url.hash) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain fragment`,
+    );
+  }
+  const canonicalAuthority = rawAuthorityFromBaseUrl(canonicalValidationUrl);
+  validateStaticHostLabels(
+    canonicalAuthority === null
+      ? url.hostname
+      : rawHostFromAuthority(canonicalAuthority),
+    validationUrl,
+    serviceName,
+  );
+
+  const rawAuthAuthority = rawAuthorityFromBaseUrl(authBase);
+  if (
+    rawAuthAuthority === null ||
+    rawAuthAuthority.includes(AUTH_TEMPLATE_START)
+  ) {
+    if (
+      rawAuthAuthority !== null &&
+      (!isAscii(rawAuthAuthority) || rawAuthAuthority.includes("%"))
+    ) {
+      throw new Error(
+        `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": dynamic authority must use ASCII static text`,
+      );
+    }
+    return authBase;
+  }
+  return baseWithAuthority(
+    authBase,
+    canonicalizeAuthorityForExecution(
+      rawAuthAuthority,
+      validationUrl,
+      serviceName,
+    ),
+  );
+}
+
+export function validateAuthBaseUrl(
+  authBase: string,
+  serviceName: string,
+): void {
+  validateAndCanonicalizeAuthBaseUrl(authBase, serviceName);
+}
+
+export function canonicalizeFirewallAuthBaseUrl(
+  authBase: string,
+  serviceName: string,
+): string {
+  return validateAndCanonicalizeAuthBaseUrl(authBase, serviceName);
 }
 
 /**

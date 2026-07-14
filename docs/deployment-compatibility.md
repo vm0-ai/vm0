@@ -169,6 +169,36 @@ For runner/backend API changes:
 - Include poll, claim, heartbeat, completion, artifact, and session-resume paths
   when those protocols change.
 
+### Firewall hostname policy
+
+Firewall DNS hostnames cross the backend-to-runner boundary as canonical
+lowercase ASCII under the named policy in
+`turbo/packages/connectors/src/firewall-hostname-policy.ts`. Raw custom
+connector definitions and encrypted variable values remain unchanged in
+storage; newly produced execution firewalls and hostname-bearing built-in
+variables carry the canonical value in the existing payload shape.
+
+Treat the Unicode mapping data, supported Node majors, and pinned mitmproxy
+artifact as one compatibility contract. To upgrade any part of it:
+
+1. Update the exact hostname-policy dependency and policy revision
+   deliberately; do not allow mapping data to move through a range update.
+2. Add the intended Node major to `turbo/package.json` and the CI matrix before
+   it can serve API traffic.
+3. Review the generated corpus count and digest. A changed digest requires an
+   explicit policy decision, not a mechanical snapshot update.
+4. Run the corpus through the exact checksum-verified mitmdump artifact from
+   `crates/runner/src/deps.rs`. Every backend-emitted hostname must be accepted
+   without an identity change by the oldest runner that can still claim or
+   drain a run.
+5. Widen backend acceptance only after that old-runner inclusion check passes.
+   Keep runner-side validation fail closed for malformed or forged payloads.
+
+A hostname-policy field is not part of the persisted protocol. Add one only if
+there is a concrete second policy and runner capability routing; an old runner
+ignoring a new discriminator cannot make an otherwise incompatible hostname
+safe.
+
 For persisted state changes:
 
 - Test reading rows or payloads written by the previous version.

@@ -34,6 +34,11 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     mode: z.enum(["remove", "invalid"]),
   }),
   z.object({
+    action: z.literal("replace-custom-connector-prefixes"),
+    connector_id: z.uuid(),
+    prefixes: z.array(z.string()).min(1),
+  }),
+  z.object({
     action: z.literal("hold-org-admission-lock"),
     org_id: z.string(),
   }),
