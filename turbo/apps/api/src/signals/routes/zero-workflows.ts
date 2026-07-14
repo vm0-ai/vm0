@@ -17,9 +17,9 @@ import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
-  workflowUserTriggerThreads as workflowUserAutomationThreads,
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
-  zeroWorkflowWebhookTriggers as zeroWorkflowWebhookAutomations,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
+  zeroWorkflowWebhookAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 import { and, eq, ne } from "drizzle-orm";
@@ -757,7 +757,7 @@ async function copyWorkflowWebhookAutomationConfig(
     })
     .from(zeroWorkflowWebhookAutomations)
     .where(
-      eq(zeroWorkflowWebhookAutomations.triggerId, args.sourceAutomationId),
+      eq(zeroWorkflowWebhookAutomations.automationId, args.sourceAutomationId),
     )
     .limit(1);
   const token = mintWorkflowWebhookToken();
@@ -776,7 +776,7 @@ async function copyWorkflowWebhookAutomationConfig(
   }
 
   await tx.insert(zeroWorkflowWebhookAutomations).values({
-    triggerId: args.targetAutomationId,
+    automationId: args.targetAutomationId,
     tokenHash: hashWorkflowWebhookToken(token),
     encryptedToken: await encryptWorkflowWebhookToken(token, {
       orgId: args.orgId,

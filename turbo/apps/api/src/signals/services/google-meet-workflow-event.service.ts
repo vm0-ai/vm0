@@ -14,8 +14,8 @@ import {
 } from "@vm0/db/schema/google-workspace-event";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
-  workflowUserTriggerThreads as workflowUserAutomationThreads,
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 

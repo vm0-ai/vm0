@@ -10,7 +10,7 @@ import { sql } from "drizzle-orm";
 
 import { chatMessages } from "./chat-message";
 import { chatThreads } from "./chat-thread";
-import { zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations } from "./zero-workflow";
 
 export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
   "user_message",
@@ -63,7 +63,7 @@ export const chatMessageQueue = pgTable(
     // covers workflow deletion (triggers cascade from workflows).
     triggerId: uuid("trigger_id").references(
       () => {
-        return zeroWorkflowTriggers.id;
+        return zeroWorkflowAutomations.id;
       },
       { onDelete: "cascade" },
     ),

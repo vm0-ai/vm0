@@ -13,7 +13,7 @@ import {
 } from "@vm0/connectors/connectors";
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
-  zeroWorkflowTriggers as zeroWorkflowAutomations,
+  zeroWorkflowAutomations,
   type ZeroWorkflowEventType,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
