@@ -1157,6 +1157,25 @@ describe("artifacts page", () => {
     });
   });
 
+  it("shows interaction feedback on artifact card actions", async () => {
+    setupTeam();
+    const scope = testAuthScope("card-action-feedback");
+    mockArtifacts([createArtifact()]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("launch-plan.html");
+    expect(buttonByLabel("Add launch-plan.html to favorites")).toHaveClass(
+      "hover:bg-muted",
+      "active:bg-gray-100",
+    );
+    expect(buttonByLabel("More actions for launch-plan.html")).toHaveClass(
+      "hover:bg-muted",
+      "active:bg-gray-100",
+      "data-[state=open]:bg-gray-100",
+    );
+  });
+
   it("favorites artifacts optimistically and filters favorites locally", async () => {
     setupTeam();
     const scope = testAuthScope("favorites");
