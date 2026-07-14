@@ -874,18 +874,17 @@ function queryNetworkLogs(
 | order by _time asc
 | limit 5000`;
 
-    return (
-      (await tapError(
-        (async (): Promise<AxiomNetworkEvent[]> => {
-          return (await get(queryAxiom(apl))) as AxiomNetworkEvent[];
-        })(),
-        (error) => {
-          log.warn("Failed to collect network logs", {
-            error: String(error),
-          });
-        },
-      )) ?? []
+    const networkLogs = await tapError(
+      (async (): Promise<AxiomNetworkEvent[]> => {
+        return (await get(queryAxiom(apl))) as AxiomNetworkEvent[];
+      })(),
+      (error) => {
+        log.warn("Failed to collect network logs", {
+          error: String(error),
+        });
+      },
     );
+    return networkLogs === undefined ? [] : networkLogs;
   });
 }
 
