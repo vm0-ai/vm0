@@ -1880,39 +1880,160 @@ class TestFetchFirewallHeaders:
         assert result.refreshed_secrets == ["NOTION_TOKEN"]
         assert not hasattr(result, "futureField")
 
-    async def test_sigv4_success_response_shape_is_mapped(self, mitm_ctx):
+    @pytest.mark.parametrize(
+        "session_token",
+        [
+            pytest.param(None, id="without-session-token"),
+            pytest.param("session-token", id="with-session-token"),
+        ],
+    )
+    async def test_sigv4_success_response_is_cached(
+        self,
+        mitm_ctx,
+        session_token: str | None,
+    ):
+        request_aws_sigv4 = {
+            "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+            "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+        }
+        response_aws_sigv4: dict[str, object] = {
+            "accessKeyId": "access-key-id",
+            "secretAccessKey": "secret-access-key",
+            "futureField": {"ignored": True},
+        }
+        if session_token is not None:
+            request_aws_sigv4["sessionToken"] = "${{ secrets.AWS_SESSION_TOKEN }}"
+            response_aws_sigv4["sessionToken"] = session_token
+
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response(
             {
                 "headers": {},
-                "awsSigv4": {
-                    "accessKeyId": "access-key-id",
-                    "secretAccessKey": "secret-access-key",
-                    "sessionToken": "session-token",
-                },
+                "awsSigv4": response_aws_sigv4,
             }
         )
+        cache_key = auth_cache_key()
 
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            result = await auth_client.fetch_firewall_headers(
+            result = await auth_cache.get_firewall_headers(
+                cache_key,
+                _firewall_auth_request(auth_aws_sigv4=request_aws_sigv4),
+            )
+
+        expected_credentials = AwsSigV4Credentials(
+            "access-key-id",
+            "secret-access-key",
+            session_token,
+        )
+        assert result["aws_sigv4"] == expected_credentials
+        assert require_cached_headers(cache_key).aws_sigv4 == expected_credentials
+
+    @pytest.mark.parametrize(
+        ("aws_sigv4", "expected_reason"),
+        [
+            pytest.param(None, "awsSigv4 must be an object", id="sigv4-null"),
+            pytest.param([], "awsSigv4 must be an object", id="sigv4-array"),
+            pytest.param(
+                {"secretAccessKey": "secret-access-key"},
+                "awsSigv4.accessKeyId is required",
+                id="access-key-missing",
+            ),
+            pytest.param(
+                {"accessKeyId": "", "secretAccessKey": "secret-access-key"},
+                "awsSigv4.accessKeyId is required",
+                id="access-key-empty",
+            ),
+            pytest.param(
+                {"accessKeyId": None, "secretAccessKey": "secret-access-key"},
+                "awsSigv4.accessKeyId is required",
+                id="access-key-null",
+            ),
+            pytest.param(
+                {"accessKeyId": 123, "secretAccessKey": "secret-access-key"},
+                "awsSigv4.accessKeyId is required",
+                id="access-key-number",
+            ),
+            pytest.param(
+                {"accessKeyId": "access-key-id"},
+                "awsSigv4.secretAccessKey is required",
+                id="secret-key-missing",
+            ),
+            pytest.param(
+                {"accessKeyId": "access-key-id", "secretAccessKey": ""},
+                "awsSigv4.secretAccessKey is required",
+                id="secret-key-empty",
+            ),
+            pytest.param(
+                {"accessKeyId": "access-key-id", "secretAccessKey": None},
+                "awsSigv4.secretAccessKey is required",
+                id="secret-key-null",
+            ),
+            pytest.param(
+                {"accessKeyId": "access-key-id", "secretAccessKey": 123},
+                "awsSigv4.secretAccessKey is required",
+                id="secret-key-number",
+            ),
+            pytest.param(
+                {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": "",
+                },
+                "sessionToken must not be empty",
+                id="session-token-empty",
+            ),
+            pytest.param(
+                {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": None,
+                },
+                "sessionToken must be a string",
+                id="session-token-null",
+            ),
+            pytest.param(
+                {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": 123,
+                },
+                "sessionToken must be a string",
+                id="session-token-number",
+            ),
+        ],
+    )
+    async def test_malformed_sigv4_response_is_not_cached(
+        self,
+        mitm_ctx,
+        aws_sigv4: object,
+        expected_reason: str,
+    ):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"headers": {}, "awsSigv4": aws_sigv4})
+        cache_key = auth_cache_key()
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX) as exc_info,
+        ):
+            await auth_cache.get_firewall_headers(
+                cache_key,
                 _firewall_auth_request(
                     auth_aws_sigv4={
                         "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
                         "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
                     }
-                )
+                ),
             )
 
-        assert result.payload.aws_sigv4 == AwsSigV4Credentials(
-            "access-key-id",
-            "secret-access-key",
-            "session-token",
-        )
+        assert str(exc_info.value) == f"{_MALFORMED_SUCCESS_PREFIX}: {expected_reason}"
+        assert cached_headers(cache_key) is None
 
     @pytest.mark.parametrize(
         ("auth_request", "response"),
