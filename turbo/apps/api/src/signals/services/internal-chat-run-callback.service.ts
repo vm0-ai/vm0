@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
@@ -24,7 +25,6 @@ import {
   isNotNull,
   isNull,
   lte,
-  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -490,6 +490,7 @@ function buildQueuedCreateZeroRunArgs(
         payload: {
           threadId: input.threadId,
           agentId: input.agentId,
+          queuedMessageId: input.queuedMessage.id,
         },
       },
     ],
@@ -1591,24 +1592,31 @@ async function loadComputerUseHostGrantForAutoSend(args: {
 async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
-  options?: { readonly excludeRunId?: string },
 ): Promise<boolean> {
-  const filters = [
-    eq(zeroRuns.chatThreadId, threadId),
-    inArray(agentRuns.status, ["queued", "pending", "running"]),
-  ];
-  const excludeRunId = options?.excludeRunId;
-  if (excludeRunId !== undefined) {
-    filters.push(ne(zeroRuns.id, excludeRunId));
-  }
-
-  const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(and(...filters))
-    .limit(1);
-  return run !== undefined;
+  const runs = await db.execute<{ readonly id: string }>(sql`
+    SELECT ${zeroRuns.id} AS "id"
+    FROM ${zeroRuns}
+    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+    WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      AND (
+        NOT EXISTS (
+          SELECT 1
+          FROM ${agentRunCallbacks}
+          WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+            AND ${agentRunCallbacks.internalKind} = 'chat'
+            AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM ${chatMessages}
+          WHERE ${chatMessages.runId} = ${zeroRuns.id}
+            AND ${chatMessages.role} = 'user'
+        )
+      )
+    LIMIT 1
+  `);
+  return runs.rows[0] !== undefined;
 }
 
 async function chatThreadExists(db: Db, threadId: string): Promise<boolean> {
@@ -1850,19 +1858,35 @@ async function claimQueuedUserMessageForDispatch(args: {
       return null;
     }
 
-    const [competingRun] = await tx
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-      .where(
-        and(
-          eq(zeroRuns.chatThreadId, args.threadId),
-          ne(zeroRuns.id, args.runId),
-          inArray(agentRuns.status, ["queued", "pending", "running"]),
-        ),
-      )
-      .limit(1);
-    if (competingRun) {
+    // Auto-send candidates do not own the thread until one binds a user
+    // message. Concurrent drains may insert more than one candidate before
+    // reaching this serialized gate; ignoring those unclaimed candidates lets
+    // one claim win while the others cancel before dispatch.
+    const competingRuns = await tx.execute<{ readonly id: string }>(sql`
+      SELECT ${zeroRuns.id} AS "id"
+      FROM ${zeroRuns}
+      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+      WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
+        AND ${zeroRuns.id} <> ${args.runId}
+        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM ${agentRunCallbacks}
+            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+              AND ${agentRunCallbacks.internalKind} = 'chat'
+              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              AND ${chatMessages.role} = 'user'
+          )
+        )
+      LIMIT 1
+    `);
+    if (competingRuns.rows[0]) {
       return null;
     }
 
