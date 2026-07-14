@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.238.7](https://github.com/vm0-ai/vm0/compare/cli-v9.238.6...cli-v9.238.7) (2026-07-14)
+
+
+### Refactoring
+
+* **cli:** consume server connector diagnostics ([#21316](https://github.com/vm0-ai/vm0/issues/21316)) ([44bb274](https://github.com/vm0-ai/vm0/commit/44bb2748789aa375205e7d99758a35af106c250e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.190.0
+    * @vm0/core bumped to 8.427.2
+
 ## [9.238.6](https://github.com/vm0-ai/vm0/compare/cli-v9.238.5...cli-v9.238.6) (2026-07-14)
 
 
