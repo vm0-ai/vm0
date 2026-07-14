@@ -359,6 +359,7 @@ mod tests {
         let moved_path = dir.path().join("moved-sandbox-ops.jsonl");
         let _override_guard = SandboxOpsOverrideGuard::set(&log_path);
 
+        assert!(!log_path.exists());
         record_sandbox_op("before_move", Duration::from_millis(1), true, None);
         std::fs::rename(&log_path, &moved_path).unwrap();
         record_sandbox_op("retained_file", Duration::from_millis(2), true, None);
