@@ -1007,6 +1007,8 @@ export {
   chatThreadWorkflowTriggerSchema,
   zeroWorkflowTriggerCreateRequestSchema,
   zeroWorkflowTriggerUpdateRequestSchema,
+  zeroWorkflowAutomationsListEntrySchema,
+  zeroWorkflowAutomationsListResponseSchema,
   zeroWorkflowSummarySchema,
   zeroWorkflowDetailResponseSchema,
   zeroWorkflowListResponseSchema,
@@ -1017,6 +1019,7 @@ export {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
+  zeroWorkflowAutomationsContract,
   zeroWorkflowTriggersContract,
   type ZeroWorkflowVisibility,
   type WorkflowFileEntry,
@@ -1034,6 +1037,7 @@ export {
   type ChatThreadWorkflowTrigger,
   type ZeroWorkflowTriggerCreateRequest,
   type ZeroWorkflowTriggerUpdateRequest,
+  type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowSummary,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowCreateRequest,
@@ -1043,6 +1047,7 @@ export {
   type ZeroWorkflowsCollectionContract,
   type ZeroWorkflowsDetailContract,
   type ZeroWorkflowVisibilityContract,
+  type ZeroWorkflowAutomationsContract,
   type ZeroWorkflowTriggersContract,
 } from "./zero-workflows";
 export {

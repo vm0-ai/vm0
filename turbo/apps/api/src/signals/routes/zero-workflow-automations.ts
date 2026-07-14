@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -31,7 +31,7 @@ import {
 } from "../services/zero-workflow-trigger.service";
 import type { RouteEntry } from "../route-entry";
 
-const workflowReadAuth = {
+export const workflowAutomationReadAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "agent:read",
@@ -83,23 +83,32 @@ function triggerErrorResponse(
   }
 }
 
-const createTriggerBody$ = bodyResultOf(zeroWorkflowTriggersContract.create);
-const updateTriggerBody$ = bodyResultOf(zeroWorkflowTriggersContract.update);
+const createTriggerBody$ = bodyResultOf(zeroWorkflowAutomationsContract.create);
+const updateTriggerBody$ = bodyResultOf(zeroWorkflowAutomationsContract.update);
 
-const listWorkspaceTriggersInner$ = computed(async (get) => {
+export const workspaceWorkflowAutomationEntries$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const db = get(db$);
-  const triggers = await listWorkspaceWorkflowTriggers(db, {
+  return await listWorkspaceWorkflowTriggers(db, {
     orgId: auth.orgId,
     member: memberFromAuth(auth),
   });
-  return { status: 200 as const, body: [...triggers] };
+});
+
+const listWorkspaceAutomationsInner$ = computed(async (get) => {
+  const entries = await get(workspaceWorkflowAutomationEntries$);
+  return {
+    status: 200 as const,
+    body: entries.map(({ workflow, trigger }) => {
+      return { workflow, automation: trigger };
+    }),
+  };
 });
 
 const listChatThreadTriggersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(
-    pathParamsOf(zeroWorkflowTriggersContract.listForChatThread),
+    pathParamsOf(zeroWorkflowAutomationsContract.listForChatThread),
   );
   const db = get(db$);
   const triggers = await listThreadBoundWorkflowTriggers(db, {
@@ -112,7 +121,7 @@ const listChatThreadTriggersInner$ = computed(async (get) => {
 
 const listTriggersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroWorkflowTriggersContract.list));
+  const params = get(pathParamsOf(zeroWorkflowAutomationsContract.list));
   const db = get(db$);
   const visible = await loadVisibleWorkflowById(db, {
     orgId: auth.orgId,
@@ -133,7 +142,7 @@ const listTriggersInner$ = computed(async (get) => {
 const createTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowTriggersContract.create));
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.create));
     const bodyResult = await get(createTriggerBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -233,7 +242,7 @@ const createTriggerInner$ = command(
 
 const getTriggerInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroWorkflowTriggersContract.get));
+  const params = get(pathParamsOf(zeroWorkflowAutomationsContract.get));
   const db = get(db$);
   const trigger = await getWorkflowTrigger(db, {
     orgId: auth.orgId,
@@ -249,7 +258,7 @@ const getTriggerInner$ = computed(async (get) => {
 const revealWebhookSecretInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(
-    pathParamsOf(zeroWorkflowTriggersContract.revealWebhookSecret),
+    pathParamsOf(zeroWorkflowAutomationsContract.revealWebhookSecret),
   );
   const db = get(db$);
   const secret = await revealWorkflowWebhookSecret(db, {
@@ -266,7 +275,7 @@ const revealWebhookSecretInner$ = computed(async (get) => {
 const updateTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowTriggersContract.update));
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.update));
     const bodyResult = await get(updateTriggerBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
@@ -301,7 +310,7 @@ const updateTriggerInner$ = command(
 const deleteTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowTriggersContract.delete));
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.delete));
     const result = await set(
       deleteWorkflowTrigger$,
       {
@@ -322,7 +331,7 @@ const deleteTriggerInner$ = command(
 const enableTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowTriggersContract.enable));
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.enable));
     const result = await set(
       enableWorkflowTrigger$,
       {
@@ -343,7 +352,7 @@ const enableTriggerInner$ = command(
 const disableTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroWorkflowTriggersContract.disable));
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.disable));
     const result = await set(
       disableWorkflowTrigger$,
       {
@@ -363,7 +372,7 @@ const disableTriggerInner$ = command(
 
 const runTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroWorkflowTriggersContract.run));
+  const params = get(pathParamsOf(zeroWorkflowAutomationsContract.run));
   const result = await set(
     runOwnedWorkflowTriggerNow$,
     {
@@ -389,49 +398,69 @@ const runTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return triggerErrorResponse(result);
 });
 
-export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
+export const workflowAutomationRouteHandlers = {
+  listWorkspace: authRoute(
+    workflowAutomationReadAuth,
+    listWorkspaceAutomationsInner$,
+  ),
+  listForChatThread: authRoute(
+    workflowAutomationReadAuth,
+    listChatThreadTriggersInner$,
+  ),
+  list: authRoute(workflowAutomationReadAuth, listTriggersInner$),
+  create: authRoute(workflowWriteAuth, createTriggerInner$),
+  get: authRoute(workflowAutomationReadAuth, getTriggerInner$),
+  update: authRoute(workflowWriteAuth, updateTriggerInner$),
+  delete: authRoute(workflowWriteAuth, deleteTriggerInner$),
+  enable: authRoute(workflowWriteAuth, enableTriggerInner$),
+  disable: authRoute(workflowWriteAuth, disableTriggerInner$),
+  run: authRoute(workflowWriteAuth, runTriggerInner$),
+  revealWebhookSecret: authRoute(workflowWriteAuth, revealWebhookSecretInner$),
+} as const;
+
+export const zeroWorkflowAutomationsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroWorkflowTriggersContract.listWorkspace,
-    handler: authRoute(workflowReadAuth, listWorkspaceTriggersInner$),
+    route: zeroWorkflowAutomationsContract.listWorkspace,
+    handler: workflowAutomationRouteHandlers.listWorkspace,
   },
   {
-    route: zeroWorkflowTriggersContract.listForChatThread,
-    handler: authRoute(workflowReadAuth, listChatThreadTriggersInner$),
+    route: zeroWorkflowAutomationsContract.listForChatThread,
+    handler: workflowAutomationRouteHandlers.listForChatThread,
   },
   {
-    route: zeroWorkflowTriggersContract.list,
-    handler: authRoute(workflowReadAuth, listTriggersInner$),
+    route: zeroWorkflowAutomationsContract.list,
+    handler: workflowAutomationRouteHandlers.list,
   },
   {
-    route: zeroWorkflowTriggersContract.create,
-    handler: authRoute(workflowWriteAuth, createTriggerInner$),
+    route: zeroWorkflowAutomationsContract.create,
+    handler: workflowAutomationRouteHandlers.create,
   },
   {
-    route: zeroWorkflowTriggersContract.get,
-    handler: authRoute(workflowReadAuth, getTriggerInner$),
+    route: zeroWorkflowAutomationsContract.get,
+    handler: workflowAutomationRouteHandlers.get,
   },
   {
-    route: zeroWorkflowTriggersContract.update,
-    handler: authRoute(workflowWriteAuth, updateTriggerInner$),
+    route: zeroWorkflowAutomationsContract.update,
+    handler: workflowAutomationRouteHandlers.update,
   },
   {
-    route: zeroWorkflowTriggersContract.delete,
-    handler: authRoute(workflowWriteAuth, deleteTriggerInner$),
+    route: zeroWorkflowAutomationsContract.delete,
+    handler: workflowAutomationRouteHandlers.delete,
   },
   {
-    route: zeroWorkflowTriggersContract.enable,
-    handler: authRoute(workflowWriteAuth, enableTriggerInner$),
+    route: zeroWorkflowAutomationsContract.enable,
+    handler: workflowAutomationRouteHandlers.enable,
   },
   {
-    route: zeroWorkflowTriggersContract.disable,
-    handler: authRoute(workflowWriteAuth, disableTriggerInner$),
+    route: zeroWorkflowAutomationsContract.disable,
+    handler: workflowAutomationRouteHandlers.disable,
   },
   {
-    route: zeroWorkflowTriggersContract.run,
-    handler: authRoute(workflowWriteAuth, runTriggerInner$),
+    route: zeroWorkflowAutomationsContract.run,
+    handler: workflowAutomationRouteHandlers.run,
   },
   {
-    route: zeroWorkflowTriggersContract.revealWebhookSecret,
-    handler: authRoute(workflowWriteAuth, revealWebhookSecretInner$),
+    route: zeroWorkflowAutomationsContract.revealWebhookSecret,
+    handler: workflowAutomationRouteHandlers.revealWebhookSecret,
   },
 ];

@@ -931,6 +931,14 @@ export const zeroWorkflowAutomationListResponseSchema = z.array(
   zeroWorkflowAutomationEntrySchema,
 );
 
+export const zeroWorkflowAutomationsListEntrySchema = z.object({
+  workflow: zeroWorkflowSummarySchema,
+  automation: zeroWorkflowTriggerSummarySchema,
+});
+export const zeroWorkflowAutomationsListResponseSchema = z.array(
+  zeroWorkflowAutomationsListEntrySchema,
+);
+
 export const zeroWorkflowCreateRequestSchema = z.object({
   agentId: z.string().uuid(),
   chatThreadId: z.string().uuid().optional(),
@@ -1362,6 +1370,69 @@ export const zeroWorkflowTriggersContract = c.router({
   },
 });
 
+export const zeroWorkflowAutomationsContract = c.router({
+  listWorkspace: {
+    ...zeroWorkflowTriggersContract.listWorkspace,
+    path: "/api/zero/workflow-automations",
+    responses: {
+      ...zeroWorkflowTriggersContract.listWorkspace.responses,
+      200: zeroWorkflowAutomationsListResponseSchema,
+    },
+    summary: "List the caller's automations across visible workflows",
+  },
+  listForChatThread: {
+    ...zeroWorkflowTriggersContract.listForChatThread,
+    path: "/api/zero/chat-threads/:threadId/workflow-automations",
+    summary: "List workflow automations bound to a chat thread",
+  },
+  list: {
+    ...zeroWorkflowTriggersContract.list,
+    path: "/api/zero/workflows/:workflowId/automations",
+    summary: "List the caller's own automations for a workflow",
+  },
+  create: {
+    ...zeroWorkflowTriggersContract.create,
+    path: "/api/zero/workflows/:workflowId/automations",
+    summary: "Create an automation on a workflow",
+  },
+  get: {
+    ...zeroWorkflowTriggersContract.get,
+    path: "/api/zero/workflow-automations/:id",
+    summary: "Get a workflow automation",
+  },
+  update: {
+    ...zeroWorkflowTriggersContract.update,
+    path: "/api/zero/workflow-automations/:id",
+    summary: "Update a workflow automation",
+  },
+  delete: {
+    ...zeroWorkflowTriggersContract.delete,
+    path: "/api/zero/workflow-automations/:id",
+    summary: "Delete a workflow automation",
+  },
+  enable: {
+    ...zeroWorkflowTriggersContract.enable,
+    path: "/api/zero/workflow-automations/:id/enable",
+    summary: "Enable a workflow automation",
+  },
+  disable: {
+    ...zeroWorkflowTriggersContract.disable,
+    path: "/api/zero/workflow-automations/:id/disable",
+    summary: "Disable a workflow automation",
+  },
+  run: {
+    ...zeroWorkflowTriggersContract.run,
+    path: "/api/zero/workflow-automations/:id/run",
+    summary: "Run a workflow automation immediately in its bound chat thread",
+  },
+  revealWebhookSecret: {
+    ...zeroWorkflowTriggersContract.revealWebhookSecret,
+    path: "/api/zero/workflow-automations/:id/webhook-secret",
+    summary:
+      "Reveal the webhook URL and signing secret for a workflow automation",
+  },
+});
+
 export type WorkflowFileEntry = z.infer<typeof workflowFileEntrySchema>;
 export type WorkflowFileMetadata = z.infer<typeof workflowFileMetadataSchema>;
 export type ZeroWorkflowSummary = z.infer<typeof zeroWorkflowSummarySchema>;
@@ -1386,9 +1457,14 @@ export type ZeroWorkflowRunResponse = z.infer<
 export type ZeroWorkflowAutomationEntry = z.infer<
   typeof zeroWorkflowAutomationEntrySchema
 >;
+export type ZeroWorkflowAutomationsListEntry = z.infer<
+  typeof zeroWorkflowAutomationsListEntrySchema
+>;
 export type ZeroWorkflowsCollectionContract =
   typeof zeroWorkflowsCollectionContract;
 export type ZeroWorkflowsDetailContract = typeof zeroWorkflowsDetailContract;
 export type ZeroWorkflowVisibilityContract =
   typeof zeroWorkflowVisibilityContract;
 export type ZeroWorkflowTriggersContract = typeof zeroWorkflowTriggersContract;
+export type ZeroWorkflowAutomationsContract =
+  typeof zeroWorkflowAutomationsContract;

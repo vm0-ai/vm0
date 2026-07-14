@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -43,6 +44,10 @@ function authHeaders() {
 
 function triggersClient() {
   return setupApp({ context })(zeroWorkflowTriggersContract);
+}
+
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 function detailClient() {
@@ -584,6 +589,138 @@ describe("zero workflow triggers", () => {
     );
     return connector.id;
   }
+
+  it("keeps automation routes in parity with legacy trigger aliases", async () => {
+    const { workflowId } = await setupFixture();
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 60 } },
+      }),
+      [201],
+    );
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to bind a chat thread");
+    }
+
+    const [automationGet, legacyGet] = await Promise.all([
+      accept(
+        automationsClient().get({
+          headers: authHeaders(),
+          params: { id: created.body.id },
+        }),
+        [200],
+      ),
+      accept(
+        triggersClient().get({
+          headers: authHeaders(),
+          params: { id: created.body.id },
+        }),
+        [200],
+      ),
+    ]);
+    expect(automationGet.body).toStrictEqual(legacyGet.body);
+
+    const [automationList, legacyList] = await Promise.all([
+      accept(
+        automationsClient().list({
+          headers: authHeaders(),
+          params: { workflowId },
+        }),
+        [200],
+      ),
+      accept(
+        triggersClient().list({
+          headers: authHeaders(),
+          params: { workflowId },
+        }),
+        [200],
+      ),
+    ]);
+    expect(automationList.body).toStrictEqual(legacyList.body);
+
+    const [automationThreadList, legacyThreadList] = await Promise.all([
+      accept(
+        automationsClient().listForChatThread({
+          headers: authHeaders(),
+          params: { threadId: created.body.chatThreadId },
+        }),
+        [200],
+      ),
+      accept(
+        triggersClient().listForChatThread({
+          headers: authHeaders(),
+          params: { threadId: created.body.chatThreadId },
+        }),
+        [200],
+      ),
+    ]);
+    expect(automationThreadList.body).toStrictEqual(legacyThreadList.body);
+
+    const [automationWorkspaceList, legacyWorkspaceList] = await Promise.all([
+      accept(
+        automationsClient().listWorkspace({ headers: authHeaders() }),
+        [200],
+      ),
+      accept(triggersClient().listWorkspace({ headers: authHeaders() }), [200]),
+    ]);
+    expect(automationWorkspaceList.body).toStrictEqual(
+      legacyWorkspaceList.body.map(({ workflow, trigger }) => {
+        return { workflow, automation: trigger };
+      }),
+    );
+    expect(automationWorkspaceList.body[0]).not.toHaveProperty("trigger");
+    expect(legacyWorkspaceList.body[0]).not.toHaveProperty("automation");
+
+    const updated = await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: { schedule: { type: "loop", intervalSeconds: 120 } },
+      }),
+      [200],
+    );
+    const readUpdated = await accept(
+      automationsClient().get({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(readUpdated.body).toStrictEqual(updated.body);
+
+    const disabled = await accept(
+      automationsClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    const readDisabled = await accept(
+      triggersClient().get({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(readDisabled.body).toStrictEqual(disabled.body);
+
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+    await accept(
+      triggersClient().get({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [404],
+    );
+  });
 
   it("creates a cron trigger and eagerly binds a chat thread", async () => {
     const { workflowId } = await setupFixture();
