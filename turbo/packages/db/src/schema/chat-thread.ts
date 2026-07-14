@@ -112,6 +112,14 @@ export const chatThreads = pgTable(
      * thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
+    /**
+     * Chat-message-queue pause state: while set, workflow events keep
+     * enqueueing but are not consumed. Never blocks user messages.
+     * `pauseReason` is user-visible (set on manual pause or automatically
+     * when run creation for a dequeued event fails).
+     */
+    queuePausedAt: timestamp("queue_paused_at"),
+    pauseReason: text("pause_reason"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

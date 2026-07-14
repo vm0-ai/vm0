@@ -22,7 +22,7 @@ import {
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { workflowQueueEnabledForOwner } from "./zero-workflow-queue.service";
+import { workflowQueueEnabledForOwner } from "./chat-message-queue.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";

@@ -19,7 +19,7 @@ import {
   loadWorkflowQueueThread,
   setWorkflowQueuePause,
   type WorkflowQueueThreadRow,
-} from "../services/zero-workflow-queue.service";
+} from "../services/chat-message-queue.service";
 import { drainWorkflowQueueForThread$ } from "../services/zero-workflow-queue-drain.service";
 import type { RouteEntry } from "../route-entry";
 
