@@ -152,7 +152,7 @@ interface CompleteScrapeAfterProviderArgs {
   readonly request: ZeroScrapeRequest;
   readonly requestedUrl: URL;
   readonly recordUsage: () => Promise<number>;
-  readonly signal: AbortSignal;
+  readonly providerSignal: AbortSignal;
 }
 
 function errorBody(message: string, code: string) {
@@ -644,7 +644,7 @@ async function completeScrapeAfterProvider(
     args.apiKey,
     args.request,
     args.requestedUrl,
-    args.signal,
+    args.providerSignal,
   );
 
   return await completeScrapeSuccess({
@@ -712,8 +712,10 @@ export const zeroScrape$ = command(
       apiKey,
       request: args.body,
       requestedUrl: target.url,
-      signal: requestSignal,
+      providerSignal: requestSignal,
       recordUsage: () => {
+        // Firecrawl has completed successfully, so a client disconnect must not
+        // skip billing. The instance lifecycle still owns the usage commit.
         return set(
           recordManagedUsage$,
           {
@@ -729,7 +731,7 @@ export const zeroScrape$ = command(
             },
             label: "scrape",
           },
-          requestSignal,
+          signal,
         );
       },
     });

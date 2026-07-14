@@ -467,7 +467,7 @@ describe("zero scrape route", () => {
     expect(beforeCredits - afterCredits).toBe(4);
   });
 
-  it("does not record usage when the request aborts after Firecrawl succeeds", async () => {
+  it("records usage when the request aborts after Firecrawl succeeds", async () => {
     const actor = await scrapeEnabledActor();
     const controller = new AbortController();
     const abortError = new Error("client disconnected after provider success");
@@ -509,9 +509,9 @@ describe("zero scrape route", () => {
     );
     const afterCredits = await credits(actor);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
     expect(providerCompleted).toBeTruthy();
-    expect(afterCredits).toBe(beforeCredits);
+    expect(beforeCredits - afterCredits).toBe(4);
   });
 
   it("does not start Firecrawl when the request aborts before provider launch", async () => {
