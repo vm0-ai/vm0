@@ -224,31 +224,33 @@ type NotionPendingRow = Omit<
   "triggerId"
 >;
 
-const notionPendingEventColumns = {
-  id: notionWorkflowPendingEvents.id,
-  automationId: notionWorkflowPendingEvents.automationId,
-  pageId: notionWorkflowPendingEvents.pageId,
-  scopeType: notionWorkflowPendingEvents.scopeType,
-  scopeId: notionWorkflowPendingEvents.scopeId,
-  eventFamily: notionWorkflowPendingEvents.eventFamily,
-  status: notionWorkflowPendingEvents.status,
-  firstNotionEventId: notionWorkflowPendingEvents.firstNotionEventId,
-  latestNotionEventId: notionWorkflowPendingEvents.latestNotionEventId,
-  firstEventAt: notionWorkflowPendingEvents.firstEventAt,
-  latestEventAt: notionWorkflowPendingEvents.latestEventAt,
-  latestEventContext: notionWorkflowPendingEvents.latestEventContext,
-  runAfter: notionWorkflowPendingEvents.runAfter,
-  attempts: notionWorkflowPendingEvents.attempts,
-  pageTitle: notionWorkflowPendingEvents.pageTitle,
-  pageUrl: notionWorkflowPendingEvents.pageUrl,
-  parentTitle: notionWorkflowPendingEvents.parentTitle,
-  parentUrl: notionWorkflowPendingEvents.parentUrl,
-  skipReason: notionWorkflowPendingEvents.skipReason,
-  lastError: notionWorkflowPendingEvents.lastError,
-  processedAt: notionWorkflowPendingEvents.processedAt,
-  createdAt: notionWorkflowPendingEvents.createdAt,
-  updatedAt: notionWorkflowPendingEvents.updatedAt,
-};
+function notionPendingEventColumns() {
+  return {
+    id: notionWorkflowPendingEvents.id,
+    automationId: notionWorkflowPendingEvents.automationId,
+    pageId: notionWorkflowPendingEvents.pageId,
+    scopeType: notionWorkflowPendingEvents.scopeType,
+    scopeId: notionWorkflowPendingEvents.scopeId,
+    eventFamily: notionWorkflowPendingEvents.eventFamily,
+    status: notionWorkflowPendingEvents.status,
+    firstNotionEventId: notionWorkflowPendingEvents.firstNotionEventId,
+    latestNotionEventId: notionWorkflowPendingEvents.latestNotionEventId,
+    firstEventAt: notionWorkflowPendingEvents.firstEventAt,
+    latestEventAt: notionWorkflowPendingEvents.latestEventAt,
+    latestEventContext: notionWorkflowPendingEvents.latestEventContext,
+    runAfter: notionWorkflowPendingEvents.runAfter,
+    attempts: notionWorkflowPendingEvents.attempts,
+    pageTitle: notionWorkflowPendingEvents.pageTitle,
+    pageUrl: notionWorkflowPendingEvents.pageUrl,
+    parentTitle: notionWorkflowPendingEvents.parentTitle,
+    parentUrl: notionWorkflowPendingEvents.parentUrl,
+    skipReason: notionWorkflowPendingEvents.skipReason,
+    lastError: notionWorkflowPendingEvents.lastError,
+    processedAt: notionWorkflowPendingEvents.processedAt,
+    createdAt: notionWorkflowPendingEvents.createdAt,
+    updatedAt: notionWorkflowPendingEvents.updatedAt,
+  };
+}
 
 interface ConnectorSecretRow {
   readonly name: string;
@@ -1816,7 +1818,7 @@ async function loadDueNotionPendingEvents(args: {
   readonly signal: AbortSignal;
 }): Promise<readonly NotionPendingRow[]> {
   const rows = await args.db
-    .select(notionPendingEventColumns)
+    .select(notionPendingEventColumns())
     .from(notionWorkflowPendingEvents)
     .where(
       and(
@@ -1850,7 +1852,7 @@ async function claimNotionPendingEvent(args: {
         lte(notionWorkflowPendingEvents.runAfter, args.currentTime),
       ),
     )
-    .returning(notionPendingEventColumns);
+    .returning(notionPendingEventColumns());
   args.signal.throwIfAborted();
   return claimed ?? null;
 }
