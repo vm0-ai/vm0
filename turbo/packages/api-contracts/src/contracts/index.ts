@@ -1693,6 +1693,16 @@ export {
   type ZeroImageShareXResponse,
 } from "./zero-image-share-x";
 export {
+  zeroMailContract,
+  zeroMailDraftSchema,
+  zeroMailDraftStatusSchema,
+  zeroMailProviderSchema,
+  type ZeroMailContract,
+  type ZeroMailDraft,
+  type ZeroMailDraftStatus,
+  type ZeroMailProvider,
+} from "./zero-mail";
+export {
   zeroBankingContract,
   zeroBankingProviderSchema,
   zeroBankingAccountSchema,
