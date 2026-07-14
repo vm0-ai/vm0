@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.1...guest-agent-v0.51.2) (2026-07-14)
+
+
+### Refactoring
+
+* **guest-agent:** share event sender worker ([#21430](https://github.com/vm0-ai/vm0/issues/21430)) ([ba504b6](https://github.com/vm0-ai/vm0/commit/ba504b63ffcedefc3c89c8ab119c0e60b8b7f7d6))
+
 ## [0.51.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.0...guest-agent-v0.51.1) (2026-07-14)
 
 ## [0.51.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.7...guest-agent-v0.51.0) (2026-07-14)

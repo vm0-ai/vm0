@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.431.1](https://github.com/vm0-ai/vm0/compare/core-v8.431.0...core-v8.431.1) (2026-07-14)
+
+
+### Refactoring
+
+* **workflows:** retire webhook trigger rollout switch ([#21332](https://github.com/vm0-ai/vm0/issues/21332)) ([517a7c3](https://github.com/vm0-ai/vm0/commit/517a7c34646baeb1c13cef8b49f0b84e00a8b505))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.2
+    * @vm0/connectors bumped to 1.160.1
+
 ## [8.431.0](https://github.com/vm0-ai/vm0/compare/core-v8.430.0...core-v8.431.0) (2026-07-14)
 
 
