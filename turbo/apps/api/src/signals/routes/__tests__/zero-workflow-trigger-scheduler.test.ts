@@ -540,7 +540,7 @@ describe("zero workflow trigger scheduler", () => {
     await disableTrigger(trigger.triggerId);
   });
 
-  it("emits automation callback kinds and advances an in-flight legacy callback", async () => {
+  it("keeps legacy writes while accepting an in-flight automation callback", async () => {
     const scenario = await setup();
     const trigger = await createDueLoopTrigger(scenario, 300);
 
@@ -558,50 +558,50 @@ describe("zero workflow trigger scheduler", () => {
     );
     expect(emittedCallbacks).toContainEqual(
       expect.objectContaining({
-        internalKind: "workflow-automation:loop",
+        internalKind: "workflow-trigger:loop",
         status: "pending",
       }),
     );
     expect(emittedCallbacks).not.toContainEqual(
-      expect.objectContaining({ internalKind: "workflow-trigger:loop" }),
+      expect.objectContaining({ internalKind: "workflow-automation:loop" }),
     );
     expect((await wf.readTrigger(trigger.triggerId)).nextRunAt).toBeNull();
 
-    const legacyPrompt = "complete a persisted legacy workflow callback";
-    const legacyRun = await runsApi.createRun(scenario.actor, {
+    const futurePrompt = "complete a future workflow automation callback";
+    const futureRun = await runsApi.createRun(scenario.actor, {
       agentId: scenario.agentId,
-      prompt: legacyPrompt,
+      prompt: futurePrompt,
       modelProvider: "anthropic-api-key",
     });
     await store.set(
       seedAgentRunCallback$,
       {
-        runId: legacyRun.runId,
-        internalKind: "workflow-trigger:loop",
+        runId: futureRun.runId,
+        internalKind: "workflow-automation:loop",
         payload: { triggerId: trigger.triggerId },
       },
       context.signal,
     );
 
-    await completeRunThroughSandbox(scenario, legacyRun.runId, 0);
+    await completeRunThroughSandbox(scenario, futureRun.runId, 0);
 
     await expect
       .poll(async () => {
         return (await wf.readTrigger(trigger.triggerId)).nextRunAt;
       })
       .not.toBeNull();
-    const legacyCallbacks = await store.set(
+    const futureCallbacks = await store.set(
       readAgentRunCallbacks$,
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: legacyPrompt,
+        prompt: futurePrompt,
       },
       context.signal,
     );
-    expect(legacyCallbacks).toContainEqual(
+    expect(futureCallbacks).toContainEqual(
       expect.objectContaining({
-        internalKind: "workflow-trigger:loop",
+        internalKind: "workflow-automation:loop",
         status: "delivered",
       }),
     );

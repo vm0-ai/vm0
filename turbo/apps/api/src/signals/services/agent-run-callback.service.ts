@@ -41,7 +41,7 @@ import {
   internalRunCallbackKindForRecord,
   type InternalRunCallbackDispatchResult,
   type InternalRunCallbackEnvelope,
-  type InternalRunCallbackKind,
+  type NormalizedInternalRunCallbackKind,
 } from "./internal-run-callback";
 import {
   handleWorkflowTriggerInternalCallback,
@@ -92,11 +92,11 @@ interface DispatchInternalRunCallbackInput {
   readonly status: TerminalCallbackStatus;
   readonly result?: Record<string, unknown>;
   readonly error?: string;
-  readonly kind: InternalRunCallbackKind;
+  readonly kind: NormalizedInternalRunCallbackKind;
 }
 
 interface DispatchInternalCallbackInput {
-  readonly kind: InternalRunCallbackKind;
+  readonly kind: NormalizedInternalRunCallbackKind;
   readonly envelope: InternalRunCallbackEnvelope;
 }
 
@@ -149,8 +149,8 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
-      case "workflow-automation:cron":
-      case "workflow-automation:loop": {
+      case "workflow-trigger:cron":
+      case "workflow-trigger:loop": {
         return await set(
           handleWorkflowTriggerInternalCallback$,
           { kind: input.kind, callback: input.envelope },
@@ -451,7 +451,7 @@ async function dispatchInternalCallback(
 
 async function dispatchInternalCallbackWithoutCcstate(
   input: DispatchSingleCallbackInput,
-  kind: InternalRunCallbackKind,
+  kind: NormalizedInternalRunCallbackKind,
 ): Promise<InternalRunCallbackDispatchResult> {
   switch (kind) {
     case "agent": {
@@ -493,8 +493,8 @@ async function dispatchInternalCallbackWithoutCcstate(
         callbackEnvelope(input),
       );
     }
-    case "workflow-automation:cron":
-    case "workflow-automation:loop": {
+    case "workflow-trigger:cron":
+    case "workflow-trigger:loop": {
       return await handleWorkflowTriggerInternalCallback(input.db, {
         kind,
         callback: callbackEnvelope(input),

@@ -1,3 +1,8 @@
+/**
+ * Persisted callback kinds accepted during the expand phase. Producers must
+ * keep emitting `workflow-trigger:*` until this acceptance release is fully
+ * deployed; the follow-up release can then switch writes safely.
+ */
 export const internalRunCallbackKinds = [
   "agent",
   "agentphone",
@@ -6,11 +11,18 @@ export const internalRunCallbackKinds = [
   "slack:org",
   "teams:org",
   "telegram",
+  "workflow-trigger:cron",
+  "workflow-trigger:loop",
   "workflow-automation:cron",
   "workflow-automation:loop",
 ] as const;
 
 export type InternalRunCallbackKind = (typeof internalRunCallbackKinds)[number];
+
+export type NormalizedInternalRunCallbackKind = Exclude<
+  InternalRunCallbackKind,
+  "workflow-automation:cron" | "workflow-automation:loop"
+>;
 
 export type InternalRunCallbackStatus = "completed" | "failed" | "progress";
 
@@ -31,9 +43,9 @@ interface InternalRunCallbackRecord {
   readonly internalKind: string | null;
 }
 
-function isInternalRunCallbackKind(
+function isNormalizedInternalRunCallbackKind(
   value: string | null,
-): value is InternalRunCallbackKind {
+): value is NormalizedInternalRunCallbackKind {
   switch (value) {
     case "agent":
     case "agentphone":
@@ -42,8 +54,8 @@ function isInternalRunCallbackKind(
     case "slack:org":
     case "teams:org":
     case "telegram":
-    case "workflow-automation:cron":
-    case "workflow-automation:loop": {
+    case "workflow-trigger:cron":
+    case "workflow-trigger:loop": {
       return true;
     }
     default: {
@@ -54,19 +66,19 @@ function isInternalRunCallbackKind(
 
 export function internalRunCallbackKindForRecord(
   callback: InternalRunCallbackRecord,
-): InternalRunCallbackKind | null {
-  if (isInternalRunCallbackKind(callback.internalKind)) {
+): NormalizedInternalRunCallbackKind | null {
+  if (isNormalizedInternalRunCallbackKind(callback.internalKind)) {
     return callback.internalKind;
   }
 
-  // Compatibility for callback rows written before the workflow automation
-  // rename. Remove these aliases after the one-release-cycle drain in #21408.
+  // Expand-phase compatibility for rows written by the follow-up emission
+  // release. Keep this normalization through the rolling-deploy drain.
   switch (callback.internalKind) {
-    case "workflow-trigger:cron": {
-      return "workflow-automation:cron";
+    case "workflow-automation:cron": {
+      return "workflow-trigger:cron";
     }
-    case "workflow-trigger:loop": {
-      return "workflow-automation:loop";
+    case "workflow-automation:loop": {
+      return "workflow-trigger:loop";
     }
     default: {
       return null;

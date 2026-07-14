@@ -8,7 +8,7 @@ import { advanceTimeTriggerAfterCompletion } from "./time-trigger";
 import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,
-  InternalRunCallbackKind,
+  NormalizedInternalRunCallbackKind,
 } from "./internal-run-callback";
 import {
   triggerCronCallbackPayloadSchema,
@@ -20,8 +20,8 @@ import {
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 type WorkflowTriggerInternalRunCallbackKind = Extract<
-  InternalRunCallbackKind,
-  "workflow-automation:cron" | "workflow-automation:loop"
+  NormalizedInternalRunCallbackKind,
+  "workflow-trigger:cron" | "workflow-trigger:loop"
 >;
 
 type WorkflowTriggerPayload =
@@ -38,11 +38,11 @@ function parseWorkflowTriggerPayload(
   payload: unknown,
 ): WorkflowTriggerPayload | null {
   switch (kind) {
-    case "workflow-automation:cron": {
+    case "workflow-trigger:cron": {
       const result = triggerCronCallbackPayloadSchema.safeParse(payload);
       return result.success ? { kind: "cron", data: result.data } : null;
     }
-    case "workflow-automation:loop": {
+    case "workflow-trigger:loop": {
       const result = triggerLoopCallbackPayloadSchema.safeParse(payload);
       return result.success ? { kind: "loop", data: result.data } : null;
     }
