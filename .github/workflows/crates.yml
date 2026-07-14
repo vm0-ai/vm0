@@ -1000,6 +1000,7 @@ jobs:
           SUBMIT_PID=""
           DNS_ISOLATION_NS=""
           DNS_ISOLATION_HOST_IF=""
+          DNS_ISOLATION_LOCK_FD=""
 
           fail() { echo "FAIL: $1"; exit 1; }
 
@@ -1019,6 +1020,9 @@ jobs:
             fi
             if [ -n "$DNS_ISOLATION_HOST_IF" ]; then
               sudo ip link delete "$DNS_ISOLATION_HOST_IF" 2>/dev/null || true
+            fi
+            if [ -n "$DNS_ISOLATION_LOCK_FD" ]; then
+              exec {DNS_ISOLATION_LOCK_FD}>&-
             fi
           }
           trap cleanup EXIT
@@ -1344,6 +1348,10 @@ jobs:
           # arrive through a non-runner interface before a TCP handshake or
           # DNS response reaches the process. Exercise IPv4/IPv6 and UDP/TCP
           # through a temporary, deliberately non-matching veth.
+          exec {DNS_ISOLATION_LOCK_FD}>/tmp/vm0-runner-exec-dns-isolation.lock \
+            || fail "failed to open DNS isolation lock"
+          flock -w 30 "$DNS_ISOLATION_LOCK_FD" \
+            || fail "timed out waiting for DNS isolation lock"
           DNS_ISOLATION_NS="dns-isolation-$$"
           DNS_ISOLATION_HOST_IF="vmdh$$"
           DNS_ISOLATION_PEER_IF="vmdp$$"
@@ -1431,6 +1439,8 @@ jobs:
           sudo ip link delete "$DNS_ISOLATION_HOST_IF" 2>/dev/null || true
           DNS_ISOLATION_NS=""
           DNS_ISOLATION_HOST_IF=""
+          exec {DNS_ISOLATION_LOCK_FD}>&-
+          DNS_ISOLATION_LOCK_FD=""
           echo "PASS: DNS resolution"
 
           # Stop transient service (kills sandbox, submit terminates naturally)
