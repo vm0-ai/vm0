@@ -132,6 +132,9 @@ describe("getAllFeatureStates", () => {
       staffOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
@@ -163,6 +166,9 @@ describe("getAllFeatureStates", () => {
       otherOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
     ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);

@@ -14,6 +14,15 @@ import { StarterKit } from "@tiptap/starter-kit";
 import { onRef } from "../utils.ts";
 import type { DraftSignals } from "./chat-draft.ts";
 import {
+  findActiveChatThreadSuggestionRange,
+  type ChatThreadSuggestionRange,
+  type ComposerChatThreadSuggestion,
+} from "./chat-thread-suggestion-domain.ts";
+import {
+  createComposerChatThreadSuggestions,
+  type ComposerChatThreadSuggestionResult,
+} from "./composer-chat-thread-suggestions.ts";
+import {
   findActiveSlashWorkflowRange,
   workflowTokenPattern,
   type ComposerSlashWorkflow,
@@ -66,11 +75,16 @@ export interface WorkflowComposerSignals {
   readonly focus$: Command<void, []>;
   readonly hasInput$: Computed<boolean>;
   readonly activeSlashRange$: Computed<SlashWorkflowRange | null>;
-  readonly selectedWorkflowIndex$: Computed<number>;
-  readonly setSelectedWorkflowIndex$: Command<void, [number]>;
-  readonly closeSlashMenu$: Command<void, []>;
+  readonly activeChatThreadSuggestionRange$: Computed<ChatThreadSuggestionRange | null>;
+  readonly chatThreadSuggestions$: Computed<
+    Promise<ComposerChatThreadSuggestionResult>
+  >;
+  readonly selectedSuggestionIndex$: Computed<number>;
+  readonly setSelectedSuggestionIndex$: Command<void, [number]>;
+  readonly closeSuggestionMenu$: Command<void, []>;
   readonly setWorkflowNames$: Command<void, [readonly string[]]>;
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
+  readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
 }
 
@@ -247,7 +261,7 @@ function createMountEditorCommand({
   runtime,
   caretIndex$,
   editorFocusedState$,
-  selectedWorkflowIndexState$,
+  selectedSuggestionIndexState$,
   autoFocus,
   singleLineOnMobile,
 }: {
@@ -256,7 +270,7 @@ function createMountEditorCommand({
   runtime: WorkflowComposerRuntime;
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
-  selectedWorkflowIndexState$: State<number>;
+  selectedSuggestionIndexState$: State<number>;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }) {
@@ -264,7 +278,7 @@ function createMountEditorCommand({
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
         set(draft.setInput$, workflowComposerDocToString(updatedEditor));
-        set(selectedWorkflowIndexState$, 0);
+        set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, caretStringIndex(updatedEditor));
         runtime.input();
       };
@@ -359,12 +373,38 @@ function createInsertWorkflowCommand(
   });
 }
 
+function createInsertChatThreadCommand(
+  editor: Editor,
+  draft: DraftSignals,
+  activeRange$: Computed<ChatThreadSuggestionRange | null>,
+) {
+  return command(({ get }, chatThread: ComposerChatThreadSuggestion) => {
+    const range = get(activeRange$);
+    if (!range) {
+      return;
+    }
+    const input = get(draft.input$);
+    const head = editor.state.selection.head;
+    const from = head - (range.end - range.start);
+    const token = `/chats/${chatThread.id}`;
+    const suffix = input.slice(range.end).startsWith(" ") ? "" : " ";
+    editor
+      .chain()
+      .focus()
+      .insertContentAt({ from, to: head }, [
+        { type: "text", text: `${token}${suffix}` },
+      ])
+      .setTextSelection(from + token.length + 1)
+      .run();
+  });
+}
+
 export function createWorkflowComposerSignals(
   draft: DraftSignals,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
-  const selectedWorkflowIndexState$ = state(0);
+  const selectedSuggestionIndexState$ = state(0);
   const runtime: WorkflowComposerRuntime = {
     update(_editor: Editor): void {},
     selectionUpdate(_editor: Editor): void {},
@@ -381,8 +421,8 @@ export function createWorkflowComposerSignals(
 
   const editor = createWorkflowEditor(runtime);
 
-  const selectedWorkflowIndex$ = computed((get) => {
-    return get(selectedWorkflowIndexState$);
+  const selectedSuggestionIndex$ = computed((get) => {
+    return get(selectedSuggestionIndexState$);
   });
   const activeSlashRange$ = computed((get) => {
     if (!get(editorFocusedState$)) {
@@ -390,10 +430,22 @@ export function createWorkflowComposerSignals(
     }
     return findActiveSlashWorkflowRange(get(draft.input$), get(caretIndex$));
   });
-  const setSelectedWorkflowIndex$ = command(({ set }, index: number) => {
-    set(selectedWorkflowIndexState$, index);
+  const activeChatThreadSuggestionRange$ = computed((get) => {
+    if (!get(editorFocusedState$)) {
+      return null;
+    }
+    return findActiveChatThreadSuggestionRange(
+      get(draft.input$),
+      get(caretIndex$),
+    );
   });
-  const closeSlashMenu$ = command(({ set }) => {
+  const chatThreadSuggestions$ = createComposerChatThreadSuggestions(
+    activeChatThreadSuggestionRange$,
+  );
+  const setSelectedSuggestionIndex$ = command(({ set }, index: number) => {
+    set(selectedSuggestionIndexState$, index);
+  });
+  const closeSuggestionMenu$ = command(({ set }) => {
     set(caretIndex$, -1);
   });
   const focus$ = command(() => {
@@ -419,7 +471,7 @@ export function createWorkflowComposerSignals(
       runtime,
       caretIndex$,
       editorFocusedState$,
-      selectedWorkflowIndexState$,
+      selectedSuggestionIndexState$,
       autoFocus,
       singleLineOnMobile,
     });
@@ -428,6 +480,11 @@ export function createWorkflowComposerSignals(
     editor,
     draft,
     activeSlashRange$,
+  );
+  const insertChatThread$ = createInsertChatThreadCommand(
+    editor,
+    draft,
+    activeChatThreadSuggestionRange$,
   );
 
   return {
@@ -438,11 +495,14 @@ export function createWorkflowComposerSignals(
     focus$,
     hasInput$: draft.hasInput$,
     activeSlashRange$,
-    selectedWorkflowIndex$,
-    setSelectedWorkflowIndex$,
-    closeSlashMenu$,
+    activeChatThreadSuggestionRange$,
+    chatThreadSuggestions$,
+    selectedSuggestionIndex$,
+    setSelectedSuggestionIndex$,
+    closeSuggestionMenu$,
     setWorkflowNames$,
     insertWorkflow$,
+    insertChatThread$,
     setEventHandlers$,
   };
 }
