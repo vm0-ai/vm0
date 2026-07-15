@@ -581,19 +581,16 @@ interface PresentationPixelTranslate {
   readonly y: number;
 }
 
-function frameEventElement(target: EventTarget | null): HTMLElement | null {
+function frameEventElement(target: EventTarget | null): Element | null {
   if (!target) {
     return null;
   }
   const candidate = target as {
     readonly closest?: unknown;
-    readonly namespaceURI?: unknown;
     readonly nodeType?: unknown;
   };
-  return candidate.nodeType === 1 &&
-    candidate.namespaceURI === "http://www.w3.org/1999/xhtml" &&
-    typeof candidate.closest === "function"
-    ? (target as HTMLElement)
+  return candidate.nodeType === 1 && typeof candidate.closest === "function"
+    ? (target as Element)
     : null;
 }
 
@@ -959,7 +956,9 @@ function finishMovableTextEditing(
 ): void {
   params.syncText(element);
   element.setAttribute("contenteditable", "false");
-  state.textEditing = null;
+  if (state.textEditing === element) {
+    state.textEditing = null;
+  }
   updateMoveSelectionOverlay(state);
 }
 

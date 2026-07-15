@@ -232,7 +232,9 @@ function selectionOverlayPresentationHtml(): string {
   <body>
     <section data-vm0-slide data-slide-id="slide-intro">
       <figure style="opacity: 0.15; filter: saturate(0.5); transform: rotate(-15deg)">
-        <span>Decoration</span>
+        <svg viewBox="0 0 100 100" aria-label="Decoration">
+          <path d="M10 10h80v80H10z" />
+        </svg>
       </figure>
       <article style="border: 2px solid #ff7a59">
         <h1>Header group</h1>
@@ -3380,7 +3382,14 @@ ${openFencedHostedSiteUrl}`,
     const title = previewDocument.querySelector(
       '[data-vm0-editor-edit-id="title"]',
     );
-    if (!(slide instanceof HTMLElement) || !(title instanceof HTMLElement)) {
+    const summary = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="summary"]',
+    );
+    if (
+      !(slide instanceof HTMLElement) ||
+      !(title instanceof HTMLElement) ||
+      !(summary instanceof HTMLElement)
+    ) {
       throw new Error("Presentation preview objects not found");
     }
     mockElementBox(slide, { height: 600, width: 1000 });
@@ -3389,6 +3398,12 @@ ${openFencedHostedSiteUrl}`,
       left: 100,
       top: 100,
       width: 200,
+    });
+    mockElementBox(summary, {
+      height: 60,
+      left: 100,
+      top: 220,
+      width: 400,
     });
     fireEvent.load(previewFrame);
 
@@ -3401,8 +3416,34 @@ ${openFencedHostedSiteUrl}`,
     expect(title.getAttribute("contenteditable")).toBe("true");
     title.textContent = "Updated quarterly roadmap";
     fireEvent.input(title);
-    fireEvent.blur(title);
+    fireEvent.doubleClick(summary);
     expect(title.getAttribute("contenteditable")).toBe("false");
+    expect(summary.getAttribute("contenteditable")).toBe("true");
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 13,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 13,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 13,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("");
+
+    fireEvent.blur(summary);
+    expect(summary.getAttribute("contenteditable")).toBe("false");
 
     fireEvent.pointerDown(title, {
       button: 0,
@@ -3650,7 +3691,7 @@ ${openFencedHostedSiteUrl}`,
     );
     const decoration = previewDocument.querySelector<HTMLElement>("figure");
     const group = previewDocument.querySelector<HTMLElement>("article");
-    const decorationContent = decoration?.querySelector("span");
+    const decorationContent = decoration?.querySelector("path");
     const groupContent = group?.querySelector("h1");
     if (
       !(slide instanceof HTMLElement) ||
@@ -3693,6 +3734,28 @@ ${openFencedHostedSiteUrl}`,
     expect(decoration.style.opacity).toBe("0.15");
     expect(decoration.style.filter).toBe("saturate(0.5)");
     expect(decoration.style.transform).toBe("rotate(-15deg)");
+
+    fireEvent.pointerDown(decorationContent, {
+      button: 0,
+      buttons: 1,
+      clientX: 100,
+      clientY: 100,
+      pointerId: 12,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 120,
+      clientY: 110,
+      pointerId: 12,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 120,
+      clientY: 110,
+      pointerId: 12,
+    });
+    expect(decoration.style.getPropertyValue("translate")).toBe("20px 10px");
 
     fireEvent.click(groupContent);
     expect(decoration.dataset.vm0EditorSelected).toBeUndefined();
