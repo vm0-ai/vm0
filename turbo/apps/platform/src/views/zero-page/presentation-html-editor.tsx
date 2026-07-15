@@ -6,6 +6,7 @@ import {
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { cn } from "@vm0/ui";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -16,6 +17,7 @@ import {
   type ZeroClientFactory,
 } from "../../signals/api-client.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { createPresentationDraftByUrlFactory } from "../../signals/zero-page/presentation-html-editor-draft.ts";
 import { detach, Reason, tapError } from "../../signals/utils.ts";
@@ -27,8 +29,14 @@ import {
   previewPresentationHtml,
   type PresentationEditBlock,
   type PresentationEditDraft,
+  type PresentationMoveBlock,
   type PresentationSlideDraft,
 } from "./presentation-html-edit-protocol.ts";
+import {
+  createGeneratedPresentationElementId,
+  normalizePresentationElementOffset,
+  PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE,
+} from "./presentation-html-element-offsets.ts";
 import {
   attachmentFilenameFromUrl,
   publicAttachmentUrl,
@@ -58,6 +66,7 @@ interface PresentationEditorSession {
   readonly previewFrameRef: MutableValue<HTMLIFrameElement | null>;
   readonly publishedSignatureRef: MutableValue<string>;
   readonly publishingRef: MutableValue<boolean>;
+  readonly moveBlocksRef: MutableValue<readonly PresentationMoveBlock[]>;
   readonly slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
   readonly statusRef: MutableValue<HTMLDivElement | null>;
   readonly thumbnailUpdateFrameRef: MutableValue<number | null>;
@@ -77,9 +86,16 @@ function createPresentationEditorSession(
     pendingThumbnailSlideIdRef: mutableValue<string | null>(null),
     previewFrameRef: mutableValue<HTMLIFrameElement | null>(null),
     publishedSignatureRef: mutableValue(
-      editSignature({ blocks: draft.blocks, slides: draft.slides }),
+      editSignature({
+        blocks: draft.blocks,
+        moveBlocks: draft.moveBlocks,
+        slides: draft.slides,
+      }),
     ),
     publishingRef: mutableValue(false),
+    moveBlocksRef: mutableValue<readonly PresentationMoveBlock[]>(
+      draft.moveBlocks,
+    ),
     slidesRef: mutableValue<readonly PresentationSlideDraft[]>(draft.slides),
     statusRef: mutableValue<HTMLDivElement | null>(null),
     thumbnailUpdateFrameRef: mutableValue<number | null>(null),
@@ -204,8 +220,35 @@ function updateSlideNotes(
   });
 }
 
+function updateMoveBlock(
+  blocks: readonly PresentationMoveBlock[],
+  moveId: string,
+  offsetX: number,
+  offsetY: number,
+): readonly PresentationMoveBlock[] {
+  const hasMovement = offsetX !== 0 || offsetY !== 0;
+  return blocks.map((block) => {
+    if (block.moveId !== moveId) {
+      return block;
+    }
+    const generatedElementId = hasMovement && block.elementId === null;
+    return {
+      ...block,
+      elementId: hasMovement
+        ? (block.elementId ?? createGeneratedPresentationElementId())
+        : block.elementIdGenerated
+          ? null
+          : block.elementId,
+      elementIdGenerated: block.elementIdGenerated || generatedElementId,
+      offsetX,
+      offsetY,
+    };
+  });
+}
+
 function editSignature(params: {
   readonly blocks: readonly PresentationEditBlock[];
+  readonly moveBlocks: readonly PresentationMoveBlock[];
   readonly slides: readonly PresentationSlideDraft[];
 }): string {
   return JSON.stringify({
@@ -214,6 +257,15 @@ function editSignature(params: {
         editId: block.editId,
         slideId: block.slideId,
         text: block.text,
+      };
+    }),
+    moveBlocks: params.moveBlocks.map((block) => {
+      return {
+        elementId: block.elementId,
+        moveId: block.moveId,
+        offsetX: block.offsetX,
+        offsetY: block.offsetY,
+        slideId: block.slideId,
       };
     }),
     slides: params.slides.map((slide) => {
@@ -483,30 +535,139 @@ function SlideList({
   );
 }
 
-function wireEditableFrame(params: {
-  readonly frame: HTMLIFrameElement;
-  readonly updateText: (slideId: string, editId: string, text: string) => void;
-}) {
-  const doc = params.frame.contentDocument;
-  if (!doc) {
+const EDITOR_MOVE_SELECTOR = "[data-vm0-editor-move-id]";
+const EDITOR_TEXT_SELECTOR = "[data-vm0-editor-edit-id]";
+const EDITOR_SLIDE_SELECTOR = [
+  "[data-vm0-slide]",
+  "[data-slide]",
+  "[data-slide-index]",
+  "[data-page]",
+  ".ppt-slide",
+  ".presentation-slide",
+  ".deck-slide",
+  ".slide-page",
+  ".slide",
+  "section",
+].join(",");
+const DRAG_START_THRESHOLD = 4;
+
+interface PresentationPointerDrag {
+  readonly baseBottom: number;
+  readonly baseLeft: number;
+  readonly baseRight: number;
+  readonly baseTop: number;
+  readonly candidate: HTMLElement;
+  currentOffsetX: number;
+  currentOffsetY: number;
+  dragging: boolean;
+  readonly initialOffsetX: number;
+  readonly initialOffsetY: number;
+  readonly initialTranslate: string;
+  readonly layoutHeight: number;
+  readonly layoutWidth: number;
+  readonly moveId: string;
+  readonly pointerId: number;
+  readonly slideRect: DOMRect;
+  readonly startX: number;
+  readonly startY: number;
+}
+
+function frameEventElement(target: EventTarget | null): HTMLElement | null {
+  if (!target) {
+    return null;
+  }
+  const candidate = target as {
+    readonly closest?: unknown;
+    readonly namespaceURI?: unknown;
+    readonly nodeType?: unknown;
+  };
+  return candidate.nodeType === 1 &&
+    candidate.namespaceURI === "http://www.w3.org/1999/xhtml" &&
+    typeof candidate.closest === "function"
+    ? (target as HTMLElement)
+    : null;
+}
+
+function closestFrameElement(
+  target: EventTarget | null,
+  selector: string,
+): HTMLElement | null {
+  const element = frameEventElement(target);
+  const closest = element?.closest(selector);
+  return closest?.namespaceURI === "http://www.w3.org/1999/xhtml"
+    ? (closest as HTMLElement)
+    : null;
+}
+
+function clampDragAxis(
+  value: number,
+  minimum: number,
+  maximum: number,
+): number {
+  return minimum <= maximum ? Math.min(maximum, Math.max(minimum, value)) : 0;
+}
+
+function setCandidateTranslate(
+  drag: PresentationPointerDrag,
+  offsetX: number,
+  offsetY: number,
+): void {
+  drag.candidate.style.setProperty(
+    "translate",
+    `${String(offsetX * drag.layoutWidth)}px ${String(
+      offsetY * drag.layoutHeight,
+    )}px`,
+  );
+}
+
+function removeUnsupportedMoveCandidates(doc: Document): void {
+  const view = doc.defaultView;
+  if (!view) {
     return;
   }
-  const syncText = (element: HTMLElement) => {
-    const slideId = element.dataset.vm0EditorSlideId;
-    const editId = element.dataset.vm0EditorEditId;
-    if (!slideId || !editId) {
-      return;
+  for (const candidate of Array.from(
+    doc.querySelectorAll<HTMLElement>(EDITOR_MOVE_SELECTOR),
+  )) {
+    const layout = candidate.parentElement;
+    const candidateRect = candidate.getBoundingClientRect();
+    const layoutRect = layout?.getBoundingClientRect();
+    const candidateStyle = view.getComputedStyle(candidate);
+    const layoutStyle = layout ? view.getComputedStyle(layout) : null;
+    const authoredTranslate = candidateStyle.getPropertyValue("translate");
+    const runtimeApplied = candidate.hasAttribute(
+      PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE,
+    );
+    if (
+      !layout ||
+      !layoutRect ||
+      candidateRect.width <= 0 ||
+      candidateRect.height <= 0 ||
+      layoutRect.width <= 0 ||
+      layoutRect.height <= 0 ||
+      layoutStyle?.display === "contents" ||
+      (!runtimeApplied &&
+        authoredTranslate !== "" &&
+        authoredTranslate !== "none" &&
+        authoredTranslate !== "0px" &&
+        authoredTranslate !== "0px 0px")
+    ) {
+      delete candidate.dataset.vm0EditorMoveId;
     }
-    params.updateText(slideId, editId, element.textContent ?? "");
-  };
+  }
+}
+
+function wireLegacyTextEditing(params: {
+  readonly doc: Document;
+  readonly syncText: (element: HTMLElement) => void;
+}): void {
   for (const element of Array.from(
-    doc.querySelectorAll<HTMLElement>("[data-vm0-editor-edit-id]"),
+    params.doc.querySelectorAll<HTMLElement>(EDITOR_TEXT_SELECTOR),
   )) {
     element.setAttribute("contenteditable", "true");
     element.setAttribute("role", "textbox");
     element.spellcheck = false;
     const computedPosition =
-      doc.defaultView?.getComputedStyle(element).position;
+      params.doc.defaultView?.getComputedStyle(element).position;
     if (!computedPosition || computedPosition === "static") {
       element.style.setProperty("position", "relative", "important");
     }
@@ -523,21 +684,336 @@ function wireEditableFrame(params: {
       element.focus();
     });
     element.addEventListener("input", () => {
-      syncText(element);
+      params.syncText(element);
     });
     element.addEventListener("blur", () => {
-      syncText(element);
+      params.syncText(element);
     });
   }
+}
+
+interface WireMovableFrameParams {
+  readonly doc: Document;
+  readonly moveBlocks: readonly PresentationMoveBlock[];
+  readonly syncText: (element: HTMLElement) => void;
+  readonly updateMovement: (
+    moveId: string,
+    offsetX: number,
+    offsetY: number,
+  ) => void;
+}
+
+interface MovableFrameState {
+  readonly offsets: Map<string, { offsetX: number; offsetY: number }>;
+  pointerDrag: PresentationPointerDrag | null;
+  selected: HTMLElement | null;
+  textEditing: HTMLElement | null;
+}
+
+function createMovableFrameState(
+  moveBlocks: readonly PresentationMoveBlock[],
+): MovableFrameState {
+  return {
+    offsets: new Map(
+      moveBlocks.map((block) => {
+        return [
+          block.moveId,
+          { offsetX: block.offsetX, offsetY: block.offsetY },
+        ] as const;
+      }),
+    ),
+    pointerDrag: null,
+    selected: null,
+    textEditing: null,
+  };
+}
+
+function clearMoveSelection(state: MovableFrameState): void {
+  if (state.selected) {
+    delete state.selected.dataset.vm0EditorSelected;
+  }
+  state.selected = null;
+}
+
+function selectMoveCandidate(
+  state: MovableFrameState,
+  candidate: HTMLElement,
+): void {
+  if (state.selected === candidate) {
+    return;
+  }
+  clearMoveSelection(state);
+  state.selected = candidate;
+  state.selected.dataset.vm0EditorSelected = "true";
+}
+
+function finishMovableTextEditing(
+  params: WireMovableFrameParams,
+  state: MovableFrameState,
+  element: HTMLElement,
+): void {
+  params.syncText(element);
+  element.setAttribute("contenteditable", "false");
+  state.textEditing = null;
+}
+
+function wireMovableTextEditing(
+  params: WireMovableFrameParams,
+  state: MovableFrameState,
+): void {
+  for (const element of Array.from(
+    params.doc.querySelectorAll<HTMLElement>(EDITOR_TEXT_SELECTOR),
+  )) {
+    element.setAttribute("contenteditable", "false");
+    element.setAttribute("role", "textbox");
+    element.spellcheck = false;
+    element.addEventListener("dblclick", (event) => {
+      const candidate = element.closest<HTMLElement>(EDITOR_MOVE_SELECTOR);
+      if (candidate) {
+        selectMoveCandidate(state, candidate);
+      }
+      state.textEditing = element;
+      element.setAttribute("contenteditable", "true");
+      element.focus();
+      event.stopPropagation();
+    });
+    element.addEventListener("input", () => {
+      params.syncText(element);
+    });
+    element.addEventListener("blur", () => {
+      finishMovableTextEditing(params, state, element);
+    });
+    element.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        element.blur();
+      }
+    });
+  }
+}
+
+function wireMoveSelection(
+  params: WireMovableFrameParams,
+  state: MovableFrameState,
+): void {
+  params.doc.addEventListener("click", (event) => {
+    const candidate = closestFrameElement(event.target, EDITOR_MOVE_SELECTOR);
+    if (candidate) {
+      selectMoveCandidate(state, candidate);
+      return;
+    }
+    clearMoveSelection(state);
+  });
+}
+
+function startPointerDrag(
+  params: WireMovableFrameParams,
+  state: MovableFrameState,
+  event: PointerEvent,
+): void {
+  if (event.button !== 0 || state.textEditing) {
+    return;
+  }
+  const candidate = closestFrameElement(event.target, EDITOR_MOVE_SELECTOR);
+  const moveId = candidate?.dataset.vm0EditorMoveId;
+  const layout = candidate?.parentElement;
+  const slide =
+    layout?.closest<HTMLElement>(EDITOR_SLIDE_SELECTOR) ??
+    (layout === params.doc.body ? layout : null);
+  if (!candidate || !moveId || !layout || !slide) {
+    return;
+  }
+  const layoutRect = layout.getBoundingClientRect();
+  const candidateRect = candidate.getBoundingClientRect();
+  const slideRect = slide.getBoundingClientRect();
+  if (
+    layoutRect.width <= 0 ||
+    layoutRect.height <= 0 ||
+    candidateRect.width <= 0 ||
+    candidateRect.height <= 0
+  ) {
+    return;
+  }
+  const block = state.offsets.get(moveId);
+  const initialOffsetX = block?.offsetX ?? 0;
+  const initialOffsetY = block?.offsetY ?? 0;
+  const initialPixelX = initialOffsetX * layoutRect.width;
+  const initialPixelY = initialOffsetY * layoutRect.height;
+  selectMoveCandidate(state, candidate);
+  candidate.setPointerCapture(event.pointerId);
+  state.pointerDrag = {
+    baseBottom: candidateRect.bottom - initialPixelY,
+    baseLeft: candidateRect.left - initialPixelX,
+    baseRight: candidateRect.right - initialPixelX,
+    baseTop: candidateRect.top - initialPixelY,
+    candidate,
+    currentOffsetX: initialOffsetX,
+    currentOffsetY: initialOffsetY,
+    dragging: false,
+    initialOffsetX,
+    initialOffsetY,
+    initialTranslate: candidate.style.getPropertyValue("translate"),
+    layoutHeight: layoutRect.height,
+    layoutWidth: layoutRect.width,
+    moveId,
+    pointerId: event.pointerId,
+    slideRect,
+    startX: event.clientX,
+    startY: event.clientY,
+  };
+}
+
+function updatePointerDrag(
+  state: MovableFrameState,
+  event: PointerEvent,
+): void {
+  const drag = state.pointerDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  const deltaX = event.clientX - drag.startX;
+  const deltaY = event.clientY - drag.startY;
+  if (!drag.dragging && Math.hypot(deltaX, deltaY) < DRAG_START_THRESHOLD) {
+    return;
+  }
+  drag.dragging = true;
+  event.preventDefault();
+  const pixelX = clampDragAxis(
+    drag.initialOffsetX * drag.layoutWidth + deltaX,
+    drag.slideRect.left - drag.baseLeft,
+    drag.slideRect.right - drag.baseRight,
+  );
+  const pixelY = clampDragAxis(
+    drag.initialOffsetY * drag.layoutHeight + deltaY,
+    drag.slideRect.top - drag.baseTop,
+    drag.slideRect.bottom - drag.baseBottom,
+  );
+  drag.currentOffsetX = pixelX / drag.layoutWidth;
+  drag.currentOffsetY = pixelY / drag.layoutHeight;
+  setCandidateTranslate(drag, drag.currentOffsetX, drag.currentOffsetY);
+}
+
+function releasePointerCapture(
+  drag: PresentationPointerDrag,
+  pointerId: number,
+): void {
+  if (drag.candidate.hasPointerCapture(pointerId)) {
+    drag.candidate.releasePointerCapture(pointerId);
+  }
+}
+
+function commitPointerDrag(
+  params: WireMovableFrameParams,
+  state: MovableFrameState,
+  event: PointerEvent,
+): void {
+  const drag = state.pointerDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  releasePointerCapture(drag, event.pointerId);
+  state.pointerDrag = null;
+  const offsetX = normalizePresentationElementOffset(drag.currentOffsetX);
+  const offsetY = normalizePresentationElementOffset(drag.currentOffsetY);
+  if (
+    drag.dragging &&
+    (offsetX !== drag.initialOffsetX || offsetY !== drag.initialOffsetY)
+  ) {
+    state.offsets.set(drag.moveId, { offsetX, offsetY });
+    params.updateMovement(drag.moveId, offsetX, offsetY);
+  }
+}
+
+function cancelPointerDrag(
+  state: MovableFrameState,
+  event: PointerEvent,
+): void {
+  const drag = state.pointerDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  releasePointerCapture(drag, event.pointerId);
+  if (drag.initialTranslate) {
+    drag.candidate.style.setProperty("translate", drag.initialTranslate);
+  } else {
+    drag.candidate.style.removeProperty("translate");
+  }
+  state.pointerDrag = null;
+}
+
+function wireMovablePointerEvents(
+  params: WireMovableFrameParams,
+  state: MovableFrameState,
+): void {
+  params.doc.addEventListener("pointerdown", (event) => {
+    startPointerDrag(params, state, event);
+  });
+  params.doc.addEventListener("pointermove", (event) => {
+    updatePointerDrag(state, event);
+  });
+  params.doc.addEventListener("pointerup", (event) => {
+    commitPointerDrag(params, state, event);
+  });
+  params.doc.addEventListener("pointercancel", (event) => {
+    cancelPointerDrag(state, event);
+  });
+}
+
+function wireMovableFrame(params: WireMovableFrameParams): void {
+  const state = createMovableFrameState(params.moveBlocks);
+  removeUnsupportedMoveCandidates(params.doc);
+  wireMovableTextEditing(params, state);
+  wireMoveSelection(params, state);
+  wireMovablePointerEvents(params, state);
+}
+
+function wireEditableFrame(params: {
+  readonly frame: HTMLIFrameElement;
+  readonly movementEnabled: boolean;
+  readonly moveBlocks: readonly PresentationMoveBlock[];
+  readonly updateText: (slideId: string, editId: string, text: string) => void;
+  readonly updateMovement: (
+    moveId: string,
+    offsetX: number,
+    offsetY: number,
+  ) => void;
+}) {
+  const doc = params.frame.contentDocument;
+  if (!doc) {
+    return;
+  }
+  const syncText = (element: HTMLElement) => {
+    const slideId = element.dataset.vm0EditorSlideId;
+    const editId = element.dataset.vm0EditorEditId;
+    if (!slideId || !editId) {
+      return;
+    }
+    params.updateText(slideId, editId, element.textContent ?? "");
+  };
+  if (!params.movementEnabled) {
+    wireLegacyTextEditing({ doc, syncText });
+    return;
+  }
+  wireMovableFrame({
+    doc,
+    moveBlocks: params.moveBlocks,
+    syncText,
+    updateMovement: params.updateMovement,
+  });
 }
 
 function PreviewPane({
   html,
   iframeRef,
+  movementEnabled,
+  moveBlocksRef,
+  updateMovement,
   updateText,
 }: {
   html: string | null;
   iframeRef: MutableValue<HTMLIFrameElement | null>;
+  movementEnabled: boolean;
+  moveBlocksRef: MutableValue<readonly PresentationMoveBlock[]>;
+  updateMovement: (moveId: string, offsetX: number, offsetY: number) => void;
   updateText: (slideId: string, editId: string, text: string) => void;
 }) {
   const observerRef = mutableValue<ResizeObserver | null>(null);
@@ -608,6 +1084,9 @@ function PreviewPane({
                 revealPresentationPreviewSlide(event);
                 wireEditableFrame({
                   frame: event.currentTarget,
+                  movementEnabled,
+                  moveBlocks: moveBlocksRef.current,
+                  updateMovement,
                   updateText,
                 });
               }}
@@ -653,11 +1132,13 @@ function downloadEditedPptx(params: {
 function buildPresentationEditorHtml(params: {
   readonly blocks: readonly PresentationEditBlock[];
   readonly draft: EditorDraft;
+  readonly moveBlocks: readonly PresentationMoveBlock[];
   readonly slides: readonly PresentationSlideDraft[];
 }) {
   return patchPresentationHtml({
     blocks: params.blocks,
     html: params.draft.html,
+    moveBlocks: params.moveBlocks,
     slides: params.slides,
   });
 }
@@ -692,6 +1173,7 @@ function setEditorPublishing(params: {
 
 function showPresentationSlide(params: {
   readonly buildEditedHtml: () => string;
+  readonly movementEnabled: boolean;
   readonly previewFrameRef: MutableValue<HTMLIFrameElement | null>;
   readonly slideId: string;
 }) {
@@ -715,6 +1197,7 @@ function showPresentationSlide(params: {
       previewPresentationHtml({
         activeSlideId: params.slideId,
         html: params.buildEditedHtml(),
+        movementEditingEnabled: params.movementEnabled,
       }),
     );
   }
@@ -819,6 +1302,8 @@ function PresentationEditorWorkspace({
   activeSlideId,
   blocksRef,
   buildEditedHtml,
+  movementEnabled,
+  moveBlocksRef,
   markDirty,
   previewFrameRef,
   previewHtml,
@@ -831,6 +1316,8 @@ function PresentationEditorWorkspace({
   activeSlideId: string;
   blocksRef: MutableValue<readonly PresentationEditBlock[]>;
   buildEditedHtml: () => string;
+  movementEnabled: boolean;
+  moveBlocksRef: MutableValue<readonly PresentationMoveBlock[]>;
   markDirty: () => void;
   previewFrameRef: MutableValue<HTMLIFrameElement | null>;
   previewHtml: string | null;
@@ -867,6 +1354,29 @@ function PresentationEditorWorkspace({
         <PreviewPane
           html={previewHtml}
           iframeRef={previewFrameRef}
+          movementEnabled={movementEnabled}
+          moveBlocksRef={moveBlocksRef}
+          updateMovement={(moveId, rawOffsetX, rawOffsetY) => {
+            const block = moveBlocksRef.current.find((candidate) => {
+              return candidate.moveId === moveId;
+            });
+            if (!block) {
+              return;
+            }
+            const offsetX = normalizePresentationElementOffset(rawOffsetX);
+            const offsetY = normalizePresentationElementOffset(rawOffsetY);
+            if (block.offsetX === offsetX && block.offsetY === offsetY) {
+              return;
+            }
+            moveBlocksRef.current = updateMoveBlock(
+              moveBlocksRef.current,
+              moveId,
+              offsetX,
+              offsetY,
+            );
+            markDirty();
+            queueSlideThumbnailUpdate(block.slideId);
+          }}
           updateText={(slideId, editId, text) => {
             const block = blocksRef.current.find((candidate) => {
               return (
@@ -982,23 +1492,43 @@ async function runFillEmptySpeakerNotes(ctx: {
   );
 }
 
-function createPresentationEditorController(params: {
+function buildActiveSlidePreviewHtml(
+  activeSlideId: string,
+  buildEditedHtml: () => string,
+  movementEnabled: boolean,
+): string | null {
+  return activeSlideId.length > 0
+    ? previewPresentationHtml({
+        activeSlideId,
+        html: buildEditedHtml(),
+        movementEditingEnabled: movementEnabled,
+      })
+    : null;
+}
+
+interface PresentationEditorControllerParams {
   readonly activeSlideIdRef: MutableValue<string>;
   readonly blocksRef: MutableValue<readonly PresentationEditBlock[]>;
   readonly busyRef: MutableValue<SVGSVGElement | null>;
   readonly createClient: ZeroClientFactory;
   readonly draft: EditorDraft;
+  readonly movementEnabled: boolean;
   readonly pageSignal: AbortSignal;
   readonly pendingThumbnailSlideIdRef: MutableValue<string | null>;
   readonly previewFrameRef: MutableValue<HTMLIFrameElement | null>;
   readonly publishedSignatureRef: MutableValue<string>;
   readonly publishingRef: MutableValue<boolean>;
+  readonly moveBlocksRef: MutableValue<readonly PresentationMoveBlock[]>;
   readonly refreshPresentationHtmlPreviews: () => void;
   readonly slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
   readonly sourceUrl: string;
   readonly statusRef: MutableValue<HTMLDivElement | null>;
   readonly thumbnailUpdateFrameRef: MutableValue<number | null>;
-}) {
+}
+
+function createPresentationEditorController(
+  params: PresentationEditorControllerParams,
+) {
   const slides = params.slidesRef.current;
   const activeSlideId = params.activeSlideIdRef.current;
   const activeSlide = slides.find((slide) => {
@@ -1008,12 +1538,14 @@ function createPresentationEditorController(params: {
     return buildPresentationEditorHtml({
       blocks: params.blocksRef.current,
       draft: params.draft,
+      moveBlocks: params.moveBlocksRef.current,
       slides: params.slidesRef.current,
     });
   };
   const currentSignature = () => {
     return editSignature({
       blocks: params.blocksRef.current,
+      moveBlocks: params.moveBlocksRef.current,
       slides: params.slidesRef.current,
     });
   };
@@ -1086,17 +1618,16 @@ function createPresentationEditorController(params: {
     );
     showPresentationSlide({
       buildEditedHtml,
+      movementEnabled: params.movementEnabled,
       previewFrameRef: params.previewFrameRef,
       slideId,
     });
   };
-  const previewHtml =
-    activeSlideId.length > 0
-      ? previewPresentationHtml({
-          activeSlideId,
-          html: buildEditedHtml(),
-        })
-      : null;
+  const previewHtml = buildActiveSlidePreviewHtml(
+    activeSlideId,
+    buildEditedHtml,
+    params.movementEnabled,
+  );
 
   return {
     activeSlide,
@@ -1113,14 +1644,18 @@ function createPresentationEditorController(params: {
 }
 
 function PresentationEditorReady({
+  draggingUnsupported,
   draft,
   filename,
+  movementEnabled,
   onClose,
   sourceUrl,
   title,
 }: {
+  draggingUnsupported: boolean;
   draft: EditorDraft;
   filename: string;
+  movementEnabled: boolean;
   onClose: () => void;
   sourceUrl: string;
   title: string;
@@ -1138,6 +1673,7 @@ function PresentationEditorReady({
     previewFrameRef,
     publishedSignatureRef,
     publishingRef,
+    moveBlocksRef,
     slidesRef,
     statusRef,
     thumbnailUpdateFrameRef,
@@ -1148,11 +1684,13 @@ function PresentationEditorReady({
     busyRef,
     createClient,
     draft,
+    movementEnabled,
     pageSignal,
     pendingThumbnailSlideIdRef,
     previewFrameRef,
     publishedSignatureRef,
     publishingRef,
+    moveBlocksRef,
     refreshPresentationHtmlPreviews,
     slidesRef,
     sourceUrl,
@@ -1205,6 +1743,12 @@ function PresentationEditorReady({
         }}
         statusRef={(node) => {
           statusRef.current = node;
+          if (draggingUnsupported && node) {
+            setEditorStatus(
+              statusRef,
+              "Dragging unavailable for this presentation",
+            );
+          }
         }}
         title={title}
       />
@@ -1213,6 +1757,8 @@ function PresentationEditorReady({
         activeSlideId={controller.activeSlideId}
         blocksRef={blocksRef}
         buildEditedHtml={controller.buildEditedHtml}
+        movementEnabled={movementEnabled}
+        moveBlocksRef={moveBlocksRef}
         markDirty={controller.markDirty}
         previewFrameRef={previewFrameRef}
         previewHtml={controller.previewHtml}
@@ -1232,6 +1778,10 @@ export function PresentationHtmlEditor({
   const filename = attachmentFilenameFromUrl(url);
   const title = fallbackHtmlPreviewTitle(filename, url);
   const loadable = useLoadable(presentationDraftByUrl.get(url));
+  const features = useGet(featureSwitch$);
+  const movementFeatureEnabled = Boolean(
+    features?.[FeatureSwitchKey.PresentationElementDragging],
+  );
 
   if (loadable.state === "loading") {
     return <PresentationEditorLoading title={title} onClose={onClose} />;
@@ -1252,8 +1802,14 @@ export function PresentationHtmlEditor({
   return (
     <PresentationEditorReady
       key={url}
+      draggingUnsupported={
+        movementFeatureEnabled && !loadable.data.movementSupported
+      }
       draft={loadable.data}
       filename={filename}
+      movementEnabled={
+        movementFeatureEnabled && loadable.data.movementSupported
+      }
       onClose={onClose}
       sourceUrl={url}
       title={title}
