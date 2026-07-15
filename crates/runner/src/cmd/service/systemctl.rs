@@ -235,7 +235,15 @@ async fn kill_and_reap_child(program: &str, child: &mut tokio::process::Child) -
     }
 }
 
-/// Check whether a systemd unit is active (running or activating).
+/// Check whether a systemd unit is active for normal health checks.
+///
+/// Returns `true` for the `ActiveState` values `active`, `activating`,
+/// `reloading`, and `refreshing`. `deactivating` intentionally returns `false`
+/// because a unit that has begun shutdown is no longer runnable.
+///
+/// Cleanup callers must use `cleanup_unit_active_state_bounded`, which treats
+/// `deactivating` as active-like so cleanup can wait or escalate instead of
+/// reporting success before the unit is fully inactive.
 pub(crate) async fn is_unit_active(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
     let svc = unit.service_name();
     let properties = ["LoadState", "ActiveState"];
