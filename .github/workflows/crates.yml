@@ -251,10 +251,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       # Keep cross-job architecture metadata sanitized. Jobs that need hosts
-      # resolve the host subset from matrix.id inside that job.
+      # resolve host data locally from the secret-backed configuration.
       matrix: ${{ steps.groups.outputs.matrix }}
-      selected-group-id: ${{ steps.groups.outputs.selected-group-id }}
-      selected-target: ${{ steps.groups.outputs.selected-target }}
     steps:
       - uses: actions/checkout@v7
 
@@ -270,7 +268,6 @@ jobs:
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          SELECTION_KEY: ${{ needs.detect.outputs.runner-image-job-ref }}
         run: |
           MATRIX=$(.github/scripts/runner-host-architecture-groups.sh matrix)
           GROUP_COUNT=$(jq -r 'length' <<<"$MATRIX")
@@ -279,17 +276,10 @@ jobs:
             exit 1
           fi
 
-          SELECTED=$(.github/scripts/runner-host-architecture-groups.sh select-group "$SELECTION_KEY" "$MATRIX")
-          {
-            echo "matrix=${MATRIX}"
-            echo "selected-group-id=$(jq -r '.id' <<<"$SELECTED")"
-            echo "selected-target=$(jq -r '.target' <<<"$SELECTED")"
-          } >> "$GITHUB_OUTPUT"
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
 
           echo "Runner host architecture groups:"
           jq . <<<"$MATRIX"
-          echo "Selected runner host architecture group for ${SELECTION_KEY}:"
-          jq . <<<"$SELECTED"
 
   check:
     runs-on: ubuntu-latest
@@ -516,23 +506,19 @@ jobs:
         env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST_GROUP_ID: ${{ needs.runner-host-groups.outputs.selected-group-id }}
           SELECTION_KEY: ${{ needs.detect.outputs.runner-image-job-ref }}
         run: |
-          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
-          NUM_HOSTS=$(printf '%s\n' "$HOSTS" | tr ',' '\n' | grep -c . || true)
-          if [ "$NUM_HOSTS" -lt 1 ]; then
-            echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
-            exit 1
-          fi
-          HOST=$(.github/scripts/runner-host-architecture-groups.sh select-host "$RUNNER_HOST_GROUP_ID" "$SELECTION_KEY" "$HOSTS")
+          CONTEXT=$(.github/scripts/runner-host-architecture-groups.sh select-context "$SELECTION_KEY")
+          HOST=$(jq -r '.host' <<<"$CONTEXT")
+          GROUP_ID=$(jq -r '.groupId' <<<"$CONTEXT")
+          TARGET=$(jq -r '.target' <<<"$CONTEXT")
+          HOSTS=$(jq -r '.groupHosts' <<<"$CONTEXT")
           {
             echo "host=${HOST}"
-            echo "hosts<<HOSTS"
-            echo "$HOSTS"
-            echo "HOSTS"
+            echo "hosts=${HOSTS}"
+            echo "target=${TARGET}"
           } >> "$GITHUB_OUTPUT"
-          echo "Selected PR metal host: ${HOST} (group ${RUNNER_HOST_GROUP_ID}, ${NUM_HOSTS} host(s) in group)"
+          echo "Selected PR metal host: ${HOST} (group ${GROUP_ID}, target ${TARGET})"
 
       - name: Wait for runner image manifest
         id: manifest
@@ -544,7 +530,7 @@ jobs:
           # Target-specific manifests only contain hosts for that architecture group.
           METAL_HOSTS: ${{ steps.selected-host.outputs.hosts }}
           SELECTED_HOST: ${{ steps.selected-host.outputs.host }}
-          TARGET: ${{ needs.runner-host-groups.outputs.selected-target }}
+          TARGET: ${{ steps.selected-host.outputs.target }}
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
