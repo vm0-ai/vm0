@@ -95,74 +95,6 @@ import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
 import { currentAgentUnreadChatThreads$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
-import { VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT } from "../../lib/visual-viewport-keyboard.ts";
-
-const COMPOSER_KEYBOARD_GAP_PX = 16;
-
-function keepFocusedComposerVisible(scrollContainer: HTMLElement): void {
-  const ownerDocument = scrollContainer.ownerDocument;
-  const ownerWindow = ownerDocument.defaultView;
-  if (
-    ownerWindow?.matchMedia("(display-mode: standalone)").matches !== true ||
-    ownerDocument.documentElement.dataset.keyboardOpen !== "true"
-  ) {
-    return;
-  }
-
-  const activeElement = ownerDocument.activeElement;
-  if (
-    !(activeElement instanceof HTMLElement) ||
-    !activeElement.matches('[contenteditable="true"]')
-  ) {
-    return;
-  }
-
-  const composer = activeElement.closest(".zero-composer");
-  if (
-    !(composer instanceof HTMLElement) ||
-    !scrollContainer.contains(composer)
-  ) {
-    return;
-  }
-
-  const hiddenBottom =
-    composer.getBoundingClientRect().bottom +
-    COMPOSER_KEYBOARD_GAP_PX -
-    scrollContainer.getBoundingClientRect().bottom;
-
-  if (hiddenBottom > 0) {
-    scrollContainer.scrollTop += hiddenBottom;
-  }
-}
-
-function observeAgentChatScrollContainer(
-  element: HTMLElement | null,
-): (() => void) | undefined {
-  if (!element) {
-    return;
-  }
-
-  const keepVisible = () => {
-    keepFocusedComposerVisible(element);
-  };
-  const observer =
-    typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(keepVisible);
-  observer?.observe(element);
-  element.ownerDocument.defaultView?.addEventListener(
-    VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT,
-    keepVisible,
-  );
-
-  return () => {
-    observer?.disconnect();
-    element.ownerDocument.defaultView?.removeEventListener(
-      VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT,
-      keepVisible,
-    );
-  };
-}
 
 function getTagline(
   agentName: string,
@@ -786,10 +718,7 @@ export function AgentChatPage() {
   };
 
   return (
-    <div
-      data-keyboard-inset-page
-      className="relative flex flex-1 flex-col min-h-0"
-    >
+    <div className="relative flex flex-1 flex-col min-h-0">
       <span ref={subscribeComputerUseHostsChangedRef} hidden />
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end items-center gap-2">
@@ -797,14 +726,7 @@ export function AgentChatPage() {
         </div>
       </header>
 
-      <main
-        ref={observeAgentChatScrollContainer}
-        data-agent-chat-scroll-container
-        onFocusCapture={(event) => {
-          keepFocusedComposerVisible(event.currentTarget);
-        }}
-        className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6"
-      >
+      <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-12 sm:pt-[20vh] sm:pb-[10vh]">
           <div className="flex items-center gap-4 w-full">
             <ChatAgentAvatar agentId={currentChatAgentId} />

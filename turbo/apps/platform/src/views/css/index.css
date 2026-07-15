@@ -60,7 +60,6 @@
   --sab: var(--sab-raw);
   --sal: env(safe-area-inset-left, 0px);
   --zero-viewport-height: 100dvh;
-  --zero-keyboard-inset: 0px;
   --zero-desktop-titlebar-height: 48px;
 }
 
@@ -74,12 +73,6 @@
 
 :root[data-keyboard-open="true"] {
   --sab: 0px;
-}
-
-@media (display-mode: standalone) {
-  :root[data-keyboard-open="true"] [data-keyboard-inset-page] {
-    padding-bottom: var(--zero-keyboard-inset);
-  }
 }
 
 html,
@@ -104,7 +97,27 @@ body {
   left: 0;
   /* Keep the root-owned safe-area padding opaque behind translucent iOS chrome. */
   background-color: hsl(var(--background));
-  padding: var(--sat) var(--sar) var(--sab) var(--sal);
+  padding: var(--sat) var(--sar) var(--sab-raw) var(--sal);
+}
+
+@media (display-mode: standalone) {
+  /* Keep editable content in document coordinates. iOS can paint a stale
+     caret when a focused editor is inside a fixed-position ancestor. */
+  #root {
+    position: absolute;
+    overflow-y: auto;
+  }
+
+  #root::after {
+    content: "";
+    display: block;
+    height: var(--zero-keyboard-scroll-reserve, 0px);
+    pointer-events: none;
+  }
+
+  [data-chat-composer] .zero-composer {
+    scroll-margin-block-end: 16px;
+  }
 }
 
 .zero-viewport-shell {

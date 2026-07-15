@@ -7619,7 +7619,6 @@ export function useZeroChatComposer({
           }
         />
         <Card
-          data-keyboard-inset-target
           className={cn(
             "zero-composer relative z-10 overflow-visible",
             dragOver && "outline outline-2 outline-blue-400/60",

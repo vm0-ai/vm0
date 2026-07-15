@@ -985,7 +985,7 @@ function mockFailedAssistantThread({
 }
 
 describe("chat lifecycle", () => {
-  it("keeps an existing thread composer in the PWA keyboard layout while idle and working", async () => {
+  it("keeps an existing thread composer in its footer while idle and working", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000990";
     mockChatLifecycle(context, {
@@ -1006,22 +1006,19 @@ describe("chat lifecycle", () => {
     const composer = await waitFor(() => {
       return chatComposerTextarea();
     });
-    const insetTarget = composer.closest("[data-keyboard-inset-target]");
-    expect(insetTarget).toHaveClass("zero-composer");
-    expect(insetTarget?.closest("[data-keyboard-inset-page]")).not.toBeNull();
+    const composerCard = composer.closest(".zero-composer");
+    expect(composerCard).not.toBeNull();
+    expect(composerCard?.closest("[data-chat-composer]")).not.toBeNull();
 
     await sendMessageInUI(user, composer, "Continue working");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       const workingComposer = chatComposerTextarea();
+      const workingComposerCard = workingComposer.closest(".zero-composer");
+      expect(workingComposerCard).not.toBeNull();
       expect(
-        workingComposer.closest("[data-keyboard-inset-target]"),
-      ).toHaveClass("zero-composer");
-      expect(
-        workingComposer
-          .closest("[data-keyboard-inset-target]")
-          ?.closest("[data-keyboard-inset-page]"),
+        workingComposerCard?.closest("[data-chat-composer]"),
       ).not.toBeNull();
     });
   });

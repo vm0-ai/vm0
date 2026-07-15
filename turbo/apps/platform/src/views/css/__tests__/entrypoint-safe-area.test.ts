@@ -76,7 +76,7 @@ describe("platform entrypoint safe area behavior", () => {
 
     expect(globalCss).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(globalCss).toMatch(/--zero-viewport-height:\s*100lvh;/);
-    expect(globalCss).toMatch(/--zero-keyboard-inset:\s*0px;/);
+    expect(globalCss).not.toContain("--zero-keyboard-inset");
     expect(globalCss).not.toContain("--zero-keyboard-viewport-height");
     expect(globalCss).not.toContain("--zero-keyboard-viewport-offset-top");
     expect(globalCss).not.toContain("--zero-viewport-offset-top");
@@ -87,7 +87,13 @@ describe("platform entrypoint safe area behavior", () => {
       /#root\s*{[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*right:\s*0;[\s\S]*left:\s*0;/,
     );
     expect(globalCss).toMatch(
-      /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
+      /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab-raw\)\s+var\(--sal\);/,
+    );
+    expect(globalCss).toMatch(
+      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*#root\s*{\s*position:\s*absolute;\s*overflow-y:\s*auto;\s*}/,
+    );
+    expect(globalCss.indexOf("position: absolute;")).toBeGreaterThan(
+      globalCss.indexOf("position: fixed;"),
     );
     expect(globalCss).toMatch(
       /\.zero-viewport-shell\s*{[\s\S]*height:\s*100%;[\s\S]*max-height:\s*100%;[\s\S]*overflow:\s*hidden;/,
@@ -99,8 +105,12 @@ describe("platform entrypoint safe area behavior", () => {
       /\.zero-mobile-fixed-safe-area\s*{[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
     );
     expect(globalCss).toMatch(
-      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*:root\[data-keyboard-open="true"\]\s+\[data-keyboard-inset-page\]\s*{\s*padding-bottom:\s*var\(--zero-keyboard-inset\);\s*}/,
+      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*\[data-chat-composer\]\s+\.zero-composer\s*{\s*scroll-margin-block-end:\s*16px;\s*}/,
     );
+    expect(globalCss).toMatch(
+      /#root::after\s*{[\s\S]*height:\s*var\(--zero-keyboard-scroll-reserve,\s*0px\);[\s\S]*pointer-events:\s*none;/,
+    );
+    expect(globalCss).not.toContain("data-keyboard-inset-page");
     expect(globalCss).not.toMatch(/:root\[data-keyboard-open="true"\]\s+#root/);
   });
 
