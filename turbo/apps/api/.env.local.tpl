@@ -86,6 +86,9 @@ OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
 # Optional: OpenRouter lightweight model calls
 OPENROUTER_API_KEY=op://Development/openrouter/Section_ak7dvythmldarvk4dodjs4ecyq/OPENROUTER_API_KEY
 
+# Optional: VM0 Auto Responses proxy authentication
+VM0_AUTO_PROXY_TOKEN=op://Development/vm0/VM0_AUTO_PROXY_TOKEN
+
 # Required: OpenAI Webhook signing secret (for built-in generations webhook)
 OPENAI_WEBHOOK_SECRET=op://Development/openai/OPENAI_WEBHOOK_SECRET
 
