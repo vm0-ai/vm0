@@ -100,6 +100,56 @@ const cronSyncSkillsResponseSchema = z.object({
   total: z.number(),
 });
 
+export const connectorCatalogSyncFailureCodeSchema = z.enum([
+  "source-unavailable",
+  "object-too-large",
+  "invalid-json",
+  "invalid-pointer",
+  "invalid-reference",
+  "digest-mismatch",
+  "unsupported-schema",
+  "unsupported-capability",
+  "invalid-artifact",
+  "public-leakage",
+  "relationship-mismatch",
+  "conflicting-release",
+]);
+
+const connectorCatalogSyncStatusSchema = z.object({
+  configured: z.boolean(),
+  state: z.enum(["never-synced", "current", "stale"]),
+  active: z
+    .object({
+      catalogVersion: z.string(),
+      integrityDigest: z.string(),
+      activatedAt: z.string().datetime(),
+    })
+    .nullable(),
+  lastAttempt: z
+    .object({
+      at: z.string().datetime(),
+      outcome: z.enum(["accepted", "unchanged", "rejected"]),
+      failureCode: connectorCatalogSyncFailureCodeSchema.nullable(),
+    })
+    .nullable(),
+  lastSuccessAt: z.string().datetime().nullable(),
+});
+
+const connectorCatalogSyncResponseSchema =
+  connectorCatalogSyncStatusSchema.extend({
+    outcome: z.enum(["disabled", "accepted", "unchanged", "rejected"]),
+  });
+
+export type ConnectorCatalogSyncFailureCode = z.infer<
+  typeof connectorCatalogSyncFailureCodeSchema
+>;
+export type ConnectorCatalogSyncStatus = z.infer<
+  typeof connectorCatalogSyncStatusSchema
+>;
+export type ConnectorCatalogSyncResponse = z.infer<
+  typeof connectorCatalogSyncResponseSchema
+>;
+
 const cronExecuteWorkflowAutomationsResponseSchema = z.object({
   success: z.literal(true),
   executed: z.number(),
@@ -344,6 +394,29 @@ export const cronSyncSkillsContract = c.router({
   },
 });
 
+export const cronConnectorCatalogContract = c.router({
+  sync: {
+    method: "GET",
+    path: "/api/cron/sync-connector-catalog",
+    headers: authHeadersSchema,
+    responses: {
+      200: connectorCatalogSyncResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Sync the validated connector catalog snapshot",
+  },
+  status: {
+    method: "GET",
+    path: "/api/cron/connector-catalog-status",
+    headers: authHeadersSchema,
+    responses: {
+      200: connectorCatalogSyncStatusSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Read connector catalog sync status",
+  },
+});
+
 export const cronExecuteWorkflowAutomationsContract = c.router({
   execute: {
     method: "GET",
@@ -452,6 +525,7 @@ export type CronComputerUseScreenshotCleanupContract =
 export type CronArtifactPreviewContract = typeof cronArtifactPreviewContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
+export type CronConnectorCatalogContract = typeof cronConnectorCatalogContract;
 export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;
 export type CronRenewGoogleCalendarWatchesContract =
