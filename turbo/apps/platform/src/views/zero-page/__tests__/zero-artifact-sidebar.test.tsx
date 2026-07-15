@@ -3216,6 +3216,123 @@ ${openFencedHostedSiteUrl}`,
     });
   });
 
+  it("keeps legacy text editing and does not write movement geometry when dragging is disabled", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/non-draggable-quarterly-roadmap.html";
+    const browser = context.mocks.browser.blobDownload();
+    let redeployedHtml: string | null = null;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ body, respond }) => {
+        redeployedHtml = body.html;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "non-draggable-quarterly-roadmap",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="title"]',
+    );
+    if (!(title instanceof HTMLElement)) {
+      throw new Error("Presentation preview title not found");
+    }
+    expect(
+      previewDocument.querySelector("[data-vm0-editor-move-id]"),
+    ).toBeNull();
+    fireEvent.load(previewFrame);
+
+    expect(title.getAttribute("contenteditable")).toBe("true");
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 6,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 6,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 6,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("");
+    expect(title.dataset.vm0EditorSelected).toBeUndefined();
+    expect(
+      previewDocument.querySelector("[data-vm0-editor-selection-overlay]"),
+    ).toBeNull();
+
+    title.textContent = "Updated without movement";
+    fireEvent.input(title);
+    fireEvent.blur(title);
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+    const redeployedDocument = new DOMParser().parseFromString(
+      redeployedHtml ?? "",
+      "text/html",
+    );
+    expect(
+      redeployedDocument.querySelector('[data-vm0-edit-id="title"]')
+        ?.textContent,
+    ).toBe("Updated without movement");
+    expect(
+      redeployedDocument.querySelector("[data-vm0-element-id]"),
+    ).toBeNull();
+    expect(redeployedDocument.querySelector("[data-vm0-offset-x]")).toBeNull();
+    expect(redeployedDocument.querySelector("[data-vm0-offset-y]")).toBeNull();
+    expect(
+      redeployedDocument.querySelector(
+        'script[id="vm0-presentation-element-offset-runtime"]',
+      ),
+    ).toBeNull();
+    expect(
+      JSON.parse(
+        redeployedDocument.getElementById("vm0-deck-metadata")?.textContent ??
+          "{}",
+      ),
+    ).toMatchObject({ editProtocolVersion: 1 });
+    toast.dismiss();
+  });
+
   it("selects, text-edits, drags, and redeploys presentation objects", async () => {
     const presentationUrl =
       "https://deck.sites.vm7.io/draggable-quarterly-roadmap.html";
