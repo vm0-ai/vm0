@@ -1131,7 +1131,12 @@ function ModelPolicyRouteDialog({
             </Select>
           </div>
 
-          {selectedModel !== "vm0-model" && (
+          {selectedModel === "vm0-model" ? (
+            <p className="text-sm text-muted-foreground">
+              VM0 automatically selects the right model for each task, balancing
+              capability, speed, and cost.
+            </p>
+          ) : (
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-foreground">
                 Provided by

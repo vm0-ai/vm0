@@ -280,7 +280,7 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("hides provider routing choices for VM0 Model", async () => {
+  it("shows the VM0 Model description without provider routing choices", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
@@ -290,6 +290,11 @@ describe("organization model providers settings", () => {
     await selectDialogModel("VM0 Model");
 
     const dialog = screen.getByRole("dialog", { name: "Add model" });
+    expect(
+      within(dialog).getByText(
+        "VM0 automatically selects the right model for each task, balancing capability, speed, and cost.",
+      ),
+    ).toBeInTheDocument();
     expect(within(dialog).queryByText("Provided by")).not.toBeInTheDocument();
     expect(
       within(dialog).queryByRole("radiogroup", { name: "Provided by" }),

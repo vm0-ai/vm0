@@ -4229,6 +4229,13 @@
       "when": 1784105782180,
       "tag": "0603_simple_ironclad",
       "breakpoints": true
+    },
+    {
+      "idx": 604,
+      "version": "7",
+      "when": 1784112668382,
+      "tag": "0604_add_vm0_model_pricing",
+      "breakpoints": true
     }
   ]
 }
