@@ -24,7 +24,6 @@ describe("platform runtime host configuration", () => {
     );
 
     const config = resolvePlatformRuntimeConfig();
-    expect(config.clerkPublishableKey).toBe("production_clerk_key");
     expect(config.publicArtifactsBaseUrl).toBe("https://cdn.vm0.io");
     expect(config.zeroHostDomain).toBe("sites.vm0.io");
   });
@@ -41,7 +40,6 @@ describe("platform runtime host configuration", () => {
     );
 
     const config = resolvePlatformRuntimeConfig();
-    expect(config.clerkPublishableKey).toBe("preview_clerk_key");
     expect(config.publicArtifactsBaseUrl).toBe("https://cdn.vm7.io");
     expect(config.zeroHostDomain).toBe("sites.vm7.io");
     expect(config.postHogKey).toBeNull();

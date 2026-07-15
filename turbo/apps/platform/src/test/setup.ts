@@ -27,8 +27,7 @@ vi.mock("@clerk/clerk-js", () => {
 });
 
 vi.hoisted(() => {
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", "preview_clerk_key");
-  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION", "production_clerk_key");
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
   vi.stubEnv("VITE_GIT_COMMIT_SHA", "0123456789abcdef0123456789abcdef01234567");
   vi.stubEnv("VITE_APP_VERSION", "0.540.0");
 });

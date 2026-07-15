@@ -4,7 +4,6 @@ export type PlatformService = "api" | "www" | "app" | "platform";
 
 export interface PlatformRuntimeConfig {
   readonly environment: PlatformEnvironment;
-  readonly clerkPublishableKey: string | null;
   readonly publicArtifactsBaseUrl: "https://cdn.vm0.io" | "https://cdn.vm7.io";
   readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
   readonly plausibleScriptUrl: string | null;
@@ -102,9 +101,6 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   if (environment === "production") {
     return {
       environment,
-      clerkPublishableKey: optionalBuildValue(
-        import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION,
-      ),
       publicArtifactsBaseUrl: "https://cdn.vm0.io",
       zeroHostDomain: "sites.vm0.io",
       plausibleScriptUrl: optionalBuildValue(
@@ -117,9 +113,6 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
 
   return {
     environment,
-    clerkPublishableKey: optionalBuildValue(
-      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PREVIEW,
-    ),
     publicArtifactsBaseUrl: "https://cdn.vm7.io",
     zeroHostDomain: "sites.vm7.io",
     plausibleScriptUrl:

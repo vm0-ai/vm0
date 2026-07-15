@@ -65,8 +65,7 @@ including when the same static artifact is served from an alternate app host.
 Preview hosts preserve their branch prefix, so `pr-123-app.vm6.ai` resolves API
 traffic to `pr-123-api.vm6.ai`.
 
-Preview and production builds receive both environments' public configuration
-values, including separate Clerk publishable keys.
+Preview and production builds receive the same public configuration values.
 The serving domain selects the active artifact CDN, hosted-site domain, and
 telemetry configuration at runtime, so the built `dist` directory is portable
 between supported deployment providers.
@@ -75,14 +74,13 @@ Alternate providers must serve the artifact from a hostname under the intended
 environment domain. An unrecognized provider hostname is treated as preview
 and cannot infer a separate API or web service origin.
 
-| Variable                                | Description                     | Required         |
-| --------------------------------------- | ------------------------------- | ---------------- |
-| `VITE_CLERK_PUBLISHABLE_KEY_PREVIEW`    | Preview Clerk authentication    | For auth feature |
-| `VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION` | Production Clerk authentication | For auth feature |
-| `VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW`     | Preview analytics script        | No               |
-| `VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION`  | Production analytics script     | No               |
-| `VITE_POSTHOG_KEY`                      | Production product analytics    | No               |
-| `VITE_SENTRY_DSN`                       | Production browser error intake | No               |
+| Variable                               | Description                     | Required         |
+| -------------------------------------- | ------------------------------- | ---------------- |
+| `VITE_CLERK_PUBLISHABLE_KEY`           | Clerk authentication            | For auth feature |
+| `VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW`    | Preview analytics script        | No               |
+| `VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION` | Production analytics script     | No               |
+| `VITE_POSTHOG_KEY`                     | Production product analytics    | No               |
+| `VITE_SENTRY_DSN`                      | Production browser error intake | No               |
 
 ## Troubleshooting
 
