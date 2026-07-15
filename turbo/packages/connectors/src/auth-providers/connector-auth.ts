@@ -14,6 +14,7 @@ import {
   type OpenIdAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
+  type ConnectorAuthMethodConfig,
   type ConnectorRefreshInputValues,
   type ConnectorRevokeInputValues,
   type RefreshTokenAccessConnectorType,
@@ -22,6 +23,7 @@ import {
 import {
   connectorAuthClientIdentityForMethod,
   connectorAuthMethodRefHasRevokeKind,
+  getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodOpenIdAuthGrantConfig,
@@ -315,6 +317,163 @@ export type ConnectorAuthProviderRegistryCapabilities = Readonly<
     >
   >
 >;
+
+export const CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS = {
+  manualGrant: 1,
+  staticAccess: 1,
+  noneRevoke: 1,
+} as const;
+
+export type ConnectorAuthProviderClientContract =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "static-confidential-env";
+      readonly clientIdEnv: string;
+      readonly clientSecretEnv: string;
+    }
+  | { readonly kind: "static-confidential-literal" }
+  | {
+      readonly kind: "static-public-env";
+      readonly clientIdEnv: string;
+    }
+  | { readonly kind: "static-public-literal" }
+  | { readonly kind: "dynamic-public" };
+
+export interface ConnectorAuthProviderMethodContract {
+  readonly client: ConnectorAuthProviderClientContract;
+  readonly grant: {
+    readonly kind: ConnectorAuthMethodConfig["grant"]["kind"];
+    readonly callbackOrigin: "web" | "api" | null;
+    readonly outputNames: readonly string[];
+    readonly startOptionNames: readonly string[];
+  };
+  readonly access: {
+    readonly kind: ConnectorAuthMethodConfig["access"]["kind"];
+    readonly inputNames: readonly string[];
+    readonly outputNames: readonly string[];
+    readonly platformSecrets: readonly string[];
+  };
+  readonly revoke: {
+    readonly kind: ConnectorAuthMethodConfig["revoke"]["kind"];
+    readonly inputNames: readonly string[];
+  };
+}
+
+export interface ConnectorAuthProviderRegistrationCapability {
+  readonly connectorRef: string;
+  readonly authMethodId: string;
+  readonly handlers: ConnectorAuthProviderRegistryCapability;
+  readonly contract: ConnectorAuthProviderMethodContract;
+  readonly requiredConfigurationNames: readonly string[];
+}
+
+function compareCapabilityStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function connectorAuthProviderClientContract(
+  method: ConnectorAuthMethodConfig,
+): ConnectorAuthProviderClientContract {
+  const client = method.client;
+  if (client === undefined) {
+    return { kind: "none" };
+  }
+  if (client.clientRegistration === "dynamic") {
+    return { kind: "dynamic-public" };
+  }
+  if (client.clientType === "confidential") {
+    return "clientIdEnv" in client
+      ? {
+          kind: "static-confidential-env",
+          clientIdEnv: client.clientIdEnv,
+          clientSecretEnv: client.clientSecretEnv,
+        }
+      : { kind: "static-confidential-literal" };
+  }
+  return "clientIdEnv" in client
+    ? { kind: "static-public-env", clientIdEnv: client.clientIdEnv }
+    : { kind: "static-public-literal" };
+}
+
+function connectorAuthProviderMethodContract(
+  method: ConnectorAuthMethodConfig,
+): ConnectorAuthProviderMethodContract {
+  const callbackOrigin =
+    method.grant.kind === "auth-code"
+      ? (method.grant.callbackOrigin ?? "web")
+      : method.grant.kind === "openid-auth"
+        ? (method.grant.callbackOrigin ?? "api")
+        : null;
+  const grantOutputNames =
+    method.grant.kind === "auth-code" ||
+    method.grant.kind === "openid-auth" ||
+    method.grant.kind === "external-code" ||
+    method.grant.kind === "device-auth"
+      ? Object.keys(method.grant.outputs).sort(compareCapabilityStrings)
+      : [];
+  const startOptionNames =
+    method.grant.kind === "device-auth"
+      ? Object.keys(method.grant.startOptions ?? {}).sort(
+          compareCapabilityStrings,
+        )
+      : [];
+  const accessInputNames =
+    method.access.kind === "refresh-token"
+      ? Object.keys(method.access.inputs).sort(compareCapabilityStrings)
+      : [];
+  const accessOutputNames =
+    method.access.kind === "refresh-token"
+      ? Object.keys(method.access.outputs).sort(compareCapabilityStrings)
+      : [];
+  const revokeInputNames =
+    method.revoke.kind === "token-revoke"
+      ? Object.keys(method.revoke.inputs).sort(compareCapabilityStrings)
+      : [];
+
+  return {
+    client: connectorAuthProviderClientContract(method),
+    grant: {
+      kind: method.grant.kind,
+      callbackOrigin,
+      outputNames: grantOutputNames,
+      startOptionNames,
+    },
+    access: {
+      kind: method.access.kind,
+      inputNames: accessInputNames,
+      outputNames: accessOutputNames,
+      platformSecrets:
+        method.access.kind === "none"
+          ? []
+          : [...(method.access.platformSecrets ?? [])].sort(
+              compareCapabilityStrings,
+            ),
+    },
+    revoke: {
+      kind: method.revoke.kind,
+      inputNames: revokeInputNames,
+    },
+  };
+}
+
+function connectorAuthProviderRequiredConfigurationNames(
+  method: ConnectorAuthMethodConfig,
+): readonly string[] {
+  const names = new Set<string>();
+  const client = method.client;
+  if (client?.clientRegistration === "static" && "clientIdEnv" in client) {
+    names.add(client.clientIdEnv);
+    if (client.clientType === "confidential") {
+      names.add(client.clientSecretEnv);
+    }
+  }
+  if (method.access.kind !== "none") {
+    for (const name of method.access.platformSecrets ?? []) {
+      names.add(name);
+    }
+  }
+  return [...names].sort(compareCapabilityStrings);
+}
 
 type MutableConnectorAuthProviderRegistryCapabilities = Partial<
   Record<
@@ -805,6 +964,43 @@ export function getConnectorAuthProviderRegistryCapabilities(): ConnectorAuthPro
     capabilities[registration.type] = methodCapabilities;
   }
   return capabilities;
+}
+
+export function getConnectorAuthProviderRegistrationCapabilities(): readonly ConnectorAuthProviderRegistrationCapability[] {
+  return CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES.map((registration) => {
+    const method = getConnectorAuthMethod(
+      registration.type,
+      registration.authMethod,
+    );
+    if (method === undefined) {
+      throw new Error(
+        `Missing auth method configuration for ${registration.type}:${registration.authMethod}`,
+      );
+    }
+    return {
+      connectorRef: registration.type,
+      authMethodId: registration.authMethod,
+      handlers: {
+        ...(registration.entry.grant === undefined
+          ? {}
+          : { grant: registration.entry.grant.kind }),
+        ...(registration.entry.access === undefined
+          ? {}
+          : { access: registration.entry.access.kind }),
+        ...(registration.entry.revoke === undefined
+          ? {}
+          : { revoke: registration.entry.revoke.kind }),
+      },
+      contract: connectorAuthProviderMethodContract(method),
+      requiredConfigurationNames:
+        connectorAuthProviderRequiredConfigurationNames(method),
+    };
+  }).sort((left, right) => {
+    return (
+      compareCapabilityStrings(left.connectorRef, right.connectorRef) ||
+      compareCapabilityStrings(left.authMethodId, right.authMethodId)
+    );
+  });
 }
 
 type ConnectorAuthCodeResolvedMethodClient =

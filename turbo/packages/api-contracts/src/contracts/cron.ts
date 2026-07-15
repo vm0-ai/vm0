@@ -113,6 +113,31 @@ export const connectorCatalogSyncFailureCodeSchema = z.enum([
   "relationship-mismatch",
 ]);
 
+export const connectorCatalogCompatibilityReasonSchema = z.enum([
+  "missing-grant-provider",
+  "missing-access-provider",
+  "missing-revoke-provider",
+  "provider-contract-mismatch",
+  "missing-platform-configuration",
+]);
+
+export const connectorCatalogFilteredAuthMethodSchema = z.object({
+  connectorRef: z.string().min(1),
+  authMethodId: z.string().min(1),
+  reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
+});
+
+export const connectorCatalogFilteredAuthMethodsSchema = z.array(
+  connectorCatalogFilteredAuthMethodSchema,
+);
+
+const connectorCatalogFilteringStatusSchema = z.object({
+  capabilityDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  evaluatedAt: z.string().datetime().nullable(),
+  stale: z.boolean(),
+  filteredAuthMethods: connectorCatalogFilteredAuthMethodsSchema,
+});
+
 const connectorCatalogSyncStatusSchema = z.object({
   state: z.enum(["never-synced", "current", "stale"]),
   active: z
@@ -130,6 +155,7 @@ const connectorCatalogSyncStatusSchema = z.object({
     })
     .nullable(),
   lastSuccessAt: z.string().datetime().nullable(),
+  filtering: connectorCatalogFilteringStatusSchema,
 });
 
 const connectorCatalogSyncResponseSchema =
@@ -139,6 +165,15 @@ const connectorCatalogSyncResponseSchema =
 
 export type ConnectorCatalogSyncFailureCode = z.infer<
   typeof connectorCatalogSyncFailureCodeSchema
+>;
+export type ConnectorCatalogCompatibilityReason = z.infer<
+  typeof connectorCatalogCompatibilityReasonSchema
+>;
+export type ConnectorCatalogFilteredAuthMethod = z.infer<
+  typeof connectorCatalogFilteredAuthMethodSchema
+>;
+export type ConnectorCatalogFilteringStatus = z.infer<
+  typeof connectorCatalogFilteringStatusSchema
 >;
 export type ConnectorCatalogSyncStatus = z.infer<
   typeof connectorCatalogSyncStatusSchema

@@ -3,6 +3,10 @@ import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
 import {
+  connectorCatalogCompatibilityStatus$,
+  reconcileConnectorCatalogCompatibility$,
+} from "../services/connector-catalog-compatibility.service";
+import {
   connectorCatalogStatus$,
   syncConnectorCatalog$,
 } from "../services/connector-catalog-sync.service";
@@ -15,10 +19,21 @@ const syncConnectorCatalogRoute$ = command(
     }
 
     const result = await set(syncConnectorCatalog$, signal);
+    await set(reconcileConnectorCatalogCompatibility$, signal);
+    const status = await set(connectorCatalogStatus$, signal);
+    const compatibility = await set(
+      connectorCatalogCompatibilityStatus$,
+      status.active,
+      signal,
+    );
     signal.throwIfAborted();
     return {
       status: 200 as const,
-      body: result,
+      body: {
+        outcome: result.outcome,
+        ...status,
+        filtering: compatibility,
+      },
     };
   },
 );
@@ -30,10 +45,15 @@ const connectorCatalogStatusRoute$ = command(
     }
 
     const result = await set(connectorCatalogStatus$, signal);
+    const compatibility = await set(
+      connectorCatalogCompatibilityStatus$,
+      result.active,
+      signal,
+    );
     signal.throwIfAborted();
     return {
       status: 200 as const,
-      body: result,
+      body: { ...result, filtering: compatibility },
     };
   },
 );
