@@ -273,6 +273,7 @@ jobs:
             .github/scripts/tests/*.sh
           )
           bash -n "${script_files[@]}"
+          shellcheck .github/scripts/runner-behavior-*.sh
           for test_script in .github/scripts/tests/*.sh; do
             bash "$test_script"
           done
