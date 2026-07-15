@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.63](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.62...nbd-cow-v0.4.63) (2026-07-15)
+
+
+### Documentation
+
+* **nbd-cow:** clarify device pool cleanup contract ([#21624](https://github.com/vm0-ai/vm0/issues/21624)) ([0fa15ae](https://github.com/vm0-ai/vm0/commit/0fa15aeebdead8a594abe67b3a5545c431a65821))
+
 ## [0.4.62](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.61...nbd-cow-v0.4.62) (2026-07-15)
 
 
