@@ -5497,6 +5497,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       true,
       missingRun.runId,
       [400],
+      {
+        telemetry: { sessionHistoryGenerationRelationship: "unknown_target" },
+      },
     );
     expectApiError(missingClaim.body);
     expect(missingClaim.body.error.message).toBe(
@@ -5510,6 +5513,20 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(failedMissingRun.error).toBe(
       "Runner job missing valid execution context",
     );
+    expect(
+      sandboxOperationEventsForRunByAction(
+        missingRun.runId,
+        "runner_session_history_generation_claim_attempt",
+      ),
+    ).toStrictEqual([
+      expect.objectContaining({
+        success: false,
+        duration_ms: 0,
+        generation_relationship: "unknown_target",
+        claim_outcome: "preclaim_error",
+        auth_type: "official-runner",
+      }),
+    ]);
 
     const invalidRun = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
@@ -6518,11 +6535,24 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(completed.status).toBe("completed");
 
     const resumedPrompt = "continue combined claim response timing";
+    context.mocks.ably.publish.mockClear();
     const resumed = await api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
       prompt: resumedPrompt,
       modelProvider: "anthropic-api-key",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "job",
+      expect.objectContaining({
+        runId: resumed.runId,
+        historyGenerationRunId: first.runId,
+      }),
+    );
+    const resumedPoll = await api.pollRunner(runnerGroup);
+    expect(resumedPoll.body.job).toMatchObject({
+      runId: resumed.runId,
+      historyGenerationRunId: first.runId,
     });
     const resumedClaim = await api.claimRunnerJob(resumed.runId);
     expect(resumedClaim.resumeSession).toMatchObject({
@@ -6533,6 +6563,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         url: expect.any(String),
       },
     });
+    expect(resumedClaim.resumeSession).not.toHaveProperty(
+      "historyGenerationRunId",
+    );
     expect(resumedClaim.networkPolicies?.slack).toBeDefined();
     expectClaimRouteResponseTimingActions({
       runId: resumed.runId,
@@ -7174,6 +7207,124 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
 });
 
 describe("RUN-03: user-runner protocol and runner authentication", () => {
+  it("records trusted terminal generation claim attempts without user-token pollution", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const actorRunnerKey = await api.createApiKey(actor);
+    const actorBearer = `Bearer ${actorRunnerKey.token}`;
+
+    const attributed = await api.createRun(actor, {
+      agentId,
+      prompt: "attribute terminal generation claims",
+      modelProvider: "anthropic-api-key",
+    });
+    const accepted = await api.requestClaimRunnerJob(
+      true,
+      attributed.runId,
+      [200],
+      {
+        telemetry: {
+          sessionHistoryGenerationRelationship: "different",
+        },
+      },
+    );
+    expect(accepted.status).toBe(200);
+
+    const lateUser = await api.requestClaimRunnerJobAs(
+      actorBearer,
+      attributed.runId,
+      [404],
+      {
+        telemetry: { sessionHistoryGenerationRelationship: "exact" },
+      },
+    );
+    expectApiError(lateUser.body);
+    expect(
+      sandboxOperationEventsForRunByAction(
+        attributed.runId,
+        "runner_session_history_generation_claim_attempt",
+      ),
+    ).toHaveLength(1);
+
+    const lateOfficial = await api.requestClaimRunnerJob(
+      true,
+      attributed.runId,
+      [404],
+      {
+        telemetry: { sessionHistoryGenerationRelationship: "exact" },
+      },
+    );
+    expectApiError(lateOfficial.body);
+    const attributedEvents = sandboxOperationEventsForRunByAction(
+      attributed.runId,
+      "runner_session_history_generation_claim_attempt",
+    );
+    expect(attributedEvents).toStrictEqual([
+      expect.objectContaining({
+        success: true,
+        duration_ms: 0,
+        generation_relationship: "different",
+        claim_outcome: "accepted",
+        auth_type: "official-runner",
+        runner_group: runnerGroup,
+        profile: "vm0/default",
+      }),
+      expect.objectContaining({
+        success: false,
+        duration_ms: 0,
+        generation_relationship: "exact",
+        claim_outcome: "unavailable",
+        auth_type: "official-runner",
+      }),
+    ]);
+    for (const event of attributedEvents) {
+      expect(event).not.toHaveProperty("history_generation_run_id");
+      expect(event).not.toHaveProperty("session_id");
+      expect(event).not.toHaveProperty("history_hash");
+      expect(JSON.stringify(event)).not.toContain(actorRunnerKey.token);
+    }
+
+    const guarded = await api.createRun(actor, {
+      agentId,
+      prompt: "reject untrusted generation attribution",
+      modelProvider: "anthropic-api-key",
+    });
+    const outsider = bdd.user();
+    const outsiderKey = await api.createApiKey(outsider);
+    const forbiddenClaim = await api.requestClaimRunnerJobAs(
+      `Bearer ${outsiderKey.token}`,
+      guarded.runId,
+      [403],
+      {
+        telemetry: { sessionHistoryGenerationRelationship: "exact" },
+      },
+    );
+    expectApiError(forbiddenClaim.body);
+    expect(
+      sandboxOperationEventsForRunByAction(
+        guarded.runId,
+        "runner_session_history_generation_claim_attempt",
+      ),
+    ).toHaveLength(0);
+
+    const oldRunnerClaim = await api.requestClaimRunnerJob(
+      true,
+      guarded.runId,
+      [200],
+    );
+    expect(oldRunnerClaim.status).toBe(200);
+    expect(
+      sandboxOperationEventsForRunByAction(
+        guarded.runId,
+        "runner_session_history_generation_claim_attempt",
+      ),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, attributed.runId, [200]);
+    await api.requestCancelRun(actor, guarded.runId, [200]);
+  });
+
   it("dispatches, scopes, and claims runs through user API keys", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();

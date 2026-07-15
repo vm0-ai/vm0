@@ -10,6 +10,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 
+use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::status::IdleVm;
@@ -145,6 +146,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) source_ip: String,
     pub(crate) storage_fingerprints: StorageFingerprints,
     pub(crate) restored_session_identity: Option<RestoredSessionIdentity>,
+    pub(crate) history_generation_run_id: Option<RunId>,
     pub(crate) workspace_image_size_bytes: u64,
     pub(crate) workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
@@ -164,6 +166,7 @@ struct IdleSandboxMetadata {
     /// Verified hash-backed resume state restored into this sandbox before it
     /// was parked. Missing means reuse must fall back to materialize+restore.
     restored_session_identity: Option<RestoredSessionIdentity>,
+    history_generation_run_id: Option<RunId>,
     /// Local terminal timestamp for this parked session.
     ///
     /// `None` is reserved for synthetic test entries and means the VM is not
@@ -172,27 +175,6 @@ struct IdleSandboxMetadata {
 }
 
 impl IdleSandboxMetadata {
-    fn new(
-        cli_agent_session_id: String,
-        sandbox_id: SandboxId,
-        profile_name: String,
-        device_rate_limits: Option<DeviceRateLimits>,
-        source_ip: String,
-        storage_fingerprints: StorageFingerprints,
-        restored_session_identity: Option<RestoredSessionIdentity>,
-    ) -> Self {
-        Self {
-            cli_agent_session_id,
-            sandbox_id,
-            profile_name,
-            device_rate_limits,
-            source_ip,
-            storage_fingerprints,
-            restored_session_identity,
-            last_completed_at: None,
-        }
-    }
-
     fn cli_agent_session_id(&self) -> &str {
         &self.cli_agent_session_id
     }
@@ -284,11 +266,12 @@ impl IdleParkRequest {
             source_ip,
             storage_fingerprints,
             restored_session_identity,
+            history_generation_run_id,
             workspace_image_size_bytes,
             workspace_promotion,
         } = self.parts;
 
-        let metadata = IdleSandboxMetadata::new(
+        let metadata = IdleSandboxMetadata {
             cli_agent_session_id,
             sandbox_id,
             profile_name,
@@ -296,7 +279,9 @@ impl IdleParkRequest {
             source_ip,
             storage_fingerprints,
             restored_session_identity,
-        );
+            history_generation_run_id,
+            last_completed_at: None,
+        };
 
         if let Some(promotion) = workspace_promotion.as_ref()
             && let Err(mismatch) =
@@ -534,6 +519,7 @@ impl ReusableIdleSandbox {
             source_ip,
             storage_fingerprints,
             restored_session_identity,
+            history_generation_run_id: _,
             last_completed_at: _,
         } = metadata;
 
@@ -858,6 +844,10 @@ impl IdleEntry {
 impl ReservedIdleSandbox {
     pub fn cli_agent_session_id(&self) -> &str {
         self.entry.cli_agent_session_id()
+    }
+
+    pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
+        self.entry.metadata.history_generation_run_id
     }
 
     pub fn validate_workspace_promotion_identity(
@@ -1254,6 +1244,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
             restored_session_identity: None,
+            history_generation_run_id: None,
             workspace_image_size_bytes: 0,
             workspace_promotion: None,
         })
@@ -1285,6 +1276,7 @@ mod tests {
         let session_id = "session-metadata";
         let profile_name = "vm0/large";
         let source_ip = "10.99.0.42";
+        let history_generation_run_id = RunId::new_v4();
         let budget_lease = make_budget_lease(2, 2048);
         let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
             MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
@@ -1325,6 +1317,7 @@ mod tests {
             source_ip: source_ip.into(),
             storage_fingerprints,
             restored_session_identity: Some(restored_session_identity.clone()),
+            history_generation_run_id: Some(history_generation_run_id),
             workspace_image_size_bytes: 0,
             workspace_promotion: None,
         });
@@ -1338,16 +1331,25 @@ mod tests {
         assert_eq!(candidate.cli_agent_session_id(), session_id);
         assert_eq!(candidate.sandbox_id(), sandbox_id);
         assert_eq!(candidate.metadata.profile_name, profile_name);
+        assert_eq!(
+            candidate.metadata.history_generation_run_id,
+            Some(history_generation_run_id)
+        );
 
         let mut pool = IdlePool::new(pool_config(0));
         assert!(matches!(pool.park(candidate), ParkResult::Parked));
-        let entry = pool.take(session_id).expect("idle entry should be parked");
-        assert_eq!(entry.profile_name(), profile_name);
+        let reservation = pool
+            .reserve_reusable(session_id, profile_name, &None)
+            .expect("idle entry should be reserved");
+        assert_eq!(
+            reservation.history_generation_run_id(),
+            Some(history_generation_run_id)
+        );
 
         let IdleUnparkResult::Reused {
             sandbox,
             budget_lease,
-        } = entry.try_unpark().await
+        } = reservation.try_unpark().await
         else {
             panic!("unpark should succeed");
         };

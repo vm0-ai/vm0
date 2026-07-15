@@ -62,6 +62,27 @@ impl PreLocalAdmissionOutcome {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionHistoryGenerationRelationship {
+    Exact,
+    Different,
+    Fresh,
+    UnknownTarget,
+    UnknownReserved,
+}
+
+impl SessionHistoryGenerationRelationship {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Exact => "exact",
+            Self::Different => "different",
+            Self::Fresh => "fresh",
+            Self::UnknownTarget => "unknown_target",
+            Self::UnknownReserved => "unknown_reserved",
+        }
+    }
+}
+
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -82,6 +103,8 @@ pub struct JobCandidate {
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
     cli_agent_session_id: Option<String>,
+    history_generation_run_id: Option<RunId>,
+    session_history_generation_relationship: Option<SessionHistoryGenerationRelationship>,
     affinity_protected_until: Option<DateTime<Utc>>,
 }
 
@@ -113,6 +136,8 @@ impl JobCandidate {
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
             cli_agent_session_id: None,
+            history_generation_run_id: None,
+            session_history_generation_relationship: None,
             affinity_protected_until: None,
         }
     }
@@ -207,6 +232,16 @@ impl JobCandidate {
         self.cli_agent_session_id.as_deref()
     }
 
+    pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
+        self.history_generation_run_id
+    }
+
+    pub(crate) fn session_history_generation_relationship(
+        &self,
+    ) -> Option<SessionHistoryGenerationRelationship> {
+        self.session_history_generation_relationship
+    }
+
     pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
         let protected_until = self.affinity_protected_until?;
         let now = Utc::now();
@@ -232,6 +267,21 @@ impl JobCandidate {
             .as_deref()
             .and_then(parse_affinity_protected_until);
         self
+    }
+
+    pub(crate) fn with_history_generation_run_id(
+        mut self,
+        history_generation_run_id: Option<RunId>,
+    ) -> Self {
+        self.history_generation_run_id = history_generation_run_id;
+        self
+    }
+
+    pub(crate) fn set_session_history_generation_relationship(
+        &mut self,
+        relationship: SessionHistoryGenerationRelationship,
+    ) {
+        self.session_history_generation_relationship = Some(relationship);
     }
 
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {

@@ -784,6 +784,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         source_ip,
         storage_fingerprints: StorageFingerprints::default(),
         restored_session_identity: None,
+        history_generation_run_id: None,
         workspace_image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         workspace_promotion: Some(promotion),
     })
@@ -891,6 +892,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         source_ip,
         storage_fingerprints: StorageFingerprints::default(),
         restored_session_identity: None,
+        history_generation_run_id: None,
         workspace_image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         workspace_promotion: Some(promotion),
     })
