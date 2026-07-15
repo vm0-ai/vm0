@@ -1,6 +1,6 @@
 """Tests for bounded JSON prefix probing helpers."""
 
-from typing import SupportsIndex, overload
+from typing import SupportsIndex
 
 import pytest
 
@@ -14,12 +14,6 @@ class _SliceTrackingBytes(bytes):
         instance = super().__new__(cls, value)
         instance.slice_lengths = []
         return instance
-
-    @overload
-    def __getitem__(self, key: SupportsIndex, /) -> int: ...
-
-    @overload
-    def __getitem__(self, key: slice, /) -> bytes: ...
 
     def __getitem__(self, key: SupportsIndex | slice, /) -> int | bytes:
         result = super().__getitem__(key)
