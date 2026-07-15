@@ -1,7 +1,9 @@
 use guest_mock_codex::read_session_file;
 use tempfile::TempDir;
 
-use crate::support::{require_session_file, run, run_with_env};
+use crate::support::{
+    require_session_file, run, run_with_env, run_with_stdin, run_with_stdin_and_env,
+};
 
 #[test]
 fn happy_path_emits_three_events_and_persists_jsonl() -> std::io::Result<()> {
@@ -31,6 +33,41 @@ fn happy_path_emits_three_events_and_persists_jsonl() -> std::io::Result<()> {
 
     let events = read_session_file(&session_path)?;
     assert_eq!(events, out.events);
+    Ok(())
+}
+
+#[test]
+fn fresh_prompt_stdin_is_preserved_exactly() -> std::io::Result<()> {
+    let dir = TempDir::new()?;
+    let prompt = " \n--literal option-looking prompt\n中文 and emoji 🚀\n-\n ";
+    let out = run_with_stdin(dir.path(), &["exec", "--json", "--", "-"], prompt)?;
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events[1]["item"]["text"], prompt);
+    let session_path = require_session_file(dir.path())?;
+    let persisted = read_session_file(&session_path)?;
+    assert_eq!(persisted[1]["item"]["text"], prompt);
+    Ok(())
+}
+
+#[test]
+fn fresh_prompt_stdin_preserves_literal_dash() -> std::io::Result<()> {
+    let dir = TempDir::new()?;
+    let out = run_with_stdin(dir.path(), &["exec", "--json", "--", "-"], "-")?;
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events[1]["item"]["text"], "-");
+    Ok(())
+}
+
+#[test]
+fn fresh_prompt_stdin_rejects_whitespace_only_input() -> std::io::Result<()> {
+    let dir = TempDir::new()?;
+    let out = run_with_stdin(dir.path(), &["exec", "--json", "--", "-"], " \n\t")?;
+
+    assert_ne!(out.status, 0);
+    assert!(out.events.is_empty());
+    assert!(out.stderr.contains("No prompt provided via stdin."));
     Ok(())
 }
 
@@ -124,9 +161,10 @@ fn config_flags_before_resume_are_not_echoed() {
 #[test]
 fn fixture_event_mapping_rich_emits_full_event_set() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
-    let out = run_with_env(
+    let out = run_with_stdin_and_env(
         dir.path(),
-        &["exec", "--json", "--", "ignored"],
+        &["exec", "--json", "--", "-"],
+        "ignored through stdin",
         &[("MOCK_CODEX_FIXTURE", "event-mapping-rich")],
     )?;
 
