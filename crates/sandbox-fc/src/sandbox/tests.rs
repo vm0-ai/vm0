@@ -573,20 +573,13 @@ where
     let id = id.to_owned();
     let (eof_tx, eof_rx) = tokio::sync::oneshot::channel();
     let handle = tokio::spawn(async move {
-        let mut lines = BufReader::new(reader).lines();
-        loop {
-            match lines.next_line().await {
-                Ok(Some(line)) => {
-                    if !line.is_empty() {
-                        ProcessLogStream::Stdout.log(&id, &line);
-                    }
-                }
-                Ok(None) => {
-                    let _ = eof_tx.send(());
-                    break;
-                }
-                Err(_) => break,
-            }
+        if read_process_log_records(reader, |record| {
+            ProcessLogStream::Stdout.log(&id, record);
+        })
+        .await
+        .is_ok()
+        {
+            let _ = eof_tx.send(());
         }
     });
     (handle, eof_rx)

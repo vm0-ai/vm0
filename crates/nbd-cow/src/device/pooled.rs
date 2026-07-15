@@ -10,12 +10,17 @@ use super::connection::{
 use super::finalizer::{PooledCowFinalizer, run_finalizer};
 use super::{NbdCowDevice, remove_cow_files};
 
-/// Retry policy for clean COW device finalization.
+/// Retry policy for the shutdown phase of pooled COW finalization.
+///
+/// A shutdown attempt includes pre-disconnect finalization such as dirty
+/// bitmap persistence for keep-COW finalization. After shutdown succeeds,
+/// [`PooledNbdCowDevice::destroy_with_retries`] attempts to remove the COW file
+/// and bitmap once; that storage cleanup is not retried.
 #[derive(Clone, Copy, Debug)]
 pub struct DestroyRetryPolicy {
-    /// Number of destroy attempts. Values below 1 are treated as 1 attempt.
+    /// Number of shutdown attempts. Values below 1 are treated as 1 attempt.
     pub attempts: u32,
-    /// Delay between attempts.
+    /// Delay between failed shutdown attempts.
     pub delay: Duration,
 }
 
@@ -238,6 +243,10 @@ impl PooledNbdCowDevice {
 
     /// Destroy the device, removing the COW file and bitmap.
     ///
+    /// The policy retries the shutdown phase. After shutdown succeeds, removal
+    /// of the COW file and bitmap is attempted once. A removal failure returns
+    /// immediately without waiting for the configured retry delay.
+    ///
     /// Finalization starts immediately. Dropping the returned future does not
     /// cancel cleanup; it continues in the background and logs its result.
     /// Must be called from a Tokio runtime.
@@ -252,10 +261,19 @@ impl PooledNbdCowDevice {
     /// Destroy the device and distinguish NBD shutdown failures from COW file
     /// cleanup failures.
     ///
-    /// Finalization starts immediately. When this returns an error with
-    /// [`PooledDestroyError::backing_files_safe_to_delete`] set, the NBD device
-    /// was released and callers may safely delete the containing workspace or
-    /// snapshot attempt directory.
+    /// The policy retries the shutdown phase. After shutdown succeeds, removal
+    /// of the COW file and bitmap is attempted once. A removal failure returns
+    /// immediately without waiting for the configured retry delay.
+    ///
+    /// Finalization starts when this method is called, before the returned
+    /// future is polled. Dropping the returned future does not cancel cleanup;
+    /// it continues in the background and logs its result. Must be called from
+    /// a Tokio runtime.
+    ///
+    /// A COW file or bitmap removal error reports
+    /// [`PooledDestroyError::backing_files_safe_to_delete`] as `true` because
+    /// the NBD device was released. Callers may therefore safely delete the
+    /// containing workspace or snapshot attempt directory.
     pub fn destroy_with_retries_detailed(
         self,
         policy: DestroyRetryPolicy,

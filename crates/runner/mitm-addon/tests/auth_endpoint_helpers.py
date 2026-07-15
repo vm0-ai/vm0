@@ -34,8 +34,8 @@ class AuthEndpointResponse:
 class FakeAuthEndpoint:
     """Threaded local auth endpoint for mitm-addon auth-related tests.
 
-    The endpoint is live only inside ``run()``. It only implements POST
-    handling, records method, path, raw body, and lower-cased headers, and
+    The endpoint is live only inside ``run()``. It implements GET and POST,
+    records method, path, raw body, and lower-cased headers, and
     serves queued responses in FIFO order. Requests without a queued response
     receive a synthetic HTTP 500 response so accidental extra auth calls fail
     visibly.
@@ -129,6 +129,9 @@ class FakeAuthEndpoint:
         endpoint = self
 
         class _Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                endpoint._handle_request(self)
+
             def do_POST(self) -> None:
                 endpoint._handle_request(self)
 

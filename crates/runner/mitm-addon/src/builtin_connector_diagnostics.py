@@ -80,29 +80,23 @@ class _OwnershipMatch:
     route_specific: bool
 
 
-_current_snapshot: DiagnosticCatalogSnapshot | None = None
+# Compilation memo only; callers select the raw generation before lookup.
+_cached_snapshot: DiagnosticCatalogSnapshot | None = None
 
 
 def reset_cache_for_tests() -> None:
-    global _current_snapshot
-    _current_snapshot = None
+    global _cached_snapshot
+    _cached_snapshot = None
 
 
 def load_diagnostic_snapshot(
     preferred_catalog_snapshot: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot | None = None,
 ) -> DiagnosticCatalogSnapshot:
-    """Load one diagnostic snapshot without moving current state backward."""
-    current_raw_snapshot = builtin_firewall_cache.load_configured_catalog_snapshot()
-    # Publish the actual current state first. A stale registry classification
-    # may still use its preferred snapshot flow-locally, but cannot reinstall it
-    # as the process-wide current generation.
-    current_snapshot = _current_diagnostic_snapshot(current_raw_snapshot)
-    if preferred_catalog_snapshot is None or _raw_snapshots_match(
-        preferred_catalog_snapshot,
-        current_raw_snapshot,
-    ):
-        return current_snapshot
-    return _compile_diagnostic_snapshot(preferred_catalog_snapshot)
+    """Compile the preferred flow generation, or the current configured generation."""
+    raw_snapshot = preferred_catalog_snapshot
+    if raw_snapshot is None:
+        raw_snapshot = builtin_firewall_cache.load_configured_catalog_snapshot()
+    return _cached_diagnostic_snapshot(raw_snapshot)
 
 
 def find_candidate(
@@ -323,17 +317,17 @@ def _candidate_from_match(
     )
 
 
-def _current_diagnostic_snapshot(
+def _cached_diagnostic_snapshot(
     raw_snapshot: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot,
 ) -> DiagnosticCatalogSnapshot:
-    global _current_snapshot
-    if _current_snapshot is not None and _compiled_snapshot_matches_raw(
-        _current_snapshot,
+    global _cached_snapshot
+    if _cached_snapshot is not None and _compiled_snapshot_matches_raw(
+        _cached_snapshot,
         raw_snapshot,
     ):
-        return _current_snapshot
-    _current_snapshot = _compile_diagnostic_snapshot(raw_snapshot)
-    return _current_snapshot
+        return _cached_snapshot
+    _cached_snapshot = _compile_diagnostic_snapshot(raw_snapshot)
+    return _cached_snapshot
 
 
 def _compile_diagnostic_snapshot(
@@ -373,21 +367,6 @@ def _compiled_snapshot_matches_raw(
             if raw_catalog is not None
             else raw_snapshot.unavailable_reason or "cache_unavailable"
         )
-    )
-
-
-def _raw_snapshots_match(
-    left: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot,
-    right: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot,
-) -> bool:
-    left_catalog = left.catalog
-    right_catalog = right.catalog
-    return (
-        left.dependency_file_key == right.dependency_file_key
-        and (left_catalog.identity if left_catalog is not None else None)
-        == (right_catalog.identity if right_catalog is not None else None)
-        and left.cache_path == right.cache_path
-        and left.unavailable_reason == right.unavailable_reason
     )
 
 

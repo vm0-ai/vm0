@@ -98,6 +98,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_workflow_event_build_run_input"
   | "api_dispatch_pre_create_zero_workflow_event_handoff_run"
   | "api_dispatch_check_org_tier"
+  | "api_dispatch_check_run_admission"
   | "api_dispatch_prepare_run_context"
   | "api_dispatch_prepare_context_feature_switches"
   | "api_dispatch_prepare_context_resolve_compose"

@@ -19,6 +19,7 @@ pub(super) struct DirectJobCandidate {
     enqueued_at: Option<StdInstant>,
     cli_agent_session_id: Option<String>,
     history_generation_run_id: Option<RunId>,
+    history_generation_affinity_protected_until: Option<String>,
     affinity_protected_until: Option<String>,
 }
 
@@ -64,6 +65,7 @@ impl DirectJobCandidate {
             enqueued_at: None,
             cli_agent_session_id,
             history_generation_run_id: None,
+            history_generation_affinity_protected_until: None,
             affinity_protected_until,
         }
     }
@@ -100,6 +102,14 @@ impl DirectJobCandidate {
         self
     }
 
+    pub(super) fn with_history_generation_affinity_protected_until(
+        mut self,
+        protected_until: Option<String>,
+    ) -> Self {
+        self.history_generation_affinity_protected_until = protected_until;
+        self
+    }
+
     pub(super) fn into_job_candidate(self) -> JobCandidate {
         let dequeued_at = StdInstant::now();
         let notification_to_enqueue_elapsed = self
@@ -111,6 +121,9 @@ impl DirectJobCandidate {
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
             .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
             .with_history_generation_run_id(self.history_generation_run_id)
+            .with_history_generation_affinity_protected_until(
+                self.history_generation_affinity_protected_until,
+            )
             .with_discovery_source(JobDiscoverySource::Ably)
             .with_direct_candidate_timing(notification_to_enqueue_elapsed, inbox_wait_elapsed)
     }
@@ -130,6 +143,13 @@ impl DirectJobCandidate {
         }
         if candidate.affinity_protected_until.is_some() {
             self.affinity_protected_until = candidate.affinity_protected_until;
+        }
+        if candidate
+            .history_generation_affinity_protected_until
+            .is_some()
+        {
+            self.history_generation_affinity_protected_until =
+                candidate.history_generation_affinity_protected_until;
         }
         if candidate.history_generation_run_id.is_some() {
             self.history_generation_run_id = candidate.history_generation_run_id;
@@ -429,7 +449,10 @@ mod tests {
                     None,
                     Some("2999-01-01T00:00:00.000Z".to_string()),
                 )
-                .with_history_generation_run_id(Some(history_generation_run_id)),
+                .with_history_generation_run_id(Some(history_generation_run_id))
+                .with_history_generation_affinity_protected_until(Some(
+                    "2999-01-01T00:00:00.000Z".to_string(),
+                )),
             )
             .await;
         assert!(matches!(
@@ -453,6 +476,7 @@ mod tests {
             Some(history_generation_run_id)
         );
         assert!(candidate.is_affinity_protected());
+        assert!(candidate.is_history_generation_affinity_protected());
         assert!(
             candidate
                 .direct_candidate_notification_to_enqueue_elapsed()

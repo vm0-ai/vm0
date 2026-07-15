@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   elapsedSinceApiStartMs,
   executionContextSchema,
+  heldSessionStateSchema,
   jobSchema,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -329,6 +330,7 @@ describe("runner resume session contract", () => {
   });
 
   it("keeps generation metadata in stored and discovery shapes only", () => {
+    const historyGenerationAffinityProtectedUntil = "2026-07-15T00:00:00.500Z";
     const storedResumeSession = {
       sessionId: "sess-123",
       historyGenerationRunId,
@@ -357,8 +359,46 @@ describe("runner resume session contract", () => {
       vars: null,
       checkpointId: null,
       historyGenerationRunId,
+      historyGenerationAffinityProtectedUntil,
     });
     expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
+    expect(job.historyGenerationAffinityProtectedUntil).toBe(
+      historyGenerationAffinityProtectedUntil,
+    );
+
+    const heldSessionState = heldSessionStateSchema.parse({
+      sessionId: "sess-123",
+      lastCompletedAt: "2026-07-15T00:00:00.000Z",
+      reusableSandbox: {
+        profile: "vm0/default",
+        historyGenerationRunId,
+      },
+    });
+    expect(heldSessionState.reusableSandbox?.historyGenerationRunId).toBe(
+      historyGenerationRunId,
+    );
+  });
+
+  it("keeps generation-affinity additions optional for legacy runners", () => {
+    const job = jobSchema.parse({
+      runId: "22222222-2222-4222-8222-222222222222",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      checkpointId: null,
+      historyGenerationAffinityProtectedUntil: null,
+    });
+    expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
+
+    const heldSessionState = heldSessionStateSchema.parse({
+      sessionId: "sess-legacy",
+      lastCompletedAt: "2026-07-15T00:00:00.000Z",
+      reusableSandbox: { profile: "vm0/default" },
+    });
+    expect(heldSessionState.reusableSandbox).toEqual({
+      profile: "vm0/default",
+    });
   });
 
   it("requires a URL for hash-backed claim resume sessions", () => {

@@ -124,6 +124,7 @@ import {
 } from "./zero-attachment-chips.tsx";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
+import { MailDraftCard } from "./mail-draft-card.tsx";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -3212,7 +3213,9 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
     message.role === "assistant" &&
-    (Boolean(message.content) || Boolean(message.error))
+    (Boolean(message.content) ||
+      Boolean(message.error) ||
+      Boolean(message.mailDraft))
   );
 }
 
@@ -6614,6 +6617,7 @@ function PagedAssistantGroup({
       <PagedAssistantMessageItem
         key={message.id}
         message={message}
+        thread={thread}
         compactTop={compactTop}
       />
     );
@@ -6663,15 +6667,34 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({
   message,
+  thread,
   compactTop = false,
 }: {
   message: EnrichedChatMessage;
+  thread: ChatThreadSignals;
   compactTop?: boolean;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
+
+  if (message.mailDraft) {
+    return (
+      <div
+        className={cn(
+          "zero-chat-bubble-assistant px-0 min-w-0",
+          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+        )}
+      >
+        <MailDraftCard
+          threadId={thread.threadId}
+          messageId={message.id}
+          mailDraft={message.mailDraft}
+        />
+      </div>
+    );
+  }
 
   if (message.error) {
     return (

@@ -321,6 +321,12 @@ function canonicalizeHeldSessionStates(
         ? {
             reusableSandbox: {
               profile: state.reusableSandbox.profile,
+              ...(state.reusableSandbox.historyGenerationRunId
+                ? {
+                    historyGenerationRunId:
+                      state.reusableSandbox.historyGenerationRunId,
+                  }
+                : {}),
             },
           }
         : {}),
@@ -410,6 +416,7 @@ function recordPollTimingMetrics(args: {
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
   readonly sessionAffinity: string;
+  readonly historyGenerationAffinity: string;
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
   readonly pendingJobLookupStartedAtMs: number;
@@ -421,6 +428,7 @@ function recordPollTimingMetrics(args: {
     profile: args.profile,
     auth_type: args.authType,
     session_affinity: args.sessionAffinity,
+    history_generation_affinity: args.historyGenerationAffinity,
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
@@ -474,8 +482,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
 
-  const { group } = body.data;
-  const supportedProfiles = body.data.supportedProfiles;
+  const { group, supportedProfiles } = body.data;
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
     gt(runnerJobQueue.expiresAt, sql`now()`),
@@ -546,6 +553,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         runnerGroup: group,
         profile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
+        historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         createdAt: pendingJob.createdAt,
         currentDate,
       }),
@@ -567,6 +575,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
     sessionAffinity: affinity.status,
+    historyGenerationAffinity: affinity.historyGenerationStatus,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
     pendingJobLookupStartedAtMs,
@@ -587,6 +596,8 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         experimentalProfile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
+        historyGenerationAffinityProtectedUntil:
+          affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
         affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
       },
     },

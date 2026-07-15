@@ -134,8 +134,8 @@ impl StorageFingerprints {
         }
     }
 
-    pub(crate) fn tainted_paths(&self) -> Self {
-        Self {
+    pub(crate) fn tainted_paths_including(&self, previous: Option<&Self>) -> Self {
+        let mut tainted = Self {
             storages: self
                 .storages
                 .keys()
@@ -146,7 +146,22 @@ impl StorageFingerprints {
                 .keys()
                 .map(|path| (path.clone(), StorageFingerprint::tainted()))
                 .collect(),
+        };
+        if let Some(previous) = previous {
+            tainted.storages.extend(
+                previous
+                    .storages
+                    .keys()
+                    .map(|path| (path.clone(), StorageFingerprint::tainted())),
+            );
+            tainted.artifacts.extend(
+                previous
+                    .artifacts
+                    .keys()
+                    .map(|path| (path.clone(), StorageFingerprint::tainted())),
+            );
         }
+        tainted
     }
 }
 
