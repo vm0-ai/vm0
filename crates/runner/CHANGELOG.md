@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.20...runner-rs-v0.144.21) (2026-07-15)
+
+
+### Refactoring
+
+* **runner:** split local submit tests by responsibility ([#21592](https://github.com/vm0-ai/vm0/issues/21592)) ([c7e8b5b](https://github.com/vm0-ai/vm0/commit/c7e8b5b2efd739f0c8d6f45ff53ed5c03064a52c))
+
 ## [0.144.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.19...runner-rs-v0.144.20) (2026-07-15)
 
 

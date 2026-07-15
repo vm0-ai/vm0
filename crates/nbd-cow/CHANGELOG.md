@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.62](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.61...nbd-cow-v0.4.62) (2026-07-15)
+
+
+### Documentation
+
+* **rust:** define create observer semantics ([#21590](https://github.com/vm0-ai/vm0/issues/21590)) ([14199e1](https://github.com/vm0-ai/vm0/commit/14199e11ee1e8241fd832d1a0214949628cf1f3a))
+
 ## [0.4.61](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.60...nbd-cow-v0.4.61) (2026-07-13)
 
 
