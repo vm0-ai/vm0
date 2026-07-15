@@ -3,6 +3,7 @@ import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
 import {
   derivePlatformServiceOrigin,
+  resolvePlatformRuntimeConfig,
   type PlatformService,
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
@@ -256,12 +257,10 @@ export function buildSignInRedirectUrl(
  * Initializes the real Clerk SDK with the publishable key.
  */
 export const clerk$ = computed(async () => {
-  const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as
-    | string
-    | undefined;
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
 
   if (!publishableKey) {
-    throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
+    throw new Error("Missing Clerk publishable key for the current domain");
   }
 
   // Dynamic import: @clerk/clerk-js is a 2.8MB webpack monolith (53%

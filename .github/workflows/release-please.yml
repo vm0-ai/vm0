@@ -1361,7 +1361,8 @@ jobs:
           skip-start: "true"
           skip-finish: "true"
           environment-variables: |
-            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            VITE_CLERK_PUBLISHABLE_KEY_PREVIEW=${{ vars.CLERK_PUBLISHABLE_KEY_PREVIEW }}
+            VITE_CLERK_PUBLISHABLE_KEY_PRODUCTION=${{ vars.CLERK_PUBLISHABLE_KEY_PRODUCTION }}
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW=${{ vars.PLAUSIBLE_SCRIPT_URL }}
