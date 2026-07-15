@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.7](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.6...guest-mock-codex-v0.6.7) (2026-07-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** pass codex prompts through stdin ([#21548](https://github.com/vm0-ai/vm0/issues/21548)) ([3c5e277](https://github.com/vm0-ai/vm0/commit/3c5e2779872cf7e93de88f6b10be646e2ad06ba6))
+
 ## [0.6.6](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.5...guest-mock-codex-v0.6.6) (2026-07-13)
 
 
