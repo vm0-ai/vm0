@@ -132,10 +132,10 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_I
 ZERO_MAPS_GOOGLE_MAPS_TOKEN=op://Development/google/ZERO_MAPS_GOOGLE_MAPS_TOKEN
 
 # Optional: Zero Scrape provider (Firecrawl)
-ZERO_SCRAPE_FIRECRAWL_TOKEN=
+ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
 
 # Optional: Zero Web Search provider (Perplexity)
-ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=
+ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKEN
 
 # Optional: Steam Web API
 STEAM_WEB_API_KEY=op://Development/steam/STEAM_WEB_API_KEY
