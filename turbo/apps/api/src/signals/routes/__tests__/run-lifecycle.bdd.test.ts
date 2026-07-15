@@ -8473,6 +8473,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await seedVm0ManagedDefaultModelKey();
     const billingSku = `auto-standard-${randomUUID()}`;
     onTestFinished(async () => {
       await deleteUsagePricingRows({
