@@ -3010,7 +3010,6 @@ describe("CHAT-02: failed chat callbacks", () => {
 describe("CHAT-02: auto-send after failures", () => {
   it("auto-sends the queued message after a failure, carrying attachments, incomplete-round context, and the continued session", async () => {
     const { actor, agentId, runnerGroup, storage } = await entitledChatActor();
-    await enableChatMessageQueue(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
