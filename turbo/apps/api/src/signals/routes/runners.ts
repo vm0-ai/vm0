@@ -2025,6 +2025,7 @@ const claimAuthorizedJob$ = command(
       signal,
     );
     if (!responseBodyResult.ok) {
+      recordAttempt("preclaim_error");
       const response = await claimResponseBuildErrorResponse({
         db,
         run,
@@ -2035,7 +2036,6 @@ const claimAuthorizedJob$ = command(
           set(scheduleClaimFailedSideEffects$, failedArgs);
         },
       });
-      recordAttempt("preclaim_error");
       return response;
     }
     signal.throwIfAborted();

@@ -2414,8 +2414,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const claims = await Promise.all([
-      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
-      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
+      api.requestClaimRunnerJob(true, run.runId, [200, 404], {
+        telemetry: { sessionHistoryGenerationRelationship: "different" },
+      }),
+      api.requestClaimRunnerJob(true, run.runId, [200, 404], {
+        telemetry: { sessionHistoryGenerationRelationship: "different" },
+      }),
     ]);
     expect(
       claims
@@ -2426,6 +2430,26 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           return left - right;
         }),
     ).toStrictEqual([200, 404]);
+    const claimAttemptEvents = sandboxOperationEventsForRunByAction(
+      run.runId,
+      "runner_session_history_generation_claim_attempt",
+    );
+    expect(claimAttemptEvents).toHaveLength(2);
+    expect(
+      claimAttemptEvents
+        .map((event) => {
+          return event.claim_outcome;
+        })
+        .sort(),
+    ).toStrictEqual(["accepted", "unavailable"]);
+    for (const event of claimAttemptEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          generation_relationship: "different",
+          auth_type: "official-runner",
+        }),
+      );
+    }
 
     const running = await api.readRun(actor, run.runId);
     expect(running.status).toBe("running");
@@ -7323,6 +7347,76 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
 
     await api.requestCancelRun(actor, attributed.runId, [200]);
     await api.requestCancelRun(actor, guarded.runId, [200]);
+  });
+
+  it("records generic preclaim response construction failures", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const source = await api.createRun(actor, {
+      agentId,
+      prompt: "create history for a failed claim response",
+      modelProvider: "anthropic-api-key",
+    });
+    const sourceClaim = await api.claimRunnerJob(source.runId);
+    const historyHash = createHash("sha256")
+      .update(`missing claim history ${source.runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: source.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-failed-claim-${source.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${sourceClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: source.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${sourceClaim.sandboxToken}` },
+      [200],
+    );
+
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: source.sessionId,
+      prompt: "fail while constructing the claim response",
+      modelProvider: "anthropic-api-key",
+    });
+    context.mocks.s3.send.mockRejectedValueOnce(
+      new Error("session history metadata unavailable"),
+    );
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      resumed.runId,
+      [500],
+      {
+        telemetry: { sessionHistoryGenerationRelationship: "exact" },
+      },
+    );
+    expect(failedClaim.status).toBe(500);
+
+    const events = sandboxOperationEventsForRunByAction(
+      resumed.runId,
+      "runner_session_history_generation_claim_attempt",
+    );
+    expect(events).toStrictEqual([
+      expect.objectContaining({
+        success: false,
+        duration_ms: 0,
+        generation_relationship: "exact",
+        claim_outcome: "preclaim_error",
+        auth_type: "official-runner",
+        runner_group: runnerGroup,
+        profile: "vm0/default",
+      }),
+    ]);
+    expect(JSON.stringify(events)).not.toContain(source.runId);
+    expect(JSON.stringify(events)).not.toContain(historyHash);
+
+    await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
   it("dispatches, scopes, and claims runs through user API keys", async () => {
