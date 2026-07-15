@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.277.3](https://github.com/vm0-ai/vm0/compare/api-v1.277.2...api-v1.277.3) (2026-07-15)
+
+
+### Performance Improvements
+
+* **api:** load feature switch overrides in one query ([#21593](https://github.com/vm0-ai/vm0/issues/21593)) ([cc58560](https://github.com/vm0-ai/vm0/commit/cc58560dcbf0cd11810661982a7a641c6ae38c44))
+
 ## [1.277.2](https://github.com/vm0-ai/vm0/compare/api-v1.277.1...api-v1.277.2) (2026-07-15)
 
 

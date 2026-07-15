@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.5...guest-agent-v0.51.6) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** qualify guest rootfs before idle reuse ([#21563](https://github.com/vm0-ai/vm0/issues/21563)) ([b9230c3](https://github.com/vm0-ai/vm0/commit/b9230c3bd213fb95777e0b5f84b17bbbbc3dd2e8))
+
 ## [0.51.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.4...guest-agent-v0.51.5) (2026-07-15)
 
 ## [0.51.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.3...guest-agent-v0.51.4) (2026-07-15)
