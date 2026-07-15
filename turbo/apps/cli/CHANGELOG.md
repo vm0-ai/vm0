@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.241.1](https://github.com/vm0-ai/vm0/compare/cli-v9.241.0...cli-v9.241.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* require static DOM for HTML presentations ([#21625](https://github.com/vm0-ai/vm0/issues/21625)) ([f55e3a9](https://github.com/vm0-ai/vm0/commit/f55e3a930869187b0195d1dc1eaf967f3eed68ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.196.0
+    * @vm0/connectors bumped to 1.165.0
+    * @vm0/core bumped to 8.436.1
+
 ## [9.241.0](https://github.com/vm0-ai/vm0/compare/cli-v9.240.10...cli-v9.241.0) (2026-07-15)
 
 

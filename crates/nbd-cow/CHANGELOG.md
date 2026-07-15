@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.65](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.64...nbd-cow-v0.4.65) (2026-07-15)
+
+
+### Documentation
+
+* **nbd-cow:** clarify destroy retry boundary ([#21660](https://github.com/vm0-ai/vm0/issues/21660)) ([609bfba](https://github.com/vm0-ai/vm0/commit/609bfba27dc30fc4c0bb9c211c9008b2d17a9ef6))
+
 ## [0.4.64](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.63...nbd-cow-v0.4.64) (2026-07-15)
 
 
