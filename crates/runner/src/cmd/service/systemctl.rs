@@ -394,7 +394,11 @@ fn cleanup_unit_active_state_from_output(
     )
 }
 
-/// Check whether a systemd unit is enabled for boot.
+/// Check whether systemd reports a unit file as enabled.
+///
+/// Returns `true` for both the persistent `enabled` state and the transient
+/// `enabled-runtime` state. This does not indicate whether the unit is active
+/// or whether it will remain enabled after a reboot.
 pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
     let svc = unit.service_name();
     let output = tokio::process::Command::new("systemctl")
@@ -405,6 +409,11 @@ pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bo
     unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
 }
 
+/// Check whether systemd reports a unit file as enabled.
+///
+/// Returns `true` for both the persistent `enabled` state and the transient
+/// `enabled-runtime` state. This does not indicate whether the unit is active
+/// or whether it will remain enabled after a reboot.
 pub(super) async fn is_unit_enabled_bounded(
     unit: &RunnerServiceUnit,
     duration: Duration,
