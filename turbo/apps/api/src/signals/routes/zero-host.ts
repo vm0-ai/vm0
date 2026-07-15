@@ -17,6 +17,7 @@ import {
   redeployHtml$,
   redeployPresentationHtml$,
 } from "../services/zero-host.service";
+import { materializePresentationHtml$ } from "../services/presentation-html-materialization.service";
 import { checkBillableOperationCredits$ } from "../services/billable-operation-admission.service";
 import { checkOpenRouterUsagePricing$ } from "../services/openrouter-usage.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
@@ -26,7 +27,10 @@ import {
   insufficientCredits,
   notFound,
   notConfigured,
+  payloadTooLarge,
+  providerUnavailable,
 } from "../../lib/error";
+import { setResHeader$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
 
 function internalError(message: string) {
@@ -34,6 +38,15 @@ function internalError(message: string) {
     status: 500 as const,
     body: {
       error: { message, code: "INTERNAL_SERVER_ERROR" },
+    },
+  };
+}
+
+function presentationNotFound(message: string) {
+  return {
+    status: 422 as const,
+    body: {
+      error: { message, code: "PRESENTATION_NOT_FOUND" },
     },
   };
 }
@@ -82,6 +95,9 @@ const completeParams$ = pathParamsOf(zeroHostContract.complete);
 const filesParams$ = pathParamsOf(zeroHostContract.files);
 const redeployPresentationHtmlBody$ = bodyResultOf(
   zeroHostContract.redeployPresentationHtml,
+);
+const materializePresentationHtmlBody$ = bodyResultOf(
+  zeroHostContract.materializePresentationHtml,
 );
 const redeployHtmlBody$ = bodyResultOf(zeroHostContract.redeployHtml);
 const generateSpeakerNotesBody$ = bodyResultOf(
@@ -151,6 +167,49 @@ const filesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return { status: 200 as const, body: result.body };
 });
+
+const materializePresentationHtmlInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    set(setResHeader$, "Cache-Control", "no-store");
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(materializePresentationHtmlBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      materializePresentationHtml$,
+      { orgId: auth.orgId, body: bodyResult.data },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "bad_request") {
+      return badRequestMessage(result.message);
+    }
+    if (result.status === "conflict") {
+      return conflict(result.message);
+    }
+    if (result.status === "not_found") {
+      return notFound(result.message);
+    }
+    if (result.status === "not_configured") {
+      return notConfigured(result.message);
+    }
+    if (result.status === "payload_too_large") {
+      return payloadTooLarge(result.message);
+    }
+    if (result.status === "presentation_not_found") {
+      return presentationNotFound(result.message);
+    }
+    if (result.status === "provider_unavailable") {
+      return providerUnavailable(result.message);
+    }
+
+    return { status: 200 as const, body: result.body };
+  },
+);
 
 const redeployPresentationHtmlInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -376,6 +435,17 @@ export const zeroHostRoutes: readonly RouteEntry[] = [
         missingOrganizationStatus: 401,
       },
       redeployPresentationHtmlInner$,
+    ),
+  },
+  {
+    route: zeroHostContract.materializePresentationHtml,
+    handler: authRoute(
+      {
+        requiredCapability: "host:read",
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+      },
+      materializePresentationHtmlInner$,
     ),
   },
   {

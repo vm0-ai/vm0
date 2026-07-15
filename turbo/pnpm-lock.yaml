@@ -211,6 +211,9 @@ importers:
       music-metadata:
         specifier: ^11.13.0
         version: 11.13.0
+      parse5:
+        specifier: ^7.3.0
+        version: 7.3.0
       pg:
         specifier: ^8.20.0
         version: 8.20.0
