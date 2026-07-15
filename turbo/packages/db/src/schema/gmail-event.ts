@@ -61,14 +61,12 @@ export const gmailProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    triggerId: uuid("trigger_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroWorkflowAutomations.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    triggerId: uuid("trigger_id").references(
+      () => {
+        return zeroWorkflowAutomations.id;
+      },
+      { onDelete: "cascade" },
+    ),
     automationId: uuid("automation_id")
       .notNull()
       .references(

@@ -360,7 +360,6 @@ async function insertGithubProcessedEvent(args: {
   const [processed] = await args.db
     .insert(zeroWorkflowGithubProcessedEvents)
     .values({
-      triggerId: args.automation.automation.id,
       automationId: args.automation.automation.id,
       githubDeliveryId: args.deliveryId,
       repo: args.payload.repository.full_name,

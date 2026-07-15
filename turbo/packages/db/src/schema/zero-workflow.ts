@@ -313,14 +313,12 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
   "zero_workflow_webhook_deliveries",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    triggerId: uuid("trigger_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroWorkflowAutomations.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    triggerId: uuid("trigger_id").references(
+      () => {
+        return zeroWorkflowAutomations.id;
+      },
+      { onDelete: "cascade" },
+    ),
     automationId: uuid("automation_id")
       .notNull()
       .references(
@@ -363,14 +361,12 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
   "zero_workflow_github_processed_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    triggerId: uuid("trigger_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroWorkflowAutomations.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    triggerId: uuid("trigger_id").references(
+      () => {
+        return zeroWorkflowAutomations.id;
+      },
+      { onDelete: "cascade" },
+    ),
     automationId: uuid("automation_id")
       .notNull()
       .references(
