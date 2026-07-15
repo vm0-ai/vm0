@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.599.6](https://github.com/vm0-ai/vm0/compare/app-v0.599.5...app-v0.599.6) (2026-07-15)
+
+
+### Refactoring
+
+* replace 56 optional settle branches with tap-error ([#21515](https://github.com/vm0-ai/vm0/issues/21515)) ([f56cfd4](https://github.com/vm0-ai/vm0/commit/f56cfd4e17f022b9f9a34517e6ea3addd81c82b0))
+
 ## [0.599.5](https://github.com/vm0-ai/vm0/compare/app-v0.599.4...app-v0.599.5) (2026-07-15)
 
 
