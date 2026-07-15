@@ -32,7 +32,7 @@ fn multipart_success_rules() -> (Rule, Rule, Rule) {
 
 /// `force = true` MUST NOT call `head_object` — the corrupt-eviction
 /// contract: after detecting a bad object (download succeeded but
-/// rootfs.ext4 missing), the caller relies on `upload(_, _, true)` to
+/// template.ext4 invalid), the caller relies on `upload_template(_, _, true)` to
 /// force-overwrite without re-checking existence (which would still
 /// say "exists, skip").
 #[tokio::test]
@@ -45,7 +45,7 @@ async fn upload_force_true_bypasses_exists_check() {
     let cache = mock_cache("test-bucket", &[&head, &create, &upload_part, &complete]);
 
     let (_dir, path) = small_src_file().await;
-    cache.upload("abc", &[path], true).await.unwrap();
+    cache.upload_template("abc", &path, true).await.unwrap();
 
     assert_eq!(head.num_calls(), 0, "force=true must skip head_object");
     assert_eq!(create.num_calls(), 1);
@@ -65,7 +65,7 @@ async fn upload_force_false_dedup_skips_when_exists() {
     let cache = mock_cache("test-bucket", &[&head, &create, &upload_part, &complete]);
 
     let (_dir, path) = small_src_file().await;
-    cache.upload("abc", &[path], false).await.unwrap();
+    cache.upload_template("abc", &path, false).await.unwrap();
 
     assert_eq!(head.num_calls(), 1, "head_object consulted exactly once");
     assert_eq!(
@@ -92,7 +92,7 @@ async fn upload_force_false_proceeds_when_not_found() {
     let cache = mock_cache("test-bucket", &[&head, &create, &upload_part, &complete]);
 
     let (_dir, path) = small_src_file().await;
-    cache.upload("abc", &[path], false).await.unwrap();
+    cache.upload_template("abc", &path, false).await.unwrap();
 
     assert_eq!(head.num_calls(), 1);
     assert_eq!(create.num_calls(), 1);
@@ -164,7 +164,7 @@ async fn upload_aborts_multipart_when_complete_fails() {
     let cache = mock_cache("test-bucket", &[&create, &upload_part, &complete, &abort]);
 
     let (_dir, path) = small_src_file().await;
-    let result = cache.upload("abc", &[path], true).await;
+    let result = cache.upload_template("abc", &path, true).await;
 
     assert!(matches!(result, Err(R2Error::S3(_))), "got {result:?}");
     assert!(complete.num_calls() >= 1, "complete was dispatched");
@@ -229,7 +229,7 @@ async fn upload_part_missing_etag_errors_with_part_number() {
     let cache = mock_cache("test-bucket", &[&create, &upload_part, &abort]);
 
     let (_dir, path) = small_src_file().await;
-    let err = cache.upload("abc", &[path], true).await.unwrap_err();
+    let err = cache.upload_template("abc", &path, true).await.unwrap_err();
 
     match err {
         R2Error::S3(msg) => {
@@ -241,4 +241,29 @@ async fn upload_part_missing_etag_errors_with_part_number() {
         }
         other => panic!("expected R2Error::S3 with pinned part_number, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn upload_missing_template_source_aborts_multipart() {
+    use aws_sdk_s3::Client;
+    use aws_sdk_s3::operation::abort_multipart_upload::AbortMultipartUploadOutput;
+    use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
+
+    let create = mock!(Client::create_multipart_upload).then_output(|| {
+        CreateMultipartUploadOutput::builder()
+            .upload_id("test-upload-id")
+            .build()
+    });
+    let abort = mock!(Client::abort_multipart_upload)
+        .then_output(|| AbortMultipartUploadOutput::builder().build());
+    let cache = mock_cache("test-bucket", &[&create, &abort]);
+    let missing = std::path::Path::new("/definitely/missing/template.ext4");
+
+    let error = cache
+        .upload_template("abc", missing, true)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, R2Error::Io(_)));
+    assert_eq!(abort.num_calls(), 1);
 }
