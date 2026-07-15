@@ -52,6 +52,12 @@ describe("buildGenerationTemplatePrompt", () => {
     // Color system is a runtime token in the deck JSON.
     expect(result.prompt).toContain('"colorSystem": "carnival"');
     expect(result.prompt).toContain(
+      "all user-visible slide content, with the first slide visible before JavaScript runs",
+    );
+    expect(result.prompt).toContain(
+      "Do not store slide content in JavaScript data",
+    );
+    expect(result.prompt).toContain(
       "zero host <output-dir> --site <slug> --artifact-kind presentation-html",
     );
     // The runbook flow has no design system and does not use `zero generate`.

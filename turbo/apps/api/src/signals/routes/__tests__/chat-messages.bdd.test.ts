@@ -2751,6 +2751,9 @@ describe("CHAT-02: generation templates and attachments", () => {
         .replaceAll("-", "_");
       expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
     }
+    expect(presentationPrompt).toContain(
+      "all user-visible slide content, with the first slide visible before JavaScript runs",
+    );
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     expect(presentationPrompt).not.toContain(
       "zero generate presentation --design-system",
