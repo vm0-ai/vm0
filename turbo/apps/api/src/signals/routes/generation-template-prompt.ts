@@ -273,11 +273,9 @@ function buildIllustrationGenerationTemplatePrompt(
       "",
       "When you produce an illustration or image from the user's request:",
       `- Run once to fetch the locked style compilation packet: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile`,
-      `- The packet points back to the selected style source (${styleSource}); read its SKILL.md before compiling a final prompt or generating. The registry description is not a substitute for the source.`,
-      "- Use the source's model, size, quality, background, format, prompt, and reference rules instead of CLI fallback values unless the user explicitly requests an override.",
-      "- Pass reference images only when SKILL.md marks them as required model inputs; do not pass authoring-only examples.",
+      `- Read the packet's style source (${styleSource}) and its SKILL.md before compiling or generating; the registry description is not a substitute for the source. If the source cannot be read, stop and report the limitation instead of generating.`,
+      "- Use the source's prompt, model, size, quality, background, format, and reference rules instead of CLI fallback values unless the user explicitly requests an override; pass only required model inputs, never authoring-only examples.",
       '- Then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with the resolved generation parameters and required reference image URLs, without `--style`.',
-      "- If the style source cannot be read, stop and report the limitation instead of generating an untemplated image.",
       "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),
   };

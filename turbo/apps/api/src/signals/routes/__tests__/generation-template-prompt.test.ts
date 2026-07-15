@@ -100,7 +100,9 @@ describe("buildGenerationTemplatePrompt", () => {
       `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile`,
     );
     expect(result.prompt).toContain("Style source: vm0-ai/vm0-skills@main:");
-    expect(result.prompt).toContain("read its SKILL.md before compiling");
+    expect(result.prompt).toContain(
+      "its SKILL.md before compiling or generating",
+    );
     expect(result.prompt).toContain(
       "registry description is not a substitute for the source",
     );

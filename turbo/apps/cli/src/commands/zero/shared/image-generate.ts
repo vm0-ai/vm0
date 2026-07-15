@@ -122,14 +122,13 @@ function parseImagePromptStrength(
 function formatCompilationParameter(
   command: Command,
   optionName: string,
-  label: string,
   value: string,
 ): string {
   const provenance =
     command.getOptionValueSource(optionName) === "default"
       ? "CLI fallback"
       : "Caller-provided";
-  return `${provenance} ${label}: ${value}`;
+  return `${provenance} ${optionName}: ${value}`;
 }
 
 function resolvePromptInput(options: ImageOptions): string | undefined {
@@ -346,31 +345,15 @@ ${formatRegistryListing(styles, "image styles")}`;
             prompt: resolvedPrompt,
             style,
             details: [
+              formatCompilationParameter(command, "model", options.model),
+              formatCompilationParameter(command, "size", options.size),
+              formatCompilationParameter(command, "quality", options.quality),
               formatCompilationParameter(
                 command,
-                "model",
-                "model",
-                options.model,
-              ),
-              formatCompilationParameter(command, "size", "size", options.size),
-              formatCompilationParameter(
-                command,
-                "quality",
-                "quality",
-                options.quality,
-              ),
-              formatCompilationParameter(
-                command,
-                "background",
                 "background",
                 options.background,
               ),
-              formatCompilationParameter(
-                command,
-                "format",
-                "format",
-                options.format,
-              ),
+              formatCompilationParameter(command, "format", options.format),
               `Caller-provided source image URLs: ${
                 options.imageUrl.length > 0
                   ? options.imageUrl.join(", ")
