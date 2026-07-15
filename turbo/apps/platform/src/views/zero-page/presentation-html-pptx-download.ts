@@ -7,7 +7,7 @@ import JSZip from "jszip";
 import {
   createDeferredPromise,
   jsonParseOr,
-  settle,
+  tapError,
   withCleanup,
 } from "../../signals/utils.ts";
 import { materializePresentationThemeSwitcherDefaults } from "./presentation-html-edit-protocol.ts";
@@ -169,22 +169,20 @@ async function fetchResourceAsDataUrl(
   url: string,
   signal: AbortSignal,
 ): Promise<string | null> {
-  const response = await settle(
+  const response = await tapError(
     fetch(readableAttachmentResourceUrl(url), {
       cache: "reload",
       mode: "cors",
       signal,
     }),
-    signal,
   );
-  if (!response.ok || !response.value.ok) {
+  signal.throwIfAborted();
+  if (!response?.ok) {
     return null;
   }
-  const dataUrl = await settle(
-    blobToDataUrl(await response.value.blob()),
-    signal,
-  );
-  return dataUrl.ok ? dataUrl.value : null;
+  const dataUrl = await tapError(blobToDataUrl(await response.blob()));
+  signal.throwIfAborted();
+  return dataUrl ?? null;
 }
 
 type ResourceDataUrlCache = Map<string, Promise<string | null>>;

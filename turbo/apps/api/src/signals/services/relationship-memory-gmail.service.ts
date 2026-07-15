@@ -20,7 +20,7 @@ import { generateText, isLlmConfigured } from "../external/openrouter";
 import { createSlackClient } from "../external/slack-message-client";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeJsonParse, settle, tapError } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import {
   fetchGmailMessageContextById,
   messageIsInbound,
@@ -1401,7 +1401,7 @@ export const drainRelationshipSyncJobs$ = command(
         .where(eq(relationshipSyncJobs.id, job.id));
       signal.throwIfAborted();
 
-      const result = await settle(
+      const updated = await tapError(
         job.kind === "gmail_relationship_refresh" ||
           (job.kind === "memory_source_relationship_extract" &&
             job.provider === "gmail")
@@ -1416,40 +1416,39 @@ export const drainRelationshipSyncJobs$ = command(
                   job.provider === "notion"
                 ? processNotionSourceRelationshipExtractionJob(db, job, signal)
                 : Promise.resolve(0),
+        async (error) => {
+          failed += 1;
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const retry = job.attempts + 1 < 3;
+          await db
+            .update(relationshipSyncJobs)
+            .set({
+              status: retry ? "pending" : "failed",
+              lockedAt: null,
+              runAfterAt: retry
+                ? new Date(nowDate().getTime() + RETRY_DELAY_MS)
+                : nowDate(),
+              lastError: message,
+              updatedAt: nowDate(),
+            })
+            .where(eq(relationshipSyncJobs.id, job.id));
+        },
       );
       signal.throwIfAborted();
 
-      if (result.ok) {
-        processed += 1;
-        relationshipsUpdated += result.value;
-        await db
-          .update(relationshipSyncJobs)
-          .set({
-            status: "done",
-            lockedAt: null,
-            lastError: null,
-            updatedAt: nowDate(),
-          })
-          .where(eq(relationshipSyncJobs.id, job.id));
-        signal.throwIfAborted();
+      if (updated === undefined) {
         continue;
       }
 
-      failed += 1;
-      const message =
-        result.error instanceof Error
-          ? result.error.message
-          : String(result.error);
-      const retry = job.attempts + 1 < 3;
+      processed += 1;
+      relationshipsUpdated += updated;
       await db
         .update(relationshipSyncJobs)
         .set({
-          status: retry ? "pending" : "failed",
+          status: "done",
           lockedAt: null,
-          runAfterAt: retry
-            ? new Date(nowDate().getTime() + RETRY_DELAY_MS)
-            : nowDate(),
-          lastError: message,
+          lastError: null,
           updatedAt: nowDate(),
         })
         .where(eq(relationshipSyncJobs.id, job.id));

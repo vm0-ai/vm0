@@ -16,6 +16,7 @@ import {
   safeJsonParse,
   safeSync,
   settle,
+  tapError,
 } from "../utils";
 import {
   decryptPersistentSecretValue,
@@ -175,18 +176,18 @@ async function decodeProviderState(
   if (!encryptedProviderState) {
     return null;
   }
-  const decrypted = await settle(
+  const decrypted = await tapError(
     decryptPersistentSecretValue(encryptedProviderState, {
       orgId: session.orgId,
       userId: session.userId,
     }),
   );
-  if (!decrypted.ok) {
+  if (!decrypted) {
     return null;
   }
   const decoded = safeSync(() => {
     const parsed = claudeCodeDeviceAuthProviderStateSchema.safeParse(
-      safeJsonParse(decrypted.value),
+      safeJsonParse(decrypted),
     );
     return parsed.success ? parsed.data : null;
   });
@@ -707,14 +708,13 @@ const importClaudeCodeOAuthToken$ = command(
     readonly provider: ModelProviderResponse;
     readonly created: boolean;
   }> => {
-    const metadataResult = await settle(
+    const metadata = await tapError(
       fetchClaudeCodeSubscriptionMetadata({
         accessToken: args.accessToken,
         signal,
       }),
-      signal,
     );
-    const metadata = metadataResult.ok ? metadataResult.value : undefined;
+    signal.throwIfAborted();
 
     const result =
       args.scope === "org"

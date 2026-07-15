@@ -732,7 +732,7 @@ async function notionFetchJson<T>(
   url: string,
   signal: AbortSignal,
 ): Promise<NotionFetchResult<T>> {
-  const responseResult = await settle(
+  const response = await tapError(
     fetch(url, {
       method: "GET",
       signal,
@@ -741,9 +741,9 @@ async function notionFetchJson<T>(
         "Notion-Version": NOTION_VERSION,
       },
     }),
-    signal,
   );
-  if (!responseResult.ok) {
+  signal.throwIfAborted();
+  if (!response) {
     return {
       kind: "transient_error",
       status: null,
@@ -751,7 +751,6 @@ async function notionFetchJson<T>(
     };
   }
 
-  const response = responseResult.value;
   if (response.status === 401) {
     return { kind: "unauthorized" };
   }

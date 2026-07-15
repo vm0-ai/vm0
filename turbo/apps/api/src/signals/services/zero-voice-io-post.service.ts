@@ -13,7 +13,7 @@ import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { putS3Object } from "../external/s3";
-import { settle, tapError } from "../utils";
+import { tapError } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
@@ -557,17 +557,17 @@ async function parseCompressedAudioDurationSeconds(
   file: File,
 ): Promise<number | null> {
   const mimeType = file.type.split(";")[0] ?? file.type;
-  const parsed = await settle(
+  const parsed = await tapError(
     parseBuffer(
       new Uint8Array(await file.arrayBuffer()),
       { mimeType, size: file.size },
       { duration: true },
     ),
   );
-  if (!parsed.ok) {
+  if (!parsed) {
     return null;
   }
-  const { duration } = parsed.value.format;
+  const { duration } = parsed.format;
   return typeof duration === "number" ? Math.ceil(duration) : null;
 }
 

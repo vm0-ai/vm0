@@ -39,7 +39,12 @@ import {
   putS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
-import { createDeferredPromise, onRejection, safeSync, settle } from "../utils";
+import {
+  createDeferredPromise,
+  onRejection,
+  safeSync,
+  tapError,
+} from "../utils";
 import {
   normalizeSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,
@@ -1141,30 +1146,25 @@ export const executeUserExportJob$ = command(
       bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
     };
 
-    const result = await settle(runExportJob(runtime, args));
-    signal.throwIfAborted();
+    await tapError(runExportJob(runtime, args), async (error) => {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      log.error("export job failed", { jobId: args.jobId, error });
 
-    if (result.ok) {
-      return;
-    }
-
-    const errorMessage =
-      result.error instanceof Error ? result.error.message : "Unknown error";
-    log.error("export job failed", { jobId: args.jobId, error: result.error });
-
-    await db
-      .update(exportJobs)
-      .set({
-        status: "failed",
-        error: errorMessage,
-        completedAt: nowDate(),
-      })
-      .where(
-        and(
-          eq(exportJobs.id, args.jobId),
-          inArray(exportJobs.status, ["pending", "running"]),
-        ),
-      );
+      await db
+        .update(exportJobs)
+        .set({
+          status: "failed",
+          error: errorMessage,
+          completedAt: nowDate(),
+        })
+        .where(
+          and(
+            eq(exportJobs.id, args.jobId),
+            inArray(exportJobs.status, ["pending", "running"]),
+          ),
+        );
+    });
     signal.throwIfAborted();
   },
 );

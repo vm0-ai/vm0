@@ -26,7 +26,7 @@ import { putS3Object } from "../external/s3";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route-entry";
-import { createDeferredPromise, settle } from "../utils";
+import { createDeferredPromise, tapError } from "../utils";
 
 const MAX_IMAGE_IMPORT_SIZE_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGE_IMPORT_SIZE_LABEL = "25 MB";
@@ -59,23 +59,23 @@ function badGateway(message: string, code: string) {
 async function importHostAddresses(
   hostname: string,
 ): Promise<readonly ResolvedFetchAddress[] | ImportImageError> {
-  const resolved = await settle(resolveFetchHostAddresses(hostname));
-  if (!resolved.ok) {
+  const resolved = await tapError(resolveFetchHostAddresses(hostname));
+  if (!resolved) {
     return badGateway(
       "Couldn't resolve image URL host",
       "IMAGE_IMPORT_FETCH_FAILED",
     );
   }
-  if (fetchHostHasBlockedAddress(resolved.value)) {
+  if (fetchHostHasBlockedAddress(resolved)) {
     return badRequestMessage("Image URL host is not allowed");
   }
-  if (resolved.value.length === 0) {
+  if (resolved.length === 0) {
     return badGateway(
       "Couldn't resolve image URL host",
       "IMAGE_IMPORT_FETCH_FAILED",
     );
   }
-  return resolved.value;
+  return resolved;
 }
 
 async function parsedImportUrl(

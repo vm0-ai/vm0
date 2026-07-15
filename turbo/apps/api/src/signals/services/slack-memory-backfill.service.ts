@@ -17,7 +17,7 @@ import type { SlackFile } from "../../lib/slack-webhook-context";
 import { createSlackClient } from "../external/slack-message-client";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import {
@@ -734,32 +734,29 @@ export const advanceSlackMemorySourceBackfillJobs$ = command(
         continue;
       }
 
-      const result = await settle(
+      const result = await tapError(
         processSlackBackfillJob(db, lockedJob, signal),
-        signal,
+        async (error) => {
+          failed += 1;
+          log.warn("Slack memory source backfill failed", {
+            jobId: lockedJob.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          await markSlackBackfillFailed({
+            db,
+            job: lockedJob,
+            error,
+          });
+        },
       );
       signal.throwIfAborted();
-      if (result.ok) {
-        processed += 1;
-        scanned += result.value.scanned;
-        enqueued += result.value.recorded;
+      if (!result) {
         continue;
       }
 
-      failed += 1;
-      log.warn("Slack memory source backfill failed", {
-        jobId: lockedJob.id,
-        error:
-          result.error instanceof Error
-            ? result.error.message
-            : String(result.error),
-      });
-      await markSlackBackfillFailed({
-        db,
-        job: lockedJob,
-        error: result.error,
-      });
-      signal.throwIfAborted();
+      processed += 1;
+      scanned += result.scanned;
+      enqueued += result.recorded;
     }
 
     return { processed, failed, scanned, enqueued };

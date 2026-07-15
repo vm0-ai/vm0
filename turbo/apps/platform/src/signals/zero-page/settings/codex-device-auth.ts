@@ -16,6 +16,7 @@ import {
   resetSignal,
   settle,
   setLoop,
+  tapError,
 } from "../../utils.ts";
 import { writeToClipboard } from "../clipboard.ts";
 import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
@@ -307,16 +308,15 @@ function createCodexRunFlow$(
       const requestId = createRequestId(ctx.scope);
       set(ctx.internalFlowState$, { status: "starting", requestId });
 
-      const started = await settle(
+      const started = await tapError(
         set(startCodexDeviceAuth$, ctx.scope, signal),
-        signal,
       );
       signal.throwIfAborted();
 
       if (!isCurrentStarting(get(ctx.internalFlowState$), requestId)) {
         return false;
       }
-      if (!started.ok) {
+      if (!started) {
         set(ctx.internalFlowState$, {
           status: "error",
           message: "ChatGPT connection failed. Start again to retry.",
@@ -324,19 +324,18 @@ function createCodexRunFlow$(
         return false;
       }
 
-      const expiresAtMs =
-        now() + secondsToMilliseconds(started.value.expiresIn);
+      const expiresAtMs = now() + secondsToMilliseconds(started.expiresIn);
       const pollIntervalMs = Math.max(
-        secondsToMilliseconds(started.value.interval),
+        secondsToMilliseconds(started.interval),
         CODEX_DEVICE_AUTH_MIN_POLL_MS,
       );
 
       set(ctx.internalFlowState$, {
         status: "pending",
         requestId,
-        sessionToken: started.value.sessionToken,
-        browserUrl: started.value.browserUrl,
-        verificationCode: started.value.verificationCode,
+        sessionToken: started.sessionToken,
+        browserUrl: started.browserUrl,
+        verificationCode: started.verificationCode,
         expiresAtMs,
         pollIntervalMs,
         approvalOpened: false,

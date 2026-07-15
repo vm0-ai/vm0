@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";
-import { safeJsonParse, settle, tapError } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 
 class SteamUpstreamError extends Error {
   constructor(message: string) {
@@ -165,11 +165,11 @@ async function fetchSteamJson<T>(
     url.searchParams.set(name, value);
   }
 
-  const responseResult = await settle(fetch(url, { signal }), signal);
-  if (!responseResult.ok) {
+  const response = await tapError(fetch(url, { signal }));
+  signal.throwIfAborted();
+  if (!response) {
     throw new SteamUpstreamError("Steam API request failed");
   }
-  const response = responseResult.value;
   if (!response.ok) {
     throw new SteamUpstreamError(
       `Steam API request failed with HTTP ${response.status}`,

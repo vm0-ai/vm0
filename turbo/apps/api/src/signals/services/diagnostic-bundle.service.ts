@@ -935,7 +935,7 @@ function primaryEmail(user: ClerkEmailProfile): string | null {
 
 function resolveUserEmail(userId: string): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
-    const result = await settle(
+    const email = await tapError(
       (async (): Promise<string> => {
         const client = get(clerk$);
         const users = await client.users.getUserList({ userId: [userId] });
@@ -945,16 +945,13 @@ function resolveUserEmail(userId: string): Computed<Promise<string>> {
         return user ? (primaryEmail(user) ?? userId) : userId;
       })(),
     );
-    if (!result.ok) {
-      return userId;
-    }
-    return result.value;
+    return email ?? userId;
   });
 }
 
 function resolveOrgName(orgId: string): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
-    const result = await settle(
+    const name = await tapError(
       (async (): Promise<string> => {
         const client = get(clerk$);
         const org = await client.organizations.getOrganization({
@@ -963,9 +960,6 @@ function resolveOrgName(orgId: string): Computed<Promise<string>> {
         return org.name;
       })(),
     );
-    if (!result.ok) {
-      return orgId;
-    }
-    return result.value;
+    return name ?? orgId;
   });
 }

@@ -2,7 +2,7 @@ import { command } from "ccstate";
 
 import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 
@@ -34,11 +34,14 @@ export const ingestAxiomEvents$ = command(
       };
     }
 
-    const flushed = await settle(
-      flushAxiom({ throwOnError: true, client: "sessions" }),
+    const flushed = await tapError(
+      (async () => {
+        await flushAxiom({ throwOnError: true, client: "sessions" });
+        return true;
+      })(),
     );
     signal.throwIfAborted();
-    if (!flushed.ok) {
+    if (!flushed) {
       return {
         status: 503 as const,
         body: { error: "Axiom agent-run-events flush failed" },

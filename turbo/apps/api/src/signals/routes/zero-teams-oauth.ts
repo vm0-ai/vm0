@@ -14,7 +14,7 @@ import {
   prepareTeamsInstallation$,
   publishTeamsChanged$,
 } from "../services/zero-teams-connect.service";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import { getOAuthApiOrigin } from "./oauth-web-origin";
 
@@ -348,7 +348,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     return settingsErrorRedirect("Invalid connect state.");
   }
 
-  const exchange = await settle(
+  const exchange = await tapError(
     exchangeMicrosoftTeamsOAuthCode({
       clientId: credentials.clientId,
       clientSecret: credentials.clientSecret,
@@ -356,11 +356,13 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
       redirectUri: callbackRedirectUri(origin),
       signal,
     }),
+    (error) => {
+      L.error("Microsoft Teams OAuth exchange failed", { error });
+    },
   );
   signal.throwIfAborted();
 
-  if (!exchange.ok) {
-    L.error("Microsoft Teams OAuth exchange failed", { error: exchange.error });
+  if (!exchange) {
     return settingsErrorRedirect(
       "Failed to connect Microsoft Teams account. Please try again.",
     );
@@ -370,13 +372,11 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     userId: auth.userId,
     orgId: auth.orgId,
     orgRole: auth.orgRole,
-    tenantId: exchange.value.tenantId,
-    teamsAadObjectId: exchange.value.user.id,
-    teamsUserDisplayName: exchange.value.user.displayName ?? undefined,
+    tenantId: exchange.tenantId,
+    teamsAadObjectId: exchange.user.id,
+    teamsUserDisplayName: exchange.user.displayName ?? undefined,
     teamsUserPrincipalName:
-      exchange.value.user.userPrincipalName ??
-      exchange.value.user.mail ??
-      undefined,
+      exchange.user.userPrincipalName ?? exchange.user.mail ?? undefined,
   };
 
   const result = await set(connectTeamsInstallation$, connectArgs, signal);
@@ -397,7 +397,7 @@ const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
     signal.throwIfAborted();
 
-    return teamsInstallRedirect(exchange.value.tenantId);
+    return teamsInstallRedirect(exchange.tenantId);
   }
 
   if (result.kind === "forbidden") {

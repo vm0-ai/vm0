@@ -23,7 +23,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -1025,17 +1025,15 @@ async function verifyGoogleWorkspacePubSubOidc(args: {
   }
 
   const token = args.authorization.slice("Bearer ".length);
-  const claimsResult = await settle(
+  const claims = await tapError(
     defaultPubSubOidcVerifier(token, audience, args.signal),
-    args.signal,
   );
   args.signal.throwIfAborted();
-  if (!claimsResult.ok) {
+  if (!claims) {
     return { kind: "unauthorized" };
   }
 
-  return claimsResult.value.email === expectedEmail &&
-    claimsResult.value.emailVerified
+  return claims.email === expectedEmail && claims.emailVerified
     ? { kind: "ok" }
     : { kind: "unauthorized" };
 }
