@@ -278,6 +278,9 @@ check_required_executable "/usr/bin/date" "date"
 check_required_executable "/usr/bin/ln" "ln"
 check_required_executable "/usr/bin/sed" "sed"
 
+# Firecracker startup validates runner-managed DNS through the guest resolver.
+check_required_executable "/usr/bin/getent" "getent"
+
 # Storage manifest cleanup and Codex session cleanup helpers.
 check_required_executable "/usr/bin/rm" "rm"
 check_required_executable "/usr/bin/find" "find"

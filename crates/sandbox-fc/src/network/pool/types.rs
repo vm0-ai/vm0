@@ -15,6 +15,11 @@ pub struct NetnsInfo {
     /// Veth namespace-side IP (e.g. `10.200.0.2`). This is the source IP
     /// that the proxy sees after NAT, used as the VM registry key.
     pub(super) peer_ip: String,
+    /// Number of VM attachments checked out against this namespace.
+    ///
+    /// The value survives release and requeue so diagnostics can distinguish a
+    /// namespace's first VM from a later attachment.
+    pub(super) attachment_generation: u64,
 }
 
 impl NetnsInfo {
@@ -23,6 +28,7 @@ impl NetnsInfo {
             name,
             host_device,
             peer_ip,
+            attachment_generation: 0,
         }
     }
 
@@ -40,6 +46,11 @@ impl NetnsInfo {
     pub fn peer_ip(&self) -> &str {
         &self.peer_ip
     }
+
+    /// Returns the monotonically increasing VM attachment generation.
+    pub(crate) fn attachment_generation(&self) -> u64 {
+        self.attachment_generation
+    }
 }
 
 /// Non-cloneable release authority for a checked-out namespace.
@@ -52,6 +63,7 @@ pub struct NetnsLease {
     info: NetnsInfo,
     pool_instance_id: u64,
     active: bool,
+    reuse_eligible: bool,
 }
 
 impl NetnsLease {
@@ -60,6 +72,7 @@ impl NetnsLease {
             info,
             pool_instance_id,
             active: true,
+            reuse_eligible: true,
         }
     }
 
@@ -88,6 +101,18 @@ impl NetnsLease {
 
     pub(super) fn pool_instance_id(&self) -> u64 {
         self.pool_instance_id
+    }
+
+    pub(crate) fn mark_non_reusable(&mut self) {
+        self.reuse_eligible = false;
+    }
+
+    pub(crate) fn mark_reusable(&mut self) {
+        self.reuse_eligible = true;
+    }
+
+    pub(super) fn reuse_eligible(&self) -> bool {
+        self.reuse_eligible
     }
 
     pub(super) fn into_info(mut self) -> NetnsInfo {

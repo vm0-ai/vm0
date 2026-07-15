@@ -2246,6 +2246,115 @@ jobs:
             echo "Cron simulator stopped"
           fi
 
+  collect-runner-dns-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [prepare, deploy-runner-start, cli-e2e-03-runner]
+    if: |
+      always() &&
+      needs.prepare.outputs.job-ref != '' &&
+      needs.deploy-runner-start.result == 'success'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Collect bounded DNS readiness events
+        env:
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+        run: |
+          set -euo pipefail
+
+          OUTPUT_DIR=/tmp/runner-dns-diagnostics
+          mkdir -p "$OUTPUT_DIR"
+          mapfile -t HOSTS < <(
+            printf '%s\n' "$METAL_HOSTS" |
+              tr ',' '\n' |
+              sed 's/^[[:space:]]*//;s/[[:space:]]*$//' |
+              sed '/^$/d'
+          )
+
+          HOST_INDEX=0
+          TOTAL_READINESS_EVENT_COUNT=0
+          TOTAL_GUEST_PROBE_COUNT=0
+          for HOST in "${HOSTS[@]}"; do
+            HOST_INDEX=$((HOST_INDEX + 1))
+            RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            UNIT="vm0-runner-${RUNNER_NAME}.service"
+            REMOTE="${METAL_USER}@${HOST}"
+            OUTPUT_FILE="${OUTPUT_DIR}/host-${HOST_INDEX}.jsonl"
+
+            # journalctl JSON preserves bounded multi-line diagnostic fields.
+            # Select only readiness events instead of exporting the runner log.
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" bash -s -- "$UNIT" > "$OUTPUT_FILE" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          UNIT=$1
+          INVOCATION_ID=$(sudo systemctl show --property InvocationID --value "$UNIT")
+          test -n "$INVOCATION_ID"
+          sudo journalctl \
+            _SYSTEMD_INVOCATION_ID="$INVOCATION_ID" \
+            --quiet \
+            --no-pager \
+            --output json |
+            jq -c '
+              select(
+                (.MESSAGE // "") |
+                test("guest DNS readiness|namespace DNS readiness")
+              ) |
+              {
+                __REALTIME_TIMESTAMP,
+                MESSAGE
+              }
+            '
+          REMOTE_SCRIPT
+
+            EVENT_COUNT=$(wc -l < "$OUTPUT_FILE")
+            GUEST_PROBE_COUNT=$(jq -s '
+              [
+                .[] |
+                select(
+                  (.MESSAGE // "") |
+                  test("guest DNS readiness probe (succeeded|failed)")
+                )
+              ] |
+              length
+            ' "$OUTPUT_FILE")
+            TOTAL_READINESS_EVENT_COUNT=$((TOTAL_READINESS_EVENT_COUNT + EVENT_COUNT))
+            TOTAL_GUEST_PROBE_COUNT=$((TOTAL_GUEST_PROBE_COUNT + GUEST_PROBE_COUNT))
+            echo "Collected ${EVENT_COUNT} DNS readiness events from runner host ${HOST_INDEX}"
+            echo "Observed ${GUEST_PROBE_COUNT} guest DNS readiness probes on runner host ${HOST_INDEX}"
+            jq -c '
+              select(
+                .MESSAGE |
+                test("probe failed|diagnostic")
+              )
+            ' "$OUTPUT_FILE"
+          done
+
+          if [ "$TOTAL_GUEST_PROBE_COUNT" -eq 0 ]; then
+            echo "::error::No guest DNS readiness probes were collected from any runner host"
+            exit 1
+          fi
+          echo "Collected ${TOTAL_READINESS_EVENT_COUNT} DNS readiness events across all runner hosts"
+          echo "Observed ${TOTAL_GUEST_PROBE_COUNT} guest DNS readiness probes across all runner hosts"
+
+      - name: Upload DNS readiness diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: runner-dns-diagnostics-${{ needs.prepare.outputs.job-ref }}-attempt-${{ github.run_attempt }}
+          path: /tmp/runner-dns-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
+
   # Build E2B templates (development account)
   # Uses repository-level E2B_API_KEY secret
   build-e2b-template:
@@ -2376,6 +2485,7 @@ jobs:
       - deploy-runner-start
       - e2e-runner-bootstrap
       - cli-e2e-03-runner
+      - collect-runner-dns-diagnostics
     # Always run so the gate reports an explicit result (not "skipped").
     # Release-please PRs skip CI jobs — auto-pass the gate for them.
     if: always()
@@ -2455,6 +2565,7 @@ jobs:
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "e2e-runner-bootstrap" "${{ needs.e2e-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "collect-runner-dns-diagnostics" "${{ needs.collect-runner-dns-diagnostics.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
 
           echo "::endgroup::"
           exit $FAILED

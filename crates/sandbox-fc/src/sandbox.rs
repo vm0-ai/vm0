@@ -32,11 +32,13 @@ use crate::api::ApiClient;
 use crate::balloon;
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::control;
+use crate::dns_diagnostics::GuestDnsDiagnosticContext;
 use crate::exec_operation_result::{
     captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
     validate_exec_capture_timeout,
 };
 use crate::factory::InvariantConfig;
+use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
@@ -496,6 +498,14 @@ impl SandboxNetwork {
 
     fn peer_ip(&self) -> &str {
         self.info.peer_ip()
+    }
+
+    fn host_device(&self) -> &str {
+        self.info.host_device()
+    }
+
+    fn attachment_generation(&self) -> u64 {
+        self.info.attachment_generation()
     }
 
     pub(crate) fn lease_mut(&mut self) -> &mut Option<NetnsLease> {
@@ -1484,6 +1494,15 @@ impl Sandbox for FirecrackerSandbox {
             });
         }
 
+        if self.factory_config.dns_port.is_some() {
+            let Some(lease) = self.network.lease_mut().as_mut() else {
+                return Err(SandboxError::Start {
+                    message: "network lease missing before guest DNS readiness".into(),
+                });
+            };
+            lease.mark_non_reusable();
+        }
+
         let runtime_cancel = CancellationToken::new();
 
         // Start the vsock listener BEFORE launching Firecracker.
@@ -1536,7 +1555,82 @@ impl Sandbox for FirecrackerSandbox {
             }
         };
 
-        *self.guest.lock().await = Some(Arc::new(vsock_guest));
+        let vsock_guest = Arc::new(vsock_guest);
+        *self.guest.lock().await = Some(Arc::clone(&vsock_guest));
+
+        if let Some(dns_port) = self.factory_config.dns_port {
+            let startup_mode = if self.factory_config.snapshot.is_some() {
+                "snapshot_restore"
+            } else {
+                "fresh"
+            };
+            let result = wait_for_guest_dns_readiness(
+                &vsock_guest,
+                GuestDnsDiagnosticContext {
+                    sandbox_id: &self.id,
+                    profile: &self.factory_config.profile,
+                    namespace: self.network.name(),
+                    host_device: self.network.host_device(),
+                    peer_ip: self.network.peer_ip(),
+                    attachment_generation: self.network.attachment_generation(),
+                    dns_port,
+                    startup_mode,
+                },
+            )
+            .await;
+            match result {
+                Ok(report) => {
+                    let Some(lease) = self.network.lease_mut().as_mut() else {
+                        self.guest.lock().await.take();
+                        self.runtime.kill_process().await;
+                        return Err(SandboxError::Start {
+                            message: "network lease missing after guest DNS readiness".into(),
+                        });
+                    };
+                    lease.mark_reusable();
+                    info!(
+                        id = %self.id,
+                        profile = %self.factory_config.profile,
+                        namespace = %self.network.name(),
+                        host_device = %self.network.host_device(),
+                        peer_ip = %self.network.peer_ip(),
+                        attachment_generation = self.network.attachment_generation(),
+                        startup_mode,
+                        stage = "guest_dns_readiness",
+                        attempts = report.attempts,
+                        elapsed_ms = duration_ms(report.elapsed),
+                        diagnostics_captured = report.diagnostics_captured,
+                        "guest DNS readiness probe succeeded"
+                    );
+                }
+                Err(error) => {
+                    warn!(
+                        id = %self.id,
+                        profile = %self.factory_config.profile,
+                        namespace = %self.network.name(),
+                        host_device = %self.network.host_device(),
+                        peer_ip = %self.network.peer_ip(),
+                        attachment_generation = self.network.attachment_generation(),
+                        startup_mode,
+                        stage = "guest_dns_readiness",
+                        outcome = %error.last_failure,
+                        attempts = error.attempts,
+                        elapsed_ms = duration_ms(error.elapsed),
+                        diagnostics_captured = error.diagnostics_captured,
+                        "guest DNS readiness probe failed"
+                    );
+                    self.guest.lock().await.take();
+                    self.runtime.kill_process().await;
+                    return Err(SandboxError::Start {
+                        message: format!(
+                            "guest DNS readiness for namespace {} attachment {}: {error}",
+                            self.network.name(),
+                            self.network.attachment_generation(),
+                        ),
+                    });
+                }
+            }
+        }
 
         let control_sock_path = self.sock_paths.control_sock();
         let Some(termination_handle) = self

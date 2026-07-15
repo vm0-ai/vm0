@@ -4,7 +4,9 @@ use chrono::{DateTime, Utc};
 use tokio::io::AsyncBufRead;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::warn;
+use tracing::{info, warn};
+
+use sandbox_fc::DNS_READINESS_HOSTNAME;
 
 use crate::network_log_drain::{
     DrainableLineReaderExit, NetworkLogDrainRequest, run_drainable_line_reader,
@@ -79,10 +81,33 @@ where
 
 async fn handle_dns_line(network_log_manager: &NetworkLogManager, line: &str) {
     if let Some(entry) = parse_dns_line(line) {
+        log_readiness_event(&entry);
         // Capture the timestamp before handing the row to the manager so
         // it reflects DNS observation time, not delayed write time.
         let timestamp = Utc::now();
         append_dns_entry(network_log_manager, &entry, timestamp).await;
+    }
+}
+
+fn log_readiness_event(entry: &DnsLogEntry<'_>) {
+    if entry.domain != DNS_READINESS_HOSTNAME {
+        return;
+    }
+    match &entry.event {
+        DnsEvent::Query { query_type } => info!(
+            source_ip = entry.source_ip,
+            dns_serial = entry.serial,
+            dns_event = entry.event.name(),
+            dns_query_type = *query_type,
+            "guest DNS readiness dnsmasq event"
+        ),
+        DnsEvent::Result { result, .. } => info!(
+            source_ip = entry.source_ip,
+            dns_serial = entry.serial,
+            dns_event = entry.event.name(),
+            dns_result = %result,
+            "guest DNS readiness dnsmasq event"
+        ),
     }
 }
 
@@ -307,6 +332,26 @@ mod tests {
     use crate::ids::RunId;
     use crate::network_log_drain::{NetworkLogDrainContext, NetworkLogDrainProducer};
     use tokio::io::{AsyncBufRead, AsyncRead, AsyncWriteExt, ReadBuf};
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    fn capture_readiness_events(entry: &DnsLogEntry<'_>) -> Vec<CapturedEvent> {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            log_readiness_event(entry);
+        });
+        captured.entries()
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event
+            .fields
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+    }
 
     fn assert_query_event(entry: &DnsLogEntry<'_>, expected_query_type: &str) {
         assert_eq!(entry.event.name(), "query");
@@ -322,6 +367,58 @@ mod tests {
             DnsEvent::Result { result, .. } => assert_eq!(result.as_ref(), expected_result),
             DnsEvent::Query { .. } => panic!("expected result event"),
         }
+    }
+
+    #[test]
+    fn readiness_query_is_emitted_to_journal() {
+        let entry = DnsLogEntry {
+            source_ip: "10.200.0.2",
+            domain: DNS_READINESS_HOSTNAME,
+            serial: "42",
+            event: DnsEvent::Query { query_type: "A" },
+        };
+
+        let events = capture_readiness_events(&entry);
+
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_event_field(&events[0], "message", "guest DNS readiness dnsmasq event");
+        assert_event_field(&events[0], "source_ip", "10.200.0.2");
+        assert_event_field(&events[0], "dns_serial", "42");
+        assert_event_field(&events[0], "dns_event", "query");
+        assert_event_field(&events[0], "dns_query_type", "A");
+    }
+
+    #[test]
+    fn readiness_config_result_is_emitted_to_journal() {
+        let entry = DnsLogEntry {
+            source_ip: "10.200.0.2",
+            domain: DNS_READINESS_HOSTNAME,
+            serial: "43",
+            event: DnsEvent::Result {
+                kind: DnsResultKind::Config,
+                result: Cow::Borrowed("192.0.2.1"),
+            },
+        };
+
+        let events = capture_readiness_events(&entry);
+
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_event_field(&events[0], "dns_event", "config");
+        assert_event_field(&events[0], "dns_result", "192.0.2.1");
+    }
+
+    #[test]
+    fn unrelated_dns_event_is_not_emitted_to_readiness_journal() {
+        let entry = DnsLogEntry {
+            source_ip: "10.200.0.2",
+            domain: "api.github.com",
+            serial: "44",
+            event: DnsEvent::Query { query_type: "A" },
+        };
+
+        let events = capture_readiness_events(&entry);
+
+        assert!(events.is_empty(), "captured events: {events:#?}");
     }
 
     #[test]

@@ -540,6 +540,7 @@ wait
                 "guest state runtime",
                 &["/usr/bin/date", "/usr/bin/ln", "/usr/bin/sed"][..],
             ),
+            ("guest DNS readiness runtime", &["/usr/bin/getent"][..]),
             (
                 "storage and Codex cleanup runtime",
                 &[
