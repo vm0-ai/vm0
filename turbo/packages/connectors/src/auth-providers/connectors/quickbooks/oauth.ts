@@ -210,9 +210,13 @@ async function fetchQuickBooksUserInfo(
   const givenName = data.givenName ?? data.given_name;
   const familyName = data.familyName ?? data.family_name;
   const username = [givenName, familyName].filter(Boolean).join(" ").trim();
+  const id = data.sub ?? data.email;
+  if (!id) {
+    throw new Error("No user id in QuickBooks user info response");
+  }
 
   return {
-    id: data.sub ?? data.email ?? "",
+    id,
     username: username || (data.email ?? null),
     email: data.email ?? null,
   };

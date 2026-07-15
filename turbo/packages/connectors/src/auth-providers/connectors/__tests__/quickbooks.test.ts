@@ -144,6 +144,35 @@ describe("connector/providers/quickbooks", () => {
         ),
       ).rejects.toThrow("No access token in QuickBooks response");
     });
+
+    it("throws when user info has no stable identity", async () => {
+      const tokenHandler = http.post(
+        "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+        () => {
+          return HttpResponse.json({
+            access_token: "quickbooks-test-token",
+          });
+        },
+      );
+      const userInfoHandler = http.get(
+        "https://accounts.platform.intuit.com/v1/openid_connect/userinfo",
+        () => {
+          return HttpResponse.json({});
+        },
+      );
+      server.use(tokenHandler, userInfoHandler);
+
+      await expect(
+        exchangeQuickBooksCode(
+          authCodeGrant(),
+          "client-id",
+          "client-secret",
+          "test-code",
+          "https://example.com/callback",
+          JSON.stringify({ realmId: "1234567890" }),
+        ),
+      ).rejects.toThrow("No user id in QuickBooks user info response");
+    });
   });
 
   describe("refreshQuickBooksToken", () => {
