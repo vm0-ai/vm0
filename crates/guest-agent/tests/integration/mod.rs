@@ -12,6 +12,7 @@ mod support;
 mod checkpoint;
 mod complete;
 mod events;
+mod guest_config;
 mod heartbeat;
 mod http_client;
 mod presigned_upload;
