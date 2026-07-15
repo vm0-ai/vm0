@@ -11,6 +11,7 @@ from typing import TypeAlias
 from mitmproxy import ctx
 
 import matching
+import model_route_receipt
 import registry_firewalls
 from firewall_auth_cache import evict_all_cache_keys, evict_stale_cache_keys
 
@@ -103,6 +104,7 @@ _registry_state = _RegistryCacheState()
 def reset_cache_for_tests() -> None:
     """Reset module cache state between tests."""
     _registry_state.reset()
+    model_route_receipt.reset_cache()
     registry_firewalls.reset_cache_for_tests()
 
 
@@ -114,6 +116,7 @@ def _state_for_path(path_key: str) -> _RegistryCacheState:
     if _registry_state.registry_path != path_key:
         if _registry_state.snapshot.loaded_key is not None:
             evict_all_cache_keys()
+        model_route_receipt.reset_cache()
         _registry_state.reset(path_key)
     return _registry_state
 
@@ -455,6 +458,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
     # Evict cache entries for runs no longer in the registry.
     active_run_ids = {vm["runId"] for vm in new_registry.values()}
     evict_stale_cache_keys(active_run_ids)
+    model_route_receipt.evict_stale_run_ids(active_run_ids)
 
     state.snapshot = _RegistrySnapshot(
         new_registry,
