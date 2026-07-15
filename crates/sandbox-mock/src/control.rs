@@ -6,6 +6,7 @@ use std::time::Duration;
 use ::sandbox::*;
 use async_trait::async_trait;
 
+use crate::call_records::RemoteExecCall;
 use crate::support::LockIgnoringPoison;
 
 /// A mock [`SandboxControl`] for testing exec/kill commands.
@@ -17,12 +18,12 @@ pub struct MockSandboxControl {
     base_dir: PathBuf,
     exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
     kill_results: Mutex<VecDeque<std::result::Result<RemoteKillResult, SandboxControlError>>>,
-    recorded_commands: Mutex<Vec<String>>,
+    recorded_exec_calls: Mutex<Vec<RemoteExecCall>>,
     recorded_kill_ids: Mutex<Vec<String>>,
 }
 
 impl MockSandboxControl {
-    /// Create a control mock that records remote exec commands and kill ids.
+    /// Create a control mock that records remote exec calls and kill ids.
     ///
     /// The `base_dir` is used as the remote exec working directory. Result
     /// queues start empty, so remote exec succeeds with ordinary exit code 0
@@ -32,7 +33,7 @@ impl MockSandboxControl {
             base_dir: base_dir.into(),
             exec_results: Mutex::new(VecDeque::new()),
             kill_results: Mutex::new(VecDeque::new()),
-            recorded_commands: Mutex::new(Vec::new()),
+            recorded_exec_calls: Mutex::new(Vec::new()),
             recorded_kill_ids: Mutex::new(Vec::new()),
         }
     }
@@ -45,9 +46,18 @@ impl MockSandboxControl {
         self.exec_results.lock_ignoring_poison().push_back(result);
     }
 
+    /// Return every call made to `exec_remote`, in call order.
+    pub fn recorded_exec_calls(&self) -> Vec<RemoteExecCall> {
+        self.recorded_exec_calls.lock_ignoring_poison().clone()
+    }
+
     /// Return every command string passed to `exec_remote`, in call order.
     pub fn recorded_commands(&self) -> Vec<String> {
-        self.recorded_commands.lock_ignoring_poison().clone()
+        self.recorded_exec_calls
+            .lock_ignoring_poison()
+            .iter()
+            .map(|call| call.command.clone())
+            .collect()
     }
 
     /// Queue a kill remote result. Results are consumed in FIFO order.
@@ -68,14 +78,19 @@ impl MockSandboxControl {
 impl SandboxControl for MockSandboxControl {
     async fn exec_remote(
         &self,
-        _sandbox_id: &str,
+        sandbox_id: &str,
         command: &str,
-        _timeout: Duration,
-        _sudo: bool,
+        timeout: Duration,
+        sudo: bool,
     ) -> std::result::Result<RemoteExecResult, SandboxControlError> {
-        self.recorded_commands
+        self.recorded_exec_calls
             .lock_ignoring_poison()
-            .push(command.to_string());
+            .push(RemoteExecCall {
+                sandbox_id: sandbox_id.to_string(),
+                command: command.to_string(),
+                timeout,
+                sudo,
+            });
         self.exec_results
             .lock_ignoring_poison()
             .pop_front()
