@@ -94,7 +94,7 @@ pub(super) async fn prepare_snapshot(
             telemetry_error: None,
         })?;
     let response = match http
-        .post_json(url, &payload, constants::HTTP_MAX_RETRIES)
+        .post_json(url, &payload, constants::HTTP_MAX_ATTEMPTS)
         .await
     {
         Ok(Some(value)) => value,
@@ -148,7 +148,7 @@ pub(super) async fn commit_snapshot(
 
     let url = http.storage_commit_url()?;
     let response = http
-        .post_json(url, &payload, constants::HTTP_MAX_RETRIES)
+        .post_json(url, &payload, constants::HTTP_MAX_ATTEMPTS)
         .await?;
 
     Ok(response
