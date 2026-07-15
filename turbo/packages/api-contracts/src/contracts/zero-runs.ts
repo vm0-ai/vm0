@@ -23,7 +23,7 @@ import { sandboxReuseResultSchema } from "./webhooks";
  * Zero run request schema — subset of unified schema.
  * Server-side defaults are injected by createZeroRun():
  * artifacts, disallowedTools.
- * Fields not used by zero triggers are omitted:
+ * Fields not used by unattended workflow runs are omitted:
  * triggerSource, vars, secrets, volumeVersions, permissionPolicies.
  */
 const zeroRunRequestSchema = unifiedRunRequestSchema

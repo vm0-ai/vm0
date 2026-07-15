@@ -474,7 +474,7 @@ function publicWorkflowDetail(
 ): ZeroWorkflowDetailResponse {
   return {
     ...detail,
-    triggers: detail.triggers.map(publicWorkflowAutomation),
+    automations: detail.automations.map(publicWorkflowAutomation),
   };
 }
 
@@ -510,7 +510,7 @@ function salesResearch(): ZeroWorkflowDetailResponse {
         content: '{ "risk": "low", "tone": "direct" }',
       },
     ],
-    triggers: workflowAutomations(),
+    automations: workflowAutomations(),
   };
 }
 
@@ -534,7 +534,7 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
     instruction: null,
     files: [],
     fileContents: [],
-    triggers: [],
+    automations: [],
   };
 }
 
@@ -558,7 +558,7 @@ function launchChecklistWorkflow(): ZeroWorkflowDetailResponse {
     instruction: null,
     files: [],
     fileContents: [],
-    triggers: [],
+    automations: [],
   };
 }
 
@@ -582,7 +582,7 @@ function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
     instruction: null,
     files: [],
     fileContents: [],
-    triggers: [],
+    automations: [],
   };
 }
 
@@ -680,18 +680,18 @@ function mockWorkflowApis(
     enabled: boolean,
   ): ZeroWorkflowAutomationSummary | null => {
     for (const workflow of workflows) {
-      const automationIndex = workflow.triggers.findIndex((automation) => {
+      const automationIndex = workflow.automations.findIndex((automation) => {
         return automation.id === automationId;
       });
       if (automationIndex === -1) {
         continue;
       }
-      const currentAutomation = workflow.triggers[automationIndex];
+      const currentAutomation = workflow.automations[automationIndex];
       if (!currentAutomation) {
         continue;
       }
       const updatedAutomation = { ...currentAutomation, enabled };
-      workflow.triggers[automationIndex] = updatedAutomation;
+      workflow.automations[automationIndex] = updatedAutomation;
       return updatedAutomation;
     }
     return null;
@@ -725,7 +725,7 @@ function mockWorkflowApis(
       return respond(
         200,
         workflows.flatMap((workflow) => {
-          return workflow.triggers.map((automation) => {
+          return workflow.automations.map((automation) => {
             return {
               workflow: summary(workflow),
               automation: publicWorkflowAutomation(automation),
@@ -740,7 +740,7 @@ function mockWorkflowApis(
     ({ params, respond }) => {
       const automation = workflows
         .flatMap((workflow) => {
-          return workflow.triggers;
+          return workflow.automations;
         })
         .find((item) => {
           return item.id === params.id;
@@ -1912,7 +1912,7 @@ describe("workflow detail page", () => {
       agentName: "support-bot",
       agentDisplayName: "Support Bot",
       visibility: "private",
-      triggers: [],
+      automations: [],
     };
     const copyRequests: {
       readonly workflowId: string;
@@ -2007,7 +2007,7 @@ describe("workflow detail page", () => {
       agentName: "support-bot",
       agentDisplayName: "Support Bot",
       visibility: "private",
-      triggers: [],
+      automations: [],
     };
     const copyRequests: {
       readonly workflowId: string;
@@ -2176,7 +2176,7 @@ describe("workflow detail page", () => {
   it("renders Gmail new message automation match summaries", async () => {
     const workflow = {
       ...salesResearch(),
-      triggers: [...workflowAutomations(), gmailWorkflowAutomation()],
+      automations: [...workflowAutomations(), gmailWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
 
@@ -2599,7 +2599,7 @@ describe("workflow detail page", () => {
     });
     const workflow = {
       ...salesResearch(),
-      triggers: [
+      automations: [
         {
           ...webhookWorkflowAutomation(),
           enabled: false,
@@ -2635,7 +2635,7 @@ describe("workflow detail page", () => {
   it("reveals an existing webhook secret on demand", async () => {
     const workflow = {
       ...salesResearch(),
-      triggers: [webhookWorkflowAutomation()],
+      automations: [webhookWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
 
@@ -2778,7 +2778,7 @@ describe("workflow detail page", () => {
     context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
     const workflow = {
       ...salesResearch(),
-      triggers: [
+      automations: [
         {
           ...weekdayWorkflowAutomation(),
           schedule: {
@@ -2830,7 +2830,7 @@ describe("workflow detail page", () => {
     }[] = [];
     const workflow = {
       ...salesResearch(),
-      triggers: [
+      automations: [
         {
           ...weekdayWorkflowAutomation(),
           schedule: {
@@ -2880,7 +2880,7 @@ describe("workflow detail page", () => {
     }[] = [];
     const workflow = {
       ...salesResearch(),
-      triggers: [
+      automations: [
         {
           ...gmailWorkflowAutomation(),
           eventConfig: {
@@ -2950,7 +2950,7 @@ describe("workflow detail page", () => {
     }[] = [];
     const workflow = {
       ...salesResearch(),
-      triggers: [gmailLabelWorkflowAutomation()],
+      automations: [gmailLabelWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
     mockUpdateWorkflowAutomation((automationId, body) => {

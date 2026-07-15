@@ -103,9 +103,7 @@ const listWorkspaceAutomationsInner$ = computed(async (get) => {
   const entries = await get(workspaceWorkflowAutomationEntries$);
   return {
     status: 200 as const,
-    body: entries.map(({ workflow, trigger }) => {
-      return { workflow, automation: trigger };
-    }),
+    body: [...entries],
   };
 });
 

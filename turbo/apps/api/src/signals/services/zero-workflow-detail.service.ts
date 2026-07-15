@@ -94,7 +94,7 @@ export function zeroWorkflowDetail(args: {
       instruction: workflow.instruction,
       files,
       fileContents,
-      triggers: [...automations],
+      automations: [...automations],
     };
   });
 }

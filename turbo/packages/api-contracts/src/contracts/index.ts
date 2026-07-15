@@ -224,7 +224,6 @@ export {
   webhookGoogleCalendarContract,
   webhookGoogleWorkspaceEventsContract,
   webhookWorkflowAutomationContract,
-  legacyWebhookWorkflowAutomationContract,
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
@@ -260,7 +259,6 @@ export {
   type WebhookGmailContract,
   type WebhookGoogleCalendarContract,
   type WebhookGoogleWorkspaceEventsContract,
-  type LegacyWebhookWorkflowAutomationContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
 } from "./webhooks";
@@ -1022,7 +1020,6 @@ export {
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
   zeroWorkflowAutomationsContract,
-  legacyZeroWorkflowAutomationsContract,
   type ZeroWorkflowVisibility,
   type WorkflowFileEntry,
   type WorkflowFileMetadata,
@@ -1050,7 +1047,6 @@ export {
   type ZeroWorkflowsDetailContract,
   type ZeroWorkflowVisibilityContract,
   type ZeroWorkflowAutomationsContract,
-  type LegacyZeroWorkflowAutomationsContract,
 } from "./zero-workflows";
 export {
   zeroUserConnectorsContract,

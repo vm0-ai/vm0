@@ -476,7 +476,7 @@ function DetailHeader({
         <>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <WorkflowHeaderIcon automation={detail.triggers[0]} />
+              <WorkflowHeaderIcon automation={detail.automations[0]} />
               <div className="flex min-w-0 flex-col justify-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
@@ -1616,7 +1616,7 @@ function WorkflowCopyDialog({
     pauseLoadable.state === "loading" ||
     deleteLoadable.state === "loading";
   const sourceAgentName = agentLabel(detail);
-  const enabledSourceAutomationIds = detail.triggers
+  const enabledSourceAutomationIds = detail.automations
     .filter((automation) => {
       return automation.enabled;
     })
@@ -3291,7 +3291,7 @@ function AutomationsSection({
   const currentUserId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const displayTimezone = preferences?.timezone ?? browserTimezone();
-  const automations = detail.triggers;
+  const automations = detail.automations;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
