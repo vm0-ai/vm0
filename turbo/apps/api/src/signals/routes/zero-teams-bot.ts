@@ -20,6 +20,7 @@ import {
   sendTeamsMessage,
   sendTeamsMessageReply,
   type TeamsAdaptiveCard,
+  type TeamsMentionEntity,
 } from "../external/teams-bot-client";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route-entry";
@@ -39,6 +40,8 @@ const L = logger("TeamsBot");
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
   "Please connect your account to use Okou in this Teams workspace.";
 const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
+const TEAMS_SUPPORTED_COMMANDS_TEXT =
+  "`help`, `connect`, `disconnect`, `switch`, `model`";
 
 function errorResponse(
   status: 400 | 401 | 403 | 503,
@@ -189,6 +192,49 @@ function teamsInstallWelcomeActivity(
   return botAdded ? activity : null;
 }
 
+function buildTeamsInstallWelcomeMention(
+  activity: TeamsInstallWelcomeActivity,
+): TeamsMentionEntity | null {
+  if (activity.conversationType === "personal" || activity.sender.id === "") {
+    return null;
+  }
+
+  const name = activity.sender.name ?? "the person who added Okou";
+  return {
+    type: "mention",
+    text: `<at>${name}</at>`,
+    mentioned: {
+      id: activity.sender.id,
+      name,
+    },
+  };
+}
+
+function buildTeamsInstallWelcomeContent(
+  activity: TeamsInstallWelcomeActivity,
+): {
+  readonly text: string;
+  readonly entities?: readonly TeamsMentionEntity[];
+} {
+  const mention = buildTeamsInstallWelcomeMention(activity);
+  if (!mention) {
+    return { text: TEAMS_WELCOME_TEXT };
+  }
+
+  return {
+    text: [
+      `${mention.text} added Okou to this Teams workspace.`,
+      "",
+      "Okou connects Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
+      "",
+      "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
+      "",
+      `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@Okou\` with a task or send a DM to work privately.`,
+    ].join("\n"),
+    entities: [mention],
+  };
+}
+
 const sendTeamsInstallWelcome$ = command(
   async (
     _,
@@ -200,11 +246,13 @@ const sendTeamsInstallWelcome$ = command(
       return;
     }
 
+    const welcome = buildTeamsInstallWelcomeContent(welcomeActivity);
     const reply = await sendTeamsMessage({
       serviceUrl: welcomeActivity.serviceUrl,
       conversationId: welcomeActivity.conversationId,
       tenantId: welcomeActivity.tenantId,
-      text: TEAMS_WELCOME_TEXT,
+      text: welcome.text,
+      ...(welcome.entities ? { entities: welcome.entities } : {}),
       signal,
     });
     signal.throwIfAborted();

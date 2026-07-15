@@ -7,7 +7,7 @@ import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { safeJsonParse, settle } from "../utils";
+import { bestEffort, safeJsonParse } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -60,7 +60,7 @@ async function logTeamsMockCall(args: {
   readonly conversationId?: string | null;
   readonly activityId?: string | null;
 }): Promise<void> {
-  await settle(
+  await bestEffort(
     args.db.insert(e2eTeamsMockCallLog).values({
       method: args.method,
       tenantId: args.tenantId ?? readTenantId(args.bodyJson),

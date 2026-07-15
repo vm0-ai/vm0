@@ -221,6 +221,38 @@ async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_befor
     assert proxy_log_entry["ownership_hint_status"] == "used"
 
 
+async def test_shared_base_active_connector_intent_keeps_active_auth_path(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    _write_shared_base_diagnostic_catalog(tmp_path)
+    reg_path = _write_shared_base_active_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        method="POST",
+        path="/graphql/v2",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "active-shared"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer active"
+    assert "X-VM0-Connector-Intent" not in flow.request.headers
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "active-shared"
+    assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+
+
 async def test_shared_base_unknown_endpoint_with_user_auth_keeps_active_auth_path(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
@@ -503,6 +535,31 @@ async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidat
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+
+
+async def test_asterisk_form_without_active_firewall_skips_connector_diagnostic(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    write_connector_diagnostic_catalog_cache(tmp_path)
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.openweathermap.org",
+        method="OPTIONS",
+        path="*",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.path == "*"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.openweathermap.org"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
 
 

@@ -79,7 +79,7 @@ describe("zero workflow view command", () => {
               instruction: "Do helpful things.",
               files: [],
               fileContents: [],
-              triggers: [],
+              automations: [],
             });
           },
         ),
@@ -130,7 +130,7 @@ describe("zero workflow view command", () => {
               instruction: "Tell one short joke.",
               files: [],
               fileContents: [],
-              triggers: [],
+              automations: [],
             });
           },
         ),

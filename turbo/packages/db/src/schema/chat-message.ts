@@ -18,6 +18,7 @@ import type {
   ChatMessageGenerationTemplate,
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
+  ChatMessageMailDraft,
   ChatMessageRecommendedFollowups,
   ChatMessageUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-message";
@@ -29,6 +30,7 @@ export type {
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
   ChatMessageIllustrationGenerationTemplate,
+  ChatMessageMailDraft,
   ChatMessagePresentationGenerationTemplate,
   ChatMessageRecommendedFollowup,
   ChatMessageRecommendedFollowupGenerationType,
@@ -117,6 +119,7 @@ export const chatMessages = pgTable(
     generationTemplate: jsonb(
       "generation_template",
     ).$type<ChatMessageGenerationTemplate>(),
+    mailDraft: jsonb("mail_draft").$type<ChatMessageMailDraft>(),
     recommendedFollowups: jsonb(
       "recommended_followups",
     ).$type<ChatMessageRecommendedFollowups>(),

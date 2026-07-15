@@ -217,6 +217,9 @@ struct Shared {
     /// Serialises memory-heavy encoded frame construction without blocking
     /// ordinary writer-lock users such as lifecycle and control frames.
     frame_builder: tokio::sync::Mutex<()>,
+    /// Serialises file-write request lifecycles through their terminal
+    /// responses while allowing control and lifecycle frames to bypass them.
+    file_write_gate: tokio::sync::Mutex<()>,
     /// Raw fd of the underlying socket, used to poison a corrupted stream.
     fd: RawFd,
     /// Monotonically increasing sequence number (starts at 2, skips 0).
@@ -949,6 +952,7 @@ impl VsockHost {
         let shared = Arc::new(Shared {
             writer: tokio::sync::Mutex::new(write_half),
             frame_builder: tokio::sync::Mutex::new(()),
+            file_write_gate: tokio::sync::Mutex::new(()),
             fd,
             seq: AtomicU32::new(2),
             state: std::sync::Mutex::new(ConnectionState::Connected {

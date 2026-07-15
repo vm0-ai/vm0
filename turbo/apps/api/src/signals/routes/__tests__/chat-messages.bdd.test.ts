@@ -699,6 +699,14 @@ async function requestSendMessageWithBearer(
 describe("CHAT-02: web chat send and client-id idempotency", () => {
   it("creates a web chat run and replays client ids idempotently", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue-first coverage");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatMessageQueue]: true },
+    );
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const clientThreadId = randomUUID();
@@ -1534,6 +1542,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         [FeatureSwitchKey.RelationshipMemory]: true,
         [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+        [FeatureSwitchKey.ZeroMail]: true,
       },
     );
     const memoryText =
@@ -1576,6 +1585,10 @@ describe("CHAT-02: model-first provider policies", () => {
       "You are currently running inside: Web",
     );
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
+    expect(appendSystemPrompt).toContain("zero mail send --help");
+    expect(appendSystemPrompt).toContain(
+      "The card appears automatically, so do not repeat the draft",
+    );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
     expect(appendSystemPrompt).toContain(memoryText);
@@ -2269,6 +2282,60 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 
+  it("resumes the CLI session across same-family model switches when enabled", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled actor to belong to an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatModelFamilySessionContinuity]: true },
+    );
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "start on opus before switching within Claude",
+      model: "claude-opus-4-6",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue on sonnet in the same session",
+      model: "claude-sonnet-4-6",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
+    );
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
   it("uses the stored provider pin on follow-up sends", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
@@ -2684,6 +2751,9 @@ describe("CHAT-02: generation templates and attachments", () => {
         .replaceAll("-", "_");
       expect(presentationPrompt).toContain(`"colorSystem": "${colorToken}"`);
     }
+    expect(presentationPrompt).toContain(
+      "all user-visible slide content, with the first slide visible before JavaScript runs",
+    );
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     expect(presentationPrompt).not.toContain(
       "zero generate presentation --design-system",
@@ -3103,6 +3173,14 @@ describe("CHAT-02: generation templates and attachments", () => {
 describe("CHAT-02: queued attachments on auto-send", () => {
   it("carries queued attachments into the auto-sent follow-up run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue-first coverage");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatMessageQueue]: true },
+    );
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const anchor = await sendChatRun(actor, {

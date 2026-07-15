@@ -116,6 +116,7 @@ class _UsageBufferState:
                     run_id=run_id,
                     kind=event["kind"],
                     provider=event["provider"],
+                    billing_sku=event.get("billingSku"),
                     category=event["category"],
                 )
                 bucket = buckets.setdefault(aggregate_key, _AggregateBucket())
@@ -470,7 +471,13 @@ class _UsageBufferState:
         events_by_run: dict[str, list[_FlushEvent]] = {}
         for aggregate_key in sorted(
             buckets,
-            key=lambda item: (item.run_id, item.kind, item.provider, item.category),
+            key=lambda item: (
+                item.run_id,
+                item.kind,
+                item.provider,
+                item.billing_sku or "",
+                item.category,
+            ),
         ):
             bucket = buckets[aggregate_key]
             event = _FlushEvent(
@@ -486,6 +493,8 @@ class _UsageBufferState:
             )
             if destination.include_kind:
                 event.payload["kind"] = aggregate_key.kind
+            if aggregate_key.billing_sku is not None:
+                event.payload["billingSku"] = aggregate_key.billing_sku
             events_by_run.setdefault(aggregate_key.run_id, []).append(event)
         return events_by_run
 
@@ -506,19 +515,23 @@ class _UsageBufferState:
                 aggregate_key.run_id,
                 aggregate_key.kind,
                 aggregate_key.provider,
+                aggregate_key.billing_sku or "",
                 aggregate_key.category,
             ),
         )
 
 
 def _copy_event(event: UsageEvent) -> UsageEvent:
-    return {
+    copied: UsageEvent = {
         "idempotencyKey": event["idempotencyKey"],
         "kind": event["kind"],
         "provider": event["provider"],
         "category": event["category"],
         "quantity": event["quantity"],
     }
+    if "billingSku" in event:
+        copied["billingSku"] = event["billingSku"]
+    return copied
 
 
 def _source_event_payload(destination: _DestinationKey, event: UsageEvent) -> dict:
@@ -530,6 +543,8 @@ def _source_event_payload(destination: _DestinationKey, event: UsageEvent) -> di
     }
     if destination.include_kind:
         payload["kind"] = event["kind"]
+    if "billingSku" in event:
+        payload["billingSku"] = event["billingSku"]
     return payload
 
 

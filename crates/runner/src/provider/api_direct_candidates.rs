@@ -18,6 +18,8 @@ pub(super) struct DirectJobCandidate {
     discovered_at: StdInstant,
     enqueued_at: Option<StdInstant>,
     cli_agent_session_id: Option<String>,
+    history_generation_run_id: Option<RunId>,
+    history_generation_affinity_protected_until: Option<String>,
     affinity_protected_until: Option<String>,
 }
 
@@ -62,6 +64,8 @@ impl DirectJobCandidate {
             discovered_at,
             enqueued_at: None,
             cli_agent_session_id,
+            history_generation_run_id: None,
+            history_generation_affinity_protected_until: None,
             affinity_protected_until,
         }
     }
@@ -90,6 +94,22 @@ impl DirectJobCandidate {
         }
     }
 
+    pub(super) fn with_history_generation_run_id(
+        mut self,
+        history_generation_run_id: Option<RunId>,
+    ) -> Self {
+        self.history_generation_run_id = history_generation_run_id;
+        self
+    }
+
+    pub(super) fn with_history_generation_affinity_protected_until(
+        mut self,
+        protected_until: Option<String>,
+    ) -> Self {
+        self.history_generation_affinity_protected_until = protected_until;
+        self
+    }
+
     pub(super) fn into_job_candidate(self) -> JobCandidate {
         let dequeued_at = StdInstant::now();
         let notification_to_enqueue_elapsed = self
@@ -100,6 +120,10 @@ impl DirectJobCandidate {
             .map(|enqueued_at| dequeued_at.saturating_duration_since(enqueued_at));
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
             .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
+            .with_history_generation_run_id(self.history_generation_run_id)
+            .with_history_generation_affinity_protected_until(
+                self.history_generation_affinity_protected_until,
+            )
             .with_discovery_source(JobDiscoverySource::Ably)
             .with_direct_candidate_timing(notification_to_enqueue_elapsed, inbox_wait_elapsed)
     }
@@ -119,6 +143,16 @@ impl DirectJobCandidate {
         }
         if candidate.affinity_protected_until.is_some() {
             self.affinity_protected_until = candidate.affinity_protected_until;
+        }
+        if candidate
+            .history_generation_affinity_protected_until
+            .is_some()
+        {
+            self.history_generation_affinity_protected_until =
+                candidate.history_generation_affinity_protected_until;
+        }
+        if candidate.history_generation_run_id.is_some() {
+            self.history_generation_run_id = candidate.history_generation_run_id;
         }
     }
 }
@@ -386,6 +420,7 @@ mod tests {
         let inbox = direct_candidate_inbox(4);
         let first_discovered_at = StdInstant::now() - Duration::from_secs(5);
         let second_discovered_at = StdInstant::now();
+        let history_generation_run_id = run_id(2);
         let run_id = run_id(1);
 
         let inserted = inbox
@@ -406,13 +441,19 @@ mod tests {
         );
 
         let updated = inbox
-            .push(DirectJobCandidate::new_with_affinity_metadata(
-                run_id,
-                "vm0/default".to_string(),
-                second_discovered_at,
-                None,
-                Some("2999-01-01T00:00:00.000Z".to_string()),
-            ))
+            .push(
+                DirectJobCandidate::new_with_affinity_metadata(
+                    run_id,
+                    "vm0/default".to_string(),
+                    second_discovered_at,
+                    None,
+                    Some("2999-01-01T00:00:00.000Z".to_string()),
+                )
+                .with_history_generation_run_id(Some(history_generation_run_id))
+                .with_history_generation_affinity_protected_until(Some(
+                    "2999-01-01T00:00:00.000Z".to_string(),
+                )),
+            )
             .await;
         assert!(matches!(
             updated,
@@ -430,7 +471,12 @@ mod tests {
         assert!(candidate.enqueued_at().is_some());
         let candidate = candidate.into_job_candidate();
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-1"));
+        assert_eq!(
+            candidate.history_generation_run_id(),
+            Some(history_generation_run_id)
+        );
         assert!(candidate.is_affinity_protected());
+        assert!(candidate.is_history_generation_affinity_protected());
         assert!(
             candidate
                 .direct_candidate_notification_to_enqueue_elapsed()

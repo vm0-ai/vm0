@@ -64,6 +64,7 @@ export const ZERO_CAPABILITIES = [
   "banking:read",
   "maps:read",
   "scrape:read",
+  "web-search:read",
   "computer-use:write",
   "file:read",
   "file:write",
@@ -160,6 +161,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "scrape:read": {
       group: "Scrape",
       label: "Use managed web scraping",
+    },
+    "web-search:read": {
+      group: "Web Search",
+      label: "Use managed web search",
     },
     "computer-use:write": {
       group: "Computer Use",

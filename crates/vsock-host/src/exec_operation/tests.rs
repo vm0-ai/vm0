@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 use std::time::Duration;
 
-use tokio::io::AsyncReadExt;
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use tracing::Level;
@@ -15,6 +14,7 @@ use vsock_proto::{
     ExecCapturedOutput, ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_RESULT, RawMessage,
 };
 
+use crate::tests::support::read_guest_message;
 use crate::{ConnectionState, Shared};
 
 use super::diagnostics::*;
@@ -116,24 +116,6 @@ fn terminal_log_field_u128(event: &CapturedEvent, field: &str) -> u128 {
     value
         .parse()
         .unwrap_or_else(|err| panic!("invalid u128 field {field}={value:?}: {err}"))
-}
-
-async fn read_exec_operation_frame(stream: &mut tokio::net::UnixStream) -> RawMessage {
-    let mut header = [0u8; vsock_proto::HEADER_SIZE];
-    stream.read_exact(&mut header).await.unwrap();
-    let body_len = u32::from_be_bytes(header) as usize;
-    assert!(
-        (vsock_proto::MIN_BODY_SIZE..=vsock_proto::MAX_MESSAGE_SIZE).contains(&body_len),
-        "invalid message body length: {body_len}",
-    );
-
-    let mut body = vec![0u8; body_len];
-    stream.read_exact(&mut body).await.unwrap();
-    RawMessage {
-        msg_type: body[0],
-        seq: u32::from_be_bytes(body[1..vsock_proto::MIN_BODY_SIZE].try_into().unwrap()),
-        payload: body[vsock_proto::MIN_BODY_SIZE..].to_vec(),
-    }
 }
 
 #[test]
@@ -431,6 +413,7 @@ fn shared_with_logged_operation(
     let shared = Arc::new(Shared {
         writer: tokio::sync::Mutex::new(write_half),
         frame_builder: tokio::sync::Mutex::new(()),
+        file_write_gate: tokio::sync::Mutex::new(()),
         fd,
         seq: AtomicU32::new(2),
         state: std::sync::Mutex::new(ConnectionState::Connected {
@@ -606,44 +589,43 @@ async fn one_shot_cancel_handle_marks_terminal_result_as_host_requested_cancel()
         stream_rx: None,
     };
 
-    let cancel_task = tokio::spawn(async move {
-        handle
-            .cancel_and_wait_for_terminal_status(Duration::from_secs(5))
-            .await
-    });
-    let cancel = read_exec_operation_frame(&mut read_stream).await;
-    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
-    assert_eq!(cancel.seq, 7);
-    vsock_proto::decode_exec_cancel(&cancel.payload).unwrap();
+    let cancel_future = handle.cancel_and_wait_for_terminal_status(Duration::from_secs(5));
+    let peer = async {
+        let cancel = read_guest_message(&mut read_stream).await;
+        assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+        assert_eq!(cancel.seq, 7);
+        vsock_proto::decode_exec_cancel(&cancel.payload).unwrap();
 
-    let payload = vsock_proto::encode_exec_result(
-        ExecTermination::Cancelled,
-        10,
-        ExecCapturedOutput::Discarded,
-        ExecCapturedOutput::Discarded,
-        "",
-    )
-    .unwrap();
-    let msg = RawMessage {
-        msg_type: MSG_EXEC_RESULT,
-        seq: 7,
-        payload,
+        let payload = vsock_proto::encode_exec_result(
+            ExecTermination::Cancelled,
+            10,
+            ExecCapturedOutput::Discarded,
+            ExecCapturedOutput::Discarded,
+            "",
+        )
+        .unwrap();
+        let msg = RawMessage {
+            msg_type: MSG_EXEC_RESULT,
+            seq: 7,
+            payload,
+        };
+
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::callsite::rebuild_interest_cache();
+            dispatch_result(&shared, msg.as_borrowed()).unwrap();
+        });
+
+        let events = captured.entries();
+        assert_eq!(events.len(), 1, "captured events: {events:#?}");
+        assert_eq!(events[0].level, Level::INFO);
+        assert_terminal_log_field(&events[0], "termination", "Cancelled");
+        assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
     };
 
-    let captured = CapturedEvents::default();
-    let subscriber = tracing_subscriber::registry().with(captured.clone());
-    tracing::subscriber::with_default(subscriber, || {
-        tracing::callsite::rebuild_interest_cache();
-        dispatch_result(&shared, msg.as_borrowed()).unwrap();
-    });
-
-    let events = captured.entries();
-    assert_eq!(events.len(), 1, "captured events: {events:#?}");
-    assert_eq!(events[0].level, Level::INFO);
-    assert_terminal_log_field(&events[0], "termination", "Cancelled");
-    assert_terminal_log_field(&events[0], "host_cancel_requested", "true");
-
-    let wait_result = cancel_task.await.unwrap().unwrap();
+    let (wait_result, ()) = tokio::join!(cancel_future, peer);
+    let wait_result = wait_result.unwrap();
     assert_eq!(wait_result.cancel_seq, Some(7));
     assert_eq!(wait_result.result.termination, ExecTermination::Cancelled);
 }

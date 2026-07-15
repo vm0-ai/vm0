@@ -9,23 +9,49 @@ use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::ids::RunId;
 
 const ROOTFS_FULL_AVAILABLE_KB_THRESHOLD: u64 = 1024;
+const DF_BLOCKS_MARKER: &str = "VM0_DF_BLOCKS_V1";
+const DF_INODES_MARKER: &str = "VM0_DF_INODES_V1";
+
+#[derive(Clone, Copy)]
+enum FilesystemTable {
+    Blocks,
+    Inodes,
+}
 
 pub(in crate::executor) fn parse_agent_abnormal_exit_resource_diagnostics(
     stdout: &str,
 ) -> Option<ResourceFailureDiagnostics> {
     let mut diagnostics = ResourceFailureDiagnostics::default();
+    let mut filesystem_table = FilesystemTable::Blocks;
 
     for line in stdout.lines() {
+        match line.trim() {
+            DF_BLOCKS_MARKER => {
+                filesystem_table = FilesystemTable::Blocks;
+                continue;
+            }
+            DF_INODES_MARKER => {
+                filesystem_table = FilesystemTable::Inodes;
+                continue;
+            }
+            _ => {}
+        }
+
         if let Some(filesystem) = parse_filesystem_usage_line(line) {
-            match filesystem.mount_point {
-                "/" => {
+            match (filesystem_table, filesystem.mount_point) {
+                (FilesystemTable::Blocks, "/") => {
                     diagnostics.guest_root_fs_used_percent = Some(filesystem.used_percent);
-                    diagnostics.guest_root_fs_available_kb = filesystem.available_kb;
+                    diagnostics.guest_root_fs_available_kb = filesystem.available;
                 }
-                "/home/user/workspace" => {
+                (FilesystemTable::Blocks, "/home/user/workspace") => {
                     diagnostics.guest_workspace_fs_used_percent = Some(filesystem.used_percent);
                 }
-                _ => {}
+                (FilesystemTable::Inodes, "/") => {
+                    diagnostics.guest_root_fs_inode_used_percent = Some(filesystem.used_percent);
+                    diagnostics.guest_root_fs_available_inodes = filesystem.available;
+                }
+                (FilesystemTable::Inodes, "/home/user/workspace") => {}
+                (_, _) => {}
             }
         }
 
@@ -44,7 +70,7 @@ pub(in crate::executor) fn parse_agent_abnormal_exit_resource_diagnostics(
 struct FilesystemUsage<'a> {
     mount_point: &'a str,
     used_percent: u16,
-    available_kb: Option<u64>,
+    available: Option<u64>,
 }
 
 fn parse_filesystem_usage_line(line: &str) -> Option<FilesystemUsage<'_>> {
@@ -61,14 +87,14 @@ fn parse_filesystem_usage_line(line: &str) -> Option<FilesystemUsage<'_>> {
     let used_percent = columns
         .get(columns.len().saturating_sub(2))
         .and_then(|value| parse_percent(value))?;
-    let available_kb = columns
+    let available = columns
         .get(columns.len().saturating_sub(3))
-        .and_then(|value| parse_available_kb(value));
+        .and_then(|value| parse_available_value(value));
 
     Some(FilesystemUsage {
         mount_point,
         used_percent,
-        available_kb,
+        available,
     })
 }
 
@@ -76,7 +102,7 @@ fn parse_percent(value: &str) -> Option<u16> {
     value.strip_suffix('%')?.parse().ok()
 }
 
-fn parse_available_kb(value: &str) -> Option<u64> {
+fn parse_available_value(value: &str) -> Option<u64> {
     if let Ok(kb) = value.parse() {
         return Some(kb);
     }
@@ -115,6 +141,10 @@ fn rootfs_is_clearly_full(diagnostics: &ResourceFailureDiagnostics) -> bool {
         || diagnostics
             .guest_root_fs_available_kb
             .is_some_and(|available_kb| available_kb <= ROOTFS_FULL_AVAILABLE_KB_THRESHOLD)
+        || diagnostics
+            .guest_root_fs_inode_used_percent
+            .is_some_and(|percent| percent >= 100)
+        || diagnostics.guest_root_fs_available_inodes == Some(0)
 }
 
 pub(in crate::executor) async fn collect_agent_abnormal_exit_diagnostics(
@@ -141,9 +171,7 @@ pub(in crate::executor) async fn collect_agent_abnormal_exit_diagnostics(
             let stdout = String::from_utf8_lossy(&result.stdout);
             let stderr = String::from_utf8_lossy(&result.stderr);
             let diagnostic_succeeded = helper_exec_succeeded(&result);
-            let resource_diagnostics = diagnostic_succeeded
-                .then(|| parse_agent_abnormal_exit_resource_diagnostics(&stdout))
-                .flatten();
+            let resource_diagnostics = parse_agent_abnormal_exit_resource_diagnostics(&stdout);
             let resource_failure_kind = resource_diagnostics
                 .and_then(|diagnostics| diagnostics.failure_kind)
                 .map(ResourceFailureKind::as_str);
@@ -152,6 +180,11 @@ pub(in crate::executor) async fn collect_agent_abnormal_exit_diagnostics(
                 .map(u64::from);
             let guest_root_fs_available_kb =
                 resource_diagnostics.and_then(|diagnostics| diagnostics.guest_root_fs_available_kb);
+            let guest_root_fs_inode_used_percent = resource_diagnostics
+                .and_then(|diagnostics| diagnostics.guest_root_fs_inode_used_percent)
+                .map(u64::from);
+            let guest_root_fs_available_inodes = resource_diagnostics
+                .and_then(|diagnostics| diagnostics.guest_root_fs_available_inodes);
             let guest_workspace_fs_used_percent = resource_diagnostics
                 .and_then(|diagnostics| diagnostics.guest_workspace_fs_used_percent)
                 .map(u64::from);
@@ -171,6 +204,8 @@ pub(in crate::executor) async fn collect_agent_abnormal_exit_diagnostics(
                 resource_failure_kind,
                 guest_root_fs_used_percent,
                 guest_root_fs_available_kb,
+                guest_root_fs_inode_used_percent,
+                guest_root_fs_available_inodes,
                 guest_workspace_fs_used_percent,
                 guest_memory_available_mb,
                 diagnostic_stdout = %stdout,

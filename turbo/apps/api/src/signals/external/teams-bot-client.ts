@@ -165,12 +165,22 @@ type TeamsActivityAttachment =
   | TeamsAdaptiveCardAttachment
   | TeamsFileAttachment;
 
+export interface TeamsMentionEntity {
+  readonly type: "mention";
+  readonly text: string;
+  readonly mentioned: {
+    readonly id: string;
+    readonly name?: string;
+  };
+}
+
 interface TeamsActivityBody {
   readonly type: "message" | "typing";
   readonly text?: string;
   readonly textFormat?: "markdown";
   readonly summary?: string;
   readonly replyToId?: string;
+  readonly entities?: readonly TeamsMentionEntity[];
   readonly attachments?: readonly TeamsActivityAttachment[];
   readonly channelData?: {
     readonly tenant?: { readonly id: string };
@@ -817,6 +827,7 @@ export function sendTeamsMessageReply(args: {
   readonly tenantId: string;
   readonly text: string;
   readonly card?: TeamsAdaptiveCard;
+  readonly entities?: readonly TeamsMentionEntity[];
   readonly signal: AbortSignal;
 }): Promise<SendTeamsActivityResult> {
   return sendTeamsMessage({
@@ -826,6 +837,7 @@ export function sendTeamsMessageReply(args: {
     tenantId: args.tenantId,
     text: args.text,
     card: args.card,
+    ...(args.entities ? { entities: args.entities } : {}),
     signal: args.signal,
   });
 }
@@ -837,6 +849,7 @@ export function sendTeamsMessage(args: {
   readonly tenantId: string;
   readonly text: string;
   readonly card?: TeamsAdaptiveCard;
+  readonly entities?: readonly TeamsMentionEntity[];
   readonly attachments?: readonly TeamsActivityAttachment[];
   readonly signal: AbortSignal;
 }): Promise<SendTeamsActivityResult> {
@@ -864,6 +877,7 @@ export function sendTeamsMessage(args: {
         ? { summary: args.text }
         : { text: args.text, textFormat: "markdown" }),
       replyToId: args.activityId,
+      ...(args.entities ? { entities: args.entities } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
       channelData: {
         tenant: { id: args.tenantId },

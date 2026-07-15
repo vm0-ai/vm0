@@ -4,7 +4,7 @@ use guest_mock_codex::{build_events, read_session_file, session_files, write_ses
 use serde_json::Value;
 use tempfile::TempDir;
 
-use crate::support::{require_session_file, run};
+use crate::support::{require_session_file, run, run_with_stdin};
 
 #[test]
 fn resume_echoes_thread_id_and_appends_events() -> std::io::Result<()> {
@@ -22,6 +22,28 @@ fn resume_echoes_thread_id_and_appends_events() -> std::io::Result<()> {
     assert_eq!(events.len(), 6);
     assert_eq!(events[1]["item"]["text"], "turn-1");
     assert_eq!(events[4]["item"]["text"], "turn-2");
+    Ok(())
+}
+
+#[test]
+fn resume_prompt_stdin_is_preserved_exactly() -> std::io::Result<()> {
+    let dir = TempDir::new()?;
+    let first = run(dir.path(), &["exec", "--json", "--", "turn-1"])?;
+    let thread_id = first.events[0]["thread_id"].as_str().unwrap().to_string();
+    let prompt = " \n--resume input\n中文 and emoji 🚀\n ";
+
+    let second = run_with_stdin(
+        dir.path(),
+        &["exec", "resume", &thread_id, "--", "-"],
+        prompt,
+    )?;
+
+    assert_eq!(second.status, 0);
+    assert_eq!(second.events[0]["thread_id"], thread_id);
+    assert_eq!(second.events[1]["item"]["text"], prompt);
+    let session_path = require_session_file(dir.path())?;
+    let events = read_session_file(&session_path)?;
+    assert_eq!(events[4]["item"]["text"], prompt);
     Ok(())
 }
 

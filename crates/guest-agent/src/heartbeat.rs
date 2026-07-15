@@ -60,7 +60,7 @@ pub async fn heartbeat_loop_for_run_with_interval(
             _ = shutdown.cancelled() => return Ok(()),
             _ = interval.tick() => {
                 let payload = json!({ "runId": run_id.as_str() });
-                match http.post_json(heartbeat_url, &payload, constants::HTTP_MAX_RETRIES).await {
+                match http.post_json(heartbeat_url, &payload, constants::HTTP_MAX_ATTEMPTS).await {
                     Ok(_) => {
                         if is_first {
                             log_info!(LOG_TAG, "Heartbeat sent (initial)");

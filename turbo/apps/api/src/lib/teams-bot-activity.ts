@@ -297,6 +297,7 @@ function conversationUpdateActivity(
   activity: Record<string, unknown>,
   base: ActivityBase,
 ): TeamsInboundActivity {
+  const sender = normalizeActor(activity.from);
   const membersAdded = normalizeActorArray(readArray(activity, "membersAdded"));
   const membersRemoved = normalizeActorArray(
     readArray(activity, "membersRemoved"),
@@ -329,6 +330,7 @@ function conversationUpdateActivity(
     ...base,
     kind: "conversation_update",
     action,
+    sender,
     recipient,
     membersAdded,
     membersRemoved,
@@ -339,6 +341,7 @@ function installationUpdateActivity(
   activity: Record<string, unknown>,
   base: ActivityBase,
 ): TeamsInboundActivity {
+  const sender = normalizeActor(activity.from);
   const action = readString(activity, "action");
   if (action === "remove") {
     return {
@@ -354,6 +357,7 @@ function installationUpdateActivity(
     ...base,
     kind: "installation_update",
     action: action === "add" ? "add" : "unknown",
+    sender,
     recipient: activity.recipient ? normalizeActor(activity.recipient) : null,
   };
 }

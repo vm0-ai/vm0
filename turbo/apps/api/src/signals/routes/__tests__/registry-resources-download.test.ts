@@ -30,6 +30,8 @@ describe("registry resource download", () => {
       "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e";
     const refreshedSha256 =
       "bb3e49899d1bcd24b1e88ba8566a9ddd09039502fb51becffcd9f35051463e63";
+    const colorSystemFixedSha256 =
+      "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad";
 
     expect(
       resolvePrivateRegistryResourceArchive(id, undefined, legacySha256),
@@ -44,6 +46,17 @@ describe("registry resource download", () => {
       versionId:
         "d792e4b858ac0ffeb0e0f4073730453d9753c9e654bdc671f7b2e94d6a40bd17",
       sha256: refreshedSha256,
+    });
+    expect(
+      resolvePrivateRegistryResourceArchive(
+        id,
+        colorSystemFixedSha256,
+        legacySha256,
+      ),
+    ).toMatchObject({
+      versionId:
+        "c063961c29369b15b8ae7a3cb285105bc29dbae84cccc36d458b666a5ca75e06",
+      sha256: colorSystemFixedSha256,
     });
   });
 

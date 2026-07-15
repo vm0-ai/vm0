@@ -14,7 +14,15 @@ from tests.firewall_helpers import (
 )
 
 
-def _assert_indexed_matches_linear(url, method, firewalls, network_policies, intent=None):
+def _assert_indexed_matches_linear(
+    url,
+    method,
+    firewalls,
+    network_policies,
+    intent=None,
+    *,
+    is_asterisk_form=False,
+):
     compiled = compile_firewalls_or_fail(firewalls)
 
     indexed = matching.match_compiled_firewall_request(
@@ -23,6 +31,7 @@ def _assert_indexed_matches_linear(url, method, firewalls, network_policies, int
         compiled,
         network_policies,
         intent,
+        is_asterisk_form=is_asterisk_form,
     )
     linear = matching._match_compiled_firewall_request_linear(
         url,
@@ -30,10 +39,70 @@ def _assert_indexed_matches_linear(url, method, firewalls, network_policies, int
         compiled,
         network_policies,
         intent,
+        is_asterisk_form=is_asterisk_form,
     )
 
     assert indexed == linear
     return indexed
+
+
+def test_indexed_matches_linear_for_asterisk_form_unknown_policy():
+    firewalls = [
+        firewall_entry(
+            "example",
+            firewall_api(
+                "https://api.example.com",
+                [firewall_permission("full-access", "ANY /")],
+            ),
+        )
+    ]
+    policies = {
+        "example": network_policy(
+            allow=["full-access"],
+            unknown_policy="deny",
+        )
+    }
+
+    result = _assert_indexed_matches_linear(
+        "https://api.example.com",
+        "OPTIONS",
+        firewalls,
+        policies,
+        is_asterisk_form=True,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "unknown_endpoint"
+    assert result.path == "*"
+
+
+def test_indexed_matches_linear_for_asterisk_form_owner_ambiguity():
+    firewalls = [
+        firewall_entry(
+            "primary",
+            firewall_api("https://api.example.com", []),
+        ),
+        firewall_entry(
+            "auditor",
+            firewall_api("https://api.example.com", []),
+        ),
+    ]
+    policies = {
+        "primary": network_policy(unknown_policy="allow"),
+        "auditor": network_policy(unknown_policy="allow"),
+    }
+
+    result = _assert_indexed_matches_linear(
+        "https://api.example.com",
+        "OPTIONS",
+        firewalls,
+        policies,
+        is_asterisk_form=True,
+    )
+
+    assert isinstance(result, matching.FirewallAmbiguous)
+    assert result.path == "*"
+    assert result.candidates == ("auditor", "primary")
 
 
 def _long_path(prefix, segment_count=1000):

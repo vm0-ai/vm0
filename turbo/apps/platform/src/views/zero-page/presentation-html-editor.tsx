@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from "react";
+import type { ReactNode, Ref, SyntheticEvent } from "react";
 import {
   IconDownload,
   IconLoader2,
@@ -122,6 +122,19 @@ function setSandboxedFrameHtml(frame: HTMLIFrameElement, html: string): void {
   );
   frame.dataset.vm0EditorObjectUrl = url;
   frame.src = url;
+}
+
+function revealPresentationPreviewSlide(
+  event: SyntheticEvent<HTMLIFrameElement>,
+): void {
+  const frame = event.currentTarget;
+  const doc = frame.contentDocument;
+  const slide = doc?.querySelector<HTMLElement>("[data-vm0-editor-stage] > *");
+  const view = doc?.defaultView;
+  if (!slide || !view || view.getComputedStyle(slide).display !== "none") {
+    return;
+  }
+  slide.style.setProperty("display", "block", "important");
 }
 
 async function redeployPresentationHtml(params: {
@@ -444,6 +457,7 @@ function SlideList({
                   title={`Slide ${String(index + 1)} thumbnail`}
                   data-slide-thumbnail-frame={slide.id}
                   sandbox="allow-same-origin allow-scripts"
+                  onLoad={revealPresentationPreviewSlide}
                   className="pointer-events-none origin-top-left border-0 bg-white"
                   style={{
                     width: THUMBNAIL_CANVAS_WIDTH,
@@ -591,6 +605,7 @@ function PreviewPane({
               sandbox="allow-same-origin allow-scripts"
               onLoad={(event) => {
                 applyScale();
+                revealPresentationPreviewSlide(event);
                 wireEditableFrame({
                   frame: event.currentTarget,
                   updateText,

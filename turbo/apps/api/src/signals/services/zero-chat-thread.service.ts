@@ -33,6 +33,7 @@ import {
   type ChatMessageRecommendedFollowups,
   type ChatMessageGoalEvent,
   type ChatMessageGoalSnapshot,
+  type ChatMessageMailDraft,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -109,6 +110,7 @@ type ChatMessageRow = {
   readonly runEventId: string | null;
   readonly goalEvent: ChatMessageGoalEvent | null;
   readonly goalSnapshot: ChatMessageGoalSnapshot | null;
+  readonly mailDraft: ChatMessageMailDraft | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
   readonly sequenceNumber: number | null;
@@ -218,6 +220,7 @@ const messageColumns = {
   runEventId: chatMessages.runEventId,
   goalEvent: chatMessages.goalEvent,
   goalSnapshot: chatMessages.goalSnapshot,
+  mailDraft: chatMessages.mailDraft,
   error: chatMessages.error,
   runLifecycleEvent: chatMessages.runLifecycleEvent,
   sequenceNumber: chatMessages.sequenceNumber,
@@ -648,6 +651,7 @@ function toPagedMessage(
       runEventId: row.runEventId ?? undefined,
       goalEvent: goalEventFromRow(row.goalEvent),
       goalSnapshot: goalSnapshotFromRow(row.goalSnapshot),
+      mailDraft: row.mailDraft ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: row.error ?? undefined,

@@ -13,8 +13,8 @@ pub const TELEMETRY_INTERVAL_SECS: u64 = 30;
 /// Metrics collection interval in seconds.
 pub const METRICS_INTERVAL_SECS: u64 = 5;
 
-/// Max HTTP retries for webhook calls.
-pub const HTTP_MAX_RETRIES: u32 = 3;
+/// Maximum total HTTP attempts for retryable webhook calls and uploads.
+pub const HTTP_MAX_ATTEMPTS: u32 = 3;
 
 /// HTTP connect timeout in seconds.
 pub const HTTP_CONNECT_TIMEOUT_SECS: u64 = 10;
@@ -57,6 +57,6 @@ pub const POST_RESULT_TOTAL_CAP_SECS: u64 = 120;
 pub const POST_RESULT_SIGKILL_GRACE_SECS: u64 = 5;
 
 /// Maximum consecutive heartbeat failures before terminating the run.
-/// Each heartbeat attempt already retries `HTTP_MAX_RETRIES` times internally,
-/// so 3 consecutive failures = 9 total HTTP attempts over ~3 minutes.
+/// A failed heartbeat cycle makes at most `HTTP_MAX_ATTEMPTS` total HTTP attempts,
+/// so 3 consecutive failures make at most 9 attempts over ~3 minutes.
 pub const MAX_CONSECUTIVE_HEARTBEAT_FAILURES: u32 = 3;

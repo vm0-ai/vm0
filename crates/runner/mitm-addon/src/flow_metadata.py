@@ -97,6 +97,10 @@ def model_usage_provider(meta: Mapping[str, object]) -> str:
     return _metadata_str(meta, metadata_keys.MODEL_USAGE_PROVIDER)
 
 
+def model_usage_billing_sku(meta: Mapping[str, object]) -> str | None:
+    return _metadata_optional_str(meta, metadata_keys.MODEL_USAGE_BILLING_SKU)
+
+
 def start_request_timing(meta: MutableMapping[str, object]) -> None:
     if metadata_keys.HTTP_REQUEST_START_MONOTONIC not in meta:
         meta[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()

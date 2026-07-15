@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.144.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.25...runner-rs-v0.144.26) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** reject firewall auth redirects ([#21659](https://github.com/vm0-ai/vm0/issues/21659)) ([9f2423b](https://github.com/vm0-ai/vm0/commit/9f2423bf945f14db27555c89494a7c78aa4b3c1f))
+
+## [0.144.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.24...runner-rs-v0.144.25) (2026-07-15)
+
+
+### Documentation
+
+* **mitm-addon:** correct request capture test comment ([#21650](https://github.com/vm0-ai/vm0/issues/21650)) ([b612869](https://github.com/vm0-ai/vm0/commit/b612869daf6b03d15308d16def1e847f15711dd9))
+
+## [0.144.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.23...runner-rs-v0.144.24) (2026-07-15)
+
+## [0.144.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.22...runner-rs-v0.144.23) (2026-07-15)
+
+
+### Bug Fixes
+
+* **mitm-addon:** prevent binding after client disconnect ([#21617](https://github.com/vm0-ai/vm0/issues/21617)) ([07e44af](https://github.com/vm0-ai/vm0/commit/07e44af0967872fd1d2f80879f08728d18432853))
+
+## [0.144.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.21...runner-rs-v0.144.22) (2026-07-15)
+
+## [0.144.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.20...runner-rs-v0.144.21) (2026-07-15)
+
+
+### Refactoring
+
+* **runner:** split local submit tests by responsibility ([#21592](https://github.com/vm0-ai/vm0/issues/21592)) ([c7e8b5b](https://github.com/vm0-ai/vm0/commit/c7e8b5b2efd739f0c8d6f45ff53ed5c03064a52c))
+
+## [0.144.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.19...runner-rs-v0.144.20) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** enforce firewalls for options asterisk requests ([#21572](https://github.com/vm0-ai/vm0/issues/21572)) ([7c98fe1](https://github.com/vm0-ai/vm0/commit/7c98fe1a675d98366f936c974d36cc9a984f329a))
+
+## [0.144.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.18...runner-rs-v0.144.19) (2026-07-15)
+
+
+### Refactoring
+
+* **runner:** centralize reused workspace promotion resolution ([#21551](https://github.com/vm0-ai/vm0/issues/21551)) ([b3ff245](https://github.com/vm0-ai/vm0/commit/b3ff2454e7f5a8e9a485548cdbec5f86a48c9516))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid quadratic json literal probing ([#21553](https://github.com/vm0-ai/vm0/issues/21553)) ([e54388b](https://github.com/vm0-ai/vm0/commit/e54388b154cc5baa4f2b970ef249411f2e2cbebd))
+* **runner:** attribute session history generation claims ([#21550](https://github.com/vm0-ai/vm0/issues/21550)) ([2a2a348](https://github.com/vm0-ai/vm0/commit/2a2a348de2359fe1bae15fd0c03273449565dc51))
+
+## [0.144.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.17...runner-rs-v0.144.18) (2026-07-15)
+
+
+### Documentation
+
+* **mitm-addon:** document metadata visitor invariants ([#21541](https://github.com/vm0-ai/vm0/issues/21541)) ([8a545c2](https://github.com/vm0-ai/vm0/commit/8a545c2bcbf6ec1c9d017a3891e7addcc7d3d683))
+
 ## [0.144.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.16...runner-rs-v0.144.17) (2026-07-14)
 
 

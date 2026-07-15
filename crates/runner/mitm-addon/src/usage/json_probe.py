@@ -392,14 +392,22 @@ def _skip_json_value(
         )
     if b == ord("-") or ord("0") <= b <= ord("9"):
         return _skip_json_number(body, i)
-    for literal in (b"true", b"false", b"null"):
-        if body.startswith(literal, i):
-            end = i + len(literal)
-            if end == len(body):
-                return _IndexResult("incomplete")
-            return _IndexResult("ok", end)
-        if literal.startswith(body[i:]):
+    if b == ord("t"):
+        literal = b"true"
+    elif b == ord("f"):
+        literal = b"false"
+    elif b == ord("n"):
+        literal = b"null"
+    else:
+        return _IndexResult("invalid")
+
+    remaining = len(body) - i
+    if remaining <= len(literal):
+        if body.startswith(literal[:remaining], i):
             return _IndexResult("incomplete")
+        return _IndexResult("invalid")
+    if body.startswith(literal, i):
+        return _IndexResult("ok", i + len(literal))
     return _IndexResult("invalid")
 
 

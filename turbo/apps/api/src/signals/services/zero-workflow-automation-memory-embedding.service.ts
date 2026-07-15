@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   embedZeroMemoryText,
   isValidMemoryEmbedding,
@@ -47,7 +47,7 @@ export async function loadWorkflowAutomationMemoryEmbedding(
 ): Promise<LoadedMemoryEmbedding> {
   const model = zeroMemoryEmbeddingModel();
   const queryHash = memoryEmbeddingContentHash({ model, text: args.query });
-  const loaded = await settle(
+  const loaded = await tapError(
     db
       .select({
         embeddingModel: zeroWorkflowAutomationMemoryEmbeddings.embeddingModel,
@@ -62,14 +62,16 @@ export async function loadWorkflowAutomationMemoryEmbedding(
         ),
       )
       .limit(1),
+    () => {
+      log.warn("Failed to read workflow automation memory embedding cache");
+    },
   );
 
   let cacheResult: MemoryEmbeddingCacheResult;
-  if (!loaded.ok) {
-    log.warn("Failed to read workflow automation memory embedding cache");
+  if (!loaded) {
     cacheResult = "miss_read_failed";
   } else {
-    const row = loaded.value[0];
+    const row = loaded[0];
     if (
       row?.embeddingModel === model &&
       row.queryHash === queryHash &&
@@ -83,12 +85,9 @@ export async function loadWorkflowAutomationMemoryEmbedding(
     cacheResult = cacheMissResult({ row, model, queryHash });
   }
 
-  const embeddingResult = await settle(embedZeroMemoryText(args.query));
-  if (!embeddingResult.ok) {
+  const embedded = await tapError(embedZeroMemoryText(args.query), () => {
     log.warn("Failed to embed workflow automation memory query");
-    return { embedding: null, cacheResult };
-  }
-  const embedded = embeddingResult.value;
+  });
   if (!embedded) {
     return { embedding: null, cacheResult };
   }
@@ -96,7 +95,7 @@ export async function loadWorkflowAutomationMemoryEmbedding(
     model: embedded.model,
     text: args.query,
   });
-  const persisted = await settle(
+  await tapError(
     db
       .insert(zeroWorkflowAutomationMemoryEmbeddings)
       .values({
@@ -113,11 +112,11 @@ export async function loadWorkflowAutomationMemoryEmbedding(
           embedding: [...embedded.embedding],
         },
       }),
+    () => {
+      log.warn("Failed to persist workflow automation memory embedding cache");
+      cacheResult = "miss_write_failed";
+    },
   );
-  if (!persisted.ok) {
-    log.warn("Failed to persist workflow automation memory embedding cache");
-    cacheResult = "miss_write_failed";
-  }
 
   return { embedding: embedded, cacheResult };
 }

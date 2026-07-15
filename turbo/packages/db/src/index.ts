@@ -106,6 +106,7 @@ import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
+import * as connectorCatalogSchema from "./schema/connector-catalog";
 
 export const schema = {
   ...userSchema,
@@ -216,6 +217,7 @@ export const schema = {
   ...notionEventSchema,
   ...googleCalendarEventSchema,
   ...googleWorkspaceEventSchema,
+  ...connectorCatalogSchema,
 };
 
 export type DatabaseSchema = typeof schema;

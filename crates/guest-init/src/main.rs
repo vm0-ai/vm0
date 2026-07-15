@@ -7,11 +7,16 @@
 //! PID 1 then enters a reap loop, waiting for the child to exit while also
 //! reaping orphaned zombie processes.
 //!
-//! This architecture cleanly separates concerns:
-//! - PID 1 only calls `waitpid(-1)`, which reaps any zombie (orphans + the child)
-//! - PID 2 (vsock-guest) calls `waitpid(pid)` for the commands it spawns
-//! - Since PID 2's children are not visible to PID 1's `waitpid(-1)` (they are
-//!   PID 2's children, not PID 1's), there is no ECHILD race condition.
+//! This architecture separates wait domains and supervision phases:
+//! - During normal supervision, PID 1 calls `waitpid(-1, WNOHANG)` to reap PID 2
+//!   and orphaned processes reparented to PID 1.
+//! - After escalating shutdown to SIGKILL, PID 1 switches to blocking
+//!   `waitpid(child_pid, 0)` to reap PID 2.
+//! - PID 2 (vsock-guest) calls `waitpid(pid)` for the commands it spawns. While
+//!   PID 2 owns those children, PID 1 cannot reap them, so the processes do not
+//!   race and PID 2 does not see `ECHILD` from PID 1's reaper.
+//! - PID 1's generic and targeted waits run sequentially in the same thread, so
+//!   they cannot race with each other.
 //!
 //! Startup sequence:
 //! 1. Initialize filesystem (mount /proc, /sys, set env vars)

@@ -1,4 +1,3 @@
-mod archive;
 mod config;
 mod download;
 mod fixtures;
