@@ -296,6 +296,26 @@ describe("realtime signals", () => {
     expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
   });
 
+  it("cleans up a payload subscription when channel attach fails", async () => {
+    mockSignedInUser();
+    const topic = "test:payload-subscribe-failure";
+
+    await context.store.set(setupRealtime$, context.signal);
+    context.mocks.ably.rejectNextSubscribe("Connection closed");
+
+    await expect(
+      context.store.set(
+        setAblyPayloadLoop$,
+        {
+          topic,
+          loopCommand$: keepAlivePayloadLoop$,
+        },
+        context.signal,
+      ),
+    ).resolves.toBeUndefined();
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  });
+
   it("reruns an active loop on reconnect", async () => {
     mockSignedInUser();
     const topic = "test:reconnect";

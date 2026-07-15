@@ -70,8 +70,15 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 const L = logger("TeamsDispatch");
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
   "Please connect your account to use Okou in this Teams workspace.";
-export const TEAMS_WELCOME_TEXT =
-  "Hi, I'm Okou. Use `help` to see commands, or `connect` to link this Teams workspace to Okou.";
+const TEAMS_SUPPORTED_COMMANDS_TEXT =
+  "`help`, `connect`, `disconnect`, `switch`, `model`";
+export const TEAMS_WELCOME_TEXT = [
+  "Hi, I'm Okou. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
+  "",
+  "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
+  "",
+  `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@Okou\` with a task or send a DM to work privately.`,
+].join("\n");
 const TEAMS_AGENT_PICKER_MAX_OPTIONS = 100;
 const TEAMS_MODEL_PICKER_MAX_OPTIONS = 100;
 const TEAMS_CARD_ACTION_KEY = "zeroTeamsAction";
@@ -234,7 +241,7 @@ function modelLabel(option: TeamsModelPickerOption): string {
 function parseTeamsBotCommand(prompt: string): TeamsBotCommand | null {
   const parts = prompt.trim().split(/\s+/u);
   const first = parts[0]?.toLowerCase().replace(/^\//u, "") ?? "";
-  const prefixed = first === "zero";
+  const prefixed = first === "zero" || first === "okou";
   const command = prefixed
     ? (parts[1]?.toLowerCase().replace(/^\//u, "") ?? "")
     : first;
@@ -1474,6 +1481,19 @@ function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
   return isTeamsDirectMessage(activity) || activity.mentionsRecipient;
 }
 
+function teamsValidationFallbackNotice(args: {
+  readonly command: TeamsBotCommand | null;
+  readonly isGreeting: boolean;
+}): TeamsMessageDispatchResult | null {
+  if (args.command === "help") {
+    return commandHelpNotice({ canSwitch: false, canModel: false });
+  }
+  if (args.isGreeting) {
+    return greetingNotice();
+  }
+  return null;
+}
+
 async function fetchTeamsPromptContext(args: {
   readonly activity: TeamsMessageActivity;
   readonly signal: AbortSignal;
@@ -2121,13 +2141,17 @@ export const dispatchTeamsMessageToAgent$ = command(
     }
 
     const cardAction = teamsCardAction(activity.value);
-    if (!cardAction && !shouldDispatchTeamsMessage(activity)) {
-      return { kind: "ignored" };
-    }
-
     const prompt = activity.text.trim();
     const command = cardAction ? null : parseTeamsBotCommand(prompt);
     const isGreeting = !cardAction && isTeamsBotGreeting(prompt);
+    if (!cardAction && !shouldDispatchTeamsMessage(activity)) {
+      return (
+        teamsValidationFallbackNotice({ command, isGreeting }) ?? {
+          kind: "ignored",
+        }
+      );
+    }
+
     const promptFiles = cardAction ? [] : teamsPromptFiles(activity);
     if (!prompt && promptFiles.length === 0 && !cardAction) {
       return {

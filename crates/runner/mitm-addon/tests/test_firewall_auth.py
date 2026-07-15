@@ -1206,7 +1206,7 @@ class TestHandleFirewallRequest:
         ],
         ids=["url-error", "socket-timeout", "connection-reset"],
     )
-    async def test_urlopen_transport_failure_returns_502(
+    async def test_auth_endpoint_transport_failure_returns_502(
         self,
         network_error: Exception,
         expected_message: str,
@@ -1220,7 +1220,7 @@ class TestHandleFirewallRequest:
         allow = _allow(api_entry)
 
         with (
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=network_error),
+            patch("firewall_auth_client._opener.open", side_effect=network_error),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1258,7 +1258,7 @@ class TestHandleFirewallRequest:
         mock_resp.read.return_value = b"not-json"
 
         with (
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1302,7 +1302,7 @@ class TestHandleFirewallRequest:
         )
 
         with (
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1341,7 +1341,7 @@ class TestHandleFirewallRequest:
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(response_body) - 1,
             ),
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1380,7 +1380,7 @@ class TestHandleFirewallRequest:
         mock_resp = _json_response({"headers": []})
 
         with (
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1777,6 +1777,26 @@ class TestMakeApiRequest:
         assert normalized_headers["x-client-type"] == "MitmAddon"
         assert normalized_headers["x-client-session-id"] == "runner-session-direct"
         uuid.UUID(normalized_headers["x-client-request-id"])
+
+    def test_marks_credentials_as_unredirected(self, mitm_ctx):
+        with (
+            mitm_ctx(),
+            patch.object(platform_api, "VERCEL_BYPASS", "secret-bypass-value"),
+        ):
+            req = platform_api.make_api_request(
+                "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+                b"{}",
+                "tok-xyz",
+            )
+
+        redirected_headers = {name.lower(): value for name, value in req.headers.items()}
+        unredirected_headers = {
+            name.lower(): value for name, value in req.unredirected_hdrs.items()
+        }
+        assert "authorization" not in redirected_headers
+        assert "x-vercel-protection-bypass" not in redirected_headers
+        assert unredirected_headers["authorization"] == "Bearer tok-xyz"
+        assert unredirected_headers["x-vercel-protection-bypass"] == "secret-bypass-value"
 
     @pytest.mark.parametrize(
         "url",
@@ -2285,15 +2305,45 @@ class TestFetchFirewallHeaders:
 
         assert endpoint.requests[0].headers["x-vercel-protection-bypass"] == "secret-bypass-value"
 
-    async def test_invalid_api_url_raises_before_urlopen(self):
+    @pytest.mark.parametrize("status", [301, 302, 303])
+    async def test_rejects_cross_origin_redirect_without_forwarding_credentials(
+        self,
+        status: int,
+        mitm_ctx,
+    ):
+        source = FakeAuthEndpoint()
+        target = FakeAuthEndpoint()
+
+        with target.run():
+            source.queue_response(
+                status,
+                headers=(("Location", f"{target.api_url}/redirected"),),
+            )
+            with (
+                source.run(),
+                mitm_ctx(api_url=source.api_url),
+                patch.object(platform_api, "VERCEL_BYPASS", "secret-bypass-value"),
+                pytest.raises(urllib.error.HTTPError) as exc_info,
+            ):
+                await auth_client.fetch_firewall_headers(_firewall_auth_request())
+
+        assert exc_info.value.code == status
+        assert source.request_count == 1
+        request = source.requests[0]
+        assert request.method == "POST"
+        assert request.headers["authorization"] == "Bearer tok-xyz"
+        assert request.headers["x-vercel-protection-bypass"] == "secret-bypass-value"
+        assert target.requests == ()
+
+    async def test_invalid_api_url_raises_before_open(self):
         with (
             patch.object(platform_api, "get_api_url", return_value="file:///etc/passwd"),
-            patch("firewall_auth_client.urllib.request.urlopen") as mock_urlopen,
+            patch("firewall_auth_client._opener.open") as mock_open,
             pytest.raises(ValueError, match="absolute http"),
         ):
             await auth_client.fetch_firewall_headers(_firewall_auth_request())
 
-        mock_urlopen.assert_not_called()
+        mock_open.assert_not_called()
 
     async def test_424_connector_not_configured_raises_custom_error(self, mitm_ctx):
         """Auth endpoint 424 CONNECTOR_NOT_CONFIGURED raises ConnectorNotConfiguredError."""
@@ -2639,7 +2689,7 @@ class TestFirewallAuthResponseBodyReader:
 
 class TestFetchFirewallHeadersResourceBoundary:
     def test_closes_response_on_success(self, mitm_ctx):
-        """Success path must close the urlopen response — FD leak guard (#10475)."""
+        """Success path must close the HTTP response — FD leak guard (#10475)."""
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
@@ -2647,7 +2697,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         with (
             mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
             auth_client._fetch_firewall_headers_sync(_firewall_auth_request(), "https://api.vm0.ai")
@@ -2667,7 +2717,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         with (
             mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch("firewall_auth_client._opener.open", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
@@ -2688,7 +2738,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         with (
             mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch("firewall_auth_client._opener.open", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
@@ -2723,7 +2773,7 @@ class TestFetchFirewallHeadersResourceBoundary:
                 len(error_body) - 1,
             ),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch("firewall_auth_client._opener.open", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(
                 auth_client.FirewallAuthResponseTooLargeError,
@@ -2769,7 +2819,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         with (
             mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch("firewall_auth_client._opener.open", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(expected_exception),
         ):

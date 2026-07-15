@@ -163,6 +163,16 @@ class FirewallAllow:
 
 
 @dataclass(frozen=True)
+class FirewallPolicyAllow:
+    vm_info: dict
+    firewall_allow: matching.FirewallAllow
+    kind: Literal["firewall_policy_allow"] = field(
+        init=False,
+        default="firewall_policy_allow",
+    )
+
+
+@dataclass(frozen=True)
 class PublicDestinationDenied:
     vm_info: dict
     public_destination_denial: PublicDestinationDenial
@@ -176,6 +186,7 @@ class PublicDestinationDenied:
 class Allow:
     vm_info: dict
     builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
+    is_asterisk_form: bool
     kind: Literal["allow"] = field(init=False, default="allow")
 
 
@@ -191,6 +202,7 @@ RequestClassification: TypeAlias = (
     | FirewallAmbiguous
     | FirewallBlock
     | FirewallAllow
+    | FirewallPolicyAllow
     | PublicDestinationDenied
     | Allow
 )
@@ -345,6 +357,7 @@ def classify_request(
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         return BrowserAllow(vm_info=vm_info)
 
+    is_asterisk_form = flow.request.path == "*"
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
     compiled_network_policies = registry_state.compiled_network_policies[client_ip]
     if compiled_firewalls:
@@ -354,6 +367,7 @@ def classify_request(
             compiled_firewalls,
             compiled_network_policies,
             connector_intent.from_flow(flow),
+            is_asterisk_form=is_asterisk_form,
         )
         if isinstance(result, matching.FirewallAmbiguous):
             return FirewallAmbiguous(
@@ -365,10 +379,15 @@ def classify_request(
                 vm_info=vm_info,
                 firewall_block=result,
             )
-        if isinstance(result, matching.FirewallAllow):
+        if isinstance(result, matching.FirewallAllow | matching.FirewallPolicyAllow):
+            firewall_allow = (
+                result.firewall_allow
+                if isinstance(result, matching.FirewallPolicyAllow)
+                else result
+            )
             public_destination_denial = _public_destination_denial(
                 flow,
-                result,
+                firewall_allow,
                 trusted_authority_host=trusted_authority.host,
                 defer_unresolved_hostnames=defer_unresolved_public_destination,
             )
@@ -377,9 +396,14 @@ def classify_request(
                     vm_info=vm_info,
                     public_destination_denial=public_destination_denial,
                 )
+            if isinstance(result, matching.FirewallPolicyAllow):
+                return FirewallPolicyAllow(
+                    vm_info=vm_info,
+                    firewall_allow=firewall_allow,
+                )
             return FirewallAllow(
                 vm_info=vm_info,
-                firewall_allow=result,
+                firewall_allow=firewall_allow,
                 builtin_firewall_catalog_snapshot=(
                     registry_state.builtin_firewall_catalog_snapshot
                 ),
@@ -388,6 +412,7 @@ def classify_request(
     return Allow(
         vm_info=vm_info,
         builtin_firewall_catalog_snapshot=registry_state.builtin_firewall_catalog_snapshot,
+        is_asterisk_form=is_asterisk_form,
     )
 
 
@@ -399,13 +424,14 @@ def classification_needs_request_timing(classification: RequestClassification) -
         "firewall_ambiguous",
         "firewall_block",
         "firewall_allow",
+        "firewall_policy_allow",
         "public_destination_denied",
         "allow",
     )
 
 
 def should_stream_capture_request(classification: RequestClassification) -> bool:
-    if not isinstance(classification, ApiAllow | BrowserAllow | Allow):
+    if not isinstance(classification, ApiAllow | BrowserAllow | FirewallPolicyAllow | Allow):
         return False
     return bool(classification.vm_info.get("captureNetworkBodies", False))
 

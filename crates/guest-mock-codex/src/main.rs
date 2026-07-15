@@ -18,8 +18,8 @@
 //!   guest-mock-codex [-c <config>] exec [--json] [--sandbox <mode>] [--skip-git-repo-check]
 //!                          [-C <dir>] [-m <model>]
 //!                          [--append-system-prompt <s>] [--last]
-//!                          [-- <prompt>]
-//!   guest-mock-codex [-c <config>] exec resume <canonical-uuid-thread-id> [-- <prompt>]
+//!                          [-- <prompt|->]
+//!   guest-mock-codex [-c <config>] exec resume <canonical-uuid-thread-id> [-- <prompt|->]
 //!   guest-mock-codex [-c <config>] app-server --listen stdio://
 //!   guest-mock-codex [-c <config>] app-server --stdio
 //! ```
@@ -40,7 +40,8 @@ use clap::{Parser, Subcommand};
 use guest_mock_codex::{
     join_prompt_cow, lookup_fixture, run_app_server, run_fixture, run_new, run_resume,
 };
-use std::io;
+use std::borrow::Cow;
+use std::io::{self, Read};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -134,20 +135,37 @@ fn main() -> io::Result<()> {
             sub: Some(ExecSub::Resume { thread_id, prompt }),
             ..
         }) => {
+            let prompt = resolve_exec_prompt(&prompt)?;
             if maybe_run_fixture()? {
                 return Ok(());
             }
-            let joined_prompt = join_prompt_cow(&prompt);
-            run_resume(&thread_id, joined_prompt.as_ref())
+            run_resume(&thread_id, prompt.as_ref())
         }
         Cmd::Exec(ExecArgs { prompt, .. }) => {
+            let prompt = resolve_exec_prompt(&prompt)?;
             if maybe_run_fixture()? {
                 return Ok(());
             }
-            let joined_prompt = join_prompt_cow(&prompt);
-            run_new(joined_prompt.as_ref())
+            run_new(prompt.as_ref())
         }
     }
+}
+
+fn resolve_exec_prompt(parts: &[String]) -> io::Result<Cow<'_, str>> {
+    let prompt = join_prompt_cow(parts);
+    if prompt != "-" {
+        return Ok(prompt);
+    }
+
+    let mut stdin_prompt = String::new();
+    io::stdin().read_to_string(&mut stdin_prompt)?;
+    if stdin_prompt.trim().is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "No prompt provided via stdin.",
+        ));
+    }
+    Ok(Cow::Owned(stdin_prompt))
 }
 
 fn maybe_run_fixture() -> io::Result<bool> {

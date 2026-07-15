@@ -224,7 +224,6 @@ export {
   webhookGoogleCalendarContract,
   webhookGoogleWorkspaceEventsContract,
   webhookWorkflowAutomationContract,
-  legacyWebhookWorkflowAutomationContract,
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
@@ -260,7 +259,6 @@ export {
   type WebhookGmailContract,
   type WebhookGoogleCalendarContract,
   type WebhookGoogleWorkspaceEventsContract,
-  type LegacyWebhookWorkflowAutomationContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
 } from "./webhooks";
@@ -459,7 +457,6 @@ export {
   cronDrainEmailOutboxContract,
   cronDrainEmailOutboxResponseSchema,
   cronExecuteWorkflowAutomationsContract,
-  legacyCronWorkflowAutomationsContract,
   cronRenewGmailWatchesContract,
   cronRenewGmailWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesContract,
@@ -1023,7 +1020,6 @@ export {
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
   zeroWorkflowAutomationsContract,
-  legacyZeroWorkflowAutomationsContract,
   type ZeroWorkflowVisibility,
   type WorkflowFileEntry,
   type WorkflowFileMetadata,
@@ -1051,7 +1047,6 @@ export {
   type ZeroWorkflowsDetailContract,
   type ZeroWorkflowVisibilityContract,
   type ZeroWorkflowAutomationsContract,
-  type LegacyZeroWorkflowAutomationsContract,
 } from "./zero-workflows";
 export {
   zeroUserConnectorsContract,
@@ -1418,6 +1413,28 @@ export {
   type ZeroScrapeResponse,
 } from "./zero-scrape";
 export {
+  ZERO_WEB_SEARCH_DEFAULT_LIMIT,
+  ZERO_WEB_SEARCH_MAX_DATE_CHARS,
+  ZERO_WEB_SEARCH_MAX_DOMAIN_CHARS,
+  ZERO_WEB_SEARCH_MAX_DOMAINS,
+  ZERO_WEB_SEARCH_MAX_LIMIT,
+  ZERO_WEB_SEARCH_MAX_QUERY_CHARS,
+  ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
+  ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
+  ZERO_WEB_SEARCH_MAX_URL_CHARS,
+  zeroWebSearchContract,
+  zeroWebSearchDomainSchema,
+  zeroWebSearchRecencySchema,
+  zeroWebSearchRequestSchema,
+  zeroWebSearchResponseSchema,
+  zeroWebSearchResultSchema,
+  type ZeroWebSearchContract,
+  type ZeroWebSearchRecency,
+  type ZeroWebSearchRequest,
+  type ZeroWebSearchResponse,
+  type ZeroWebSearchResult,
+} from "./zero-web-search";
+export {
   zeroUsageMembersContract,
   type ZeroUsageMembersContract,
   // Inferred types
@@ -1671,6 +1688,16 @@ export {
   type ZeroImageShareXRequest,
   type ZeroImageShareXResponse,
 } from "./zero-image-share-x";
+export {
+  zeroMailContract,
+  zeroMailDraftSchema,
+  zeroMailDraftStatusSchema,
+  zeroMailProviderSchema,
+  type ZeroMailContract,
+  type ZeroMailDraft,
+  type ZeroMailDraftStatus,
+  type ZeroMailProvider,
+} from "./zero-mail";
 export {
   zeroBankingContract,
   zeroBankingProviderSchema,

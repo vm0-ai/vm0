@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.17.57](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.56...vsock-host-v0.17.57) (2026-07-15)
+
+
+### Bug Fixes
+
+* **vsock-host:** retain temp cleanup ownership during creation ([#21632](https://github.com/vm0-ai/vm0/issues/21632)) ([1680c6f](https://github.com/vm0-ai/vm0/commit/1680c6fea25b3ffb012a08ffbe7e0bb627a068ac))
+
+## [0.17.56](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.55...vsock-host-v0.17.56) (2026-07-15)
+
+
+### Bug Fixes
+
+* keep guest responsive during file writes ([#21556](https://github.com/vm0-ai/vm0/issues/21556)) ([28de816](https://github.com/vm0-ai/vm0/commit/28de81622ea55b1b67317dff3f6bd1e5c542962c))
+
+## [0.17.55](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.54...vsock-host-v0.17.55) (2026-07-15)
+
 ## [0.17.54](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.53...vsock-host-v0.17.54) (2026-07-14)
 
 

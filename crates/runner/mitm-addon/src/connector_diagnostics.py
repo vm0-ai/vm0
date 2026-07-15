@@ -117,12 +117,14 @@ def record_allow_context(
     Request-header callers use this before carrying a streamed ``allow``
     classification into ``request()``; request callers use it before immediate
     or deferred diagnostic resolution. A browser flow, existing diagnostic, or
-    incomplete original-URL context is a no-op.
+    asterisk-form target, or incomplete original-URL context is a no-op.
 
     On success, the flow records diagnostic eligibility, active firewall names,
     and one classification-compatible catalog snapshot. Response and error
     phases resolve candidates only from that pinned snapshot.
     """
+    if classification.is_asterisk_form:
+        return
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         return
     if metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE in flow.metadata:

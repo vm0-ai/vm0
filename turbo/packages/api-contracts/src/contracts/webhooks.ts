@@ -224,18 +224,6 @@ export const webhookWorkflowAutomationContract = c.router({
   },
 });
 
-/**
- * Temporary legacy alias for workflow automation inbound webhooks. Remove
- * after the sunset window in #21408; this is not a permanent shim.
- */
-export const legacyWebhookWorkflowAutomationContract = c.router({
-  post: {
-    ...workflowAutomationWebhookPostRoute,
-    path: "/api/webhooks/workflow-triggers/:token",
-    summary: "Handle inbound automation webhooks through the legacy path",
-  },
-});
-
 export const webhookBuiltInGenerationFalContract = c.router({
   post: {
     method: "POST",
@@ -904,8 +892,6 @@ export type WebhookGoogleWorkspaceEventsContract =
 export type WebhookStripeContract = typeof webhookStripeContract;
 export type WebhookWorkflowAutomationContract =
   typeof webhookWorkflowAutomationContract;
-export type LegacyWebhookWorkflowAutomationContract =
-  typeof legacyWebhookWorkflowAutomationContract;
 export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookBuiltInGenerationBytePlusContract =
@@ -936,6 +922,7 @@ const webhookUsageEventItemSchema = z
     idempotencyKey: z.uuid(),
     kind: z.enum(["connector", "model", "image"]),
     provider: z.string().min(1).max(100),
+    billingSku: z.string().min(1).max(100).optional(),
     category: z.string().min(1).max(100),
     quantity: z.number().int().min(0),
   })

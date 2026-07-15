@@ -793,6 +793,9 @@ fn log_job_execution_failed(
                 resource_failure_kind = resource_fields.resource_failure_kind,
                 guest_root_fs_used_percent = resource_fields.guest_root_fs_used_percent,
                 guest_root_fs_available_kb = resource_fields.guest_root_fs_available_kb,
+                guest_root_fs_inode_used_percent =
+                    resource_fields.guest_root_fs_inode_used_percent,
+                guest_root_fs_available_inodes = resource_fields.guest_root_fs_available_inodes,
                 guest_workspace_fs_used_percent = resource_fields.guest_workspace_fs_used_percent,
                 guest_memory_available_mb = resource_fields.guest_memory_available_mb,
                 $message
@@ -817,6 +820,8 @@ struct JobResourceLogFields {
     resource_failure_kind: Option<&'static str>,
     guest_root_fs_used_percent: Option<u64>,
     guest_root_fs_available_kb: Option<u64>,
+    guest_root_fs_inode_used_percent: Option<u64>,
+    guest_root_fs_available_inodes: Option<u64>,
     guest_workspace_fs_used_percent: Option<u64>,
     guest_memory_available_mb: Option<u64>,
 }
@@ -887,6 +892,11 @@ impl From<Option<executor::ResourceFailureDiagnostics>> for JobResourceLogFields
                 .map(u64::from),
             guest_root_fs_available_kb: diagnostics
                 .and_then(|diagnostics| diagnostics.guest_root_fs_available_kb),
+            guest_root_fs_inode_used_percent: diagnostics
+                .and_then(|diagnostics| diagnostics.guest_root_fs_inode_used_percent)
+                .map(u64::from),
+            guest_root_fs_available_inodes: diagnostics
+                .and_then(|diagnostics| diagnostics.guest_root_fs_available_inodes),
             guest_workspace_fs_used_percent: diagnostics
                 .and_then(|diagnostics| diagnostics.guest_workspace_fs_used_percent)
                 .map(u64::from),
@@ -980,7 +990,6 @@ mod tests {
         SessionHistoryStatus,
     };
     use sandbox::SandboxId;
-    use sandbox_mock::MockSandbox;
     use tracing::Level;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -993,6 +1002,7 @@ mod tests {
         IdlePool, IdlePoolConfig, IdleUnparkResult, ParkResult,
         test_support::ParkedIdleCandidateBuilder,
     };
+    use crate::idle_reuse_preparation::mock_sandbox_ready_for_idle_reuse;
     use crate::ids::RunId;
     use crate::provider::JobCandidate;
     use crate::resource_budget::ResourceBudget;
@@ -1202,7 +1212,7 @@ mod tests {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
-                sandbox: Some(Box::new(MockSandbox::new(sandbox_name))),
+                sandbox: Some(Box::new(mock_sandbox_ready_for_idle_reuse(sandbox_name))),
                 source_ip: "10.0.0.1".into(),
                 network_log_session: None,
                 workspace_image: None,
@@ -1682,6 +1692,8 @@ mod tests {
                 failure_kind: Some(executor::ResourceFailureKind::GuestRootFilesystemFull),
                 guest_root_fs_used_percent: Some(100),
                 guest_root_fs_available_kb: Some(20),
+                guest_root_fs_inode_used_percent: Some(99),
+                guest_root_fs_available_inodes: Some(42),
                 guest_workspace_fs_used_percent: Some(1),
                 guest_memory_available_mb: Some(624),
             }));
@@ -1703,6 +1715,8 @@ mod tests {
         );
         assert_field_eq(&event, "guest_root_fs_used_percent", "100");
         assert_field_eq(&event, "guest_root_fs_available_kb", "20");
+        assert_field_eq(&event, "guest_root_fs_inode_used_percent", "99");
+        assert_field_eq(&event, "guest_root_fs_available_inodes", "42");
         assert_field_eq(&event, "guest_workspace_fs_used_percent", "1");
         assert_field_eq(&event, "guest_memory_available_mb", "624");
     }
@@ -1768,6 +1782,8 @@ mod tests {
             failure_kind: Some(executor::ResourceFailureKind::GuestRootFilesystemFull),
             guest_root_fs_used_percent: Some(100),
             guest_root_fs_available_kb: Some(20),
+            guest_root_fs_inode_used_percent: Some(99),
+            guest_root_fs_available_inodes: Some(42),
             guest_workspace_fs_used_percent: Some(1),
             guest_memory_available_mb: Some(624),
         };

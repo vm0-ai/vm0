@@ -136,7 +136,7 @@ export const apiWorkflowsHandlers = [
         };
       }),
       fileContents: body.files ?? [],
-      triggers: [],
+      automations: [],
     };
     mockWorkflows = [...mockWorkflows, created];
     return respond(201, summary(created));
@@ -237,7 +237,7 @@ export const apiWorkflowsHandlers = [
       updatedByUserId: "test-user-123",
       createdAt: now,
       updatedAt: now,
-      triggers: source.triggers.map((automation) => {
+      automations: source.automations.map((automation) => {
         return {
           ...automation,
           id: crypto.randomUUID(),
@@ -328,14 +328,14 @@ function updateDetailAutomation(
   ) => ZeroWorkflowAutomationSummary,
 ): ZeroWorkflowAutomationSummary | null {
   for (const workflow of mockWorkflows) {
-    const automationIndex = workflow.triggers.findIndex((automation) => {
+    const automationIndex = workflow.automations.findIndex((automation) => {
       return automation.id === automationId;
     });
     if (automationIndex === -1) {
       continue;
     }
-    const updated = apply(workflow.triggers[automationIndex]!);
-    workflow.triggers = workflow.triggers.map((automation) => {
+    const updated = apply(workflow.automations[automationIndex]!);
+    workflow.automations = workflow.automations.map((automation) => {
       return automation.id === automationId ? updated : automation;
     });
     return updated;
@@ -380,7 +380,7 @@ function mockWorkflowAutomationExists(automationId: string): boolean {
       return automation.id === automationId;
     }) ||
     mockWorkflows.some((workflow) => {
-      return workflow.triggers.some((automation) => {
+      return workflow.automations.some((automation) => {
         return automation.id === automationId;
       });
     })
@@ -407,7 +407,7 @@ function workflowAutomationListHandlers() {
     mockApi(zeroWorkflowAutomationsContract.listWorkspace, ({ respond }) => {
       const entries: ZeroWorkflowAutomationsListEntry[] = mockWorkflows.flatMap(
         (workflow) => {
-          return workflow.triggers.map((automation) => {
+          return workflow.automations.map((automation) => {
             return {
               workflow: summary(workflow),
               automation: publicWorkflowAutomation(automation),
@@ -427,7 +427,7 @@ function workflowAutomationListHandlers() {
       if (!workflow) {
         return respond(404, notFound(params.workflowId));
       }
-      return respond(200, workflow.triggers.map(publicWorkflowAutomation));
+      return respond(200, workflow.automations.map(publicWorkflowAutomation));
     }),
 
     mockApi(
@@ -660,7 +660,7 @@ function workflowAutomationCreateHandlers() {
           base,
           body,
         );
-        workflow.triggers = [...workflow.triggers, automation];
+        workflow.automations = [...workflow.automations, automation];
         return respond(201, automation);
       },
     ),
@@ -710,7 +710,7 @@ function workflowAutomationRunHandlers() {
       zeroWorkflowAutomationsContract.revealWebhookSecret,
       ({ params, respond }) => {
         for (const workflow of mockWorkflows) {
-          const detailAutomation = workflow.triggers.find((item) => {
+          const detailAutomation = workflow.automations.find((item) => {
             return item.id === params.id;
           });
           if (

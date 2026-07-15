@@ -1,5 +1,161 @@
 # Changelog
 
+## [8.436.1](https://github.com/vm0-ai/vm0/compare/core-v8.436.0...core-v8.436.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* require static DOM for HTML presentations ([#21625](https://github.com/vm0-ai/vm0/issues/21625)) ([f55e3a9](https://github.com/vm0-ai/vm0/commit/f55e3a930869187b0195d1dc1eaf967f3eed68ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.196.0
+    * @vm0/connectors bumped to 1.165.0
+
+## [8.436.0](https://github.com/vm0-ai/vm0/compare/core-v8.435.1...core-v8.436.0) (2026-07-15)
+
+
+### Features
+
+* add artifact favorite api ([#20837](https://github.com/vm0-ai/vm0/issues/20837)) ([5c935ea](https://github.com/vm0-ai/vm0/commit/5c935eab0bc13098bbf06a7503939722a257b5f5))
+* add artifact favorite controls ([#20838](https://github.com/vm0-ai/vm0/issues/20838)) ([c7c0bee](https://github.com/vm0-ai/vm0/commit/c7c0bee953d6268e572bfa254a6cdd7bcef86774))
+* add dot matrix and frosted scatter website templates ([#20944](https://github.com/vm0-ai/vm0/issues/20944)) ([ab6471c](https://github.com/vm0-ai/vm0/commit/ab6471c0eace009cad8aa87c99f9b1f830a4ade3))
+* add gated google contacts and forms connectors ([#21242](https://github.com/vm0-ai/vm0/issues/21242)) ([3b0d03f](https://github.com/vm0-ai/vm0/commit/3b0d03fa432bad1cb81c9d34dfebcdcf66d8229d))
+* add gpt-5.6 model support ([#20841](https://github.com/vm0-ai/vm0/issues/20841)) ([70d551f](https://github.com/vm0-ai/vm0/commit/70d551f731976130af4a640d571ac2aa2708e100))
+* add managed perplexity web search ([#21466](https://github.com/vm0-ai/vm0/issues/21466)) ([ca4786b](https://github.com/vm0-ai/vm0/commit/ca4786b58cb9af5778bf5f66d7843870a5d6a9d8))
+* add managed zero scrape ([#20778](https://github.com/vm0-ai/vm0/issues/20778)) ([4e72f67](https://github.com/vm0-ai/vm0/commit/4e72f67713b096f72ba4cab591c440906783e68f))
+* add manual connector readiness checks to workflow settings ([#20913](https://github.com/vm0-ai/vm0/issues/20913)) ([98d604b](https://github.com/vm0-ai/vm0/commit/98d604b20841ef60e482e207416b03d056c1cb1f))
+* add nine feature-gated business connectors ([#21277](https://github.com/vm0-ai/vm0/issues/21277)) ([5f08ac9](https://github.com/vm0-ai/vm0/commit/5f08ac9bc73515b1b483114835b26e210b14265b))
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+* add nintendo switch parental controls connector ([#21016](https://github.com/vm0-ai/vm0/issues/21016)) ([a06a01c](https://github.com/vm0-ai/vm0/commit/a06a01ce0798d7d38efd183345c1559c1bdd7bc5))
+* add per-workflow trigger event queue with serial drain behind feature switch ([#20882](https://github.com/vm0-ai/vm0/issues/20882)) ([3aec4a8](https://github.com/vm0-ai/vm0/commit/3aec4a898c6ff7891d9dedb6713efbbfbe244412))
+* add persistent zero mail review cards ([#21458](https://github.com/vm0-ai/vm0/issues/21458)) ([4f4b056](https://github.com/vm0-ai/vm0/commit/4f4b0562dd32800e5fc6adbc75fd4a8f4cf2444a))
+* **chat:** preserve sessions across model family switches ([#21544](https://github.com/vm0-ai/vm0/issues/21544)) ([d4cbf9f](https://github.com/vm0-ai/vm0/commit/d4cbf9f1193c009bc86668012ffb3b98a0e5289e))
+* **cli:** pull refreshed presentation runbooks ([#21322](https://github.com/vm0-ai/vm0/issues/21322)) ([5ad6944](https://github.com/vm0-ai/vm0/commit/5ad6944d6f66702a3a5a252c4d0d41f8fc5a6d00))
+* **codex:** enable fast mode for gpt-5.6 models ([#21344](https://github.com/vm0-ai/vm0/issues/21344)) ([fb11b7e](https://github.com/vm0-ai/vm0/commit/fb11b7e0a09bcff1e6ee0c2c55f88b3cc3056542))
+* **connectors:** make nintendo connectors generally available ([#21526](https://github.com/vm0-ai/vm0/issues/21526)) ([17975ab](https://github.com/vm0-ai/vm0/commit/17975abc762f8909990b8be5db128937123355b5))
+* enable chat message queue for all users ([#21494](https://github.com/vm0-ai/vm0/issues/21494)) ([1cfe5d4](https://github.com/vm0-ai/vm0/commit/1cfe5d4511f61b142c65243b9ab3468967845ce6))
+* enable website templates for staff org ([#21206](https://github.com/vm0-ai/vm0/issues/21206)) ([61ec5de](https://github.com/vm0-ai/vm0/commit/61ec5deffb5943aa3695b8e614862cb1b5a554fe))
+* generate poster-frame previews for video artifacts ([#20831](https://github.com/vm0-ai/vm0/issues/20831)) ([f14a997](https://github.com/vm0-ai/vm0/commit/f14a997e3d3abf8f95066a5869475b20fe959d9c))
+* graduate image artifact keyboard navigation ([#21273](https://github.com/vm0-ai/vm0/issues/21273)) ([fcf0055](https://github.com/vm0-ai/vm0/commit/fcf005540facf149885795ddd50eea9cb085dd41))
+* make microsoft and outlook connectors generally available ([#21401](https://github.com/vm0-ai/vm0/issues/21401)) ([3aa658f](https://github.com/vm0-ai/vm0/commit/3aa658f8cf655bd22d84331678db801c914a5541))
+* **platform:** suggest chat threads from @ mentions ([#21575](https://github.com/vm0-ai/vm0/issues/21575)) ([d1e8d4a](https://github.com/vm0-ai/vm0/commit/d1e8d4af2179e8d02c0a555428c180814312f9e4))
+* queue-first user message dispatch on chat_message_queue behind a feature switch ([#21368](https://github.com/vm0-ai/vm0/issues/21368)) ([791774d](https://github.com/vm0-ai/vm0/commit/791774dad8dca817b273c55b580e6e1a783970b8))
+* render static preview images for html/website artifacts ([#20814](https://github.com/vm0-ai/vm0/issues/20814)) ([3b52479](https://github.com/vm0-ai/vm0/commit/3b52479f8c12e00c55b536a4c279809a75ec80ec))
+* **workflows:** enable webhook trigger creation globally ([#21294](https://github.com/vm0-ai/vm0/issues/21294)) ([515f996](https://github.com/vm0-ai/vm0/commit/515f9963e06ecc1a51c166ff0ead0d7135820512))
+
+
+### Bug Fixes
+
+* disable chat message queue by default ([#21600](https://github.com/vm0-ai/vm0/issues/21600)) ([837997d](https://github.com/vm0-ai/vm0/commit/837997d45b854d0e19827ad3e8fdef94fb11e344))
+* refresh frosted scatter archive ([#20972](https://github.com/vm0-ai/vm0/issues/20972)) ([518cccc](https://github.com/vm0-ai/vm0/commit/518cccc4d4231a3009319381269eaf19fd8a18a5))
+* require static DOM for HTML presentations ([#21625](https://github.com/vm0-ai/vm0/issues/21625)) ([f55e3a9](https://github.com/vm0-ai/vm0/commit/f55e3a930869187b0195d1dc1eaf967f3eed68ab))
+
+
+### Refactoring
+
+* **api:** remove legacy automation source compatibility ([#21374](https://github.com/vm0-ai/vm0/issues/21374)) ([c574b5c](https://github.com/vm0-ai/vm0/commit/c574b5cf3c69cef20386db3560202a785f5c87f3))
+* **contracts:** canonicalize workflow automation schemas ([#21488](https://github.com/vm0-ai/vm0/issues/21488)) ([24acf1b](https://github.com/vm0-ai/vm0/commit/24acf1b2028a7d8b43555796d3b881f1c27e6d74))
+* guard workflow automation terminology ([#21500](https://github.com/vm0-ai/vm0/issues/21500)) ([bc290f8](https://github.com/vm0-ai/vm0/commit/bc290f83b5ad4b54630a969c5e282645f523c05a))
+* read staff plan limits from org entitlements ([#21398](https://github.com/vm0-ai/vm0/issues/21398)) ([dbf5a61](https://github.com/vm0-ai/vm0/commit/dbf5a612bf2431b3b56c6a67ac2f6d45aba235df))
+* retire artifact video preview feature switch ([#21276](https://github.com/vm0-ai/vm0/issues/21276)) ([700d3cc](https://github.com/vm0-ai/vm0/commit/700d3cc983b376f6ec75e6617aba1da95b60f56c))
+* roll out artifact favorites and retire the switch ([#21293](https://github.com/vm0-ai/vm0/issues/21293)) ([20accfa](https://github.com/vm0-ai/vm0/commit/20accfa64190f6c04596dda2e9879de3e5d7b339))
+* **workflows:** rename notion automation switch with rollout compatibility ([#21446](https://github.com/vm0-ai/vm0/issues/21446)) ([3a1e851](https://github.com/vm0-ai/vm0/commit/3a1e8517a3b8c904067b48166067fe672cb051c6))
+* **workflows:** retire webhook trigger rollout switch ([#21332](https://github.com/vm0-ai/vm0/issues/21332)) ([517a7c3](https://github.com/vm0-ai/vm0/commit/517a7c34646baeb1c13cef8b49f0b84e00a8b505))
+
+
+### Performance Improvements
+
+* **platform:** isolate chat and sidebar render subscriptions ([#21167](https://github.com/vm0-ai/vm0/issues/21167)) ([3b744e2](https://github.com/vm0-ai/vm0/commit/3b744e2f33baaa994cb448e70ce04dda775969b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.195.0
+    * @vm0/connectors bumped to 1.164.0
+
+## [8.435.1](https://github.com/vm0-ai/vm0/compare/core-v8.435.0...core-v8.435.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* disable chat message queue by default ([#21600](https://github.com/vm0-ai/vm0/issues/21600)) ([837997d](https://github.com/vm0-ai/vm0/commit/837997d45b854d0e19827ad3e8fdef94fb11e344))
+
+## [8.435.0](https://github.com/vm0-ai/vm0/compare/core-v8.434.1...core-v8.435.0) (2026-07-15)
+
+
+### Features
+
+* **platform:** suggest chat threads from @ mentions ([#21575](https://github.com/vm0-ai/vm0/issues/21575)) ([d1e8d4a](https://github.com/vm0-ai/vm0/commit/d1e8d4af2179e8d02c0a555428c180814312f9e4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.6
+    * @vm0/connectors bumped to 1.163.0
+
+## [8.434.1](https://github.com/vm0-ai/vm0/compare/core-v8.434.0...core-v8.434.1) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.5
+
+## [8.434.0](https://github.com/vm0-ai/vm0/compare/core-v8.433.0...core-v8.434.0) (2026-07-15)
+
+
+### Features
+
+* **chat:** preserve sessions across model family switches ([#21544](https://github.com/vm0-ai/vm0/issues/21544)) ([d4cbf9f](https://github.com/vm0-ai/vm0/commit/d4cbf9f1193c009bc86668012ffb3b98a0e5289e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.4
+    * @vm0/connectors bumped to 1.162.0
+
+## [8.433.0](https://github.com/vm0-ai/vm0/compare/core-v8.432.0...core-v8.433.0) (2026-07-15)
+
+
+### Features
+
+* **connectors:** make nintendo connectors generally available ([#21526](https://github.com/vm0-ai/vm0/issues/21526)) ([17975ab](https://github.com/vm0-ai/vm0/commit/17975abc762f8909990b8be5db128937123355b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.3
+    * @vm0/connectors bumped to 1.161.0
+
+## [8.432.0](https://github.com/vm0-ai/vm0/compare/core-v8.431.4...core-v8.432.0) (2026-07-15)
+
+
+### Features
+
+* enable chat message queue for all users ([#21494](https://github.com/vm0-ai/vm0/issues/21494)) ([1cfe5d4](https://github.com/vm0-ai/vm0/commit/1cfe5d4511f61b142c65243b9ab3468967845ce6))
+
+## [8.431.4](https://github.com/vm0-ai/vm0/compare/core-v8.431.3...core-v8.431.4) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.2
+
 ## [8.431.3](https://github.com/vm0-ai/vm0/compare/core-v8.431.2...core-v8.431.3) (2026-07-14)
 
 

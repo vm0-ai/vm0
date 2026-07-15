@@ -3,6 +3,8 @@ use super::*;
 use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
 use std::sync::Arc;
 
+pub(super) const TEST_TEMPLATE_DISK_BYTES: u64 = 128 * 1024 * 1024;
+
 #[derive(clap::Parser)]
 pub(super) struct TestBuildCli {
     #[command(flatten)]
@@ -62,7 +64,7 @@ pub(super) fn template_input<'a>(
         paths: home,
         template_hash: "test-template-hash",
         cache,
-        rootfs_disk_mb: 128,
+        rootfs_disk_mb: u32::try_from(TEST_TEMPLATE_DISK_BYTES / 1024 / 1024).unwrap(),
     }
 }
 
@@ -126,7 +128,7 @@ done
 if [[ -z "$rootfs" || ! -f "$rootfs" ]]; then
   exit 2
 fi
-if [[ "$(cat "$rootfs")" == "verify-fail" ]]; then
+if [[ "$(head -c 11 "$rootfs")" == "verify-fail" ]]; then
   exit 1
 fi
 
@@ -146,20 +148,34 @@ printf called >> "$script_dir/verify-rootfs-called"
 }
 
 pub(super) async fn template_archive_bytes(content: &[u8]) -> Vec<u8> {
+    assert!(content.len() <= 512);
     let content = content.to_vec();
     tokio::task::spawn_blocking(move || {
-        let encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
-        let mut archive = tar::Builder::new(encoder);
         let mut header = tar::Header::new_gnu();
-        header.set_size(u64::try_from(content.len()).unwrap());
+        header.set_path(TEMPLATE_FILE).unwrap();
+        header.set_size(1024);
         header.set_mode(0o644);
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_entry_type(tar::EntryType::GNUSparse);
+        let gnu = header.as_gnu_mut().unwrap();
+        gnu.set_real_size(TEST_TEMPLATE_DISK_BYTES);
+        gnu.sparse[0].set_offset(0);
+        gnu.sparse[0].set_length(512);
+        gnu.sparse[1].set_offset(TEST_TEMPLATE_DISK_BYTES - 512);
+        gnu.sparse[1].set_length(512);
         header.set_cksum();
-        let mut reader = content.as_slice();
-        archive
-            .append_data(&mut header, TEMPLATE_FILE, &mut reader)
-            .unwrap();
-        archive.finish().unwrap();
-        let encoder = archive.into_inner().unwrap();
+
+        let mut first_extent = [0u8; 512];
+        first_extent[..content.len()].copy_from_slice(&content);
+        let mut raw = Vec::with_capacity(512 + 1024 + 1024);
+        raw.extend_from_slice(header.as_bytes());
+        raw.extend_from_slice(&first_extent);
+        raw.extend_from_slice(&[0u8; 512]);
+        raw.extend_from_slice(&[0u8; 1024]);
+
+        let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
+        std::io::Write::write_all(&mut encoder, &raw).unwrap();
         encoder.finish().unwrap()
     })
     .await

@@ -53,7 +53,7 @@ import {
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
 import { now, nowDate } from "../external/time";
-import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
+import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
@@ -437,17 +437,20 @@ async function configureTelegramBot(args: {
   readonly webhookSecret: string;
   readonly agentName: string;
 }): Promise<ReturnType<typeof badGateway> | undefined> {
-  const webhookResult = await settle(
-    setWebhook(
-      args.botToken,
-      buildTelegramWebhookUrl(args.telegramBotId),
-      args.webhookSecret,
-    ),
+  const webhookConfigured = await tapError(
+    (async () => {
+      await setWebhook(
+        args.botToken,
+        buildTelegramWebhookUrl(args.telegramBotId),
+        args.webhookSecret,
+      );
+      return true;
+    })(),
+    (error) => {
+      log.error("Failed to set Telegram webhook", { error });
+    },
   );
-  if (!webhookResult.ok) {
-    log.error("Failed to set Telegram webhook", {
-      error: webhookResult.error,
-    });
+  if (!webhookConfigured) {
     return badGateway("Failed to register webhook with Telegram");
   }
 
@@ -615,16 +618,16 @@ export const registerTelegramBot$ = command(
       return registerBodyError(bodyResult.response.body.error.message);
     }
 
-    const botInfoResult = await settle(getMe(bodyResult.data.botToken));
+    const botInfo = await tapError(getMe(bodyResult.data.botToken));
     signal.throwIfAborted();
-    if (!botInfoResult.ok) {
+    if (!botInfo) {
       return badRequest(
         "Invalid bot token. Please verify your token with @BotFather.",
       );
     }
 
     const db = set(writeDb$);
-    const telegramBotId = String(botInfoResult.value.id);
+    const telegramBotId = String(botInfo.id);
     if (
       bodyResult.data.reinstallBotId &&
       bodyResult.data.reinstallBotId !== telegramBotId
@@ -648,7 +651,7 @@ export const registerTelegramBot$ = command(
           db,
           existing,
           body: bodyResult.data,
-          botInfo: botInfoResult.value,
+          botInfo,
           auth,
         },
         signal,
@@ -679,7 +682,7 @@ export const registerTelegramBot$ = command(
       .insert(telegramInstallations)
       .values({
         telegramBotId,
-        botUsername: botInfoResult.value.username,
+        botUsername: botInfo.username,
         encryptedBotToken: await encryptPersistentSecretValue(
           bodyResult.data.botToken,
           featureSwitchContext,
@@ -766,20 +769,19 @@ export const setupTelegramStatus$ = command(
       return badRequest("botToken is required");
     }
 
-    const botInfoResult = await settle(getMe(bodyResult.data.botToken));
-    signal.throwIfAborted();
-    if (!botInfoResult.ok) {
-      if (!isInvalidTelegramTokenError(botInfoResult.error)) {
-        log.warn("Unable to verify Telegram setup status", {
-          error: botInfoResult.error,
-        });
+    const botInfo = await tapError(getMe(bodyResult.data.botToken), (error) => {
+      if (!isInvalidTelegramTokenError(error)) {
+        log.warn("Unable to verify Telegram setup status", { error });
       }
+    });
+    signal.throwIfAborted();
+    if (!botInfo) {
       return badRequest(
         "Invalid bot token. Please verify your token with @BotFather.",
       );
     }
 
-    const botId = String(botInfoResult.value.id);
+    const botId = String(botInfo.id);
     const db = set(writeDb$);
     const [existing] = await db
       .select({
@@ -811,10 +813,9 @@ export const setupTelegramStatus$ = command(
       status: 200 as const,
       body: {
         id: botId,
-        username: botInfoResult.value.username ?? null,
+        username: botInfo.username ?? null,
         domainConfigured,
-        privacyDisabled:
-          botInfoResult.value.can_read_all_group_messages === true,
+        privacyDisabled: botInfo.can_read_all_group_messages === true,
       },
     };
   },

@@ -30,7 +30,7 @@ import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { safeJsonParse, settle, tapError } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -385,7 +385,7 @@ async function refreshGmailAccessToken(args: {
   const refreshToken = await decryptStoredSecretValue(
     args.refreshSecret.encryptedValue,
   );
-  const refreshResult = await settle(
+  const refreshed = await tapError(
     refreshGoogleToken(
       "gmail",
       clientId,
@@ -393,9 +393,9 @@ async function refreshGmailAccessToken(args: {
       refreshToken,
       args.signal,
     ),
-    args.signal,
   );
-  if (!refreshResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     await markGmailConnectorNeedsReconnect({
       db: args.db,
       connectorId: args.connector.id,
@@ -409,15 +409,13 @@ async function refreshGmailAccessToken(args: {
   }
 
   const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshResult.value.expiresIn,
+    refreshed.expiresIn,
     args.currentTime,
   );
   await args.db
     .update(secretsTable)
     .set({
-      encryptedValue: await encryptStoredSecretValue(
-        refreshResult.value.accessToken,
-      ),
+      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
       updatedAt: args.currentTime,
     })
     .where(
@@ -445,7 +443,7 @@ async function refreshGmailAccessToken(args: {
     access: {
       connectorId: args.connector.id,
       emailAddress: args.connector.externalEmail,
-      accessToken: refreshResult.value.accessToken,
+      accessToken: refreshed.accessToken,
     },
   };
 }
@@ -1035,14 +1033,13 @@ async function verifyPubSubOidc(args: {
   const token = args.authorization.slice("Bearer ".length);
   const verifier =
     pubSubOidcVerifierOverride.get() ?? defaultPubSubOidcVerifier;
-  const claimsResult = await settle(verifier(token, audience, args.signal));
+  const claims = await tapError(verifier(token, audience, args.signal));
   args.signal.throwIfAborted();
-  if (!claimsResult.ok) {
+  if (!claims) {
     return { kind: "unauthorized" };
   }
 
-  return claimsResult.value.email === expectedEmail &&
-    claimsResult.value.emailVerified
+  return claims.email === expectedEmail && claims.emailVerified
     ? { kind: "ok" }
     : { kind: "unauthorized" };
 }
@@ -1323,7 +1320,6 @@ async function insertGmailProcessedEvent(args: {
     .insert(gmailProcessedEvents)
     .values({
       watchStateId: args.state.id,
-      triggerId: args.automation.automation.id,
       automationId: args.automation.automation.id,
       pubsubMessageId: args.decoded.messageId,
       historyId: args.event.historyId,

@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.19.24](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.23...sandbox-v0.19.24) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** gate namespace pooling on dns readiness ([#21297](https://github.com/vm0-ai/vm0/issues/21297)) ([438da71](https://github.com/vm0-ai/vm0/commit/438da712d55f28ec1aa9134a792b3f43a8dc1a59))
+* **sandbox-mock:** align write input semantics ([#21630](https://github.com/vm0-ai/vm0/issues/21630)) ([cb7590b](https://github.com/vm0-ai/vm0/commit/cb7590bf9e3fe690f083e6927d160371f02cbfb8))
+
+
+### Documentation
+
+* **rust:** define create observer semantics ([#21590](https://github.com/vm0-ai/vm0/issues/21590)) ([14199e1](https://github.com/vm0-ai/vm0/commit/14199e11ee1e8241fd832d1a0214949628cf1f3a))
+* **sandbox:** document process supervision handles ([#21427](https://github.com/vm0-ai/vm0/issues/21427)) ([2e1f81f](https://github.com/vm0-ai/vm0/commit/2e1f81ffedebdcc6c08c92d291611f2b4e554300))
+
+
+### Performance Improvements
+
+* attribute nbd netlink connect latency ([#21121](https://github.com/vm0-ai/vm0/issues/21121)) ([7ff85a6](https://github.com/vm0-ai/vm0/commit/7ff85a6d10e757e24534f5f9a00a1cab1342eb4d))
+* **runner:** attribute nbd cow creation latency ([#21065](https://github.com/vm0-ai/vm0/issues/21065)) ([7d97c9a](https://github.com/vm0-ai/vm0/commit/7d97c9a0e83e09645f97675c2594fad08b54bfc7))
+
+## [0.19.23](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.22...sandbox-v0.19.23) (2026-07-15)
+
+
+### Bug Fixes
+
+* **sandbox-mock:** align write input semantics ([#21630](https://github.com/vm0-ai/vm0/issues/21630)) ([cb7590b](https://github.com/vm0-ai/vm0/commit/cb7590bf9e3fe690f083e6927d160371f02cbfb8))
+
+## [0.19.22](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.21...sandbox-v0.19.22) (2026-07-15)
+
+
+### Documentation
+
+* **rust:** define create observer semantics ([#21590](https://github.com/vm0-ai/vm0/issues/21590)) ([14199e1](https://github.com/vm0-ai/vm0/commit/14199e11ee1e8241fd832d1a0214949628cf1f3a))
+
 ## [0.19.21](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.20...sandbox-v0.19.21) (2026-07-14)
 
 

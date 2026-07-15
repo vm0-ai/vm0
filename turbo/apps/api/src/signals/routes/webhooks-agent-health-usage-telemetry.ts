@@ -208,6 +208,7 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
         userId: auth.userId,
         kind: event.kind,
         provider: event.provider,
+        billingSku: event.billingSku,
         category: event.category,
         quantity: event.quantity,
         idempotencyKey: event.idempotencyKey,

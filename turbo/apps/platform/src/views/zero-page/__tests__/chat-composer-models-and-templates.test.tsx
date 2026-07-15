@@ -79,6 +79,9 @@ const context = testContext();
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 const OTHER_AGENT_ID = "e0000000-0000-4000-a000-000000000011";
 const THREAD_ID = "b1000000-0000-4000-a000-000000000101";
+const SUGGESTED_THREAD_ID = "b1000000-0000-4000-a000-000000000102";
+const UNTITLED_THREAD_ID = "b1000000-0000-4000-a000-000000000103";
+const OTHER_AGENT_THREAD_ID = "b1000000-0000-4000-a000-000000000104";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
@@ -429,6 +432,34 @@ function mockThread(options?: {
     return respond(200, {
       messages: options?.messages ?? [],
       hasHistoryBefore: false,
+    });
+  });
+}
+
+function mockComposerThreadSnapshot(
+  threads: readonly {
+    readonly id: string;
+    readonly agentId: string;
+    readonly title: string | null;
+  }[],
+): void {
+  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+    return respond(200, {
+      chatThreads: threads.map((thread, index) => {
+        const timestamp = new Date(
+          Date.parse("2026-03-10T00:00:00Z") + index * 1000,
+        ).toISOString();
+        return {
+          ...thread,
+          sortAt: timestamp,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          pinnedAt: null,
+          renamedAt: null,
+          selectedModel: null,
+        };
+      }),
+      latestEventId: null,
     });
   });
 }
@@ -1073,6 +1104,126 @@ describe("chat composer models", () => {
         return element.tagName.toLowerCase() === "span";
       });
     expect(highlightedWorkflow).toHaveClass("text-primary");
+  });
+
+  it("inserts a current-agent chat thread URL from @ suggestions", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
+      {
+        id: SUGGESTED_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Project Alpha",
+      },
+      { id: UNTITLED_THREAD_ID, agentId: AGENT_ID, title: null },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: OTHER_AGENT_ID,
+        title: "Other Alpha",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerChatThreadSuggestions]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Review @ALPHA");
+
+    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
+    expect(within(menu).getByText("Project Alpha")).toBeInTheDocument();
+    expect(within(menu).queryByText("Other Alpha")).not.toBeInTheDocument();
+    expect(within(menu).queryByText("New chat")).not.toBeInTheDocument();
+
+    await user.keyboard("{Enter}next");
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(
+        `Review /chats/${SUGGESTED_THREAD_ID} next`,
+      );
+    });
+  });
+
+  it("hides @ suggestions when no titled thread matches", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
+      {
+        id: SUGGESTED_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Project Beta",
+      },
+      { id: UNTITLED_THREAD_ID, agentId: AGENT_ID, title: null },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerChatThreadSuggestions]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("@beta");
+
+    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
+    expect(within(menu).getByText("Project Beta")).toBeInTheDocument();
+    expect(within(menu).queryByText("New chat")).not.toBeInTheDocument();
+
+    await user.keyboard("{Backspace>4/}alpha");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("chat-thread-suggestion-menu"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps @ chat thread suggestions behind the feature switch", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
+      {
+        id: SUGGESTED_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Project Alpha",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerChatThreadSuggestions]: false,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("@alpha");
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("@alpha");
+      expect(
+        screen.queryByTestId("chat-thread-suggestion-menu"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("shows a workflow created in the current chat without a page refresh", async () => {

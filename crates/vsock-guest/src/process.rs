@@ -230,11 +230,12 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
+    use std::sync::atomic::AtomicBool;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     #[cfg(target_os = "linux")]
     use crate::test_support::{kill_pidfd_and_wait, open_pidfd, wait_for_pidfd_exit};
-    use crate::wait::{WaitOutcome, wait_with_kill_timeout_and_pre_reap_cleanup};
+    use crate::wait::{WaitOutcome, wait_with_kill_timeout_or_connection_cancelled};
 
     struct TempDirGuard(PathBuf);
 
@@ -536,8 +537,13 @@ mod tests {
             }
         };
 
-        let outcome =
-            wait_with_kill_timeout_and_pre_reap_cleanup(child.take().unwrap(), 100, || false);
+        let connection_cancel = AtomicBool::new(false);
+        let outcome = wait_with_kill_timeout_or_connection_cancelled(
+            child.take().unwrap(),
+            100,
+            &connection_cancel,
+            || false,
+        );
         if !matches!(outcome, WaitOutcome::TimedOut) {
             kill_pidfd_and_wait(&background_pidfd)
                 .unwrap_or_else(|e| panic!("failed to clean up background pidfd: {e}"));

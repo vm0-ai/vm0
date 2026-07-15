@@ -18,7 +18,9 @@ use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_proces
 use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
 use crate::user::apply_write_file_identity;
-use crate::wait::{WaitOutcome, await_drain_deadline, wait_with_kill_timeout_and_pre_reap_cleanup};
+use crate::wait::{
+    WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
+};
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
@@ -53,6 +55,7 @@ fn handle_write_file(
     use_sudo: bool,
     append: bool,
     private: bool,
+    connection_cancel: &AtomicBool,
 ) -> (bool, String) {
     log(
         "INFO",
@@ -71,10 +74,15 @@ fn handle_write_file(
         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
 
-    wait_write_file_child(child, content, SystemThreadSpawner)
+    wait_write_file_child(child, content, connection_cancel, SystemThreadSpawner)
 }
 
-fn handle_write_files(payload: &[u8], file_count: usize, content_bytes: usize) -> (bool, String) {
+fn handle_write_files(
+    payload: &[u8],
+    file_count: usize,
+    content_bytes: usize,
+    connection_cancel: &AtomicBool,
+) -> (bool, String) {
     log(
         "INFO",
         &format!("write_files: files={file_count} content_bytes={content_bytes}"),
@@ -85,20 +93,26 @@ fn handle_write_files(payload: &[u8], file_count: usize, content_bytes: usize) -
         Err(e) => return (false, format!("Failed to spawn batch write command: {e}")),
     };
 
-    wait_write_file_child(child, payload, SystemThreadSpawner)
+    wait_write_file_child(child, payload, connection_cancel, SystemThreadSpawner)
 }
 
-fn wait_write_file_child<S>(child: Child, content: &[u8], spawner: S) -> (bool, String)
+fn wait_write_file_child<S>(
+    child: Child,
+    content: &[u8],
+    connection_cancel: &AtomicBool,
+    spawner: S,
+) -> (bool, String)
 where
     S: ThreadSpawner,
 {
-    wait_write_file_child_with_timeout(child, content, WRITE_TIMEOUT_MS, spawner)
+    wait_write_file_child_with_timeout(child, content, WRITE_TIMEOUT_MS, connection_cancel, spawner)
 }
 
 fn wait_write_file_child_with_timeout<S>(
     mut child: Child,
     content: &[u8],
     timeout_ms: u32,
+    connection_cancel: &AtomicBool,
     spawner: S,
 ) -> (bool, String)
 where
@@ -167,12 +181,17 @@ where
             }
         };
 
-        let outcome = wait_with_kill_timeout_and_pre_reap_cleanup(child, timeout_ms, || {
-            matches!(
-                stdin_done_rx.try_recv(),
-                Err(std::sync::mpsc::TryRecvError::Empty)
-            )
-        });
+        let outcome = wait_with_kill_timeout_or_connection_cancelled(
+            child,
+            timeout_ms,
+            connection_cancel,
+            || {
+                matches!(
+                    stdin_done_rx.try_recv(),
+                    Err(std::sync::mpsc::TryRecvError::Empty)
+                )
+            },
+        );
         let stdin_result = match stdin_handle.join() {
             Ok(result) => result,
             Err(panic) => std::panic::resume_unwind(panic),
@@ -306,6 +325,7 @@ pub(crate) fn decode_write_files_message(
 pub(crate) fn handle_decoded_write_file_message(
     seq: u32,
     decoded: DecodedWriteFileMessage<'_>,
+    connection_cancel: &AtomicBool,
 ) -> io::Result<Vec<u8>> {
     let (success, error) = handle_write_file(
         decoded.path,
@@ -313,6 +333,7 @@ pub(crate) fn handle_decoded_write_file_message(
         decoded.use_sudo,
         decoded.append,
         decoded.private,
+        connection_cancel,
     );
     let payload = vsock_proto::encode_write_file_result(success, &error);
     vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)
@@ -321,9 +342,14 @@ pub(crate) fn handle_decoded_write_file_message(
 pub(crate) fn handle_decoded_write_files_message(
     seq: u32,
     decoded: DecodedWriteFilesMessage<'_>,
+    connection_cancel: &AtomicBool,
 ) -> io::Result<Vec<u8>> {
-    let (success, error) =
-        handle_write_files(decoded.payload, decoded.file_count, decoded.content_bytes);
+    let (success, error) = handle_write_files(
+        decoded.payload,
+        decoded.file_count,
+        decoded.content_bytes,
+        connection_cancel,
+    );
     let payload = vsock_proto::encode_write_files_result(success, &error);
     vsock_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).map_err(to_io_error)
 }
@@ -416,10 +442,12 @@ mod tests {
         let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
         let child = spawn_write_file_test_child("sleep 60");
         let pid = child.id();
+        let connection_cancel = AtomicBool::new(false);
 
         let (success, error) = wait_write_file_child(
             child,
             b"",
+            &connection_cancel,
             FailingThreadSpawner::fail_once(THREAD_WRITE_STDERR),
         );
 
@@ -455,9 +483,15 @@ mod tests {
         let child = spawn_write_file_test_child("sleep 60; cat >/dev/null");
         let pid = child.id();
         let content = vec![b'x'; 1024 * 1024];
+        let connection_cancel = AtomicBool::new(false);
 
-        let (success, error) =
-            wait_write_file_child_with_timeout(child, &content, 10, SystemThreadSpawner);
+        let (success, error) = wait_write_file_child_with_timeout(
+            child,
+            &content,
+            10,
+            &connection_cancel,
+            SystemThreadSpawner,
+        );
 
         assert!(!success);
         assert_eq!(error, "write timed out");
@@ -509,9 +543,15 @@ mod tests {
         writeln!(fifo, "exit").unwrap();
         drop(fifo);
         let content = vec![b'x'; 1024 * 1024];
+        let connection_cancel = AtomicBool::new(false);
 
-        let (success, error) =
-            wait_write_file_child_with_timeout(child, &content, 1_000, SystemThreadSpawner);
+        let (success, error) = wait_write_file_child_with_timeout(
+            child,
+            &content,
+            1_000,
+            &connection_cancel,
+            SystemThreadSpawner,
+        );
         let _ = std::fs::remove_file(&fifo_path);
 
         assert!(!success);

@@ -48,6 +48,7 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import http_network_log
 import matching
+import model_usage_receipt
 import network_log_sanitization
 import platform_api
 import registry
@@ -695,6 +696,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         classification,
         request_classification.ApiAllow
         | request_classification.BrowserAllow
+        | request_classification.FirewallPolicyAllow
         | request_classification.Allow,
     ) and request_classification.should_stream_capture_request(classification):
         if classification.kind == "api_allow" and not upstream_admission.ensure_bound_destination(
@@ -875,6 +877,23 @@ async def request(flow: http.HTTPFlow) -> None:
         if classification.kind == "public_destination_denied":
             _block_public_destination_denied(flow, classification.public_destination_denial)
             return
+        if classification.kind == "firewall_policy_allow":
+            public_destination_denial = request_classification.current_public_destination_denial(
+                flow,
+                classification.firewall_allow,
+            )
+            if public_destination_denial is not None:
+                _block_public_destination_denied(flow, public_destination_denial)
+                return
+            prepare_firewall_metadata(
+                flow,
+                classification.firewall_allow,
+                classification.vm_info,
+            )
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+            flow.metadata.pop(metadata_keys.MODEL_USAGE_PROVIDER, None)
+            flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
+            return
         if classification.kind == "firewall_allow":
             allow = classification.firewall_allow
             vm_info = classification.vm_info
@@ -1044,6 +1063,7 @@ def _is_valid_websocket_key(value: str) -> bool:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
+    model_usage_receipt.apply_signed_usage_receipt(flow)
     if connector_diagnostics.install_response_stream_if_needed(flow):
         return
     response_streaming.configure_response_stream(flow)

@@ -230,6 +230,23 @@ pub struct ExecuteOutcome {
 }
 
 impl ExecuteOutcome {
+    fn reused_sandbox_failure(
+        failure: ExecutionFailure,
+        sandbox: Box<dyn Sandbox>,
+        source_ip: String,
+        workspace_image: Option<WorkspaceImageLease>,
+    ) -> Self {
+        Self {
+            failure: Some(failure),
+            sandbox: Some(sandbox),
+            source_ip,
+            network_log_session: None,
+            workspace_image,
+            discovered_cli_agent_session_id: None,
+            restored_session_identity: None,
+        }
+    }
+
     #[must_use]
     pub fn exit_code(&self) -> i32 {
         self.failure.as_ref().map_or(0, |failure| failure.exit_code)
@@ -287,6 +304,8 @@ pub struct ResourceFailureDiagnostics {
     pub failure_kind: Option<ResourceFailureKind>,
     pub guest_root_fs_used_percent: Option<u16>,
     pub guest_root_fs_available_kb: Option<u64>,
+    pub guest_root_fs_inode_used_percent: Option<u16>,
+    pub guest_root_fs_available_inodes: Option<u64>,
     pub guest_workspace_fs_used_percent: Option<u16>,
     pub guest_memory_available_mb: Option<u64>,
 }
@@ -305,6 +324,8 @@ impl ResourceFailureDiagnostics {
         self.failure_kind.is_none()
             && self.guest_root_fs_used_percent.is_none()
             && self.guest_root_fs_available_kb.is_none()
+            && self.guest_root_fs_inode_used_percent.is_none()
+            && self.guest_root_fs_available_inodes.is_none()
             && self.guest_workspace_fs_used_percent.is_none()
             && self.guest_memory_available_mb.is_none()
     }
@@ -551,175 +572,63 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         workspace_promotion,
     } = idle_sandbox.into_parts();
 
-    if let Err(error) = validate_resume_session_id(&context) {
-        let workspace_image = match config.workspace_cache.as_ref() {
-            Some(cache) => match workspace_promotion {
-                Some(promotion) => match reused_promotion_into_active_lease(
-                    cache,
-                    promotion,
-                    run_id,
-                    sandbox_id,
-                    params,
-                    &idle_cli_agent_session_id,
-                ) {
-                    Ok(lease) => Some(lease),
-                    Err(identity_failure) => {
-                        let WorkspaceImagePromotionIdentityFailure {
-                            promotion,
-                            mismatch,
-                        } = *identity_failure;
-                        let failure = workspace_promotion_identity_failure(
-                            run_id,
-                            sandbox_id,
-                            &params.profile_name,
-                            mismatch,
-                        );
-                        abandon_unpublished_workspace_promotion(
-                            Some(promotion),
-                            "reuse_workspace_promotion_mismatch",
-                        )
-                        .await;
-                        return (
-                            ExecuteOutcome {
-                                failure: Some(failure),
-                                sandbox: Some(sandbox),
-                                source_ip,
-                                network_log_session: None,
-                                workspace_image: None,
-                                discovered_cli_agent_session_id: None,
-                                restored_session_identity: None,
-                            },
-                            telemetry,
-                        );
-                    }
-                },
-                None => None,
-            },
-            None => {
-                if let Some(promotion) = workspace_promotion
-                    && let Err(error) = promotion
-                        .invalidate_current("reused sandbox ran without workspace image cache")
-                        .await
-                {
-                    let failure = ExecutionFailure::from_error(format!(
-                        "failed to invalidate workspace image cache before unconfigured-cache reuse: {error}"
-                    ));
-                    return (
-                        ExecuteOutcome {
-                            failure: Some(failure),
-                            sandbox: Some(sandbox),
-                            source_ip,
-                            network_log_session: None,
-                            workspace_image: None,
-                            discovered_cli_agent_session_id: None,
-                            restored_session_identity: None,
-                        },
-                        telemetry,
-                    );
-                }
-                None
-            }
-        };
+    let resume_session_error = validate_resume_session_id(&context).err();
+    let expected_promotion_session_id = if resume_session_error.is_some() {
+        idle_cli_agent_session_id.as_str()
+    } else {
+        context
+            .cli_agent_session_id()
+            .unwrap_or(idle_cli_agent_session_id.as_str())
+    };
+    let workspace_image = match resolve_reused_workspace_promotion(
+        config.workspace_cache.as_ref(),
+        workspace_promotion,
+        run_id,
+        sandbox_id,
+        params,
+        expected_promotion_session_id,
+    )
+    .await
+    {
+        Ok(workspace_image) => workspace_image,
+        Err(failure) => {
+            return (
+                ExecuteOutcome::reused_sandbox_failure(failure, sandbox, source_ip, None),
+                telemetry,
+            );
+        }
+    };
+
+    if let Some(error) = resume_session_error {
         return (
-            ExecuteOutcome {
-                failure: Some(ExecutionFailure::from_error(error)),
-                sandbox: Some(sandbox),
+            ExecuteOutcome::reused_sandbox_failure(
+                ExecutionFailure::from_error(error),
+                sandbox,
                 source_ip,
-                network_log_session: None,
                 workspace_image,
-                discovered_cli_agent_session_id: None,
-                restored_session_identity: None,
-            },
+            ),
             telemetry,
         );
     }
 
-    let workspace_image = match config.workspace_cache.as_ref() {
-        Some(cache) => Some(match workspace_promotion {
-            Some(promotion) => {
-                let expected_session_id = context
-                    .cli_agent_session_id()
-                    .unwrap_or(idle_cli_agent_session_id.as_str());
-                match reused_promotion_into_active_lease(
-                    cache,
-                    promotion,
-                    run_id,
-                    sandbox_id,
-                    params,
-                    expected_session_id,
-                ) {
-                    Ok(lease) => lease,
-                    Err(identity_failure) => {
-                        let WorkspaceImagePromotionIdentityFailure {
-                            promotion,
-                            mismatch,
-                        } = *identity_failure;
-                        let failure = workspace_promotion_identity_failure(
-                            run_id,
-                            sandbox_id,
-                            &params.profile_name,
-                            mismatch,
-                        );
-                        abandon_unpublished_workspace_promotion(
-                            Some(promotion),
-                            "reuse_workspace_promotion_mismatch",
-                        )
-                        .await;
-                        return (
-                            ExecuteOutcome {
-                                failure: Some(failure),
-                                sandbox: Some(sandbox),
-                                source_ip,
-                                network_log_session: None,
-                                workspace_image: None,
-                                discovered_cli_agent_session_id: None,
-                                restored_session_identity: None,
-                            },
-                            telemetry,
-                        );
-                    }
-                }
-            }
-            None => {
-                cache
-                    .lease_active(WorkspaceImageActiveLeaseRequest {
-                        identity: WorkspaceImageLeaseIdentity {
-                            run_id,
-                            sandbox_id,
-                            profile_name: &params.profile_name,
-                            cli_agent_session_id: context.cli_agent_session_id(),
-                            working_dir: CANONICAL_WORKING_DIR,
-                            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
-                        },
-                        workspace_drive_available: true,
-                    })
-                    .await
-            }
-        }),
-        None => {
-            if let Some(promotion) = workspace_promotion
-                && let Err(error) = promotion
-                    .invalidate_current("reused sandbox ran without workspace image cache")
-                    .await
-            {
-                let failure = ExecutionFailure::from_error(format!(
-                    "failed to invalidate workspace image cache before unconfigured-cache reuse: {error}"
-                ));
-                return (
-                    ExecuteOutcome {
-                        failure: Some(failure),
-                        sandbox: Some(sandbox),
-                        source_ip,
-                        network_log_session: None,
-                        workspace_image: None,
-                        discovered_cli_agent_session_id: None,
-                        restored_session_identity: None,
+    let workspace_image = match (config.workspace_cache.as_ref(), workspace_image) {
+        (_, Some(workspace_image)) => Some(workspace_image),
+        (Some(cache), None) => Some(
+            cache
+                .lease_active(WorkspaceImageActiveLeaseRequest {
+                    identity: WorkspaceImageLeaseIdentity {
+                        run_id,
+                        sandbox_id,
+                        profile_name: &params.profile_name,
+                        cli_agent_session_id: context.cli_agent_session_id(),
+                        working_dir: CANONICAL_WORKING_DIR,
+                        image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
                     },
-                    telemetry,
-                );
-            }
-            None
-        }
+                    workspace_drive_available: true,
+                })
+                .await,
+        ),
+        (None, None) => None,
     };
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
@@ -731,15 +640,12 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         &sandbox_id_string,
         SandboxReuseResult::Reused,
     ) {
-        ExecuteOutcome {
-            failure: Some(ExecutionFailure::from_error(error)),
-            sandbox: Some(sandbox),
+        ExecuteOutcome::reused_sandbox_failure(
+            ExecutionFailure::from_error(error),
+            sandbox,
             source_ip,
-            network_log_session: None,
             workspace_image,
-            discovered_cli_agent_session_id: None,
-            restored_session_identity: None,
-        }
+        )
     } else {
         let mut outcome = execute_reused_sandbox(
             sandbox,
@@ -758,6 +664,59 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     };
 
     (outcome, telemetry)
+}
+
+async fn resolve_reused_workspace_promotion(
+    cache: Option<&SessionWorkspaceCache>,
+    promotion: Option<WorkspaceImagePromotionContext>,
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    params: &JobParams,
+    cli_agent_session_id: &str,
+) -> Result<Option<WorkspaceImageLease>, ExecutionFailure> {
+    let Some(promotion) = promotion else {
+        return Ok(None);
+    };
+    let Some(cache) = cache else {
+        promotion
+            .invalidate_current("reused sandbox ran without workspace image cache")
+            .await
+            .map_err(|error| {
+                ExecutionFailure::from_error(format!(
+                    "failed to invalidate workspace image cache before unconfigured-cache reuse: {error}"
+                ))
+            })?;
+        return Ok(None);
+    };
+
+    match reused_promotion_into_active_lease(
+        cache,
+        promotion,
+        run_id,
+        sandbox_id,
+        params,
+        cli_agent_session_id,
+    ) {
+        Ok(lease) => Ok(Some(lease)),
+        Err(identity_failure) => {
+            let WorkspaceImagePromotionIdentityFailure {
+                promotion,
+                mismatch,
+            } = *identity_failure;
+            let failure = workspace_promotion_identity_failure(
+                run_id,
+                sandbox_id,
+                &params.profile_name,
+                mismatch,
+            );
+            abandon_unpublished_workspace_promotion(
+                Some(promotion),
+                "reuse_workspace_promotion_mismatch",
+            )
+            .await;
+            Err(failure)
+        }
+    }
 }
 
 fn reused_promotion_into_active_lease(

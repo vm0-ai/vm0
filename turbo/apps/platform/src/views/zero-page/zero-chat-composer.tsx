@@ -80,7 +80,6 @@ import {
   detach,
   onDomEventFn,
   Reason,
-  settle,
   tapError,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
@@ -3121,12 +3120,12 @@ function TemplatePreview({
     });
     detach(
       (async () => {
-        const result = await settle(pendingLoad);
+        const result = await tapError(pendingLoad);
         if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
           cache.pendingLoads.delete(item.embedUrl);
         }
 
-        if (!result.ok || result.value === null) {
+        if (result === undefined || result === null) {
           cache.failed.add(item.embedUrl);
           if (cache.activeTokens.get(item.embedUrl) === activeToken) {
             setHtmlPreview({
@@ -3142,11 +3141,11 @@ function TemplatePreview({
           return;
         }
 
-        cache.drafts.set(item.embedUrl, result.value);
+        cache.drafts.set(item.embedUrl, result);
         if (cache.activeTokens.get(item.embedUrl) === activeToken) {
           setHtmlPreview(
             createPresentationTemplateCardHtmlPreviewState({
-              draft: result.value,
+              draft: result,
               index: cache.activeIndexes.get(item.embedUrl) ?? 0,
               item,
               previousFrameUrl: previousActiveFrameUrlForImmediateRevocation,
@@ -3523,11 +3522,11 @@ function TemplatePreviewPage({
     }
     detach(
       (async () => {
-        const result = await settle(pendingLoad);
+        const result = await tapError(pendingLoad);
         if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
           cache.pendingLoads.delete(item.embedUrl);
         }
-        if (!result.ok || result.value === null) {
+        if (result === undefined || result === null) {
           cache.failed.add(item.embedUrl);
           if (!isActive()) {
             return;
@@ -3544,10 +3543,10 @@ function TemplatePreviewPage({
           });
           return;
         }
-        cache.drafts.set(item.embedUrl, result.value);
+        cache.drafts.set(item.embedUrl, result);
         if (isActive()) {
           setLoadedDetailPreview({
-            draft: result.value,
+            draft: result,
             index: activeSlideIndex,
             previousFrameUrl: detailPreview?.frameUrl ?? null,
             theme: selectedTheme,
@@ -5467,16 +5466,16 @@ function SelectedPresentationTemplateChipPreview({
     }
     detach(
       (async () => {
-        const result = await settle(pendingLoad);
+        const result = await tapError(pendingLoad);
         if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
           cache.pendingLoads.delete(item.embedUrl);
         }
-        if (!result.ok || result.value === null) {
+        if (result === undefined || result === null) {
           cache.failed.add(item.embedUrl);
           return;
         }
-        cache.drafts.set(item.embedUrl, result.value);
-        setChipPreview(result.value);
+        cache.drafts.set(item.embedUrl, result);
+        setChipPreview(result);
       })(),
       Reason.DomCallback,
     );

@@ -453,77 +453,93 @@ class TestRegistryBuiltinBaseUrlVars:
             assert invalid_vm.reason == "invalid_firewalls"
             assert "host policy does not allow resolved host" in invalid_vm.message
 
-    def test_builtin_rejects_invalid_host_policies(self, tmp_path):
-        cases = [
-            (
+    @pytest.mark.parametrize(
+        ("host_policy", "expected_message"),
+        [
+            pytest.param(
                 {"kind": "providerOwned", "exactHosts": [".api.example.com"]},
                 "exactHosts must be fixed hostnames with at least two labels",
+                id="provider-owned-exact-leading-dot",
             ),
-            (
+            pytest.param(
                 {"kind": "providerOwned", "exactHosts": ["127.0.0.1"]},
                 "exactHosts must be fixed hostnames with at least two labels",
+                id="provider-owned-exact-ip-literal",
             ),
-            (
+            pytest.param(
                 {"kind": "providerOwned", "exactHosts": ["0177.0.0.1"]},
                 "exactHosts must be fixed hostnames with at least two labels",
+                id="provider-owned-exact-ipv4-like",
             ),
-            (
+            pytest.param(
                 {"kind": "providerOwned", "exactHosts": ["api.例子.com"]},
                 "exactHosts must be fixed hostnames with at least two labels",
+                id="provider-owned-exact-non-ascii",
             ),
-            (
+            pytest.param(
                 {"kind": "providerOwned", "suffixes": ["*.example.com"]},
                 "suffixes must be fixed hostnames with at least two labels",
+                id="provider-owned-suffix-wildcard",
             ),
-            (
+            pytest.param(
                 {"kind": "providerOwned", "suffixes": ["..example.com"]},
                 "suffixes must be fixed hostnames with at least two labels",
+                id="provider-owned-suffix-empty-label",
             ),
-            (
+            pytest.param(
                 {"kind": "providerOwned", "suffixes": ["com"]},
                 "suffixes must be fixed hostnames with at least two labels",
+                id="provider-owned-suffix-single-label",
             ),
-            (
+            pytest.param(
                 {
                     "kind": "providerOwned",
                     "suffixes": ["example.com"],
                     "allowNonDefaultPort": "true",
                 },
                 "hostPolicy.allowNonDefaultPort must be a boolean",
+                id="provider-owned-non-boolean-port-policy",
             ),
-            (
+            pytest.param(
                 {"kind": "providerOwned", "suffixes": ["example.com"], "extra": True},
                 "hostPolicy has unsupported keys: extra",
+                id="provider-owned-unsupported-key",
             ),
-            (
+            pytest.param(
                 {"kind": "publicDestination", "extra": True},
                 "hostPolicy has unsupported keys: extra",
+                id="public-destination-unsupported-key",
             ),
-        ]
-        for index, (host_policy, _message) in enumerate(cases):
-            name = f"provider-owned-invalid-{index}"
-            install_test_builtin_firewall(
-                name=name,
-                base="https://${{ vars.API_HOST }}",
-                host_policy=host_policy,
-            )
-            path = tmp_path / f"registry-{index}.json"
-            write_builtin_firewall_registry(
-                path,
-                run_id=f"run-{name}",
-                name=name,
-                base_url_vars={"API_HOST": "api.example.com"},
-            )
+        ],
+    )
+    def test_builtin_rejects_invalid_host_policies(
+        self, tmp_path, host_policy: dict, expected_message: str
+    ) -> None:
+        name = "invalid-host-policy"
+        install_test_builtin_firewall(
+            name=name,
+            base="https://${{ vars.API_HOST }}",
+            host_policy=host_policy,
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id=f"run-{name}",
+            name=name,
+            base_url_vars={"API_HOST": "api.example.com"},
+        )
 
-            with patch.object(registry.ctx, "log", MagicMock(), create=True):
-                context = registry.get_vm_context("10.200.0.1", str(path))
-                state = registry.load_registry_state(str(path))
+        with patch.object(registry.ctx, "log", MagicMock(), create=True) as log:
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
 
-            assert context is None
-            assert not isinstance(state, registry.RegistryUnavailable)
-            invalid_vm = state.invalid_vms["10.200.0.1"]
-            assert invalid_vm.reason == "invalid_firewalls"
-            assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
+        warning_messages = [call.args[0] for call in log.warn.call_args_list]
+        assert any(expected_message in message for message in warning_messages)
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
 
     def test_builtin_provider_owned_whole_authority_rejects_non_default_port(self, tmp_path):
         install_test_builtin_firewall(

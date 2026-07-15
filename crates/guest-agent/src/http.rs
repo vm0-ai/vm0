@@ -262,7 +262,7 @@ impl ApiUrls {
 
 async fn send_with_retry<BuildRequest, BuildRequestFuture, BuildClientError, ClientErrorFuture>(
     label: &str,
-    max_retries: u32,
+    max_attempts: u32,
     retry_delay: Duration,
     final_error: String,
     mut build_request: BuildRequest,
@@ -274,30 +274,30 @@ where
     BuildClientError: FnMut(Response, u32, u32) -> ClientErrorFuture,
     ClientErrorFuture: Future<Output = AgentError>,
 {
-    for attempt in 1..=max_retries {
+    for attempt in 1..=max_attempts {
         match build_request().await?.send().await {
             Ok(resp) if resp.status().is_success() => return Ok(resp),
             Ok(resp) => {
                 let status = resp.status();
                 // 4xx errors are deterministic except for rate limits.
                 if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
-                    return Err(build_client_error(resp, attempt, max_retries).await);
+                    return Err(build_client_error(resp, attempt, max_attempts).await);
                 }
                 log_warn!(
                     LOG_TAG,
-                    "HTTP {label} failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                    "HTTP {label} failed (attempt {attempt}/{max_attempts}): HTTP {status}",
                 );
             }
             Err(error) => {
                 let error = format_reqwest_error(error);
                 log_warn!(
                     LOG_TAG,
-                    "HTTP {label} failed (attempt {attempt}/{max_retries}): {error}"
+                    "HTTP {label} failed (attempt {attempt}/{max_attempts}): {error}"
                 );
             }
         }
 
-        if attempt < max_retries && !retry_delay.is_zero() {
+        if attempt < max_attempts && !retry_delay.is_zero() {
             tokio::time::sleep(retry_delay).await;
         }
     }
@@ -308,22 +308,23 @@ where
 impl HttpClient {
     /// POST JSON to a webhook endpoint with Bearer auth, Vercel bypass, and retry.
     ///
+    /// `max_attempts` is the total request budget, including the initial request.
     /// Returns the parsed JSON response on success, or `None` if the response body
     /// is empty. Returns `Err` immediately on non-retriable 4xx errors (except 429),
-    /// or after all retries are exhausted for 5xx / 429 / network errors.
+    /// or after the attempt budget is exhausted for 5xx / 429 / network errors.
     pub async fn post_json(
         &self,
         url: &str,
         body: &impl Serialize,
-        max_retries: u32,
+        max_attempts: u32,
     ) -> Result<Option<Value>, AgentError> {
         let client = self.inner()?;
         let api = self.api_config()?;
         let resp = send_with_retry(
             "POST",
-            max_retries,
+            max_attempts,
             self.retry_delay,
-            format!("POST failed after {max_retries} attempts to {url}"),
+            format!("POST failed after {max_attempts} attempts to {url}"),
             || {
                 let request_id = Uuid::new_v4().to_string();
                 let mut req = client
@@ -343,7 +344,7 @@ impl HttpClient {
 
                 std::future::ready(Ok(req))
             },
-            |resp, attempt, max_retries| {
+            |resp, attempt, max_attempts| {
                 let url = url.to_owned();
                 async move {
                     let status = resp.status();
@@ -365,7 +366,7 @@ impl HttpClient {
                         None => {
                             log_warn!(
                                 LOG_TAG,
-                                "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                                "HTTP POST failed (attempt {attempt}/{max_attempts}): HTTP {status}",
                             );
                             AgentError::HttpStatus {
                                 status: status.as_u16(),
@@ -401,14 +402,14 @@ impl HttpClient {
         data: Bytes,
         content_type: &str,
     ) -> Result<(), AgentError> {
-        let max_retries = constants::HTTP_MAX_RETRIES;
+        let max_attempts = constants::HTTP_MAX_ATTEMPTS;
         let client = self.inner()?;
 
         send_with_retry(
             "PUT presigned",
-            max_retries,
+            max_attempts,
             self.retry_delay,
-            format!("PUT presigned failed after {max_retries} attempts"),
+            format!("PUT presigned failed after {max_attempts} attempts"),
             move || {
                 let data = data.clone();
                 std::future::ready(Ok(client
@@ -417,11 +418,11 @@ impl HttpClient {
                     .header("Content-Type", content_type)
                     .body(data)))
             },
-            |resp, attempt, max_retries| async move {
+            |resp, attempt, max_attempts| async move {
                 let status = resp.status();
                 log_warn!(
                     LOG_TAG,
-                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                    "HTTP PUT presigned failed (attempt {attempt}/{max_attempts}): HTTP {status}",
                 );
                 AgentError::Http(format!("PUT presigned: HTTP {status}"))
             },
@@ -544,16 +545,16 @@ impl HttpClient {
         path: &Path,
         content_type: &str,
     ) -> Result<(), AgentError> {
-        let max_retries = constants::HTTP_MAX_RETRIES;
+        let max_attempts = constants::HTTP_MAX_ATTEMPTS;
         let client = self.inner()?;
         let source_file = Arc::new(tokio::fs::File::open(path).await?);
         let file_len = source_file.metadata().await?.len();
 
         send_with_retry(
             "PUT presigned",
-            max_retries,
+            max_attempts,
             self.retry_delay,
-            format!("PUT presigned failed after {max_retries} attempts"),
+            format!("PUT presigned failed after {max_attempts} attempts"),
             move || {
                 let source_file = Arc::clone(&source_file);
                 async move {
@@ -568,11 +569,11 @@ impl HttpClient {
                         .body(body))
                 }
             },
-            |resp, attempt, max_retries| async move {
+            |resp, attempt, max_attempts| async move {
                 let status = resp.status();
                 log_warn!(
                     LOG_TAG,
-                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                    "HTTP PUT presigned failed (attempt {attempt}/{max_attempts}): HTTP {status}",
                 );
                 AgentError::Http(format!("PUT presigned: HTTP {status}"))
             },

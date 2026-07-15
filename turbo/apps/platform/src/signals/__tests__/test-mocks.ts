@@ -74,6 +74,7 @@ interface BrowserDownload {
 }
 
 interface BrowserDownloadMock {
+  readonly blobForUrl: (url: string) => Blob | null;
   readonly downloads: BrowserDownload[];
   readonly revokedUrls: string[];
 }
@@ -457,7 +458,13 @@ function mockBlobDownload(signal: AbortSignal): BrowserDownloadMock {
     clickSpy.mockRestore();
   });
 
-  return { downloads, revokedUrls };
+  return {
+    blobForUrl: (url) => {
+      return blobs.get(url) ?? null;
+    },
+    downloads,
+    revokedUrls,
+  };
 }
 
 function mockAudioContext(signal: AbortSignal): void {

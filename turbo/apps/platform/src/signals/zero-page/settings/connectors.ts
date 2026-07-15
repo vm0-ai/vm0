@@ -55,6 +55,7 @@ import {
   resetSignal,
   settle,
   setLoop,
+  tapError,
   withCleanup,
 } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
@@ -1599,7 +1600,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
           { apiBase: OAUTH_WEB_API_BASE },
         );
         const startOptionEntries = Object.entries(startOptions ?? {});
-        const startSettled = await settle(
+        const startResponse = await tapError(
           accept(
             client.create({
               params: { type },
@@ -1614,10 +1615,10 @@ const connectConnectorOAuthDeviceAuth$ = command(
             }),
             [200],
           ),
-          flowSignal,
         );
-        const startResult = startSettled.ok ? startSettled.value.body : null;
-        if (!startSettled.ok) {
+        flowSignal.throwIfAborted();
+        const startResult = startResponse?.body ?? null;
+        if (!startResponse) {
           if (flowSignal.aborted) {
             return false;
           }
@@ -1858,7 +1859,7 @@ export const connectConnectorExternalCode$ = command(
         const client = createClient(zeroConnectorExternalCodeSessionContract, {
           apiBase: OAUTH_WEB_API_BASE,
         });
-        const startSettled = await settle(
+        const startResponse = await tapError(
           accept(
             client.create({
               params: { type },
@@ -1867,10 +1868,10 @@ export const connectConnectorExternalCode$ = command(
             }),
             [200],
           ),
-          flowSignal,
         );
-        const startResult = startSettled.ok ? startSettled.value.body : null;
-        if (!startSettled.ok) {
+        flowSignal.throwIfAborted();
+        const startResult = startResponse?.body ?? null;
+        if (!startResponse) {
           if (flowSignal.aborted) {
             return false;
           }

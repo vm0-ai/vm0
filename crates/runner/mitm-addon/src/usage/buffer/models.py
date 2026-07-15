@@ -15,12 +15,16 @@ USAGE_EVENT_BATCH_SIZE = 100
 MAX_RETAINED_USAGE_BATCH_RETRIES = 20
 
 
-class UsageEvent(TypedDict):
+class _RequiredUsageEvent(TypedDict):
     idempotencyKey: str
     kind: str
     provider: str
     category: str
     quantity: int
+
+
+class UsageEvent(_RequiredUsageEvent, total=False):
+    billingSku: str
 
 
 UsageFlushTrigger = Literal["timer", "threshold", "runner", "shutdown", "test"]
@@ -42,6 +46,7 @@ class _AggregateKey:
     run_id: str
     kind: str
     provider: str
+    billing_sku: str | None
     category: str
 
 

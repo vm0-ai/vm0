@@ -7,6 +7,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
+  asc,
   desc,
   eq,
   gte,
@@ -76,6 +77,40 @@ interface UsageAllowanceWindows {
   readonly weeklyWindow: UsageAllowanceWindow;
 }
 
+interface UsageAllowanceEventInput {
+  readonly usageEventId: string;
+  readonly runId: string | null;
+  readonly grossUnits: number;
+}
+
+interface UsageAllowanceCandidate {
+  readonly usageEventId: string;
+  readonly runId: string;
+  readonly grossUnits: number;
+}
+
+interface UsageAllowanceWindowState {
+  readonly id: string;
+  readonly unitLimit: number;
+  consumedUnits: number;
+  readonly initialConsumedUnits: number;
+  readonly startsAt: Date;
+  readonly expiresAt: Date;
+}
+
+interface MutableUsageAllowanceWindows {
+  readonly shortWindow: UsageAllowanceWindowState;
+  readonly weeklyWindow: UsageAllowanceWindowState;
+}
+
+interface NewUsageAllowanceAllocation {
+  readonly usageEventId: string;
+  readonly runId: string;
+  readonly shortWindowId: string;
+  readonly weeklyWindowId: string;
+  readonly unitsApplied: number;
+}
+
 interface UsageAllowanceAvailability {
   readonly remainingUnits: number;
   readonly shortRemainingUnits: number;
@@ -104,7 +139,9 @@ function addSeconds(date: Date, seconds: number): Date {
   return new Date(date.getTime() + seconds * 1000);
 }
 
-function remainingUnits(window: UsageAllowanceWindow): number {
+function remainingUnits(
+  window: Pick<UsageAllowanceWindow, "unitLimit" | "consumedUnits">,
+): number {
   return Math.max(window.unitLimit - window.consumedUnits, 0);
 }
 
@@ -604,68 +641,306 @@ export async function resolveUsageAllowanceAvailabilityForRun(
   });
 }
 
-export async function applyUsageAllowanceToUsageEvent(
+async function loadExistingUsageAllowanceAllocations(
+  tx: UsageAllowanceStore,
+  usageEventIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (usageEventIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = await tx
+    .select({
+      usageEventId: usageAllowanceAllocations.usageEventId,
+      unitsApplied: usageAllowanceAllocations.unitsApplied,
+    })
+    .from(usageAllowanceAllocations)
+    .where(
+      sql`${usageAllowanceAllocations.usageEventId} = ANY(${sql.param([...usageEventIds])}::uuid[])`,
+    );
+  return new Map(
+    rows.map((row) => {
+      return [row.usageEventId, row.unitsApplied];
+    }),
+  );
+}
+
+async function loadVm0RunCreatedAts(
   tx: UsageAllowanceStore,
   args: {
-    readonly usageEventId: string;
     readonly orgId: string;
-    readonly runId: string | null;
-    readonly grossUnits: number;
+    readonly runIds: readonly string[];
   },
-): Promise<number> {
-  if (args.grossUnits <= 0 || !args.runId) {
-    return 0;
+): Promise<Map<string, Date>> {
+  if (args.runIds.length === 0) {
+    return new Map();
   }
 
-  await lockUsageAllowanceOrg(tx, args.orgId);
-
-  const [existing] = await tx
-    .select({ unitsApplied: usageAllowanceAllocations.unitsApplied })
-    .from(usageAllowanceAllocations)
-    .where(eq(usageAllowanceAllocations.usageEventId, args.usageEventId))
-    .limit(1);
-  if (existing) {
-    return existing.unitsApplied;
-  }
-
-  const windows = await loadExistingWindowsForRun(tx, {
-    orgId: args.orgId,
-    runId: args.runId,
-  });
-  if (!windows) {
-    return 0;
-  }
-
-  const unitsApplied = Math.min(
-    args.grossUnits,
-    remainingUnits(windows.shortWindow),
-    remainingUnits(windows.weeklyWindow),
-  );
-  if (unitsApplied <= 0) {
-    return 0;
-  }
-
-  await tx
-    .update(orgUsageAllowanceWindows)
-    .set({
-      consumedUnits: sql`${orgUsageAllowanceWindows.consumedUnits} + ${unitsApplied}`,
-      updatedAt: nowDate(),
-    })
+  const rows = await tx
+    .select({ id: agentRuns.id, createdAt: agentRuns.createdAt })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
-      inArray(orgUsageAllowanceWindows.id, [
-        windows.shortWindow.id,
-        windows.weeklyWindow.id,
-      ]),
+      and(
+        eq(agentRuns.orgId, args.orgId),
+        eq(zeroRuns.modelProvider, "vm0"),
+        sql`${agentRuns.id} = ANY(${sql.param([...args.runIds])}::uuid[])`,
+      ),
     );
+  return new Map(
+    rows.map((row) => {
+      return [row.id, row.createdAt];
+    }),
+  );
+}
 
-  await tx.insert(usageAllowanceAllocations).values({
-    usageEventId: args.usageEventId,
-    orgId: args.orgId,
-    runId: args.runId,
-    shortWindowId: windows.shortWindow.id,
-    weeklyWindowId: windows.weeklyWindow.id,
-    unitsApplied,
+async function lockIssuedWindowsForRuns(
+  tx: UsageAllowanceStore,
+  args: {
+    readonly orgId: string;
+    readonly kind: UsageAllowanceWindowKind;
+    readonly runIds: readonly string[];
+  },
+): Promise<UsageAllowanceWindowState[]> {
+  if (args.runIds.length === 0) {
+    return [];
+  }
+
+  const windows = await tx
+    .select({
+      id: orgUsageAllowanceWindows.id,
+      unitLimit: orgUsageAllowanceWindows.unitLimit,
+      consumedUnits: orgUsageAllowanceWindows.consumedUnits,
+      startsAt: orgUsageAllowanceWindows.startsAt,
+      expiresAt: orgUsageAllowanceWindows.expiresAt,
+    })
+    .from(orgUsageAllowanceWindows)
+    .where(
+      and(
+        eq(orgUsageAllowanceWindows.orgId, args.orgId),
+        eq(orgUsageAllowanceWindows.kind, args.kind),
+        sql`EXISTS (
+          SELECT 1
+          FROM ${agentRuns}
+          INNER JOIN ${zeroRuns} ON ${zeroRuns.id} = ${agentRuns.id}
+          WHERE ${agentRuns.orgId} = ${args.orgId}
+            AND ${zeroRuns.modelProvider} = 'vm0'
+            AND ${agentRuns.id} = ANY(${sql.param([...args.runIds])}::uuid[])
+            AND ${orgUsageAllowanceWindows.startsAt} <= ${agentRuns.createdAt}
+            AND ${orgUsageAllowanceWindows.expiresAt} > ${agentRuns.createdAt}
+        )`,
+      ),
+    )
+    .orderBy(asc(orgUsageAllowanceWindows.id))
+    .for("update");
+
+  return windows.map((window) => {
+    return {
+      ...window,
+      initialConsumedUnits: window.consumedUnits,
+    };
+  });
+}
+
+function latestIssuedWindowAt(
+  windows: readonly UsageAllowanceWindowState[],
+  at: Date,
+): UsageAllowanceWindowState | null {
+  let latest: UsageAllowanceWindowState | null = null;
+  const atMs = at.getTime();
+  for (const window of windows) {
+    if (
+      window.startsAt.getTime() <= atMs &&
+      window.expiresAt.getTime() > atMs &&
+      (!latest || window.startsAt.getTime() > latest.startsAt.getTime())
+    ) {
+      latest = window;
+    }
+  }
+  return latest;
+}
+
+async function persistUsageAllowanceWindowConsumption(
+  tx: UsageAllowanceStore,
+  windows: readonly UsageAllowanceWindowState[],
+): Promise<void> {
+  const changedWindows = windows.filter((window) => {
+    return window.consumedUnits > window.initialConsumedUnits;
+  });
+  if (changedWindows.length === 0) {
+    return;
+  }
+
+  const windowIds = changedWindows.map((window) => {
+    return window.id;
+  });
+  const unitDeltas = changedWindows.map((window) => {
+    return window.consumedUnits - window.initialConsumedUnits;
+  });
+  await tx.execute(sql`
+    UPDATE ${orgUsageAllowanceWindows}
+    SET
+      "consumed_units" = ${orgUsageAllowanceWindows.consumedUnits} + consumption.units_applied,
+      "updated_at" = ${nowDate()}
+    FROM unnest(
+      ${sql.param(windowIds)}::uuid[],
+      ${sql.param(unitDeltas)}::bigint[]
+    ) AS consumption(window_id, units_applied)
+    WHERE ${orgUsageAllowanceWindows.id} = consumption.window_id
+  `);
+}
+
+async function insertUsageAllowanceAllocations(
+  tx: UsageAllowanceStore,
+  orgId: string,
+  allocations: readonly NewUsageAllowanceAllocation[],
+): Promise<void> {
+  if (allocations.length === 0) {
+    return;
+  }
+
+  const usageEventIds = allocations.map((allocation) => {
+    return allocation.usageEventId;
+  });
+  const runIds = allocations.map((allocation) => {
+    return allocation.runId;
+  });
+  const shortWindowIds = allocations.map((allocation) => {
+    return allocation.shortWindowId;
+  });
+  const weeklyWindowIds = allocations.map((allocation) => {
+    return allocation.weeklyWindowId;
+  });
+  const unitsApplied = allocations.map((allocation) => {
+    return allocation.unitsApplied;
   });
 
-  return unitsApplied;
+  await tx.execute(sql`
+    INSERT INTO ${usageAllowanceAllocations} (
+      "usage_event_id",
+      "org_id",
+      "run_id",
+      "short_window_id",
+      "weekly_window_id",
+      "units_applied"
+    )
+    SELECT
+      allocation.usage_event_id,
+      ${orgId},
+      allocation.run_id,
+      allocation.short_window_id,
+      allocation.weekly_window_id,
+      allocation.units_applied
+    FROM unnest(
+      ${sql.param(usageEventIds)}::uuid[],
+      ${sql.param(runIds)}::uuid[],
+      ${sql.param(shortWindowIds)}::uuid[],
+      ${sql.param(weeklyWindowIds)}::uuid[],
+      ${sql.param(unitsApplied)}::bigint[]
+    ) AS allocation(
+      usage_event_id,
+      run_id,
+      short_window_id,
+      weekly_window_id,
+      units_applied
+    )
+  `);
+}
+
+export async function applyUsageAllowanceToUsageEventsInLockedTransaction(
+  tx: UsageAllowanceStore,
+  args: {
+    readonly orgId: string;
+    readonly events: readonly UsageAllowanceEventInput[];
+  },
+): Promise<ReadonlyMap<string, number>> {
+  const candidates: UsageAllowanceCandidate[] = [];
+  for (const event of args.events) {
+    if (event.grossUnits > 0 && event.runId) {
+      candidates.push({
+        usageEventId: event.usageEventId,
+        runId: event.runId,
+        grossUnits: event.grossUnits,
+      });
+    }
+  }
+
+  const allowanceByUsageEvent = await loadExistingUsageAllowanceAllocations(
+    tx,
+    candidates.map((candidate) => {
+      return candidate.usageEventId;
+    }),
+  );
+  const unresolvedRunIds = [
+    ...new Set(
+      candidates.flatMap((candidate) => {
+        return allowanceByUsageEvent.has(candidate.usageEventId)
+          ? []
+          : [candidate.runId];
+      }),
+    ),
+  ];
+  const runCreatedAtById = await loadVm0RunCreatedAts(tx, {
+    orgId: args.orgId,
+    runIds: unresolvedRunIds,
+  });
+  const eligibleRunIds = [...runCreatedAtById.keys()];
+
+  // Preserve the existing short-before-weekly row-lock order.
+  const shortWindows = await lockIssuedWindowsForRuns(tx, {
+    orgId: args.orgId,
+    kind: "short",
+    runIds: eligibleRunIds,
+  });
+  const weeklyWindows = await lockIssuedWindowsForRuns(tx, {
+    orgId: args.orgId,
+    kind: "weekly",
+    runIds: eligibleRunIds,
+  });
+  const windowsByRunId = new Map<string, MutableUsageAllowanceWindows>();
+  for (const [runId, runCreatedAt] of runCreatedAtById) {
+    const shortWindow = latestIssuedWindowAt(shortWindows, runCreatedAt);
+    const weeklyWindow = latestIssuedWindowAt(weeklyWindows, runCreatedAt);
+    if (shortWindow && weeklyWindow) {
+      windowsByRunId.set(runId, { shortWindow, weeklyWindow });
+    }
+  }
+
+  const newAllocations: NewUsageAllowanceAllocation[] = [];
+  for (const candidate of candidates) {
+    if (allowanceByUsageEvent.has(candidate.usageEventId)) {
+      continue;
+    }
+    const windows = windowsByRunId.get(candidate.runId);
+    if (!windows) {
+      continue;
+    }
+    const unitsApplied = Math.min(
+      candidate.grossUnits,
+      remainingUnits(windows.shortWindow),
+      remainingUnits(windows.weeklyWindow),
+    );
+    if (unitsApplied <= 0) {
+      continue;
+    }
+
+    windows.shortWindow.consumedUnits += unitsApplied;
+    windows.weeklyWindow.consumedUnits += unitsApplied;
+    allowanceByUsageEvent.set(candidate.usageEventId, unitsApplied);
+    newAllocations.push({
+      usageEventId: candidate.usageEventId,
+      runId: candidate.runId,
+      shortWindowId: windows.shortWindow.id,
+      weeklyWindowId: windows.weeklyWindow.id,
+      unitsApplied,
+    });
+  }
+
+  await persistUsageAllowanceWindowConsumption(tx, [
+    ...shortWindows,
+    ...weeklyWindows,
+  ]);
+  await insertUsageAllowanceAllocations(tx, args.orgId, newAllocations);
+
+  return allowanceByUsageEvent;
 }

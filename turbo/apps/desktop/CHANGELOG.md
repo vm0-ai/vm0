@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.27.40](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.39...desktop-v0.27.40) (2026-07-15)
+
+
+### Bug Fixes
+
+* align tabler icons dependency version ([#20873](https://github.com/vm0-ai/vm0/issues/20873)) ([6a03e46](https://github.com/vm0-ai/vm0/commit/6a03e466daaa50e6b5cad01534b73b9dd1e5e8b1))
+
+
+### Refactoring
+
+* reduce fallback slop in desktop mcp errors ([#21079](https://github.com/vm0-ai/vm0/issues/21079)) ([a53aa24](https://github.com/vm0-ai/vm0/commit/a53aa24d0d4c524661c176748a86232bd56a40ae))
+
+
+### Performance Improvements
+
+* **platform:** reduce chat and composer renders ([#21034](https://github.com/vm0-ai/vm0/issues/21034)) ([9c4458d](https://github.com/vm0-ai/vm0/commit/9c4458d75456653a68aaf076b603b3ac48360ee3))
+* **platform:** reduce chat render commits ([#21023](https://github.com/vm0-ai/vm0/issues/21023)) ([6d37bf9](https://github.com/vm0-ai/vm0/commit/6d37bf9b62748da09db8405df2ee4d289ad6d01c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.196.0
+
+## [0.27.39](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.38...desktop-v0.27.39) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.195.0
+
+## [0.27.38](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.37...desktop-v0.27.38) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.6
+
+## [0.27.37](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.36...desktop-v0.27.37) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.5
+
+## [0.27.36](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.35...desktop-v0.27.36) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.4
+
+## [0.27.35](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.34...desktop-v0.27.35) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.3
+
+## [0.27.34](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.33...desktop-v0.27.34) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.2
+
 ## [0.27.33](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.32...desktop-v0.27.33) (2026-07-14)
 
 

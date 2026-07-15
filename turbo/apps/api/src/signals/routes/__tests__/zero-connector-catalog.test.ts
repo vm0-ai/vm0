@@ -522,25 +522,12 @@ describe("GET /api/zero/connector-catalog", () => {
     });
   });
 
-  it("hides Nintendo Store until its connector switch is enabled", async () => {
+  it("exposes Nintendo Store without a connector switch", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const hidden = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      hidden.body.connectors.some((connector) => {
-        return connector.connectorRef === "nintendo-store";
-      }),
-    ).toBeFalsy();
-
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.NintendoStoreConnector]: true,
-    });
     const visible = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -575,25 +562,12 @@ describe("GET /api/zero/connector-catalog", () => {
     ]);
   });
 
-  it("hides Nintendo Switch Parental Controls until its connector switch is enabled", async () => {
+  it("exposes Nintendo Switch Parental Controls without a connector switch", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const hidden = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      hidden.body.connectors.some((connector) => {
-        return connector.connectorRef === "nintendo-switch-parental-controls";
-      }),
-    ).toBeFalsy();
-
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: true,
-    });
     const visible = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],

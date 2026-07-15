@@ -38,7 +38,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
+import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -220,6 +220,34 @@ type NotionPageResponse = z.infer<typeof notionPageResponseSchema>;
 type NotionDataSourceResponse = z.infer<typeof notionDataSourceResponseSchema>;
 type NotionDatabaseResponse = z.infer<typeof notionDatabaseResponseSchema>;
 type NotionPendingRow = typeof notionWorkflowPendingEvents.$inferSelect;
+
+function notionPendingEventColumns() {
+  return {
+    id: notionWorkflowPendingEvents.id,
+    automationId: notionWorkflowPendingEvents.automationId,
+    pageId: notionWorkflowPendingEvents.pageId,
+    scopeType: notionWorkflowPendingEvents.scopeType,
+    scopeId: notionWorkflowPendingEvents.scopeId,
+    eventFamily: notionWorkflowPendingEvents.eventFamily,
+    status: notionWorkflowPendingEvents.status,
+    firstNotionEventId: notionWorkflowPendingEvents.firstNotionEventId,
+    latestNotionEventId: notionWorkflowPendingEvents.latestNotionEventId,
+    firstEventAt: notionWorkflowPendingEvents.firstEventAt,
+    latestEventAt: notionWorkflowPendingEvents.latestEventAt,
+    latestEventContext: notionWorkflowPendingEvents.latestEventContext,
+    runAfter: notionWorkflowPendingEvents.runAfter,
+    attempts: notionWorkflowPendingEvents.attempts,
+    pageTitle: notionWorkflowPendingEvents.pageTitle,
+    pageUrl: notionWorkflowPendingEvents.pageUrl,
+    parentTitle: notionWorkflowPendingEvents.parentTitle,
+    parentUrl: notionWorkflowPendingEvents.parentUrl,
+    skipReason: notionWorkflowPendingEvents.skipReason,
+    lastError: notionWorkflowPendingEvents.lastError,
+    processedAt: notionWorkflowPendingEvents.processedAt,
+    createdAt: notionWorkflowPendingEvents.createdAt,
+    updatedAt: notionWorkflowPendingEvents.updatedAt,
+  };
+}
 
 interface ConnectorSecretRow {
   readonly name: string;
@@ -553,11 +581,11 @@ async function refreshNotionAccessToken(args: {
   const refreshToken = await decryptStoredSecretValue(
     args.refreshSecret.encryptedValue,
   );
-  const refreshResult = await settle(
+  const refreshed = await tapError(
     refreshNotionToken(clientId, clientSecret, refreshToken, args.signal),
-    args.signal,
   );
-  if (!refreshResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     await markNotionConnectorNeedsReconnect({
       db: args.db,
       connectorId: args.connector.id,
@@ -571,15 +599,13 @@ async function refreshNotionAccessToken(args: {
   }
 
   const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshResult.value.expiresIn,
+    refreshed.expiresIn,
     args.currentTime,
   );
   await args.db
     .update(secretsTable)
     .set({
-      encryptedValue: await encryptStoredSecretValue(
-        refreshResult.value.accessToken,
-      ),
+      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
       updatedAt: args.currentTime,
     })
     .where(
@@ -592,13 +618,11 @@ async function refreshNotionAccessToken(args: {
     );
   args.signal.throwIfAborted();
 
-  if (refreshResult.value.refreshToken) {
+  if (refreshed.refreshToken) {
     await args.db
       .update(secretsTable)
       .set({
-        encryptedValue: await encryptStoredSecretValue(
-          refreshResult.value.refreshToken,
-        ),
+        encryptedValue: await encryptStoredSecretValue(refreshed.refreshToken),
         updatedAt: args.currentTime,
       })
       .where(
@@ -626,7 +650,7 @@ async function refreshNotionAccessToken(args: {
     kind: "ok",
     access: {
       connectorId: args.connector.id,
-      accessToken: refreshResult.value.accessToken,
+      accessToken: refreshed.accessToken,
     },
   };
 }
@@ -704,7 +728,7 @@ async function notionFetchJson<T>(
   url: string,
   signal: AbortSignal,
 ): Promise<NotionFetchResult<T>> {
-  const responseResult = await settle(
+  const response = await tapError(
     fetch(url, {
       method: "GET",
       signal,
@@ -713,9 +737,9 @@ async function notionFetchJson<T>(
         "Notion-Version": NOTION_VERSION,
       },
     }),
-    signal,
   );
-  if (!responseResult.ok) {
+  signal.throwIfAborted();
+  if (!response) {
     return {
       kind: "transient_error",
       status: null,
@@ -723,7 +747,6 @@ async function notionFetchJson<T>(
     };
   }
 
-  const response = responseResult.value;
   if (response.status === 401) {
     return { kind: "unauthorized" };
   }
@@ -1306,7 +1329,6 @@ async function enqueueNotionChildPageEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: automation.id,
         automationId: automation.id,
         pageId: args.pageId,
         scopeType: "page",
@@ -1353,7 +1375,6 @@ async function enqueueNotionDatabaseItemEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: automation.id,
         automationId: automation.id,
         pageId: args.pageId,
         scopeType: "data_source",
@@ -1511,7 +1532,6 @@ async function enqueueOrRefreshNotionPageContentUpdatedEvents(args: {
     const [inserted] = await args.db
       .insert(notionWorkflowPendingEvents)
       .values({
-        triggerId: automation.id,
         automationId: automation.id,
         pageId: args.pageId,
         scopeType: pageContentUpdatedScopeType(config.data.scope),
@@ -1790,7 +1810,7 @@ async function loadDueNotionPendingEvents(args: {
   readonly signal: AbortSignal;
 }): Promise<readonly NotionPendingRow[]> {
   const rows = await args.db
-    .select()
+    .select(notionPendingEventColumns())
     .from(notionWorkflowPendingEvents)
     .where(
       and(
@@ -1824,7 +1844,7 @@ async function claimNotionPendingEvent(args: {
         lte(notionWorkflowPendingEvents.runAfter, args.currentTime),
       ),
     )
-    .returning();
+    .returning(notionPendingEventColumns());
   args.signal.throwIfAborted();
   return claimed ?? null;
 }
@@ -2720,7 +2740,7 @@ async function processClaimedNotionPendingEvent(args: {
 }): Promise<"executed" | "skipped"> {
   const row = await loadDueNotionAutomationRow({
     db: args.db,
-    automationId: args.pending.triggerId,
+    automationId: args.pending.automationId,
     signal: args.signal,
   });
   if (!row) {

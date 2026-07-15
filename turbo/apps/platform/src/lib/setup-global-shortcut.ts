@@ -5,6 +5,7 @@ type GlobalShortcutCallback = (e: KeyboardEvent) => void | Promise<void>;
 
 export interface GlobalShortcutBinding {
   readonly allowInEditableTarget?: boolean;
+  readonly shouldHandle?: (e: KeyboardEvent) => boolean;
   readonly run: GlobalShortcutCallback;
 }
 
@@ -44,6 +45,9 @@ export function setupGlobalShortcut(
       }
       for (const [shortcut, binding] of Object.entries(bindings)) {
         if (matchShortcut(shortcut, e)) {
+          if (binding.shouldHandle?.(e) === false) {
+            continue;
+          }
           if (isEditableTarget(e.target) && !binding.allowInEditableTarget) {
             return;
           }

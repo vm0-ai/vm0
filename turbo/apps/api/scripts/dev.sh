@@ -9,9 +9,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 TUNNEL_URL_FILE="$REPO_ROOT/turbo/.dev-tunnel-url"
 TUNNEL_SCRIPT="$REPO_ROOT/scripts/tunnel.sh"
 API_PORT=3001
+MARKETING_PORT=3042
 ENV_LOCAL_FILE="$API_APP_DIR/.env.local"
 STRIPE_PIDFILE="/tmp/stripe-listen-api.pid"
 TUNNEL_PIDFILE="/tmp/cloudflared-${API_PORT}.pid"
+MARKETING_TUNNEL_PIDFILE="/tmp/cloudflared-${MARKETING_PORT}.pid"
 
 kill_stale() {
   local pidfile="$1" pattern="$2"
@@ -73,11 +75,13 @@ cleanup() {
   kill_stale "$STRIPE_PIDFILE" ""
   if [[ "${API_KEEP_TUNNEL_ON_EXIT:-}" != "1" ]]; then
     kill_stale "$TUNNEL_PIDFILE" ""
+    kill_stale "$MARKETING_TUNNEL_PIDFILE" ""
   fi
 }
 trap cleanup EXIT INT TERM
 
-default_api_tunnel_hostname() {
+default_tunnel_hostname() {
+  local service="$1"
   local email domain username machine_hostname
 
   email="$(git -C "$REPO_ROOT" config user.email 2>/dev/null || true)"
@@ -88,7 +92,15 @@ default_api_tunnel_hostname() {
 
   username="${email%%@*}"
   machine_hostname="$(bash "$REPO_ROOT/scripts/cn.sh")"
-  printf "tunnel-%s-%s-www.vm7.ai\n" "$username" "$machine_hostname"
+  printf "tunnel-%s-%s-%s.vm7.ai\n" "$username" "$machine_hostname" "$service"
+}
+
+default_api_tunnel_hostname() {
+  default_tunnel_hostname "www"
+}
+
+default_marketing_tunnel_hostname() {
+  default_tunnel_hostname "marketing"
 }
 
 start_api_tunnel() {
@@ -114,9 +126,49 @@ start_api_tunnel() {
   printf "%s\n" "$tunnel_url"
 }
 
+start_marketing_tunnel_if_available() {
+  local tunnel_hostname tunnel_url proxy_host explicit
+
+  explicit=0
+  tunnel_hostname="${MARKETING_TUNNEL_HOSTNAME:-}"
+  if [[ -n "$tunnel_hostname" ]]; then
+    explicit=1
+  fi
+
+  if [[ -z "$tunnel_hostname" ]]; then
+    if ! lsof -tiTCP:"${MARKETING_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "[marketing:dev] localhost:${MARKETING_PORT} is not listening; skipping marketing tunnel."
+      return 0
+    fi
+
+    tunnel_hostname="$(default_marketing_tunnel_hostname)"
+  fi
+
+  if [[ -z "$tunnel_hostname" ]]; then
+    return 0
+  fi
+
+  if tunnel_url="$(TUNNEL_HOSTNAME="$tunnel_hostname" "$TUNNEL_SCRIPT" "$MARKETING_PORT")"; then
+    proxy_host="${tunnel_url}:8443"
+    update_env_value "VM0_MODEL_PROXY_HOST" "$proxy_host"
+    echo "[marketing:dev] Tunnel URL=${tunnel_url}"
+    echo "[api:dev] VM0_MODEL_PROXY_HOST=${proxy_host}"
+    return 0
+  fi
+
+  if [[ "$explicit" == "1" ]]; then
+    echo "Error: failed to start marketing tunnel for ${tunnel_hostname}" >&2
+    exit 1
+  fi
+
+  echo "[marketing:dev] Failed to start marketing tunnel; continuing API dev server." >&2
+}
+
 TUNNEL_URL="$(start_api_tunnel)"
 
 echo "[api:dev] Tunnel URL=${TUNNEL_URL}"
+
+start_marketing_tunnel_if_available
 
 start_stripe_webhook_forwarding
 

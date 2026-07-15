@@ -31,8 +31,6 @@ export enum FeatureSwitchKey {
   CloseConnector = "closeConnector",
   TikTokAdsConnector = "tiktokAdsConnector",
   AwsConnector = "awsConnector",
-  NintendoSwitchParentalControlsConnector = "nintendoSwitchParentalControlsConnector",
-  NintendoStoreConnector = "nintendoStoreConnector",
   PosthogConnector = "posthogConnector",
   PayPalConnector = "payPalConnector",
   RampConnector = "rampConnector",
@@ -42,6 +40,7 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   ZeroDebug = "zeroDebug",
   ZeroScrape = "zeroScrape",
+  ZeroWebSearch = "zeroWebSearch",
   Banking = "banking",
   Lab = "lab",
   NotionWorkflowAutomations = "notionWorkflowAutomations",
@@ -54,6 +53,8 @@ export enum FeatureSwitchKey {
   ApiKeys = "apiKeys",
   CodexFrameworkForMinimax = "codexFrameworkForMinimax",
   CodexFastMode = "codexFastMode",
+  Vm0Model = "vm0Model",
+  ChatModelFamilySessionContinuity = "chatModelFamilySessionContinuity",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
 
@@ -67,11 +68,13 @@ export enum FeatureSwitchKey {
   AgentUnreadIndicators = "agentUnreadIndicators",
   MobileUnreadChatThreadShortcuts = "mobileUnreadChatThreadShortcuts",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
+  ComposerChatThreadSuggestions = "composerChatThreadSuggestions",
   SidebarManageIconCollapse = "sidebarManageIconCollapse",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",
   ImageEditing = "imageEditing",
   PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
+  PresentationElementDragging = "presentationElementDragging",
   Artifacts = "artifacts",
   ArtifactPreviewImage = "artifactPreviewImage",
   WorkflowTemplateCatalog = "workflowTemplateCatalog",
@@ -80,11 +83,5 @@ export enum FeatureSwitchKey {
   ChatMessageQueue = "chatMessageQueue",
   OrgPlanEntitlementReads = "orgPlanEntitlementReads",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
+  ZeroMail = "zeroMail",
 }
-
-/**
- * Temporary wire alias used while old platform and API versions drain.
- * Remove after the Notion workflow automation feature-switch migration.
- */
-export const LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY =
-  "notionWorkflowTriggers";

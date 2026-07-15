@@ -18,6 +18,8 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
+  getVm0ModelCodexRuntimeConfig,
+  getVm0ModelProviderConfig,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
@@ -183,6 +185,8 @@ import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
   checkOrgModelRunAdmission,
   checkOrgCreditsForRunAdmission,
+  checkResolvedOrgCreditsForRunAdmission,
+  resolveOrgCreditAvailability,
 } from "./zero-run-admission.service";
 import { activateUsageAllowanceWindowsForRun } from "./usage-allowance.service";
 import {
@@ -1772,6 +1776,34 @@ async function vm0ModelProviderEnvironment(
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
+  }
+
+  if (selectedModel === "vm0-model") {
+    const proxyToken = optionalEnv("VM0_MODEL_PROXY_TOKEN")?.trim();
+    const proxyHost = optionalEnv("VM0_MODEL_PROXY_HOST")?.trim();
+    if (!proxyToken || !proxyHost) {
+      return null;
+    }
+    const vm0ModelConfig = getVm0ModelProviderConfig(proxyHost);
+    return {
+      id: null,
+      type: "vm0",
+      concreteType,
+      framework: "codex",
+      environment: {
+        OPENAI_API_KEY: `\${{ secrets.OPENAI_API_KEY }}`,
+        OPENAI_BASE_URL: vm0ModelConfig.baseUrl,
+        OPENAI_MODEL: selectedModel,
+      },
+      secrets: {
+        OPENAI_API_KEY: proxyToken,
+        VM0_MODEL_UPSTREAM_API_KEY: apiKey,
+      },
+      selectedModel,
+      codexRuntimeConfig: getVm0ModelCodexRuntimeConfig(vm0ModelConfig.baseUrl),
+      firewall: vm0ModelConfig.firewall,
+      inlineFirewall: true,
+    };
   }
 
   return {
@@ -3932,17 +3964,48 @@ async function checkRunConcurrencyLimit(
   return activeCount >= limit ? concurrentRunLimit() : null;
 }
 
-async function checkVm0Credits(
+async function checkFinalRunAdmission(
   db: Db,
-  args: { readonly orgId: string; readonly selectedModel?: string | null },
+  args: {
+    readonly orgId: string;
+    readonly modelProviderType: string | null | undefined;
+    readonly selectedModel: string | null | undefined;
+    readonly enforceVm0Credits: boolean;
+    readonly signal: AbortSignal;
+    readonly timing: ApiDispatchTimingCollector;
+  },
 ): Promise<CreateRunErrorResult | null> {
+  if (args.enforceVm0Credits) {
+    return await args.timing.measure(
+      "api_dispatch_check_vm0_credits",
+      "nested",
+      async () => {
+        const availability = await resolveOrgCreditAvailability({
+          db,
+          orgId: args.orgId,
+        });
+        args.signal.throwIfAborted();
+        return (
+          (await checkResolvedOrgCreditsForRunAdmission({
+            db,
+            orgId: args.orgId,
+            modelProviderType: args.modelProviderType,
+            selectedModel: args.selectedModel,
+            availability,
+          })) ?? null
+        );
+      },
+    );
+  }
+
+  const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
+  args.signal.throwIfAborted();
   return (
-    (await checkOrgCreditsForRunAdmission({
-      db,
-      orgId: args.orgId,
-      modelProviderType: "vm0",
+    checkOrgModelRunAdmission({
+      capabilities,
+      modelProviderType: args.modelProviderType,
       selectedModel: args.selectedModel,
-    })) ?? null
+    }) ?? null
   );
 }
 
@@ -4225,6 +4288,7 @@ function loadResumeSession(
     async (): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
       const [conversation] = await db
         .select({
+          runId: conversations.runId,
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
@@ -4261,6 +4325,7 @@ function loadResumeSession(
           if (hash) {
             return Promise.resolve({
               sessionId: cliAgentSessionId,
+              historyGenerationRunId: conversation.runId,
               historyRef: {
                 kind: "blob",
                 hash,
@@ -5480,6 +5545,7 @@ function dispatchRun(
         runId: args.run.id,
         profile: payload.profile,
         cliAgentSessionId: payload.cliAgentSessionId,
+        historyGenerationRunId: payload.historyGenerationRunId,
         createdAt: persisted.runnerJobCreatedAt,
       });
       args.timing.flush({
@@ -6023,10 +6089,13 @@ async function resolveRunModelProvider(
   }
 
   if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
-    const creditGate = await checkVm0Credits(db, {
-      orgId: args.orgId,
-      selectedModel: args.selectedModelOverride,
-    });
+    const creditGate =
+      (await checkOrgCreditsForRunAdmission({
+        db,
+        orgId: args.orgId,
+        modelProviderType: "vm0",
+        selectedModel: args.selectedModelOverride,
+      })) ?? null;
     options.signal.throwIfAborted();
     if (creditGate) {
       return creditGate;
@@ -6343,6 +6412,7 @@ async function prepareRunBodyContext(args: {
   readonly get: PrepareRunContextGet;
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly initialBody: CreateRunBody;
@@ -6351,9 +6421,19 @@ async function prepareRunBodyContext(args: {
     "api_dispatch_prepare_context_feature_switches",
     "nested",
     async () => {
+      if (args.preloadedFeatureSwitchContext !== undefined) {
+        args.signal.throwIfAborted();
+        return args.preloadedFeatureSwitchContext;
+      }
       return await args.get(
         loadRunFeatureSwitchContext(args.createArgs, args.signal),
       );
+    },
+    {
+      feature_switch_context_source:
+        args.preloadedFeatureSwitchContext === undefined
+          ? "database"
+          : "preloaded",
     },
   );
   const resolved = await args.timing.measure(
@@ -6648,6 +6728,7 @@ function prepareRunContext(
   args: CreateAgentRunArgs,
   timing: ApiDispatchTimingCollector,
   signal: AbortSignal,
+  preloadedFeatureSwitchContext: FeatureSwitchContext | undefined,
 ): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
@@ -6666,6 +6747,7 @@ function prepareRunContext(
         get,
         db,
         createArgs: args,
+        preloadedFeatureSwitchContext,
         timing,
         signal,
         initialBody,
@@ -7122,6 +7204,8 @@ async function committedAtomicLaunchResponse(args: {
     runId: args.committed.run.id,
     profile: args.committed.runnerJobPayload.profile,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
+    historyGenerationRunId:
+      args.committed.runnerJobPayload.historyGenerationRunId,
     createdAt: args.committed.runnerJobCreatedAt,
   });
   args.timing.flush({
@@ -7282,6 +7366,7 @@ interface PreparedAgentRun {
 interface PrepareAgentRunArgs {
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
+  readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
 }
 
 interface CompleteAgentRunArgs {
@@ -7330,7 +7415,15 @@ export const prepareAgentRun$ = command(
       "api_dispatch_prepare_run_context",
       "top_level",
       async () => {
-        return await get(prepareRunContext(db, args, timing, signal));
+        return await get(
+          prepareRunContext(
+            db,
+            args,
+            timing,
+            signal,
+            input.preloadedFeatureSwitchContext,
+          ),
+        );
       },
     );
     signal.throwIfAborted();
@@ -7356,35 +7449,29 @@ export const completeAgentRun$ = command(
     );
     signal.throwIfAborted();
 
-    const modelTierGate = await checkOrgModelRunAdmission({
-      db,
-      orgId: args.orgId,
-      modelProviderType: context.modelProvider?.type ?? args.modelProviderType,
-      selectedModel:
-        context.modelProvider?.selectedModel ?? args.selectedModelOverride,
-    });
+    const modelProviderType =
+      context.modelProvider?.type ?? args.modelProviderType;
+    const selectedModel =
+      context.modelProvider?.selectedModel ?? args.selectedModelOverride;
+    const admissionGate = await timing.measure(
+      "api_dispatch_check_run_admission",
+      "top_level",
+      async () => {
+        return await checkFinalRunAdmission(db, {
+          orgId: args.orgId,
+          modelProviderType,
+          selectedModel,
+          enforceVm0Credits:
+            args.enforceVm0Credits === true &&
+            context.modelProvider?.type === "vm0",
+          signal,
+          timing,
+        });
+      },
+    );
     signal.throwIfAborted();
-    if (modelTierGate) {
-      return modelTierGate;
-    }
-
-    if (args.enforceVm0Credits && context.modelProvider?.type === "vm0") {
-      const creditGate = await timing.measure(
-        "api_dispatch_check_vm0_credits",
-        "top_level",
-        async () => {
-          return await checkVm0Credits(db, {
-            orgId: args.orgId,
-            selectedModel:
-              context.modelProvider?.selectedModel ??
-              args.selectedModelOverride,
-          });
-        },
-      );
-      signal.throwIfAborted();
-      if (creditGate) {
-        return creditGate;
-      }
+    if (admissionGate) {
+      return admissionGate;
     }
 
     if (args.beforeDispatch) {

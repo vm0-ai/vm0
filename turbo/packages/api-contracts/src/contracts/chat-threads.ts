@@ -6,6 +6,7 @@ import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
 import { isSupportedRunModel } from "./model-providers";
+import { zeroMailDraftSchema } from "./zero-mail";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -313,6 +314,7 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  mailDraft: zeroMailDraftSchema.optional(),
   sequenceNumber: z.number().nullable().optional(),
   workflowSnapshot: z
     .object({

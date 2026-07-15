@@ -169,7 +169,7 @@ export const GOOGLE_MEET_WORKSPACE_EVENTS_PERMISSIONS: readonly PermissionGroup[
     {
       name: "workspace-events.subscriptions.read",
       description:
-        "Read Google Workspace Events subscriptions used by Google Meet triggers.",
+        "Read Google Workspace Events subscriptions used by Google Meet automations.",
       rules: [
         "GET /v1/subscriptions",
         "GET /v1/subscriptions/{subscriptionsId}",
@@ -178,7 +178,7 @@ export const GOOGLE_MEET_WORKSPACE_EVENTS_PERMISSIONS: readonly PermissionGroup[
     {
       name: "workspace-events.subscriptions.write",
       description:
-        "Create, update, delete, and reactivate Google Workspace Events subscriptions used by Google Meet triggers.",
+        "Create, update, delete, and reactivate Google Workspace Events subscriptions used by Google Meet automations.",
       rules: [
         "POST /v1/subscriptions",
         "PATCH /v1/subscriptions/{subscriptionsId}",

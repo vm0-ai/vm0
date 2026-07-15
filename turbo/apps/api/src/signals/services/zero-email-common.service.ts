@@ -24,7 +24,7 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { writeDb$, type Db } from "../external/db";
-import { bestEffort, settle } from "../utils";
+import { bestEffort, tapError } from "../utils";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -936,7 +936,7 @@ function downloadAndUploadEmailAttachment(
       return null;
     }
 
-    const bufferResult = await settle(
+    const buffer = await tapError(
       (async (): Promise<Buffer | null> => {
         const response = await fetch(attachment.downloadUrl);
         if (!response.ok) {
@@ -945,15 +945,13 @@ function downloadAndUploadEmailAttachment(
         return Buffer.from(await response.arrayBuffer());
       })(),
     );
-    if (!bufferResult.ok || !bufferResult.value) {
+    if (!buffer) {
       return null;
     }
 
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const key = `${R2_PATH_PREFIX}/${emailId}/${attachment.id}-${attachment.filename}`;
-    await get(
-      putS3Object(bucket, key, bufferResult.value, attachment.contentType),
-    );
+    await get(putS3Object(bucket, key, buffer, attachment.contentType));
     return await get(
       generatePresignedGetUrl(
         bucket,
@@ -1154,11 +1152,10 @@ export async function getOrgIdBySlug(
     return cached.orgId;
   }
 
-  const orgResult = await settle(clerk.organizations.getOrganization({ slug }));
-  if (!orgResult.ok) {
+  const org = await tapError(clerk.organizations.getOrganization({ slug }));
+  if (!org) {
     return null;
   }
-  const org = orgResult.value;
   if (!org.slug) {
     return null;
   }

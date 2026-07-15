@@ -61,14 +61,6 @@ export const gmailProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    triggerId: uuid("trigger_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroWorkflowAutomations.id;
-        },
-        { onDelete: "cascade" },
-      ),
     automationId: uuid("automation_id")
       .notNull()
       .references(
@@ -85,12 +77,6 @@ export const gmailProcessedEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_gmail_processed_events_event").on(
-        table.watchStateId,
-        table.triggerId,
-        table.historyId,
-        table.messageId,
-      ),
       uniqueIndex("idx_gmail_processed_events_automation_event").on(
         table.watchStateId,
         table.automationId,

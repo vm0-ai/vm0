@@ -38,7 +38,7 @@ import {
   linkGithubVm0User,
   loadActiveGithubInstallationForOrg,
 } from "../services/github-oauth.service";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
   getConnectorOAuthCanonicalRedirectUrl,
@@ -790,7 +790,7 @@ const handleOpenIdConnectorCallback$ = command(
       return resolvedState.response;
     }
 
-    const callbackResult = await settle(
+    const callbackResponse = await tapError(
       set(
         completeOpenIdCallback$,
         {
@@ -808,8 +808,8 @@ const handleOpenIdConnectorCallback$ = command(
     );
     signal.throwIfAborted();
 
-    if (callbackResult.ok) {
-      return callbackResult.value;
+    if (callbackResponse) {
+      return callbackResponse;
     }
 
     return redirectWithError(
@@ -920,7 +920,7 @@ const handleAuthCodeConnectorCallback$ = command(
       return resolvedState.response;
     }
 
-    const callbackResult = await settle(
+    const callbackResponse = await tapError(
       set(
         completeOAuthCallback$,
         {
@@ -944,8 +944,8 @@ const handleAuthCodeConnectorCallback$ = command(
     );
     signal.throwIfAborted();
 
-    if (callbackResult.ok) {
-      return callbackResult.value;
+    if (callbackResponse) {
+      return callbackResponse;
     }
 
     return redirectWithError(

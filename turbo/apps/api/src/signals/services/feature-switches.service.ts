@@ -3,12 +3,9 @@ import {
   filterUserOverridableFeatureSwitchOverrides,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
-import {
-  FeatureSwitchKey,
-  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY as LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY,
-} from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
@@ -26,30 +23,12 @@ function isOrgScopedFeatureSwitchKey(key: string): boolean {
   return ORG_SCOPED_FEATURE_SWITCH_KEYS.includes(key);
 }
 
-function canonicalizeFeatureSwitchAliases(
-  switches: Readonly<Record<string, boolean>>,
-): Record<string, boolean> {
-  const canonical = { ...switches };
-  const notionWorkflowAutomations =
-    switches[FeatureSwitchKey.NotionWorkflowAutomations] ??
-    switches[LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY];
-
-  delete canonical[LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY];
-  if (notionWorkflowAutomations !== undefined) {
-    canonical[FeatureSwitchKey.NotionWorkflowAutomations] =
-      notionWorkflowAutomations;
-  }
-
-  return canonical;
-}
-
 function splitFeatureSwitchesByScope(switches: Record<string, boolean>): {
   readonly userSwitches: Record<string, boolean>;
   readonly orgSwitches: Record<string, boolean>;
 } {
-  const userOverridableSwitches = filterUserOverridableFeatureSwitchOverrides(
-    canonicalizeFeatureSwitchAliases(switches),
-  );
+  const userOverridableSwitches =
+    filterUserOverridableFeatureSwitchOverrides(switches);
   const userSwitches: Record<string, boolean> = {};
   const orgSwitches: Record<string, boolean> = {};
 
@@ -89,36 +68,36 @@ function mergeScopedFeatureSwitches(
   return merged;
 }
 
-async function loadFeatureSwitchOverrideRow(
-  db: ReadonlyDb,
-  orgId: string,
-  userId: string,
-): Promise<Record<string, boolean>> {
-  const [row] = await db
-    .select({ switches: userFeatureSwitches.switches })
-    .from(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, orgId),
-        eq(userFeatureSwitches.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  return filterUserOverridableFeatureSwitchOverrides(
-    canonicalizeFeatureSwitchAliases(row?.switches ?? {}),
-  );
-}
-
 async function loadUserFeatureSwitchOverrides(
   db: ReadonlyDb,
   orgId: string,
   userId: string,
 ): Promise<Record<string, boolean>> {
-  const [userSwitches, orgSwitches] = await Promise.all([
-    loadFeatureSwitchOverrideRow(db, orgId, userId),
-    loadFeatureSwitchOverrideRow(db, orgId, ORG_SENTINEL_USER_ID),
-  ]);
+  const rows = await db
+    .select({
+      userId: userFeatureSwitches.userId,
+      switches: userFeatureSwitches.switches,
+    })
+    .from(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, orgId),
+        inArray(userFeatureSwitches.userId, [userId, ORG_SENTINEL_USER_ID]),
+      ),
+    );
+
+  let userSwitches: Record<string, boolean> = {};
+  let orgSwitches: Record<string, boolean> = {};
+
+  for (const row of rows) {
+    const switches = filterUserOverridableFeatureSwitchOverrides(row.switches);
+    if (row.userId === userId) {
+      userSwitches = switches;
+    }
+    if (row.userId === ORG_SENTINEL_USER_ID) {
+      orgSwitches = switches;
+    }
+  }
 
   return mergeScopedFeatureSwitches(userSwitches, orgSwitches);
 }
@@ -223,12 +202,8 @@ async function upsertFeatureSwitches(
   const existing =
     (existingRow?.switches as Record<string, boolean> | undefined) ?? {};
   const merged: Record<string, boolean> = {
-    ...filterUserOverridableFeatureSwitchOverrides(
-      canonicalizeFeatureSwitchAliases(existing),
-    ),
-    ...filterUserOverridableFeatureSwitchOverrides(
-      canonicalizeFeatureSwitchAliases(switches),
-    ),
+    ...filterUserOverridableFeatureSwitchOverrides(existing),
+    ...filterUserOverridableFeatureSwitchOverrides(switches),
   };
   const now = nowDate();
 

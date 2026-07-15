@@ -33,8 +33,10 @@ import { agentRuns } from "./agent-run";
  *   video     bytedance/seedance-2.0       output_video_tokens
  *
  * Charging is applied by the billing processor, which looks up the
- * `(kind, provider, category)` triple in a pricing table and writes
- * `creditsCharged`.
+ * `(kind, billingSku ?? provider, category)` triple in a pricing table and
+ * writes `creditsCharged`. `billingSku` is an optional opaque pricing identity
+ * for trusted dynamic providers; `provider` remains the logical product shown
+ * in usage records.
  *
  * `billingError` is a short code naming a billing-time problem on the
  * row. NULL on healthy rows. Ops queries `WHERE billing_error IS NOT
@@ -65,6 +67,7 @@ export const usageEvent = pgTable(
     userId: text("user_id").notNull(),
     kind: varchar("kind", { length: 30 }).notNull(),
     provider: varchar("provider", { length: 100 }).notNull(),
+    billingSku: varchar("billing_sku", { length: 100 }),
     category: varchar("category", { length: 100 }).notNull(),
     quantity: bigint("quantity", { mode: "number" }).notNull(),
     creditsCharged: bigint("credits_charged", { mode: "number" }),

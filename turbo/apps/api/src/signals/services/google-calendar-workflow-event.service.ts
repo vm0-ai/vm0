@@ -28,7 +28,7 @@ import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -375,7 +375,7 @@ async function refreshGoogleCalendarAccessToken(args: {
   const refreshToken = await decryptStoredSecretValue(
     args.refreshSecret.encryptedValue,
   );
-  const refreshResult = await settle(
+  const refreshed = await tapError(
     refreshGoogleToken(
       "google-calendar",
       clientId,
@@ -383,9 +383,9 @@ async function refreshGoogleCalendarAccessToken(args: {
       refreshToken,
       args.signal,
     ),
-    args.signal,
   );
-  if (!refreshResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     await markGoogleCalendarConnectorNeedsReconnect({
       db: args.db,
       connectorId: args.connector.id,
@@ -400,15 +400,13 @@ async function refreshGoogleCalendarAccessToken(args: {
   }
 
   const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshResult.value.expiresIn,
+    refreshed.expiresIn,
     args.currentTime,
   );
   await args.db
     .update(secretsTable)
     .set({
-      encryptedValue: await encryptStoredSecretValue(
-        refreshResult.value.accessToken,
-      ),
+      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
       updatedAt: args.currentTime,
     })
     .where(
@@ -436,7 +434,7 @@ async function refreshGoogleCalendarAccessToken(args: {
     access: {
       connectorId: args.connector.id,
       emailAddress: args.connector.externalEmail,
-      accessToken: refreshResult.value.accessToken,
+      accessToken: refreshed.accessToken,
     },
   };
 }
@@ -1451,7 +1449,6 @@ async function insertGoogleCalendarProcessedEvent(args: {
     .insert(googleCalendarProcessedEvents)
     .values({
       watchStateId: args.state.id,
-      triggerId: args.automation.automation.id,
       automationId: args.automation.automation.id,
       channelId: args.state.channelId,
       resourceState: args.notification.resourceState,

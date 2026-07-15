@@ -43,7 +43,7 @@ import {
   verifyResendWebhook,
   verifySenderAuthenticity,
 } from "../services/zero-email-common.service";
-import { safeSync, settle, tapError } from "../utils";
+import { safeSync, tapError } from "../utils";
 
 const log = logger("zero:email:inbound");
 
@@ -646,7 +646,7 @@ const processReceivedEmail$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const result = await settle(
+    await tapError(
       (async () => {
         const handlerResult = await set(
           args.hasReplyAddress
@@ -668,27 +668,29 @@ const processReceivedEmail$ = command(
           );
         }
       })(),
+      async (error) => {
+        log.error("Failed to handle inbound email", { error });
+        await tapError(
+          set(
+            sendInboundErrorReply$,
+            {
+              to: args.event.data.from,
+              subject: args.event.data.subject,
+              errorMessage:
+                "An internal error occurred while processing your email. Please try again later.",
+            },
+            signal,
+          ),
+          (sendError) => {
+            log.error("Failed to send inbound email error reply", {
+              sendError,
+            });
+          },
+        );
+        signal.throwIfAborted();
+      },
     );
     signal.throwIfAborted();
-    if (!result.ok) {
-      log.error("Failed to handle inbound email", { error: result.error });
-      await tapError(
-        set(
-          sendInboundErrorReply$,
-          {
-            to: args.event.data.from,
-            subject: args.event.data.subject,
-            errorMessage:
-              "An internal error occurred while processing your email. Please try again later.",
-          },
-          signal,
-        ),
-        (sendError) => {
-          log.error("Failed to send inbound email error reply", { sendError });
-        },
-      );
-      signal.throwIfAborted();
-    }
   },
 );
 

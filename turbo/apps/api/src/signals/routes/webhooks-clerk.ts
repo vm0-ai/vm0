@@ -7,7 +7,7 @@ import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route-entry";
-import { settle, tapError } from "../utils";
+import { tapError } from "../utils";
 import { ensureOrgLimitedFreeBootstrap$ } from "../services/org-limited-free-bootstrap.service";
 import {
   cleanupClerkBannedUser$,
@@ -110,15 +110,13 @@ const postClerkWebhook$ = command(
     const request = get(request$).raw;
     const signingSecret = optionalEnv("CLERK_WEBHOOK_SIGNING_SECRET");
 
-    const eventResult = await settle(
+    const event = await tapError(
       verifyWebhook(request.clone(), { signingSecret }),
     );
     signal.throwIfAborted();
-    if (!eventResult.ok) {
+    if (!event) {
       return jsonError("Invalid webhook signature", 401);
     }
-
-    const event = eventResult.value;
     L.debug("clerk webhook received", { type: event.type });
 
     if ((event.type as string) === "organization.created") {

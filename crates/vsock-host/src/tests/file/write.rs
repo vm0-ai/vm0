@@ -867,6 +867,52 @@ async fn lifecycle_request_writes_while_file_frame_builder_waits() {
 }
 
 #[tokio::test]
+async fn file_write_gate_holds_through_result_and_lifecycle_bypasses_it() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let host = Arc::new(host);
+    let first_write = spawn_write_file(
+        Arc::clone(&host),
+        "/tmp/serialized-first.txt",
+        b"first".to_vec(),
+        false,
+    );
+
+    let first = expect_write_file(guest.stream_mut()).await;
+    assert_eq!(first.path, "/tmp/serialized-first.txt");
+    assert!(
+        host.shared.file_write_gate.try_lock().is_err(),
+        "file-write gate must remain held while the terminal result is pending"
+    );
+
+    let second_write = spawn_write_files(
+        Arc::clone(&host),
+        vec![("/tmp/serialized-second.txt", b"second".to_vec())],
+    );
+    let shutdown_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.shutdown(Duration::from_secs(5)).await })
+    };
+
+    let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
+    guest
+        .send_empty_response(MSG_SHUTDOWN_ACK, shutdown.seq)
+        .await;
+    assert!(shutdown_task.await.unwrap());
+    assert!(host.shared.file_write_gate.try_lock().is_err());
+
+    send_write_file_success(guest.stream_mut(), first.seq()).await;
+    first_write.await.unwrap().unwrap();
+
+    let second = expect_write_files(guest.stream_mut()).await;
+    assert_eq!(
+        second.files,
+        vec![("/tmp/serialized-second.txt".to_string(), b"second".to_vec())]
+    );
+    send_write_files_success(guest.stream_mut(), second.seq()).await;
+    second_write.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn write_file_cancelled_while_waiting_for_frame_builder_does_not_poison_or_send_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

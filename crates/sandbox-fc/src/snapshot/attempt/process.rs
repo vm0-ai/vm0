@@ -3,12 +3,16 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncRead;
 use tokio::task::JoinHandle;
 use tracing::info;
 
 use crate::config::SnapshotConfig;
 use crate::process::kill_process_group;
+use crate::process_log::{
+    PROCESS_LOG_RECORD_MAX_BYTES, PROCESS_LOG_RECORD_TRUNCATED, ProcessLogRecord,
+    read_process_log_records,
+};
 
 use super::super::SnapshotError;
 
@@ -206,14 +210,7 @@ fn spawn_stdout_forwarder(child: &mut tokio::process::Child) -> Option<JoinHandl
     child.stdout.take().map(|stdout| {
         // Intentionally detached: stdout has no cleanup decision input, and
         // EOF on the child pipe ends the task after Firecracker exits.
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    info!(target: "firecracker", "{line}");
-                }
-            }
-        })
+        tokio::spawn(forward_stdout(stdout))
     })
 }
 
@@ -225,21 +222,55 @@ fn spawn_stderr_forwarder(
         let buf = Arc::clone(stderr_buf);
         // The caller retains this handle only for the early-exit drain path.
         // Otherwise EOF on the child pipe ends the task after Firecracker exits.
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    tracing::warn!(target: "firecracker", "stderr: {line}");
-                    if let Ok(mut g) = buf.lock() {
-                        if g.len() == STDERR_BUF_LINES {
-                            g.pop_front();
-                        }
-                        g.push_back(line);
-                    }
-                }
-            }
-        })
+        tokio::spawn(async move { forward_stderr(stderr, &buf).await })
     })
+}
+
+async fn forward_stdout<R>(reader: R)
+where
+    R: AsyncRead + Unpin,
+{
+    let _ = read_process_log_records(reader, |record| match record {
+        ProcessLogRecord::Line(line) => info!(target: "firecracker", "{line}"),
+        ProcessLogRecord::Truncated => tracing::warn!(
+            target: "firecracker",
+            stream = "stdout",
+            limit_bytes = PROCESS_LOG_RECORD_MAX_BYTES,
+            PROCESS_LOG_RECORD_TRUNCATED
+        ),
+    })
+    .await;
+}
+
+async fn forward_stderr<R>(reader: R, stderr_buf: &StderrBuf)
+where
+    R: AsyncRead + Unpin,
+{
+    let _ = read_process_log_records(reader, |record| {
+        let line = match record {
+            ProcessLogRecord::Line(line) => {
+                tracing::warn!(target: "firecracker", "stderr: {line}");
+                line.to_owned()
+            }
+            ProcessLogRecord::Truncated => {
+                tracing::warn!(
+                    target: "firecracker",
+                    stream = "stderr",
+                    limit_bytes = PROCESS_LOG_RECORD_MAX_BYTES,
+                    PROCESS_LOG_RECORD_TRUNCATED
+                );
+                PROCESS_LOG_RECORD_TRUNCATED.to_string()
+            }
+        };
+
+        if let Ok(mut buffer) = stderr_buf.lock() {
+            if buffer.len() == STDERR_BUF_LINES {
+                buffer.pop_front();
+            }
+            buffer.push_back(line);
+        }
+    })
+    .await;
 }
 
 async fn drain_stderr_forwarder_after_spawn_exit(
@@ -388,6 +419,23 @@ mod tests {
     use crate::config::SnapshotConfig;
 
     use super::*;
+
+    #[tokio::test]
+    async fn stderr_forwarder_bounds_oversized_records_and_keeps_following_output() {
+        let mut input = vec![b'x'; PROCESS_LOG_RECORD_MAX_BYTES + 1];
+        input.extend_from_slice(b"\nafter\n");
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+
+        forward_stderr(input.as_slice(), &buf).await;
+
+        assert_eq!(
+            *buf.lock().expect("lock"),
+            VecDeque::from([
+                PROCESS_LOG_RECORD_TRUNCATED.to_string(),
+                "after".to_string(),
+            ])
+        );
+    }
 
     #[tokio::test]
     async fn drain_stderr_forwarder_after_spawn_exit_waits_for_failed_status() {

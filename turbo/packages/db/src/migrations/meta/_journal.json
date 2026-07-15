@@ -4194,6 +4194,48 @@
       "when": 1784056277262,
       "tag": "0598_expand_workflow_automation_memory_id",
       "breakpoints": true
+    },
+    {
+      "idx": 599,
+      "version": "7",
+      "when": 1784067296293,
+      "tag": "0599_contract_workflow_automation_identifiers",
+      "breakpoints": true
+    },
+    {
+      "idx": 600,
+      "version": "7",
+      "when": 1784072998367,
+      "tag": "0600_make_legacy_event_automation_ids_optional",
+      "breakpoints": true
+    },
+    {
+      "idx": 601,
+      "version": "7",
+      "when": 1784076114258,
+      "tag": "0601_drop_legacy_event_trigger_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 602,
+      "version": "7",
+      "when": 1784102865460,
+      "tag": "0602_modern_black_widow",
+      "breakpoints": true
+    },
+    {
+      "idx": 603,
+      "version": "7",
+      "when": 1784105782180,
+      "tag": "0603_simple_ironclad",
+      "breakpoints": true
+    },
+    {
+      "idx": 604,
+      "version": "7",
+      "when": 1784112668382,
+      "tag": "0604_add_vm0_model_pricing",
+      "breakpoints": true
     }
   ]
 }

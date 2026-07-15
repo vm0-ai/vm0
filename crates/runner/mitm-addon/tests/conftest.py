@@ -184,6 +184,7 @@ class _StubTLSClient:
         self.id = client_id or str(uuid.uuid4())
         self.peername = peername
         self.sni = sni
+        self.timestamp_end: float | None = None
 
 
 class _StubTLSServer:

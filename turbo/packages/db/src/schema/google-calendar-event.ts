@@ -106,14 +106,6 @@ export const googleCalendarProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    triggerId: uuid("trigger_id")
-      .notNull()
-      .references(
-        () => {
-          return zeroWorkflowAutomations.id;
-        },
-        { onDelete: "cascade" },
-      ),
     automationId: uuid("automation_id")
       .notNull()
       .references(
@@ -132,12 +124,6 @@ export const googleCalendarProcessedEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_google_calendar_processed_events_event").on(
-        table.watchStateId,
-        table.triggerId,
-        table.calendarEventId,
-        table.eventChangeKey,
-      ),
       uniqueIndex("idx_google_calendar_processed_events_automation_event").on(
         table.watchStateId,
         table.automationId,

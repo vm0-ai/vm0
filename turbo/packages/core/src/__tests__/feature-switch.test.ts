@@ -32,12 +32,19 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.ChatMessageQueue, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ChatModelFamilySessionContinuity, {}),
+    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.PresentationElementDragging, {}),
+    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -118,13 +125,10 @@ describe("getAllFeatureStates", () => {
     const staffOrgStates = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(staffOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(true);
-    expect(
-      staffOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
@@ -133,6 +137,9 @@ describe("getAllFeatureStates", () => {
       staffOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
@@ -141,22 +148,26 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.ChatModelFamilySessionContinuity],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.ChatMessageQueue]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(otherOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
@@ -167,6 +178,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
@@ -175,13 +189,20 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.ChatModelFamilySessionContinuity],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ChatMessageQueue]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -224,8 +245,14 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.PresentationElementDragging,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroScrape,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+      FeatureSwitchKey.ZeroWebSearch,
     );
 
     expect(
@@ -233,11 +260,14 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.OrgPlanEntitlementReads]: true,
+        [FeatureSwitchKey.PresentationElementDragging]: true,
         [FeatureSwitchKey.ZeroScrape]: true,
+        [FeatureSwitchKey.ZeroWebSearch]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
       [FeatureSwitchKey.ZeroScrape]: true,
+      [FeatureSwitchKey.ZeroWebSearch]: true,
       [FeatureSwitchKey.Dummy]: false,
     });
   });

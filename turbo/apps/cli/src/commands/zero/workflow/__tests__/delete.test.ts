@@ -33,7 +33,7 @@ function detailResponse(overrides: Record<string, unknown> = {}) {
     instruction: "# Workflow",
     files: [],
     fileContents: [],
-    triggers: [],
+    automations: [],
     ...overrides,
   };
 }
