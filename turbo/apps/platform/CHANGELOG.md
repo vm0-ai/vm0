@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.600.2](https://github.com/vm0-ai/vm0/compare/app-v0.600.1...app-v0.600.2) (2026-07-15)
+
+
+### Bug Fixes
+
+* **platform:** show running state for auto-sent queued messages ([#21599](https://github.com/vm0-ai/vm0/issues/21599)) ([3d36106](https://github.com/vm0-ai/vm0/commit/3d36106f2616f20e082d9f9588aacc4c226ee30e))
+
 ## [0.600.1](https://github.com/vm0-ai/vm0/compare/app-v0.600.0...app-v0.600.1) (2026-07-15)
 
 
