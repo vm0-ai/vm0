@@ -2917,7 +2917,7 @@ export const drainQueuedUserMessagesForRun$ = command(
 
 export const handleChatInternalCallback$ = command(
   async (
-    { get, set },
+    { set },
     callback: InternalRunCallbackEnvelope,
     signal: AbortSignal,
   ): Promise<

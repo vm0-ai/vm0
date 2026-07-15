@@ -8,7 +8,7 @@ import { normalizeRunModelId } from "@vm0/api-contracts/contracts/model-provider
  * (claude, gpt, glm, ...). This intentionally treats model variants in one
  * family as compatible while keeping different families isolated.
  */
-export function chatSessionModelFamily(model: string): string {
+function chatSessionModelFamily(model: string): string {
   const normalized = normalizeRunModelId(model.trim()).toLowerCase();
   const modelName = normalized.includes("/")
     ? normalized.slice(normalized.lastIndexOf("/") + 1)
@@ -21,7 +21,11 @@ export function shouldStartNewChatSession(args: {
   readonly nextModel: string | null;
   readonly preserveModelFamilySession: boolean;
 }): boolean {
-  if (args.latestModel == null || args.nextModel == null) {
+  if (
+    args.latestModel === undefined ||
+    args.latestModel === null ||
+    args.nextModel === null
+  ) {
     return false;
   }
 
