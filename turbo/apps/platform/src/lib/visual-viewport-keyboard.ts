@@ -4,6 +4,7 @@ const KEYBOARD_INSET_PROPERTY = "--zero-keyboard-inset";
 const KEYBOARD_INSET_TARGET_SELECTOR = "[data-keyboard-inset-target]";
 const CONTENTEDITABLE_SELECTOR =
   "[contenteditable]:not([contenteditable='false'])";
+const STANDALONE_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
 
 export const VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT =
   "vm0:visual-viewport-keyboard-settled";
@@ -99,6 +100,90 @@ function readFocusedCaretBottom(activeElement: HTMLElement): number | null {
     : caretRect.bottom;
 }
 
+function refreshFocusedComposerCaret(): void {
+  const activeElement = document.activeElement;
+  if (
+    !(activeElement instanceof HTMLElement) ||
+    !activeElement.matches(CONTENTEDITABLE_SELECTOR) ||
+    activeElement.closest(KEYBOARD_INSET_TARGET_SELECTOR) === null
+  ) {
+    return;
+  }
+
+  const selection = activeElement.ownerDocument.getSelection();
+  if (!selection || selection.rangeCount !== 1 || !selection.isCollapsed) {
+    return;
+  }
+
+  const selectionRange = selection.getRangeAt(0);
+  if (!activeElement.contains(selectionRange.commonAncestorContainer)) {
+    return;
+  }
+
+  // iOS WebKit can retain the caret rect from before its keyboard-driven
+  // viewport pan. Reattaching the same collapsed range invalidates only the
+  // native caret paint without moving the editor selection or page layout.
+  const refreshedRange = selectionRange.cloneRange();
+  selection.removeAllRanges();
+  selection.addRange(refreshedRange);
+}
+
+type ComposerCaretRefresh = {
+  cancel: () => void;
+  endComposition: (event: CompositionEvent) => void;
+  schedule: () => void;
+  startComposition: (event: CompositionEvent) => void;
+};
+
+function createComposerCaretRefresh(
+  keyboardIsOpen: () => boolean,
+): ComposerCaretRefresh {
+  let frameId: number | null = null;
+  let compositionTarget: EventTarget | null = null;
+
+  const cancel = () => {
+    if (frameId !== null) {
+      window.cancelAnimationFrame(frameId);
+      frameId = null;
+    }
+  };
+
+  const schedule = () => {
+    cancel();
+    if (
+      !window.matchMedia(STANDALONE_DISPLAY_MODE_QUERY).matches ||
+      !keyboardIsOpen() ||
+      compositionTarget === document.activeElement
+    ) {
+      return;
+    }
+
+    frameId = window.requestAnimationFrame(() => {
+      frameId = null;
+      if (!keyboardIsOpen() || compositionTarget === document.activeElement) {
+        return;
+      }
+
+      refreshFocusedComposerCaret();
+    });
+  };
+
+  return {
+    cancel,
+    endComposition: (event) => {
+      if (event.target === compositionTarget) {
+        compositionTarget = null;
+      }
+      schedule();
+    },
+    schedule,
+    startComposition: (event) => {
+      compositionTarget = event.target;
+      cancel();
+    },
+  };
+}
+
 function readFocusedTargetTailInset(activeElement: HTMLElement): number {
   const target = activeElement.closest(KEYBOARD_INSET_TARGET_SELECTOR);
   if (!(target instanceof HTMLElement)) {
@@ -163,6 +248,9 @@ export function setupVisualViewportKeyboardState(): () => void {
   let scheduledFrameId: number | null = null;
   let settledFrameId: number | null = null;
   let orientationFrameId: number | null = null;
+  const caretRefresh = createComposerCaretRefresh(() => {
+    return keyboardOpen;
+  });
 
   const update = () => {
     if (resetBaselineAfterLayout) {
@@ -174,6 +262,7 @@ export function setupVisualViewportKeyboardState(): () => void {
 
     if (!activeTextEntry) {
       keyboardOpen = false;
+      caretRefresh.cancel();
       baselineHeight = readLayoutViewportHeight(viewport);
       setKeyboardClosed();
       return;
@@ -205,11 +294,13 @@ export function setupVisualViewportKeyboardState(): () => void {
       );
       setKeyboardOpen(keyboardInset);
     } else {
+      caretRefresh.cancel();
       setKeyboardClosed();
     }
   };
 
   const scheduleUpdate = () => {
+    caretRefresh.cancel();
     // Keep a live update pending during the native keyboard animation instead
     // of restarting the frame on every VisualViewport event.
     if (scheduledFrameId === null) {
@@ -229,6 +320,10 @@ export function setupVisualViewportKeyboardState(): () => void {
         settledFrameId = null;
         update();
         window.dispatchEvent(new Event(VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT));
+        // Agent pages can synchronously scroll their composer in response to
+        // the settled event. Refresh on the following frame so the native
+        // caret is painted from the final editor coordinates.
+        caretRefresh.schedule();
       });
     });
   };
@@ -236,6 +331,7 @@ export function setupVisualViewportKeyboardState(): () => void {
   const scheduleBaselineReset = () => {
     resetBaselineAfterLayout = true;
     keyboardOpen = false;
+    caretRefresh.cancel();
     setKeyboardClosed();
     if (orientationFrameId !== null) {
       window.cancelAnimationFrame(orientationFrameId);
@@ -255,6 +351,8 @@ export function setupVisualViewportKeyboardState(): () => void {
   window.addEventListener("orientationchange", scheduleBaselineReset);
   document.addEventListener("focusin", update);
   document.addEventListener("focusout", update);
+  document.addEventListener("compositionstart", caretRefresh.startComposition);
+  document.addEventListener("compositionend", caretRefresh.endComposition);
   update();
 
   return () => {
@@ -263,6 +361,11 @@ export function setupVisualViewportKeyboardState(): () => void {
     window.removeEventListener("orientationchange", scheduleBaselineReset);
     document.removeEventListener("focusin", update);
     document.removeEventListener("focusout", update);
+    document.removeEventListener(
+      "compositionstart",
+      caretRefresh.startComposition,
+    );
+    document.removeEventListener("compositionend", caretRefresh.endComposition);
     if (scheduledFrameId !== null) {
       window.cancelAnimationFrame(scheduledFrameId);
     }
@@ -272,6 +375,7 @@ export function setupVisualViewportKeyboardState(): () => void {
     if (orientationFrameId !== null) {
       window.cancelAnimationFrame(orientationFrameId);
     }
+    caretRefresh.cancel();
     setKeyboardClosed();
   };
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferredPromise } from "../../signals/utils.ts";
 import {
   setupVisualViewportKeyboardState,
@@ -36,11 +36,80 @@ function setInnerHeight(height: number): void {
   });
 }
 
+function setStandaloneDisplayMode(enabled: boolean): void {
+  const matchMedia = window.matchMedia.bind(window);
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+    const mediaQueryList = matchMedia(query);
+    Object.defineProperty(mediaQueryList, "matches", {
+      configurable: true,
+      value: enabled && query === "(display-mode: standalone)",
+    });
+    return mediaQueryList;
+  });
+}
+
 function focusTextEntry(): HTMLTextAreaElement {
   const textarea = document.createElement("textarea");
   document.body.append(textarea);
   textarea.focus();
   return textarea;
+}
+
+function focusComposerCaret(): {
+  editor: HTMLDivElement;
+  selection: Selection;
+  text: Text;
+} {
+  const composer = document.createElement("div");
+  composer.dataset.keyboardInsetTarget = "";
+  const editor = document.createElement("div");
+  editor.contentEditable = "true";
+  editor.tabIndex = 0;
+  const text = document.createTextNode("Draft");
+  editor.append(text);
+  composer.append(editor);
+  document.body.append(composer);
+
+  const selection = document.getSelection();
+  if (!selection) {
+    throw new Error("Selection API unavailable");
+  }
+  const caretRange = document.createRange();
+  caretRange.setStart(text, text.length);
+  caretRange.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(caretRange);
+  editor.focus();
+
+  onTestFinished(() => {
+    document.getSelection()?.removeAllRanges();
+  });
+
+  return { editor, selection, text };
+}
+
+function installEmptyRangeRect(): void {
+  const getRangeRectDescriptor = Object.getOwnPropertyDescriptor(
+    Range.prototype,
+    "getBoundingClientRect",
+  );
+  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return new DOMRect();
+    },
+  });
+  onTestFinished(() => {
+    if (getRangeRectDescriptor) {
+      Object.defineProperty(
+        Range.prototype,
+        "getBoundingClientRect",
+        getRangeRectDescriptor,
+      );
+      return;
+    }
+    Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+  });
 }
 
 function waitForAnimationFrames(frameCount = 1): Promise<void> {
@@ -318,6 +387,171 @@ describe("visual viewport keyboard state", () => {
 
     await waitForAnimationFrames();
     expect(settledEventCount).toBe(1);
+  });
+
+  it("refreshes the standalone composer caret after each settled viewport change", async () => {
+    const viewport = new MockVisualViewport(844);
+    setInnerHeight(844);
+    setStandaloneDisplayMode(true);
+    installVisualViewport(viewport);
+    installEmptyRangeRect();
+    const { editor, selection, text } = focusComposerCaret();
+
+    const removeAllRanges = vi.spyOn(selection, "removeAllRanges");
+    const addRange = vi.spyOn(selection, "addRange");
+
+    startViewportKeyboardState();
+    viewport.resizeTo(520);
+
+    await waitForAnimationFrames(2);
+    expect(removeAllRanges).not.toHaveBeenCalled();
+    expect(addRange).not.toHaveBeenCalled();
+
+    await waitForAnimationFrames();
+    expect(removeAllRanges).toHaveBeenCalledTimes(1);
+    expect(addRange).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(editor);
+    expect(selection.anchorNode).toBe(text);
+    expect(selection.anchorOffset).toBe(text.length);
+    expect(editor.textContent).toBe("Draft");
+    expect(
+      document.documentElement.style.getPropertyValue("--zero-keyboard-inset"),
+    ).toBe("324px");
+
+    viewport.dispatchEvent(new Event("scroll"));
+    await waitForAnimationFrames(3);
+    expect(removeAllRanges).toHaveBeenCalledTimes(2);
+    expect(addRange).toHaveBeenCalledTimes(2);
+
+    viewport.resizeTo(844);
+    await waitForAnimationFrames(3);
+    viewport.resizeTo(520);
+    await waitForAnimationFrames(3);
+    expect(removeAllRanges).toHaveBeenCalledTimes(3);
+    expect(addRange).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not refresh the composer caret outside standalone mode", async () => {
+    const viewport = new MockVisualViewport(844);
+    setInnerHeight(844);
+    setStandaloneDisplayMode(false);
+    installVisualViewport(viewport);
+    installEmptyRangeRect();
+    const { selection, text } = focusComposerCaret();
+
+    const removeAllRanges = vi.spyOn(selection, "removeAllRanges");
+    const addRange = vi.spyOn(selection, "addRange");
+
+    startViewportKeyboardState();
+    viewport.resizeTo(520);
+    await waitForAnimationFrames(3);
+
+    expect(removeAllRanges).not.toHaveBeenCalled();
+    expect(addRange).not.toHaveBeenCalled();
+    expect(selection.anchorNode).toBe(text);
+    expect(selection.anchorOffset).toBe(text.length);
+    expect(
+      document.documentElement.style.getPropertyValue("--zero-keyboard-inset"),
+    ).toBe("324px");
+  });
+
+  it("waits for composition to end before refreshing the composer caret", async () => {
+    const viewport = new MockVisualViewport(844);
+    setInnerHeight(844);
+    setStandaloneDisplayMode(true);
+    installVisualViewport(viewport);
+    installEmptyRangeRect();
+    const { editor, selection, text } = focusComposerCaret();
+    const removeAllRanges = vi.spyOn(selection, "removeAllRanges");
+    const addRange = vi.spyOn(selection, "addRange");
+
+    startViewportKeyboardState();
+    editor.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+    viewport.resizeTo(520);
+    await waitForAnimationFrames(3);
+
+    expect(removeAllRanges).not.toHaveBeenCalled();
+    expect(addRange).not.toHaveBeenCalled();
+
+    editor.dispatchEvent(new Event("compositionend", { bubbles: true }));
+    await waitForAnimationFrames();
+
+    expect(removeAllRanges).toHaveBeenCalledTimes(1);
+    expect(addRange).toHaveBeenCalledTimes(1);
+    expect(selection.anchorNode).toBe(text);
+    expect(selection.anchorOffset).toBe(text.length);
+  });
+
+  it("does not let an abandoned composition block the next composer", async () => {
+    const viewport = new MockVisualViewport(844);
+    setInnerHeight(844);
+    setStandaloneDisplayMode(true);
+    installVisualViewport(viewport);
+    installEmptyRangeRect();
+    const { editor } = focusComposerCaret();
+
+    startViewportKeyboardState();
+    editor.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+    viewport.resizeTo(520);
+    await waitForAnimationFrames(3);
+
+    editor.parentElement?.remove();
+    const { selection, text } = focusComposerCaret();
+    const removeAllRanges = vi.spyOn(selection, "removeAllRanges");
+    const addRange = vi.spyOn(selection, "addRange");
+    viewport.dispatchEvent(new Event("scroll"));
+    await waitForAnimationFrames(3);
+
+    expect(removeAllRanges).toHaveBeenCalledTimes(1);
+    expect(addRange).toHaveBeenCalledTimes(1);
+    expect(selection.anchorNode).toBe(text);
+    expect(selection.anchorOffset).toBe(text.length);
+  });
+
+  it("preserves an expanded composer selection", async () => {
+    const viewport = new MockVisualViewport(844);
+    setInnerHeight(844);
+    setStandaloneDisplayMode(true);
+    installVisualViewport(viewport);
+    installEmptyRangeRect();
+    const { selection, text } = focusComposerCaret();
+    const selectedRange = document.createRange();
+    selectedRange.selectNodeContents(text);
+    selection.removeAllRanges();
+    selection.addRange(selectedRange);
+    const removeAllRanges = vi.spyOn(selection, "removeAllRanges");
+    const addRange = vi.spyOn(selection, "addRange");
+
+    startViewportKeyboardState();
+    viewport.resizeTo(520);
+    await waitForAnimationFrames(3);
+
+    expect(removeAllRanges).not.toHaveBeenCalled();
+    expect(addRange).not.toHaveBeenCalled();
+    expect(selection.anchorNode).toBe(text);
+    expect(selection.anchorOffset).toBe(0);
+    expect(selection.focusNode).toBe(text);
+    expect(selection.focusOffset).toBe(text.length);
+  });
+
+  it("cancels a pending standalone caret refresh during cleanup", async () => {
+    const viewport = new MockVisualViewport(844);
+    setInnerHeight(844);
+    setStandaloneDisplayMode(true);
+    installVisualViewport(viewport);
+    installEmptyRangeRect();
+    const { selection } = focusComposerCaret();
+    const removeAllRanges = vi.spyOn(selection, "removeAllRanges");
+    const addRange = vi.spyOn(selection, "addRange");
+
+    const cleanup = startViewportKeyboardState();
+    viewport.resizeTo(520);
+    await waitForAnimationFrames(2);
+    cleanup();
+    await waitForAnimationFrames();
+
+    expect(removeAllRanges).not.toHaveBeenCalled();
+    expect(addRange).not.toHaveBeenCalled();
   });
 
   it("cancels the pending settled event during cleanup", async () => {
