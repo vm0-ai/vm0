@@ -32,6 +32,7 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.ChatMessageQueue, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatModelFamilySessionContinuity, {}),
     ).toBe(false);
@@ -152,6 +153,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.ChatMessageQueue]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -191,6 +193,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ChatMessageQueue]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {
