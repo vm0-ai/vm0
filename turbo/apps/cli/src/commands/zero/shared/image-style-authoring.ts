@@ -5,7 +5,6 @@ import {
 
 interface StyledImageCompilationOptions {
   readonly prompt: string;
-  readonly details: readonly string[];
   readonly style: ImageStyleRegistryEntry;
 }
 
@@ -28,7 +27,6 @@ interface StyledImageCompilationPacket {
     readonly outputDir: string;
   };
   readonly authoring: {
-    readonly details: readonly string[];
     readonly artifactRules: readonly string[];
   };
   readonly outputDir: string;
@@ -106,11 +104,6 @@ export function createStyledImageCompilationPacket(
     `- Output mode: \`${artifact.outputMode}\`.`,
     "- Supporting metadata may live inside the same output directory when useful.",
     "",
-    "## Requested Parameters",
-    ...options.details.map((detail) => {
-      return `- ${detail}`;
-    }),
-    "",
     "## Next Command Template",
     "```bash",
     'zero generate image --provider built-in --compiled-prompt "<compiled prompt>" --model "<resolved model>" --size "<resolved size>" --quality "<resolved quality>" --background "<resolved background>" --format "<resolved format>"',
@@ -129,7 +122,6 @@ export function createStyledImageCompilationPacket(
     prompt: options.prompt,
     artifact,
     authoring: {
-      details: options.details,
       artifactRules,
     },
     outputDir,

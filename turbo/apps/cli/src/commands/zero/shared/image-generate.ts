@@ -119,23 +119,6 @@ function parseImagePromptStrength(
   return strength;
 }
 
-function formatCallerProvidedCompilationOverrides(
-  command: Command,
-  options: ImageOptions,
-): string {
-  const overrides = (
-    ["model", "size", "quality", "background", "format"] as const
-  )
-    .filter((optionName) => {
-      return command.getOptionValueSource(optionName) !== "default";
-    })
-    .map((optionName) => {
-      return `${optionName}=${options[optionName]}`;
-    });
-
-  return `Caller-provided generation overrides: ${overrides.length > 0 ? overrides.join(", ") : "none"}`;
-}
-
 function resolvePromptInput(options: ImageOptions): string | undefined {
   return options.compiledPrompt ?? options.rawPrompt ?? options.prompt;
 }
@@ -349,15 +332,6 @@ ${formatRegistryListing(styles, "image styles")}`;
           const packet = createStyledImageCompilationPacket({
             prompt: resolvedPrompt,
             style,
-            details: [
-              formatCallerProvidedCompilationOverrides(command, options),
-              `Caller-provided source image URLs: ${
-                options.imageUrl.length > 0
-                  ? options.imageUrl.join(", ")
-                  : "none"
-              }`,
-              `Caller-provided mask image URL: ${options.maskImageUrl ?? "none"}`,
-            ],
           });
 
           console.log(packet.instructions);
