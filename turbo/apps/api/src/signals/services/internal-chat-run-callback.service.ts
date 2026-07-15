@@ -3,6 +3,8 @@ import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
@@ -83,6 +85,8 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { shouldStartNewChatSession } from "./chat-session-continuity.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -1535,13 +1539,13 @@ async function latestSessionForThreadFromDb(
 function shouldStartNewSessionForQueuedMessage(params: {
   readonly latestSession: LatestThreadSession | null;
   readonly queuedMessage: QueuedUserMessage;
+  readonly chatModelFamilySessionContinuityEnabled: boolean;
 }): boolean {
-  return (
-    params.latestSession?.selectedModel !== undefined &&
-    params.latestSession.selectedModel !== null &&
-    params.queuedMessage.selectedModel !== null &&
-    params.latestSession.selectedModel !== params.queuedMessage.selectedModel
-  );
+  return shouldStartNewChatSession({
+    latestModel: params.latestSession?.selectedModel,
+    nextModel: params.queuedMessage.selectedModel,
+    preserveModelFamilySession: params.chatModelFamilySessionContinuityEnabled,
+  });
 }
 
 async function loadAgentForAutoSend(
@@ -1743,9 +1747,27 @@ async function buildCreateQueuedChatRunInput(args: {
         ]);
       },
     );
+  const chatModelFamilySessionContinuityEnabled =
+    await measureChatCallbackPreCreateTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context",
+      "nested",
+      async () => {
+        const context = await loadUserFeatureSwitchContext(
+          args.db,
+          args.agent.orgId,
+          args.userId,
+        );
+        return isFeatureEnabled(
+          FeatureSwitchKey.ChatModelFamilySessionContinuity,
+          context,
+        );
+      },
+    );
   const startNewSession = shouldStartNewSessionForQueuedMessage({
     latestSession,
     queuedMessage: resolvedQueuedMessage,
+    chatModelFamilySessionContinuityEnabled,
   });
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
@@ -2895,7 +2917,7 @@ export const drainQueuedUserMessagesForRun$ = command(
 
 export const handleChatInternalCallback$ = command(
   async (
-    { get, set },
+    { set },
     callback: InternalRunCallbackEnvelope,
     signal: AbortSignal,
   ): Promise<

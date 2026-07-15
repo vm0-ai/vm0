@@ -52,6 +52,7 @@ export enum FeatureSwitchKey {
   ApiKeys = "apiKeys",
   CodexFrameworkForMinimax = "codexFrameworkForMinimax",
   CodexFastMode = "codexFastMode",
+  ChatModelFamilySessionContinuity = "chatModelFamilySessionContinuity",
   RealAgentInPreview = "realAgentInPreview",
   ComposerUploadPopover = "composerUploadPopover",
 
