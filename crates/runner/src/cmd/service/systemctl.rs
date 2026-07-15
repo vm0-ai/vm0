@@ -776,6 +776,8 @@ fn systemctl_show_status_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::process::read_process_stat;
 
     fn systemctl_show_output(status: ExitStatus, stdout: &[u8], stderr: &[u8]) -> Output {
         Output {
@@ -816,7 +818,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_command_bounded_times_out_and_reaps_child() {
+    async fn run_command_bounded_times_out() {
         let outcome = run_command_bounded("sleep", &["60"], Duration::from_millis(1))
             .await
             .unwrap();
@@ -825,12 +827,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_command_output_bounded_times_out_and_reaps_child() {
+    async fn run_command_output_bounded_times_out() {
         let err = run_command_output_bounded("sleep", &["60"], Duration::from_millis(1))
             .await
             .unwrap_err();
 
         assert!(err.to_string().contains("timed out"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn kill_and_reap_child_reaps_running_child() {
+        let mut child = tokio::process::Command::new("sleep")
+            .arg("60")
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let pid = child.id().unwrap();
+        let starttime = read_process_stat(pid)
+            .await
+            .unwrap_or_else(|| panic!("read initial process stat for pid {pid}"))
+            .starttime;
+
+        kill_and_reap_child("sleep", &mut child).await.unwrap();
+
+        let observed = read_process_stat(pid).await;
+        assert!(
+            !matches!(&observed, Some(stat) if stat.starttime == starttime),
+            "killed child pid {pid} was not reaped: {observed:?}"
+        );
     }
 
     #[tokio::test(start_paused = true)]
