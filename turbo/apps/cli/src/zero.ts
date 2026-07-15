@@ -29,6 +29,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: "connector:read",
+  mail: "connector:read",
   memory: "relationship:read",
   relationship: "relationship:read",
   doctor: null,
@@ -93,6 +94,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Check third-party service connections (GitHub, Slack, etc.)",
     load: async () => {
       return (await import("./commands/zero/connector")).zeroConnectorCommand;
+    },
+  },
+  {
+    name: "mail",
+    description: "Review and send mail through Gmail or Outlook Mail",
+    load: async () => {
+      return (await import("./commands/zero/mail")).zeroMailCommand;
     },
   },
   {
@@ -408,6 +416,9 @@ export function buildZeroHelpText(
       ? []
       : ["  Buy credits?           zero credit 20000"]),
     "  Send a Slack message?  zero slack message send --help",
+    ...(shouldHideCommand("mail", payload)
+      ? []
+      : ["  Draft an email?       zero mail send --help"]),
     "  Send Teams?           zero teams message send --help",
     "  Upload Teams?         zero teams upload-file --help",
     "  Download Teams?       zero teams download-file --help",

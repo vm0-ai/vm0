@@ -259,6 +259,23 @@ type Settled<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: unknown };
 
+/**
+ * Settle `p` without propagating AbortError. Use only after an irreversible
+ * provider operation has started and cancellation is itself an ambiguous
+ * outcome that the caller must persist explicitly.
+ */
+export async function settleIncludingAbort<T>(
+  p: Promise<T>,
+): Promise<Settled<T>> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized rejection capture for irreversible provider operations
+  try {
+    return { ok: true, value: await p };
+    // eslint-disable-next-line api/no-catch-abort -- abort is an explicit persisted outcome for this helper
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 interface PromiseResolvers<T> {
   readonly promise: Promise<T>;
   readonly resolve: (value: T | PromiseLike<T>) => void;

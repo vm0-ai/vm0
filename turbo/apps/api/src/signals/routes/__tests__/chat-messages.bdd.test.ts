@@ -1501,6 +1501,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         [FeatureSwitchKey.RelationshipMemory]: true,
         [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+        [FeatureSwitchKey.ZeroMail]: true,
       },
     );
     const memoryText =
@@ -1543,6 +1544,10 @@ describe("CHAT-02: model-first provider policies", () => {
       "You are currently running inside: Web",
     );
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
+    expect(appendSystemPrompt).toContain("zero mail send --help");
+    expect(appendSystemPrompt).toContain(
+      "The card appears automatically, so do not repeat the draft",
+    );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
     expect(appendSystemPrompt).toContain(memoryText);

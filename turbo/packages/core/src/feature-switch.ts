@@ -487,6 +487,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
   },
+  [FeatureSwitchKey.ZeroMail]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

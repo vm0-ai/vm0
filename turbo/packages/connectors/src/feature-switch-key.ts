@@ -80,6 +80,7 @@ export enum FeatureSwitchKey {
   WorkflowQueue = "workflowQueue",
   OrgPlanEntitlementReads = "orgPlanEntitlementReads",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
+  ZeroMail = "zeroMail",
 }
 
 /**

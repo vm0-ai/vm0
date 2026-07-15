@@ -8,7 +8,7 @@
 use crate::env;
 use aho_corasick::{AhoCorasick, MatchKind};
 use base64::Engine;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::{collections::HashSet, ops::Range};
 
 /// Minimum secret length to avoid false-positive masking.
@@ -132,7 +132,7 @@ impl SecretMasker {
         Self { state }
     }
 
-    /// Recursively mask secrets in a JSON value tree (in-place).
+    /// Recursively mask secrets in JSON object keys and string values (in-place).
     pub fn mask_value(&self, val: &mut Value) {
         self.state.mask_value(val);
     }
@@ -234,11 +234,61 @@ impl MaskerState {
                 }
             }
             Value::Object(map) => {
-                for v in map.values_mut() {
-                    self.mask_value(v);
-                }
+                self.mask_object(map);
             }
             _ => {}
+        }
+    }
+
+    fn mask_object(&self, map: &mut Map<String, Value>) {
+        let has_masked_key = map.keys().any(|key| self.masked_string(key).is_some());
+        if !has_masked_key {
+            for value in map.values_mut() {
+                self.mask_value(value);
+            }
+            return;
+        }
+
+        let entries = std::mem::take(map);
+        let mut masked_entries = Vec::new();
+        for (key, mut value) in entries {
+            self.mask_value(&mut value);
+            if let Some(masked_key) = self.fully_masked_key(&key) {
+                masked_entries.push((masked_key, value));
+            } else {
+                map.insert(key, value);
+            }
+        }
+
+        for (masked_key, value) in masked_entries {
+            let unique_key = self.unique_masked_key(map, masked_key);
+            map.insert(unique_key, value);
+        }
+    }
+
+    fn fully_masked_key(&self, key: &str) -> Option<String> {
+        let mut masked = self.masked_string(key)?;
+        // Production patterns are longer than "***", so each pass shortens
+        // the key and the loop terminates after removing cascading matches.
+        while let Some(remasked) = self.masked_string(&masked) {
+            debug_assert!(remasked.len() < masked.len());
+            masked = remasked;
+        }
+        Some(masked)
+    }
+
+    fn unique_masked_key(&self, map: &Map<String, Value>, masked_key: String) -> String {
+        if !map.contains_key(&masked_key) {
+            return masked_key;
+        }
+
+        let mut suffix = 2;
+        loop {
+            let candidate = format!("{masked_key}#{suffix}");
+            if !map.contains_key(&candidate) && self.masked_string(&candidate).is_none() {
+                return candidate;
+            }
+            suffix += 1;
         }
     }
 
@@ -601,6 +651,73 @@ mod tests {
         masker.mask_value(&mut val);
         assert_eq!(val["outer"]["inner"], "has *** inside");
         assert_eq!(val["list"][1], "***");
+    }
+
+    #[test]
+    fn masks_nested_json_keys() {
+        let masker = masker_with(vec!["secret123"]);
+        let mut val = json!({
+            "prefix-secret123-suffix": {
+                "list": [{"secret123": "value has secret123"}]
+            }
+        });
+
+        masker.mask_value(&mut val);
+
+        assert_eq!(
+            val,
+            json!({
+                "prefix-***-suffix": {
+                    "list": [{"***": "value has ***"}]
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn masked_json_key_collisions_preserve_every_entry() {
+        let masker = masker_with(vec!["secret-one", "secret-two"]);
+        let original = json!({
+            "***": "reserved base",
+            "***#2": "reserved suffix",
+            "secret-one": {"secret-two": "first"},
+            "secret-two": "second"
+        });
+        let mut first = original.clone();
+        let mut second = original;
+
+        masker.mask_value(&mut first);
+        masker.mask_value(&mut second);
+
+        let expected = json!({
+            "***": "reserved base",
+            "***#2": "reserved suffix",
+            "***#3": {"***": "first"},
+            "***#4": "second"
+        });
+        assert_eq!(first, expected);
+        assert_eq!(second, expected);
+    }
+
+    #[test]
+    fn masked_json_keys_do_not_recreate_secret_patterns() {
+        let masker = masker_with(vec!["secret123", "prefix-***-suffix", "***#2"]);
+        let mut val = json!({
+            "***": "reserved base",
+            "***#2": "collision candidate",
+            "prefix-secret123-suffix": "cascading match"
+        });
+
+        masker.mask_value(&mut val);
+
+        assert_eq!(
+            val,
+            json!({
+                "***": "reserved base",
+                "***#3": "collision candidate",
+                "***#4": "cascading match"
+            })
+        );
     }
 
     #[test]
