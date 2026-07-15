@@ -322,6 +322,48 @@ function steamPrivateAuthMethod(args?: {
   };
 }
 
+function deelPrivateAuthMethod(): JsonRecord {
+  const accessTokenName = "CATALOG_DEEL_ACCESS_TOKEN";
+  const refreshTokenName = "CATALOG_DEEL_REFRESH_TOKEN";
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientIdEnv: "DEEL_OAUTH_CLIENT_ID",
+      clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
+    },
+    storage: {
+      secrets: [accessTokenName, refreshTokenName],
+      variables: [],
+    },
+    grant: {
+      kind: "auth-code",
+      scopes: [],
+      callbackOrigin: "web",
+      outputs: {
+        accessToken: `$secrets.${accessTokenName}`,
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+    },
+    access: {
+      kind: "refresh-token",
+      envBindings: {
+        DEEL_TOKEN: `$secrets.${accessTokenName}`,
+      },
+      inputs: {
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+      outputs: {
+        accessToken: `$secrets.${accessTokenName}`,
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+      refreshableSecrets: [accessTokenName],
+    },
+    revoke: { kind: "none" },
+  };
+}
+
 function setArtifactAuthMethods(
   artifact: JsonRecord,
   methods: readonly JsonRecord[],
@@ -1113,6 +1155,35 @@ describe("connector catalog executable compatibility", () => {
     const unchanged = await syncCatalog();
     expect(unchanged.body.filtering).toStrictEqual(accepted.body.filtering);
     expect(JSON.stringify(unchanged.body)).not.toContain(unapprovedName);
+  });
+
+  it("matches provider fields without pinning catalog storage names", async () => {
+    configureSource();
+    mockOptionalEnv("DEEL_OAUTH_CLIENT_ID", "configured-client-id");
+    mockOptionalEnv("DEEL_OAUTH_CLIENT_SECRET", "configured-client-secret");
+    const release = buildRelease({
+      version: "2026-07-15.deel-storage-mapping",
+      connectorRef: "deel",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [deelPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    const response = await syncCatalog();
+    expect(response.body.filtering).toMatchObject({
+      evaluatedAt: FIRST_SYNC_TIME,
+      stale: false,
+      filteredAuthMethods: [],
+    });
+    expect(JSON.stringify(response.body)).not.toContain(
+      "CATALOG_DEEL_ACCESS_TOKEN",
+    );
   });
 
   it("reconciles configuration changes and retains rolling-build evaluations", async () => {
