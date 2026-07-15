@@ -4236,6 +4236,13 @@
       "when": 1784112668382,
       "tag": "0604_add_vm0_model_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 605,
+      "version": "7",
+      "when": 1784125478257,
+      "tag": "0605_luxuriant_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

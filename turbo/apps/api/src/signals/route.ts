@@ -22,6 +22,7 @@ import { cronArtifactPreviewRoutes } from "./routes/cron-artifact-preview";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
+import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
 import { cronDrainRelationshipMemoryRoutes } from "./routes/cron-drain-relationship-memory";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
@@ -251,6 +252,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronAggregateUsageRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronCleanupSandboxesRoutes,
+  ...cronConnectorCatalogRoutes,
   ...cronDrainRelationshipMemoryRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
