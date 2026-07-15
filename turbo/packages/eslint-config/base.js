@@ -105,17 +105,6 @@ const vm0Plugin = {
   },
 };
 
-// These files implement the short-lived Notion feature-switch compatibility
-// window from vm0#21408. Remove each exception when that alias is retired.
-const legacyAutomationIdentifierCompatibilityFiles = [
-  "src/feature-switch-key.ts",
-  "src/signals/routes/__tests__/hooks-ops.bdd.test.ts",
-  "src/signals/routes/zero-feature-switches.ts",
-  "src/signals/services/feature-switches.service.ts",
-  "src/signals/external/feature-switch.ts",
-  "src/views/lab-page/__tests__/lab-page.test.tsx",
-];
-
 /**
  * A shared ESLint configuration for the repository.
  *
@@ -183,12 +172,6 @@ export const config = [
           format: ["camelCase", "UPPER_CASE", "PascalCase"],
         },
       ],
-    },
-  },
-  {
-    files: legacyAutomationIdentifierCompatibilityFiles,
-    rules: {
-      "vm0/no-legacy-automation-identifiers": "off",
     },
   },
   {

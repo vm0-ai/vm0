@@ -12,7 +12,7 @@ use super::super::cow::{
 };
 use super::super::output::cleanup_workspace_image_file_sync;
 use super::super::publish::SnapshotPublishAttempt;
-use super::process::SnapshotProcess;
+use super::process::{SnapshotProcess, SnapshotProcessCleanupReport};
 
 async fn release_snapshot_netns(
     netns_pool: &mut NetnsPool,
@@ -326,15 +326,8 @@ pub(super) struct SnapshotCleanupFinalizer {
 
 impl SnapshotCleanupFinalizer {
     pub(super) async fn run(mut self) {
-        let process = self.resources.process.finalize_after_cancellation().await;
-
-        let network_released = self
-            .resources
-            .release_network(
-                "failed to release netns during snapshot cancellation cleanup",
-                "snapshot cancellation cleanup missing netns pool while releasing netns",
-            )
-            .await;
+        let process = self.finalize_process().await;
+        let network_released = self.release_network().await;
         let workspace_image_cleaned = self.cleanup_workspace_image();
         let publish_cleaned = self.cleanup_publish_attempt().await;
         let cow_destroyed = self.resources.destroy_cow_during_cancellation().await;
@@ -375,6 +368,30 @@ impl SnapshotCleanupFinalizer {
         if let Some(tx) = self.cleanup_complete_tx.take() {
             let _ = tx.send(report);
         }
+    }
+
+    async fn finalize_process(&mut self) -> SnapshotProcessCleanupReport {
+        #[cfg(test)]
+        let had_child = self.resources.process.presence().has_child;
+        let report = self.resources.process.finalize_after_cancellation().await;
+        #[cfg(test)]
+        if had_child && report.child_reaped {
+            self.cleanup_events.push("child_reaped");
+        }
+        report
+    }
+
+    async fn release_network(&mut self) -> bool {
+        #[cfg(test)]
+        if self.resources.network.is_some() {
+            self.cleanup_events.push("network_release_started");
+        }
+        self.resources
+            .release_network(
+                "failed to release netns during snapshot cancellation cleanup",
+                "snapshot cancellation cleanup missing netns pool while releasing netns",
+            )
+            .await
     }
 
     async fn cleanup_publish_attempt(&mut self) -> bool {

@@ -27,7 +27,7 @@ import {
   type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
-  type ZeroWorkflowAutomationEntry,
+  type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
@@ -773,7 +773,7 @@ export async function listWorkspaceWorkflowAutomations(
     readonly orgId: string;
     readonly member: WorkflowMember;
   },
-): Promise<readonly ZeroWorkflowAutomationEntry[]> {
+): Promise<readonly ZeroWorkflowAutomationsListEntry[]> {
   const rows = await db
     .select({
       automation: zeroWorkflowAutomations,
@@ -820,7 +820,7 @@ export async function listWorkspaceWorkflowAutomations(
     );
 
   const entries = await Promise.all(
-    rows.map(async (row): Promise<ZeroWorkflowAutomationEntry | null> => {
+    rows.map(async (row): Promise<ZeroWorkflowAutomationsListEntry | null> => {
       const automation = await rowToPublicSummary(db, row.automation, {
         chatThreadId: row.chatThreadId ?? null,
       });
@@ -833,7 +833,7 @@ export async function listWorkspaceWorkflowAutomations(
           agent: row.agent,
           member: args.member,
         }),
-        trigger: automation,
+        automation,
       };
     }),
   );

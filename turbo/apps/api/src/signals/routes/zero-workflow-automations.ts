@@ -31,7 +31,7 @@ import {
 } from "../services/zero-workflow-automation.service";
 import type { RouteEntry, SignalRouteHandler } from "../route-entry";
 
-export const workflowAutomationReadAuth = {
+const workflowAutomationReadAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "agent:read",
@@ -90,7 +90,7 @@ const updateAutomationBody$ = bodyResultOf(
   zeroWorkflowAutomationsContract.update,
 );
 
-export const workspaceWorkflowAutomationEntries$ = computed(async (get) => {
+const workspaceWorkflowAutomationEntries$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const db = get(db$);
   return await listWorkspaceWorkflowAutomations(db, {
@@ -103,9 +103,7 @@ const listWorkspaceAutomationsInner$ = computed(async (get) => {
   const entries = await get(workspaceWorkflowAutomationEntries$);
   return {
     status: 200 as const,
-    body: entries.map(({ workflow, trigger }) => {
-      return { workflow, automation: trigger };
-    }),
+    body: [...entries],
   };
 });
 
@@ -404,7 +402,7 @@ const runAutomationInner$ = command(
   },
 );
 
-export const workflowAutomationRouteHandlers: Readonly<
+const workflowAutomationRouteHandlers: Readonly<
   Record<
     keyof typeof zeroWorkflowAutomationsContract,
     SignalRouteHandler<unknown>
