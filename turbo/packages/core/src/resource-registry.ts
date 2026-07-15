@@ -3780,6 +3780,8 @@ export function buildPresentationRunbookInstructionLines(args: {
     `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
     `- Follow ./generated/resources/${pkg.slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
     "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
+    "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
+    "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",
     "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
     "- Return only the generated HTML deck as the final deliverable.",
   ];

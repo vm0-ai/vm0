@@ -159,9 +159,10 @@ impl MockSandbox {
     ///
     /// Results are consumed in FIFO order by both
     /// [`write_file`](Sandbox::write_file) and [`write_files`](Sandbox::write_files).
-    /// When the queue is empty, both operations return `Ok(())`.
-    /// Each `write_files` invocation consumes one queued result for the whole
-    /// batch, not one result per file.
+    /// When the queue is empty, valid operations return `Ok(())`.
+    /// Each non-empty `write_files` invocation consumes one queued result for
+    /// the whole batch, not one result per file. Empty batches are recorded but
+    /// do not consume a result.
     pub fn push_write_file_result(&self, result: Result<()>) {
         self.write_file_results
             .lock_ignoring_poison()
@@ -170,9 +171,10 @@ impl MockSandbox {
 
     /// Return this sandbox's recorded write-file calls.
     ///
-    /// The returned vector is a cloned snapshot in recorded order. When this
-    /// sandbox was built with shared overrides, write-file calls are also
-    /// recorded in [`MockSandboxOverrides::write_file_calls`].
+    /// The returned vector is a cloned snapshot in recorded order. Calls are
+    /// recorded before mock guest-path validation. When this sandbox was built
+    /// with shared overrides, write-file calls are also recorded in
+    /// [`MockSandboxOverrides::write_file_calls`].
     pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
         self.write_file_calls.lock_ignoring_poison().clone()
     }
@@ -182,14 +184,16 @@ impl MockSandbox {
     /// Batch entries are also expanded into [`Self::write_file_calls`] so tests
     /// that only need path/content assertions can use one observation surface.
     /// That expansion is only for call recording: queued write results are
-    /// consumed, and the write lifecycle gate is entered, per write operation
-    /// rather than per expanded file entry.
+    /// consumed, and the write lifecycle gate is entered, per non-empty write
+    /// operation rather than per expanded file entry. Invalid and empty batches
+    /// remain recorded, but empty batches expand to no write-file calls and do
+    /// not consume a result or enter the gate.
     pub fn write_files_calls(&self) -> Vec<WriteFilesCall> {
         self.write_files_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a write_private_file result. Results are consumed in FIFO order.
-    /// When the queue is empty, write_private_file returns `Ok(())`.
+    /// When the queue is empty, a valid write_private_file returns `Ok(())`.
     pub fn push_private_write_file_result(&self, result: Result<()>) {
         self.private_write_file_results
             .lock_ignoring_poison()
@@ -198,9 +202,10 @@ impl MockSandbox {
 
     /// Return this sandbox's recorded private write-file calls.
     ///
-    /// The returned vector is a cloned snapshot in recorded order. When this
-    /// sandbox was built with shared overrides, private write-file calls are
-    /// also recorded in [`MockSandboxOverrides::private_write_file_calls`].
+    /// The returned vector is a cloned snapshot in recorded order. Calls are
+    /// recorded before mock guest-path validation. When this sandbox was built
+    /// with shared overrides, private write-file calls are also recorded in
+    /// [`MockSandboxOverrides::private_write_file_calls`].
     pub fn private_write_file_calls(&self) -> Vec<WriteFileCall> {
         self.private_write_file_calls.lock_ignoring_poison().clone()
     }
@@ -210,7 +215,8 @@ impl MockSandbox {
     /// Calls are recorded before they enter the gate, so tests can assert that a
     /// write was attempted while keeping the mock response pending. Both
     /// [`write_file`](Sandbox::write_file) and [`write_files`](Sandbox::write_files)
-    /// enter this gate; `write_files` enters it once for the whole batch.
+    /// enter this gate; non-empty `write_files` calls enter it once for the
+    /// whole batch. Empty batches are recorded but do not enter the gate.
     pub fn set_write_file_lifecycle_gate(&self, gate: MockLifecycleGate) {
         *self.write_file_gate.lock_ignoring_poison() = Some(gate);
     }
@@ -512,6 +518,7 @@ impl Sandbox for MockSandbox {
                 .lock_ignoring_poison()
                 .push(call);
         }
+        validate_mock_guest_file_path(SandboxOperation::WriteFile, "write_file", path)?;
         let gate = self.write_file_gate.lock_ignoring_poison().clone();
         if let Some(gate) = gate {
             gate.enter_and_wait().await;
@@ -551,6 +558,12 @@ impl Sandbox for MockSandbox {
                 .lock_ignoring_poison()
                 .extend(calls);
         }
+        if files.is_empty() {
+            return Ok(());
+        }
+        for file in files {
+            validate_mock_guest_file_path(SandboxOperation::WriteFile, "write_files", file.path)?;
+        }
         let gate = self.write_file_gate.lock_ignoring_poison().clone();
         if let Some(gate) = gate {
             gate.enter_and_wait().await;
@@ -576,6 +589,7 @@ impl Sandbox for MockSandbox {
                 .lock_ignoring_poison()
                 .push(call);
         }
+        validate_mock_guest_file_path(SandboxOperation::WriteFile, "write_private_file", path)?;
         if let Some(result) = self
             .private_write_file_results
             .lock_ignoring_poison()
