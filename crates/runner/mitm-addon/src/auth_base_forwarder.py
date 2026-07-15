@@ -870,7 +870,21 @@ async def forward_request(
     *,
     admission: AuthBaseForwardingAdmission | None = None,
 ) -> tuple[int, bytes, http.Headers]:
-    """Async wrapper for _forward_request_sync."""
+    """Forward an auth.base request through the synchronous worker lifecycle.
+
+    When this coroutine starts, it reserves admission capacity unless `admission` is supplied.
+    A supplied admission is consumed and resized to the actual request body; the caller must not
+    release or reuse it after scheduling or awaiting this coroutine.
+
+    If the coroutine exits before submitting a worker, it releases the admission. After
+    submission, the future's completion callback releases both admission and concurrency
+    capacity. Cancellation before submission creates no worker, while cancelling a pending worker
+    future prevents it from running. Once synchronous work has started, cancelling the await does
+    not stop it; the worker retains both resources until completion.
+
+    Request body size, admission saturation, shutdown, URL/header/destination validation, upstream
+    forwarding, and response processing failures propagate to the caller.
+    """
     body_bytes = _request_body_size(body)
     try:
         _validate_request_body_size(body)
