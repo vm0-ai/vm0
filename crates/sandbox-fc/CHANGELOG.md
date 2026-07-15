@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.119](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.118...sandbox-fc-v0.37.119) (2026-07-15)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** bound firecracker process log records ([#21596](https://github.com/vm0-ai/vm0/issues/21596)) ([dbc12a2](https://github.com/vm0-ai/vm0/commit/dbc12a27c0e105ee341788f2d17d97f59dc98d53))
+
 ## [0.37.118](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.117...sandbox-fc-v0.37.118) (2026-07-15)
 
 ## [0.37.117](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.116...sandbox-fc-v0.37.117) (2026-07-15)

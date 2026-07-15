@@ -1,12 +1,14 @@
 """Integration tests for server-catalog connector diagnostic lifecycles."""
 
 import json
+from unittest.mock import patch
 
 import pytest
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
 import builtin_connector_diagnostics
+import builtin_firewall_cache
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
@@ -220,6 +222,50 @@ def _builtin_shared_registry(tmp_path, *, capture_network_bodies: bool = False):
     )
 
 
+async def test_repeated_preferred_catalog_does_not_reopen_cache(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    cache_path = write_connector_diagnostic_catalog_cache(
+        tmp_path,
+        firewalls=_shared_catalog("inactive", "INACTIVE_TOKEN"),
+        version="catalog-a",
+    )
+    registry_path = _builtin_shared_registry(tmp_path)
+    first_flow = _flow(real_flow, host="unmatched.example.com")
+    second_flow = _flow(real_flow, host="unmatched.example.com")
+    original_open_cache_for_read = builtin_firewall_cache._open_cache_for_read
+
+    with (
+        mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ),
+        patch.object(
+            builtin_firewall_cache,
+            "_open_cache_for_read",
+            wraps=original_open_cache_for_read,
+        ) as open_cache_for_read,
+    ):
+        await mitm_addon.request(first_flow)
+        await mitm_addon.request(second_flow)
+
+    pinned_snapshots = [
+        value
+        for flow in (first_flow, second_flow)
+        for value in flow.metadata.values()
+        if isinstance(value, builtin_connector_diagnostics.DiagnosticCatalogSnapshot)
+    ]
+    assert first_flow.response is None
+    assert second_flow.response is None
+    assert open_cache_for_read.call_count == 1
+    assert len(pinned_snapshots) == 2
+    assert pinned_snapshots[0] is pinned_snapshots[1]
+    assert pinned_snapshots[0].catalog_identity is not None
+    assert pinned_snapshots[0].catalog_identity[2] == "catalog-a"
+
+
 async def test_registry_classification_from_a_cannot_race_into_diagnostic_b(
     tmp_path,
     real_flow,
@@ -266,13 +312,16 @@ async def test_registry_classification_from_a_cannot_race_into_diagnostic_b(
             digest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             version="catalog-b",
         )
+        current_before_delayed_flow = builtin_connector_diagnostics.load_diagnostic_snapshot()
         await mitm_addon.request(first_flow)
-        current_snapshot = builtin_connector_diagnostics.load_diagnostic_snapshot()
+        current_after_delayed_flow = builtin_connector_diagnostics.load_diagnostic_snapshot()
         await mitm_addon.request(second_flow)
 
     assert _response_connector(first_flow) == "inactive-a"
-    assert current_snapshot.catalog_identity is not None
-    assert current_snapshot.catalog_identity[2] == "catalog-b"
+    assert current_before_delayed_flow.catalog_identity is not None
+    assert current_before_delayed_flow.catalog_identity[2] == "catalog-b"
+    assert current_after_delayed_flow.catalog_identity is not None
+    assert current_after_delayed_flow.catalog_identity[2] == "catalog-b"
     assert _response_connector(second_flow) == "inactive-b"
 
 
