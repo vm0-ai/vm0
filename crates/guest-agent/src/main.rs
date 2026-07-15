@@ -12,6 +12,7 @@ use guest_agent::http::HttpClient;
 use guest_agent::masker;
 use guest_agent::metrics;
 use guest_agent::paths;
+use guest_agent::reuse_preparation;
 use guest_agent::run_context::GuestRuntime;
 use guest_agent::session_history_identity;
 use guest_agent::session_metadata;
@@ -107,6 +108,28 @@ fn helper_exit_code_from_args() -> Option<i32> {
                     Err(error) => session_history_identity_helper_exit_code(&error),
                 },
             )
+        }
+        "prepare-for-reuse" => {
+            if args.next().is_some() {
+                return Some(
+                    guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_INVALID_REQUEST,
+                );
+            }
+            Some(match reuse_preparation::prepare_from_stdin() {
+                Ok(report) => match serde_json::to_string(&report) {
+                    Ok(json) => {
+                        println!("{json}");
+                        guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_SUCCESS
+                    }
+                    Err(_) => {
+                        guest_contracts::reuse_preparation::REUSE_PREPARATION_EXIT_INSPECTION_FAILED
+                    }
+                },
+                Err(error) => {
+                    eprintln!("{error}");
+                    error.exit_code()
+                }
+            })
         }
         _ => None,
     }

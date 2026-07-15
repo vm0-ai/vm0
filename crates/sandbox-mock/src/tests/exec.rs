@@ -101,6 +101,39 @@ async fn sandbox_queued_exec_results() {
 }
 
 #[tokio::test]
+async fn sandbox_persistent_exec_matcher_serves_repeated_calls_after_one_shot_override() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.add_persistent_exec_matcher(ExecMatcher {
+        pattern: "prepare".into(),
+        exit_code: 0,
+        stdout: b"healthy".to_vec(),
+        stderr: Vec::new(),
+    });
+    overrides.add_exec_matcher(ExecMatcher {
+        pattern: "prepare".into(),
+        exit_code: 4,
+        stdout: Vec::new(),
+        stderr: b"cleanup failed".to_vec(),
+    });
+    let sandbox = MockSandbox::with_overrides("persistent", overrides);
+    let request = ExecRequest {
+        cmd: "prepare",
+        timeout: Duration::from_secs(5),
+        env: &[],
+        sudo: false,
+        stdin_bytes: None,
+        output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+    };
+
+    assert_eq!(
+        sandbox.exec(&request).await.unwrap().termination,
+        ExecTermination::Exited { exit_code: 4 }
+    );
+    assert_eq!(sandbox.exec(&request).await.unwrap().stdout, b"healthy");
+    assert_eq!(sandbox.exec(&request).await.unwrap().stdout, b"healthy");
+}
+
+#[tokio::test]
 async fn sandbox_exec_applies_mock_capture_budget() {
     let sandbox = MockSandbox::new("test-1");
     sandbox.push_exec_result(Ok(ExecResult::new(

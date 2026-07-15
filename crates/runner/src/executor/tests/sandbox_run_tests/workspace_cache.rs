@@ -519,7 +519,10 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
             .contains("failed to invalidate workspace image cache before unconfigured-cache reuse")
     );
     assert!(
-        overrides.exec_calls().is_empty(),
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| call.cmd.contains("prepare-for-reuse")),
         "reused sandbox must not run after stale cache invalidation fails"
     );
 }
@@ -582,7 +585,10 @@ async fn unconfigured_cache_reuse_stops_when_required_cache_invalidation_lock_is
         "lock contention should be surfaced, got: {error}"
     );
     assert!(
-        overrides.exec_calls().is_empty(),
+        overrides
+            .exec_calls()
+            .iter()
+            .all(|call| call.cmd.contains("prepare-for-reuse")),
         "reused sandbox must not run when required stale cache invalidation cannot get the entry lock"
     );
     assert!(
@@ -809,6 +815,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         .unwrap();
 
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
     let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
         MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
     ));
@@ -826,6 +833,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         .expect("create sandbox");
     let source_ip = sandbox.source_ip().to_owned();
     let candidate = IdleParkRequest::new(IdleParkRequestParts {
+        run_id,
         sandbox,
         factory,
         cli_agent_session_id: session_id.to_owned(),
@@ -917,6 +925,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         .unwrap();
 
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
     let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
         MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
     ));
@@ -934,6 +943,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         .expect("create sandbox");
     let source_ip = sandbox.source_ip().to_owned();
     let candidate = IdleParkRequest::new(IdleParkRequestParts {
+        run_id,
         sandbox,
         factory,
         cli_agent_session_id: session_id.to_owned(),

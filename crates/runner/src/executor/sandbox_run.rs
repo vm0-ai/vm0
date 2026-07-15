@@ -19,7 +19,8 @@ use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
 use super::diagnostics::{
-    AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log, copy_guest_logs,
+    AgentStdoutStreamDiagnostics, append_stdout_stream_diagnostics_to_stream_log,
+    collect_agent_abnormal_exit_diagnostics, copy_guest_logs, explicit_enospc_evidence,
     read_guest_cli_agent_session_id,
 };
 use super::session_id::{
@@ -970,6 +971,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         network_log_session,
     } = run;
     let cleanup_cancel = controls.cancel.clone();
+    let reuse_result = start.reuse_result;
 
     let result = run_in_sandbox(
         sandbox.as_ref(),
@@ -980,6 +982,20 @@ pub(super) async fn execute_prepared_sandbox_run(
         controls,
     )
     .await;
+
+    let pre_process_resource_diagnostics = match result.as_ref() {
+        Err(error) if explicit_enospc_evidence([error.to_string().as_str()]) => {
+            collect_agent_abnormal_exit_diagnostics(
+                sandbox.as_ref(),
+                context.run_id,
+                sandbox.id(),
+                reuse_result,
+                1,
+            )
+            .await
+        }
+        Ok(_) | Err(_) => None,
+    };
 
     let stdout_stream_diagnostics = result.as_ref().map_or_else(
         |_| AgentStdoutStreamDiagnostics::default(),
@@ -1002,7 +1018,8 @@ pub(super) async fn execute_prepared_sandbox_run(
 
     let mut agent_result = match result {
         Ok(result) => result,
-        Err(e) => AgentExecutionResult::failure_from_error(e.to_string()),
+        Err(e) => AgentExecutionResult::failure_from_error(e.to_string())
+            .with_resource_diagnostics(pre_process_resource_diagnostics),
     };
     if let Err(e) = cleanup_result {
         warn!(
