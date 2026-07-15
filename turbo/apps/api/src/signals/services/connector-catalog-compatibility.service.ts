@@ -345,14 +345,14 @@ async function reconcileCompatibility(args: {
   readonly db: Db;
   readonly sourceId: string;
   readonly capability: ExecutableCapabilityState;
-}): Promise<ConnectorCatalogFilteringStatus> {
+}): Promise<void> {
   const hasState = await lockSyncState(args.db, args.sourceId);
   if (!hasState) {
-    return staleFilteringStatus(args.capability.digest);
+    return;
   }
   const snapshot = await activeSnapshotForUpdate(args.db, args.sourceId);
   if (snapshot === undefined) {
-    return staleFilteringStatus(args.capability.digest);
+    return;
   }
 
   await args.db
@@ -379,9 +379,8 @@ async function reconcileCompatibility(args: {
 
   const [existing] = await args.db
     .select({
-      evaluatedAt: connectorCatalogCompatibilityEvaluation.evaluatedAt,
-      filteredAuthMethods:
-        connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
+      capabilityDigest:
+        connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
     })
     .from(connectorCatalogCompatibilityEvaluation)
     .where(
@@ -407,14 +406,7 @@ async function reconcileCompatibility(args: {
     )
     .limit(1);
   if (existing !== undefined) {
-    return {
-      capabilityDigest: args.capability.digest,
-      evaluatedAt: existing.evaluatedAt.toISOString(),
-      stale: false,
-      filteredAuthMethods: connectorCatalogFilteredAuthMethodsSchema.parse(
-        existing.filteredAuthMethods,
-      ),
-    };
+    return;
   }
 
   const filteredAuthMethods = evaluateSnapshot(snapshot, args.capability);
@@ -428,12 +420,6 @@ async function reconcileCompatibility(args: {
     evaluatedAt,
     filteredAuthMethods: [...filteredAuthMethods],
   });
-  return {
-    capabilityDigest: args.capability.digest,
-    evaluatedAt: evaluatedAt.toISOString(),
-    stale: false,
-    filteredAuthMethods,
-  };
 }
 
 async function compatibilityStatus(args: {
@@ -489,21 +475,17 @@ async function compatibilityStatus(args: {
 }
 
 export const reconcileConnectorCatalogCompatibility$ = command(
-  async (
-    { set },
-    signal: AbortSignal,
-  ): Promise<ConnectorCatalogFilteringStatus> => {
+  async ({ set }, signal: AbortSignal): Promise<void> => {
     const source = connectorCatalogSource();
     const capability = executableCapabilityState();
-    const status = await set(writeDb$).transaction(async (tx) => {
-      return await reconcileCompatibility({
+    await set(writeDb$).transaction(async (tx) => {
+      await reconcileCompatibility({
         db: tx,
         sourceId: source.sourceId,
         capability,
       });
     });
     signal.throwIfAborted();
-    return status;
   },
 );
 
