@@ -18,6 +18,7 @@ export async function notifyRunnerJob(
     readonly runId: string;
     readonly profile: string;
     readonly cliAgentSessionId: string | null;
+    readonly historyGenerationRunId: string | undefined;
     readonly createdAt: Date;
   },
 ): Promise<boolean> {
@@ -56,6 +57,7 @@ export async function notifyRunnerJob(
     {
       cliAgentSessionId: args.cliAgentSessionId,
       affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
+      historyGenerationRunId: args.historyGenerationRunId,
     },
   );
   const publishFinishedAt = now();

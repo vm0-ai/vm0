@@ -35,6 +35,8 @@ pub struct Job {
     #[serde(default)]
     pub cli_agent_session_id: Option<String>,
     #[serde(default)]
+    pub history_generation_run_id: Option<RunId>,
+    #[serde(default)]
     pub affinity_protected_until: Option<String>,
 }
 
