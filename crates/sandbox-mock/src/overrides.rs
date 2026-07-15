@@ -21,6 +21,9 @@ pub(crate) struct ExecOverrideState {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
     pub(crate) matchers: Mutex<Vec<ExecMatcherResult>>,
+    /// Pattern-matched exec results that remain available for every matching
+    /// call after one-shot matchers have been checked.
+    pub(crate) persistent_matchers: Mutex<Vec<ExecMatcherResult>>,
     /// Recorded exec calls across all sandboxes built from this override set.
     pub(crate) calls: Mutex<Vec<ExecCall>>,
 }
@@ -270,6 +273,21 @@ impl MockSandboxOverrides {
             .push(ExecMatcherResult {
                 pattern: pattern.into(),
                 result,
+            });
+    }
+
+    /// Register a persistent matcher for an ordinary exited result.
+    ///
+    /// One-shot matchers registered with [`Self::add_exec_matcher`] or
+    /// [`Self::add_exec_result_matcher`] take precedence. The persistent
+    /// matcher is not consumed and can serve repeated calls across sandboxes.
+    pub fn add_persistent_exec_matcher(&self, matcher: ExecMatcher) {
+        self.exec
+            .persistent_matchers
+            .lock_ignoring_poison()
+            .push(ExecMatcherResult {
+                pattern: matcher.pattern,
+                result: ExecResult::new(matcher.exit_code, matcher.stdout, matcher.stderr),
             });
     }
 

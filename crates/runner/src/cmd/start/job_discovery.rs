@@ -1090,6 +1090,7 @@ mod tests {
     use crate::http::HttpClientConfig;
     use crate::idle_pool::test_support::ParkedIdleCandidateBuilder;
     use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult, ParkingGate};
+    use crate::idle_reuse_preparation::mock_sandbox_ready_for_idle_reuse;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
     use crate::provider::CompletionAuth;
     use crate::resource_budget::ResourceBudget;
@@ -1106,7 +1107,7 @@ mod tests {
         },
     };
     use sandbox::SandboxFactory;
-    use sandbox_mock::{MockSandbox, MockSandboxFactory};
+    use sandbox_mock::MockSandboxFactory;
     use sha2::{Digest, Sha256};
 
     fn read_active_run_phase(path: &std::path::Path) -> String {
@@ -1230,7 +1231,9 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("restore-plan-finalizer"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "restore-plan-finalizer",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,

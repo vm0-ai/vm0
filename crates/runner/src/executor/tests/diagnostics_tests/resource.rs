@@ -19,8 +19,57 @@ Swap:              0           0           0
     );
     assert_eq!(diagnostics.guest_root_fs_used_percent, Some(100));
     assert_eq!(diagnostics.guest_root_fs_available_kb, Some(20));
+    assert_eq!(diagnostics.guest_root_fs_inode_used_percent, None);
+    assert_eq!(diagnostics.guest_root_fs_available_inodes, None);
     assert_eq!(diagnostics.guest_workspace_fs_used_percent, Some(1));
     assert_eq!(diagnostics.guest_memory_available_mb, Some(624));
+}
+
+#[test]
+fn abnormal_exit_resource_diagnostics_classifies_rootfs_inode_exhaustion() {
+    let diagnostics = parse_agent_abnormal_exit_resource_diagnostics(
+        r#"
+VM0_DF_BLOCKS_V1
+Filesystem     1024-blocks    Used Available Capacity Mounted on
+/dev/root          8388608 4194304   4194304      50% /
+/dev/vdb          16777216      24  16777192       1% /home/user/workspace
+VM0_DF_INODES_V1
+Filesystem       Inodes   IUsed   IFree IUse% Mounted on
+/dev/root        524288  524288       0  100% /
+/dev/vdb        1048576      32 1048544    1% /home/user/workspace
+"#,
+    )
+    .expect("inode diagnostics should parse");
+
+    assert_eq!(
+        diagnostics.failure_kind,
+        Some(ResourceFailureKind::GuestRootFilesystemFull)
+    );
+    assert_eq!(diagnostics.guest_root_fs_used_percent, Some(50));
+    assert_eq!(diagnostics.guest_root_fs_available_kb, Some(4_194_304));
+    assert_eq!(diagnostics.guest_root_fs_inode_used_percent, Some(100));
+    assert_eq!(diagnostics.guest_root_fs_available_inodes, Some(0));
+}
+
+#[test]
+fn abnormal_exit_resource_diagnostics_keeps_sections_before_later_failure_output() {
+    let diagnostics = parse_agent_abnormal_exit_resource_diagnostics(
+        r#"
+VM0_DF_BLOCKS_V1
+/dev/root 8388608 8388608 0 100% /
+VM0_DF_INODES_V1
+/dev/root 524288 524280 8 100% /
+/home/user: du timed out or failed
+"#,
+    )
+    .expect("valid resource sections should survive later helper failure output");
+
+    assert_eq!(
+        diagnostics.failure_kind,
+        Some(ResourceFailureKind::GuestRootFilesystemFull)
+    );
+    assert_eq!(diagnostics.guest_root_fs_available_kb, Some(0));
+    assert_eq!(diagnostics.guest_root_fs_available_inodes, Some(8));
 }
 
 #[test]

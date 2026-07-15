@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.22](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.21...sandbox-v0.19.22) (2026-07-15)
+
+
+### Documentation
+
+* **rust:** define create observer semantics ([#21590](https://github.com/vm0-ai/vm0/issues/21590)) ([14199e1](https://github.com/vm0-ai/vm0/commit/14199e11ee1e8241fd832d1a0214949628cf1f3a))
+
 ## [0.19.21](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.20...sandbox-v0.19.21) (2026-07-14)
 
 

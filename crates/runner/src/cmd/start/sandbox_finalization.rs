@@ -180,6 +180,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
         let park_request = IdleParkRequest::new(IdleParkRequestParts {
+            run_id,
             sandbox,
             factory: Arc::clone(&factory),
             cli_agent_session_id: cli_agent_session_id.clone(),
@@ -207,8 +208,9 @@ pub(super) async fn finalize_sandbox_for_completion(
                 warn!(
                     run_id = %run_id,
                     session_id = %cli_agent_session_id,
+                    reason = failure.reason,
                     error = %failure.error,
-                    "sandbox park failed, destroying instead of parking"
+                    "sandbox idle admission failed, destroying instead of parking"
                 );
                 let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                     &held_session_snapshot,
@@ -217,7 +219,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     promote_workspace_image_from_active_sandbox(
                         sandbox.as_ref(),
                         workspace_promotion,
-                        "park_failed",
+                        failure.reason,
                     )
                     .await,
                 );
@@ -229,7 +231,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         sandbox_id,
                         profile_name: &profile_name,
                         cli_agent_session_id: Some(&cli_agent_session_id),
-                        reason: "park_failed",
+                        reason: failure.reason,
                         network_log_session: network_log_session.take(),
                         network_log_drain: network_log_drain.clone(),
                     },
@@ -629,6 +631,7 @@ mod tests {
     use std::time::Duration;
 
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+    use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
@@ -639,6 +642,9 @@ mod tests {
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult, ParkingGate,
         RestoreReservedIdleResult, test_support::ParkedIdleCandidateBuilder,
+    };
+    use crate::idle_reuse_preparation::{
+        add_healthy_reuse_preparation_matcher, mock_sandbox_ready_for_idle_reuse,
     };
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -824,7 +830,9 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("network-log-park"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "network-log-park",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -868,6 +876,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn finalizer_preserves_success_when_reuse_preparation_rejects_guest() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let workspace_dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(workspace_dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let workspace_image = prepare_test_workspace_image_lease(
+            &paths,
+            &cache,
+            run_id,
+            sandbox_id,
+            "sess-reuse-rejected",
+        )
+        .await;
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "prepare-for-reuse".into(),
+            exit_code: 0,
+            stdout: serde_json::to_vec(&ReusePreparationReport {
+                before: RootFilesystemCapacity {
+                    available_bytes: 64 * 1024 * 1024,
+                    available_inodes: 4096,
+                },
+                after: RootFilesystemCapacity {
+                    available_bytes: 64 * 1024 * 1024,
+                    available_inodes: 4096,
+                },
+                removed_entries: 0,
+            })
+            .unwrap(),
+            stderr: Vec::new(),
+        });
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-reuse-rejected",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.cleanup_state = cleanup_state.clone();
+        context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
+
+        let completion_ready = finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        assert_eq!(completion_ready.result_for_test(), (0, None));
+        assert_eq!(overrides.park_call_count(), 0);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let cache_states = cache.held_session_states().await;
+        assert_eq!(cache_states.len(), 1);
+        assert_eq!(cache_states[0].session_id, "sess-reuse-rejected");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted
+        );
+    }
+
+    #[tokio::test]
     async fn finalizer_parking_log_uses_session_id() {
         let (_budget, lease) = test_budget_lease();
         let fixture = FinalizeTestFixture::new().await;
@@ -886,7 +973,9 @@ mod tests {
         context.test_observer = observer.clone();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("finalizer-redaction"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "finalizer-redaction",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -925,7 +1014,9 @@ mod tests {
         context.cleanup_state = cleanup_state.clone();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("cancel-after-transfer"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "cancel-after-transfer",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -1148,7 +1239,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("guest-session-promotion"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "guest-session-promotion",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -1365,7 +1458,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("rejected-workspace-promotion"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "rejected-workspace-promotion",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -1416,6 +1511,7 @@ mod tests {
         );
         let destroy_gate = MockLifecycleGate::new();
         let existing_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        add_healthy_reuse_preparation_matcher(&existing_overrides);
         existing_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
         let existing_factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
             MockSandboxFactory::with_overrides(Arc::clone(&existing_overrides)),
@@ -1434,6 +1530,7 @@ mod tests {
             .expect("create existing sandbox");
         let (_existing_budget, existing_lease) = test_budget_lease();
         let existing_candidate = IdleParkRequest::new(IdleParkRequestParts {
+            run_id: old_run_id,
             source_ip: existing_sandbox.source_ip().to_owned(),
             sandbox: existing_sandbox,
             factory: existing_factory,
@@ -1475,7 +1572,9 @@ mod tests {
         context.park_notify = Arc::clone(&park_notify);
 
         let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("replacement-sandbox"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "replacement-sandbox",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 new_run_id,
@@ -1567,6 +1666,7 @@ mod tests {
         let cancel = RunCancellationHandle::new();
         let cleanup_state = RunCleanupState::new();
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        add_healthy_reuse_preparation_matcher(&overrides);
         let park_gate = MockLifecycleGate::new();
         let destroy_gate = MockLifecycleGate::new();
         overrides.set_park_lifecycle_gate(park_gate.clone());
@@ -1646,6 +1746,7 @@ mod tests {
         let cleanup_state = RunCleanupState::new();
         let observer = StartLoopTestObserver::default();
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        add_healthy_reuse_preparation_matcher(&overrides);
         let destroy_gate = MockLifecycleGate::new();
         overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
         let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
