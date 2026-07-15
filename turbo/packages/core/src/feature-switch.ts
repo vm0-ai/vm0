@@ -466,7 +466,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Queue-first user message dispatch: sends enqueue a chat_message_queue item and claim it in place instead of the legacy revoke-claim convention.",
-    enabled: false,
+    enabled: true,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {

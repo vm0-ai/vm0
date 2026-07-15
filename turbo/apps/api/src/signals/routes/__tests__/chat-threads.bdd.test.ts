@@ -2711,19 +2711,23 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.revokesMessageId === queued.body.messageId &&
-            message.runId !== undefined
+            message.id === queued.body.messageId && message.runId !== undefined
           );
         });
       },
     );
     const promoted = userMessages(afterQueue.messages).find((message) => {
-      return message.revokesMessageId === queued.body.messageId;
+      return message.id === queued.body.messageId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued v1 message to auto-send into a run");
     }
     expect(promoted.content).toBe("queued from v1");
+    expect(
+      afterQueue.messages.some((message) => {
+        return message.revokesMessageId === queued.body.messageId;
+      }),
+    ).toBeFalsy();
     await expectZeroPreCreateSource(promoted.runId, "chat_callback_auto_send");
     await flushWaitUntilForTest();
     const afterAutoSendSideEffects = await chat.listThreadMessages(

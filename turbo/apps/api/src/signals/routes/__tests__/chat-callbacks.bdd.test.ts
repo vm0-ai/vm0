@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { delay } from "signal-timers";
 import { WebPushError } from "web-push";
@@ -214,28 +214,54 @@ async function startChatRun(
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
   },
-): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendMessage(
-    actor,
-    {
-      agentId: body.agentId,
-      prompt: body.prompt,
-      ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
-      ...(body.attachFiles === undefined
-        ? {}
-        : { attachFiles: body.attachFiles }),
-      ...(body.selectedModel === undefined
-        ? body.threadId === undefined
-          ? { model: "claude-sonnet-4-6" }
-          : {}
-        : { model: body.selectedModel }),
-    },
-    [201],
-  );
-  if (sent.status !== 201 || sent.body.runId === null) {
+): Promise<{
+  readonly runId: string;
+  readonly threadId: string;
+  readonly messageId: string;
+}> {
+  const messageId = randomUUID();
+  const requestBody = {
+    agentId: body.agentId,
+    prompt: body.prompt,
+    clientMessageId: messageId,
+    ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
+    ...(body.attachFiles === undefined
+      ? {}
+      : { attachFiles: body.attachFiles }),
+    ...(body.selectedModel === undefined
+      ? body.threadId === undefined
+        ? { model: "claude-sonnet-4-6" }
+        : {}
+      : { model: body.selectedModel }),
+  };
+  let sent = await chat.requestSendMessage(actor, requestBody, [201]);
+  if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
-  return { runId: sent.body.runId, threadId: sent.body.threadId };
+  if (sent.body.runId === null) {
+    const threadId = sent.body.threadId;
+    // Queue-first sends may be claimed by a terminal callback drain between
+    // enqueue and the inline dispatch decision. Replay the idempotent client
+    // message id until that winning run association is visible.
+    await expect
+      .poll(async () => {
+        sent = await chat.requestSendMessage(
+          actor,
+          { ...requestBody, threadId },
+          [201],
+        );
+        return sent.status === 201 ? sent.body.runId : null;
+      })
+      .not.toBeNull();
+  }
+  if (sent.body.runId === null) {
+    throw new Error("Expected the entitled chat send to create a run");
+  }
+  return {
+    runId: sent.body.runId,
+    threadId: sent.body.threadId,
+    messageId,
+  };
 }
 
 async function queueChatMessage(
@@ -1013,10 +1039,11 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected the queued message to be auto-claimed");
     }
     expect(claimed.runId).not.toBe(first.runId);
-    expect(claimed.revokesMessageId).toBe(queued.id);
+    expect(claimed.id).toBe(queued.id);
+    expect(claimed.revokesMessageId).toBeUndefined();
     expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
-    // The paged-messages API returns the revoked original next to the
-    // claiming copy; clients collapse the pair through revokesMessageId.
+    // Queue-first claims bind the follow-up run onto the persisted message in
+    // place instead of writing a shadow/revoke copy.
     expect(
       userMessages(afterAutoSend.messages)
         .filter((message) => {
@@ -1026,13 +1053,17 @@ describe("CHAT-02: completed chat callback", () => {
           return message.id;
         })
         .sort(),
-    ).toStrictEqual([queued.id, claimed.id].sort());
+    ).toStrictEqual([queued.id]);
     // The auto-send publishes happen in background callback processing, so
     // poll until each expected channel has been published before asserting.
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadMessageCreated:${first.threadId}`;
+          return (
+            call[0] === `chatThreadMessageUpdated:${first.threadId}` &&
+            (call[1] as { messageId?: string } | undefined)?.messageId ===
+              queued.id
+          );
         });
       })
       .toBe(true);
@@ -1044,8 +1075,8 @@ describe("CHAT-02: completed chat callback", () => {
       })
       .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
+      `chatThreadMessageUpdated:${first.threadId}`,
+      { messageId: queued.id },
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadRunCreated:${first.threadId}`,
@@ -1181,10 +1212,7 @@ describe("CHAT-02: completed chat callback", () => {
       first.threadId,
       (messages) => {
         return userMessages(messages).some((message) => {
-          return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
-          );
+          return message.id === queued.id && message.runId !== undefined;
         });
       },
     );
@@ -1201,7 +1229,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(markerBeforeRelease.recommendedFollowups).toBeUndefined();
 
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+      return message.id === queued.id;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to auto-send");
@@ -2130,15 +2158,12 @@ Continue after the long Unicode prefix.`;
       first.threadId,
       (messages) => {
         return userMessages(messages).some((message) => {
-          return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
-          );
+          return message.id === queued.id && message.runId !== undefined;
         });
       },
     );
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+      return message.id === queued.id;
     });
     expect(
       claimed?.runId,
@@ -2205,10 +2230,7 @@ Continue after the long Unicode prefix.`;
       first.threadId,
       (messages) => {
         const claimed = userMessages(messages).find((message) => {
-          return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
-          );
+          return message.id === queued.id && message.runId !== undefined;
         });
         return (
           claimed !== undefined &&
@@ -2222,7 +2244,7 @@ Continue after the long Unicode prefix.`;
       },
     );
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+      return message.id === queued.id;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to auto-send");
@@ -2523,8 +2545,9 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
           return (
-            call[0] === `chatThreadMessageCreated:${first.threadId}` &&
-            call[1] === null
+            call[0] === `chatThreadMessageUpdated:${first.threadId}` &&
+            (call[1] as { messageId?: string } | undefined)?.messageId ===
+              first.messageId
           );
         });
       })
@@ -2550,8 +2573,8 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(routeRequests()).toBe(0);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
+      `chatThreadMessageUpdated:${first.threadId}`,
+      expect.anything(),
     );
     const progressMessages = await chat.listThreadMessages(
       actor,
@@ -3464,7 +3487,11 @@ describe("CHAT-02: thread deletion while a run is active", () => {
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadMessageCreated:${run.threadId}`;
+          return (
+            call[0] === `chatThreadMessageUpdated:${run.threadId}` &&
+            (call[1] as { messageId?: string } | undefined)?.messageId ===
+              run.messageId
+          );
         });
       })
       .toBe(true);
@@ -3482,8 +3509,8 @@ describe("CHAT-02: thread deletion while a run is active", () => {
     await waitForRunStatus(actor, run.runId, "cancelled");
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${run.threadId}`,
-      null,
+      `chatThreadMessageUpdated:${run.threadId}`,
+      expect.anything(),
     );
     const deletedRead = await chat.requestReadThread(
       actor,

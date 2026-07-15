@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
@@ -11,6 +12,7 @@ import {
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -23,7 +25,6 @@ import {
   isNotNull,
   isNull,
   lte,
-  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -67,7 +68,6 @@ import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
   deleteUserMessageQueueItem,
-  hasUserMessageQueueItem,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
@@ -112,6 +112,7 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context"
+  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments"
@@ -412,6 +413,10 @@ interface CreateQueuedChatRunInput {
   readonly appendSystemPrompt: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly computerUseHostGrant: {
+    readonly hostId: string;
+    readonly displayName: string;
+  } | null;
   readonly beforeDispatch?: (args: {
     readonly runId: string;
     readonly status: "queued" | "pending";
@@ -472,6 +477,7 @@ function buildQueuedCreateZeroRunArgs(
     },
     apiStartTime,
     chatThreadId: input.threadId,
+    computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.queuedMessage.modelProviderId ?? undefined,
     modelProviderCredentialScope:
       input.queuedMessage.modelProviderCredentialScope ?? undefined,
@@ -483,6 +489,7 @@ function buildQueuedCreateZeroRunArgs(
         payload: {
           threadId: input.threadId,
           agentId: input.agentId,
+          queuedMessageId: input.queuedMessage.id,
         },
       },
     ],
@@ -1246,17 +1253,30 @@ function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
   generationTemplatePrompt: string,
+  computerUseHostDisplayName: string | null,
 ): string {
   return [
     buildWebChatPrompt(),
     priorContext,
     incompleteContext,
     generationTemplatePrompt,
+    computerUseHostDisplayName
+      ? buildComputerUseSystemPrompt(computerUseHostDisplayName)
+      : "",
   ]
     .filter((part) => {
       return part.length > 0;
     })
     .join("\n\n");
+}
+
+function buildComputerUseSystemPrompt(displayName: string): string {
+  return [
+    "# Computer Use",
+    `Computer Use is enabled for this run on ${displayName}.`,
+    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
+    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
+  ].join("\n");
 }
 
 function formatAttachFileIds(
@@ -1536,27 +1556,66 @@ async function loadAgentForAutoSend(
   return agent ?? null;
 }
 
+async function loadComputerUseHostGrantForAutoSend(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<{
+  readonly hostId: string;
+  readonly displayName: string;
+} | null> {
+  const [host] = await args.db
+    .select({
+      hostId: computerUseHosts.id,
+      displayName: computerUseHosts.displayName,
+    })
+    .from(chatThreads)
+    .innerJoin(
+      computerUseHosts,
+      eq(chatThreads.computerUseHostId, computerUseHosts.id),
+    )
+    .where(
+      and(
+        eq(chatThreads.id, args.threadId),
+        eq(chatThreads.userId, args.userId),
+        eq(computerUseHosts.orgId, args.orgId),
+        eq(computerUseHosts.userId, args.userId),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+  return host ?? null;
+}
+
 async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
-  options?: { readonly excludeRunId?: string },
 ): Promise<boolean> {
-  const filters = [
-    eq(zeroRuns.chatThreadId, threadId),
-    inArray(agentRuns.status, ["queued", "pending", "running"]),
-  ];
-  const excludeRunId = options?.excludeRunId;
-  if (excludeRunId !== undefined) {
-    filters.push(ne(zeroRuns.id, excludeRunId));
-  }
-
-  const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(and(...filters))
-    .limit(1);
-  return run !== undefined;
+  const runs = await db.execute<{ readonly id: string }>(sql`
+    SELECT ${zeroRuns.id} AS "id"
+    FROM ${zeroRuns}
+    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+    WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      AND (
+        NOT EXISTS (
+          SELECT 1
+          FROM ${agentRunCallbacks}
+          WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+            AND ${agentRunCallbacks.internalKind} = 'chat'
+            AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM ${chatMessages}
+          WHERE ${chatMessages.runId} = ${zeroRuns.id}
+            AND ${chatMessages.role} = 'user'
+        )
+      )
+    LIMIT 1
+  `);
+  return runs.rows[0] !== undefined;
 }
 
 async function chatThreadExists(db: Db, threadId: string): Promise<boolean> {
@@ -1712,6 +1771,19 @@ async function buildCreateQueuedChatRunInput(args: {
       });
     },
   );
+  const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
+    "nested",
+    () => {
+      return loadComputerUseHostGrantForAutoSend({
+        db: args.db,
+        threadId: args.threadId,
+        orgId: args.agent.orgId,
+        userId: args.userId,
+      });
+    },
+  );
   const prompt = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt",
@@ -1736,9 +1808,11 @@ async function buildCreateQueuedChatRunInput(args: {
       incompleteContext,
       priorContext,
       generationTemplatePrompt,
+      computerUseHostGrant?.displayName ?? null,
     ),
     threadId: args.threadId,
     queuedMessage: resolvedQueuedMessage,
+    computerUseHostGrant,
   };
 }
 
@@ -1783,19 +1857,35 @@ async function claimQueuedUserMessageForDispatch(args: {
       return null;
     }
 
-    const [competingRun] = await tx
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-      .where(
-        and(
-          eq(zeroRuns.chatThreadId, args.threadId),
-          ne(zeroRuns.id, args.runId),
-          inArray(agentRuns.status, ["queued", "pending", "running"]),
-        ),
-      )
-      .limit(1);
-    if (competingRun) {
+    // Auto-send candidates do not own the thread until one binds a user
+    // message. Concurrent drains may insert more than one candidate before
+    // reaching this serialized gate; ignoring those unclaimed candidates lets
+    // one claim win while the others cancel before dispatch.
+    const competingRuns = await tx.execute<{ readonly id: string }>(sql`
+      SELECT ${zeroRuns.id} AS "id"
+      FROM ${zeroRuns}
+      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+      WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
+        AND ${zeroRuns.id} <> ${args.runId}
+        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM ${agentRunCallbacks}
+            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+              AND ${agentRunCallbacks.internalKind} = 'chat'
+              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              AND ${chatMessages.role} = 'user'
+          )
+        )
+      LIMIT 1
+    `);
+    if (competingRuns.rows[0]) {
       return null;
     }
 
@@ -1803,7 +1893,7 @@ async function claimQueuedUserMessageForDispatch(args: {
     // claimed in place: bind the run id onto the existing row and consume the
     // queue item. Legacy queued messages keep the shadow-row-plus-revoke
     // convention so pre-switch rows claim exactly as before.
-    if (await hasUserMessageQueueItem(tx, args.queuedMessage.id)) {
+    if (args.queuedMessage.queueFirst) {
       const [updated] = await tx
         .update(chatMessages)
         .set({ runId: args.runId })

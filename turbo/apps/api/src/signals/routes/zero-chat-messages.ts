@@ -12,6 +12,7 @@ import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -61,7 +62,10 @@ import {
   createZeroRun$,
   type ZeroPreCreateSource,
 } from "../services/zero-runs-create.service";
-import { BEFORE_DISPATCH_CANCELLED_ERROR } from "../services/agent-run-create.service";
+import {
+  BEFORE_DISPATCH_CANCELLED_ERROR,
+  type BeforeRunDispatch,
+} from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { drainQueuedUserMessagesForThread$ } from "../services/internal-chat-run-callback.service";
 import {
@@ -827,18 +831,30 @@ async function activeRunExistsForThread(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        inArray(agentRuns.status, ["queued", "pending", "running"]),
-      ),
-    )
-    .limit(1);
-  return run !== undefined;
+  const runs = await db.execute<{ readonly id: string }>(sql`
+    SELECT ${zeroRuns.id} AS "id"
+    FROM ${zeroRuns}
+    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+    WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      AND (
+        NOT EXISTS (
+          SELECT 1
+          FROM ${agentRunCallbacks}
+          WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+            AND ${agentRunCallbacks.internalKind} = 'chat'
+            AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM ${chatMessages}
+          WHERE ${chatMessages.runId} = ${zeroRuns.id}
+            AND ${chatMessages.role} = 'user'
+        )
+      )
+    LIMIT 1
+  `);
+  return runs.rows[0] !== undefined;
 }
 
 async function resolveClientMessageSend(params: {
@@ -2548,7 +2564,12 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
   readonly touchThreadSort: boolean;
-  readonly queueFirstMessageId: string | undefined;
+  readonly queueFirstClaim:
+    | {
+        readonly messageId: string;
+        readonly createdAt: Date;
+      }
+    | undefined;
 }): void {
   scheduleChatTitleGeneration({
     db: params.db,
@@ -2562,14 +2583,15 @@ function scheduleCreatedChatRunSideEffects(params: {
     params.runStatus !== "queued" &&
     params.body.hasTextContent !== false &&
     params.body.prompt.trim().length > 0;
-  if (params.queueFirstMessageId) {
-    scheduleQueueFirstMessageClaim({
+  if (params.queueFirstClaim) {
+    scheduleClaimedQueueFirstMessageSideEffects({
       db: params.db,
       body: params.body,
       threadId: params.thread.threadId,
       userId: params.userId,
       runId: params.runId,
-      messageId: params.queueFirstMessageId,
+      messageId: params.queueFirstClaim.messageId,
+      createdAt: params.queueFirstClaim.createdAt,
       appendQueueMarker: params.runStatus === "queued",
       appendInitialThinking,
     });
@@ -2588,51 +2610,45 @@ function scheduleCreatedChatRunSideEffects(params: {
 }
 
 /**
- * Queue-first counterpart of `scheduleAssociatedUserMessage`: the message row
- * already exists, so claim it in place (bind run id, consume the queue item)
- * instead of inserting an associated copy.
+ * Queue-first counterpart of `scheduleAssociatedUserMessage`: the pre-dispatch
+ * gate already claimed the persisted message in place, so only publish its
+ * update and append the optional run markers here.
  */
-function scheduleQueueFirstMessageClaim(params: {
+function scheduleClaimedQueueFirstMessageSideEffects(params: {
   readonly db: Db;
   readonly body: NormalSendBody;
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;
   readonly messageId: string;
+  readonly createdAt: Date;
   readonly appendQueueMarker: boolean;
   readonly appendInitialThinking: boolean;
 }): void {
   waitUntil(
     (async () => {
-      const claimed = await claimUserMessageInPlace(params.db, {
-        threadId: params.threadId,
-        messageId: params.messageId,
-        runId: params.runId,
-      });
-      if (claimed) {
-        if (params.appendQueueMarker) {
-          await params.db.transaction(async (tx) => {
-            await appendQueuedRunAssistantMarker(tx, {
-              chatThreadId: params.threadId,
-              runId: params.runId,
-              createdAfter: claimed.createdAt,
-            });
+      if (params.appendQueueMarker) {
+        await params.db.transaction(async (tx) => {
+          await appendQueuedRunAssistantMarker(tx, {
+            chatThreadId: params.threadId,
+            runId: params.runId,
+            createdAfter: params.createdAt,
           });
-        }
-        await publishChatThreadMessageUpdated(
-          params.userId,
-          params.threadId,
-          params.messageId,
-        );
-        if (params.appendQueueMarker) {
-          await publishChatMessageCreated(params.userId, params.threadId);
-        }
+        });
+      }
+      await publishChatThreadMessageUpdated(
+        params.userId,
+        params.threadId,
+        params.messageId,
+      );
+      if (params.appendQueueMarker) {
+        await publishChatMessageCreated(params.userId, params.threadId);
       }
       await publishUserSignal(
         [params.userId],
         `chatThreadRunCreated:${params.threadId}`,
       );
-      if (claimed && params.appendInitialThinking) {
+      if (params.appendInitialThinking) {
         await bestEffort(
           generateAndPersistInitialThinkingMessage({
             db: params.db,
@@ -2961,6 +2977,101 @@ async function buildTimedCreateZeroRunArgs(params: {
   );
 }
 
+function buildQueueFirstPreDispatchClaim(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly messageId: string | undefined;
+}): {
+  readonly state: { current: { readonly createdAt: Date } | null };
+  readonly beforeDispatch: BeforeRunDispatch | undefined;
+} {
+  const state: { current: { readonly createdAt: Date } | null } = {
+    current: null,
+  };
+  const messageId = params.messageId;
+  if (!messageId) {
+    return { state, beforeDispatch: undefined };
+  }
+
+  // A detached terminal callback can begin draining after this send enqueues
+  // the message but before its dispatch decision completes. Both contenders
+  // use this serialized claim, and createZeroRun cancels whichever run loses.
+  return {
+    state,
+    beforeDispatch: async ({ runId }) => {
+      state.current = await claimUserMessageInPlace(params.db, {
+        threadId: params.threadId,
+        messageId,
+        runId,
+      });
+      return state.current !== null;
+    },
+  };
+}
+
+async function resolveQueueFirstMessageAfterLostClaim(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly messageId: string;
+}) {
+  const resolution = await resolveClientMessageId(params.db, {
+    clientMessageId: params.messageId,
+    threadId: params.threadId,
+    userId: params.userId,
+  });
+  return clientMessageIdResolutionResponse(resolution, params.threadId);
+}
+
+function createdNormalChatRunResponse(params: {
+  readonly runId: string;
+  readonly threadId: string;
+  readonly status: string;
+  readonly createdAt: string | undefined;
+}): CreatedChatMessageResponse {
+  if (!params.createdAt) {
+    throw new Error("Created chat run response is missing createdAt");
+  }
+  return {
+    status: 201,
+    body: {
+      ...params,
+      createdAt: params.createdAt,
+    },
+  };
+}
+
+function scheduleNormalChatRunSideEffects(params: {
+  readonly args: NormalSendArgs;
+  readonly prepared: PreparedNormalSend;
+  readonly runId: string;
+  readonly runStatus: string;
+  readonly queueFirstMessageId: string | undefined;
+  readonly queueFirstClaimedAt: Date | undefined;
+}): void {
+  scheduleCreatedChatRunSideEffects({
+    db: params.prepared.db,
+    body: params.args.body,
+    thread: params.prepared.thread,
+    userId: params.args.userId,
+    orgId: params.args.orgId,
+    runId: params.runId,
+    runStatus: params.runStatus,
+    initialThinkingEnabled: params.prepared.initialThinkingEnabled,
+    touchThreadSort: shouldTouchThreadSortFromNormalSend(
+      params.args.zeroPreCreateSource,
+      params.prepared.thread.isNewThread,
+    ),
+    queueFirstClaim:
+      params.queueFirstMessageId && params.queueFirstClaimedAt
+        ? {
+            messageId: params.queueFirstMessageId,
+            createdAt: params.queueFirstClaimedAt,
+          }
+        : undefined,
+  });
+}
+
 const createNormalChatRun$ = command(
   async (
     { set },
@@ -3019,6 +3130,19 @@ const createNormalChatRun$ = command(
     });
     signal.throwIfAborted();
 
+    const queueFirstMessageId = params.queueFirstMessageId;
+    const queueFirstClaim = buildQueueFirstPreDispatchClaim({
+      db: prepared.db,
+      threadId: prepared.thread.threadId,
+      messageId: queueFirstMessageId,
+    });
+    const createRunArgsWithClaim = {
+      ...createRunArgs,
+      ...(queueFirstClaim.beforeDispatch
+        ? { beforeDispatch: queueFirstClaim.beforeDispatch }
+        : {}),
+    };
+
     if (args.timing) {
       args.timing.recordElapsed(
         "api_dispatch_pre_create_zero_web_chat_create_normal_run",
@@ -3026,10 +3150,26 @@ const createNormalChatRun$ = command(
         createNormalRunStartedAt,
       );
     }
-    const runResult = await set(createZeroRun$, createRunArgs, signal);
+    const runResult = await set(createZeroRun$, createRunArgsWithClaim, signal);
     signal.throwIfAborted();
     if (runResult.status !== 201) {
       return runResult;
+    }
+    const response = createdNormalChatRunResponse({
+      runId: runResult.body.runId,
+      threadId: prepared.thread.threadId,
+      status: runResult.body.status,
+      createdAt: runResult.body.createdAt,
+    });
+    if (queueFirstMessageId && !queueFirstClaim.state.current) {
+      const resolved = await resolveQueueFirstMessageAfterLostClaim({
+        db: prepared.db,
+        threadId: prepared.thread.threadId,
+        userId: args.userId,
+        messageId: queueFirstMessageId,
+      });
+      signal.throwIfAborted();
+      return resolved ?? response;
     }
 
     await prepared.db
@@ -3043,20 +3183,13 @@ const createNormalChatRun$ = command(
       .where(eq(zeroRuns.id, runResult.body.runId));
     signal.throwIfAborted();
 
-    scheduleCreatedChatRunSideEffects({
-      db: prepared.db,
-      body: args.body,
-      thread: prepared.thread,
-      userId: args.userId,
-      orgId: args.orgId,
+    scheduleNormalChatRunSideEffects({
+      args,
+      prepared,
       runId: runResult.body.runId,
       runStatus: runResult.body.status,
-      initialThinkingEnabled: prepared.initialThinkingEnabled,
-      touchThreadSort: shouldTouchThreadSortFromNormalSend(
-        args.zeroPreCreateSource,
-        prepared.thread.isNewThread,
-      ),
-      queueFirstMessageId: params.queueFirstMessageId,
+      queueFirstMessageId,
+      queueFirstClaimedAt: queueFirstClaim.state.current?.createdAt,
     });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {
@@ -3069,15 +3202,7 @@ const createNormalChatRun$ = command(
       signal.throwIfAborted();
     }
 
-    return {
-      status: 201 as const,
-      body: {
-        runId: runResult.body.runId,
-        threadId: prepared.thread.threadId,
-        status: runResult.body.status,
-        createdAt: runResult.body.createdAt,
-      },
-    };
+    return response;
   },
 );
 
@@ -3281,12 +3406,12 @@ const sendQueueFirstNormalMessage$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if (result.status === 201 && "runId" in result.body && result.body.runId) {
+    if (result.status === 201) {
       return result;
     }
-    // Run creation did not dispatch (validation error or insufficient
-    // credits, which persists its own marked copy of the message). Discard
-    // the queued message so history matches the legacy direct-send failure.
+    // Run creation failed validation before it could consume the queue item.
+    // Discard the queued message so history matches the legacy direct-send
+    // failure.
     await discardUnclaimedUserMessage(prepared.db, {
       threadId,
       messageId: queuedMessageId,
