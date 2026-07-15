@@ -1,6 +1,6 @@
 use std::io;
+use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 const BLOCKING_PATH_SUFFIX: &str = ".vm0-vsock-test-block";
 
@@ -18,15 +18,13 @@ fn main() {
 }
 
 fn wait_for_release(path: &Path) -> io::Result<()> {
+    let listener = UnixListener::bind(path_with_suffix(path, ".release"))?;
     std::fs::write(
         path_with_suffix(path, ".pid"),
         std::process::id().to_string(),
     )?;
     std::fs::write(path_with_suffix(path, ".started"), b"")?;
-    let release = path_with_suffix(path, ".release");
-    while !release.exists() {
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    let _ = listener.accept()?;
     Ok(())
 }
 

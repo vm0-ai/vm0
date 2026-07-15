@@ -1,8 +1,8 @@
 use crate::support::{
-    Harness, blocking_write_path, blocking_write_pid_path, blocking_write_release_path,
-    blocking_write_started_path, captured_output_bytes, exec_exit_code,
-    finish_raw_guest_connection, join_raw_guest_connection, pid_alive, read_raw_message, run_exec,
-    shell_quote, start_raw_guest_connection, wait_for_path,
+    Harness, blocking_write_path, blocking_write_pid_path, blocking_write_started_path,
+    captured_output_bytes, exec_exit_code, finish_raw_guest_connection, join_raw_guest_connection,
+    pid_alive, read_raw_message, release_blocking_write, run_exec, shell_quote,
+    start_raw_guest_connection, wait_for_path,
 };
 use std::fs;
 use std::io::{Read, Write};
@@ -65,8 +65,7 @@ async fn blocked_write_keeps_ping_responsive_and_rejects_overlap() {
     );
     assert!(!overlap_path.exists());
 
-    fs::write(blocking_write_release_path(&blocked_path), b"")
-        .expect("release blocked write helper");
+    release_blocking_write(&blocked_path);
     let first_result = read_raw_message(&mut stream);
     assert_eq!(first_result.msg_type, MSG_WRITE_FILE_RESULT);
     assert_eq!(first_result.seq, 10);
@@ -151,8 +150,7 @@ async fn blocked_write_allows_exec_cancel_and_quiesce() {
         .await
         .expect("exec cancel should not wait for blocked write")
         .expect("cancel supervised exec");
-        fs::write(blocking_write_release_path(&blocked_path), b"")
-            .expect("release control blocked helper");
+        release_blocking_write(&blocked_path);
         cancel_result
     };
 

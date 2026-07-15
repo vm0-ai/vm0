@@ -29,12 +29,12 @@ pub(crate) type RawGuestHandle = JoinHandle<io::Result<()>>;
 pub(crate) fn start_raw_guest_connection() -> (RawGuestHandle, UnixStream) {
     install_write_file_helper();
     let (guest_stream, mut host_stream) = UnixStream::pair().expect("create raw guest stream pair");
-    let handle = thread::spawn(move || vsock_guest::handle_connection(guest_stream));
-    let ready = read_raw_message(&mut host_stream);
-    assert_eq!(ready.msg_type, vsock_proto::MSG_READY);
     host_stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .expect("set raw guest read timeout");
+    let handle = thread::spawn(move || vsock_guest::handle_connection(guest_stream));
+    let ready = read_raw_message(&mut host_stream);
+    assert_eq!(ready.msg_type, vsock_proto::MSG_READY);
     (handle, host_stream)
 }
 
@@ -80,6 +80,10 @@ pub(crate) fn blocking_write_started_path(path: &Path) -> std::path::PathBuf {
 
 pub(crate) fn blocking_write_release_path(path: &Path) -> std::path::PathBuf {
     path_with_suffix(path, ".release")
+}
+
+pub(crate) fn release_blocking_write(path: &Path) {
+    UnixStream::connect(blocking_write_release_path(path)).expect("release blocked write helper");
 }
 
 pub(crate) fn blocking_write_pid_path(path: &Path) -> std::path::PathBuf {
