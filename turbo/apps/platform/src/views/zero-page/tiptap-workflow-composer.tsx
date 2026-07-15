@@ -357,7 +357,9 @@ function useComposerSuggestionMenu({
     range,
     selectedIndex,
     close,
-    workflowNames: workflows.map((workflow) => workflow.name),
+    workflowNames: workflows.map((workflow) => {
+      return workflow.name;
+    }),
     workflows: workflowSuggestions,
     workflowsLoading: workflowsLoadable.state === "loading",
     showWorkflows,
