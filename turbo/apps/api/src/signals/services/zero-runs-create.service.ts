@@ -647,6 +647,53 @@ async function resolveZeroRunPermissionPolicies(
   return resolved;
 }
 
+async function loadZeroRunWorkflowPermissionContext(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agent: ZeroAgentRunRecord;
+    readonly allowedConnectorTypes: readonly ConnectorType[];
+    readonly apiStartTime: number;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+  signal: AbortSignal,
+) {
+  const workflows = await measureZeroPreCreate(
+    args.timing,
+    "api_dispatch_pre_create_zero_load_workflows",
+    async () => {
+      return await loadWorkflowsForRun(db, {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentId: args.agent.id,
+      });
+    },
+  );
+  signal.throwIfAborted();
+
+  const runPermissionPolicies = await measureZeroPreCreate(
+    args.timing,
+    "api_dispatch_pre_create_zero_resolve_permission_policies",
+    async () => {
+      return await resolveZeroRunPermissionPolicies(
+        db,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          agent: args.agent,
+          allowedConnectorTypes: args.allowedConnectorTypes,
+          checkedAt: new Date(args.apiStartTime),
+        },
+        signal,
+      );
+    },
+  );
+  signal.throwIfAborted();
+
+  return { workflows, runPermissionPolicies };
+}
+
 async function loadUserInfo(
   db: Db,
   args: {
@@ -1374,37 +1421,19 @@ export const createZeroIntegrationRun$ = command(
         },
       );
     signal.throwIfAborted();
-    const workflows = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_workflows",
-      async () => {
-        return await loadWorkflowsForRun(db, {
-          userId: args.userId,
+    const { workflows, runPermissionPolicies } =
+      await loadZeroRunWorkflowPermissionContext(
+        db,
+        {
           orgId: args.orgId,
-          agentId: agent.id,
-        });
-      },
-    );
-    signal.throwIfAborted();
-
-    const runPermissionPolicies = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_resolve_permission_policies",
-      async () => {
-        return await resolveZeroRunPermissionPolicies(
-          db,
-          {
-            orgId: args.orgId,
-            userId: args.userId,
-            agent,
-            allowedConnectorTypes,
-            checkedAt: new Date(args.apiStartTime),
-          },
-          signal,
-        );
-      },
-    );
-    signal.throwIfAborted();
+          userId: args.userId,
+          agent,
+          allowedConnectorTypes,
+          apiStartTime: args.apiStartTime,
+          timing,
+        },
+        signal,
+      );
 
     return await set(
       createAgentRunAfterZeroPreCreate$,
@@ -1512,36 +1541,19 @@ export const createZeroRun$ = command(
     signal.throwIfAborted();
     const { allowedConnectorTypes, allowedCustomConnectorIds } =
       connectorScopes;
-    const workflows = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_workflows",
-      async () => {
-        return await loadWorkflowsForRun(db, {
-          userId: args.auth.userId,
+    const { workflows, runPermissionPolicies } =
+      await loadZeroRunWorkflowPermissionContext(
+        db,
+        {
           orgId: args.auth.orgId,
-          agentId: agent.id,
-        });
-      },
-    );
-    signal.throwIfAborted();
-    const runPermissionPolicies = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_resolve_permission_policies",
-      async () => {
-        return await resolveZeroRunPermissionPolicies(
-          db,
-          {
-            orgId: args.auth.orgId,
-            userId: args.auth.userId,
-            agent,
-            allowedConnectorTypes,
-            checkedAt: new Date(args.apiStartTime),
-          },
-          signal,
-        );
-      },
-    );
-    signal.throwIfAborted();
+          userId: args.auth.userId,
+          agent,
+          allowedConnectorTypes,
+          apiStartTime: args.apiStartTime,
+          timing,
+        },
+        signal,
+      );
 
     return await set(
       createAgentRunAfterZeroPreCreate$,
