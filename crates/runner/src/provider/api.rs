@@ -1177,7 +1177,7 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
     use tokio::task::JoinHandle;
-    use tracing::Level;
+    use tracing::{Level, instrument::WithSubscriber};
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
     use uuid::Uuid;
@@ -1404,10 +1404,7 @@ mod tests {
     {
         let captured = CapturedEvents::default();
         let subscriber = tracing_subscriber::registry().with(captured.clone());
-        let guard = tracing::subscriber::set_default(subscriber);
-        tracing::callsite::rebuild_interest_cache();
-        let output = future.await;
-        drop(guard);
+        let output = future.with_subscriber(subscriber).await;
         (output, captured.entries())
     }
 
