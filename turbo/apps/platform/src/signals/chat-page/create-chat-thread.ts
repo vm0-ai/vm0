@@ -426,11 +426,74 @@ function nonAssistantRunIndicatorState(
     : runActivityIndicatorState(terminatedRunIds, runId);
 }
 
+function visibleRunStartIndexByRunId(
+  raw: readonly ChatMessageProjectionEntry[],
+  revokedMessageIds: ReadonlySet<string>,
+): ReadonlyMap<string, number> {
+  // Only a user message proves that a run started inside the loaded window;
+  // the first visible assistant message may be mid-run after pagination.
+  const runStartIndexByRunId = new Map<string, number>();
+  for (let index = 0; index < raw.length; index++) {
+    const message = raw[index]!.message;
+    const runId = message.runId;
+    if (
+      message.role !== "user" ||
+      runId === undefined ||
+      runStartIndexByRunId.has(runId) ||
+      revokedMessageIds.has(message.id)
+    ) {
+      continue;
+    }
+    runStartIndexByRunId.set(runId, index);
+  }
+  return runStartIndexByRunId;
+}
+
+function laterStartedRunIndicatorState(
+  raw: readonly ChatMessageProjectionEntry[],
+  terminatedRunId: string,
+  terminatedRunIds: ReadonlySet<string>,
+  revokedMessageIds: ReadonlySet<string>,
+  runStartIndexByRunId: ReadonlyMap<string, number>,
+): RunIndicatorState | undefined {
+  const terminatedRunStartIndex = runStartIndexByRunId.get(terminatedRunId);
+  if (terminatedRunStartIndex === undefined) {
+    return undefined;
+  }
+
+  for (let index = raw.length - 1; index >= 0; index--) {
+    const entry = raw[index]!;
+    const { message } = entry;
+    const runId = message.runId;
+    if (
+      runId === undefined ||
+      (runStartIndexByRunId.get(runId) ?? -1) <= terminatedRunStartIndex ||
+      revokedMessageIds.has(message.id) ||
+      isUsageMessage(message) ||
+      isGoalMarkerMessage(message)
+    ) {
+      continue;
+    }
+    const state =
+      message.role === "assistant"
+        ? assistantRunIndicatorState(terminatedRunIds, message)
+        : nonAssistantRunIndicatorState(terminatedRunIds, entry);
+    if (state === "running" || state === "queued") {
+      return state;
+    }
+  }
+  return undefined;
+}
+
 function deriveRunIndicatorStateFromRawMessages(
   raw: readonly ChatMessageProjectionEntry[],
 ): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
   const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
+  const runStartIndexByRunId = visibleRunStartIndexByRunId(
+    raw,
+    revokedMessageIds,
+  );
 
   for (let index = raw.length - 1; index >= 0; index--) {
     const entry = raw[index]!;
@@ -443,6 +506,18 @@ function deriveRunIndicatorStateFromRawMessages(
     }
     if (message.role === "assistant") {
       const state = assistantRunIndicatorState(terminatedRunIds, message);
+      if (state === null && message.runId !== undefined) {
+        const laterRunState = laterStartedRunIndicatorState(
+          raw,
+          message.runId,
+          terminatedRunIds,
+          revokedMessageIds,
+          runStartIndexByRunId,
+        );
+        if (laterRunState !== undefined) {
+          return laterRunState;
+        }
+      }
       if (state !== undefined) {
         return state;
       }
