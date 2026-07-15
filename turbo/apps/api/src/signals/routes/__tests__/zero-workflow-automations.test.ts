@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroWorkflowAutomationsContract,
-  zeroWorkflowDetailAutomations,
   zeroWorkflowsDetailContract,
   legacyZeroWorkflowAutomationsContract as legacyWorkflowAutomationsContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -2301,7 +2300,7 @@ describe("zero workflow automations", () => {
     });
   });
 
-  it("returns created automations from list and workflow detail", async () => {
+  it("returns created automations from list and both workflow detail fields", async () => {
     const { workflowId } = await setupFixture();
 
     await accept(
@@ -2341,7 +2340,11 @@ describe("zero workflow automations", () => {
       }),
       [200],
     );
-    expect(zeroWorkflowDetailAutomations(detail.body)).toHaveLength(1);
+    if (!("triggers" in detail.body && "automations" in detail.body)) {
+      throw new Error("Expected dual workflow detail automation fields");
+    }
+    expect(detail.body.automations).toStrictEqual(detail.body.triggers);
+    expect(detail.body.automations).toHaveLength(1);
   });
 
   it("updates the schedule of an existing automation", async () => {
