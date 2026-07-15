@@ -213,6 +213,8 @@ pub trait Sandbox: Send + Sync + Any {
     /// Write `content` to `path` inside the guest, creating parent
     /// directories and truncating the file as needed. Returns an error if
     /// the sandbox is not running or if the backing process crashes.
+    ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
     async fn write_file(&self, path: &str, content: &[u8]) -> Result<()>;
 
     /// Write multiple ordinary files inside the guest.
@@ -220,6 +222,8 @@ pub trait Sandbox: Send + Sync + Any {
     /// Each entry has the same semantics as [`write_file`](Self::write_file):
     /// create parent directories, create or truncate the target file, and write
     /// the provided content without sudo or private runtime-file semantics.
+    /// Every guest path must be non-empty and must not contain NUL bytes. An
+    /// empty batch is accepted as a no-op.
     /// Callers are responsible for bounding the number of files and total
     /// content size. The default implementation preserves compatibility by
     /// writing entries sequentially with [`write_file`](Self::write_file).
@@ -236,6 +240,8 @@ pub trait Sandbox: Send + Sync + Any {
     /// parent directories are private, reject symlinked parent components, and
     /// write the file with private permissions. Generic workspace file writes
     /// should continue to use [`write_file`](Self::write_file).
+    ///
+    /// The guest path must be non-empty and must not contain NUL bytes.
     async fn write_private_file(&self, path: &str, content: &[u8]) -> Result<()>;
 
     /// Start `request.cmd` in the guest and return a handle for later

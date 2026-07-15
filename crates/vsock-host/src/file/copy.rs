@@ -1,6 +1,7 @@
 use std::io;
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -133,8 +134,8 @@ impl HostTempFileGuard {
 
     async fn remove_now(&mut self) {
         if self.active {
-            self.active = false;
             remove_temp_file(&self.path).await;
+            self.active = false;
         }
     }
 
@@ -194,45 +195,49 @@ async fn remove_temp_file(path: &Path) {
 async fn create_copy_temp_file(
     host_path: &Path,
     seq: u32,
-) -> io::Result<(PathBuf, tokio::fs::File)> {
+) -> io::Result<(HostTempFileGuard, tokio::fs::File)> {
     create_copy_temp_file_with_validator(host_path, seq, secure_copy_temp_file).await
 }
 
 async fn create_copy_temp_file_with_validator(
     host_path: &Path,
     seq: u32,
-    validate: impl Fn(&tokio::fs::File, &Path) -> io::Result<()>,
-) -> io::Result<(PathBuf, tokio::fs::File)> {
-    for _ in 0..COPY_TEMP_CREATE_ATTEMPTS {
-        let nonce = COPY_TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
-        let temp_path = copy_temp_path(host_path, std::process::id(), seq, nonce);
-        match tokio::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(COPY_TEMP_FILE_MODE)
-            .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK)
-            .open(&temp_path)
-            .await
-        {
-            Ok(file) => {
-                if let Err(err) = validate(&file, &temp_path) {
-                    drop(file);
-                    remove_temp_file(&temp_path).await;
-                    return Err(err);
+    validate: impl FnOnce(&tokio::fs::File, &Path) -> io::Result<()> + Send + 'static,
+) -> io::Result<(HostTempFileGuard, tokio::fs::File)> {
+    let host_path = host_path.to_owned();
+    tokio::task::spawn_blocking(move || {
+        for _ in 0..COPY_TEMP_CREATE_ATTEMPTS {
+            let nonce = COPY_TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
+            let temp_path = copy_temp_path(&host_path, std::process::id(), seq, nonce);
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(COPY_TEMP_FILE_MODE)
+                .custom_flags(
+                    nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC | nix::libc::O_NONBLOCK,
+                )
+                .open(&temp_path)
+            {
+                Ok(file) => {
+                    let guard = HostTempFileGuard::new(temp_path);
+                    let file = tokio::fs::File::from_std(file);
+                    validate(&file, guard.path())?;
+                    return Ok((guard, file));
                 }
-                return Ok((temp_path, file));
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(err) => return Err(err),
             }
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(err),
         }
-    }
 
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        format!(
-            "copy_file could not create a unique temp file after {COPY_TEMP_CREATE_ATTEMPTS} attempts"
-        ),
-    ))
+        Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!(
+                "copy_file could not create a unique temp file after {COPY_TEMP_CREATE_ATTEMPTS} attempts"
+            ),
+        ))
+    })
+    .await
+    .map_err(|_| io::Error::other("background task failed"))?
 }
 
 fn secure_copy_temp_file(file: &tokio::fs::File, path: &Path) -> io::Result<()> {
@@ -457,9 +462,8 @@ impl VsockHost {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let (temp_path, temp_file) =
+        let (mut temp_guard, temp_file) =
             create_copy_temp_file(host_path, self.shared.next_seq()).await?;
-        let mut temp_guard = HostTempFileGuard::new(temp_path);
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
         let copy_result = self
             .copy_file_to_temp(
@@ -668,14 +672,65 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let host_path = dir.join("system.log");
 
-        let (first_path, first_file) = create_copy_temp_file(&host_path, 7).await.unwrap();
-        let (second_path, second_file) = create_copy_temp_file(&host_path, 7).await.unwrap();
+        let (first_guard, first_file) = create_copy_temp_file(&host_path, 7).await.unwrap();
+        let (second_guard, second_file) = create_copy_temp_file(&host_path, 7).await.unwrap();
+        let first_path = first_guard.path().to_owned();
+        let second_path = second_guard.path().to_owned();
 
         assert_ne!(first_path, second_path);
         assert!(first_path.exists());
         assert!(second_path.exists());
         drop(first_file);
         drop(second_file);
+        drop(first_guard);
+        drop(second_guard);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_copy_temp_file_removes_temp_when_async_waiter_is_cancelled() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-host-copy-temp-cancellation-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host_path = dir.join("system.log");
+
+        runtime.block_on(async {
+            let (created_tx, created_rx) = tokio::sync::oneshot::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let create_task = tokio::spawn(async move {
+                create_copy_temp_file_with_validator(&host_path, 7, move |_file, path| {
+                    created_tx.send(path.to_owned()).unwrap();
+                    release_rx.recv().unwrap();
+                    Ok(())
+                })
+                .await
+            });
+
+            let temp_path = created_rx.await.unwrap();
+            assert!(temp_path.exists());
+
+            create_task.abort();
+            match create_task.await {
+                Ok(_) => panic!("temp creation task completed before cancellation"),
+                Err(error) => assert!(error.is_cancelled()),
+            }
+            release_tx.send(()).unwrap();
+            tokio::task::spawn_blocking(|| {}).await.unwrap();
+
+            assert!(!temp_path.exists());
+        });
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -692,14 +747,17 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let host_path = dir.join("system.log");
 
-        let error = create_copy_temp_file_with_validator(&host_path, 7, |_file, _path| {
+        let result = create_copy_temp_file_with_validator(&host_path, 7, |_file, _path| {
             Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "forced validation failure",
             ))
         })
-        .await
-        .unwrap_err();
+        .await;
+        let error = match result {
+            Ok(_) => panic!("temp file validation unexpectedly succeeded"),
+            Err(error) => error,
+        };
 
         assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
         assert!(std::fs::read_dir(&dir).unwrap().all(|entry| {

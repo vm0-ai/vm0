@@ -1,5 +1,8 @@
 """Tests for usage-buffer retry and overlapping flush behavior."""
 
+import contextlib
+import json
+import urllib.request
 from unittest.mock import patch
 
 import pytest
@@ -569,50 +572,83 @@ def test_flush_preserves_events_buffered_during_enqueue(tmp_path):
     assert_usage_buffer_drained(enqueue)
 
 
-def test_retryable_delivery_failure_retains_flush_and_retries_with_same_key(
+def test_timeout_delivery_failure_retains_batch_and_retries_with_same_key(
     tmp_path,
     sync_usage_executor,
-    mitm_ctx,
-    usage_webhook_server,
 ):
     del sync_usage_executor
     pending_path = tmp_path / "usage-pending"
     proxy_log_path = tmp_path / "proxy.jsonl"
+    opened_payloads: list[dict] = []
+
+    def open_webhook(
+        request: urllib.request.Request,
+        *,
+        timeout: float,
+    ) -> contextlib.AbstractContextManager[None]:
+        assert timeout == 10
+        data = request.data
+        assert isinstance(data, (bytes, bytearray))
+        payload = json.loads(data)
+        assert isinstance(payload, dict)
+        opened_payloads.append(payload)
+        if len(opened_payloads) <= 2:
+            raise TimeoutError("timed out")
+        return contextlib.nullcontext()
+
     usage.set_pending_path(str(pending_path))
 
     usage.buffer_usage_events(
-        usage_webhook_server.url("/usage"),
+        "https://api.vm0.ai/api/webhooks/agent/usage-event",
         "token-a",
         "run-1",
         [event(source_key="source-1", quantity=10)],
         str(proxy_log_path),
     )
-    usage_webhook_server.queue_response(500)
-    usage_webhook_server.queue_response(500)
 
-    with mitm_ctx(), patch.object(usage.webhook.time, "sleep"):
+    with (
+        patch.object(
+            urllib.request.OpenerDirector,
+            "open",
+            side_effect=open_webhook,
+        ) as mock_open,
+        patch.object(usage.webhook.time, "sleep") as mock_sleep,
+    ):
         assert usage.flush_usage_events(trigger="test") == 1
 
-    assert usage_webhook_server.request_count == 2
-    failed_key = usage_webhook_server.requests[0].json_body()["events"][0]["idempotencyKey"]
-    usage.write_pending_snapshot(flush_request_id="request-1")
-    assert_pending(pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1")
+        assert mock_open.call_count == 2
+        assert opened_payloads[0] == opened_payloads[1]
+        failed_key = opened_payloads[0]["events"][0]["idempotencyKey"]
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=1,
+            reports=0,
+            flush_request_id="request-1",
+        )
+        assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
 
-    usage_webhook_server.queue_response(204)
-    with mitm_ctx():
         assert usage.flush_usage_events(trigger="test") == 1
 
-    assert usage_webhook_server.request_count == 3
-    retry_body = usage_webhook_server.requests[2].json_body()
-    assert retry_body["runId"] == "run-1"
-    assert retry_body["events"][0]["quantity"] == 10
-    assert retry_body["events"][0]["idempotencyKey"] == failed_key
-    usage.write_pending_snapshot(flush_request_id="request-2")
-    assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
-    drained_request_count = usage_webhook_server.request_count
-    with mitm_ctx():
+        assert mock_open.call_count == 3
+        retry_body = opened_payloads[2]
+        assert retry_body["runId"] == "run-1"
+        assert retry_body["events"][0]["quantity"] == 10
+        assert retry_body["events"][0]["idempotencyKey"] == failed_key
+        usage.write_pending_snapshot(flush_request_id="request-2")
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-2",
+        )
+        assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
+
         assert usage.flush_usage_events(trigger="test") == 0
-    assert usage_webhook_server.request_count == drained_request_count
+        assert mock_open.call_count == 3
+        mock_sleep.assert_called_once_with(0.5)
 
 
 def test_partial_delivery_failure_retains_only_failed_batch_with_same_key(

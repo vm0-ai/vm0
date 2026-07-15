@@ -36,14 +36,19 @@ fn validate_attempt_warning(
     Ok(())
 }
 
-fn validate_retry_warnings(log_name: &str, log: &str, expected_error: &str) -> Result<(), String> {
+fn validate_attempt_warnings(
+    log_name: &str,
+    log: &str,
+    expected_error: &str,
+    expected_attempts: usize,
+) -> Result<(), String> {
     let warning_count = log.lines().filter(|line| line.contains("Attempt ")).count();
-    if warning_count != EXPECTED_RETRY_ATTEMPTS {
+    if warning_count != expected_attempts {
         return Err(format!(
             "unexpected attempt warning count in {log_name}: {log}"
         ));
     }
-    for attempt in 1..=EXPECTED_RETRY_ATTEMPTS {
+    for attempt in 1..=expected_attempts {
         validate_attempt_warning(log_name, log, attempt, expected_error)?;
     }
     Ok(())
@@ -213,8 +218,8 @@ fn binary_classifies_malformed_http_url_without_logging_it() {
     assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
 
     let expected_error = "HTTP request error (kind=invalid_request)";
-    validate_retry_warnings("stderr", &stderr, expected_error).unwrap();
-    validate_retry_warnings("system log", &system_log_content, expected_error).unwrap();
+    validate_attempt_warnings("stderr", &stderr, expected_error, 1).unwrap();
+    validate_attempt_warnings("system log", &system_log_content, expected_error, 1).unwrap();
 
     let ops = fixture.ops_entries().unwrap();
     assert!(
@@ -263,8 +268,14 @@ fn binary_classifies_connection_drop_without_logging_url() {
     assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
 
     let expected_error = "HTTP request error (kind=io io_kind=UnexpectedEof)";
-    validate_retry_warnings("stderr", &stderr, expected_error).unwrap();
-    validate_retry_warnings("system log", &system_log_content, expected_error).unwrap();
+    validate_attempt_warnings("stderr", &stderr, expected_error, EXPECTED_RETRY_ATTEMPTS).unwrap();
+    validate_attempt_warnings(
+        "system log",
+        &system_log_content,
+        expected_error,
+        EXPECTED_RETRY_ATTEMPTS,
+    )
+    .unwrap();
 
     let ops = fixture.ops_entries().unwrap();
     assert!(

@@ -1,7 +1,8 @@
 use super::super::super::*;
 use super::super::support::{
     assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, push_job, seed_idle_pool, seed_idle_pool_with_overrides,
+    mock_run_config_with_overrides, push_job, seed_idle_pool,
+    seed_idle_pool_with_history_generation, seed_idle_pool_with_overrides,
     seed_workspace_cache_state, shutdown, test_profiles, wait_budget_count, wait_cancel_token,
     wait_cancel_token_removed, wait_discover_entered,
 };
@@ -19,6 +20,18 @@ fn affinity_protected_candidate(run_id: RunId, session_id: &str) -> crate::provi
         Some(session_id.to_string()),
         Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
     )
+}
+
+fn generation_affinity_protected_candidate(
+    run_id: RunId,
+    session_id: &str,
+    target_generation_run_id: RunId,
+) -> crate::provider::JobCandidate {
+    affinity_protected_candidate(run_id, session_id)
+        .with_history_generation_run_id(Some(target_generation_run_id))
+        .with_history_generation_affinity_protected_until(Some(
+            FUTURE_AFFINITY_PROTECTED_UNTIL.to_string(),
+        ))
 }
 
 /// TOCTOU regression: soft drain can arrive after the main loop has selected
@@ -140,12 +153,29 @@ async fn claim_failure_rolls_back_budget() {
 
     // First job: claim returns None (unavailable).
     let run_id_1 = RunId::new_v4();
-    push_job(&env, run_id_1, "vm0/default", None);
+    let target_generation_run_id = RunId::new_v4();
+    env.provider.set_claim_result(run_id_1, None);
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id_1, "vm0/default".into())
+                .with_history_generation_run_id(Some(target_generation_run_id)),
+        )
+        .unwrap();
 
     // Returning to discovery proves the failed claim was processed.
     wait_discover_entered(&env, Duration::from_secs(5)).await;
     wait_cancel_token_removed(&env.cancel_tokens, run_id_1, Duration::from_secs(5)).await;
     assert_eq!(budget.allocated().2, 0);
+    let claim_candidates = env.handle.claim_candidates();
+    let unavailable_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == run_id_1)
+        .expect("unavailable candidate should reach claim");
+    assert_eq!(
+        unavailable_candidate.session_history_generation_relationship(),
+        Some(crate::provider::SessionHistoryGenerationRelationship::Fresh)
+    );
 
     // Second job: claim succeeds — budget should have been freed.
     let run_id_2 = RunId::new_v4();
@@ -163,6 +193,15 @@ async fn claim_failure_rolls_back_budget() {
     assert!(
         completion.is_some(),
         "second job should complete (budget freed after unavailable claim)"
+    );
+    let claim_candidates = env.handle.claim_candidates();
+    let followup_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == run_id_2)
+        .expect("follow-up candidate should reach claim");
+    assert_eq!(
+        followup_candidate.session_history_generation_relationship(),
+        Some(crate::provider::SessionHistoryGenerationRelationship::UnknownTarget)
     );
 
     shutdown(&env, run_handle).await;
@@ -226,7 +265,17 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
     let session_id = "sess-conflict-restore";
-    seed_idle_pool(&idle_pool, &budget, session_id, "vm0/default", 2, 4096).await;
+    let reserved_generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_history_generation(
+        &idle_pool,
+        &budget,
+        session_id,
+        "vm0/default",
+        2,
+        4096,
+        reserved_generation_run_id,
+    )
+    .await;
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
@@ -235,7 +284,11 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     env.provider.set_claim_result(conflict_run_id, None);
     env.handle
         .discover_tx
-        .send(affinity_protected_candidate(conflict_run_id, session_id))
+        .send(generation_affinity_protected_candidate(
+            conflict_run_id,
+            session_id,
+            reserved_generation_run_id,
+        ))
         .unwrap();
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
@@ -250,15 +303,28 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
         (2, 4096, 1),
         "restored reservation should retain its original budget lease"
     );
+    let claim_candidates = env.handle.claim_candidates();
+    let conflict_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == conflict_run_id)
+        .expect("claim conflict candidate should reach claim");
+    assert_eq!(
+        conflict_candidate.session_history_generation_relationship(),
+        Some(crate::provider::SessionHistoryGenerationRelationship::Exact)
+    );
 
     let followup_run_id = RunId::new_v4();
+    let followup_target_generation_run_id = RunId::new_v4();
     env.provider.set_claim_result(
         followup_run_id,
         Some(context_with_session(followup_run_id, session_id)),
     );
     env.handle
         .discover_tx
-        .send(affinity_protected_candidate(followup_run_id, session_id))
+        .send(
+            affinity_protected_candidate(followup_run_id, session_id)
+                .with_history_generation_run_id(Some(followup_target_generation_run_id)),
+        )
         .unwrap();
     let completion = env
         .handle
@@ -266,6 +332,69 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
         .await
         .expect("restored idle reservation should serve the next claim");
     assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    let claim_candidates = env.handle.claim_candidates();
+    let followup_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == followup_run_id)
+        .expect("follow-up candidate should reach claim");
+    assert_eq!(
+        followup_candidate.session_history_generation_relationship(),
+        Some(crate::provider::SessionHistoryGenerationRelationship::Different)
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn generation_protected_different_idle_sandbox_defers_before_claim() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    let session_id = "sess-different-generation";
+    let held_generation_run_id = RunId::new_v4();
+    let target_generation_run_id = RunId::new_v4();
+    seed_idle_pool_with_history_generation(
+        &idle_pool,
+        &budget,
+        session_id,
+        "vm0/default",
+        2,
+        4096,
+        held_generation_run_id,
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    env.handle
+        .discover_tx
+        .send(generation_affinity_protected_candidate(
+            run_id,
+            session_id,
+            target_generation_run_id,
+        ))
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle.claim_candidates().is_empty(),
+        "a different reusable generation must not reach claim during exact protection"
+    );
+    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    let pool = idle_pool.lock().await;
+    assert_eq!(pool.held_sessions(), vec![session_id.to_string()]);
+    assert_eq!(
+        pool.held_session_states()[0]
+            .reusable_sandbox
+            .as_ref()
+            .and_then(|sandbox| sandbox.history_generation_run_id),
+        Some(held_generation_run_id),
+        "the different generation must remain available for fallback after expiry"
+    );
+    drop(pool);
 
     shutdown(&env, run_handle).await;
 }
@@ -452,7 +581,7 @@ async fn ready_direct_drain_continues_after_claim_conflict() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn affinity_protected_candidate_with_local_session_claims() {
+async fn expired_generation_protection_preserves_local_session_claim() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
@@ -481,7 +610,13 @@ async fn affinity_protected_candidate_with_local_session_claims() {
     );
     env.handle
         .discover_tx
-        .send(affinity_protected_candidate(run_id, "sess-held-local"))
+        .send(
+            affinity_protected_candidate(run_id, "sess-held-local")
+                .with_history_generation_run_id(Some(RunId::new_v4()))
+                .with_history_generation_affinity_protected_until(Some(
+                    "2000-01-01T00:00:00Z".to_string(),
+                )),
+        )
         .unwrap();
 
     let completion = env
@@ -500,6 +635,10 @@ async fn affinity_protected_candidate_with_local_session_claims() {
         claimed_candidate.pre_local_admission_outcome(),
         Some(crate::provider::PreLocalAdmissionOutcome::LocalHolder)
     );
+    assert_eq!(
+        claimed_candidate.session_history_generation_relationship(),
+        Some(crate::provider::SessionHistoryGenerationRelationship::UnknownReserved)
+    );
     assert!(
         claimed_candidate
             .main_loop_to_local_admission_elapsed()
@@ -514,7 +653,7 @@ async fn affinity_protected_candidate_with_local_session_claims() {
 }
 
 #[tokio::test]
-async fn affinity_protected_candidate_with_workspace_cache_session_claims_from_startup_snapshot() {
+async fn generation_protected_workspace_cache_defers_then_legacy_candidate_claims() {
     let session_id = "sess-cache-local";
     let image_size_bytes = 1024 * 1024;
     let mut profiles = test_profiles();
@@ -554,6 +693,29 @@ async fn affinity_protected_candidate_with_workspace_cache_session_claims_from_s
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     tokio::fs::remove_dir_all(&cache_entry_dir).await.unwrap();
+    let generation_protected_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        generation_protected_run_id,
+        Some(context_with_session(
+            generation_protected_run_id,
+            session_id,
+        )),
+    );
+    env.handle
+        .discover_tx
+        .send(generation_affinity_protected_candidate(
+            generation_protected_run_id,
+            session_id,
+            RunId::new_v4(),
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle.claim_candidates().is_empty(),
+        "workspace-cache state and fresh capacity must not impersonate an exact reusable generation"
+    );
+    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+
     let run_id = RunId::new_v4();
     env.provider
         .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
@@ -580,9 +742,10 @@ async fn affinity_protected_candidate_with_workspace_cache_session_claims_from_s
         claimed_candidate.pre_local_admission_outcome(),
         Some(crate::provider::PreLocalAdmissionOutcome::LocalHolder)
     );
-    assert!(
-        env.handle.deferred_poll_delays().is_empty(),
-        "snapshot-backed local holders should not defer before claim"
+    assert_eq!(
+        env.handle.deferred_poll_delays().len(),
+        1,
+        "the legacy candidate should not add another deferral"
     );
 
     shutdown(&env, run_handle).await;

@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   elapsedSinceApiStartMs,
   executionContextSchema,
+  heldSessionStateSchema,
+  jobSchema,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   RESUME_SESSION_HISTORY_MAX_BYTES,
@@ -298,6 +300,7 @@ describe("runner storage manifest contract", () => {
 describe("runner resume session contract", () => {
   const historyHash =
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const historyGenerationRunId = "11111111-1111-4111-8111-111111111111";
 
   it("accepts inline stored and claim resume sessions", () => {
     const resumeSession = {
@@ -324,6 +327,78 @@ describe("runner resume session contract", () => {
       storedExecutionContextSchema.shape.resumeSession.safeParse(resumeSession)
         .success,
     ).toBe(true);
+  });
+
+  it("keeps generation metadata in stored and discovery shapes only", () => {
+    const historyGenerationAffinityProtectedUntil = "2026-07-15T00:00:00.500Z";
+    const storedResumeSession = {
+      sessionId: "sess-123",
+      historyGenerationRunId,
+      historyRef: { kind: "blob" as const, hash: historyHash },
+    };
+    expect(storedResumeSessionSchema.parse(storedResumeSession)).toEqual(
+      storedResumeSession,
+    );
+
+    const claimResumeSession = resumeSessionSchema.parse({
+      ...storedResumeSession,
+      historyRef: {
+        ...storedResumeSession.historyRef,
+        url: "https://r2.example.com/blobs/history.blob?sig=secret",
+        rawSize: 1024,
+        encodedSize: 1024,
+      },
+    });
+    expect(claimResumeSession).not.toHaveProperty("historyGenerationRunId");
+
+    const job = jobSchema.parse({
+      runId: "22222222-2222-4222-8222-222222222222",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      checkpointId: null,
+      historyGenerationRunId,
+      historyGenerationAffinityProtectedUntil,
+    });
+    expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
+    expect(job.historyGenerationAffinityProtectedUntil).toBe(
+      historyGenerationAffinityProtectedUntil,
+    );
+
+    const heldSessionState = heldSessionStateSchema.parse({
+      sessionId: "sess-123",
+      lastCompletedAt: "2026-07-15T00:00:00.000Z",
+      reusableSandbox: {
+        profile: "vm0/default",
+        historyGenerationRunId,
+      },
+    });
+    expect(heldSessionState.reusableSandbox?.historyGenerationRunId).toBe(
+      historyGenerationRunId,
+    );
+  });
+
+  it("keeps generation-affinity additions optional for legacy runners", () => {
+    const job = jobSchema.parse({
+      runId: "22222222-2222-4222-8222-222222222222",
+      prompt: "continue",
+      appendSystemPrompt: null,
+      agentComposeVersionId: null,
+      vars: null,
+      checkpointId: null,
+      historyGenerationAffinityProtectedUntil: null,
+    });
+    expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
+
+    const heldSessionState = heldSessionStateSchema.parse({
+      sessionId: "sess-legacy",
+      lastCompletedAt: "2026-07-15T00:00:00.000Z",
+      reusableSandbox: { profile: "vm0/default" },
+    });
+    expect(heldSessionState.reusableSandbox).toEqual({
+      profile: "vm0/default",
+    });
   });
 
   it("requires a URL for hash-backed claim resume sessions", () => {
@@ -493,10 +568,15 @@ describe("runner claim capability contract", () => {
         providerDiscoveryToMainLoopMs: 3,
         mainLoopToLocalAdmissionMs: 4,
         preLocalAdmissionOutcome: "local_holder",
+        sessionHistoryGenerationRelationship: "exact",
       },
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("accepts old claim bodies without generation telemetry", () => {
+    expect(runnersJobClaimContract.claim.body.safeParse({}).success).toBe(true);
   });
 });
 

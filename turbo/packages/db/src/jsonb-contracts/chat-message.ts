@@ -103,3 +103,26 @@ export type ChatMessageGoalEvent =
 export interface ChatMessageGoalSnapshot {
   readonly objectiveBrief: string;
 }
+
+export type ChatMessageMailDraftProvider = "gmail" | "outlook";
+export type ChatMessageMailDraftStatus =
+  | "draft"
+  | "sending"
+  | "sent"
+  | "cancelled"
+  | "failed"
+  | "delivery_unknown";
+
+export interface ChatMessageMailDraft {
+  readonly version: 1;
+  readonly provider: ChatMessageMailDraftProvider;
+  readonly from: string;
+  readonly to: string[];
+  readonly subject: string;
+  readonly body: string;
+  readonly status: ChatMessageMailDraftStatus;
+  readonly error?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly sentAt?: string;
+}

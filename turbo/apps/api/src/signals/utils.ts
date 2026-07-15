@@ -152,6 +152,68 @@ export function startUntrackedBestEffortCleanup(p: Promise<unknown>): void {
   );
 }
 
+type BoundedResponseTextResult =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "too_large" };
+
+function responseContentLengthExceeds(
+  response: Response,
+  maxBytes: number,
+): boolean {
+  const contentLength = response.headers.get("content-length");
+  if (!contentLength) {
+    return false;
+  }
+
+  const bytes = Number(contentLength);
+  return Number.isFinite(bytes) && bytes > maxBytes;
+}
+
+function startResponseBodyCancel(
+  body: ReadableStream<Uint8Array> | null,
+): void {
+  if (body) {
+    startUntrackedBestEffortCleanup(body.cancel());
+  }
+}
+
+/** Read an HTTP response body without allowing its byte size to exceed a limit. */
+export async function readBoundedResponseText(
+  response: Response,
+  maxBytes: number,
+): Promise<BoundedResponseTextResult> {
+  if (responseContentLengthExceeds(response, maxBytes)) {
+    startResponseBodyCancel(response.body);
+    return { kind: "too_large" };
+  }
+
+  if (!response.body) {
+    return { kind: "text", text: "" };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let bytesRead = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    bytesRead += value.byteLength;
+    if (bytesRead > maxBytes) {
+      startUntrackedBestEffortCleanup(reader.cancel());
+      return { kind: "too_large" };
+    }
+    chunks.push(decoder.decode(value, { stream: true }));
+  }
+
+  chunks.push(decoder.decode());
+  return { kind: "text", text: chunks.join("") };
+}
+
 /**
  * Await `p` and return undefined on non-abort rejection. If supplied,
  * `onError` runs before resolving. Abort propagates. Replaces
@@ -196,6 +258,23 @@ export async function onRejection<T>(
 type Settled<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: unknown };
+
+/**
+ * Settle `p` without propagating AbortError. Use only after an irreversible
+ * provider operation has started and cancellation is itself an ambiguous
+ * outcome that the caller must persist explicitly.
+ */
+export async function settleIncludingAbort<T>(
+  p: Promise<T>,
+): Promise<Settled<T>> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized rejection capture for irreversible provider operations
+  try {
+    return { ok: true, value: await p };
+    // eslint-disable-next-line api/no-catch-abort -- abort is an explicit persisted outcome for this helper
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
 
 interface PromiseResolvers<T> {
   readonly promise: Promise<T>;

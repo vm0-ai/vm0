@@ -1,5 +1,5 @@
 /**
- * Human-friendly duration handling for loop triggers (`--every` / `--loop`).
+ * Human-friendly duration handling for loop automations (`--every` / `--loop`).
  */
 
 const DURATION_PATTERN = /^(\d+)([smhd])$/;

@@ -117,6 +117,7 @@ import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { zeroImageIoInterpretMarksRoutes } from "./routes/zero-image-io-interpret-marks";
 import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
+import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
@@ -142,9 +143,9 @@ import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-mo
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroScrapeRoutes } from "./routes/zero-scrape";
+import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
-import { legacyWorkflowAutomationAliasRoutes } from "./routes/legacy-workflow-automation-aliases";
 import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
@@ -317,8 +318,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroImageShareXRoutes,
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
+  ...zeroMailRoutes,
   ...zeroMapsRoutes,
   ...zeroScrapeRoutes,
+  ...zeroWebSearchRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
@@ -351,7 +354,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSecretsRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
-  ...legacyWorkflowAutomationAliasRoutes,
   ...zeroWorkflowQueueRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackBrowserConnectRoutes,

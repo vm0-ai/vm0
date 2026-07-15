@@ -2,7 +2,6 @@
 
 import json
 import uuid
-from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -14,6 +13,10 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
+from tests.model_provider_flow_helpers import (
+    make_openai_responses_websocket_request_flow,
+    make_openai_responses_websocket_response_headers,
+)
 from tests.model_provider_websocket_helpers import (
     _append_websocket_message,
     _capture_deferred_websocket_trims,
@@ -28,9 +31,6 @@ from tests.model_provider_websocket_helpers import (
 )
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
-
-_WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
-_WEBSOCKET_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 
 
 @pytest.fixture(autouse=True)
@@ -66,37 +66,6 @@ def _write_openai_model_websocket_registry(tmp_path: Path) -> Path:
                 "modelUsageProvider": "gpt-5.5",
             },
         ),
-    )
-
-
-def _openai_model_websocket_request_flow(
-    real_flow: Callable[..., http.HTTPFlow],
-) -> http.HTTPFlow:
-    return real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="api.openai.com",
-        path="/v1/responses",
-        method="GET",
-        request_headers=http.Headers(
-            [
-                (b"Host", b"api.openai.com"),
-                (b"Connection", b"keep-alive, Upgrade"),
-                (b"Upgrade", b"websocket"),
-                (b"Sec-WebSocket-Key", _WEBSOCKET_KEY.encode()),
-                (b"Sec-WebSocket-Version", b"13"),
-            ]
-        ),
-    )
-
-
-def _openai_websocket_response_headers() -> http.Headers:
-    return http.Headers(
-        [
-            (b"Connection", b"Upgrade"),
-            (b"Upgrade", b"websocket"),
-            (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT.encode()),
-        ]
     )
 
 
@@ -877,7 +846,7 @@ class TestModelProviderWebSocketUsage:
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
         reg_path = _write_openai_model_websocket_registry(tmp_path)
 
-        flow = _openai_model_websocket_request_flow(real_flow)
+        flow = make_openai_responses_websocket_request_flow(real_flow)
 
         with (
             mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
@@ -895,7 +864,7 @@ class TestModelProviderWebSocketUsage:
 
             flow.response = tutils.tresp(
                 status_code=101,
-                headers=_openai_websocket_response_headers(),
+                headers=make_openai_responses_websocket_response_headers(),
             )
             mitm_addon.responseheaders(flow)
             mitm_addon.response(flow)
@@ -1004,32 +973,15 @@ class TestModelProviderWebSocketUsage:
         "response_headers",
         [
             pytest.param(
-                http.Headers(
-                    [
-                        (b"Connection", b"Upgrade"),
-                        (b"Upgrade", b"h2c"),
-                        (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT.encode()),
-                    ]
-                ),
+                make_openai_responses_websocket_response_headers(upgrade="h2c"),
                 id="non-websocket-upgrade",
             ),
             pytest.param(
-                http.Headers(
-                    [
-                        (b"Upgrade", b"websocket"),
-                        (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT.encode()),
-                    ]
-                ),
+                make_openai_responses_websocket_response_headers(connection=None),
                 id="missing-connection-upgrade",
             ),
             pytest.param(
-                http.Headers(
-                    [
-                        (b"Connection", b"Upgrade"),
-                        (b"Upgrade", b"websocket"),
-                        (b"Sec-WebSocket-Accept", b"wrong"),
-                    ]
-                ),
+                make_openai_responses_websocket_response_headers(accept="wrong"),
                 id="wrong-accept",
             ),
         ],
@@ -1048,7 +1000,7 @@ class TestModelProviderWebSocketUsage:
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
         reg_path = _write_openai_model_websocket_registry(tmp_path)
 
-        flow = _openai_model_websocket_request_flow(real_flow)
+        flow = make_openai_responses_websocket_request_flow(real_flow)
 
         with (
             mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
@@ -1090,7 +1042,7 @@ class TestModelProviderWebSocketUsage:
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
         reg_path = _write_openai_model_websocket_registry(tmp_path)
 
-        flow = _openai_model_websocket_request_flow(real_flow)
+        flow = make_openai_responses_websocket_request_flow(real_flow)
 
         with (
             mitm_ctx(registry_path=str(reg_path), api_url=usage_webhook_server.api_url),
@@ -1099,7 +1051,7 @@ class TestModelProviderWebSocketUsage:
             await mitm_addon.request(flow)
             flow.response = tutils.tresp(
                 status_code=101,
-                headers=_openai_websocket_response_headers(),
+                headers=make_openai_responses_websocket_response_headers(),
             )
             mitm_addon.responseheaders(flow)
             mitm_addon.response(flow)

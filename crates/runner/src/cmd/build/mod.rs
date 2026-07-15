@@ -873,8 +873,13 @@ async fn resolve_remote_template(
         ));
     };
 
+    let expected_template_bytes = u64::from(input.rootfs_disk_mb) * 1024 * 1024;
     match cache
-        .try_download_template_to_file(input.template_hash, downloaded_template)
+        .try_download_template_to_file(
+            input.template_hash,
+            downloaded_template,
+            expected_template_bytes,
+        )
         .await
     {
         Ok(true) => match verify_template_file(downloaded_template, work_dir).await {

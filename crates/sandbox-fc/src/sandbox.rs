@@ -14,7 +14,7 @@ use sandbox::{
     SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
     SandboxOperationReason, StartProcessRequest, WriteFileEntry,
 };
-use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
@@ -46,6 +46,10 @@ use crate::park_coordinator::{
 };
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{ChildExitNotifier, kill_process_group};
+use crate::process_log::{
+    PROCESS_LOG_RECORD_MAX_BYTES, PROCESS_LOG_RECORD_TRUNCATED, ProcessLogRecord,
+    read_process_log_records,
+};
 use crate::runtime_dirs::{prepare_private_runtime_vsock_dir, set_private_runtime_socket_mode};
 
 mod snapshot_restore;
@@ -285,10 +289,16 @@ impl ProcessLogStream {
         }
     }
 
-    fn log(self, id: &str, line: &str) {
-        match self {
-            Self::Stdout => info!(id = %id, "{line}"),
-            Self::Stderr => warn!(id = %id, "stderr: {line}"),
+    fn log(self, id: &str, record: ProcessLogRecord<'_>) {
+        match (self, record) {
+            (Self::Stdout, ProcessLogRecord::Line(line)) => info!(id = %id, "{line}"),
+            (Self::Stderr, ProcessLogRecord::Line(line)) => warn!(id = %id, "stderr: {line}"),
+            (_, ProcessLogRecord::Truncated) => warn!(
+                id = %id,
+                stream = self.name(),
+                limit_bytes = PROCESS_LOG_RECORD_MAX_BYTES,
+                PROCESS_LOG_RECORD_TRUNCATED
+            ),
         }
     }
 }
@@ -339,12 +349,7 @@ where
 {
     let id = id.to_owned();
     tokio::spawn(async move {
-        let mut lines = BufReader::new(reader).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if !line.is_empty() {
-                stream.log(&id, &line);
-            }
-        }
+        let _ = read_process_log_records(reader, |record| stream.log(&id, record)).await;
     })
 }
 

@@ -440,8 +440,15 @@ impl ActiveInputController {
 
     /// Validates and queues one process-control active-input payload.
     ///
-    /// `message_id` is the control-plane id used to reject duplicate requests.
-    /// `payload` must decode to an active-input request with non-empty text.
+    /// `message_id` is the non-empty control-plane id used to reject duplicate
+    /// requests. It is passed separately and is not part of `payload`.
+    ///
+    /// `payload` must be a JSON object with the required string fields `type`
+    /// and `text`. `type` must equal `active-input`, and `text` must be non-empty:
+    ///
+    /// ```json
+    /// {"type":"active-input","text":"follow-up prompt"}
+    /// ```
     ///
     /// The method returns [`ActiveInputControlOutcome::Accepted`] only after the
     /// follow-up frame has been queued for the paired writer. Unsupported,

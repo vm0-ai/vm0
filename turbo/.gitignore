@@ -53,6 +53,7 @@ yarn-error.log*
 .dev-process-pid
 .dev-server.log
 .dev-tunnel-url
+.dev-marketing-tunnel-url
 
 # SBOM
 sbom.json

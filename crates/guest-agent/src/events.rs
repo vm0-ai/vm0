@@ -70,13 +70,13 @@ pub fn prepare_event_payload_for_run_id(
     masker: &SecretMasker,
     run_id: &str,
 ) -> Value {
+    // Mask event-controlled content before adding system-owned fields.
+    masker.mask_value(&mut event);
+
     // Add sequence number
     if let Some(obj) = event.as_object_mut() {
         obj.insert("sequenceNumber".to_string(), json!(seq));
     }
-
-    // Mask secrets
-    masker.mask_value(&mut event);
 
     let mut payload = Map::new();
     payload.insert("runId".to_string(), Value::String(run_id.to_string()));

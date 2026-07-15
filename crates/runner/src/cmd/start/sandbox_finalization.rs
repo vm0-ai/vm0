@@ -180,6 +180,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
         let park_request = IdleParkRequest::new(IdleParkRequestParts {
+            run_id,
             sandbox,
             factory: Arc::clone(&factory),
             cli_agent_session_id: cli_agent_session_id.clone(),
@@ -190,6 +191,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             source_ip,
             storage_fingerprints,
             restored_session_identity,
+            history_generation_run_id: Some(run_id),
             workspace_image_size_bytes,
             workspace_promotion,
         });
@@ -206,8 +208,9 @@ pub(super) async fn finalize_sandbox_for_completion(
                 warn!(
                     run_id = %run_id,
                     session_id = %cli_agent_session_id,
+                    reason = failure.reason,
                     error = %failure.error,
-                    "sandbox park failed, destroying instead of parking"
+                    "sandbox idle admission failed, destroying instead of parking"
                 );
                 let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                     &held_session_snapshot,
@@ -216,7 +219,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     promote_workspace_image_from_active_sandbox(
                         sandbox.as_ref(),
                         workspace_promotion,
-                        "park_failed",
+                        failure.reason,
                     )
                     .await,
                 );
@@ -228,7 +231,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         sandbox_id,
                         profile_name: &profile_name,
                         cli_agent_session_id: Some(&cli_agent_session_id),
-                        reason: "park_failed",
+                        reason: failure.reason,
                         network_log_session: network_log_session.take(),
                         network_log_drain: network_log_drain.clone(),
                     },
@@ -624,10 +627,15 @@ async fn stop_and_destroy_sandbox(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
     use std::time::Duration;
 
-    use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+    use api_contracts::generated::{
+        constants::runners::paths::CANONICAL_WORKING_DIR,
+        types::runners::storage::{ArtifactEntry, StorageEntry, StorageManifest},
+    };
+    use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
 
@@ -637,7 +645,10 @@ mod tests {
     };
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult, ParkingGate,
-        test_support::ParkedIdleCandidateBuilder,
+        RestoreReservedIdleResult, test_support::ParkedIdleCandidateBuilder,
+    };
+    use crate::idle_reuse_preparation::{
+        add_healthy_reuse_preparation_matcher, mock_sandbox_ready_for_idle_reuse,
     };
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -646,10 +657,11 @@ mod tests {
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
     use crate::storage_fingerprints::StorageFingerprint;
+    use crate::storage_plan::build_storage_plan;
     use crate::types::SandboxReuseResult;
     use crate::workspace_image_cache::{
         SessionWorkspaceCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
-        WorkspaceImagePromotionContext,
+        WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityRequest,
     };
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
@@ -823,7 +835,9 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("network-log-park"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "network-log-park",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -843,7 +857,17 @@ mod tests {
         )
         .await;
 
-        assert_eq!(fixture.idle_pool.lock().await.len(), 1);
+        {
+            let mut idle_pool = fixture.idle_pool.lock().await;
+            let reservation = idle_pool
+                .reserve_reusable("sess-network-log-park", "vm0/default", &None)
+                .expect("finalized sandbox should be reusable");
+            assert_eq!(reservation.history_generation_run_id(), Some(run_id));
+            assert!(matches!(
+                idle_pool.restore_reserved(reservation),
+                RestoreReservedIdleResult::Restored
+            ));
+        }
         assert!(
             !fixture
                 .network_log_manager
@@ -853,6 +877,85 @@ mod tests {
                 )
                 .await,
             "parked sandbox must not retain the previous run's network-log attribution",
+        );
+    }
+
+    #[tokio::test]
+    async fn finalizer_preserves_success_when_reuse_preparation_rejects_guest() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let workspace_dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(workspace_dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let workspace_image = prepare_test_workspace_image_lease(
+            &paths,
+            &cache,
+            run_id,
+            sandbox_id,
+            "sess-reuse-rejected",
+        )
+        .await;
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "prepare-for-reuse".into(),
+            exit_code: 0,
+            stdout: serde_json::to_vec(&ReusePreparationReport {
+                before: RootFilesystemCapacity {
+                    available_bytes: 64 * 1024 * 1024,
+                    available_inodes: 4096,
+                },
+                after: RootFilesystemCapacity {
+                    available_bytes: 64 * 1024 * 1024,
+                    available_inodes: 4096,
+                },
+                removed_entries: 0,
+            })
+            .unwrap(),
+            stderr: Vec::new(),
+        });
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-reuse-rejected",
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.cleanup_state = cleanup_state.clone();
+        context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
+
+        let completion_ready = finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        assert_eq!(completion_ready.result_for_test(), (0, None));
+        assert_eq!(overrides.park_call_count(), 0);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let cache_states = cache.held_session_states().await;
+        assert_eq!(cache_states.len(), 1);
+        assert_eq!(cache_states[0].session_id, "sess-reuse-rejected");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::DestroyCompleted
         );
     }
 
@@ -875,7 +978,9 @@ mod tests {
         context.test_observer = observer.clone();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("finalizer-redaction"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "finalizer-redaction",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -914,7 +1019,9 @@ mod tests {
         context.cleanup_state = cleanup_state.clone();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("cancel-after-transfer"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "cancel-after-transfer",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -982,82 +1089,184 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_success_workspace_promotion_does_not_mark_storages_reusable() {
+    async fn non_success_workspace_promotion_preserves_affected_paths_across_cache_sources() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
         let cache = SessionWorkspaceCache::new(paths.clone());
 
-        for (session_id, terminal_status) in [
-            ("sess-nonzero", WorkspaceCacheTerminalStatus::NonzeroExit),
-            ("sess-cancelled", WorkspaceCacheTerminalStatus::Cancelled),
+        for (terminal_name, terminal_status) in [
+            ("nonzero", WorkspaceCacheTerminalStatus::NonzeroExit),
+            ("cancelled", WorkspaceCacheTerminalStatus::Cancelled),
         ] {
-            let run_id = RunId::new_v4();
-            let sandbox_id = SandboxId::new_v4();
-            let lease =
-                prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, session_id)
-                    .await;
-            let sandbox = MockSandbox::new(format!("workspace-promotion-{session_id}"));
-            let storage_fingerprints = StorageFingerprints {
-                storages: std::collections::HashMap::from([(
-                    CANONICAL_WORKING_DIR.to_owned(),
-                    StorageFingerprint::new("repo", "v1"),
-                )]),
-                artifacts: std::collections::HashMap::from([(
-                    format!("{CANONICAL_WORKING_DIR}/artifact"),
-                    StorageFingerprint::new("artifact", "v1"),
-                )]),
-            };
-            let promotion = test_promotion_context(
-                lease,
-                run_id,
-                sandbox_id,
-                session_id,
-                terminal_status,
-                storage_fingerprints,
-            );
+            for (source_name, publish_seed) in [("cache-hit", true), ("idle-reuse", false)] {
+                let session_id = format!("sess-{terminal_name}-{source_name}");
+                let removed_storage_path = format!("{CANONICAL_WORKING_DIR}/removed-storage");
+                let removed_artifact_path = format!("{CANONICAL_WORKING_DIR}/removed-artifact");
+                let current_storage_path = format!("{CANONICAL_WORKING_DIR}/current-storage");
+                let current_artifact_path = format!("{CANONICAL_WORKING_DIR}/current-artifact");
+                let previous_storage = StorageFingerprints {
+                    storages: HashMap::from([(
+                        removed_storage_path.clone(),
+                        StorageFingerprint::new("removed-storage", "v1"),
+                    )]),
+                    artifacts: HashMap::from([(
+                        removed_artifact_path.clone(),
+                        StorageFingerprint::new("removed-artifact", "v1"),
+                    )]),
+                };
 
-            let promoted =
-                promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test")
-                    .await;
-
-            assert!(promoted);
-            let exec_calls = sandbox.exec_calls();
-            assert_eq!(exec_calls.len(), 1);
-            assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
-            assert!(!exec_calls[0].cmd.contains("export-session-history-sidecar"));
-            let checkout = cache
-                .prepare(WorkspaceImagePrepareRequest {
-                    identity: WorkspaceImageLeaseIdentity {
-                        run_id: RunId::new_v4(),
-                        sandbox_id: SandboxId::new_v4(),
-                        profile_name: "vm0/default",
-                        cli_agent_session_id: Some(session_id),
-                        working_dir: CANONICAL_WORKING_DIR,
-                        image_size_bytes: b"image".len() as u64,
-                    },
-                    workspace_drive_required: true,
-                })
+                let seed_run_id = RunId::new_v4();
+                let seed_sandbox_id = SandboxId::new_v4();
+                let seed_lease = prepare_test_workspace_image_lease(
+                    &paths,
+                    &cache,
+                    seed_run_id,
+                    seed_sandbox_id,
+                    &session_id,
+                )
                 .await;
+                let seed_promotion = test_promotion_context(
+                    seed_lease,
+                    seed_run_id,
+                    seed_sandbox_id,
+                    &session_id,
+                    WorkspaceCacheTerminalStatus::Success,
+                    previous_storage.clone(),
+                );
 
-            assert!(checkout.is_cache_hit());
-            let previous_storage = checkout
-                .previous_storage()
-                .expect("cache hit should expose previous storage fingerprints");
-            assert!(
-                previous_storage
-                    .storages
-                    .get(CANONICAL_WORKING_DIR)
-                    .expect("storage path should be retained for cleanup")
-                    .is_tainted()
-            );
-            assert!(
-                previous_storage
-                    .artifacts
-                    .get(&format!("{CANONICAL_WORKING_DIR}/artifact"))
-                    .expect("artifact path should be retained for cleanup")
-                    .is_tainted()
-            );
+                let run_id = RunId::new_v4();
+                let (sandbox_id, lease) = if publish_seed {
+                    assert!(
+                        promote_workspace_image_from_active_sandbox(
+                            &MockSandbox::new(format!("workspace-seed-{session_id}")),
+                            Some(seed_promotion),
+                            "test",
+                        )
+                        .await
+                    );
+                    let sandbox_id = SandboxId::new_v4();
+                    let lease = prepare_test_workspace_image_lease(
+                        &paths,
+                        &cache,
+                        run_id,
+                        sandbox_id,
+                        &session_id,
+                    )
+                    .await;
+                    assert!(lease.is_cache_hit());
+                    (sandbox_id, lease)
+                } else {
+                    let expected = cache
+                        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+                            sandbox_id: seed_sandbox_id,
+                            profile_name: "vm0/default",
+                            cli_agent_session_id: &session_id,
+                            working_dir: CANONICAL_WORKING_DIR,
+                            image_size_bytes: b"image".len() as u64,
+                        })
+                        .expect("idle reuse promotion identity should be valid");
+                    let lease = seed_promotion
+                        .try_into_active_lease(&expected, true)
+                        .expect("parked promotion should become an active lease");
+                    (seed_sandbox_id, lease)
+                };
+                assert_eq!(lease.previous_storage(), Some(&previous_storage));
+
+                let sandbox = MockSandbox::new(format!("workspace-promotion-{session_id}"));
+                let current_manifest = StorageManifest {
+                    storages: vec![StorageEntry {
+                        name: "current-storage".into(),
+                        mount_path: current_storage_path.clone(),
+                        vas_storage_name: "current-storage".into(),
+                        vas_version_id: "v1".into(),
+                        instructions_target_filename: None,
+                        archive_url: "https://example.com/current-storage.tar.gz".into(),
+                    }],
+                    artifacts: vec![ArtifactEntry {
+                        mount_path: current_artifact_path.clone(),
+                        vas_storage_name: "current-artifact".into(),
+                        vas_storage_id: "current-artifact-id".into(),
+                        vas_version_id: "v1".into(),
+                        archive_url: Some("https://example.com/current-artifact.tar.gz".into()),
+                        empty: None,
+                        missing_root_policy: None,
+                    }],
+                };
+                let promotion = test_promotion_context(
+                    lease,
+                    run_id,
+                    sandbox_id,
+                    &session_id,
+                    terminal_status,
+                    StorageFingerprints::from_manifest(&current_manifest),
+                );
+
+                let promoted =
+                    promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test")
+                        .await;
+
+                assert!(promoted);
+                let exec_calls = sandbox.exec_calls();
+                assert_eq!(exec_calls.len(), 1);
+                assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
+                assert!(!exec_calls[0].cmd.contains("export-session-history-sidecar"));
+                let checkout = cache
+                    .prepare(WorkspaceImagePrepareRequest {
+                        identity: WorkspaceImageLeaseIdentity {
+                            run_id: RunId::new_v4(),
+                            sandbox_id: SandboxId::new_v4(),
+                            profile_name: "vm0/default",
+                            cli_agent_session_id: Some(&session_id),
+                            working_dir: CANONICAL_WORKING_DIR,
+                            image_size_bytes: b"image".len() as u64,
+                        },
+                        workspace_drive_required: true,
+                    })
+                    .await;
+
+                assert!(checkout.is_cache_hit());
+                let previous_storage = checkout
+                    .previous_storage()
+                    .expect("cache hit should expose previous storage fingerprints");
+                for path in [&removed_storage_path, &current_storage_path] {
+                    assert!(
+                        previous_storage
+                            .storages
+                            .get(path)
+                            .is_some_and(StorageFingerprint::is_tainted),
+                        "storage path should be retained as tainted: {path}",
+                    );
+                }
+                for path in [&removed_artifact_path, &current_artifact_path] {
+                    assert!(
+                        previous_storage
+                            .artifacts
+                            .get(path)
+                            .is_some_and(StorageFingerprint::is_tainted),
+                        "artifact path should be retained as tainted: {path}",
+                    );
+                }
+
+                let plan = build_storage_plan(&current_manifest, "/run", Some(previous_storage))
+                    .expect("next storage plan should build from promoted fingerprints");
+                assert_eq!(plan.reused_entries(), 0);
+                let guest_manifest = plan.into_guest_manifest();
+                assert!(!guest_manifest.storages[0].cached);
+                assert!(!guest_manifest.artifacts[0].cached);
+                assert_eq!(
+                    guest_manifest
+                        .cleanup_paths
+                        .into_iter()
+                        .collect::<HashSet<_>>(),
+                    HashSet::from([
+                        removed_storage_path,
+                        removed_artifact_path,
+                        current_storage_path,
+                        current_artifact_path,
+                    ])
+                );
+            }
         }
     }
 
@@ -1137,7 +1346,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("guest-session-promotion"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "guest-session-promotion",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -1354,7 +1565,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("rejected-workspace-promotion"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "rejected-workspace-promotion",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -1405,6 +1618,7 @@ mod tests {
         );
         let destroy_gate = MockLifecycleGate::new();
         let existing_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        add_healthy_reuse_preparation_matcher(&existing_overrides);
         existing_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
         let existing_factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
             MockSandboxFactory::with_overrides(Arc::clone(&existing_overrides)),
@@ -1423,6 +1637,7 @@ mod tests {
             .expect("create existing sandbox");
         let (_existing_budget, existing_lease) = test_budget_lease();
         let existing_candidate = IdleParkRequest::new(IdleParkRequestParts {
+            run_id: old_run_id,
             source_ip: existing_sandbox.source_ip().to_owned(),
             sandbox: existing_sandbox,
             factory: existing_factory,
@@ -1433,6 +1648,7 @@ mod tests {
             budget_lease: existing_lease,
             storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             restored_session_identity: None,
+            history_generation_run_id: None,
             workspace_image_size_bytes: b"image".len() as u64,
             workspace_promotion: Some(old_promotion),
         })
@@ -1463,7 +1679,9 @@ mod tests {
         context.park_notify = Arc::clone(&park_notify);
 
         let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("replacement-sandbox"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "replacement-sandbox",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 new_run_id,
@@ -1555,6 +1773,7 @@ mod tests {
         let cancel = RunCancellationHandle::new();
         let cleanup_state = RunCleanupState::new();
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        add_healthy_reuse_preparation_matcher(&overrides);
         let park_gate = MockLifecycleGate::new();
         let destroy_gate = MockLifecycleGate::new();
         overrides.set_park_lifecycle_gate(park_gate.clone());
@@ -1634,6 +1853,7 @@ mod tests {
         let cleanup_state = RunCleanupState::new();
         let observer = StartLoopTestObserver::default();
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        add_healthy_reuse_preparation_matcher(&overrides);
         let destroy_gate = MockLifecycleGate::new();
         overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
         let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;

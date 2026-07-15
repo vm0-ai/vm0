@@ -12,6 +12,7 @@ import connector_intent
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import upstream_destination_binding
+from body_limits import STREAM_BUFFER_LIMIT
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
     _shared_route_vm,
@@ -269,6 +270,193 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unknown_endpoint"
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+@pytest.mark.parametrize(
+    "unknown_policy",
+    [
+        pytest.param("deny", id="deny"),
+        pytest.param("ask", id="ask"),
+    ],
+)
+async def test_asterisk_form_enforces_unknown_policy(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    unknown_policy,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="example",
+            api_entry={
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": unknown_policy,
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.example.com",
+        method="OPTIONS",
+        path="*",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    body = json.loads(flow.response.content)
+    assert body["reason"] == "unknown_endpoint"
+    assert body["method"] == "OPTIONS"
+    assert body["path"] == "*"
+    assert body["url"] == "https://api.example.com"
+
+
+async def test_asterisk_form_policy_allow_preserves_target_without_connector_side_effects(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="example",
+            api_entry={
+                "base": "https://api.example.com",
+                "auth": {
+                    "headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"},
+                    "query": {"api_key": "${{ secrets.API_TOKEN }}"},
+                },
+                "permissions": [{"name": "full-access", "rules": ["ANY /"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            billable_firewalls=["example"],
+            vm_fields={
+                "captureNetworkBodies": True,
+                "modelUsageProvider": "anthropic",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.example.com",
+        method="OPTIONS",
+        path="*",
+        request_headers=headers(
+            ("Host", "api.example.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is None
+        assert callable(flow.request.stream)
+        assert flow.request.path == "*"
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_awaited()
+    assert flow.response is None
+    assert flow.request.path == "*"
+    assert "Authorization" not in flow.request.headers
+    assert "api_key" not in flow.request.query
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] == ""
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
+    assert metadata_keys.MODEL_USAGE_PROVIDER not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+
+
+async def test_asterisk_form_policy_allow_still_enforces_public_destination(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="example",
+            api_entry={
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
+                "hostPolicy": {"kind": "publicDestination"},
+                "permissions": [],
+            },
+            network_policy={
+                "allow": [],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.example.com",
+        method="OPTIONS",
+        path="*",
+        request_headers=headers(
+            ("Host", "api.example.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is None
+        assert callable(flow.request.stream)
+        assert flow.response is None
+
+        flow.server_conn.address = ("10.0.0.5", 443)
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_awaited()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.request.path == "*"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+    assert "Authorization" not in flow.request.headers
 
 
 async def test_firewall_malformed_config_block_reports_reason(

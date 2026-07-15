@@ -70,6 +70,14 @@ assert_no_hosts_field() {
   jq -e 'all(.[]; has("hosts") | not)' >/dev/null <<<"$output" || fail "expected no hosts field: ${output}"
 }
 
+assert_selected_context_contract() {
+  local output=$1
+  jq -e 'type == "object" and (keys | sort) == ["groupHosts", "groupId", "host", "target"]' >/dev/null <<<"$output" || fail "expected selected host context: ${output}"
+  if [[ "$output" == *$'\n'* ]]; then
+    fail "expected compact single-line JSON: ${output}"
+  fi
+}
+
 assert_target_matrix_contract() {
   local output=$1
   jq -e 'all(.[]; (keys | sort) == ["id", "label", "target"])' >/dev/null <<<"$output" || fail "expected target matrix fields only: ${output}"
@@ -116,6 +124,10 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+
+selected=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" select-context pr-1)
+assert_selected_context_contract "$selected"
+assert_json_eq "$selected" '{"host":"arm-2","groupId":"arm64","target":"aarch64-unknown-linux-musl","groupHosts":"arm-1,arm-2"}'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" target-matrix)
 assert_compact_json "$out"
@@ -166,6 +178,19 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" matrix
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
+
+selected=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" select-context pr-1)
+assert_selected_context_contract "$selected"
+assert_json_eq "$selected" '{"host":"x86-1","groupId":"x86_64","target":"x86_64-unknown-linux-musl","groupHosts":"x86-1,x86-2"}'
+
+retry_selected=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" select-context pr-1)
+assert_json_eq "$retry_selected" "$selected"
+
+selected=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" select-context pr-2)
+assert_json_eq "$selected" '{"host":"arm-1","groupId":"arm64","target":"aarch64-unknown-linux-musl","groupHosts":"arm-1"}'
+
+selected=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" select-context pr-9)
+assert_json_eq "$selected" '{"host":"x86-2","groupId":"x86_64","target":"x86_64-unknown-linux-musl","groupHosts":"x86-1,x86-2"}'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" target-matrix)
 assert_compact_json "$out"
@@ -254,6 +279,16 @@ if run_clean AWS_METAL_RUNNER_HOSTS='arm-1' "$HOST_GROUPS" select-host arm64 >"$
   fail "expected missing selection key to fail"
 fi
 grep -q "missing runner host selection key" "${TMPDIR}/missing-selection-key.err" || fail "expected missing selection key message"
+
+if run_clean "$HOST_GROUPS" select-context >"${TMPDIR}/missing-context-selection-key.out" 2>"${TMPDIR}/missing-context-selection-key.err"; then
+  fail "expected missing context selection key to fail"
+fi
+grep -q "missing runner host context selection key" "${TMPDIR}/missing-context-selection-key.err" || fail "expected missing context selection key message"
+
+if run_clean "$HOST_GROUPS" select-context pr-1 >"${TMPDIR}/empty-context-selection.out" 2>"${TMPDIR}/empty-context-selection.err"; then
+  fail "expected empty context selection to fail"
+fi
+grep -q "no runner hosts found" "${TMPDIR}/empty-context-selection.err" || fail "expected empty context selection message"
 
 out=$(run_clean "$HOST_GROUPS")
 assert_compact_json "$out"

@@ -635,6 +635,49 @@ async def test_server_connect_does_not_bind_after_connect_error_during_dns(regis
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
+async def test_server_connect_does_not_bind_after_client_disconnect_during_dns(
+    registry_file,
+    mitm_ctx,
+    make_tls_data,
+):
+    tls_data = make_tls_data(
+        client_ip="10.200.0.1",
+        sni="",
+        client_sni="",
+        server_address=("198.18.20.34", 443),
+    )
+    data = _ServerConnectData(
+        client=tls_data.context.client,
+        server=tls_data.context.server,
+    )
+    lookup_started = threading.Event()
+    release_lookup = threading.Event()
+
+    def getaddrinfo(host: str, port: int, *args, **kwargs):
+        lookup_started.set()
+        if not release_lookup.wait(timeout=5):
+            raise AssertionError("timed out waiting to release DNS lookup")
+        return _API_ADDRINFO
+
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
+        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
+    ):
+        mitm_addon.tls_clienthello(tls_data)
+        assert upstream_admission.tls_admission_for_client(data.client) is not None
+        connect_task = asyncio.create_task(mitm_addon.server_connect(data))
+        assert await asyncio.to_thread(lookup_started.wait, 5)
+        tls_data.context.client.timestamp_end = 1.0
+        mitm_addon.client_disconnected(tls_data.context.client)
+        assert upstream_admission.tls_admission_for_client(data.client) is None
+        release_lookup.set()
+        _ = await connect_task
+
+    assert data.server.address == ("198.18.20.34", 443)
+    assert upstream_admission.tls_admission_for_client(data.client) is None
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
 async def test_server_connect_does_not_bind_when_source_endpoint_changes_during_dns(
     registry_file, mitm_ctx
 ):

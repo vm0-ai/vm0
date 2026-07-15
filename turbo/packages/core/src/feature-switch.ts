@@ -225,6 +225,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZeroWebSearch]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable the managed Perplexity-backed Zero Web Search API and web-search:read ZERO_TOKEN capability.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -298,6 +305,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable Codex fast mode for ChatGPT subscription GPT 5.5 and GPT 5.6 web chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.Vm0Model]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Show VM0 Model in the workspace Add model selector.",
+    enabled: false,
   },
   [FeatureSwitchKey.ChatModelFamilySessionContinuity]: {
     maintainer: "lancy@vm0.ai",
@@ -387,6 +399,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerChatThreadSuggestions]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.SidebarManageIconCollapse]: {
     maintainer: "ming@vm0.ai",
     description:
@@ -421,6 +440,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PresentationElementDragging]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable selecting and dragging presentation elements in the HTML presentation editor.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",
@@ -461,7 +488,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Queue-first user message dispatch: sends enqueue a chat_message_queue item and claim it in place instead of the legacy revoke-claim convention.",
-    enabled: true,
+    enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
@@ -479,6 +506,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
+  },
+  [FeatureSwitchKey.ZeroMail]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

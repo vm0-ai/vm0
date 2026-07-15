@@ -41,6 +41,7 @@ import {
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_TYPES,
+  getVm0ModelProviderConfig,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
   shouldInlineModelProviderFirewall,
@@ -89,6 +90,7 @@ describe("model-first canonical catalog", () => {
 
   it("exposes the curated flat model list only", () => {
     expect(SUPPORTED_RUN_MODELS).toEqual([
+      "vm0-model",
       "claude-fable-5",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
@@ -112,6 +114,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("validates canonical models and credential scopes", () => {
+    expect(supportedRunModelSchema.safeParse("vm0-model").success).toBe(true);
     expect(supportedRunModelSchema.safeParse("gpt-5.6-sol").success).toBe(true);
     expect(supportedRunModelSchema.safeParse("gpt-5.6-terra").success).toBe(
       true,
@@ -155,6 +158,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("identifies models blocked on limited-free-1", () => {
+    expect(isLimitedFree1RestrictedRunModel("vm0-model")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-terra")).toBe(false);
@@ -195,6 +199,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("surfaces display labels for canonical models", () => {
+    expect(getCanonicalModelDisplayName("vm0-model")).toBe("VM0 Model");
     expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
       "Claude Opus 4.8",
     );
@@ -246,6 +251,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("returns compatible provider types for canonical models", () => {
+    expect(getProvidersForModel("vm0-model")).toEqual(["vm0"]);
     expect(getProvidersForModel("claude-fable-5")).toEqual([
       "vm0",
       "claude-code-oauth-token",
@@ -345,6 +351,10 @@ describe("model-first canonical catalog", () => {
   });
 
   it("checks model/provider compatibility", () => {
+    expect(isModelSupportedByProvider("vm0-model", "vm0")).toBe(true);
+    expect(isModelSupportedByProvider("vm0-model", "openai-api-key")).toBe(
+      false,
+    );
     expect(isModelSupportedByProvider("gpt-5.6-sol", "vm0")).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.6-sol", "openai-api-key")).toBe(
       true,
@@ -489,6 +499,7 @@ describe("model-first canonical catalog", () => {
   it("exposes VM0 price tiers for built-in reasoning models", () => {
     expect(VM0_MODEL_PRICE_TIER).toEqual(
       expect.objectContaining({
+        "vm0-model": "$$",
         "claude-fable-5": "$$$$",
         "gpt-5.6-sol": "$$$",
         "gpt-5.6-terra": "$$",
@@ -504,6 +515,7 @@ describe("model-first canonical catalog", () => {
         "hy3-preview": "$",
       }),
     );
+    expect(getVm0ModelPriceTier("vm0-model")).toBe("$$");
     expect(getVm0ModelPriceTier("claude-fable-5")).toBe("$$$$");
     expect(getVm0ModelPriceTier("gpt-5.6-sol")).toBe("$$$");
     expect(getVm0ModelPriceTier("gpt-5.6-terra")).toBe("$$");
@@ -725,6 +737,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
 describe("getVm0VisibleModels", () => {
   it("returns all VM0 managed models", () => {
     const models = getVm0VisibleModels();
+    expect(models).toContain("vm0-model");
     expect(models).toContain("claude-fable-5");
     expect(models).toContain("claude-opus-4-8");
     expect(models).toContain("kimi-k2.7-code");
@@ -977,6 +990,37 @@ describe("openai-api-key codex provider", () => {
 
   it("modelProviderFrameworkSchema accepts codex", () => {
     expect(modelProviderFrameworkSchema.safeParse("codex").success).toBe(true);
+  });
+});
+
+describe("vm0-model managed proxy", () => {
+  it("scopes both managed credentials to the configured web origin", () => {
+    const config = getVm0ModelProviderConfig(
+      "https://preview-www.vm0.test/workspace",
+    );
+
+    expect(config.baseUrl).toBe(
+      "https://preview-www.vm0.test/api/internal/vm0-model/v1",
+    );
+    expect(config.firewall).toMatchObject({
+      name: "model-provider:vm0-model",
+      apis: [
+        {
+          base: "https://preview-www.vm0.test/api/internal/vm0-model/v1/responses",
+          auth: {
+            headers: {
+              Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
+              "X-VM0-Upstream-Authorization":
+                "Bearer ${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}",
+            },
+          },
+        },
+      ],
+    });
+    expect(config.firewall.placeholders).toStrictEqual({
+      OPENAI_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+      VM0_MODEL_UPSTREAM_API_KEY: expect.stringMatching(/^sk-vm0-upstream-/),
+    });
   });
 });
 

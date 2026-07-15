@@ -12,14 +12,13 @@ import threading
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
 import network_log_sanitization
 from logging_utils import log_proxy_entry
-from platform_api import make_api_request
+from platform_api import build_api_opener, make_api_request
 
 from .counters import PendingReportLease, admit_pending_report
 
@@ -33,22 +32,7 @@ _RETRYABLE_HTTP_STATUS_CODES = {408, 429}
 _WEBHOOK_RETRY_DELAY_SECONDS = 0.5
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Disable automatic redirect following for webhook delivery."""
-
-    def redirect_request(
-        self,
-        req: urllib.request.Request,
-        fp: object,
-        code: int,
-        msg: str,
-        headers: object,
-        newurl: str,
-    ) -> None:
-        return None
-
-
-_opener = urllib.request.build_opener(_NoRedirect)
+_opener = build_api_opener()
 
 
 def _payload_log_summary(payload: dict) -> dict:

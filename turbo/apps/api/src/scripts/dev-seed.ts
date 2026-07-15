@@ -46,7 +46,11 @@ function usd(amount: number): number {
   return Math.round(amount * USD_TO_CREDITS);
 }
 
-type UsagePricingRow = [category: string, unitPrice: number, unitSize: number];
+type UsagePricingRow = readonly [
+  category: string,
+  unitPrice: number,
+  unitSize: number,
+];
 
 interface DevSeedSkillVolume {
   readonly url: string;
@@ -74,12 +78,26 @@ const DEV_SEED_SKILL_VOLUMES: readonly DevSeedSkillVolume[] =
 function usageGroup(
   kind: string,
   provider: string,
-  rows: UsagePricingRow[],
+  rows: readonly UsagePricingRow[],
 ): (typeof usagePricing.$inferInsert)[] {
   return rows.map(([category, unitPrice, unitSize]) => {
     return { kind, provider, category, unitPrice, unitSize };
   });
 }
+
+const GPT_5_6_SOL_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(5), 1_000_000],
+  ["tokens.cache_read", usd(0.5), 1_000_000],
+  ["tokens.cache_creation", usd(6.25), 1_000_000],
+  ["tokens.output", usd(30), 1_000_000],
+];
+
+const GPT_5_6_LUNA_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(1), 1_000_000],
+  ["tokens.cache_read", usd(0.1), 1_000_000],
+  ["tokens.cache_creation", usd(1.25), 1_000_000],
+  ["tokens.output", usd(6), 1_000_000],
+];
 
 function buildSeedSkillValues(
   names: readonly string[],
@@ -300,24 +318,17 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // https://developers.openai.com/api/docs/pricing
   // GPT-5.6 preview pricing retrieved 2026-07-09 from:
   // https://openai.com/index/previewing-gpt-5-6-sol/
-  ...usageGroup("model", "gpt-5.6-sol", [
-    ["tokens.input", usd(5), 1_000_000],
-    ["tokens.cache_read", usd(0.5), 1_000_000],
-    ["tokens.cache_creation", usd(6.25), 1_000_000],
-    ["tokens.output", usd(30), 1_000_000],
-  ]),
+  ...usageGroup("model", "gpt-5.6-sol", GPT_5_6_SOL_PRICING),
   ...usageGroup("model", "gpt-5.6-terra", [
     ["tokens.input", usd(2.5), 1_000_000],
     ["tokens.cache_read", usd(0.25), 1_000_000],
     ["tokens.cache_creation", usd(3.125), 1_000_000],
     ["tokens.output", usd(15), 1_000_000],
   ]),
-  ...usageGroup("model", "gpt-5.6-luna", [
-    ["tokens.input", usd(1), 1_000_000],
-    ["tokens.cache_read", usd(0.1), 1_000_000],
-    ["tokens.cache_creation", usd(1.25), 1_000_000],
-    ["tokens.output", usd(6), 1_000_000],
-  ]),
+  ...usageGroup("model", "gpt-5.6-luna", GPT_5_6_LUNA_PRICING),
+  // VM0 Model billing SKUs mirror the routed model's token prices.
+  ...usageGroup("model", "model-standard-v1", GPT_5_6_LUNA_PRICING),
+  ...usageGroup("model", "model-premium-v1", GPT_5_6_SOL_PRICING),
   ...usageGroup("model", "gpt-5.5", [
     ["tokens.input", usd(5), 1_000_000],
     ["tokens.cache_read", usd(0.5), 1_000_000],
@@ -390,6 +401,10 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["enhanced.markdown", usd(0.02), 1],
     ["enhanced.links", usd(0.02), 1],
   ]),
+
+  // Perplexity Search API — https://docs.perplexity.ai/docs/getting-started/pricing
+  // Raw provider cost is $5 per 1,000 requests with no token charge.
+  ...usageGroup("web-search", "perplexity", [["request", usd(0.005), 1]]),
 
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
   // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.

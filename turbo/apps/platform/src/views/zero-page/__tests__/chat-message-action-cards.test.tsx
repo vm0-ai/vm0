@@ -1,4 +1,5 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogPermissionDetail,
@@ -10,6 +11,7 @@ import {
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -195,6 +197,103 @@ async function confirmPermissionAction(
 }
 
 describe("chat message action cards", () => {
+  it("renders a persistent mail draft and sends the reviewed fields", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "c0000000-0000-4000-a000-000000000010";
+    const messageId = "c0000000-0000-4000-a000-000000000011";
+    const createdAt = "2026-07-14T10:00:00.000Z";
+    let sentBody: unknown = null;
+
+    context.mocks.api(zeroMailContract.updateDraft, ({ body, respond }) => {
+      return respond(200, {
+        messageId,
+        mailDraft: {
+          version: 1,
+          provider: "gmail",
+          from: "sender@example.com",
+          ...body,
+          status: "draft",
+          createdAt,
+          updatedAt: "2026-07-14T10:01:00.000Z",
+        },
+      });
+    });
+    context.mocks.api(zeroMailContract.sendDraft, ({ body, respond }) => {
+      sentBody = body;
+      return respond(200, {
+        messageId,
+        mailDraft: {
+          version: 1,
+          provider: "gmail",
+          from: "sender@example.com",
+          ...body,
+          status: "sent",
+          createdAt,
+          updatedAt: "2026-07-14T10:02:00.000Z",
+          sentAt: "2026-07-14T10:02:00.000Z",
+        },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Mail card",
+      chatMessages: [
+        {
+          id: messageId,
+          role: "assistant",
+          content: null,
+          createdAt,
+          mailDraft: {
+            version: 1,
+            provider: "gmail",
+            from: "sender@example.com",
+            to: ["recipient@example.com"],
+            subject: "Hello",
+            body: "Mail body",
+            status: "draft",
+            createdAt,
+            updatedAt: createdAt,
+          },
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    const card = await screen.findByRole("region", { name: "Review email" });
+    expect(within(card).getByRole("textbox", { name: "From" })).toHaveValue(
+      "sender@example.com",
+    );
+    expect(within(card).getByRole("textbox", { name: "To" })).toHaveValue(
+      "recipient@example.com",
+    );
+    expect(within(card).getByRole("textbox", { name: "Subject" })).toHaveValue(
+      "Hello",
+    );
+    expect(within(card).getByRole("textbox", { name: "Message" })).toHaveValue(
+      "Mail body",
+    );
+
+    await user.click(buttonByText("Send", card));
+
+    await waitFor(() => {
+      expect(sentBody).toStrictEqual({
+        to: ["recipient@example.com"],
+        subject: "Hello",
+        body: "Mail body",
+      });
+      expect(within(card).getByText("Sent")).toBeInTheDocument();
+    });
+    expect(queryButtonByText("Send", card)).toBeNull();
+    expect(within(card).getByRole("textbox", { name: "From" })).toHaveAttribute(
+      "readonly",
+    );
+  });
+
   it("lets users authorize connectors and confirm permissions from assistant messages", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });

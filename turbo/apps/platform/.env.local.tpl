@@ -9,7 +9,6 @@ VITE_ZERO_HOST_DOMAIN=sites.vm7.io
 VITE_VAPID_PUBLIC_KEY=op://Development/vapid/VAPID_PUBLIC_KEY
 
 # Analytics
-VITE_PLAUSIBLE_SCRIPT_URL=
 VITE_POSTHOG_KEY=
 
 # Optional: Error Tracking (Sentry)
