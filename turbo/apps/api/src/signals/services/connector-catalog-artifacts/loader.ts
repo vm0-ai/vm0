@@ -6,6 +6,7 @@ import { z } from "zod";
 import { safeJsonParse, safeSync } from "../../utils";
 import {
   artifactReferenceSchema,
+  CONNECTOR_CATALOG_ACTIVE_KEY,
   connectorCatalogIntegrityArtifactSchema,
   connectorCatalogPrivateArtifactSchema,
   connectorCatalogPrivateFirewallsArtifactSchema,
@@ -27,8 +28,6 @@ import {
   privateCatalogArtifactSensitiveValues,
 } from "./public-leak";
 import { validateConnectorCatalogRelationships } from "./relationships";
-
-const CONNECTOR_CATALOG_ACTIVE_KEY = "catalog-v1/active.json";
 
 const CONNECTOR_CATALOG_OBJECT_MAX_BYTES = {
   active: 16 * 1024,

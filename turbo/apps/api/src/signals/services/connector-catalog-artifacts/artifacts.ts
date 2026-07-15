@@ -27,6 +27,7 @@ import {
 export { connectorCatalogVersionSchema } from "./common";
 
 export const SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION = 1;
+export const CONNECTOR_CATALOG_ACTIVE_KEY = `connectors/v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/active.json`;
 
 interface ConnectorCatalogReleaseArtifactKeys {
   readonly releasePrefix: string;
@@ -43,7 +44,7 @@ export function connectorCatalogReleaseArtifactKeys(
   const parsedCatalogVersion =
     connectorCatalogVersionSchema.parse(catalogVersion);
   const releasePrefix =
-    `catalog-v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/releases/` +
+    `connectors/v${SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION}/releases/` +
     parsedCatalogVersion;
   return {
     releasePrefix,

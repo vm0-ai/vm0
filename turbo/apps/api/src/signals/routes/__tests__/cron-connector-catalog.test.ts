@@ -14,7 +14,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const zeroMocks = createZeroRouteMocks(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
-const ACTIVE_KEY = "catalog-v1/active.json";
+const ACTIVE_KEY = "connectors/v1/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const PRIVATE_VALUE = "SECRET_TOKEN";
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
@@ -112,7 +112,7 @@ function releaseKeys(version: string): {
   readonly privateFirewalls: string;
   readonly runnerFirewalls: string;
 } {
-  const prefix = `catalog-v1/releases/${version}`;
+  const prefix = `connectors/v1/releases/${version}`;
   return {
     integrity: `${prefix}/integrity/catalog.json`,
     publicCatalog: `${prefix}/public/catalog.json`,
@@ -892,7 +892,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           version: "wrong-pointer-reference",
           mutatePointer: (pointer) => {
             recordValue(pointer.integrity, "pointer.integrity").key =
-              "catalog-v1/releases/other/integrity/catalog.json";
+              "connectors/v1/releases/other/integrity/catalog.json";
           },
         });
       },
@@ -1026,7 +1026,35 @@ describe("connector catalog rejection and latest-valid retention", () => {
           mutateIntegrity: (integrity) => {
             const artifacts = recordValue(integrity.artifacts, "artifacts");
             recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "connectors/catalog-v1/releases/staging-key/public/catalog.json";
+              "generated/connectors/v1/releases/staging-key/public/catalog.json";
+          },
+        });
+      },
+    },
+    {
+      name: "legacy catalog key",
+      expected: "invalid-reference",
+      release: () => {
+        return buildRelease({
+          version: "legacy-key",
+          mutateIntegrity: (integrity) => {
+            const artifacts = recordValue(integrity.artifacts, "artifacts");
+            recordValue(artifacts.publicCatalog, "publicCatalog").key =
+              "catalog-v1/releases/legacy-key/public/catalog.json";
+          },
+        });
+      },
+    },
+    {
+      name: "discarded connector catalog namespace",
+      expected: "invalid-reference",
+      release: () => {
+        return buildRelease({
+          version: "discarded-namespace",
+          mutateIntegrity: (integrity) => {
+            const artifacts = recordValue(integrity.artifacts, "artifacts");
+            recordValue(artifacts.publicCatalog, "publicCatalog").key =
+              "connector-catalog/v1/releases/discarded-namespace/public/catalog.json";
           },
         });
       },
@@ -1040,7 +1068,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           mutateIntegrity: (integrity) => {
             const artifacts = recordValue(integrity.artifacts, "artifacts");
             recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "catalog-v1/releases/other/public/catalog.json";
+              "connectors/v1/releases/other/public/catalog.json";
           },
         });
       },
@@ -1054,7 +1082,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           mutateIntegrity: (integrity) => {
             const artifacts = recordValue(integrity.artifacts, "artifacts");
             recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "catalog-v1/public/catalog.json";
+              "connectors/public/catalog.json";
           },
         });
       },
@@ -1068,7 +1096,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           mutateIntegrity: (integrity) => {
             const artifacts = recordValue(integrity.artifacts, "artifacts");
             recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "catalog-v2/releases/wrong-schema-key/public/catalog.json";
+              "connectors/v2/releases/wrong-schema-key/public/catalog.json";
           },
         });
       },
@@ -1082,7 +1110,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           mutateIntegrity: (integrity) => {
             const artifacts = recordValue(integrity.artifacts, "artifacts");
             recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "catalog-v1/releases/traversal-key/../public/catalog.json";
+              "connectors/v1/releases/traversal-key/../public/catalog.json";
           },
         });
       },
