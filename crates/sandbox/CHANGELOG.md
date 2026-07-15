@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.23](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.22...sandbox-v0.19.23) (2026-07-15)
+
+
+### Bug Fixes
+
+* **sandbox-mock:** align write input semantics ([#21630](https://github.com/vm0-ai/vm0/issues/21630)) ([cb7590b](https://github.com/vm0-ai/vm0/commit/cb7590bf9e3fe690f083e6927d160371f02cbfb8))
+
 ## [0.19.22](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.21...sandbox-v0.19.22) (2026-07-15)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.6...guest-agent-v0.51.7) (2026-07-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** redact secrets from event object keys ([#21626](https://github.com/vm0-ai/vm0/issues/21626)) ([e42aa15](https://github.com/vm0-ai/vm0/commit/e42aa15170c108c2abba983420326ec942dd9d19))
+
 ## [0.51.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.5...guest-agent-v0.51.6) (2026-07-15)
 
 
