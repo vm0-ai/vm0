@@ -18,6 +18,8 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
+  getVm0ModelCodexRuntimeConfig,
+  getVm0ModelProviderConfig,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
@@ -1774,6 +1776,34 @@ async function vm0ModelProviderEnvironment(
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
+  }
+
+  if (selectedModel === "vm0-model") {
+    const proxyToken = optionalEnv("VM0_MODEL_PROXY_TOKEN")?.trim();
+    const proxyHost = optionalEnv("VM0_MODEL_PROXY_HOST")?.trim();
+    if (!proxyToken || !proxyHost) {
+      return null;
+    }
+    const vm0ModelConfig = getVm0ModelProviderConfig(proxyHost);
+    return {
+      id: null,
+      type: "vm0",
+      concreteType,
+      framework: "codex",
+      environment: {
+        OPENAI_API_KEY: `\${{ secrets.OPENAI_API_KEY }}`,
+        OPENAI_BASE_URL: vm0ModelConfig.baseUrl,
+        OPENAI_MODEL: selectedModel,
+      },
+      secrets: {
+        OPENAI_API_KEY: proxyToken,
+        VM0_MODEL_UPSTREAM_API_KEY: apiKey,
+      },
+      selectedModel,
+      codexRuntimeConfig: getVm0ModelCodexRuntimeConfig(vm0ModelConfig.baseUrl),
+      firewall: vm0ModelConfig.firewall,
+      inlineFirewall: true,
+    };
   }
 
   return {

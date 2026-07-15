@@ -922,6 +922,7 @@ const webhookUsageEventItemSchema = z
     idempotencyKey: z.uuid(),
     kind: z.enum(["connector", "model", "image"]),
     provider: z.string().min(1).max(100),
+    billingSku: z.string().min(1).max(100).optional(),
     category: z.string().min(1).max(100),
     quantity: z.number().int().min(0),
   })
