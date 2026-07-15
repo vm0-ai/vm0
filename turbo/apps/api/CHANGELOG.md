@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.275.8](https://github.com/vm0-ai/vm0/compare/api-v1.275.7...api-v1.275.8) (2026-07-15)
+
+
+### Refactoring
+
+* **db:** drop legacy event trigger ids ([#21514](https://github.com/vm0-ai/vm0/issues/21514)) ([63e2659](https://github.com/vm0-ai/vm0/commit/63e2659f79454f01fdb339963a1b07cd9dade1b2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.115.9
+
 ## [1.275.7](https://github.com/vm0-ai/vm0/compare/api-v1.275.6...api-v1.275.7) (2026-07-15)
 
 
