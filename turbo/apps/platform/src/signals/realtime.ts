@@ -81,15 +81,6 @@ function isAblyConnectionClosedError(error: unknown): boolean {
   return errorMessage(error) === "Connection closed";
 }
 
-async function subscribeChannel(
-  channel: RealtimeChannel,
-  topic: string,
-  callback: (message: InboundMessage) => void,
-): Promise<boolean> {
-  await channel.subscribe(topic, callback);
-  return true;
-}
-
 async function waitForTransientRetry(
   signal: AbortSignal,
   retryCount: number,
@@ -140,7 +131,6 @@ const runWithChannel$ = command(
       L.debug("tab visible, poking loop", topic);
       pokeLoop();
     };
-    let subscribed = false;
     let registeredPoke = false;
 
     const cleanup = () => {
@@ -154,10 +144,7 @@ const runWithChannel$ = command(
       });
       registeredPoke = false;
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      if (subscribed) {
-        subscribed = false;
-        channel.unsubscribe(topic, callback);
-      }
+      channel.unsubscribe(topic, callback);
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange, {
@@ -173,7 +160,7 @@ const runWithChannel$ = command(
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
     try {
-      subscribed = await subscribeChannel(channel, topic, callback);
+      await channel.subscribe(topic, callback);
       signal.throwIfAborted();
       options?.onSubscribed?.();
       if (options?.runOnSubscribe) {
@@ -263,7 +250,6 @@ const runWithChannelPayload$ = command(
       L.debug("tab visible, poking payload loop", topic);
       pokeLoop();
     };
-    let subscribed = false;
     let registeredPoke = false;
 
     const cleanup = () => {
@@ -277,10 +263,7 @@ const runWithChannelPayload$ = command(
       });
       registeredPoke = false;
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      if (subscribed) {
-        subscribed = false;
-        channel.unsubscribe(topic, callback);
-      }
+      channel.unsubscribe(topic, callback);
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange, {
@@ -296,7 +279,7 @@ const runWithChannelPayload$ = command(
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
     try {
-      subscribed = await subscribeChannel(channel, topic, callback);
+      await channel.subscribe(topic, callback);
       signal.throwIfAborted();
       options?.onSubscribed?.();
       L.debug("subscribed to payload topic: " + topic);
