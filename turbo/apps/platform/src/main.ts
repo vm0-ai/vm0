@@ -1,6 +1,7 @@
 import "./lib/preview-bypass-cookie-bootstrap.ts";
 import { initSentry, Sentry } from "./lib/sentry.ts";
 import { initPostHog } from "./lib/posthog.ts";
+import { initPlausible } from "./lib/plausible.ts";
 import { setupVisualViewportKeyboardState } from "./lib/visual-viewport-keyboard.ts";
 import "./polyfill.ts";
 import { createRoot } from "react-dom/client";
@@ -15,6 +16,7 @@ import { setupRouter } from "./views/main.tsx";
 // Initialize Sentry before bootstrap so errors during startup are captured
 initSentry();
 initPostHog();
+initPlausible();
 setupVisualViewportKeyboardState();
 
 setLogErrorHandler((loggerName, args) => {

@@ -1,18 +1,21 @@
 import * as Sentry from "@sentry/react";
 import { ApiError } from "./accept";
-import { resolvePlatformEnvironment } from "./platform-host";
+import { resolvePlatformRuntimeConfig } from "./platform-host";
 
 // Initialize Sentry synchronously so that global error/unhandledrejection
 // handlers are installed before the app bootstraps. Errors during bootstrap
 // (route resolution, signal evaluation) would be missed with deferred init.
 export function initSentry(): void {
+  const runtimeConfig = resolvePlatformRuntimeConfig();
+
   Sentry.init({
-    dsn: import.meta.env.VITE_SENTRY_DSN,
+    dsn: runtimeConfig.sentryDsn ?? undefined,
 
-    // Only enable when DSN is configured
-    enabled: !!import.meta.env.VITE_SENTRY_DSN,
+    // Production telemetry values are present in every build but are only
+    // enabled when the serving domain resolves to the production environment.
+    enabled: runtimeConfig.sentryDsn !== null,
 
-    environment: resolvePlatformEnvironment(),
+    environment: runtimeConfig.environment,
 
     // Set app tag to identify this app in Sentry
     initialScope: {

@@ -1,3 +1,5 @@
+import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
+
 type PlausibleEventProps = Record<string, string | number | boolean>;
 
 interface PlausibleEventOptions {
@@ -12,35 +14,25 @@ type PlausibleFn = {
   o?: unknown;
 };
 
-const PLAUSIBLE_SCRIPT_URL = import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL as
-  | string
-  | undefined;
-
 declare global {
   interface Window {
+    __vm0PlausibleLoadScheduled?: boolean;
     plausible?: PlausibleFn;
   }
 }
 
-export function capturePlausibleEvent(
-  eventName: string,
-  options?: PlausibleEventOptions,
-): void {
-  const plausible = getPlausible();
-  plausible?.(eventName, options);
+function plausibleScriptUrl(): string | null {
+  const url = resolvePlatformRuntimeConfig().plausibleScriptUrl;
+  return url?.includes("plausible") ? url : null;
 }
 
 function getPlausible(): PlausibleFn | null {
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || !plausibleScriptUrl()) {
     return null;
   }
 
   if (window.plausible) {
     return window.plausible;
-  }
-
-  if (!PLAUSIBLE_SCRIPT_URL?.includes("plausible")) {
-    return null;
   }
 
   const plausible = ((...args: [string, PlausibleEventOptions?]) => {
@@ -50,4 +42,51 @@ function getPlausible(): PlausibleFn | null {
 
   window.plausible = plausible;
   return plausible;
+}
+
+function loadPlausible(): void {
+  const url = plausibleScriptUrl();
+  const plausible = getPlausible();
+  if (!url || !plausible) {
+    return;
+  }
+
+  plausible.init = (options) => {
+    plausible.o = options ?? {};
+  };
+  plausible.init({
+    transformRequest(payload: { u: string }) {
+      payload.u = payload.u.replace(
+        /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        "/:id",
+      );
+      return payload;
+    },
+  });
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = url;
+  document.head.appendChild(script);
+}
+
+export function initPlausible(): void {
+  if (window.__vm0PlausibleLoadScheduled || !plausibleScriptUrl()) {
+    return;
+  }
+  window.__vm0PlausibleLoadScheduled = true;
+
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(loadPlausible, { timeout: 3000 });
+    return;
+  }
+  window.setTimeout(loadPlausible, 100);
+}
+
+export function capturePlausibleEvent(
+  eventName: string,
+  options?: PlausibleEventOptions,
+): void {
+  const plausible = getPlausible();
+  plausible?.(eventName, options);
 }
