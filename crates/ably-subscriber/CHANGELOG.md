@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.7](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.6...ably-subscriber-v1.0.7) (2026-07-15)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** stop accepting api keys in argv ([#21554](https://github.com/vm0-ai/vm0/issues/21554)) ([09adc87](https://github.com/vm0-ai/vm0/commit/09adc878ac9e5fda49541af26cf06e038f326b6b))
+
 ## [1.0.6](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.5...ably-subscriber-v1.0.6) (2026-07-15)
 
 ## [1.0.5](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.4...ably-subscriber-v1.0.5) (2026-07-14)
