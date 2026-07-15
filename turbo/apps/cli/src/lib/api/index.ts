@@ -158,6 +158,9 @@ export {
   getZeroCustomConnector,
 } from "./domains/zero-connectors";
 
+// Domain modules - Zero Mail
+export { createZeroMailDraft } from "./domains/zero-mail";
+
 // Domain modules - Integrations Slack
 export {
   sendSlackMessage,
