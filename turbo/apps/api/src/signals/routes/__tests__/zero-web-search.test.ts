@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
-import { delay } from "signal-timers";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -960,20 +959,32 @@ describe("zero web-search route", () => {
     await seedWebSearchPricing();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
-    let disconnectPromise: Promise<void> = Promise.resolve();
     server.use(
       http.post(PERPLEXITY_SEARCH_URL, () => {
-        disconnectPromise = delay(0, { signal: context.signal }).then(() => {
-          controller.abort(abortError);
+        const payload = new TextEncoder().encode(
+          JSON.stringify(providerResponse()),
+        );
+        let payloadSent = false;
+        const stream = new ReadableStream<Uint8Array>({
+          pull(streamController) {
+            if (!payloadSent) {
+              payloadSent = true;
+              streamController.enqueue(payload);
+              return;
+            }
+            streamController.close();
+            setImmediate(() => {
+              controller.abort(abortError);
+            });
+          },
         });
-        return HttpResponse.json(providerResponse());
+        return new HttpResponse(stream);
       }),
     );
 
     const response = await rawWebSearchRequest(actor, defaultRequest(), {
       requestSignal: controller.signal,
     });
-    await disconnectPromise;
     const afterCredits = await credits(actor);
 
     expect(response.status).toBe(200);
