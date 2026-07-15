@@ -1413,6 +1413,28 @@ export {
   type ZeroScrapeResponse,
 } from "./zero-scrape";
 export {
+  ZERO_WEB_SEARCH_DEFAULT_LIMIT,
+  ZERO_WEB_SEARCH_MAX_DATE_CHARS,
+  ZERO_WEB_SEARCH_MAX_DOMAIN_CHARS,
+  ZERO_WEB_SEARCH_MAX_DOMAINS,
+  ZERO_WEB_SEARCH_MAX_LIMIT,
+  ZERO_WEB_SEARCH_MAX_QUERY_CHARS,
+  ZERO_WEB_SEARCH_MAX_SNIPPET_CHARS,
+  ZERO_WEB_SEARCH_MAX_TITLE_CHARS,
+  ZERO_WEB_SEARCH_MAX_URL_CHARS,
+  zeroWebSearchContract,
+  zeroWebSearchDomainSchema,
+  zeroWebSearchRecencySchema,
+  zeroWebSearchRequestSchema,
+  zeroWebSearchResponseSchema,
+  zeroWebSearchResultSchema,
+  type ZeroWebSearchContract,
+  type ZeroWebSearchRecency,
+  type ZeroWebSearchRequest,
+  type ZeroWebSearchResponse,
+  type ZeroWebSearchResult,
+} from "./zero-web-search";
+export {
   zeroUsageMembersContract,
   type ZeroUsageMembersContract,
   // Inferred types

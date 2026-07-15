@@ -54,6 +54,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   host: ["host:read", "host:write"],
   maps: "maps:read",
   scrape: "scrape:read",
+  "web-search": "web-search:read",
   banking: "banking:read",
 };
 
@@ -299,6 +300,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "web-search",
+    description: "Search the public web through managed zero web search",
+    load: async () => {
+      return (await import("./commands/zero/web-search")).zeroWebSearchCommand;
+    },
+  },
+  {
     name: "banking",
     description: "Use managed zero banking services",
     load: async () => {
@@ -441,6 +449,9 @@ export function buildZeroHelpText(
     ...(shouldHideCommand("scrape", payload)
       ? []
       : ["  Scrape a web page?    zero scrape https://example.com --json"]),
+    ...(shouldHideCommand("web-search", payload)
+      ? []
+      : ['  Search the public web? zero web-search "latest news" --json']),
     ...(shouldHideCommand("banking", payload)
       ? []
       : ["  Read bank data?       zero banking accounts --json"]),
