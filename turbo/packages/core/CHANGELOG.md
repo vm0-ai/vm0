@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.435.0](https://github.com/vm0-ai/vm0/compare/core-v8.434.1...core-v8.435.0) (2026-07-15)
+
+
+### Features
+
+* **platform:** suggest chat threads from @ mentions ([#21575](https://github.com/vm0-ai/vm0/issues/21575)) ([d1e8d4a](https://github.com/vm0-ai/vm0/commit/d1e8d4af2179e8d02c0a555428c180814312f9e4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.6
+    * @vm0/connectors bumped to 1.163.0
+
 ## [8.434.1](https://github.com/vm0-ai/vm0/compare/core-v8.434.0...core-v8.434.1) (2026-07-15)
 
 
