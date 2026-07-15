@@ -314,8 +314,9 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("registry summary above is context only");
     expect(stdout).toContain("required model inputs");
     expect(stdout).toContain("authoring-only examples");
-    expect(stdout).toContain("CLI fallback model: gpt-image-1");
-    expect(stdout).toContain("CLI fallback size: 1024x1024");
+    expect(stdout).toContain("Caller-provided generation overrides: none");
+    expect(stdout).not.toContain("CLI fallback model:");
+    expect(stdout).not.toContain("CLI fallback size:");
     expect(stdout).toContain("Style-source values override CLI fallbacks");
     expect(stdout).toContain(
       "stop and report that limitation instead of generating",
@@ -324,7 +325,7 @@ describe("zero generate image command", () => {
     expect(stdout).toContain('--size "<resolved size>"');
   });
 
-  it("should distinguish caller-provided compile parameters from CLI fallbacks", async () => {
+  it("should print only caller-provided compilation overrides", async () => {
     await generateCommand.parseAsync([
       "node",
       "cli",
@@ -349,11 +350,10 @@ describe("zero generate image command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("Caller-provided model: gpt-image-1.5");
-    expect(stdout).toContain("Caller-provided size: 1024x1536");
-    expect(stdout).toContain("Caller-provided quality: high");
-    expect(stdout).toContain("Caller-provided background: opaque");
-    expect(stdout).toContain("Caller-provided format: jpeg");
+    expect(stdout).toContain(
+      "Caller-provided generation overrides: model=gpt-image-1.5, size=1024x1536, quality=high, background=opaque, format=jpeg",
+    );
+    expect(stdout).not.toContain("CLI fallback model:");
     expect(stdout).toContain(
       "Caller-provided source image URLs: https://example.com/brief-reference.png",
     );

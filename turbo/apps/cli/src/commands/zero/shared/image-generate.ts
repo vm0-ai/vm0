@@ -119,16 +119,21 @@ function parseImagePromptStrength(
   return strength;
 }
 
-function formatCompilationParameter(
+function formatCallerProvidedCompilationOverrides(
   command: Command,
-  optionName: string,
-  value: string,
+  options: ImageOptions,
 ): string {
-  const provenance =
-    command.getOptionValueSource(optionName) === "default"
-      ? "CLI fallback"
-      : "Caller-provided";
-  return `${provenance} ${optionName}: ${value}`;
+  const overrides = (
+    ["model", "size", "quality", "background", "format"] as const
+  )
+    .filter((optionName) => {
+      return command.getOptionValueSource(optionName) !== "default";
+    })
+    .map((optionName) => {
+      return `${optionName}=${options[optionName]}`;
+    });
+
+  return `Caller-provided generation overrides: ${overrides.length > 0 ? overrides.join(", ") : "none"}`;
 }
 
 function resolvePromptInput(options: ImageOptions): string | undefined {
@@ -345,15 +350,7 @@ ${formatRegistryListing(styles, "image styles")}`;
             prompt: resolvedPrompt,
             style,
             details: [
-              formatCompilationParameter(command, "model", options.model),
-              formatCompilationParameter(command, "size", options.size),
-              formatCompilationParameter(command, "quality", options.quality),
-              formatCompilationParameter(
-                command,
-                "background",
-                options.background,
-              ),
-              formatCompilationParameter(command, "format", options.format),
+              formatCallerProvidedCompilationOverrides(command, options),
               `Caller-provided source image URLs: ${
                 options.imageUrl.length > 0
                   ? options.imageUrl.join(", ")
