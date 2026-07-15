@@ -1,15 +1,16 @@
-use std::path::{Path, PathBuf};
+use std::{
+    io::{Cursor, Write},
+    path::{Path, PathBuf},
+};
 
 use super::super::{
-    R2Error, R2ImageCache,
-    archive::{TEMPLATE_FILE, pack_to_writer, unpack_into_staging},
-    download::{finalize_staging, staging_dir},
+    R2ImageCache,
+    archive::{
+        MAX_TEMPLATE_METADATA_BYTES, TEMPLATE_FILE, TemplateArchiveLimits, pack_template_to_writer,
+    },
 };
 use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
 
-/// Build a mock `R2ImageCache` from a set of rules. Use `RuleMode::MatchAny`
-/// (the issue's operations don't rely on ordered rule exhaustion; per-rule
-/// `match_requests` filters disambiguate overlap when present).
 pub(super) fn mock_cache(bucket: &str, rules: &[&Rule]) -> R2ImageCache {
     let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, rules);
     R2ImageCache::with_client(client, bucket.to_string())
@@ -28,154 +29,161 @@ pub(super) async fn wait_for_rule_calls(rule: &Rule, expected: usize) {
     .unwrap_or_else(|_| panic!("timed out waiting for {expected} mock call(s)"));
 }
 
-/// Helper: full atomic unpack from an on-disk archive (test-only path).
-/// Mirrors what `try_download` does after the S3 GET succeeds: open file,
-/// stream into staging, finalize. Lets the round-trip tests exercise the
-/// same code as production without an S3 mock.
-pub(super) async fn unpack_archive_for_test(
-    archive: &Path,
-    final_dir: &Path,
-) -> Result<(), R2Error> {
-    let staging = staging_dir(final_dir);
-    let _ = tokio::fs::remove_dir_all(&staging).await;
-    tokio::fs::create_dir_all(&staging).await?;
-    let f = tokio::fs::File::open(archive).await?;
-    unpack_into_staging(f, &staging).await?;
-    finalize_staging(&staging, final_dir).await?;
-    Ok(())
-}
-
-/// Helper: pack a synchronous closure on a blocking thread.
-pub(super) async fn pack_blocking<F>(archive: &Path, f: F) -> Result<(), R2Error>
-where
-    F: FnOnce(std::fs::File) -> Result<(), R2Error> + Send + 'static,
-{
-    let p = archive.to_path_buf();
-    tokio::task::spawn_blocking(move || {
-        let out = std::fs::File::create(&p).unwrap();
-        f(out)
-    })
-    .await
-    .unwrap()
-}
-
-/// Hand-write a 512-byte ustar header so we can put `..` in the path —
-/// `tar::Builder` defends against this on the write side too.
-pub(super) fn craft_tar_with_path(name: &[u8], data: &[u8]) -> Vec<u8> {
-    craft_tar_entry(name, b'0', &[], data)
-}
-
-/// Hand-write a ustar header with a specific typeflag byte. Used to test
-/// that `unpack_from_reader` rejects non-regular entries.
-/// `typeflag`: `b'2'` = symlink, `b'1'` = hardlink, etc.
-/// `link_target`: written into the linkname field (bytes 157..257).
-pub(super) fn craft_tar_with_typeflag(name: &[u8], typeflag: u8, link_target: &[u8]) -> Vec<u8> {
-    craft_tar_entry(name, typeflag, link_target, &[])
-}
-
-fn craft_tar_entry(name: &[u8], typeflag: u8, link_target: &[u8], data: &[u8]) -> Vec<u8> {
-    assert!(name.len() < 100);
-    assert!(link_target.len() < 100);
-
-    let mut header = [0u8; 512];
-    header[..name.len()].copy_from_slice(name);
-    header[100..108].copy_from_slice(b"0000644\0");
-    header[108..116].copy_from_slice(b"0000000\0");
-    header[116..124].copy_from_slice(b"0000000\0");
-    let size_str = format!("{:011o}\0", data.len());
-    header[124..136].copy_from_slice(size_str.as_bytes());
-    header[136..148].copy_from_slice(b"00000000000\0");
-    header[148..156].copy_from_slice(b"        ");
-    header[156] = typeflag;
-    header[157..157 + link_target.len()].copy_from_slice(link_target);
-    header[257..263].copy_from_slice(b"ustar\0");
-    header[263..265].copy_from_slice(b"00");
-    let cksum: u32 = header.iter().map(|&b| u32::from(b)).sum();
-    let cksum_str = format!("{cksum:06o}\0 ");
-    header[148..156].copy_from_slice(cksum_str.as_bytes());
-
-    let padded_data_len = data.len().div_ceil(512) * 512;
-    let mut tar = Vec::with_capacity(512 + padded_data_len + 1024);
-    tar.extend_from_slice(&header);
-    tar.extend_from_slice(data);
-    tar.resize(512 + padded_data_len, 0);
-    tar.extend_from_slice(&[0u8; 1024]);
-    tar
-}
-
-/// Write one small file (1 KiB) that `upload()` will pack into a tar.zst.
 pub(super) async fn small_src_file() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("rootfs.ext4");
+    let path = dir.path().join("source.ext4");
     tokio::fs::write(&path, vec![0u8; 1024]).await.unwrap();
     (dir, path)
 }
 
-/// Pack a tar.zst archive from a test file in-memory. Used to synthesize
-/// a valid body for a mocked `get_object` response.
-pub(super) async fn build_test_archive_bytes() -> Vec<u8> {
-    packed_archive_bytes(&[("rootfs.ext4", b"hello".as_slice())]).await
+pub(super) fn regular_template_archive(contents: &[u8]) -> Vec<u8> {
+    archive_from_entries(&[(TEMPLATE_FILE, tar::EntryType::Regular, contents)])
 }
 
-pub(super) async fn build_template_archive_bytes() -> Vec<u8> {
-    packed_archive_bytes(&[(TEMPLATE_FILE, b"hello".as_slice())]).await
-}
-
-pub(super) async fn build_template_archive_bytes_with_extra() -> Vec<u8> {
-    packed_archive_bytes(&[
-        (TEMPLATE_FILE, b"hello".as_slice()),
-        ("extra.txt", b"discard me".as_slice()),
+pub(super) fn template_archive_with_extra(contents: &[u8]) -> Vec<u8> {
+    archive_from_entries(&[
+        (TEMPLATE_FILE, tar::EntryType::Regular, contents),
+        ("extra.txt", tar::EntryType::Regular, b"must not unpack"),
     ])
-    .await
 }
 
-pub(super) async fn build_nested_template_archive_bytes() -> Vec<u8> {
-    zstd_bytes(craft_tar_with_path(b"template.ext4/payload", b"bad")).await
+pub(super) fn empty_template_archive() -> Vec<u8> {
+    archive_from_entries(&[])
 }
 
-pub(super) async fn build_empty_archive_bytes() -> Vec<u8> {
-    pack_paths_to_bytes(Vec::new()).await
+pub(super) fn nested_template_archive() -> Vec<u8> {
+    archive_from_entries(&[("template.ext4/payload", tar::EntryType::Regular, b"bad")])
 }
 
-async fn packed_archive_bytes(files: &[(&str, &[u8])]) -> Vec<u8> {
-    let src = tempfile::tempdir().unwrap();
-    let mut paths = Vec::with_capacity(files.len());
-    for (name, contents) in files {
-        let path = src.path().join(name);
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await.unwrap();
-        }
-        tokio::fs::write(&path, contents).await.unwrap();
-        paths.push(path);
+pub(super) fn archive_with_type(entry_type: tar::EntryType) -> Vec<u8> {
+    archive_from_entries(&[(TEMPLATE_FILE, entry_type, &[])])
+}
+
+fn archive_from_entries(entries: &[(&str, tar::EntryType, &[u8])]) -> Vec<u8> {
+    let encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
+    let mut builder = tar::Builder::new(encoder);
+    for (name, entry_type, contents) in entries {
+        let mut header = tar::Header::new_gnu();
+        header.set_path(name).unwrap();
+        header.set_mode(0o644);
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_size(contents.len() as u64);
+        header.set_entry_type(*entry_type);
+        header.set_cksum();
+        builder.append(&header, Cursor::new(*contents)).unwrap();
     }
-    // `src` lives until this await returns, which happens after
-    // `pack_to_writer` has finished reading files on the blocking thread.
-    pack_paths_to_bytes(paths).await
+    let encoder = builder.into_inner().unwrap();
+    encoder.finish().unwrap()
 }
 
-async fn pack_paths_to_bytes(files: Vec<PathBuf>) -> Vec<u8> {
+pub(super) async fn production_template_archive(path: &Path) -> Vec<u8> {
+    let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        let mut buf: Vec<u8> = Vec::new();
-        pack_to_writer(&mut buf, &files).unwrap();
-        buf
+        let mut bytes = Vec::new();
+        pack_template_to_writer(&mut bytes, &path).unwrap();
+        bytes
     })
     .await
     .unwrap()
 }
 
-pub(super) async fn zstd_bytes(raw_tar: Vec<u8>) -> Vec<u8> {
-    tokio::task::spawn_blocking(move || {
-        let mut out = Vec::new();
-        let mut encoder = zstd::stream::write::Encoder::new(&mut out, 1).unwrap();
-        std::io::Write::write_all(&mut encoder, &raw_tar).unwrap();
-        encoder.finish().unwrap();
-        out
-    })
-    .await
-    .unwrap()
+pub(super) fn sparse_template_archive() -> (Vec<u8>, Vec<u8>) {
+    const LOGICAL_BYTES: usize = 64 * 1024;
+    const EXTENT_BYTES: usize = 512;
+
+    let mut expected = vec![0u8; LOGICAL_BYTES];
+    expected[..EXTENT_BYTES].fill(b'A');
+    expected[LOGICAL_BYTES - EXTENT_BYTES..].fill(b'Z');
+
+    let mut header = tar::Header::new_gnu();
+    header.set_path(TEMPLATE_FILE).unwrap();
+    header.set_mode(0o644);
+    header.set_uid(0);
+    header.set_gid(0);
+    header.set_size((EXTENT_BYTES * 2) as u64);
+    header.set_entry_type(tar::EntryType::GNUSparse);
+    let gnu = header.as_gnu_mut().unwrap();
+    gnu.set_real_size(LOGICAL_BYTES as u64);
+    gnu.sparse[0].set_offset(0);
+    gnu.sparse[0].set_length(EXTENT_BYTES as u64);
+    gnu.sparse[1].set_offset((LOGICAL_BYTES - EXTENT_BYTES) as u64);
+    gnu.sparse[1].set_length(EXTENT_BYTES as u64);
+    header.set_cksum();
+
+    let mut raw = Vec::new();
+    raw.extend_from_slice(header.as_bytes());
+    raw.extend(std::iter::repeat_n(b'A', EXTENT_BYTES));
+    raw.extend(std::iter::repeat_n(b'Z', EXTENT_BYTES));
+    raw.extend_from_slice(&[0u8; 1024]);
+    (zstd_bytes(&raw), expected)
+}
+
+pub(super) fn excessive_sparse_metadata_archive() -> (Vec<u8>, u64) {
+    const BLOCK_BYTES: u64 = 512;
+    const DESCRIPTORS_PER_EXTENSION: u64 = 21;
+
+    let extension_count = MAX_TEMPLATE_METADATA_BYTES / BLOCK_BYTES;
+    let logical_bytes = extension_count * DESCRIPTORS_PER_EXTENSION * BLOCK_BYTES;
+    let mut header = tar::Header::new_gnu();
+    header.set_path(TEMPLATE_FILE).unwrap();
+    header.set_mode(0o644);
+    header.set_uid(0);
+    header.set_gid(0);
+    header.set_size(logical_bytes);
+    header.set_entry_type(tar::EntryType::GNUSparse);
+    let gnu = header.as_gnu_mut().unwrap();
+    gnu.set_real_size(logical_bytes);
+    gnu.set_is_extended(true);
+    header.set_cksum();
+
+    let mut raw = Vec::with_capacity(usize::try_from((extension_count + 1) * BLOCK_BYTES).unwrap());
+    raw.extend_from_slice(header.as_bytes());
+    let mut offset = 0;
+    for _ in 0..extension_count {
+        let mut extension = tar::GnuExtSparseHeader::new();
+        for sparse in extension.sparse_mut() {
+            sparse.set_offset(offset);
+            sparse.set_length(BLOCK_BYTES);
+            offset += BLOCK_BYTES;
+        }
+        extension.set_is_extended(true);
+        raw.extend_from_slice(extension.as_bytes());
+    }
+
+    (zstd_bytes(&raw), logical_bytes)
+}
+
+pub(super) fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
+    let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
+    encoder.write_all(raw).unwrap();
+    encoder.finish().unwrap()
+}
+
+pub(super) fn deterministic_bytes(length: usize) -> Vec<u8> {
+    let mut state = 0x4d59_5df4_d0f3_3173u64;
+    let mut bytes = Vec::with_capacity(length);
+    for _ in 0..length {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        bytes.push(state as u8);
+    }
+    bytes
+}
+
+pub(super) fn archive_limits(expected_template_bytes: u64) -> TemplateArchiveLimits {
+    TemplateArchiveLimits::new(expected_template_bytes).unwrap()
 }
 
 pub(super) fn get_object_body(bytes: Vec<u8>) -> Rule {
+    get_object_body_with_content_length(bytes, None)
+}
+
+pub(super) fn get_object_body_with_content_length(
+    bytes: Vec<u8>,
+    content_length: Option<i64>,
+) -> Rule {
     use std::sync::Arc;
 
     use aws_sdk_s3::Client;
@@ -185,9 +193,12 @@ pub(super) fn get_object_body(bytes: Vec<u8>) -> Rule {
     let body = Arc::new(bytes);
     let body_for_closure = Arc::clone(&body);
     mock!(Client::get_object).then_output(move || {
-        GetObjectOutput::builder()
-            .body(ByteStream::from((*body_for_closure).clone()))
-            .build()
+        let mut output =
+            GetObjectOutput::builder().body(ByteStream::from((*body_for_closure).clone()));
+        if let Some(content_length) = content_length {
+            output = output.content_length(content_length);
+        }
+        output.build()
     })
 }
 

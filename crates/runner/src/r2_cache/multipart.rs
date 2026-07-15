@@ -1,10 +1,10 @@
-use std::{future::Future, path::PathBuf};
+use std::{future::Future, path::Path};
 
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use tokio::io::AsyncReadExt;
 
-use super::{R2Error, R2ImageCache, archive::pack_to_writer, io_other};
+use super::{R2Error, R2ImageCache, archive::pack_template_to_writer, io_other};
 
 /// Multipart part size. R2 minimum is 5 MiB (except last part); 16 MiB
 /// keeps part count reasonable for large images and fits comfortably in memory.
@@ -15,9 +15,9 @@ impl R2ImageCache {
         &self,
         key: &str,
         upload_id: &str,
-        files: &[PathBuf],
+        template: &Path,
     ) -> Result<(), R2Error> {
-        let parts = self.stream_upload(key, upload_id, files).await?;
+        let parts = self.stream_upload(key, upload_id, template).await?;
         self.client
             .complete_multipart_upload()
             .bucket(&self.bucket)
@@ -33,26 +33,23 @@ impl R2ImageCache {
         Ok(())
     }
 
-    /// Stream-pack `files` and upload as multipart parts. Returns the completed
-    /// parts list ready for `CompleteMultipartUpload`. Failure of either the
-    /// producer (pack) or the consumer (upload) propagates as `Err`; the caller
-    /// is responsible for aborting the multipart upload in that case.
+    /// Stream-pack one template and upload it as multipart parts.
     async fn stream_upload(
         &self,
         key: &str,
         upload_id: &str,
-        files: &[PathBuf],
+        template: &Path,
     ) -> Result<Vec<CompletedPart>, R2Error> {
         // Duplex buffer ≈ 2× PART_SIZE so the producer can stay one part ahead
         // of the consumer without backpressure stalls.
         let (writer, reader) = tokio::io::duplex(PART_SIZE * 2);
-        let files_owned: Vec<PathBuf> = files.to_vec();
+        let template_owned = template.to_path_buf();
 
         // Producer: pack tar.zst into the duplex writer end, then drop everything
         // (which closes the writer, signalling EOF to the consumer).
         let pack_handle = tokio::task::spawn_blocking(move || -> Result<(), R2Error> {
             let sync_writer = tokio_util::io::SyncIoBridge::new(writer);
-            pack_to_writer(sync_writer, &files_owned)
+            pack_template_to_writer(sync_writer, &template_owned)
         });
 
         // Consumer: stream PART_SIZE chunks to S3 multipart with bounded

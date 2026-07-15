@@ -35,9 +35,11 @@
 //! Streaming: upload avoids temp files by using a `tokio::io::duplex` pipe to
 //! couple the sync tar+zstd producer (on a blocking thread) to the async
 //! multipart consumer. Download streams the S3 body through `SyncIoBridge` into
-//! a sibling staging directory, then renames the extracted `template.ext4` to
-//! the caller's destination. Callers that coordinate shared output paths should
-//! pass an attempt-scoped destination and perform their own final publish step.
+//! a sibling staging directory and validates the complete body before renaming
+//! the extracted `template.ext4` to the caller's destination. `Content-Length`
+//! is only an early rejection hint; byte limits are enforced on the stream.
+//! Callers that coordinate shared output paths should pass an attempt-scoped
+//! destination and perform their own final publish step.
 //! Memory peak per upload ≈ `(2 + CONCURRENCY + 1) × PART_SIZE` — duplex buffer,
 //! in-flight upload chunks, and the part being read — bounded regardless of
 //! image size. Currently ~112 MiB with `PART_SIZE` = 16 MiB and `CONCURRENCY` = 4.
@@ -84,49 +86,44 @@
 //! - **R2 multipart upload session**: once `create_multipart_upload` returns,
 //!   an owned guard aborts the upload on normal errors and schedules a
 //!   best-effort abort if the upload future is cancelled before disarm.
-//! - **`spawn_blocking` pack / unpack tasks**: tokio cannot cancel
-//!   blocking tasks. After parent cancellation, the producer/consumer
-//!   thread runs until it hits BrokenPipe or natural EOF — wasted CPU for
-//!   a few seconds, no resource leak.
+//! - **`spawn_blocking` pack / unpack tasks**: tokio cannot cancel blocking
+//!   tasks. After parent cancellation, the task runs until BrokenPipe, natural
+//!   EOF, or a compressed/decompressed/metadata limit. Detached extraction is
+//!   therefore still resource-bounded.
 //!
 //! ## Corrupt-object eviction
 //!
-//! A structurally-valid archive whose extracted content lacks template.ext4
-//! (e.g. uploaded by an old/buggy producer, or attacker-controlled IAM
-//! key writing a bogus tar to a predicted hash key) would otherwise
-//! dead-lock the fleet's cache for that hash: every host downloads → unpacks
-//! → finds no template → rebuilds locally → dedup-skips upload because the bad
-//! object already exists.
+//! An invalid archive (for example, one written through compromised R2
+//! credentials) would otherwise dead-lock the fleet's cache for that hash:
+//! every host downloads, rejects, rebuilds locally, then dedup-skips upload
+//! because the bad object already exists.
 //!
 //! `cmd::build::run_build` defends by passing `force = true` to upload
 //! whenever template download classifies an object as invalid. That bypasses the
 //! dedup check and atomically overwrites the bad object via multipart complete.
 //!
-//! ## Tar entry security
+//! ## Template archive contract
 //!
-//! The `tar` crate (0.4) has two relevant behaviors when consuming an
-//! attacker-influenced archive:
+//! A cache object is one zstd frame containing exactly one top-level
+//! `template.ext4` tar member and the standard two-block tar trailer. The member
+//! may be regular or old-GNU sparse: the uploader keeps tar's sparse detection
+//! enabled because `build-template.sh` creates the ext4 image with `truncate`.
+//! Its declared and materialized logical size must equal `rootfs_disk_mb`.
+//! PAX/long-name indirection, nested or extra members, continuous files, links,
+//! devices, and trailing compressed or decompressed data are invalid.
 //!
-//! 1. **Path traversal (`..` components) is silently dropped**. Verified by
-//!    `unpack_rejects_path_traversal`. The malicious entry is skipped; the
-//!    staging dir ends up missing template.ext4; the template download helper
-//!    rejects that as an invalid object and the caller rebuilds locally. Safe.
+//! The extractor independently enforces:
 //!
-//! 2. **Symlink and hardlink entries are rejected**. `unpack_from_reader`
-//!    iterates entries and rejects any whose type is not `Regular`,
-//!    `Continuous`, or `GNUSparse` — symlinks, hardlinks, character/block
-//!    devices, FIFOs, and extended-header pseudo-entries all cause an
-//!    immediate error, preventing an attacker with R2 write access from
-//!    crafting a tar where expected filenames are symlinks to host paths.
-//!    (`GNUSparse` is retained for forward compatibility with any future
-//!    sparse file in the archive; template.ext4 itself is packed as a
-//!    regular file.)
+//! - an 8 MiB cumulative metadata budget while tar locates the member, parses
+//!   GNU sparse extension headers, and validates the trailer;
+//! - a decompressed ceiling derived from the expected logical size, metadata,
+//!   tar padding, and trailer; and
+//! - a compressed ceiling derived from zstd's compression bound plus a separate
+//!   8 MiB streaming-encoder allowance.
 //!
-//! **Maintenance note**: `try_download_template_file_by_key` verifies that the
-//! archive contains a regular `template.ext4` file and classifies a missing or
-//! non-file member as an invalid object. If you add a new required member to the
-//! template R2 archive, extend that validation accordingly — otherwise an
-//! attacker-controlled tar that omits the new file would go undetected.
+//! The metadata phase starts before `entries.next()`, because tar 0.4 parses all
+//! GNU sparse extension headers and grows its sparse block list before returning
+//! the entry. Sparse payload extraction remains streaming and preserves holes.
 
 use aws_sdk_s3::error::SdkError;
 
