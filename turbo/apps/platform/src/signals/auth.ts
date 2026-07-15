@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
+import {
+  derivePlatformServiceOrigin,
+  type PlatformService,
+} from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 
 const reload$ = state(0);
@@ -39,45 +43,15 @@ const LEGACY_HOST_WITH_OPTIONAL_PORT_REGEX =
   /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::(\d{1,5}))?$/i;
 const MAX_URL_PORT = 65_535;
 
-type PublicService = "www" | "app" | "api";
-
-const SERVICE_LABELS = ["www", "app", "api", "platform"] as const;
-
-function replaceServiceLabel(hostname: string, service: PublicService): string {
-  const labels = hostname.split(".");
-  const firstLabel = labels[0];
-  if (!firstLabel) {
-    return hostname;
-  }
-
-  if ((SERVICE_LABELS as readonly string[]).includes(firstLabel)) {
-    labels[0] = service;
-    return labels.join(".");
-  }
-
-  for (const label of SERVICE_LABELS) {
-    const suffix = `-${label}`;
-    if (firstLabel.endsWith(suffix)) {
-      labels[0] = `${firstLabel.slice(0, -label.length)}${service}`;
-      return labels.join(".");
-    }
-  }
-
-  // No recognizable service label (e.g. the apex domain): prefix one.
-  return `${service}.${hostname}`;
-}
-
 // Derive a sibling service origin from a public origin, keeping protocol and
 // port: https://app.vm7.ai:8443 + "www" -> https://www.vm7.ai:8443. No
 // environment fallback — a wrong-environment URL is silent and sticks, while
 // an error here surfaces the actual bug.
 export function deriveServiceOrigin(
   currentOrigin: string,
-  service: PublicService,
+  service: Extract<PlatformService, "www" | "app" | "api">,
 ): string {
-  const url = new URL(currentOrigin);
-  url.hostname = replaceServiceLabel(url.hostname, service);
-  return url.origin;
+  return derivePlatformServiceOrigin(currentOrigin, service);
 }
 
 // The marketing/onboarding (www) origin sibling of the current host.

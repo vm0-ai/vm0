@@ -1,7 +1,8 @@
 import { command, state } from "ccstate";
 import { posthog } from "posthog-js";
+import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
-const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY as string | undefined;
+const POSTHOG_KEY = resolvePlatformRuntimeConfig().postHogKey;
 
 function runPostHog(action: (key: string) => void): void {
   if (!POSTHOG_KEY) {

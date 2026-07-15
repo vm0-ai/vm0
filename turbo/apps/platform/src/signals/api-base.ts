@@ -1,41 +1,14 @@
-export type PlatformHostTarget = "api" | "www" | "app" | "platform";
+import {
+  derivePlatformServiceOrigin,
+  rewritePlatformHostname,
+  type PlatformService,
+} from "../lib/platform-host.ts";
 
-const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
+export type PlatformHostTarget = PlatformService;
+export { rewritePlatformHostname };
 
 function trimTrailingSlash(base: string): string {
   return base.endsWith("/") ? base.slice(0, -1) : base;
-}
-
-export function rewritePlatformHostname(
-  hostname: string,
-  target: PlatformHostTarget,
-): string {
-  const labels = hostname.split(".");
-  const serviceLabelIndex = labels.length - 3;
-  if (serviceLabelIndex < 0) {
-    return hostname;
-  }
-
-  const serviceLabel = labels[serviceLabelIndex];
-  if (!serviceLabel) {
-    return hostname;
-  }
-
-  if ((PLATFORM_SERVICE_LABELS as readonly string[]).includes(serviceLabel)) {
-    labels[serviceLabelIndex] = target;
-    return labels.join(".");
-  }
-
-  for (const label of PLATFORM_SERVICE_LABELS) {
-    const suffix = `-${label}`;
-    if (serviceLabel.endsWith(suffix)) {
-      labels[serviceLabelIndex] =
-        `${serviceLabel.slice(0, -label.length)}${target}`;
-      return labels.join(".");
-    }
-  }
-
-  return hostname;
 }
 
 function browserOrigin(): string | null {
@@ -49,9 +22,7 @@ function platformOriginForTarget(
   origin: string,
   target: PlatformHostTarget,
 ): string {
-  const url = new URL(origin);
-  url.hostname = rewritePlatformHostname(url.hostname, target);
-  return url.origin;
+  return derivePlatformServiceOrigin(origin, target);
 }
 
 export function resolvePlatformOriginForTarget(

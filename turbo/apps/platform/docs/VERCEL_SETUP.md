@@ -59,14 +59,28 @@ for missing static assets.
 
 ## Environment Variables
 
-The app derives sibling service URLs from the current browser host by preserving
-the root domain and replacing the service subdomain segment. For example,
-`app.vm0.ai` resolves API traffic to `api.vm0.ai`, and `pr-123-app.vm6.ai`
-resolves API traffic to `pr-123-api.vm6.ai`.
+The app resolves its runtime environment from the browser domain. Production
+hosts under `vm0.ai` use the canonical `api.vm0.ai` and `www.vm0.ai` services,
+including when the same static artifact is served from an alternate app host.
+Preview hosts preserve their branch prefix, so `pr-123-app.vm6.ai` resolves API
+traffic to `pr-123-api.vm6.ai`.
 
-| Variable                     | Description          | Required         |
-| ---------------------------- | -------------------- | ---------------- |
-| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk authentication | For auth feature |
+Preview and production builds receive the same public configuration values.
+The serving domain selects the active artifact CDN, hosted-site domain, and
+telemetry configuration at runtime, so the built `dist` directory is portable
+between supported deployment providers.
+
+Alternate providers must serve the artifact from a hostname under the intended
+environment domain. An unrecognized provider hostname is treated as preview
+and cannot infer a separate API or web service origin.
+
+| Variable                               | Description                     | Required         |
+| -------------------------------------- | ------------------------------- | ---------------- |
+| `VITE_CLERK_PUBLISHABLE_KEY`           | Clerk authentication            | For auth feature |
+| `VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW`    | Preview analytics script        | No               |
+| `VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION` | Production analytics script     | No               |
+| `VITE_POSTHOG_KEY`                     | Production product analytics    | No               |
+| `VITE_SENTRY_DSN`                      | Production browser error intake | No               |
 
 ## Troubleshooting
 
