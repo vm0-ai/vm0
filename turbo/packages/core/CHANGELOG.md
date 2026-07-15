@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.434.0](https://github.com/vm0-ai/vm0/compare/core-v8.433.0...core-v8.434.0) (2026-07-15)
+
+
+### Features
+
+* **chat:** preserve sessions across model family switches ([#21544](https://github.com/vm0-ai/vm0/issues/21544)) ([d4cbf9f](https://github.com/vm0-ai/vm0/commit/d4cbf9f1193c009bc86668012ffb3b98a0e5289e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.4
+    * @vm0/connectors bumped to 1.162.0
+
 ## [8.433.0](https://github.com/vm0-ai/vm0/compare/core-v8.432.0...core-v8.433.0) (2026-07-15)
 
 

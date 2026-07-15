@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.3...guest-agent-v0.51.4) (2026-07-15)
+
+
+### Refactoring
+
+* **guest-agent:** name http retry budget as attempts ([#21543](https://github.com/vm0-ai/vm0/issues/21543)) ([3e114ba](https://github.com/vm0-ai/vm0/commit/3e114baaad5ed42cce2c4bfd91c4031763e4dd99))
+
 ## [0.51.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.2...guest-agent-v0.51.3) (2026-07-14)
 
 ## [0.51.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.1...guest-agent-v0.51.2) (2026-07-14)

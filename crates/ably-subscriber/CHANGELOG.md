@@ -1,5 +1,7 @@
 # Changelog
 
+## [1.0.6](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.5...ably-subscriber-v1.0.6) (2026-07-15)
+
 ## [1.0.5](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.4...ably-subscriber-v1.0.5) (2026-07-14)
 
 
