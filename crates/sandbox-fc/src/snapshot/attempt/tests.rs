@@ -481,7 +481,7 @@ async fn snapshot_attempt_drop_handoff_releases_netns_without_unlocked_sock_clea
 }
 
 #[tokio::test]
-async fn snapshot_attempt_drop_handoff_kills_child_before_netns_release() {
+async fn snapshot_attempt_drop_handoff_reaps_child_before_netns_release() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (mut attempt, sock_dir) = snapshot_attempt_for_test(&dir);
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -499,6 +499,11 @@ async fn snapshot_attempt_drop_handoff_kills_child_before_netns_release() {
 
     assert!(report.child_reaped);
     assert!(report.network_released);
+    assert_eq!(
+        report.cleanup_events,
+        vec!["child_reaped", "network_release_started"],
+        "child reaping must finish before network release starts"
+    );
     assert!(
         tokio::fs::try_exists(&sock_dir).await.unwrap(),
         "detached cleanup must not remove the stable snapshot socket directory without the outer snapshot lock"
