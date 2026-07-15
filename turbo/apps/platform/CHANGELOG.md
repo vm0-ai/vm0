@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.600.1](https://github.com/vm0-ai/vm0/compare/app-v0.600.0...app-v0.600.1) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.6
+    * @vm0/connectors bumped to 1.163.0
+    * @vm0/core bumped to 8.435.0
+
+## [0.600.0](https://github.com/vm0-ai/vm0/compare/app-v0.599.10...app-v0.600.0) (2026-07-15)
+
+
+### Features
+
+* **platform:** copy page url with cmd+l in pwa ([#21564](https://github.com/vm0-ai/vm0/issues/21564)) ([da4ccaf](https://github.com/vm0-ai/vm0/commit/da4ccafb8f225b5728e7092ef43afec11d613932))
+
+
+### Refactoring
+
+* **app:** restrict plausible analytics to production builds ([#21562](https://github.com/vm0-ai/vm0/issues/21562)) ([f2e39d4](https://github.com/vm0-ai/vm0/commit/f2e39d4033470d4d8e2c47ed1b3630c04dcaf6e4))
+
 ## [0.599.10](https://github.com/vm0-ai/vm0/compare/app-v0.599.9...app-v0.599.10) (2026-07-15)
 
 

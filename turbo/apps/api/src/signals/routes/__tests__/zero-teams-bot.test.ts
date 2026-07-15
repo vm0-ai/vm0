@@ -59,8 +59,13 @@ const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
   "Please connect your account to use Okou in this Teams workspace.";
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
   "Please connect your account to use Okou in this Teams workspace.";
-const TEAMS_WELCOME_TEXT =
-  "Hi, I'm Okou. Use `help` to see commands, or `connect` to link this Teams workspace to Okou.";
+const TEAMS_WELCOME_TEXT = [
+  "Hi, I'm Okou. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
+  "",
+  "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
+  "",
+  "Commands: `help`, `connect`, `disconnect`, `switch`, `model`. Mention `@Okou` with a task or send a DM to work privately.",
+].join("\n");
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
@@ -542,6 +547,12 @@ function teamsBotInstalledActivity(
       channel: { id: "19:channel@thread.tacv2", name: "General" },
       teamsAppId: "teams-app-test",
     },
+    from: {
+      id: fixture.teamsUserId,
+      name: "Ada Lovelace",
+      aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: "ada@example.com",
+    },
     recipient: { id: "28:bot-1", name: "Zero" },
     membersAdded: [{ id: "28:bot-1", name: "Zero" }],
   };
@@ -961,8 +972,20 @@ describe("POST /api/zero/teams/bot", () => {
       activityId: null,
       body: {
         type: "message",
-        text: TEAMS_WELCOME_TEXT,
+        text: expect.stringContaining(
+          "<at>Ada Lovelace</at> added Okou to this Teams workspace.",
+        ),
         textFormat: "markdown",
+        entities: [
+          {
+            type: "mention",
+            text: "<at>Ada Lovelace</at>",
+            mentioned: {
+              id: "29:user-1",
+              name: "Ada Lovelace",
+            },
+          },
+        ],
         channelData: {
           tenant: { id: "tenant-1" },
         },
@@ -971,7 +994,47 @@ describe("POST /api/zero/teams/bot", () => {
     expect(outboundRequests[0]?.body).not.toHaveProperty("replyToId");
   });
 
-  it("ignores Teams help, slash help, and greeting messages without a mention", async () => {
+  it("sends a personal welcome message when Teams adds the bot in personal scope", async () => {
+    botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+
+    const response = await postTeamsActivity({
+      activity: {
+        ...teamsBotInstalledActivity(),
+        id: "activity-install-personal",
+        conversation: {
+          id: "a:personal-29:user-1",
+          conversationType: "personal",
+        },
+        channelData: {
+          tenant: { id: "tenant-1", name: "Tenant One" },
+          teamsAppId: "teams-app-test",
+        },
+      },
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await response.json();
+    await flushWaitUntilForTest();
+    expect(outboundRequests).toHaveLength(1);
+    expect(outboundRequests[0]).toMatchObject({
+      conversationId: "a:personal-29:user-1",
+      activityId: null,
+      body: {
+        type: "message",
+        text: TEAMS_WELCOME_TEXT,
+        textFormat: "markdown",
+        channelData: {
+          tenant: { id: "tenant-1" },
+        },
+      },
+    });
+    expect(outboundRequests[0]?.body).not.toHaveProperty("entities");
+    expect(outboundRequests[0]?.body).not.toHaveProperty("replyToId");
+  });
+
+  it("responds to Teams validation help and greeting messages without a mention", async () => {
     botFrameworkHandlers();
     const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
 
@@ -997,6 +1060,28 @@ describe("POST /api/zero/teams/bot", () => {
     const slashHelpBody = await readTeamsBotResponseAndFlush(slashHelpResponse);
     expect(slashHelpBody).not.toHaveProperty("dispatch");
 
+    const groupChatHelpResponse = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), {
+        id: "activity-validation-group-chat-help",
+        conversation: {
+          id: "19:group-chat@thread.v2",
+          conversationType: "groupChat",
+        },
+        channelData: {
+          tenant: { id: "tenant-1", name: "Tenant One" },
+          teamsAppId: "teams-app-test",
+        },
+        text: "help",
+        entities: [],
+        replyToId: null,
+      }),
+      token: teamsToken(),
+    });
+    const groupChatHelpBody = await readTeamsBotResponseAndFlush(
+      groupChatHelpResponse,
+    );
+    expect(groupChatHelpBody).not.toHaveProperty("dispatch");
+
     const greetingResponse = await postTeamsActivity({
       activity: teamsMessageActivity(botFixture(), {
         id: "activity-validation-hi",
@@ -1007,7 +1092,26 @@ describe("POST /api/zero/teams/bot", () => {
     });
     const greetingBody = await readTeamsBotResponseAndFlush(greetingResponse);
     expect(greetingBody).not.toHaveProperty("dispatch");
-    expect(outboundRequests).toHaveLength(0);
+    expect(outboundRequests).toHaveLength(4);
+    expect(
+      outboundRequests.map((request) => {
+        return request.activityId;
+      }),
+    ).toStrictEqual([
+      "activity-validation-help",
+      "activity-validation-slash-help",
+      "activity-validation-group-chat-help",
+      "activity-validation-hi",
+    ]);
+    expect(outboundRequests[0]?.body).toMatchObject({
+      text: expect.stringContaining("Okou Teams Bot Help"),
+    });
+    expect(outboundRequests[2]?.body).toMatchObject({
+      text: expect.stringContaining("Okou Teams Bot Help"),
+    });
+    expect(outboundRequests[3]?.body).toMatchObject({
+      text: TEAMS_WELCOME_TEXT,
+    });
   });
 
   it("responds to Teams greeting messages with a mention", async () => {

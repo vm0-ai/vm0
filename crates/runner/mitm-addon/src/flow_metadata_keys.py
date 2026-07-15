@@ -19,7 +19,9 @@ Request context
   Read by usage webhook reporters.
 - ``ORIGINAL_URL``: absolute URL written by HTTP request classification from
   trusted authority, or from the authority-validation fallback URL on local
-  denial. Read by response/error logging and connector billing.
+  denial. Asterisk-form contributes an empty URL path while its raw ``*``
+  target remains on the request and firewall decision. Read by response/error
+  logging and connector billing.
 - ``NETWORK_LOG_TARGET``: ``dict`` with ``url``, ``host``, and ``port`` from
   trusted authority or authority-validation fallback URL. Read by network-log
   entry construction.
@@ -68,9 +70,10 @@ Firewall and auth context
 - ``FIREWALL_PARAMS``: ``dict`` firewall params from the match. Read by
   network-log firewall metadata when it has the expected shape.
 - ``FIREWALL_BILLABLE``: ``bool`` computed from runner VM billable firewall
-  context for matched auth flows, or forced ``False`` for browser passthrough.
-  Gates connector billing, model-provider billing, and connector response parser
-  setup; model usage observation still checks model-provider-specific gates.
+  context for matched auth flows, or forced ``False`` for browser passthrough
+  and policy-only asterisk-form allows. Gates connector billing, model-provider
+  billing, and connector response parser setup; model usage observation still
+  checks model-provider-specific gates.
 - ``FIREWALL_ACTION``: ``str`` firewall decision such as ``ALLOW``, ``DENY``,
   or ``BLOCK``. Read by response/error network logging.
 - ``FIREWALL_ERROR``: optional ``str`` error code for auth, forwarding, or

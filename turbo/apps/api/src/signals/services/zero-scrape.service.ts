@@ -8,11 +8,7 @@ import { command } from "ccstate";
 import type { AuthContext } from "../../types/auth";
 import { env } from "../../lib/env";
 import { requestSignal$ } from "../context/hono";
-import {
-  safeJsonParse,
-  settle,
-  startUntrackedBestEffortCleanup,
-} from "../utils";
+import { readBoundedResponseText, safeJsonParse, settle } from "../utils";
 import {
   checkManagedCredits$,
   recordManagedUsage$,
@@ -82,10 +78,6 @@ interface ScrapeErrorResult {
   readonly kind: "error";
   readonly error: ScrapeErrorResponse;
 }
-
-type FirecrawlTextResult =
-  | ScrapeErrorResult
-  | { readonly kind: "text"; readonly text: string };
 
 type FirecrawlBodyResult =
   | ScrapeErrorResult
@@ -263,70 +255,15 @@ function oversizedFirecrawlResponse(): ScrapeErrorResponse {
   );
 }
 
-function startBestEffortCancel(cancel: Promise<unknown>): void {
-  // Stream cancellation is advisory. Some stream implementations never settle
-  // the cancel promise, so do not put it in the detached-promise drain.
-  startUntrackedBestEffortCleanup(cancel);
-}
-
-function contentLengthExceedsLimit(response: Response): boolean {
-  const contentLength = response.headers.get("content-length");
-  if (!contentLength) {
-    return false;
-  }
-
-  const bytes = Number(contentLength);
-  return Number.isFinite(bytes) && bytes > MAX_FIRECRAWL_RESPONSE_BYTES;
-}
-
-function startResponseBodyCancel(body: ReadableStream<Uint8Array> | null) {
-  if (!body) {
-    return;
-  }
-  startBestEffortCancel(body.cancel());
-}
-
-async function readResponseText(
-  response: Response,
-): Promise<FirecrawlTextResult> {
-  if (contentLengthExceedsLimit(response)) {
-    startResponseBodyCancel(response.body);
-    return scrapeErrorResult(oversizedFirecrawlResponse());
-  }
-
-  if (!response.body) {
-    return { kind: "text", text: "" };
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  const chunks: string[] = [];
-  let bytesRead = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    bytesRead += value.byteLength;
-    if (bytesRead > MAX_FIRECRAWL_RESPONSE_BYTES) {
-      startBestEffortCancel(reader.cancel());
-      return scrapeErrorResult(oversizedFirecrawlResponse());
-    }
-    chunks.push(decoder.decode(value, { stream: true }));
-  }
-
-  chunks.push(decoder.decode());
-  return { kind: "text", text: chunks.join("") };
-}
-
 async function readResponseBody(
   response: Response,
 ): Promise<FirecrawlBodyResult> {
-  const result = await readResponseText(response);
-  if (result.kind === "error") {
-    return result;
+  const result = await readBoundedResponseText(
+    response,
+    MAX_FIRECRAWL_RESPONSE_BYTES,
+  );
+  if (result.kind === "too_large") {
+    return scrapeErrorResult(oversizedFirecrawlResponse());
   }
   const { text } = result;
   if (!text) {
