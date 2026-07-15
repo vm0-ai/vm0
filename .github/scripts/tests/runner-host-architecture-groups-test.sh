@@ -282,6 +282,11 @@ if run_clean "$HOST_GROUPS" select-group >"${TMPDIR}/missing-group-selection-key
 fi
 grep -q "missing runner host group selection key" "${TMPDIR}/missing-group-selection-key.err" || fail "expected missing group selection key message"
 
+if run_clean "$HOST_GROUPS" select-group pr-1 >"${TMPDIR}/missing-group-selection-matrix.out" 2>"${TMPDIR}/missing-group-selection-matrix.err"; then
+  fail "expected missing group selection matrix to fail"
+fi
+grep -q "missing runner host architecture matrix" "${TMPDIR}/missing-group-selection-matrix.err" || fail "expected missing group selection matrix message"
+
 if run_clean "$HOST_GROUPS" select-group pr-1 '[]' >"${TMPDIR}/empty-group-selection.out" 2>"${TMPDIR}/empty-group-selection.err"; then
   fail "expected empty group selection to fail"
 fi

@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: runner-host-architecture-groups.sh [matrix|target-matrix|has-groups|hosts ID|select-group KEY [MATRIX]|select-host ID KEY [HOSTS]]
+Usage: runner-host-architecture-groups.sh [matrix|target-matrix|has-groups|hosts ID|select-group KEY MATRIX|select-host ID KEY [HOSTS]]
 
 Emits compact JSON for configured runner host architecture groups.
 Inputs:
@@ -19,7 +19,7 @@ Commands:
   target-matrix  Emit the deploy/rollback matrix contract: id, label, target.
   has-groups  Emit true when at least one host group is configured.
   hosts ID            Emit comma-separated hosts for the given architecture group.
-  select-group KEY [MATRIX]  Emit one deterministic architecture group from the sanitized matrix.
+  select-group KEY MATRIX  Emit one deterministic architecture group from the sanitized matrix.
   select-host ID KEY [HOSTS]  Emit one deterministic host from the given architecture group.
 USAGE
 }
@@ -223,9 +223,9 @@ emit_selected_group() {
     echo "missing runner host group selection key" >&2
     return 2
   fi
-
   if [ -z "$matrix" ]; then
-    matrix=$(emit_matrix) || return $?
+    echo "missing runner host architecture matrix" >&2
+    return 2
   fi
 
   local group_count
