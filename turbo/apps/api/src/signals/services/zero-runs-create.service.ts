@@ -7,7 +7,10 @@ import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -123,6 +126,7 @@ function optionalAgentSetting(value: string | null): string | undefined {
 
 interface ZeroRunPromptContext {
   readonly userInfo: UserInfo;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
@@ -672,6 +676,7 @@ async function loadZeroRunFeatureSwitchState(
     readonly orgId: string;
   },
 ): Promise<{
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
@@ -686,6 +691,7 @@ async function loadZeroRunFeatureSwitchState(
     context,
   );
   return {
+    featureSwitchContext: context,
     relationshipMemoryEnabled,
     relationshipMemoryRuntimeInjectionEnabled:
       relationshipMemoryEnabled &&
@@ -1180,6 +1186,7 @@ async function settleZeroRunPreparation<T>(
 interface ZeroRunAfterPreCreateBase {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
@@ -1253,7 +1260,11 @@ const createAgentRunAfterZeroPreCreate$ = command(
     })();
     const preparedAgentRunPromise = set(
       prepareAgentRun$,
-      { args: provisionalCreateAgentRunArgs, timing: input.timing },
+      {
+        args: provisionalCreateAgentRunArgs,
+        timing: input.timing,
+        preloadedFeatureSwitchContext: input.featureSwitchContext,
+      },
       signal,
     );
     const [finalAppendSystemPrompt, preparedAgentRunResult] =
@@ -1307,6 +1318,7 @@ export const createZeroIntegrationRun$ = command(
 
     const {
       userInfo,
+      featureSwitchContext,
       relationshipMemoryEnabled,
       relationshipMemoryRuntimeInjectionEnabled,
       zeroScrapeEnabled,
@@ -1373,6 +1385,7 @@ export const createZeroIntegrationRun$ = command(
         command: args,
         agent,
         userInfo,
+        featureSwitchContext,
         relationshipMemoryEnabled,
         relationshipMemoryRuntimeInjectionEnabled,
         zeroScrapeEnabled,
@@ -1428,6 +1441,7 @@ export const createZeroRun$ = command(
 
     const {
       userInfo,
+      featureSwitchContext,
       relationshipMemoryEnabled,
       relationshipMemoryRuntimeInjectionEnabled,
       zeroScrapeEnabled,
@@ -1506,6 +1520,7 @@ export const createZeroRun$ = command(
         command: args,
         agent,
         userInfo,
+        featureSwitchContext,
         relationshipMemoryEnabled,
         relationshipMemoryRuntimeInjectionEnabled,
         zeroScrapeEnabled,

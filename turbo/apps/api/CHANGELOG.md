@@ -1,5 +1,72 @@
 # Changelog
 
+## [1.277.1](https://github.com/vm0-ai/vm0/compare/api-v1.277.0...api-v1.277.1) (2026-07-15)
+
+
+### Performance Improvements
+
+* **runner:** attribute session history generation claims ([#21550](https://github.com/vm0-ai/vm0/issues/21550)) ([2a2a348](https://github.com/vm0-ai/vm0/commit/2a2a348de2359fe1bae15fd0c03273449565dc51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.5
+    * @vm0/core bumped to 8.434.1
+    * @vm0/db bumped to 1.115.12
+
+## [1.277.0](https://github.com/vm0-ai/vm0/compare/api-v1.276.0...api-v1.277.0) (2026-07-15)
+
+
+### Features
+
+* **chat:** preserve sessions across model family switches ([#21544](https://github.com/vm0-ai/vm0/issues/21544)) ([d4cbf9f](https://github.com/vm0-ai/vm0/commit/d4cbf9f1193c009bc86668012ffb3b98a0e5289e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.4
+    * @vm0/connectors bumped to 1.162.0
+    * @vm0/core bumped to 8.434.0
+    * @vm0/db bumped to 1.115.11
+
+## [1.276.0](https://github.com/vm0-ai/vm0/compare/api-v1.275.9...api-v1.276.0) (2026-07-15)
+
+
+### Features
+
+* **connectors:** make nintendo connectors generally available ([#21526](https://github.com/vm0-ai/vm0/issues/21526)) ([17975ab](https://github.com/vm0-ai/vm0/commit/17975abc762f8909990b8be5db128937123355b5))
+
+
+### Refactoring
+
+* **platform:** accept workflow detail automation field ([#21528](https://github.com/vm0-ai/vm0/issues/21528)) ([5a7a9f6](https://github.com/vm0-ai/vm0/commit/5a7a9f619c58baa3499340f16a10b7b383fcda13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.3
+    * @vm0/connectors bumped to 1.161.0
+    * @vm0/core bumped to 8.433.0
+    * @vm0/db bumped to 1.115.10
+
+## [1.275.9](https://github.com/vm0-ai/vm0/compare/api-v1.275.8...api-v1.275.9) (2026-07-15)
+
+
+### Refactoring
+
+* replace 18 settle branches with existing utils ([#21521](https://github.com/vm0-ai/vm0/issues/21521)) ([00e3b8b](https://github.com/vm0-ai/vm0/commit/00e3b8b27d00cab22b329951cfa980ca9a1f208f))
+
+
+### Performance Improvements
+
+* **api:** batch usage allowance settlement ([#21495](https://github.com/vm0-ai/vm0/issues/21495)) ([4e470a8](https://github.com/vm0-ai/vm0/commit/4e470a86836f5808ded8a4c419c62a9df2c5dccd))
+
 ## [1.275.8](https://github.com/vm0-ai/vm0/compare/api-v1.275.7...api-v1.275.8) (2026-07-15)
 
 

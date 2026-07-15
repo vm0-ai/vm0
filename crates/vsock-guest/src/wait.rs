@@ -64,15 +64,12 @@ pub(crate) fn await_drain_deadline(
     completed
 }
 
-/// Wait for `child` with an optional timeout, allowing the caller to request
-/// process-tree cleanup after natural exit is observed but before the direct
-/// child is reaped.
-///
-/// The callback returns `true` when a still-running descendant is holding a
-/// resource that must be released by killing the tracked process tree.
-pub(crate) fn wait_with_kill_timeout_and_pre_reap_cleanup(
+/// Wait for `child` while observing its owning connection cancellation flag
+/// and allowing pre-reap process-tree cleanup after natural exit.
+pub(crate) fn wait_with_kill_timeout_or_connection_cancelled(
     child: Child,
     timeout_ms: u32,
+    connection_cancel: &AtomicBool,
     pre_reap_cleanup: impl FnMut() -> bool,
 ) -> WaitOutcome {
     let kill_target = process_tree_kill_target(child.id());
@@ -80,7 +77,7 @@ pub(crate) fn wait_with_kill_timeout_and_pre_reap_cleanup(
         child,
         kill_target,
         timeout_ms,
-        || false,
+        || connection_cancel.load(Ordering::Acquire),
         pre_reap_cleanup,
     )
 }
@@ -401,7 +398,13 @@ mod tests {
                     Err(e) => WaitOutcome::WaitFailed(e.to_string()),
                 }
             } else {
-                wait_with_kill_timeout_and_pre_reap_cleanup(child, timeout_ms, || false)
+                let connection_cancel = AtomicBool::new(false);
+                wait_with_kill_timeout_or_connection_cancelled(
+                    child,
+                    timeout_ms,
+                    &connection_cancel,
+                    || false,
+                )
             };
             let elapsed = start.elapsed();
             assert!(
@@ -544,16 +547,22 @@ mod tests {
         let child_id = child.id();
         let mut cleanup_called = false;
 
-        let outcome = wait_with_kill_timeout_and_pre_reap_cleanup(child, 30_000, || {
-            cleanup_called = true;
-            let stat = std::fs::read_to_string(format!("/proc/{child_id}/stat"))
-                .expect("unreaped direct child should remain visible in procfs");
-            let state = stat
-                .rsplit_once(") ")
-                .and_then(|(_, fields)| fields.chars().next());
-            assert_eq!(state, Some('Z'), "observed child should be waitable");
-            false
-        });
+        let connection_cancel = AtomicBool::new(false);
+        let outcome = wait_with_kill_timeout_or_connection_cancelled(
+            child,
+            30_000,
+            &connection_cancel,
+            || {
+                cleanup_called = true;
+                let stat = std::fs::read_to_string(format!("/proc/{child_id}/stat"))
+                    .expect("unreaped direct child should remain visible in procfs");
+                let state = stat
+                    .rsplit_once(") ")
+                    .and_then(|(_, fields)| fields.chars().next());
+                assert_eq!(state, Some('Z'), "observed child should be waitable");
+                false
+            },
+        );
 
         assert!(cleanup_called);
         assert!(matches!(outcome, WaitOutcome::Exited(status) if status.success()));

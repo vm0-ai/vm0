@@ -32,6 +32,9 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ChatModelFamilySessionContinuity, {}),
+    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
       false,
     );
@@ -118,10 +121,6 @@ describe("getAllFeatureStates", () => {
     const staffOrgStates = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(staffOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(true);
-    expect(
-      staffOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
@@ -133,6 +132,9 @@ describe("getAllFeatureStates", () => {
       staffOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
@@ -141,6 +143,9 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.ChatModelFamilySessionContinuity],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
@@ -150,10 +155,6 @@ describe("getAllFeatureStates", () => {
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(otherOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
@@ -167,6 +168,9 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ComposerChatThreadSuggestions]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
@@ -175,6 +179,9 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.ChatModelFamilySessionContinuity],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,

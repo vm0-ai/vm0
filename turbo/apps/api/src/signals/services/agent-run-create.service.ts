@@ -4225,6 +4225,7 @@ function loadResumeSession(
     async (): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
       const [conversation] = await db
         .select({
+          runId: conversations.runId,
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
@@ -4261,6 +4262,7 @@ function loadResumeSession(
           if (hash) {
             return Promise.resolve({
               sessionId: cliAgentSessionId,
+              historyGenerationRunId: conversation.runId,
               historyRef: {
                 kind: "blob",
                 hash,
@@ -5480,6 +5482,7 @@ function dispatchRun(
         runId: args.run.id,
         profile: payload.profile,
         cliAgentSessionId: payload.cliAgentSessionId,
+        historyGenerationRunId: payload.historyGenerationRunId,
         createdAt: persisted.runnerJobCreatedAt,
       });
       args.timing.flush({
@@ -6343,6 +6346,7 @@ async function prepareRunBodyContext(args: {
   readonly get: PrepareRunContextGet;
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly initialBody: CreateRunBody;
@@ -6351,9 +6355,19 @@ async function prepareRunBodyContext(args: {
     "api_dispatch_prepare_context_feature_switches",
     "nested",
     async () => {
+      if (args.preloadedFeatureSwitchContext !== undefined) {
+        args.signal.throwIfAborted();
+        return args.preloadedFeatureSwitchContext;
+      }
       return await args.get(
         loadRunFeatureSwitchContext(args.createArgs, args.signal),
       );
+    },
+    {
+      feature_switch_context_source:
+        args.preloadedFeatureSwitchContext === undefined
+          ? "database"
+          : "preloaded",
     },
   );
   const resolved = await args.timing.measure(
@@ -6648,6 +6662,7 @@ function prepareRunContext(
   args: CreateAgentRunArgs,
   timing: ApiDispatchTimingCollector,
   signal: AbortSignal,
+  preloadedFeatureSwitchContext: FeatureSwitchContext | undefined,
 ): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
@@ -6666,6 +6681,7 @@ function prepareRunContext(
         get,
         db,
         createArgs: args,
+        preloadedFeatureSwitchContext,
         timing,
         signal,
         initialBody,
@@ -7122,6 +7138,8 @@ async function committedAtomicLaunchResponse(args: {
     runId: args.committed.run.id,
     profile: args.committed.runnerJobPayload.profile,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
+    historyGenerationRunId:
+      args.committed.runnerJobPayload.historyGenerationRunId,
     createdAt: args.committed.runnerJobCreatedAt,
   });
   args.timing.flush({
@@ -7282,6 +7300,7 @@ interface PreparedAgentRun {
 interface PrepareAgentRunArgs {
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
+  readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
 }
 
 interface CompleteAgentRunArgs {
@@ -7330,7 +7349,15 @@ export const prepareAgentRun$ = command(
       "api_dispatch_prepare_run_context",
       "top_level",
       async () => {
-        return await get(prepareRunContext(db, args, timing, signal));
+        return await get(
+          prepareRunContext(
+            db,
+            args,
+            timing,
+            signal,
+            input.preloadedFeatureSwitchContext,
+          ),
+        );
       },
     );
     signal.throwIfAborted();

@@ -74,6 +74,13 @@ const runnerPreLocalAdmissionOutcomeSchema = z.enum([
   "local_holder",
   "missing_session_metadata",
 ]);
+export const sessionHistoryGenerationRelationshipSchema = z.enum([
+  "exact",
+  "different",
+  "fresh",
+  "unknown_target",
+  "unknown_reserved",
+]);
 
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
@@ -88,6 +95,8 @@ const runnerClaimTelemetrySchema = z.object({
   providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
   mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
   preLocalAdmissionOutcome: runnerPreLocalAdmissionOutcomeSchema.optional(),
+  sessionHistoryGenerationRelationship:
+    sessionHistoryGenerationRelationshipSchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
@@ -163,6 +172,7 @@ export const jobSchema = z.object({
   checkpointId: z.uuid().nullable(),
   experimentalProfile: z.string().optional(),
   cliAgentSessionId: z.string().nullable().optional(),
+  historyGenerationRunId: z.uuid().optional(),
   affinityProtectedUntil: z
     .string()
     .datetime({ offset: true })
@@ -288,6 +298,7 @@ const resumeSessionHistoryEncodedSizeSchema = z
 
 const storedResumeSessionRefSchema = z.object({
   sessionId: z.string(),
+  historyGenerationRunId: z.uuid().optional(),
   historyRef: resumeSessionHistoryBlobRefSchema.extend({
     encoding: sessionHistoryEncodingSchema.optional(),
   }),
@@ -648,6 +659,9 @@ export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type SessionHistoryDownloadSource = z.infer<
   typeof sessionHistoryDownloadSourceSchema
+>;
+export type SessionHistoryGenerationRelationship = z.infer<
+  typeof sessionHistoryGenerationRelationshipSchema
 >;
 
 export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

@@ -42,6 +42,115 @@ def test_compiled_matches_unknown_policy_when_api_has_no_permissions():
 
 
 @pytest.mark.parametrize(
+    "rule",
+    [
+        pytest.param("ANY /", id="root"),
+        pytest.param("ANY /{path+}", id="one-or-more-segments"),
+        pytest.param("ANY /{path*}", id="zero-or-more-segments"),
+    ],
+)
+def test_compiled_asterisk_form_skips_endpoint_permissions(rule):
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "full-access", "rules": [rule]}],
+            }
+        ],
+        name="example",
+    )
+    policies = {
+        "example": {
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "deny",
+        }
+    }
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com",
+        "OPTIONS",
+        compile_firewalls_or_fail(fws),
+        policies,
+        is_asterisk_form=True,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "unknown_endpoint"
+    assert result.path == "*"
+    assert result.permissions == ()
+
+
+def test_compiled_asterisk_form_unknown_allow_preserves_target_identity():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.example.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /"]}],
+            }
+        ],
+        name="example",
+    )
+    policies = {
+        "example": {
+            "allow": ["full-access"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        }
+    }
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com",
+        "OPTIONS",
+        compile_firewalls_or_fail(fws),
+        policies,
+        is_asterisk_form=True,
+    )
+
+    assert isinstance(result, matching.FirewallPolicyAllow)
+    assert result.firewall_allow.permission is None
+    assert result.firewall_allow.rule is None
+    assert result.firewall_allow.rel_path == "*"
+
+
+def test_compiled_asterisk_form_retains_malformed_auth_failure():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.example.com",
+                "auth": {"headers": None},
+                "permissions": [],
+            }
+        ],
+        name="example",
+    )
+    policies = {
+        "example": {
+            "allow": [],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "allow",
+        }
+    }
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com",
+        "OPTIONS",
+        compile_firewalls_or_fail(fws),
+        policies,
+        is_asterisk_form=True,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "malformed_firewall_config"
+    assert result.path == "*"
+
+
+@pytest.mark.parametrize(
     "url",
     [
         "https://api.example.com/items/../admin",

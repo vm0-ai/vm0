@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.599.10](https://github.com/vm0-ai/vm0/compare/app-v0.599.9...app-v0.599.10) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.5
+    * @vm0/core bumped to 8.434.1
+
+## [0.599.9](https://github.com/vm0-ai/vm0/compare/app-v0.599.8...app-v0.599.9) (2026-07-15)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.4
+    * @vm0/connectors bumped to 1.162.0
+    * @vm0/core bumped to 8.434.0
+
+## [0.599.8](https://github.com/vm0-ai/vm0/compare/app-v0.599.7...app-v0.599.8) (2026-07-15)
+
+
+### Refactoring
+
+* **platform:** accept workflow detail automation field ([#21528](https://github.com/vm0-ai/vm0/issues/21528)) ([5a7a9f6](https://github.com/vm0-ai/vm0/commit/5a7a9f619c58baa3499340f16a10b7b383fcda13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.3
+    * @vm0/connectors bumped to 1.161.0
+    * @vm0/core bumped to 8.433.0
+
+## [0.599.7](https://github.com/vm0-ai/vm0/compare/app-v0.599.6...app-v0.599.7) (2026-07-15)
+
+
+### Bug Fixes
+
+* **app:** clean up failed realtime subscriptions ([#21520](https://github.com/vm0-ai/vm0/issues/21520)) ([7cc4eb6](https://github.com/vm0-ai/vm0/commit/7cc4eb64f48ad69213866d120ad624e264ff5d5c))
+
 ## [0.599.6](https://github.com/vm0-ai/vm0/compare/app-v0.599.5...app-v0.599.6) (2026-07-15)
 
 

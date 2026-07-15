@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.31](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.30...vsock-guest-v0.19.31) (2026-07-15)
+
+
+### Bug Fixes
+
+* keep guest responsive during file writes ([#21556](https://github.com/vm0-ai/vm0/issues/21556)) ([28de816](https://github.com/vm0-ai/vm0/commit/28de81622ea55b1b67317dff3f6bd1e5c542962c))
+
 ## [0.19.30](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.29...vsock-guest-v0.19.30) (2026-07-13)
 
 ## [0.19.29](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.28...vsock-guest-v0.19.29) (2026-07-10)

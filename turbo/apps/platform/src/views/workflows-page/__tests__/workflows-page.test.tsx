@@ -717,7 +717,8 @@ function mockWorkflowApis(
         error: { code: "NOT_FOUND", message: "missing" },
       });
     }
-    return respond(200, publicWorkflowDetail(detail));
+    const publicDetail = publicWorkflowDetail(detail);
+    return respond(200, publicDetail);
   });
   context.mocks.api(
     zeroWorkflowAutomationsContract.listWorkspace,

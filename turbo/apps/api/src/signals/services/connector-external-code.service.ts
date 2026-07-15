@@ -39,7 +39,7 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { settle } from "../utils";
+import { onRejection, settle, throwIfAbort } from "../utils";
 import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
@@ -638,24 +638,24 @@ async function completeClaimedExternalCodeSession(
   // The provider code may already be consumed; finish DB commit even if the
   // client disconnects after provider success.
   const commitSignal = new AbortController().signal;
-  const persistedConnector = await settle(
+  const persistedConnector = await onRejection(
     persistClaimedConnector({
       ...args,
       token: providerResult.value,
       signal: commitSignal,
     }),
+    async (error) => {
+      throwIfAbort(error);
+      await markClaimError({
+        writeDb: args.writeDb,
+        session: args.session,
+        claimStartedAt: args.claimStartedAt,
+        errorMessage: errorMessage(error),
+        signal: commitSignal,
+      });
+    },
   );
-  if (!persistedConnector.ok) {
-    await markClaimError({
-      writeDb: args.writeDb,
-      session: args.session,
-      claimStartedAt: args.claimStartedAt,
-      errorMessage: errorMessage(persistedConnector.error),
-      signal: commitSignal,
-    });
-    throw persistedConnector.error;
-  }
-  return persistedConnector.value;
+  return persistedConnector;
 }
 
 function providerBadRequest(error: unknown) {

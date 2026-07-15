@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.144.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.18...runner-rs-v0.144.19) (2026-07-15)
+
+
+### Refactoring
+
+* **runner:** centralize reused workspace promotion resolution ([#21551](https://github.com/vm0-ai/vm0/issues/21551)) ([b3ff245](https://github.com/vm0-ai/vm0/commit/b3ff2454e7f5a8e9a485548cdbec5f86a48c9516))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid quadratic json literal probing ([#21553](https://github.com/vm0-ai/vm0/issues/21553)) ([e54388b](https://github.com/vm0-ai/vm0/commit/e54388b154cc5baa4f2b970ef249411f2e2cbebd))
+* **runner:** attribute session history generation claims ([#21550](https://github.com/vm0-ai/vm0/issues/21550)) ([2a2a348](https://github.com/vm0-ai/vm0/commit/2a2a348de2359fe1bae15fd0c03273449565dc51))
+
+## [0.144.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.17...runner-rs-v0.144.18) (2026-07-15)
+
+
+### Documentation
+
+* **mitm-addon:** document metadata visitor invariants ([#21541](https://github.com/vm0-ai/vm0/issues/21541)) ([8a545c2](https://github.com/vm0-ai/vm0/commit/8a545c2bcbf6ec1c9d017a3891e7addcc7d3d683))
+
 ## [0.144.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.16...runner-rs-v0.144.17) (2026-07-14)
 
 

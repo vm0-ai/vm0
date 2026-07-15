@@ -393,7 +393,7 @@ async fn upload_session_history_candidate(
                 "encodedSize": encoded_size,
                 "encoding": requested_encoding,
             }),
-            constants::HTTP_MAX_RETRIES,
+            constants::HTTP_MAX_ATTEMPTS,
         )
         .await
     {
@@ -1077,7 +1077,7 @@ async fn create_checkpoint_impl(
     let api_start = std::time::Instant::now();
     let url = http.checkpoint_url()?;
     let result = match http
-        .post_json(url, &payload, constants::HTTP_MAX_RETRIES)
+        .post_json(url, &payload, constants::HTTP_MAX_ATTEMPTS)
         .await
     {
         Ok(v) => v,

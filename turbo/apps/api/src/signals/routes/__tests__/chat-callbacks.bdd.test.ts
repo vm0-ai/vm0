@@ -3472,6 +3472,98 @@ describe("CHAT-02: auto-send across a model switch", () => {
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
+
+  it("resumes the CLI session when the queued model stays within the same family", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled actor to belong to an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatModelFamilySessionContinuity]: true },
+    );
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "start on opus before queueing a Claude family switch",
+      selectedModel: "claude-opus-4-6",
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstHeaders);
+
+    const second = await startChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "keep the opus session active",
+    });
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
+    await chat.updateThreadModelSelection(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queue a sonnet follow-up",
+    });
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(second.runId, secondHeaders);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === "queue a sonnet follow-up" &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimed = userMessages(messages.messages).find((message) => {
+      return (
+        message.content === "queue a sonnet follow-up" &&
+        message.runId !== undefined
+      );
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the queued message to be auto-claimed");
+    }
+
+    const autoContext = await waitForRunContext(actor, claimed.runId);
+    expect(autoContext.body.sessionId).toBe(`bdd-cli-${second.runId}`);
+    expect(autoContext.body.appendSystemPrompt ?? "").not.toContain(
+      "# Web Chat Run Context",
+    );
+    expect(autoContext.body.environment.ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
+    );
+
+    await api.requestCancelRun(actor, claimed.runId, [200]);
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
 });
 
 describe("CHAT-02: thread deletion while a run is active", () => {

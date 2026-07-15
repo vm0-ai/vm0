@@ -98,11 +98,15 @@ describe("GET /api/zero/connectors", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    expect(nonStaff.body.configuredTypes).not.toContain("nintendo-store");
+    expect(nonStaff.body.configuredTypes).not.toContain("aws");
+    expect(nonStaff.body.configuredTypes).toContain("nintendo-store");
+    expect(nonStaff.body.configuredTypes).toContain(
+      "nintendo-switch-parental-controls",
+    );
 
     mocks.clerk.session(fixture.userId, STAFF_ORG_ID);
     const staff = await accept(client.list({ headers: authHeaders() }), [200]);
-    expect(staff.body.configuredTypes).toContain("nintendo-store");
+    expect(staff.body.configuredTypes).toContain("aws");
   });
 
   it("returns connectors created through the connector API", async () => {

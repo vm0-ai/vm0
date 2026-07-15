@@ -67,7 +67,7 @@ import {
   type BeforeRunDispatch,
 } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { drainQueuedUserMessagesForThread$ } from "../services/internal-chat-run-callback.service";
+import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -105,6 +105,7 @@ import {
 } from "../services/zero-chat-queued-message.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { shouldStartNewChatSession } from "../services/chat-session-continuity.service";
 import { bestEffort } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -232,6 +233,7 @@ interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplatesEnabled: boolean;
   readonly chatMessageQueueEnabled: boolean;
+  readonly chatModelFamilySessionContinuityEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -734,18 +736,6 @@ function selectedModelForSessionDecision(params: {
   return params.threadSelectedModel;
 }
 
-function shouldStartNewSessionForSelectedModel(params: {
-  readonly latestSession: LatestThreadSession | undefined;
-  readonly nextSelectedModel: string | null;
-}): boolean {
-  return (
-    params.latestSession?.selectedModel !== undefined &&
-    params.latestSession.selectedModel !== null &&
-    params.nextSelectedModel !== null &&
-    params.latestSession.selectedModel !== params.nextSelectedModel
-  );
-}
-
 async function getLatestRunsByThreadId(
   db: Db,
   threadId: string,
@@ -1136,6 +1126,10 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.ChatMessageQueue,
       context,
     ),
+    chatModelFamilySessionContinuityEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ChatModelFamilySessionContinuity,
+      context,
+    ),
   };
 }
 
@@ -1490,6 +1484,7 @@ async function resolveThread(params: {
   readonly initialPin: ThreadModelPin;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly modelSelection: IncomingModelSelection;
+  readonly chatModelFamilySessionContinuityEnabled: boolean;
 }): Promise<ResolvedThread | ReturnType<typeof notFound>> {
   if (!params.existingThreadId) {
     const thread = await createChatThread(params.db, {
@@ -1538,12 +1533,13 @@ async function resolveThread(params: {
     latestSessionForThread(params.db, thread.id),
     loadWebChatIncompleteContext(params.db, thread.id),
   ]);
-  const startNewSession = shouldStartNewSessionForSelectedModel({
-    latestSession,
-    nextSelectedModel: selectedModelForSessionDecision({
+  const startNewSession = shouldStartNewChatSession({
+    latestModel: latestSession?.selectedModel,
+    nextModel: selectedModelForSessionDecision({
       modelSelection: params.modelSelection,
       threadSelectedModel: thread.selectedModel,
     }),
+    preserveModelFamilySession: params.chatModelFamilySessionContinuityEnabled,
   });
   return {
     threadId: thread.id,
@@ -2232,6 +2228,7 @@ function resolveTimedThread(
   args: NormalSendArgs,
   db: Db,
   initialPin: ThreadModelPin,
+  chatModelFamilySessionContinuityEnabled: boolean,
 ): ReturnType<typeof resolveThread> {
   return measureApiDispatchTiming(
     args.timing,
@@ -2249,6 +2246,7 @@ function resolveTimedThread(
         initialPin,
         codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
         modelSelection: args.body.modelSelection,
+        chatModelFamilySessionContinuityEnabled,
       });
     },
   );
@@ -2380,7 +2378,12 @@ const prepareNormalSend$ = command(
       return initialPin;
     }
 
-    const thread = await resolveTimedThread(args, db, initialPin);
+    const thread = await resolveTimedThread(
+      args,
+      db,
+      initialPin,
+      featureSwitches.chatModelFamilySessionContinuityEnabled,
+    );
     signal.throwIfAborted();
     if ("status" in thread) {
       return thread;
@@ -3392,8 +3395,11 @@ const sendQueueFirstNormalMessage$ = command(
       await publishChatMessageCreated(args.userId, threadId);
       signal.throwIfAborted();
       await set(
-        drainQueuedUserMessagesForThread$,
-        { chatThreadId: threadId },
+        drainChatThreadQueueForThread$,
+        {
+          chatThreadId: threadId,
+          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        },
         signal,
       );
       signal.throwIfAborted();

@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connector-config";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const nintendoStore = {
   "nintendo-store": {
@@ -10,7 +9,6 @@ export const nintendoStore = {
       "Connect your Nintendo Account to access Nintendo Store catalog, wishlist, points, and play activity data.",
     authMethods: {
       api: {
-        featureFlag: FeatureSwitchKey.NintendoStoreConnector,
         label: "Nintendo sign-in",
         helpText:
           "Sign in with Nintendo. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",

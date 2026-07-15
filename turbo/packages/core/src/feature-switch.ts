@@ -177,18 +177,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NintendoStoreConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Nintendo Store connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Nintendo Switch Parental Controls connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -311,6 +299,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatModelFamilySessionContinuity]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Reuse Claude Code or Codex chat sessions when switching models within the same model family.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -389,6 +384,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ComposerChatThreadSuggestions]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

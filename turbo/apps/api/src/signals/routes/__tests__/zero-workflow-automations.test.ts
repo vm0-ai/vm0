@@ -2062,7 +2062,7 @@ describe("zero workflow automations", () => {
     });
   });
 
-  it("returns created automations from list and workflow detail", async () => {
+  it("returns created automations from list and both workflow detail fields", async () => {
     const { workflowId } = await setupFixture();
 
     await accept(

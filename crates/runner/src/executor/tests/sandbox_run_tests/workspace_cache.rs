@@ -707,6 +707,58 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
     );
 }
 
+#[tokio::test]
+async fn cached_reuse_invalid_resume_session_without_promotion_skips_workspace_lease() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+    let cache = SessionWorkspaceCache::new(runner_paths);
+    let mut config = test_executor_config(dir.path()).await;
+    config.workspace_cache = Some(cache);
+    let params = JobParams {
+        workspace_disk_mb: 16,
+        ..default_params()
+    };
+    let session_id = "sess-cache-reuse-invalid-resume-no-promotion";
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let sandbox = factory
+        .create(sandbox::SandboxConfig {
+            id: SandboxId::new_v4(),
+            resources: sandbox::ResourceLimits {
+                cpu_count: params.vcpu,
+                memory_mb: params.memory_mb,
+            },
+            device_rate_limits: params.device_rate_limits.clone(),
+            workspace_drive: None,
+        })
+        .await
+        .expect("create sandbox");
+    let source_ip = sandbox.source_ip().to_owned();
+    let (idle_sandbox, _lease) = make_reusable_idle_sandbox(sandbox, source_ip, session_id).await;
+
+    let raw_session_id = "../invalid-resume";
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession::inline(
+        raw_session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (reuse_outcome, _telemetry) =
+        execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+
+    assert_eq!(reuse_outcome.exit_code(), 1);
+    let error = reuse_outcome.error().unwrap();
+    assert!(error.contains("invalid session_id"));
+    assert!(!error.contains(raw_session_id));
+    assert!(reuse_outcome.sandbox.is_some());
+    assert!(reuse_outcome.workspace_image.is_none());
+    assert!(
+        overrides.start_process_calls().is_empty(),
+        "reused sandbox must not start a process after resume session validation failure"
+    );
+}
+
 async fn reusable_idle_sandbox_with_workspace_promotion(
     cache: &SessionWorkspaceCache,
     runner_paths: &RunnerPaths,
@@ -784,6 +836,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         source_ip,
         storage_fingerprints: StorageFingerprints::default(),
         restored_session_identity: None,
+        history_generation_run_id: None,
         workspace_image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         workspace_promotion: Some(promotion),
     })
@@ -891,6 +944,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         source_ip,
         storage_fingerprints: StorageFingerprints::default(),
         restored_session_identity: None,
+        history_generation_run_id: None,
         workspace_image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         workspace_promotion: Some(promotion),
     })

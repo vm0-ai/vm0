@@ -622,6 +622,7 @@ impl VsockHost {
         }
         vsock_proto::validate_write_files(&proto_entries).map_err(protocol_invalid_input)?;
 
+        let _file_write_guard = self.shared.file_write_gate.lock().await;
         let timeout = Duration::from_secs(300);
         let resp = normal_request_on_shared_with_write_observer_frame_builder(
             &self.shared,
@@ -666,6 +667,7 @@ impl VsockHost {
     ) -> io::Result<()> {
         validate_write_file_chunk_request(request)?;
 
+        let _file_write_guard = self.shared.file_write_gate.lock().await;
         let timeout = Duration::from_secs(300);
         let resp = match tracking {
             WriteFileChunkTracking::Tracked => {
