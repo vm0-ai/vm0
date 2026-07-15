@@ -466,7 +466,6 @@ describe("model-first canonical catalog", () => {
 
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
-      "vm0-model",
       "claude-fable-5",
       "claude-opus-4-8",
       "claude-sonnet-5",

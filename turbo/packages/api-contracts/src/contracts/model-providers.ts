@@ -272,7 +272,6 @@ function filterModelProviderTypesForFeatures(
 export const VM0_ORG_SLUG = "vm0";
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
-  "vm0-model",
   "claude-fable-5",
   "claude-opus-4-8",
   "claude-sonnet-5",

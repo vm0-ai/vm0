@@ -37,7 +37,7 @@ def apply_signed_usage_receipt(flow: http.HTTPFlow) -> bool:
         return False
     if not flow_metadata.is_firewall_billable(flow.metadata):
         return False
-    if not flow_metadata.firewall_name(flow.metadata).startswith("model-provider:"):
+    if flow_metadata.firewall_name(flow.metadata) != "model-provider:vm0-model":
         return False
 
     authorization_values = flow.request.headers.get_all("authorization")

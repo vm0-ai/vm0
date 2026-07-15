@@ -13,6 +13,39 @@ import mitm_addon
 from tests.flow_helpers import header_map, response_stream
 
 
+def signed_usage_receipt_headers(billing_sku: str) -> dict[str, str]:
+    receipt = (
+        base64.urlsafe_b64encode(
+            json.dumps(
+                {
+                    "version": 1,
+                    "billingSku": billing_sku,
+                    "issuedAt": int(time.time()),
+                },
+                separators=(",", ":"),
+            ).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(
+                b"proxy-secret",
+                b"vm0-model-usage-receipt-v1\0" + receipt.encode(),
+                hashlib.sha256,
+            ).digest()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return {
+        "content-type": "application/json",
+        "x-vm0-usage-receipt": receipt,
+        "x-vm0-usage-signature": signature,
+    }
+
+
 class TestResponseHeadersHandler:
     """Tests for the responseheaders() hook contract."""
 
@@ -59,45 +92,30 @@ class TestResponseHeadersHandler:
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        receipt = (
-            base64.urlsafe_b64encode(
-                json.dumps(
-                    {
-                        "version": 1,
-                        "billingSku": "model-standard-v1",
-                        "issuedAt": int(time.time()),
-                    },
-                    separators=(",", ":"),
-                ).encode()
-            )
-            .decode()
-            .rstrip("=")
-        )
-        signature = (
-            base64.urlsafe_b64encode(
-                hmac.new(
-                    b"proxy-secret",
-                    b"vm0-model-usage-receipt-v1\0" + receipt.encode(),
-                    hashlib.sha256,
-                ).digest()
-            )
-            .decode()
-            .rstrip("=")
-        )
         flow.response = tutils.tresp(
             status_code=200,
-            headers=header_map(
-                {
-                    "content-type": "application/json",
-                    "x-vm0-usage-receipt": receipt,
-                    "x-vm0-usage-signature": signature,
-                }
-            ),
+            headers=header_map(signed_usage_receipt_headers("model-standard-v1")),
         )
 
         mitm_addon.responseheaders(flow)
 
         assert flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] == "model-standard-v1"
+        assert "x-vm0-usage-receipt" not in flow.response.headers
+        assert "x-vm0-usage-signature" not in flow.response.headers
+
+    def test_rejects_signed_model_usage_receipt_from_other_provider(self, real_flow):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.request.headers["authorization"] = "Bearer proxy-secret"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(signed_usage_receipt_headers("model-standard-v1")),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
         assert "x-vm0-usage-receipt" not in flow.response.headers
         assert "x-vm0-usage-signature" not in flow.response.headers
 
