@@ -373,6 +373,7 @@ function isTransientPresentationEditorAttribute(name: string): boolean {
   switch (name) {
     case "data-vm0-editor-edit-id":
     case "data-vm0-editor-move-id":
+    case "data-vm0-editor-selection-overlay":
     case "data-vm0-editor-selected":
     case "data-vm0-editor-slide-id":
     case "data-vm0-editor-stage": {
@@ -921,8 +922,26 @@ function presentationPreviewInteractionStyle(
       user-select: none !important;
       -webkit-user-select: none !important;
     }
-    [data-vm0-editor-selected="true"] {
-      outline-color: #0f82ff !important;
+    [data-vm0-editor-selection-overlay] {
+      position: fixed !important;
+      display: block !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 4px solid #0f82ff !important;
+      border-radius: 0 !important;
+      outline: 0 !important;
+      box-sizing: border-box !important;
+      background: transparent !important;
+      opacity: 1 !important;
+      filter: none !important;
+      mix-blend-mode: normal !important;
+      transform: none !important;
+      visibility: visible !important;
+      pointer-events: none !important;
+      z-index: 2147483647 !important;
+    }
+    [data-vm0-editor-selection-overlay][hidden] {
+      display: none !important;
     }
     [data-vm0-editor-edit-id][contenteditable="true"] {
       cursor: text !important;
@@ -932,7 +951,7 @@ function presentationPreviewInteractionStyle(
       caret-color: auto !important;
     }
     [data-vm0-editor-edit-id][contenteditable="true"]:focus {
-      outline-color: hsl(var(--ring, 15 80% 66%)) !important;
+      outline: none !important;
     }
   `;
 }

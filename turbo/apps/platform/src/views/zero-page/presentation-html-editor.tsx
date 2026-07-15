@@ -536,6 +536,7 @@ function SlideList({
 }
 
 const EDITOR_MOVE_SELECTOR = "[data-vm0-editor-move-id]";
+const EDITOR_SELECTION_OVERLAY_ATTRIBUTE = "data-vm0-editor-selection-overlay";
 const EDITOR_TEXT_SELECTOR = "[data-vm0-editor-edit-id]";
 const EDITOR_SLIDE_SELECTOR = [
   "[data-vm0-slide]",
@@ -550,6 +551,7 @@ const EDITOR_SLIDE_SELECTOR = [
   "section",
 ].join(",");
 const DRAG_START_THRESHOLD = 4;
+const SELECTION_OVERLAY_GAP = 4;
 
 interface PresentationPointerDrag {
   readonly baseBottom: number;
@@ -707,12 +709,25 @@ interface MovableFrameState {
   readonly offsets: Map<string, { offsetX: number; offsetY: number }>;
   pointerDrag: PresentationPointerDrag | null;
   selected: HTMLElement | null;
+  readonly selectionOverlay: HTMLElement;
   textEditing: HTMLElement | null;
 }
 
 function createMovableFrameState(
+  doc: Document,
   moveBlocks: readonly PresentationMoveBlock[],
 ): MovableFrameState {
+  for (const existing of Array.from(
+    doc.querySelectorAll(`[${EDITOR_SELECTION_OVERLAY_ATTRIBUTE}]`),
+  )) {
+    existing.remove();
+  }
+  const selectionOverlay = doc.createElement("div");
+  selectionOverlay.setAttribute(EDITOR_SELECTION_OVERLAY_ATTRIBUTE, "");
+  selectionOverlay.dataset.vm0EditorOwned = "true";
+  selectionOverlay.setAttribute("aria-hidden", "true");
+  selectionOverlay.hidden = true;
+  doc.body.append(selectionOverlay);
   return {
     offsets: new Map(
       moveBlocks.map((block) => {
@@ -724,8 +739,58 @@ function createMovableFrameState(
     ),
     pointerDrag: null,
     selected: null,
+    selectionOverlay,
     textEditing: null,
   };
+}
+
+function setSelectionOverlayPixelStyle(
+  overlay: HTMLElement,
+  property: "height" | "left" | "top" | "width",
+  value: number,
+): void {
+  overlay.style.setProperty(property, `${String(value)}px`, "important");
+}
+
+function updateMoveSelectionOverlay(state: MovableFrameState): void {
+  const candidate = state.selected;
+  if (!candidate?.isConnected) {
+    state.selectionOverlay.hidden = true;
+    return;
+  }
+  const rect = candidate.getBoundingClientRect();
+  if (
+    !Number.isFinite(rect.left) ||
+    !Number.isFinite(rect.top) ||
+    !Number.isFinite(rect.width) ||
+    !Number.isFinite(rect.height) ||
+    rect.width <= 0 ||
+    rect.height <= 0
+  ) {
+    state.selectionOverlay.hidden = true;
+    return;
+  }
+  setSelectionOverlayPixelStyle(
+    state.selectionOverlay,
+    "left",
+    rect.left - SELECTION_OVERLAY_GAP,
+  );
+  setSelectionOverlayPixelStyle(
+    state.selectionOverlay,
+    "top",
+    rect.top - SELECTION_OVERLAY_GAP,
+  );
+  setSelectionOverlayPixelStyle(
+    state.selectionOverlay,
+    "width",
+    rect.width + SELECTION_OVERLAY_GAP * 2,
+  );
+  setSelectionOverlayPixelStyle(
+    state.selectionOverlay,
+    "height",
+    rect.height + SELECTION_OVERLAY_GAP * 2,
+  );
+  state.selectionOverlay.hidden = false;
 }
 
 function clearMoveSelection(state: MovableFrameState): void {
@@ -733,6 +798,7 @@ function clearMoveSelection(state: MovableFrameState): void {
     delete state.selected.dataset.vm0EditorSelected;
   }
   state.selected = null;
+  state.selectionOverlay.hidden = true;
 }
 
 function selectMoveCandidate(
@@ -740,11 +806,13 @@ function selectMoveCandidate(
   candidate: HTMLElement,
 ): void {
   if (state.selected === candidate) {
+    updateMoveSelectionOverlay(state);
     return;
   }
   clearMoveSelection(state);
   state.selected = candidate;
   state.selected.dataset.vm0EditorSelected = "true";
+  updateMoveSelectionOverlay(state);
 }
 
 function finishMovableTextEditing(
@@ -755,6 +823,7 @@ function finishMovableTextEditing(
   params.syncText(element);
   element.setAttribute("contenteditable", "false");
   state.textEditing = null;
+  updateMoveSelectionOverlay(state);
 }
 
 function wireMovableTextEditing(
@@ -779,6 +848,7 @@ function wireMovableTextEditing(
     });
     element.addEventListener("input", () => {
       params.syncText(element);
+      updateMoveSelectionOverlay(state);
     });
     element.addEventListener("blur", () => {
       finishMovableTextEditing(params, state, element);
@@ -890,6 +960,7 @@ function updatePointerDrag(
   drag.currentOffsetX = pixelX / drag.layoutWidth;
   drag.currentOffsetY = pixelY / drag.layoutHeight;
   setCandidateTranslate(drag, drag.currentOffsetX, drag.currentOffsetY);
+  updateMoveSelectionOverlay(state);
 }
 
 function releasePointerCapture(
@@ -937,6 +1008,7 @@ function cancelPointerDrag(
   } else {
     drag.candidate.style.removeProperty("translate");
   }
+  updateMoveSelectionOverlay(state);
   state.pointerDrag = null;
 }
 
@@ -959,7 +1031,7 @@ function wireMovablePointerEvents(
 }
 
 function wireMovableFrame(params: WireMovableFrameParams): void {
-  const state = createMovableFrameState(params.moveBlocks);
+  const state = createMovableFrameState(params.doc, params.moveBlocks);
   removeUnsupportedMoveCandidates(params.doc);
   wireMovableTextEditing(params, state);
   wireMoveSelection(params, state);
