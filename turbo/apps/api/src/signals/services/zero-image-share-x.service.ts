@@ -466,9 +466,14 @@ async function xApiJson(args: {
   });
   args.signal.throwIfAborted();
 
-  const body = safeJsonParse((await tapError(response.text())) ?? "") ?? null;
+  const responseText = await response.text();
   if (!response.ok) {
     throw new Error(`X API returned ${response.status}`);
+  }
+
+  const body = safeJsonParse(responseText);
+  if (body === undefined) {
+    throw new Error("X API returned invalid JSON");
   }
   return body;
 }
