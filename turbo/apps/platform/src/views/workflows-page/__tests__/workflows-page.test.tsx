@@ -11,7 +11,7 @@ import {
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationUpdateRequest,
   type ZeroWorkflowUpdateRequest,
-  type ZeroWorkflowDetailResponse,
+  type LegacyZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -470,15 +470,15 @@ function publicWorkflowAutomation(
 }
 
 function publicWorkflowDetail(
-  detail: ZeroWorkflowDetailResponse,
-): ZeroWorkflowDetailResponse {
+  detail: LegacyZeroWorkflowDetailResponse,
+): LegacyZeroWorkflowDetailResponse {
   return {
     ...detail,
     triggers: detail.triggers.map(publicWorkflowAutomation),
   };
 }
 
-function salesResearch(): ZeroWorkflowDetailResponse {
+function salesResearch(): LegacyZeroWorkflowDetailResponse {
   return {
     id: SALES_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -514,7 +514,7 @@ function salesResearch(): ZeroWorkflowDetailResponse {
   };
 }
 
-function opsPlaybook(): ZeroWorkflowDetailResponse {
+function opsPlaybook(): LegacyZeroWorkflowDetailResponse {
   return {
     id: OPS_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -538,7 +538,7 @@ function opsPlaybook(): ZeroWorkflowDetailResponse {
   };
 }
 
-function launchChecklistWorkflow(): ZeroWorkflowDetailResponse {
+function launchChecklistWorkflow(): LegacyZeroWorkflowDetailResponse {
   return {
     id: CHECKLIST_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -562,7 +562,7 @@ function launchChecklistWorkflow(): ZeroWorkflowDetailResponse {
   };
 }
 
-function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
+function otherAgentWorkflow(): LegacyZeroWorkflowDetailResponse {
   return {
     id: OTHER_WORKFLOW_ID,
     agentId: OTHER_AGENT_ID,
@@ -600,7 +600,9 @@ function agent(id: string, displayName: string): TeamComposeItem {
   };
 }
 
-function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
+function summary(
+  workflow: LegacyZeroWorkflowDetailResponse,
+): ZeroWorkflowSummary {
   return {
     id: workflow.id,
     agentId: workflow.agentId,
@@ -643,9 +645,9 @@ function mockAgentPageApis(): void {
 }
 
 function applyWorkflowUpdate(
-  workflow: ZeroWorkflowDetailResponse,
+  workflow: LegacyZeroWorkflowDetailResponse,
   body: ZeroWorkflowUpdateRequest,
-): ZeroWorkflowDetailResponse {
+): LegacyZeroWorkflowDetailResponse {
   return {
     ...workflow,
     ...(body.name !== undefined ? { name: body.name } : {}),
@@ -672,8 +674,9 @@ function applyWorkflowUpdate(
 }
 
 function mockWorkflowApis(
-  workflows: ZeroWorkflowDetailResponse[],
+  workflows: LegacyZeroWorkflowDetailResponse[],
   onUpdate?: (body: ZeroWorkflowUpdateRequest) => void,
+  detailField: "triggers" | "automations" | "both" = "triggers",
 ): void {
   const setAutomationEnabled = (
     automationId: string,
@@ -717,7 +720,18 @@ function mockWorkflowApis(
         error: { code: "NOT_FOUND", message: "missing" },
       });
     }
-    return respond(200, publicWorkflowDetail(detail));
+    const publicDetail = publicWorkflowDetail(detail);
+    if (detailField === "automations") {
+      const { triggers, ...workflow } = publicDetail;
+      return respond(200, { ...workflow, automations: triggers });
+    }
+    if (detailField === "both") {
+      return respond(200, {
+        ...publicDetail,
+        automations: publicDetail.triggers,
+      });
+    }
+    return respond(200, publicDetail);
   });
   context.mocks.api(
     zeroWorkflowAutomationsContract.listWorkspace,
@@ -806,7 +820,7 @@ function mockWorkflowApis(
 }
 
 function mockDeleteWorkflow(
-  workflows: ZeroWorkflowDetailResponse[],
+  workflows: LegacyZeroWorkflowDetailResponse[],
   onDelete: (workflowId: string) => void | Promise<void>,
 ): void {
   context.mocks.api(
@@ -1494,6 +1508,20 @@ describe("workflow detail page", () => {
     expect(search()).toBe("?file=config%2Fsettings.json");
   });
 
+  it("renders canonical automation fields during the rolling deploy", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([salesResearch()], undefined, "automations");
+    mockConnectedAutomationConnectors();
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    await screen.findByText("Every weekday at 9:00 AM");
+    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Disable Every weekday at 9:00 AM" }),
+    ).toBeInTheDocument();
+  });
+
   it("checks connector readiness only on request and shows every status", async () => {
     const workflow = {
       ...salesResearch(),
@@ -1905,7 +1933,7 @@ describe("workflow detail page", () => {
 
   it("copies a workflow to another agent from the info tab", async () => {
     const workflows = [salesResearch()];
-    const copiedWorkflow: ZeroWorkflowDetailResponse = {
+    const copiedWorkflow: LegacyZeroWorkflowDetailResponse = {
       ...salesResearch(),
       id: COPIED_WORKFLOW_ID,
       agentId: OTHER_AGENT_ID,
@@ -2000,7 +2028,7 @@ describe("workflow detail page", () => {
 
   it("moves a workflow by removing the original after copying", async () => {
     const workflows = [salesResearch()];
-    const copiedWorkflow: ZeroWorkflowDetailResponse = {
+    const copiedWorkflow: LegacyZeroWorkflowDetailResponse = {
       ...salesResearch(),
       id: COPIED_WORKFLOW_ID,
       agentId: OTHER_AGENT_ID,

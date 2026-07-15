@@ -4,7 +4,7 @@ import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
   type ChatThreadWorkflowAutomation,
-  type ZeroWorkflowDetailResponse,
+  type LegacyZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationCreateRequest,
@@ -17,9 +17,9 @@ import {
   setMockWorkflowAutomations,
 } from "./workflow-automations-store.ts";
 
-const DEFAULT_WORKFLOWS: ZeroWorkflowDetailResponse[] = [];
+const DEFAULT_WORKFLOWS: LegacyZeroWorkflowDetailResponse[] = [];
 
-let mockWorkflows: ZeroWorkflowDetailResponse[] = [...DEFAULT_WORKFLOWS];
+let mockWorkflows: LegacyZeroWorkflowDetailResponse[] = [...DEFAULT_WORKFLOWS];
 
 function notFound(workflowId: string) {
   return {
@@ -27,7 +27,9 @@ function notFound(workflowId: string) {
   };
 }
 
-function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
+function summary(
+  workflow: LegacyZeroWorkflowDetailResponse,
+): ZeroWorkflowSummary {
   return {
     id: workflow.id,
     agentId: workflow.agentId,
@@ -112,7 +114,7 @@ export const apiWorkflowsHandlers = [
 
   mockApi(zeroWorkflowsCollectionContract.create, ({ body, respond }) => {
     const now = new Date().toISOString();
-    const created: ZeroWorkflowDetailResponse = {
+    const created: LegacyZeroWorkflowDetailResponse = {
       id: crypto.randomUUID(),
       agentId: body.agentId,
       agentName: null,
@@ -163,7 +165,7 @@ export const apiWorkflowsHandlers = [
     const existing = mockWorkflows[index]!;
     const now = new Date().toISOString();
     const files = body.files ?? existing.fileContents ?? [];
-    const updated: ZeroWorkflowDetailResponse = {
+    const updated: LegacyZeroWorkflowDetailResponse = {
       ...existing,
       updatedByUserId: "test-user-123",
       updatedAt: now,
@@ -226,7 +228,7 @@ export const apiWorkflowsHandlers = [
       return respond(404, notFound(params.workflowId));
     }
     const now = new Date().toISOString();
-    const copied: ZeroWorkflowDetailResponse = {
+    const copied: LegacyZeroWorkflowDetailResponse = {
       ...source,
       id: crypto.randomUUID(),
       agentId: body.toAgentId,
@@ -283,7 +285,9 @@ export const apiWorkflowsHandlers = [
 function visibilityHandlers() {
   const transition = (
     workflowId: string,
-    apply: (workflow: ZeroWorkflowDetailResponse) => ZeroWorkflowDetailResponse,
+    apply: (
+      workflow: LegacyZeroWorkflowDetailResponse,
+    ) => LegacyZeroWorkflowDetailResponse,
   ): ZeroWorkflowSummary | null => {
     const index = mockWorkflows.findIndex((item) => {
       return item.id === workflowId;
