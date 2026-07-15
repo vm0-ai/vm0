@@ -1029,7 +1029,7 @@ describe("zero workflow automations", () => {
     );
 
     expect(
-      listed.body.automations.map((entry) => {
+      listed.body.map((entry) => {
         return {
           automationId: entry.automation.id,
           workflowId: entry.workflow.id,
@@ -1053,8 +1053,8 @@ describe("zero workflow automations", () => {
         },
       ]),
     );
-    expect("files" in listed.body.automations[0]!.workflow).toBeFalsy();
-    expect("fileContents" in listed.body.automations[0]!.workflow).toBeFalsy();
+    expect("files" in listed.body[0]!.workflow).toBeFalsy();
+    expect("fileContents" in listed.body[0]!.workflow).toBeFalsy();
   });
 
   it("creates webhook event automations with a signed endpoint secret shown once", async () => {
