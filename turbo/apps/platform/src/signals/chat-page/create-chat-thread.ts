@@ -426,28 +426,27 @@ function nonAssistantRunIndicatorState(
     : runActivityIndicatorState(terminatedRunIds, runId);
 }
 
-function firstIndicatorMessageIndexByRunId(
+function visibleRunStartIndexByRunId(
   raw: readonly ChatMessageProjectionEntry[],
   revokedMessageIds: ReadonlySet<string>,
 ): ReadonlyMap<string, number> {
-  // An in-place claimed queued message keeps its original timestamp, so its
-  // run can start before the previous run's later completion marker.
-  const firstIndexByRunId = new Map<string, number>();
+  // Only a user message proves that a run started inside the loaded window;
+  // the first visible assistant message may be mid-run after pagination.
+  const runStartIndexByRunId = new Map<string, number>();
   for (let index = 0; index < raw.length; index++) {
     const message = raw[index]!.message;
     const runId = message.runId;
     if (
+      message.role !== "user" ||
       runId === undefined ||
-      firstIndexByRunId.has(runId) ||
-      revokedMessageIds.has(message.id) ||
-      isUsageMessage(message) ||
-      isGoalMarkerMessage(message)
+      runStartIndexByRunId.has(runId) ||
+      revokedMessageIds.has(message.id)
     ) {
       continue;
     }
-    firstIndexByRunId.set(runId, index);
+    runStartIndexByRunId.set(runId, index);
   }
-  return firstIndexByRunId;
+  return runStartIndexByRunId;
 }
 
 function laterStartedRunIndicatorState(
@@ -455,10 +454,10 @@ function laterStartedRunIndicatorState(
   terminatedRunId: string,
   terminatedRunIds: ReadonlySet<string>,
   revokedMessageIds: ReadonlySet<string>,
-  firstIndexByRunId: ReadonlyMap<string, number>,
+  runStartIndexByRunId: ReadonlyMap<string, number>,
 ): RunIndicatorState | undefined {
-  const terminatedRunFirstIndex = firstIndexByRunId.get(terminatedRunId);
-  if (terminatedRunFirstIndex === undefined) {
+  const terminatedRunStartIndex = runStartIndexByRunId.get(terminatedRunId);
+  if (terminatedRunStartIndex === undefined) {
     return undefined;
   }
 
@@ -468,7 +467,7 @@ function laterStartedRunIndicatorState(
     const runId = message.runId;
     if (
       runId === undefined ||
-      (firstIndexByRunId.get(runId) ?? -1) <= terminatedRunFirstIndex ||
+      (runStartIndexByRunId.get(runId) ?? -1) <= terminatedRunStartIndex ||
       revokedMessageIds.has(message.id) ||
       isUsageMessage(message) ||
       isGoalMarkerMessage(message)
@@ -491,7 +490,7 @@ function deriveRunIndicatorStateFromRawMessages(
 ): RunIndicatorState {
   const revokedMessageIds = revokedMessageIdsFromRawMessages(raw);
   const terminatedRunIds = terminatedRunIdsFromRawMessages(raw);
-  const firstIndexByRunId = firstIndicatorMessageIndexByRunId(
+  const runStartIndexByRunId = visibleRunStartIndexByRunId(
     raw,
     revokedMessageIds,
   );
@@ -513,7 +512,7 @@ function deriveRunIndicatorStateFromRawMessages(
           message.runId,
           terminatedRunIds,
           revokedMessageIds,
-          firstIndexByRunId,
+          runStartIndexByRunId,
         );
         if (laterRunState !== undefined) {
           return laterRunState;

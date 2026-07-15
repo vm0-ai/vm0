@@ -1692,6 +1692,53 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("keeps completion when the loaded window does not include either run start", async () => {
+    const threadId = "thread-run-starts-outside-loaded-window";
+    mockChatLifecycle(context, {
+      threadId,
+      activeRunIds: ["run-window-older-active"],
+      chatMessages: [
+        {
+          id: "msg-window-completed-activity",
+          role: "assistant",
+          content: "The visible completed run activity.",
+          runId: "run-window-completed",
+          runEventId: "event-window-completed-activity",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-window-older-active-activity",
+          role: "assistant",
+          content: "The visible older run activity.",
+          runId: "run-window-older-active",
+          runEventId: "event-window-older-active-activity",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-window-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-window-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The visible completed run activity."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
   it("does not use active run ids to revive an older run after a newer run completes", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-concurrent-run-completed-later",
