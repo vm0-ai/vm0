@@ -4208,6 +4208,13 @@
       "when": 1784072998367,
       "tag": "0600_make_legacy_event_automation_ids_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 601,
+      "version": "7",
+      "when": 1784076114258,
+      "tag": "0601_drop_legacy_event_trigger_ids",
+      "breakpoints": true
     }
   ]
 }

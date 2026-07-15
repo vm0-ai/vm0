@@ -219,10 +219,7 @@ type NotionWebhookEvent = z.infer<typeof notionWebhookEventSchema>;
 type NotionPageResponse = z.infer<typeof notionPageResponseSchema>;
 type NotionDataSourceResponse = z.infer<typeof notionDataSourceResponseSchema>;
 type NotionDatabaseResponse = z.infer<typeof notionDatabaseResponseSchema>;
-type NotionPendingRow = Omit<
-  typeof notionWorkflowPendingEvents.$inferSelect,
-  "triggerId"
->;
+type NotionPendingRow = typeof notionWorkflowPendingEvents.$inferSelect;
 
 function notionPendingEventColumns() {
   return {
