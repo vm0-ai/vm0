@@ -1,4 +1,4 @@
-import { legacyZeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -15,14 +15,14 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 
-const WORKFLOW_NAME = "webhook-trigger-workflow";
+const WORKFLOW_NAME = "webhook-automation-workflow";
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function legacyAutomationsClient() {
-  return setupApp({ context })(legacyZeroWorkflowAutomationsContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -62,7 +62,7 @@ async function setupFixture(): Promise<{
     throw new Error("Expected an org-scoped workflow actor");
   }
   const agent = await wf.createAgent(actor, {
-    displayName: "Webhook Trigger Agent",
+    displayName: "Webhook Automation Agent",
   });
   const workflowId = await wf.createWorkflow(actor, {
     agentId: agent.agentId,
@@ -85,13 +85,11 @@ async function postWorkflowWebhook(args: {
   readonly rawBody: string;
   readonly secret: string;
   readonly timestamp?: number;
-  readonly routeSegment?: "workflow-automations" | "workflow-triggers";
   readonly signature?: string;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
   const timestamp = args.timestamp ?? Math.floor(now() / 1000);
-  const routeSegment = args.routeSegment ?? "workflow-automations";
   const response = await createApp({ signal: context.signal }).request(
-    `/api/webhooks/${routeSegment}/${args.token}`,
+    `/api/webhooks/workflow-automations/${args.token}`,
     {
       method: "POST",
       headers: {
@@ -117,7 +115,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     const runnerGroup = runsApi.configureRunnerGroup();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -130,7 +128,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       !created.body.webhookUrl ||
       !created.body.webhookSecret
     ) {
-      throw new Error("Expected a webhook trigger with a one-time secret");
+      throw new Error("Expected a webhook automation with a one-time secret");
     }
 
     const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
@@ -229,81 +227,10 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     expect(idleAfterDuplicate.body.job).toBeNull();
   });
 
-  it("keeps canonical and legacy routes in behavior and signature parity", async () => {
-    const { workflowId } = await setupFixture();
-
-    const created = await accept(
-      legacyAutomationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: { kind: "event", eventType: "webhook-received" },
-      }),
-      [201],
-    );
-    if (
-      created.body.kind !== "event" ||
-      created.body.eventType !== "webhook-received" ||
-      !created.body.webhookUrl ||
-      !created.body.webhookSecret
-    ) {
-      throw new Error("Expected a webhook trigger");
-    }
-
-    const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
-    if (!token) {
-      throw new Error("Expected webhook URL token");
-    }
-
-    const canonical = await postWorkflowWebhook({
-      token,
-      rawBody: JSON.stringify({ event: "canonical-route" }),
-      secret: created.body.webhookSecret,
-      routeSegment: "workflow-automations",
-    });
-    const legacy = await postWorkflowWebhook({
-      token,
-      rawBody: JSON.stringify({ event: "legacy-route" }),
-      secret: created.body.webhookSecret,
-      routeSegment: "workflow-triggers",
-    });
-
-    for (const response of [canonical, legacy]) {
-      expect(response).toMatchObject({
-        status: 200,
-        body: {
-          success: true,
-          duplicate: false,
-          runId: expect.any(String),
-        },
-      });
-    }
-
-    const invalidRequest = {
-      token,
-      rawBody: JSON.stringify({ event: "invalid-signature" }),
-      secret: created.body.webhookSecret,
-      signature: "not-valid",
-    } as const;
-    const canonicalInvalid = await postWorkflowWebhook({
-      ...invalidRequest,
-      routeSegment: "workflow-automations",
-    });
-    const legacyInvalid = await postWorkflowWebhook({
-      ...invalidRequest,
-      routeSegment: "workflow-triggers",
-    });
-
-    expect(canonicalInvalid).toStrictEqual({
-      status: 401,
-      body: { error: "Unauthorized" },
-    });
-    expect(legacyInvalid).toStrictEqual(canonicalInvalid);
-  });
-
   it("auto-disables only enabled webhooks after an effective Stripe downgrade", async () => {
     const { fixture, workflowId, subscriptionId } = await setupFixture();
     const enabled = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -316,10 +243,10 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       !enabled.body.webhookUrl ||
       !enabled.body.webhookSecret
     ) {
-      throw new Error("Expected a webhook trigger with credentials");
+      throw new Error("Expected a webhook automation with credentials");
     }
     const manuallyDisabled = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -327,7 +254,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       [201],
     );
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: manuallyDisabled.body.id },
         body: undefined,
@@ -356,7 +283,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       manualAfter.kind !== "event" ||
       manualAfter.eventType !== "webhook-received"
     ) {
-      throw new Error("Expected a webhook trigger");
+      throw new Error("Expected a webhook automation");
     }
     expect(manualAfter.disabledReason).toBeNull();
     const token = new URL(enabled.body.webhookUrl).pathname.split("/").at(-1);
@@ -374,7 +301,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
   it("keeps webhooks enabled through a scheduled cancellation period", async () => {
     const { fixture, workflowId, subscriptionId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -409,16 +336,16 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     const after = await wf.readAutomation(created.body.id);
     expect(after.enabled).toBeTruthy();
     if (after.kind !== "event" || after.eventType !== "webhook-received") {
-      throw new Error("Expected a webhook trigger");
+      throw new Error("Expected a webhook automation");
     }
     expect(after.disabledReason).toBeNull();
   });
 
-  it("starts an event run when the trigger's previous run is still active", async () => {
+  it("starts an event run when the automation's previous run is still active", async () => {
     const { workflowId } = await setupFixture();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -431,7 +358,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       !created.body.webhookUrl ||
       !created.body.webhookSecret
     ) {
-      throw new Error("Expected a webhook trigger with a one-time secret");
+      throw new Error("Expected a webhook automation with a one-time secret");
     }
 
     const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);

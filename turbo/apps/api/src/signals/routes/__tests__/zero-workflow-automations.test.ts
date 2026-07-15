@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
-  legacyZeroWorkflowAutomationsContract as legacyWorkflowAutomationsContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -40,10 +39,6 @@ const webhookCallbacks = createWebhookCallbackApi(context);
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
-}
-
-function legacyAutomationsClient() {
-  return setupApp({ context })(legacyWorkflowAutomationsContract);
 }
 
 function automationsClient() {
@@ -205,7 +200,7 @@ async function runWorkflowAutomationAndReadContext(
   automationId: string,
 ): Promise<{ readonly runId: string; readonly appendSystemPrompt: string }> {
   const run = await accept(
-    legacyAutomationsClient().run({
+    automationsClient().run({
       headers: authHeaders(),
       params: { id: automationId },
     }),
@@ -589,245 +584,12 @@ describe("zero workflow automations", () => {
     return connector.id;
   }
 
-  it("keeps automation routes in parity with legacy automation aliases", async () => {
-    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-    const scenario = await setupFixture("team");
-    const { actor, workflowId } = scenario;
-    const created = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: { schedule: { type: "loop", intervalSeconds: 60 } },
-      }),
-      [201],
-    );
-    if (!created.body.chatThreadId) {
-      throw new Error("Expected the automation to bind a chat thread");
-    }
-
-    const [automationGet, legacyGet] = await Promise.all([
-      accept(
-        automationsClient().get({
-          headers: authHeaders(),
-          params: { id: created.body.id },
-        }),
-        [200],
-      ),
-      accept(
-        legacyAutomationsClient().get({
-          headers: authHeaders(),
-          params: { id: created.body.id },
-        }),
-        [200],
-      ),
-    ]);
-    expect(automationGet.body).toStrictEqual(legacyGet.body);
-
-    const [automationList, legacyList] = await Promise.all([
-      accept(
-        automationsClient().list({
-          headers: authHeaders(),
-          params: { workflowId },
-        }),
-        [200],
-      ),
-      accept(
-        legacyAutomationsClient().list({
-          headers: authHeaders(),
-          params: { workflowId },
-        }),
-        [200],
-      ),
-    ]);
-    expect(automationList.body).toStrictEqual(legacyList.body);
-
-    const [automationThreadList, legacyThreadList] = await Promise.all([
-      accept(
-        automationsClient().listForChatThread({
-          headers: authHeaders(),
-          params: { threadId: created.body.chatThreadId },
-        }),
-        [200],
-      ),
-      accept(
-        legacyAutomationsClient().listForChatThread({
-          headers: authHeaders(),
-          params: { threadId: created.body.chatThreadId },
-        }),
-        [200],
-      ),
-    ]);
-    expect(automationThreadList.body).toStrictEqual(legacyThreadList.body);
-
-    const [automationWorkspaceList, legacyWorkspaceList] = await Promise.all([
-      accept(
-        automationsClient().listWorkspace({ headers: authHeaders() }),
-        [200],
-      ),
-      accept(
-        legacyAutomationsClient().listWorkspace({ headers: authHeaders() }),
-        [200],
-      ),
-    ]);
-    expect(automationWorkspaceList.body).toStrictEqual(
-      legacyWorkspaceList.body.map(({ workflow, trigger }) => {
-        return { workflow, automation: trigger };
-      }),
-    );
-    expect(automationWorkspaceList.body[0]).not.toHaveProperty("trigger");
-    expect(legacyWorkspaceList.body[0]).not.toHaveProperty("automation");
-
-    const updated = await accept(
-      automationsClient().update({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-        body: { schedule: { type: "loop", intervalSeconds: 120 } },
-      }),
-      [200],
-    );
-    const readUpdated = await accept(
-      automationsClient().get({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [200],
-    );
-    expect(readUpdated.body).toStrictEqual(updated.body);
-
-    const disabled = await accept(
-      automationsClient().disable({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [200],
-    );
-    const readDisabled = await accept(
-      legacyAutomationsClient().get({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [200],
-    );
-    expect(readDisabled.body).toStrictEqual(disabled.body);
-
-    const enabled = await accept(
-      automationsClient().enable({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [200],
-    );
-    const readEnabled = await accept(
-      legacyAutomationsClient().get({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [200],
-    );
-    expect(readEnabled.body).toStrictEqual(enabled.body);
-
-    const automationRun = await accept(
-      automationsClient().run({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [201],
-    );
-    await cancelWorkflowAutomationRun(actor, automationRun.body.runId);
-    const legacyRun = await accept(
-      legacyAutomationsClient().run({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [201],
-    );
-    expect({ ...automationRun.body, runId: "<dynamic>" }).toStrictEqual({
-      ...legacyRun.body,
-      runId: "<dynamic>",
-    });
-    await cancelWorkflowAutomationRun(actor, legacyRun.body.runId);
-
-    const webhook = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: { kind: "event", eventType: "webhook-received" },
-      }),
-      [201],
-    );
-    const [automationSecret, legacySecret] = await Promise.all([
-      accept(
-        automationsClient().revealWebhookSecret({
-          headers: authHeaders(),
-          params: { id: webhook.body.id },
-          body: undefined,
-        }),
-        [200],
-      ),
-      accept(
-        legacyAutomationsClient().revealWebhookSecret({
-          headers: authHeaders(),
-          params: { id: webhook.body.id },
-          body: undefined,
-        }),
-        [200],
-      ),
-    ]);
-    expect(automationSecret.body).toStrictEqual(legacySecret.body);
-
-    const hidden = await createAgentWithWorkflow(scenario, {
-      userId: `user_${randomUUID()}`,
-      agentDisplayName: "Hidden Automation Agent",
-      workflowName: "hidden-automation-workflow",
-      visibility: "private",
-    });
-    const [automationHidden, legacyHidden] = await Promise.all([
-      accept(
-        automationsClient().list({
-          headers: authHeaders(),
-          params: { workflowId: hidden.workflowId },
-        }),
-        [404],
-      ),
-      accept(
-        legacyAutomationsClient().list({
-          headers: authHeaders(),
-          params: { workflowId: hidden.workflowId },
-        }),
-        [404],
-      ),
-    ]);
-    expect(automationHidden.body).toStrictEqual(legacyHidden.body);
-
-    await accept(
-      automationsClient().delete({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [204],
-    );
-    await accept(
-      legacyAutomationsClient().get({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-      }),
-      [404],
-    );
-    await accept(
-      legacyAutomationsClient().delete({
-        headers: authHeaders(),
-        params: { id: webhook.body.id },
-      }),
-      [204],
-    );
-  });
-
   it("creates a cron automation and eagerly binds a chat thread", async () => {
     const { workflowId } = await setupFixture();
 
     context.mocks.ably.publish.mockClear();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -866,7 +628,7 @@ describe("zero workflow automations", () => {
   it("lists thread-bound workflow automations", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 60 } },
@@ -874,7 +636,7 @@ describe("zero workflow automations", () => {
       [201],
     );
     const second = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -894,7 +656,7 @@ describe("zero workflow automations", () => {
     expect(second.body.chatThreadId).toBe(threadId);
 
     const listed = await accept(
-      legacyAutomationsClient().listForChatThread({
+      automationsClient().listForChatThread({
         headers: authHeaders(),
         params: { threadId },
       }),
@@ -940,7 +702,7 @@ describe("zero workflow automations", () => {
     const { workflowId } = await setupFixture("team");
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -956,7 +718,7 @@ describe("zero workflow automations", () => {
     }
 
     const listed = await accept(
-      legacyAutomationsClient().listForChatThread({
+      automationsClient().listForChatThread({
         headers: authHeaders(),
         params: { threadId: created.body.chatThreadId },
       }),
@@ -992,7 +754,7 @@ describe("zero workflow automations", () => {
   it("stores automation chat threads at the workflow-user level", async () => {
     const { workflowId } = await setupFixture();
     const first = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 60 } },
@@ -1000,7 +762,7 @@ describe("zero workflow automations", () => {
       [201],
     );
     const second = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 120 } },
@@ -1012,7 +774,7 @@ describe("zero workflow automations", () => {
     // the workflow.
     expect(second.body.chatThreadId).toBe(first.body.chatThreadId);
     const listed = await accept(
-      legacyAutomationsClient().list({
+      automationsClient().list({
         headers: authHeaders(),
         params: { workflowId },
       }),
@@ -1031,7 +793,7 @@ describe("zero workflow automations", () => {
     const { workflowId } = await setupFixture();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1053,7 +815,7 @@ describe("zero workflow automations", () => {
     expect(created.body.nextRunAt).toBe("2026-06-22T07:55:00.000Z");
 
     const updated = await accept(
-      legacyAutomationsClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -1077,7 +839,7 @@ describe("zero workflow automations", () => {
     // Disable so the past-dated one-time automation never becomes a stale due
     // candidate for later cron sweeps in the shared database.
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -1098,7 +860,7 @@ describe("zero workflow automations", () => {
     });
 
     await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: hidden.workflowId },
         body: {
@@ -1113,7 +875,7 @@ describe("zero workflow automations", () => {
     const { workflowId } = await setupFixture();
 
     await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1128,7 +890,7 @@ describe("zero workflow automations", () => {
     );
 
     await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1147,7 +909,7 @@ describe("zero workflow automations", () => {
     const { workflowId } = await setupFixture();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 1800 } },
@@ -1167,7 +929,7 @@ describe("zero workflow automations", () => {
       await setupFixture();
 
     const proRejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1185,7 +947,7 @@ describe("zero workflow automations", () => {
       tier: "team",
     });
     const teamCreated = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1203,7 +965,7 @@ describe("zero workflow automations", () => {
 
     const [created] = await Promise.all([
       accept(
-        legacyAutomationsClient().create({
+        automationsClient().create({
           headers: authHeaders(),
           params: { workflowId },
           body: { kind: "event", eventType: "webhook-received" },
@@ -1239,7 +1001,7 @@ describe("zero workflow automations", () => {
       });
 
     const first = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 60 } },
@@ -1247,7 +1009,7 @@ describe("zero workflow automations", () => {
       [201],
     );
     const second = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: secondWorkflowId },
         body: {
@@ -1262,14 +1024,14 @@ describe("zero workflow automations", () => {
     );
 
     const listed = await accept(
-      legacyAutomationsClient().listWorkspace({ headers: authHeaders() }),
+      automationsClient().listWorkspace({ headers: authHeaders() }),
       [200],
     );
 
     expect(
       listed.body.map((entry) => {
         return {
-          automationId: entry.trigger.id,
+          automationId: entry.automation.id,
           workflowId: entry.workflow.id,
           workflowName: entry.workflow.name,
           agentId: entry.workflow.agentId,
@@ -1299,7 +1061,7 @@ describe("zero workflow automations", () => {
     const { workflowId } = await setupFixture("team");
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1337,7 +1099,7 @@ describe("zero workflow automations", () => {
     );
 
     const listed = await accept(
-      legacyAutomationsClient().list({
+      automationsClient().list({
         headers: authHeaders(),
         params: { workflowId },
       }),
@@ -1358,7 +1120,7 @@ describe("zero workflow automations", () => {
     expect(listedWebhook.webhookSecret).toBeUndefined();
 
     const revealed = await accept(
-      legacyAutomationsClient().revealWebhookSecret({
+      automationsClient().revealWebhookSecret({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1375,7 +1137,7 @@ describe("zero workflow automations", () => {
     const { actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1383,7 +1145,7 @@ describe("zero workflow automations", () => {
       [201],
     );
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1401,7 +1163,7 @@ describe("zero workflow automations", () => {
     await runs.grantProEntitlement(actor, { customerId, subscriptionId });
 
     const teamRequired = await accept(
-      legacyAutomationsClient().enable({
+      automationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1414,7 +1176,7 @@ describe("zero workflow automations", () => {
   it("serializes webhook re-enable with an effective downgrade", async () => {
     const { subscriptionId, workflowId } = await setupFixture("team");
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1422,7 +1184,7 @@ describe("zero workflow automations", () => {
       [201],
     );
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1432,7 +1194,7 @@ describe("zero workflow automations", () => {
 
     const [enabled] = await Promise.all([
       accept(
-        legacyAutomationsClient().enable({
+        automationsClient().enable({
           headers: authHeaders(),
           params: { id: created.body.id },
           body: undefined,
@@ -1464,7 +1226,7 @@ describe("zero workflow automations", () => {
     const { actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -1497,7 +1259,7 @@ describe("zero workflow automations", () => {
     });
 
     const enabled = await accept(
-      legacyAutomationsClient().enable({
+      automationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1509,7 +1271,7 @@ describe("zero workflow automations", () => {
       disabledReason: null,
     });
     const revealed = await accept(
-      legacyAutomationsClient().revealWebhookSecret({
+      automationsClient().revealWebhookSecret({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: undefined,
@@ -1526,7 +1288,7 @@ describe("zero workflow automations", () => {
     const { workflowId } = await setupFixture();
     mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1546,7 +1308,7 @@ describe("zero workflow automations", () => {
   it("requires a connected Google Calendar account for Google Calendar event automations", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1565,7 +1327,7 @@ describe("zero workflow automations", () => {
   it("rejects Notion child page automations when Notion automation creation is disabled", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1589,7 +1351,7 @@ describe("zero workflow automations", () => {
   it("rejects Notion database item automations when Notion automation creation is disabled", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1613,7 +1375,7 @@ describe("zero workflow automations", () => {
   it("rejects Notion page content updated automations when Notion automation creation is disabled", async () => {
     const { workflowId } = await setupFixture();
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1639,7 +1401,7 @@ describe("zero workflow automations", () => {
     await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1665,7 +1427,7 @@ describe("zero workflow automations", () => {
     await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1691,7 +1453,7 @@ describe("zero workflow automations", () => {
     await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1718,7 +1480,7 @@ describe("zero workflow automations", () => {
     await connectNotion(scenario);
 
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1745,7 +1507,7 @@ describe("zero workflow automations", () => {
     await connectNotion(scenario);
 
     const rejected = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1773,7 +1535,7 @@ describe("zero workflow automations", () => {
     configureNotionPageMock();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1818,7 +1580,7 @@ describe("zero workflow automations", () => {
     configureNotionDatabaseMock();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1863,7 +1625,7 @@ describe("zero workflow automations", () => {
     configureNotionPageMock();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1911,7 +1673,7 @@ describe("zero workflow automations", () => {
     configureNotionDatabaseMock();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -1986,7 +1748,7 @@ describe("zero workflow automations", () => {
     const watchRecorder = configureGmailWatchMock();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2022,7 +1784,7 @@ describe("zero workflow automations", () => {
     expect(watchRecorder.calls).toBe(1);
 
     const updated = await accept(
-      legacyAutomationsClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2066,7 +1828,7 @@ describe("zero workflow automations", () => {
     });
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2107,7 +1869,7 @@ describe("zero workflow automations", () => {
     configureGmailWatchMock();
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2140,7 +1902,7 @@ describe("zero workflow automations", () => {
 
     configureGmailLabelsMock([{ id: "Label_escalated", name: "Escalated" }]);
     const updated = await accept(
-      legacyAutomationsClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2184,7 +1946,7 @@ describe("zero workflow automations", () => {
     );
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2223,7 +1985,7 @@ describe("zero workflow automations", () => {
     });
 
     const updated = await accept(
-      legacyAutomationsClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2271,7 +2033,7 @@ describe("zero workflow automations", () => {
     );
 
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -2304,7 +2066,7 @@ describe("zero workflow automations", () => {
     const { workflowId } = await setupFixture();
 
     await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2319,7 +2081,7 @@ describe("zero workflow automations", () => {
     );
 
     const listed = await accept(
-      legacyAutomationsClient().list({
+      automationsClient().list({
         headers: authHeaders(),
         params: { workflowId },
       }),
@@ -2340,17 +2102,13 @@ describe("zero workflow automations", () => {
       }),
       [200],
     );
-    if (!("triggers" in detail.body && "automations" in detail.body)) {
-      throw new Error("Expected dual workflow detail automation fields");
-    }
-    expect(detail.body.automations).toStrictEqual(detail.body.triggers);
     expect(detail.body.automations).toHaveLength(1);
   });
 
   it("updates the schedule of an existing automation", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2361,7 +2119,7 @@ describe("zero workflow automations", () => {
     );
 
     const updated = await accept(
-      legacyAutomationsClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2386,7 +2144,7 @@ describe("zero workflow automations", () => {
     mockNow(Date.parse("2026-06-28T06:00:00.000Z"));
     const { workflowId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2399,7 +2157,7 @@ describe("zero workflow automations", () => {
     // A real manual run through the public run route stamps lastRunAt.
     mockNow(Date.parse("2026-06-28T06:05:00.000Z"));
     await accept(
-      legacyAutomationsClient().run({
+      automationsClient().run({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2408,7 +2166,7 @@ describe("zero workflow automations", () => {
 
     mockNow(Date.parse("2026-06-28T06:10:00.000Z"));
     const updated = await accept(
-      legacyAutomationsClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2422,7 +2180,7 @@ describe("zero workflow automations", () => {
 
     // Keep the past-dated loop automation out of later global cron sweeps.
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2433,7 +2191,7 @@ describe("zero workflow automations", () => {
   it("clears next run on disable and recomputes it on enable", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2448,7 +2206,7 @@ describe("zero workflow automations", () => {
     );
 
     const disabled = await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2458,7 +2216,7 @@ describe("zero workflow automations", () => {
     expect(disabled.body.nextRunAt).toBeNull();
 
     const enabled = await accept(
-      legacyAutomationsClient().enable({
+      automationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2473,7 +2231,7 @@ describe("zero workflow automations", () => {
     mockNow(Date.parse("2026-06-28T06:00:00.000Z"));
     const { workflowId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2487,14 +2245,14 @@ describe("zero workflow automations", () => {
     // to recompute the next run from the last run interval.
     mockNow(Date.parse("2026-06-28T06:05:00.000Z"));
     await accept(
-      legacyAutomationsClient().run({
+      automationsClient().run({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
       [201],
     );
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2503,7 +2261,7 @@ describe("zero workflow automations", () => {
 
     mockNow(Date.parse("2026-06-28T06:10:00.000Z"));
     const enabled = await accept(
-      legacyAutomationsClient().enable({
+      automationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2514,7 +2272,7 @@ describe("zero workflow automations", () => {
     expect(enabled.body.nextRunAt).toBe("2026-06-28T06:35:00.000Z");
 
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2525,7 +2283,7 @@ describe("zero workflow automations", () => {
   it("treats a deleted workflow's automation as not found on enable", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2536,7 +2294,7 @@ describe("zero workflow automations", () => {
     );
 
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2552,7 +2310,7 @@ describe("zero workflow automations", () => {
     );
 
     await accept(
-      legacyAutomationsClient().enable({
+      automationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2563,7 +2321,7 @@ describe("zero workflow automations", () => {
   it("allows another org member to manage only their own automations", async () => {
     const { fixture, workflowId } = await setupFixture();
     const ownerAutomation = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2579,7 +2337,7 @@ describe("zero workflow automations", () => {
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
 
     await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2590,7 +2348,7 @@ describe("zero workflow automations", () => {
     );
 
     await accept(
-      legacyAutomationsClient().delete({
+      automationsClient().delete({
         headers: authHeaders(),
         params: { id: ownerAutomation.body.id },
       }),
@@ -2601,7 +2359,7 @@ describe("zero workflow automations", () => {
   it("keeps the bound chat thread when an automation is deleted", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2615,7 +2373,7 @@ describe("zero workflow automations", () => {
 
     context.mocks.ably.publish.mockClear();
     await accept(
-      legacyAutomationsClient().delete({
+      automationsClient().delete({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2656,7 +2414,7 @@ describe("zero workflow automations", () => {
       [200],
     );
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 3600 } },
@@ -2764,14 +2522,14 @@ describe("zero workflow automations", () => {
     await cancelWorkflowAutomationRun(actor, changedModel.runId);
 
     await accept(
-      legacyAutomationsClient().disable({
+      automationsClient().disable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
       [200],
     );
     await accept(
-      legacyAutomationsClient().enable({
+      automationsClient().enable({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),
@@ -2796,7 +2554,7 @@ describe("zero workflow automations", () => {
     await cancelWorkflowAutomationRun(actor, reenabled.runId);
 
     await accept(
-      legacyAutomationsClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2810,7 +2568,7 @@ describe("zero workflow automations", () => {
       [200],
     );
     await accept(
-      legacyAutomationsClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: {
@@ -2882,7 +2640,7 @@ describe("zero workflow automations", () => {
       [200],
     );
     const onceAutomation = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -2915,7 +2673,7 @@ describe("zero workflow automations", () => {
     await cancelWorkflowAutomationRun(actor, secondOnce.runId);
 
     const eventAutomation = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -2969,7 +2727,7 @@ describe("zero workflow automations", () => {
       [200],
     );
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 3600 } },
@@ -3022,7 +2780,7 @@ describe("zero workflow automations", () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { workflowId } = await setupFixture();
     const created = await accept(
-      legacyAutomationsClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -3041,7 +2799,7 @@ describe("zero workflow automations", () => {
     }
 
     const run = await accept(
-      legacyAutomationsClient().run({
+      automationsClient().run({
         headers: authHeaders(),
         params: { id: created.body.id },
       }),

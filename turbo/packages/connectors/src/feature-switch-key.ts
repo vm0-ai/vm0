@@ -83,10 +83,3 @@ export enum FeatureSwitchKey {
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ZeroMail = "zeroMail",
 }
-
-/**
- * Temporary wire alias used while old platform and API versions drain.
- * Remove after the Notion workflow automation feature-switch migration.
- */
-export const LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY =
-  "notionWorkflowTriggers";
