@@ -791,13 +791,13 @@ describe("createApp", () => {
     it("keeps the legacy polling endpoint for already-loaded clients", async () => {
       const app = createApp({ signal: context.signal });
       const response = await app.request(
-        "/api/client/compatibility?version=0.0.0-alpha.1",
+        "/api/client/compatibility?version=0.599.18",
         { method: "GET" },
       );
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toStrictEqual({
-        minimumSupportedVersion: "0.0.0",
+        minimumSupportedVersion: "0.599.19",
         supported: false,
       });
       expect(response.headers.get("cache-control")).toBe("no-store");
@@ -809,7 +809,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.0.0-alpha.1",
+          [CLIENT_VERSION_HEADER]: "0.599.18",
         },
       });
 
@@ -826,7 +826,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.0.0",
+          [CLIENT_VERSION_HEADER]: "0.599.19",
         },
       });
 
@@ -839,7 +839,7 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_CLI,
-          [CLIENT_VERSION_HEADER]: "0.0.0-alpha.1",
+          [CLIENT_VERSION_HEADER]: "0.599.18",
         },
       });
 
@@ -856,7 +856,7 @@ describe("createApp", () => {
         headers: {
           "user-agent": "zero-test-agent",
           "x-forwarded-for": "203.0.113.10, 198.51.100.5",
-          "x-client-version": "0.569.1",
+          "x-client-version": "0.599.19",
           "x-client-type": "App",
           "x-client-session-id": "session-test",
           "x-client-request-id": "request-test",
@@ -874,7 +874,7 @@ describe("createApp", () => {
         path_template: "/health",
         remote_addr: "203.0.113.10",
         user_agent: "zero-test-agent",
-        x_client_version: "0.569.1",
+        x_client_version: "0.599.19",
         x_client_type: "App",
         x_client_session_id: "session-test",
         x_client_request_id: "request-test",
