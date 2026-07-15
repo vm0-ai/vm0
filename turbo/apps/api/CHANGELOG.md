@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.277.1](https://github.com/vm0-ai/vm0/compare/api-v1.277.0...api-v1.277.1) (2026-07-15)
+
+
+### Performance Improvements
+
+* **runner:** attribute session history generation claims ([#21550](https://github.com/vm0-ai/vm0/issues/21550)) ([2a2a348](https://github.com/vm0-ai/vm0/commit/2a2a348de2359fe1bae15fd0c03273449565dc51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.5
+    * @vm0/core bumped to 8.434.1
+    * @vm0/db bumped to 1.115.12
+
 ## [1.277.0](https://github.com/vm0-ai/vm0/compare/api-v1.276.0...api-v1.277.0) (2026-07-15)
 
 
