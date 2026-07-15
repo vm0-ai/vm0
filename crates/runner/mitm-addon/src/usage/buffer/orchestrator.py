@@ -149,7 +149,19 @@ class UsageEventBuffer:
         return accepted_count
 
     def flush_usage_events(self, *, trigger: UsageFlushTrigger) -> int:
-        """Flush all buffered usage events now."""
+        """Attempt to admit buffered webhook batches for ``trigger``.
+
+        ``runner`` and ``shutdown`` wait for flush ownership. ``timer``,
+        ``threshold``, and ``test`` defer when another invocation owns the
+        flush; when timers are enabled, the buffered work remains eligible for
+        a later timer.
+
+        Return the number of webhook batches admitted by this invocation. Zero
+        does not prove that the buffer is empty. Admission does not wait for
+        final delivery or retained-retry completion. Non-shutdown triggers
+        schedule retained work for a later timer when timers are enabled;
+        shutdown does not schedule another timer.
+        """
         return self._flush_usage_events(trigger=trigger)
 
     def close(self) -> None:

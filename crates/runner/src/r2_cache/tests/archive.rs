@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use super::super::{R2Error, archive::pack_to_writer, download::staging_dir};
 use super::fixtures::{
     craft_tar_with_path, craft_tar_with_typeflag, pack_blocking, unpack_archive_for_test,
-    write_mock_image_files,
 };
 
 // ---- pack / unpack round-trip --------------------------------------
@@ -14,11 +13,15 @@ async fn pack_then_unpack_round_trips_rootfs() {
     let dst_root = tempfile::tempdir().unwrap();
     let final_dir = dst_root.path().join("hash-abc");
 
-    let src_files = write_mock_image_files(src_dir.path()).await;
+    let src = src_dir.path().join("rootfs.ext4");
+    // Encode each word's position so duplicating or reordering equal-sized
+    // blocks changes the payload while preserving its total length.
+    let rootfs_contents: Vec<u8> = (0..1024_u32).flat_map(u32::to_le_bytes).collect();
+    tokio::fs::write(&src, rootfs_contents).await.unwrap();
 
     let archive = tempfile::NamedTempFile::new().unwrap();
     let archive_path = archive.path().to_path_buf();
-    let files_for_pack = src_files.clone();
+    let files_for_pack = vec![src.clone()];
     tokio::task::spawn_blocking(move || {
         let f = std::fs::File::create(&archive_path).unwrap();
         pack_to_writer(f, &files_for_pack)
@@ -32,11 +35,13 @@ async fn pack_then_unpack_round_trips_rootfs() {
         .unwrap();
 
     let dst = final_dir.join("rootfs.ext4");
-    let src = src_dir.path().join("rootfs.ext4");
     assert!(dst.exists(), "rootfs.ext4 should exist after unpack");
     let dst_meta = std::fs::metadata(&dst).unwrap();
     let src_meta = std::fs::metadata(&src).unwrap();
     assert_eq!(dst_meta.len(), src_meta.len(), "rootfs size mismatch");
+    let dst_contents = std::fs::read(&dst).unwrap();
+    let src_contents = std::fs::read(&src).unwrap();
+    assert_eq!(dst_contents, src_contents, "rootfs content mismatch");
 
     // Staging directory should no longer exist after the rename.
     assert!(!staging_dir(&final_dir).exists());
