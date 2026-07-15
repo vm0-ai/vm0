@@ -306,6 +306,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.Vm0Model]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Show VM0 Model in the workspace Add model selector.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ChatModelFamilySessionContinuity]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -436,6 +441,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PresentationElementDragging]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable selecting and dragging presentation elements in the HTML presentation editor.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -493,6 +506,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
+  },
+  [FeatureSwitchKey.ZeroMail]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

@@ -39,6 +39,8 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   readonly orgId: string;
   readonly status?: string;
   readonly baseConcurrencyLimit?: number;
+  readonly supportByok?: boolean;
+  readonly restrictedVm0Models?: boolean;
 }): Promise<void> {
   const row = {
     orgId: values.orgId,
@@ -47,6 +49,8 @@ export async function upsertOrgPlanEntitlementFixture(values: {
     source: "test_fixture",
     status: values.status ?? "active",
     baseConcurrencyLimit: values.baseConcurrencyLimit ?? 0,
+    supportByok: values.supportByok,
+    restrictedVm0Models: values.restrictedVm0Models,
   };
   await createStore()
     .set(writeDb$)
@@ -60,6 +64,12 @@ export async function upsertOrgPlanEntitlementFixture(values: {
         source: row.source,
         status: row.status,
         baseConcurrencyLimit: row.baseConcurrencyLimit,
+        ...(row.supportByok === undefined
+          ? {}
+          : { supportByok: row.supportByok }),
+        ...(row.restrictedVm0Models === undefined
+          ? {}
+          : { restrictedVm0Models: row.restrictedVm0Models }),
       },
     });
 }

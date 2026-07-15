@@ -686,7 +686,12 @@ async fn handle_ably_message_with_network_policy_refresh(
                         notif.cli_agent_session_id.map(str::to_owned),
                         notif.affinity_protected_until.map(str::to_owned),
                     )
-                    .with_history_generation_run_id(notif.history_generation_run_id),
+                    .with_history_generation_run_id(notif.history_generation_run_id)
+                    .with_history_generation_affinity_protected_until(
+                        notif
+                            .history_generation_affinity_protected_until
+                            .map(str::to_owned),
+                    ),
                 )
             } else {
                 info!(
@@ -727,6 +732,7 @@ struct JobNotification<'a> {
     profile: Option<&'a str>,
     cli_agent_session_id: Option<&'a str>,
     history_generation_run_id: Option<RunId>,
+    history_generation_affinity_protected_until: Option<&'a str>,
     affinity_protected_until: Option<&'a str>,
 }
 
@@ -876,6 +882,11 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("affinityProtectedUntil")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
+    let history_generation_affinity_protected_until = msg
+        .data
+        .get("historyGenerationAffinityProtectedUntil")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
     let history_generation_run_id = msg
         .data
         .get("historyGenerationRunId")
@@ -886,6 +897,7 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         profile,
         cli_agent_session_id,
         history_generation_run_id,
+        history_generation_affinity_protected_until,
         affinity_protected_until,
     })
 }
@@ -1735,6 +1747,8 @@ mod tests {
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
                 "cliAgentSessionId": "sess-ably",
+                "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
+                "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
                 "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
             }),
         );
@@ -1750,6 +1764,7 @@ mod tests {
         let candidate = candidate.into_job_candidate();
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
         assert!(candidate.is_affinity_protected());
+        assert!(candidate.is_history_generation_affinity_protected());
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
     }
@@ -2199,6 +2214,7 @@ mod tests {
                 "targetRunnerId": "00000000-0000-0000-0000-000000000099",
                 "cliAgentSessionId": "sess-target",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
+                "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
                 "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
             }),
         );
@@ -2208,6 +2224,10 @@ mod tests {
         assert_eq!(
             notif.history_generation_run_id,
             Some("00000000-0000-0000-0000-000000000098".parse().unwrap())
+        );
+        assert_eq!(
+            notif.history_generation_affinity_protected_until,
+            Some("2999-01-01T00:00:00.000Z")
         );
         assert_eq!(
             notif.affinity_protected_until,

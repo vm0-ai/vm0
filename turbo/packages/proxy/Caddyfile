@@ -19,9 +19,6 @@ www.vm7.ai:8443 {
 	tls {
 		dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
 	}
-	handle /api/* {
-		reverse_proxy localhost:3001
-	}
 	reverse_proxy localhost:3042
 }
 

@@ -19,17 +19,34 @@ async fn sandbox_control_default_succeeds() {
 }
 
 #[tokio::test]
-async fn sandbox_control_records_commands() {
+async fn sandbox_control_records_exec_calls() {
     let control = MockSandboxControl::new("/tmp/test");
     control
         .exec_remote("sandbox-1", "echo one", Duration::from_secs(5), false)
         .await
         .unwrap();
     control
-        .exec_remote("sandbox-1", "echo two", Duration::from_secs(5), true)
+        .exec_remote("sandbox-2", "echo two", Duration::from_secs(7), true)
         .await
         .unwrap();
 
+    assert_eq!(
+        control.recorded_exec_calls(),
+        vec![
+            RemoteExecCall {
+                sandbox_id: "sandbox-1".to_string(),
+                command: "echo one".to_string(),
+                timeout: Duration::from_secs(5),
+                sudo: false,
+            },
+            RemoteExecCall {
+                sandbox_id: "sandbox-2".to_string(),
+                command: "echo two".to_string(),
+                timeout: Duration::from_secs(7),
+                sudo: true,
+            },
+        ],
+    );
     assert_eq!(
         control.recorded_commands(),
         vec!["echo one".to_string(), "echo two".to_string()],

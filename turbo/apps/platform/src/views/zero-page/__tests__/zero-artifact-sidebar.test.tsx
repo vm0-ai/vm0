@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
+import { Browser } from "happy-dom";
 import JSZip from "jszip";
 import { HttpResponse } from "msw";
 
@@ -222,6 +223,36 @@ function presentationHtml(): string {
 </html>`;
 }
 
+function clampedPresentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Clamped presentation</title>
+  </head>
+  <body>
+    <section data-vm0-slide data-slide-id="slide-intro">
+      <h1
+        data-vm0-editable="text"
+        data-vm0-edit-id="title"
+        data-vm0-element-id="clamped-title"
+        data-vm0-offset-x="0.5"
+        data-vm0-offset-y="0"
+      >Clamped title</h1>
+      <p
+        data-vm0-element-id="authored-translate"
+        data-vm0-offset-x="0.2"
+        data-vm0-offset-y="0.1"
+        style="translate: 20px 10px"
+      >Authored translation</p>
+      <div
+        id="vm0-presentation-element-offset-runtime"
+        data-vm0-static
+      >Authored ID collision</div>
+    </section>
+  </body>
+</html>`;
+}
+
 function presentationHtmlWithDeckBackground(): string {
   return `<!doctype html>
 <html>
@@ -267,6 +298,52 @@ function presentationHtmlWithDeckBackground(): string {
         <h1>狗狗的世界</h1>
       </section>
     </div>
+  </body>
+</html>`;
+}
+
+function responsivePresentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Responsive layouts</title>
+    <style>
+      .slide {
+        display: none;
+      }
+      .slide.active[data-layout="flex"] {
+        display: flex;
+      }
+      .slide.active[data-layout="grid"] {
+        display: grid;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide active" data-layout="flex">
+      <div data-vm0-slide>
+        <div
+          data-vm0-element-id="flex-card"
+          data-vm0-offset-x="0.1"
+          data-vm0-offset-y="0.1"
+        >Flex card</div>
+      </div>
+    </section>
+    <section
+      class="slide"
+      data-layout="grid"
+      hidden
+      inert
+      aria-hidden="true"
+    >
+      <div data-vm0-slide>
+        <div
+          data-vm0-element-id="grid-card"
+          data-vm0-offset-x="0.25"
+          data-vm0-offset-y="0.25"
+        >Grid card</div>
+      </div>
+    </section>
   </body>
 </html>`;
 }
@@ -424,6 +501,102 @@ function completePresentationPptxExport(
       source: frame.contentWindow,
     }),
   );
+}
+
+async function executePresentationExportLayout(
+  frame: HTMLIFrameElement,
+): Promise<string> {
+  const exportDocument = new DOMParser().parseFromString(
+    frame.srcdoc,
+    "text/html",
+  );
+  const bootstrapScript = Array.from(exportDocument.scripts).at(-1);
+  if (!bootstrapScript) {
+    throw new Error("Presentation export bootstrap not found");
+  }
+
+  const converterBoundary = exportDocument.createElement("script");
+  converterBoundary.textContent = `
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    const rect = (left, top, width, height) => ({
+      bottom: top + height,
+      height,
+      left,
+      right: left + width,
+      top,
+      width,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    });
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute("data-vm0-slide")) {
+        return this.parentElement?.dataset.layout === "grid"
+          ? rect(0, 0, 800, 400)
+          : rect(0, 0, 1000, 500);
+      }
+      if (this.dataset.vm0ElementId === "flex-card") {
+        return rect(100, 100, 200, 100);
+      }
+      if (this.dataset.vm0ElementId === "grid-card") {
+        return rect(600, 250, 200, 150);
+      }
+      return originalRect.call(this);
+    };
+
+    window.domToPptx = {
+      exportToPptx: async (nodes) => {
+        const report = document.createElement("output");
+        report.id = "presentation-export-layout";
+        report.textContent = nodes.map((node) => {
+          const wrapper = node.parentElement;
+          if (!(wrapper instanceof HTMLElement)) {
+            return "missing-wrapper";
+          }
+          const moved = node.querySelector("[data-vm0-element-id]");
+          if (!(moved instanceof HTMLElement)) {
+            return "missing-moved-element";
+          }
+          return [
+            wrapper.dataset.layout,
+            window.getComputedStyle(wrapper).display,
+            wrapper.style.getPropertyValue("display") || "authored",
+            wrapper.classList.contains("active"),
+            wrapper.hasAttribute("hidden"),
+            wrapper.getAttribute("aria-hidden"),
+            moved.style.translate,
+            moved.hasAttribute("data-vm0-offset-runtime-applied"),
+          ].join(",");
+        }).join("|");
+        document.body.append(report);
+        return new Blob(["test-pptx"]);
+      },
+    };
+  `;
+  bootstrapScript.before(converterBoundary);
+
+  const browser = new Browser({
+    settings: {
+      disableJavaScriptFileLoading: true,
+      enableJavaScriptEvaluation: true,
+      handleDisabledFileLoadingAsSuccess: true,
+      suppressInsecureJavaScriptEnvironmentWarning: true,
+    },
+  });
+  const page = browser.newPage();
+  try {
+    page.content = `<!doctype html>\n${exportDocument.documentElement.outerHTML}`;
+    await page.waitUntilComplete();
+    const report = page.mainFrame.document.getElementById(
+      "presentation-export-layout",
+    );
+    if (!report) {
+      throw new Error("Presentation export converter did not run");
+    }
+    return report.textContent ?? "";
+  } finally {
+    await browser.close();
+  }
 }
 
 function setupPresentationArtifactThread(
@@ -732,6 +905,170 @@ function mockElementBox(
       };
     },
   });
+}
+
+function installPresentationPreviewDocumentFromHtml(
+  frame: HTMLIFrameElement,
+  html: string,
+): Document {
+  const generatedDocument = new DOMParser().parseFromString(html, "text/html");
+  const previewDocument = document.implementation.createHTMLDocument(
+    "presentation preview",
+  );
+  Object.defineProperty(previewDocument, "defaultView", {
+    configurable: true,
+    value: window,
+  });
+  Object.defineProperty(frame, "contentDocument", {
+    configurable: true,
+    value: previewDocument,
+  });
+  previewDocument.head.replaceChildren(
+    ...Array.from(generatedDocument.head.childNodes, (node) => {
+      return previewDocument.importNode(node, true);
+    }),
+  );
+  previewDocument.body.replaceChildren(
+    ...Array.from(generatedDocument.body.childNodes, (node) => {
+      return previewDocument.importNode(node, true);
+    }),
+  );
+  return previewDocument;
+}
+
+function generatedPresentationPreviewHtml(
+  frame: HTMLIFrameElement,
+  blobForUrl: (url: string) => Blob | null,
+): Promise<string> {
+  const previewBlob = blobForUrl(frame.src);
+  if (!previewBlob) {
+    throw new Error("Generated presentation preview blob not found");
+  }
+  return previewBlob.text();
+}
+
+interface ExecutedOffsetRuntimePreview {
+  readonly authoredRuntimeApplied: boolean;
+  readonly authoredTranslate: string;
+  readonly document: Document;
+  readonly initialTranslate: string;
+  readonly resizedTranslate: string;
+}
+
+async function installExecutedOffsetRuntimePreview(
+  frame: HTMLIFrameElement,
+  blobForUrl: (url: string) => Blob | null,
+): Promise<ExecutedOffsetRuntimePreview> {
+  const generatedDocument = new DOMParser().parseFromString(
+    await generatedPresentationPreviewHtml(frame, blobForUrl),
+    "text/html",
+  );
+  const runtimeScript = Array.from(generatedDocument.scripts).at(-1);
+  if (!runtimeScript) {
+    throw new Error("Generated presentation offset runtime not found");
+  }
+  const geometryBoundary = generatedDocument.createElement("script");
+  geometryBoundary.textContent = `
+    window.__vm0TestLayoutWidth = 1000;
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    const originalComputedStyle = window.getComputedStyle.bind(window);
+    const rect = (left, top, width, height) => ({
+      bottom: top + height,
+      height,
+      left,
+      right: left + width,
+      top,
+      width,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    });
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this.matches('[data-slide-id="slide-intro"]')) {
+        return rect(0, 0, window.__vm0TestLayoutWidth, 600);
+      }
+      if (this.matches('[data-vm0-element-id="clamped-title"]')) {
+        return rect(800, 100, 200, 80);
+      }
+      if (this.matches('[data-vm0-element-id="authored-translate"]')) {
+        return rect(100, 240, 200, 60);
+      }
+      return originalRect.call(this);
+    };
+    window.getComputedStyle = function (element, pseudoElement) {
+      const computed = originalComputedStyle(element, pseudoElement);
+      if (element.matches('[data-vm0-element-id="authored-translate"]')) {
+        return new Proxy(computed, {
+          get(target, property) {
+            if (property === "translate") {
+              return element.style.getPropertyValue("translate");
+            }
+            const value = Reflect.get(target, property, target);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        });
+      }
+      return computed;
+    };
+  `;
+  runtimeScript.before(geometryBoundary);
+
+  const browser = new Browser({
+    settings: {
+      enableJavaScriptEvaluation: true,
+      suppressInsecureJavaScriptEnvironmentWarning: true,
+    },
+  });
+  const page = browser.newPage();
+  try {
+    page.content = `<!doctype html>\n${generatedDocument.documentElement.outerHTML}`;
+    await page.waitUntilComplete();
+    const title = page.mainFrame.document.querySelector("h1");
+    const authored = page.mainFrame.document.querySelector("p");
+    if (!title || !authored) {
+      throw new Error("Executed presentation offset objects not found");
+    }
+    page.evaluate(`
+      (() => {
+        const title = document.querySelector('[data-vm0-element-id="clamped-title"]');
+        const authored = document.querySelector('[data-vm0-element-id="authored-translate"]');
+        title.setAttribute("data-vm0-test-translate", title.style.translate);
+        authored.setAttribute(
+          "data-vm0-test-translate",
+          authored.style.getPropertyValue("translate"),
+        );
+      })();
+    `);
+    const initialTranslate = title.dataset.vm0TestTranslate ?? "";
+    const authoredTranslate = authored.dataset.vm0TestTranslate ?? "";
+    const authoredRuntimeApplied = Object.hasOwn(
+      authored.dataset,
+      "vm0OffsetRuntimeApplied",
+    );
+
+    page.evaluate(`
+      window.__vm0TestLayoutWidth = 2000;
+      window.dispatchEvent(new Event("resize"));
+    `);
+    await page.waitUntilComplete();
+    page.evaluate(`
+      (() => {
+        const title = document.querySelector('[data-vm0-element-id="clamped-title"]');
+        title.setAttribute("data-vm0-test-translate", title.style.translate);
+      })();
+    `);
+    const resizedTranslate = title.dataset.vm0TestTranslate ?? "";
+
+    return {
+      authoredRuntimeApplied,
+      authoredTranslate,
+      document: installPresentationPreviewDocumentFromHtml(frame, page.content),
+      initialTranslate,
+      resizedTranslate,
+    };
+  } finally {
+    await browser.close();
+  }
 }
 
 describe("zero artifact sidebar", () => {
@@ -2619,6 +2956,46 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("preserves responsive flex and grid layouts for PPTX export", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/responsive-layouts.html";
+    const downloads = captureDownloads(context.signal);
+    setupPresentationArtifactThread(
+      presentationUrl,
+      responsivePresentationHtml(),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
+    });
+    click(menuItemByText("Download (.pptx)"));
+
+    const exportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+
+    await expect(executePresentationExportLayout(exportFrame)).resolves.toBe(
+      "flex,flex,authored,true,false,false,100px 50px,true|grid,grid,authored,true,false,false,0px 0px,true",
+    );
+
+    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+    await waitFor(() => {
+      expect(downloads).toContain("responsive-layouts.pptx");
+      expect(
+        document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("renders inline previews from assistant artifact links without breaking markdown tables or code blocks", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/run-2/chart.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/run-2/demo.mp4";
@@ -2788,6 +3165,45 @@ ${openFencedHostedSiteUrl}`,
         document.querySelector('iframe[title="Presentation PPTX export"]'),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("applies responsive offsets in the generated presentation preview", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/clamped-presentation-preview.html";
+    const browser = context.mocks.browser.blobDownload();
+    setupPresentationArtifactThread(presentationUrl, clampedPresentationHtml());
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const executedPreview = await installExecutedOffsetRuntimePreview(
+      previewFrame,
+      browser.blobForUrl,
+    );
+
+    expect(executedPreview.initialTranslate).toBe("0px 0px");
+    expect(executedPreview.resizedTranslate).toBe("1000px 0px");
+    expect(executedPreview.authoredTranslate).toBe("20px 10px");
+    expect(executedPreview.authoredRuntimeApplied).toBeFalsy();
+    expect(
+      executedPreview.document.querySelector(
+        "div#vm0-presentation-element-offset-runtime",
+      )?.textContent,
+    ).toContain("Authored ID collision");
+    expect(
+      executedPreview.document.querySelectorAll(
+        "script#vm0-presentation-element-offset-runtime",
+      ),
+    ).toHaveLength(1);
   });
 
   it("edits a fallback presentation deck without embedded metadata", async () => {

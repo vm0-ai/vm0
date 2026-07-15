@@ -2,11 +2,7 @@ use std::time::Duration;
 
 use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
 
-use super::super::{
-    R2Error, R2ImageCache,
-    config::ENV_VARS,
-    keys::{key_for_hash, key_for_template_hash},
-};
+use super::super::{R2Error, R2ImageCache, config::ENV_VARS, keys::key_for_template_hash};
 
 const R2_ENV_CHILD_SCENARIO: &str = "VM0_RUNNER_R2_ENV_TEST_SCENARIO";
 const R2_ENV_CHILD_TEST: &str = "r2_cache::tests::config::from_env_child";
@@ -20,7 +16,6 @@ const DEBUG_REDACTION_SCENARIO: &str = "debug-redaction";
 
 #[test]
 fn key_format() {
-    assert_eq!(key_for_hash("abc123"), "runner-images/abc123.tar.zst");
     assert_eq!(
         key_for_template_hash("abc123"),
         "runner-templates/abc123.tar.zst"

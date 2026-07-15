@@ -192,6 +192,8 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
   "template:html-ppt-landing-consulting-runbook": {
     "3b2fa8e03ebe9bdd8397bfa4fdf526e9f10b11d2b1676829f7b32eeaa8336cf8":
       "e027d3b085d2151bb72bd4b3f535dfa1130fb00321e15821d3125eadad22bffa",
+    "01323dcebc9413781ad518d86f6b6611c3fb39a8bfd6287b2abced7c9432b6c7":
+      "fc15dfea6f7dda89180e837843cc1dfbcdbe14b70361d39ef902a2d8ad42472c",
   },
   "template:html-ppt-lumina-runbook": {
     "38ae1652ababd62fbb2dcbc612a7a9458dae0b88283e09b34d113882f94ca063":
@@ -204,6 +206,8 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
   "template:html-ppt-mosaic-geometric-runbook": {
     e9e489d2bcd817968c30ebae6b41513e3e175c58fd7a1db36351918ff45e1576:
       "8e2ec2d02439606a525c36257db38c32d026953d75f9fd55c64fbaef482fe8ea",
+    fd036b42ef323011f0a2c771ceb0bbc6cfb6fb29272633f4e187cd672a89d336:
+      "0e11dc5bccb9abfa9d008c117aaf14908b363d20613bfbb57cab6267c90e90a5",
   },
   "template:html-ppt-neo-brutalism-runbook": {
     "70ca020b00cd79abdb471e3145f2bd706c1a2978fdd5870e372565033f3a4ead":
@@ -212,6 +216,8 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
   "template:html-ppt-nocturne-runbook": {
     efd5031c618ea76fa20d460f583c69c086459a965e006e38ef189390fe1692a6:
       "eab50c15e578fce0dabdbbd1b2de11fa1c1b36596622157f7f142d8d2212c9cd",
+    "83d26dbd95a839310db7553b3a2e4dfe2cc3d9678d988fa864d4dd61f6941213":
+      "ec30051e82c3d7cc903bc3bc9b7b1b3b5d94d134e897ede0f4b6e5f2a4a0dc8f",
   },
   "template:html-ppt-pixel-glitch-runbook": {
     bf3f5312f2281490f592c8d1c02477e57632299ea93b9e3eef65fe1dc2236e29:
@@ -234,14 +240,20 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
   "template:html-ppt-schoolhouse-runbook": {
     bb3e49899d1bcd24b1e88ba8566a9ddd09039502fb51becffcd9f35051463e63:
       "d792e4b858ac0ffeb0e0f4073730453d9753c9e654bdc671f7b2e94d6a40bd17",
+    "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad":
+      "c063961c29369b15b8ae7a3cb285105bc29dbae84cccc36d458b666a5ca75e06",
   },
   "template:html-ppt-sticker-scrapbook-runbook": {
     f59e1ee3e70b6ca220e584bf230749ef8768941fcdf7873f4704d6f02ad72c73:
       "1e0571aa497862d02c00067875cf213ee1b3c4b7d34b78877f21bf66e1dd54b3",
+    cddd7f14573af6aa922b2873658dc81fbcd45dfb42b84da8be9b8e0866874dab:
+      "4876f30e79ac5a035b79e210b0e2a99c4e989bba9c38f3b0ff046b4f56f857bc",
   },
   "template:html-ppt-strata-runbook": {
     c91074decc1642d5c17644aa2aac43702dc727220046807e8f29db1eb47bd450:
       "358d4479fb2bb312a0dad0eb4a9f4b9fdae1037e2f46554535ce8425b12a3cd0",
+    "39ebdffe9de88faebb6427d734927b57ebe69b9b98db5efbee59b5f7ab120cc6":
+      "56e7d344c982b946fc578d026ac8fbe1ee0ffe50d096be94cb25418bfa6fbd3a",
   },
   "template:html-ppt-taped-consulting-runbook": {
     "7b05540c82b410abd1f236ef8a42ff53601489a4a8531413983830d42cec614b":

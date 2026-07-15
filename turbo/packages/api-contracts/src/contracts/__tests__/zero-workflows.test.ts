@@ -8,76 +8,9 @@ import {
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
   zeroWorkflowConnectorReadinessResponseSchema,
-  zeroWorkflowDetailAutomations,
-  zeroWorkflowDetailResponseSchema,
   zeroWorkflowUpdateRequestSchema,
   zeroWorkflowAutomationCreateRequestSchema,
 } from "../zero-workflows";
-
-const workflowDetailBase = {
-  id: "d0000000-0000-4000-a000-000000000201",
-  agentId: "c0000000-0000-4000-a000-000000000101",
-  agentName: "research-agent",
-  agentDisplayName: "Research Agent",
-  name: "sales-research",
-  displayName: "Sales Research",
-  description: null,
-  visibility: "private",
-  ownerUserId: "user_123",
-  ownerUserDisplayName: null,
-  ownerUserImageUrl: null,
-  createdAt: "2026-07-15T00:00:00.000Z",
-  canManage: true,
-  canPublish: true,
-  createdByUserId: "user_123",
-  updatedByUserId: "user_123",
-  updatedAt: "2026-07-15T00:00:00.000Z",
-  instruction: null,
-  files: null,
-  fileContents: null,
-} as const;
-
-const canonicalAutomation = {
-  id: "canonical-automation",
-  ownerUserId: "user_123",
-  enabled: true,
-  chatThreadId: null,
-  nextRunAt: null,
-  lastRunAt: null,
-  kind: "schedule",
-  schedule: {
-    type: "cron",
-    cronExpression: "0 9 * * 1-5",
-    timezone: "UTC",
-  },
-  scheduleSummary: "Weekdays at 9:00 AM",
-} as const;
-
-describe("workflow detail automation compatibility", () => {
-  it("accepts legacy, canonical, and dual fields during the rolling deploy", () => {
-    const legacy = zeroWorkflowDetailResponseSchema.parse({
-      ...workflowDetailBase,
-      triggers: [],
-    });
-    const canonical = zeroWorkflowDetailResponseSchema.parse({
-      ...workflowDetailBase,
-      automations: [canonicalAutomation],
-    });
-    const dual = zeroWorkflowDetailResponseSchema.parse({
-      ...workflowDetailBase,
-      triggers: [],
-      automations: [canonicalAutomation],
-    });
-
-    expect(zeroWorkflowDetailAutomations(legacy)).toStrictEqual([]);
-    expect(zeroWorkflowDetailAutomations(canonical)).toStrictEqual([
-      canonicalAutomation,
-    ]);
-    expect(zeroWorkflowDetailAutomations(dual)).toStrictEqual([
-      canonicalAutomation,
-    ]);
-  });
-});
 
 describe("Gmail new message workflow automation contract", () => {
   it("accepts only explicit text match fields", () => {

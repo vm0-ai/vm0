@@ -184,7 +184,7 @@ fn write_remote_exec_warning(stderr: &mut impl Write, line_open: &mut bool, mess
 #[cfg(test)]
 mod tests {
     use sandbox::SandboxControlError;
-    use sandbox_mock::MockSandboxControl;
+    use sandbox_mock::{MockSandboxControl, RemoteExecCall};
 
     use super::*;
 
@@ -206,6 +206,12 @@ mod tests {
             sudo: false,
             command: command.into_iter().map(String::from).collect(),
         }
+    }
+
+    fn assert_recorded_command(control: &MockSandboxControl, expected: &str) {
+        let calls = control.recorded_exec_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].command, expected);
     }
 
     #[tokio::test]
@@ -233,6 +239,31 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result, ExitCode::SUCCESS);
+    }
+
+    #[tokio::test]
+    async fn forwards_direct_sandbox_target_and_exec_policy() {
+        let control = MockSandboxControl::new("/tmp");
+        let args = ExecArgs {
+            run: None,
+            sandbox: Some("direct-sandbox".into()),
+            timeout: 47,
+            sudo: true,
+            command: vec!["echo".into(), "hello world".into()],
+        };
+
+        let result = run_exec(args, &control).await.unwrap();
+
+        assert_eq!(result, ExitCode::SUCCESS);
+        assert_eq!(
+            control.recorded_exec_calls(),
+            vec![RemoteExecCall {
+                sandbox_id: "direct-sandbox".to_string(),
+                command: "'echo' 'hello world'".to_string(),
+                timeout: Duration::from_secs(47),
+                sudo: true,
+            }],
+        );
     }
 
     #[tokio::test]
@@ -449,10 +480,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'ls' '-la' '/var/log'".to_string()],
-        );
+        assert_recorded_command(&control, "'ls' '-la' '/var/log'");
     }
 
     #[tokio::test]
@@ -465,10 +493,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'cat' '/var/log/some file.log'".to_string()],
-        );
+        assert_recorded_command(&control, "'cat' '/var/log/some file.log'");
     }
 
     #[tokio::test]
@@ -478,10 +503,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'echo' 'it'\\''s'".to_string()],
-        );
+        assert_recorded_command(&control, "'echo' 'it'\\''s'");
     }
 
     #[tokio::test]
@@ -494,10 +516,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'bash' '-c' 'echo a | tr a b'".to_string()],
-        );
+        assert_recorded_command(&control, "'bash' '-c' 'echo a | tr a b'");
     }
 
     #[tokio::test]
@@ -508,10 +527,7 @@ mod tests {
             .unwrap();
 
         // `$` must be quoted so the guest shell does not expand it.
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'echo' '$HOME'".to_string()],
-        );
+        assert_recorded_command(&control, "'echo' '$HOME'");
     }
 
     #[tokio::test]
@@ -521,10 +537,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'echo' 'ok; uname -a'".to_string()],
-        );
+        assert_recorded_command(&control, "'echo' 'ok; uname -a'");
     }
 
     #[tokio::test]
@@ -537,10 +550,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'printf' '$(id)' '`id`' '*' 'x > out'".to_string()],
-        );
+        assert_recorded_command(&control, "'printf' '$(id)' '`id`' '*' 'x > out'");
     }
 
     #[tokio::test]
@@ -550,7 +560,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(control.recorded_commands(), vec!["'echo' ''".to_string()],);
+        assert_recorded_command(&control, "'echo' ''");
     }
 
     #[tokio::test]
@@ -562,10 +572,7 @@ mod tests {
 
         // `FOO=bar` must be quoted so the guest shell treats it as a command
         // name instead of a variable assignment.
-        assert_eq!(
-            control.recorded_commands(),
-            vec!["'FOO=bar' 'env'".to_string()],
-        );
+        assert_recorded_command(&control, "'FOO=bar' 'env'");
     }
 
     #[tokio::test]
@@ -573,6 +580,6 @@ mod tests {
         let control = MockSandboxControl::new("/tmp");
         run_exec(make_args_vec(vec!["if"]), &control).await.unwrap();
 
-        assert_eq!(control.recorded_commands(), vec!["'if'".to_string()]);
+        assert_recorded_command(&control, "'if'");
     }
 }

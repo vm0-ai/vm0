@@ -3,7 +3,6 @@
 import asyncio
 import json
 import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -19,6 +18,7 @@ _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
     }
 )
 _FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
+_opener = platform_api.build_api_opener()
 
 
 class ConnectorNotConfiguredError(Exception):
@@ -302,7 +302,7 @@ def _fetch_firewall_headers_sync(
     req = platform_api.make_api_request(url, data, request.sandbox_token)
     try:
         # nosemgrep: dynamic-urllib-use-detected
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+        with _opener.open(req, timeout=10) as resp:
             decoded: object = json.loads(_read_firewall_auth_response_body(resp))
             return _parse_firewall_auth_success(decoded, request)
     except urllib.error.HTTPError as e:

@@ -4,21 +4,20 @@
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  zeroWorkflowDetailAutomations,
-  type GmailLabelAppliedEventConfig,
-  type GmailNewMessageEventConfig,
-  type GithubLabelAppliedEventConfig,
-  type GithubLabelAppliedSubjectFilter,
-  type NotionPageContentUpdatedEventCreateConfig,
-  type WorkflowFileEntry,
-  type WorkflowFileMetadata,
-  type ZeroWorkflowConnectorReadinessEntry,
-  type ZeroWorkflowDetailResponse,
-  type ZeroWorkflowSchedule,
-  type ZeroWorkflowScheduleType,
-  type ZeroWorkflowAutomationSummary,
-  type ZeroWorkflowUpdateRequest,
+import type {
+  GmailLabelAppliedEventConfig,
+  GmailNewMessageEventConfig,
+  GithubLabelAppliedEventConfig,
+  GithubLabelAppliedSubjectFilter,
+  NotionPageContentUpdatedEventCreateConfig,
+  WorkflowFileEntry,
+  WorkflowFileMetadata,
+  ZeroWorkflowConnectorReadinessEntry,
+  ZeroWorkflowDetailResponse,
+  ZeroWorkflowSchedule,
+  ZeroWorkflowScheduleType,
+  ZeroWorkflowAutomationSummary,
+  ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconAlertTriangle,
@@ -477,9 +476,7 @@ function DetailHeader({
         <>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <WorkflowHeaderIcon
-                automation={zeroWorkflowDetailAutomations(detail)[0]}
-              />
+              <WorkflowHeaderIcon automation={detail.automations[0]} />
               <div className="flex min-w-0 flex-col justify-center">
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
@@ -1619,7 +1616,7 @@ function WorkflowCopyDialog({
     pauseLoadable.state === "loading" ||
     deleteLoadable.state === "loading";
   const sourceAgentName = agentLabel(detail);
-  const enabledSourceAutomationIds = zeroWorkflowDetailAutomations(detail)
+  const enabledSourceAutomationIds = detail.automations
     .filter((automation) => {
       return automation.enabled;
     })
@@ -3294,7 +3291,7 @@ function AutomationsSection({
   const currentUserId =
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const displayTimezone = preferences?.timezone ?? browserTimezone();
-  const automations = zeroWorkflowDetailAutomations(detail);
+  const automations = detail.automations;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">

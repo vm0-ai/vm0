@@ -131,6 +131,7 @@ interface ZeroRunPromptContext {
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
 }
 
 interface ZeroAgentConfig {
@@ -264,6 +265,7 @@ function buildAgentIdentityPrompt(agent: ZeroAgentRunRecord): string | null {
 
 function buildIntegrationToolsPrompt(
   triggerSource: TriggerSource,
+  zeroMailEnabled: boolean,
 ): readonly string[] {
   const localFileContext = [
     "Local filesystem paths are only visible to the agent runtime. Users cannot open local paths directly.",
@@ -281,9 +283,17 @@ function buildIntegrationToolsPrompt(
 
   switch (triggerSource) {
     case "web": {
+      const crossIntegrationMessage = zeroMailEnabled
+        ? "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Microsoft Teams: `zero teams message send --help` for conversations and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub does not currently have a dedicated Zero message-send command, so do not invent `zero github message` commands."
+        : "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Microsoft Teams: `zero teams message send --help` for conversations and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message` or `zero email message` commands.";
       return [
         "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
-        "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Microsoft Teams: `zero teams message send --help` for conversations and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message` or `zero email message` commands.",
+        crossIntegrationMessage,
+        ...(zeroMailEnabled
+          ? [
+              "- Email from web chat: use `zero mail list` to inspect the current agent's authorized Gmail and Outlook accounts, `zero mail connect gmail|outlook` to get a connect or authorization link, and `zero mail send --help` to create a persistent editable mail card. `zero mail send` creates the card but does not send the message; the user sends or cancels it from the card. The card appears automatically, so do not repeat the draft or command output in your response.",
+            ]
+          : []),
         ...localFileContextLines,
       ];
     }
@@ -343,6 +353,7 @@ function buildAgentToolsPrompt(args: {
   readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
 }): string {
   return [
     "# Agent Tools",
@@ -365,7 +376,7 @@ function buildAgentToolsPrompt(args: {
         ]
       : []),
     "- Slack messages: when the task explicitly asks to send or post to Slack, use `zero slack message send --help` for channels, DMs, and thread replies.",
-    ...buildIntegrationToolsPrompt(args.triggerSource),
+    ...buildIntegrationToolsPrompt(args.triggerSource, args.zeroMailEnabled),
     "- Maps, geocoding, directions, and places: use `zero maps --help`.",
     "- Static web artifacts can be published with `zero host <dir> --site <slug> [--spa]`; for HTML presentations, include `--artifact-kind presentation-html`; run `zero host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
@@ -436,6 +447,7 @@ function buildAppendSystemPrompt(args: {
   readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
@@ -446,6 +458,7 @@ function buildAppendSystemPrompt(args: {
       relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
+      zeroMailEnabled: args.zeroMailEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
     args.memoryRuntimeAppendSystemPrompt,
@@ -737,6 +750,7 @@ async function loadZeroRunFeatureSwitchState(
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
 }> {
   const context = await loadUserFeatureSwitchContext(
     db,
@@ -761,6 +775,7 @@ async function loadZeroRunFeatureSwitchState(
       FeatureSwitchKey.ZeroWebSearch,
       context,
     ),
+    zeroMailEnabled: isFeatureEnabled(FeatureSwitchKey.ZeroMail, context),
   };
 }
 
@@ -867,6 +882,7 @@ function createRunBody(args: {
   readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
@@ -883,6 +899,7 @@ function createRunBody(args: {
     relationshipMemoryEnabled: args.relationshipMemoryEnabled,
     zeroScrapeEnabled: args.zeroScrapeEnabled,
     zeroWebSearchEnabled: args.zeroWebSearchEnabled,
+    zeroMailEnabled: args.zeroMailEnabled,
     memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
   });
   return {
@@ -917,6 +934,7 @@ function createIntegrationRunBody(args: {
   readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource;
@@ -936,6 +954,7 @@ function createIntegrationRunBody(args: {
         relationshipMemoryEnabled: args.relationshipMemoryEnabled,
         zeroScrapeEnabled: args.zeroScrapeEnabled,
         zeroWebSearchEnabled: args.zeroWebSearchEnabled,
+        zeroMailEnabled: args.zeroMailEnabled,
         memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
       }),
       args.appendSystemPrompt,
@@ -1035,6 +1054,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
@@ -1056,6 +1076,7 @@ function buildZeroCreateAgentRunArgs(args: {
       relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
+      zeroMailEnabled: args.zeroMailEnabled,
       memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
       permissionPolicies: args.runPermissionPolicies,
       triggerAgentId: args.triggerAgentId,
@@ -1113,6 +1134,7 @@ async function buildZeroFinalAppendSystemPrompt(args: {
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly timing: ApiDispatchTimingCollector;
@@ -1144,6 +1166,7 @@ async function buildZeroFinalAppendSystemPrompt(args: {
     relationshipMemoryEnabled: args.relationshipMemoryEnabled,
     zeroScrapeEnabled: args.zeroScrapeEnabled,
     zeroWebSearchEnabled: args.zeroWebSearchEnabled,
+    zeroMailEnabled: args.zeroMailEnabled,
     memoryRuntimeAppendSystemPrompt,
     permissionPolicies: args.runPermissionPolicies,
     triggerAgentId: args.triggerAgentId,
@@ -1159,6 +1182,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly relationshipMemoryEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
@@ -1178,6 +1202,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
       relationshipMemoryEnabled: args.relationshipMemoryEnabled,
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
+      zeroMailEnabled: args.zeroMailEnabled,
       memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
@@ -1213,6 +1238,7 @@ async function buildZeroIntegrationFinalAppendSystemPrompt(args: {
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<string> {
@@ -1233,6 +1259,7 @@ async function buildZeroIntegrationFinalAppendSystemPrompt(args: {
     relationshipMemoryEnabled: args.relationshipMemoryEnabled,
     zeroScrapeEnabled: args.zeroScrapeEnabled,
     zeroWebSearchEnabled: args.zeroWebSearchEnabled,
+    zeroMailEnabled: args.zeroMailEnabled,
     memoryRuntimeAppendSystemPrompt,
     permissionPolicies: args.runPermissionPolicies,
     triggerSource: command.triggerSource,
@@ -1264,6 +1291,7 @@ interface ZeroRunAfterPreCreateBase {
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
+  readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
   readonly allowedConnectorTypes: readonly ConnectorType[];
@@ -1397,6 +1425,7 @@ export const createZeroIntegrationRun$ = command(
       relationshipMemoryRuntimeInjectionEnabled,
       zeroScrapeEnabled,
       zeroWebSearchEnabled,
+      zeroMailEnabled,
     } = await measureZeroPreCreate(
       timing,
       "api_dispatch_pre_create_zero_load_user_info",
@@ -1447,6 +1476,7 @@ export const createZeroIntegrationRun$ = command(
         relationshipMemoryRuntimeInjectionEnabled,
         zeroScrapeEnabled,
         zeroWebSearchEnabled,
+        zeroMailEnabled,
         runPermissionPolicies,
         workflows,
         allowedConnectorTypes,
@@ -1504,6 +1534,7 @@ export const createZeroRun$ = command(
       relationshipMemoryRuntimeInjectionEnabled,
       zeroScrapeEnabled,
       zeroWebSearchEnabled,
+      zeroMailEnabled,
     } = await measureZeroPreCreate(
       timing,
       "api_dispatch_pre_create_zero_load_user_info",
@@ -1567,6 +1598,7 @@ export const createZeroRun$ = command(
         relationshipMemoryRuntimeInjectionEnabled,
         zeroScrapeEnabled,
         zeroWebSearchEnabled,
+        zeroMailEnabled,
         runPermissionPolicies,
         triggerAgentId,
         workflows,

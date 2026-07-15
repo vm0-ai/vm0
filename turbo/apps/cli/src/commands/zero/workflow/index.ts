@@ -6,7 +6,6 @@ import { listCommand } from "./list";
 import { deleteCommand } from "./delete";
 import { copyCommand } from "./copy";
 import { automationCommand } from "./automation";
-import { legacyTriggerCommand } from "./legacy-trigger";
 
 export const zeroWorkflowCommand = new Command("workflow")
   .description("Manage workflows")
@@ -17,7 +16,6 @@ export const zeroWorkflowCommand = new Command("workflow")
   .addCommand(deleteCommand)
   .addCommand(copyCommand)
   .addCommand(automationCommand)
-  .addCommand(legacyTriggerCommand, { hidden: true })
   .addHelpText(
     "after",
     `

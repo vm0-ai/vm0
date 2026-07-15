@@ -2,6 +2,7 @@ use super::fixtures::*;
 use super::*;
 
 use aws_smithy_mocks::mock;
+use tokio::io::AsyncReadExt;
 
 #[tokio::test]
 async fn best_effort_upload_allows_missing_r2_cache() {
@@ -43,9 +44,13 @@ async fn full_image_r2_hit_materializes_without_local_build() {
     .await
     .unwrap();
 
+    let mut downloaded = tokio::fs::File::open(&staging).await.unwrap();
+    let mut prefix = vec![0u8; b"downloaded-template".len()];
+    downloaded.read_exact(&mut prefix).await.unwrap();
+    assert_eq!(prefix, b"downloaded-template");
     assert_eq!(
-        tokio::fs::read(&staging).await.unwrap(),
-        b"downloaded-template"
+        downloaded.metadata().await.unwrap().len(),
+        TEST_TEMPLATE_DISK_BYTES
     );
     assert!(
         !work_dir.join("build-template-called").exists(),

@@ -173,6 +173,11 @@ export const jobSchema = z.object({
   experimentalProfile: z.string().optional(),
   cliAgentSessionId: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
+  historyGenerationAffinityProtectedUntil: z
+    .string()
+    .datetime({ offset: true })
+    .nullable()
+    .optional(),
   affinityProtectedUntil: z
     .string()
     .datetime({ offset: true })
@@ -188,6 +193,7 @@ export const heldSessionStateSchema = z.object({
   reusableSandbox: z
     .object({
       profile: z.string(),
+      historyGenerationRunId: z.uuid().optional(),
     })
     .optional(),
 });
