@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   zeroWorkflowAutomationsContract,
+  zeroWorkflowDetailAutomations,
   zeroWorkflowsDetailContract,
   legacyZeroWorkflowAutomationsContract as legacyWorkflowAutomationsContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -2340,7 +2341,7 @@ describe("zero workflow automations", () => {
       }),
       [200],
     );
-    expect(detail.body.triggers).toHaveLength(1);
+    expect(zeroWorkflowDetailAutomations(detail.body)).toHaveLength(1);
   });
 
   it("updates the schedule of an existing automation", async () => {

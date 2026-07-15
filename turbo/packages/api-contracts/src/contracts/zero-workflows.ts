@@ -909,16 +909,39 @@ export const zeroWorkflowSummarySchema = z.object({
     .optional(),
 });
 
-export const zeroWorkflowDetailResponseSchema =
-  zeroWorkflowSummarySchema.extend({
-    createdByUserId: z.string(),
-    updatedByUserId: z.string(),
-    updatedAt: z.string().datetime(),
-    instruction: z.string().nullable(),
-    files: z.array(workflowFileMetadataSchema).nullable(),
-    fileContents: z.array(workflowFileEntrySchema).nullable(),
+const zeroWorkflowDetailBaseResponseSchema = zeroWorkflowSummarySchema.extend({
+  createdByUserId: z.string(),
+  updatedByUserId: z.string(),
+  updatedAt: z.string().datetime(),
+  instruction: z.string().nullable(),
+  files: z.array(workflowFileMetadataSchema).nullable(),
+  fileContents: z.array(workflowFileEntrySchema).nullable(),
+});
+
+// Temporary rollout compatibility for #21408. The API will serve both fields
+// before `triggers` is removed so already-open browser bundles keep working.
+// Remove the legacy and dual variants after the production compatibility gate.
+const legacyZeroWorkflowDetailResponseSchema =
+  zeroWorkflowDetailBaseResponseSchema.extend({
     triggers: z.array(zeroWorkflowAutomationSummarySchema),
   });
+
+const canonicalZeroWorkflowDetailResponseSchema =
+  zeroWorkflowDetailBaseResponseSchema.extend({
+    automations: z.array(zeroWorkflowAutomationSummarySchema),
+  });
+
+const dualZeroWorkflowDetailResponseSchema =
+  zeroWorkflowDetailBaseResponseSchema.extend({
+    triggers: z.array(zeroWorkflowAutomationSummarySchema),
+    automations: z.array(zeroWorkflowAutomationSummarySchema),
+  });
+
+export const zeroWorkflowDetailResponseSchema = z.union([
+  dualZeroWorkflowDetailResponseSchema,
+  canonicalZeroWorkflowDetailResponseSchema,
+  legacyZeroWorkflowDetailResponseSchema,
+]);
 
 export const zeroWorkflowListResponseSchema = z.array(
   zeroWorkflowSummarySchema,
@@ -1437,9 +1460,18 @@ export const zeroWorkflowAutomationsContract = c.router({
 export type WorkflowFileEntry = z.infer<typeof workflowFileEntrySchema>;
 export type WorkflowFileMetadata = z.infer<typeof workflowFileMetadataSchema>;
 export type ZeroWorkflowSummary = z.infer<typeof zeroWorkflowSummarySchema>;
+export type LegacyZeroWorkflowDetailResponse = z.infer<
+  typeof legacyZeroWorkflowDetailResponseSchema
+>;
 export type ZeroWorkflowDetailResponse = z.infer<
   typeof zeroWorkflowDetailResponseSchema
 >;
+
+export function zeroWorkflowDetailAutomations(
+  detail: ZeroWorkflowDetailResponse,
+): readonly ZeroWorkflowAutomationSummary[] {
+  return "automations" in detail ? detail.automations : detail.triggers;
+}
 export type ZeroWorkflowCreateRequest = z.infer<
   typeof zeroWorkflowCreateRequestSchema
 >;
