@@ -136,7 +136,8 @@ def _host_with_port(scheme: str, host: str, port: int) -> str:
 
 
 def _build_url(scheme: str, host: str, port: int, path: str) -> str:
-    return f"{scheme}://{_host_with_port(scheme, host, port)}{path}"
+    uri_path = "" if path == "*" else path
+    return f"{scheme}://{_host_with_port(scheme, host, port)}{uri_path}"
 
 
 def _parse_host_authority(authority: str) -> tuple[str, int | None]:
