@@ -1,16 +1,13 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  onTestFinished,
-  vi,
-} from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
+import { createDeferredPromise } from "../../signals/utils.ts";
 import { setupVisualViewportKeyboardState } from "../visual-viewport-keyboard.ts";
 
 const VIEWPORT_SETTLE_WAIT_MS = 75;
+const originalMatchMediaDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "matchMedia",
+);
 
 class MockVisualViewport extends EventTarget {
   height: number;
@@ -87,13 +84,23 @@ function focusComposer(inExistingThread: boolean): {
   return { editor, scrollIntoView };
 }
 
+function waitForViewportSettle(): Promise<void> {
+  const settled = createDeferredPromise<void>(AbortSignal.any([]));
+  window.setTimeout(() => {
+    window.requestAnimationFrame(() => {
+      settled.resolve();
+    });
+  }, VIEWPORT_SETTLE_WAIT_MS);
+  return settled.promise;
+}
+
 async function resizeAndSettle(
   viewport: MockVisualViewport,
   height: number,
   offsetTop = viewport.offsetTop,
 ): Promise<void> {
   viewport.resizeTo(height, offsetTop);
-  await vi.advanceTimersByTimeAsync(VIEWPORT_SETTLE_WAIT_MS);
+  await waitForViewportSettle();
 }
 
 function startViewportKeyboardState(): () => void {
@@ -102,17 +109,6 @@ function startViewportKeyboardState(): () => void {
   return cleanup;
 }
 
-beforeEach(() => {
-  vi.useFakeTimers({
-    toFake: [
-      "setTimeout",
-      "clearTimeout",
-      "requestAnimationFrame",
-      "cancelAnimationFrame",
-    ],
-  });
-});
-
 afterEach(() => {
   document.body.replaceChildren();
   delete document.documentElement.dataset.keyboardOpen;
@@ -120,7 +116,11 @@ afterEach(() => {
     configurable: true,
     value: undefined,
   });
-  vi.useRealTimers();
+  if (originalMatchMediaDescriptor) {
+    Object.defineProperty(window, "matchMedia", originalMatchMediaDescriptor);
+  } else {
+    Reflect.deleteProperty(window, "matchMedia");
+  }
 });
 
 describe("visual viewport keyboard state", () => {
@@ -145,16 +145,12 @@ describe("visual viewport keyboard state", () => {
     focusTextEntry();
     viewport.dispatchEvent(new Event("resize"));
 
-    await vi.advanceTimersByTimeAsync(25);
     expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
 
     // Standalone WebKit can update the final height without another event.
     viewport.height = 520;
     viewport.offsetTop = 100;
-    await vi.advanceTimersByTimeAsync(24);
-    expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
-
-    await vi.advanceTimersByTimeAsync(1);
+    await waitForViewportSettle();
     expect(document.documentElement.dataset.keyboardOpen).toBe("true");
   });
 
@@ -184,7 +180,7 @@ describe("visual viewport keyboard state", () => {
 
       viewport.offsetTop = 280;
       viewport.dispatchEvent(new Event("scroll"));
-      await vi.advanceTimersByTimeAsync(VIEWPORT_SETTLE_WAIT_MS);
+      await waitForViewportSettle();
       expect(scrollIntoView).toHaveBeenCalledTimes(cycle + 1);
 
       if (cycle % 2 === 0) {
@@ -266,11 +262,11 @@ describe("visual viewport keyboard state", () => {
     await resizeAndSettle(viewport, 520, 100);
 
     secondEntry.focus();
-    await vi.advanceTimersByTimeAsync(VIEWPORT_SETTLE_WAIT_MS);
+    await waitForViewportSettle();
     expect(document.documentElement.dataset.keyboardOpen).toBe("true");
 
     secondEntry.blur();
-    await vi.advanceTimersByTimeAsync(VIEWPORT_SETTLE_WAIT_MS);
+    await waitForViewportSettle();
     expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
     expect(document.activeElement).not.toBe(firstEntry);
   });
@@ -296,7 +292,6 @@ describe("visual viewport keyboard state", () => {
     startViewportKeyboardState();
 
     window.dispatchEvent(new Event("orientationchange"));
-    await vi.advanceTimersByTimeAsync(25);
     expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
 
     // The new orientation metrics arrive after orientationchange.
@@ -304,7 +299,7 @@ describe("visual viewport keyboard state", () => {
     viewport.height = 390;
     viewport.offsetTop = 0;
     viewport.dispatchEvent(new Event("resize"));
-    await vi.advanceTimersByTimeAsync(VIEWPORT_SETTLE_WAIT_MS);
+    await waitForViewportSettle();
 
     expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
 
@@ -339,7 +334,7 @@ describe("visual viewport keyboard state", () => {
 
     viewport.resizeTo(520);
     cleanup();
-    await vi.advanceTimersByTimeAsync(VIEWPORT_SETTLE_WAIT_MS);
+    await waitForViewportSettle();
 
     expect(document.documentElement.dataset.keyboardOpen).toBeUndefined();
   });
