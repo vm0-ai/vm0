@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -186,6 +186,147 @@ function buildPrivateConnector(connectorRef: string): JsonRecord {
       },
     ],
   };
+}
+
+function publicAuthMethod(args: {
+  readonly id: string;
+  readonly grantKind:
+    | "manual"
+    | "auth-code"
+    | "openid-auth"
+    | "external-code"
+    | "device-auth";
+  readonly manual?: boolean;
+}): JsonRecord {
+  return {
+    id: args.id,
+    label: `${args.id} auth`,
+    description: null,
+    defaultVisible: true,
+    grantKind: args.grantKind,
+    manualFields: args.manual
+      ? [
+          {
+            id: "credential",
+            label: "Credential",
+            required: true,
+            placeholder: null,
+            inputType: "password",
+          },
+        ]
+      : [],
+    startOptions: [],
+  };
+}
+
+function manualPrivateAuthMethod(args: {
+  readonly id: string;
+  readonly prefix: string;
+  readonly access: "static" | "refresh-token";
+  readonly revoke: "none" | "token-revoke";
+}): JsonRecord {
+  const credentialName = `${args.prefix}_CREDENTIAL`;
+  const accessTokenName = `${args.prefix}_ACCESS_TOKEN`;
+  return {
+    id: args.id,
+    storage: {
+      secrets:
+        args.access === "refresh-token"
+          ? [accessTokenName, credentialName]
+          : [credentialName],
+      variables: [],
+    },
+    grant: {
+      kind: "manual",
+      fields: [
+        {
+          privateName: credentialName,
+          publicId: "credential",
+          storage: "secret",
+        },
+      ],
+    },
+    access:
+      args.access === "refresh-token"
+        ? {
+            kind: "refresh-token",
+            envBindings: {
+              SERVICE_TOKEN: `$secrets.${accessTokenName}`,
+            },
+            inputs: { refreshToken: `$secrets.${credentialName}` },
+            outputs: {
+              accessToken: `$secrets.${accessTokenName}`,
+              refreshToken: `$secrets.${credentialName}`,
+            },
+            refreshableSecrets: [accessTokenName],
+          }
+        : {
+            kind: "static",
+            envBindings: { SERVICE_TOKEN: `$secrets.${credentialName}` },
+          },
+    revoke:
+      args.revoke === "token-revoke"
+        ? {
+            kind: "token-revoke",
+            inputs: { token: `$secrets.${credentialName}` },
+          }
+        : { kind: "none" },
+  };
+}
+
+function devicePrivateAuthMethod(): JsonRecord {
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "public",
+      clientId: "external-device-client",
+    },
+    storage: { secrets: ["DEVICE_ACCESS_TOKEN"], variables: [] },
+    grant: {
+      kind: "device-auth",
+      scopes: [],
+      outputs: { accessToken: "$secrets.DEVICE_ACCESS_TOKEN" },
+      startOptionMappings: [],
+    },
+    access: {
+      kind: "static",
+      envBindings: { SERVICE_TOKEN: "$secrets.DEVICE_ACCESS_TOKEN" },
+    },
+    revoke: { kind: "none" },
+  };
+}
+
+function steamPrivateAuthMethod(args?: {
+  readonly callbackOrigin?: "web" | "api";
+  readonly platformSecret?: string;
+}): JsonRecord {
+  const platformSecret = args?.platformSecret ?? "STEAM_WEB_API_KEY";
+  return {
+    id: "openid",
+    storage: { secrets: [], variables: ["STEAM_ID"] },
+    grant: {
+      kind: "openid-auth",
+      callbackOrigin: args?.callbackOrigin ?? "api",
+      outputs: { steamId: "$vars.STEAM_ID" },
+    },
+    access: {
+      kind: "static",
+      platformSecrets: [platformSecret],
+      envBindings: {
+        STEAM_ID: "$vars.STEAM_ID",
+        STEAM_WEB_API_KEY: `$secrets.${platformSecret}`,
+      },
+    },
+    revoke: { kind: "none" },
+  };
+}
+
+function setArtifactAuthMethods(
+  artifact: JsonRecord,
+  methods: readonly JsonRecord[],
+): void {
+  firstRecord(artifact.connectors, "connectors").authMethods = methods;
 }
 
 function buildBundledSkill(connectorRef: string): JsonRecord {
@@ -547,6 +688,12 @@ describe("connector catalog cron authentication and initial state", () => {
       active: null,
       lastAttempt: null,
       lastSuccessAt: null,
+      filtering: {
+        capabilityDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        evaluatedAt: null,
+        stale: true,
+        filteredAuthMethods: [],
+      },
     });
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
@@ -568,6 +715,11 @@ describe("connector catalog valid lifecycle", () => {
       active: { catalogVersion: first.version },
       lastAttempt: { outcome: "accepted", failureCode: null },
       lastSuccessAt: FIRST_SYNC_TIME,
+      filtering: {
+        evaluatedAt: FIRST_SYNC_TIME,
+        stale: false,
+        filteredAuthMethods: [],
+      },
     });
     expect(
       commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
@@ -593,6 +745,11 @@ describe("connector catalog valid lifecycle", () => {
       active: { catalogVersion: first.version },
       lastAttempt: { outcome: "unchanged", failureCode: null },
       lastSuccessAt: "2026-07-15T08:01:00.000Z",
+      filtering: {
+        evaluatedAt: FIRST_SYNC_TIME,
+        stale: false,
+        filteredAuthMethods: [],
+      },
     });
     expect(context.mocks.s3.send.mock.calls.length - callsBeforeUnchanged).toBe(
       1,
@@ -835,6 +992,248 @@ describe("connector catalog valid lifecycle", () => {
       outcome: "accepted",
       active: { catalogVersion: current.version },
     });
+  });
+});
+
+describe("connector catalog executable compatibility", () => {
+  it("filters unsupported grant, access, and revoke handlers independently", async () => {
+    configureSource();
+    const publicMethods = [
+      publicAuthMethod({ id: "oauth", grantKind: "device-auth" }),
+      publicAuthMethod({
+        id: "api-token",
+        grantKind: "manual",
+        manual: true,
+      }),
+      publicAuthMethod({ id: "cli", grantKind: "manual", manual: true }),
+      publicAuthMethod({ id: "api", grantKind: "manual", manual: true }),
+    ];
+    const privateMethods = [
+      devicePrivateAuthMethod(),
+      manualPrivateAuthMethod({
+        id: "api-token",
+        prefix: "ACCESS",
+        access: "refresh-token",
+        revoke: "none",
+      }),
+      manualPrivateAuthMethod({
+        id: "cli",
+        prefix: "REVOKE",
+        access: "static",
+        revoke: "token-revoke",
+      }),
+      manualPrivateAuthMethod({
+        id: "api",
+        prefix: "GENERIC",
+        access: "static",
+        revoke: "none",
+      }),
+    ];
+    const partial = buildRelease({
+      version: "2026-07-15.partial-compatibility",
+      connectorRef: "future-auth",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, publicMethods);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, privateMethods);
+      },
+    });
+    serveObjects(catalogObjects([partial], partial));
+
+    expect((await syncCatalog()).body.filtering).toMatchObject({
+      stale: false,
+      filteredAuthMethods: [
+        {
+          connectorRef: "future-auth",
+          authMethodId: "api-token",
+          reasons: ["missing-access-provider"],
+        },
+        {
+          connectorRef: "future-auth",
+          authMethodId: "cli",
+          reasons: ["missing-revoke-provider"],
+        },
+        {
+          connectorRef: "future-auth",
+          authMethodId: "oauth",
+          reasons: ["missing-grant-provider"],
+        },
+      ],
+    });
+
+    const allFiltered = buildRelease({
+      version: "2026-07-15.all-filtered",
+      connectorRef: "future-auth",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, publicMethods.slice(0, 3));
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, privateMethods.slice(0, 3));
+      },
+    });
+    serveObjects(catalogObjects([partial, allFiltered], allFiltered));
+    expect(
+      (await syncCatalog()).body.filtering.filteredAuthMethods,
+    ).toHaveLength(3);
+  });
+
+  it("rejects unapproved configuration identities without reading them", async () => {
+    configureSource();
+    const unapprovedName = "FUTURE_PLATFORM_KEY";
+    const release = buildRelease({
+      version: "2026-07-15.unapproved-configuration",
+      mutatePrivate: (artifact) => {
+        const method = firstRecord(
+          firstRecord(artifact.connectors, "connectors").authMethods,
+          "authMethods",
+        );
+        const access = recordValue(method.access, "access");
+        access.platformSecrets = [unapprovedName];
+        recordValue(access.envBindings, "envBindings").FUTURE_KEY =
+          `$secrets.${unapprovedName}`;
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    const accepted = await syncCatalog();
+    expect(accepted.body.filtering).toMatchObject({
+      evaluatedAt: FIRST_SYNC_TIME,
+      stale: false,
+      filteredAuthMethods: [
+        {
+          connectorRef: release.connectorRef,
+          authMethodId: "api-token",
+          reasons: ["provider-contract-mismatch"],
+        },
+      ],
+    });
+
+    mockNow(new Date("2026-07-15T08:10:00.000Z"));
+    mockOptionalEnv(unapprovedName, "must-not-affect-capabilities");
+    const unchanged = await syncCatalog();
+    expect(unchanged.body.filtering).toStrictEqual(accepted.body.filtering);
+    expect(JSON.stringify(unchanged.body)).not.toContain(unapprovedName);
+  });
+
+  it("reconciles configuration changes and retains rolling-build evaluations", async () => {
+    configureSource();
+    mockOptionalEnv("STEAM_WEB_API_KEY", undefined);
+    const first = buildRelease({
+      version: "2026-07-15.steam-1",
+      connectorRef: "steam",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "openid", grantKind: "openid-auth" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [steamPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([first], first));
+    const missingConfiguration = await syncCatalog();
+    expect(missingConfiguration.body.filtering).toMatchObject({
+      evaluatedAt: FIRST_SYNC_TIME,
+      stale: false,
+      filteredAuthMethods: [
+        {
+          connectorRef: "steam",
+          authMethodId: "openid",
+          reasons: ["missing-platform-configuration"],
+        },
+      ],
+    });
+    const firstDigest = missingConfiguration.body.filtering.capabilityDigest;
+
+    mockOptionalEnv("STEAM_WEB_API_KEY", "configured");
+    const callsBeforeStaleStatus = context.mocks.s3.send.mock.calls.length;
+    const stale = await readStatus();
+    expect(stale.body.filtering).toMatchObject({
+      evaluatedAt: null,
+      stale: true,
+      filteredAuthMethods: [],
+    });
+    expect(stale.body.filtering.capabilityDigest).not.toBe(firstDigest);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeStaleStatus);
+
+    mockNow(new Date("2026-07-15T08:20:00.000Z"));
+    const rejected = buildRelease({
+      version: "2026-07-15.rejected-after-config-change",
+      mutatePointer: (pointer) => {
+        pointer.extra = true;
+      },
+    });
+    serveObjects(catalogObjects([first, rejected], rejected));
+    const configured = await syncCatalog();
+    expect(configured.body).toMatchObject({
+      outcome: "rejected",
+      state: "stale",
+      active: { catalogVersion: first.version },
+    });
+    expect(configured.body.filtering).toMatchObject({
+      evaluatedAt: "2026-07-15T08:20:00.000Z",
+      stale: false,
+      filteredAuthMethods: [],
+    });
+    expect(configured.body.filtering.capabilityDigest).not.toBe(firstDigest);
+
+    mockOptionalEnv("STEAM_WEB_API_KEY", undefined);
+    expect((await readStatus()).body.filtering).toStrictEqual(
+      missingConfiguration.body.filtering,
+    );
+
+    const second = buildRelease({
+      version: "2026-07-15.steam-2",
+      connectorRef: "steam",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "openid", grantKind: "openid-auth" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [steamPrivateAuthMethod()]);
+      },
+    });
+    mockOptionalEnv("STEAM_WEB_API_KEY", "configured");
+    serveObjects(catalogObjects([first, second], second));
+    await syncCatalog();
+    mockOptionalEnv("STEAM_WEB_API_KEY", undefined);
+    expect((await readStatus()).body.filtering).toMatchObject({
+      capabilityDigest: firstDigest,
+      evaluatedAt: null,
+      stale: true,
+      filteredAuthMethods: [],
+    });
+  });
+
+  it("reports a known provider contract mismatch without private details", async () => {
+    configureSource();
+    mockOptionalEnv("STEAM_WEB_API_KEY", "configured");
+    const release = buildRelease({
+      version: "2026-07-15.provider-contract-mismatch",
+      connectorRef: "steam",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "openid", grantKind: "openid-auth" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          steamPrivateAuthMethod({ callbackOrigin: "web" }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    const response = await syncCatalog();
+    expect(response.body.filtering.filteredAuthMethods).toStrictEqual([
+      {
+        connectorRef: "steam",
+        authMethodId: "openid",
+        reasons: ["provider-contract-mismatch"],
+      },
+    ]);
+    expect(JSON.stringify(response.body)).not.toContain("STEAM_WEB_API_KEY");
   });
 });
 

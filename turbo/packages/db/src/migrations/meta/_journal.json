@@ -4243,6 +4243,13 @@
       "when": 1784125478257,
       "tag": "0605_luxuriant_ender_wiggin",
       "breakpoints": true
+    },
+    {
+      "idx": 606,
+      "version": "7",
+      "when": 1784132864940,
+      "tag": "0606_small_centennial",
+      "breakpoints": true
     }
   ]
 }

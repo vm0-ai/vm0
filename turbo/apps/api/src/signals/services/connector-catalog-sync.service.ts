@@ -44,6 +44,15 @@ interface ConnectorCatalogSource {
   readonly sourceId: string;
 }
 
+export type ConnectorCatalogRawSyncStatus = Omit<
+  ConnectorCatalogSyncStatus,
+  "filtering"
+>;
+type ConnectorCatalogRawSyncResponse = Omit<
+  ConnectorCatalogSyncResponse,
+  "filtering"
+>;
+
 interface SyncStateSnapshot {
   readonly revision: number;
   readonly lastObservedCatalogVersion: string | null;
@@ -84,7 +93,7 @@ class ConnectorCatalogPersistenceError extends Error {
   }
 }
 
-function connectorCatalogSource(): ConnectorCatalogSource {
+export function connectorCatalogSource(): ConnectorCatalogSource {
   const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
   const endpoint =
     env("S3_ENDPOINT") ??
@@ -163,8 +172,8 @@ async function readSyncState(
 
 function statusFromState(
   state: SyncStateSnapshot | undefined,
-): ConnectorCatalogSyncStatus {
-  let active: ConnectorCatalogSyncStatus["active"] = null;
+): ConnectorCatalogRawSyncStatus {
+  let active: ConnectorCatalogRawSyncStatus["active"] = null;
   if (state?.activeCatalogVersion) {
     if (!state.activatedAt || !state.activeIntegrityDigest) {
       throw new Error("Connector catalog active snapshot is incomplete");
@@ -176,7 +185,7 @@ function statusFromState(
     };
   }
 
-  let lastAttempt: ConnectorCatalogSyncStatus["lastAttempt"] = null;
+  let lastAttempt: ConnectorCatalogRawSyncStatus["lastAttempt"] = null;
   if (state?.lastAttemptAt || state?.lastAttemptOutcome) {
     if (!state.lastAttemptAt || !state.lastAttemptOutcome) {
       throw new Error("Connector catalog attempt state is incomplete");
@@ -505,8 +514,8 @@ async function commitCandidate(args: {
 async function responseFromState(args: {
   readonly db: ReadonlyDb;
   readonly sourceId: string;
-  readonly outcome: ConnectorCatalogSyncResponse["outcome"];
-}): Promise<ConnectorCatalogSyncResponse> {
+  readonly outcome: ConnectorCatalogRawSyncResponse["outcome"];
+}): Promise<ConnectorCatalogRawSyncResponse> {
   const state = await readSyncState(args.db, args.sourceId);
   return {
     outcome: args.outcome,
@@ -521,7 +530,7 @@ async function rejectCandidate(args: {
   readonly failureCode: ConnectorCatalogSyncFailureCode;
   readonly rejectedCandidate?: RejectedCandidate;
   readonly pointerObservation?: PointerObservation;
-}): Promise<ConnectorCatalogSyncResponse | undefined> {
+}): Promise<ConnectorCatalogRawSyncResponse | undefined> {
   const committed = await recordRejectedAttempt({
     db: args.db,
     sourceId: args.source.sourceId,
@@ -562,7 +571,7 @@ type SyncAttemptResult =
   | { readonly kind: "retry" }
   | {
       readonly kind: "complete";
-      readonly response: ConnectorCatalogSyncResponse;
+      readonly response: ConnectorCatalogRawSyncResponse;
     };
 
 type CandidateLoadResult =
@@ -803,7 +812,10 @@ async function syncConnectorCatalogAttempt(
 }
 
 export const connectorCatalogStatus$ = command(
-  async ({ get }, signal: AbortSignal): Promise<ConnectorCatalogSyncStatus> => {
+  async (
+    { get },
+    signal: AbortSignal,
+  ): Promise<ConnectorCatalogRawSyncStatus> => {
     const source = connectorCatalogSource();
     const state = await readSyncState(get(db$), source.sourceId);
     signal.throwIfAborted();
@@ -815,7 +827,7 @@ export const syncConnectorCatalog$ = command(
   async (
     { get, set },
     signal: AbortSignal,
-  ): Promise<ConnectorCatalogSyncResponse> => {
+  ): Promise<ConnectorCatalogRawSyncResponse> => {
     const source = connectorCatalogSource();
     const runtime: ConnectorCatalogSyncRuntime = {
       db: set(writeDb$),

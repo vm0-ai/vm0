@@ -3,12 +3,14 @@ import {
   check,
   foreignKey,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { ConnectorCatalogFilteredAuthMethods } from "@vm0/db/jsonb-contracts/connector-catalog";
 
 export const CONNECTOR_CATALOG_ATTEMPT_OUTCOMES = [
   "accepted",
@@ -178,6 +180,53 @@ export const connectorCatalogActiveSnapshot = pgTable(
       check(
         "connector_catalog_active_snapshot_schema_version_positive",
         sql`${table.schemaVersion} > 0`,
+      ),
+    ];
+  },
+);
+
+export const connectorCatalogCompatibilityEvaluation = pgTable(
+  "connector_catalog_compatibility_evaluation",
+  {
+    sourceId: varchar("source_id", { length: 64 }).notNull(),
+    schemaVersion: integer("schema_version").notNull(),
+    catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
+    integrityDigest: varchar("integrity_digest", { length: 71 }).notNull(),
+    executableCapabilityDigest: varchar("executable_capability_digest", {
+      length: 71,
+    }).notNull(),
+    evaluatedAt: timestamp("evaluated_at").notNull(),
+    filteredAuthMethods: jsonb("filtered_auth_methods")
+      .$type<ConnectorCatalogFilteredAuthMethods>()
+      .notNull(),
+  },
+  (table) => {
+    return [
+      primaryKey({
+        name: "connector_catalog_compatibility_evaluation_pk",
+        columns: [
+          table.sourceId,
+          table.schemaVersion,
+          table.catalogVersion,
+          table.integrityDigest,
+          table.executableCapabilityDigest,
+        ],
+      }),
+      foreignKey({
+        name: "connector_catalog_compatibility_evaluation_sync_state_fk",
+        columns: [table.sourceId, table.schemaVersion],
+        foreignColumns: [
+          connectorCatalogSyncState.sourceId,
+          connectorCatalogSyncState.schemaVersion,
+        ],
+      }),
+      check(
+        "connector_catalog_compat_eval_schema_version_positive",
+        sql`${table.schemaVersion} > 0`,
+      ),
+      check(
+        "connector_catalog_compatibility_evaluation_digest_valid",
+        sql`${table.executableCapabilityDigest} ~ '^sha256:[a-f0-9]{64}$'`,
       ),
     ];
   },
