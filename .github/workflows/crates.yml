@@ -587,10 +587,13 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
-  runner-behavior:
+  # Cap these runner behavior scenarios at two concurrent metal-host users.
+  # Run balloon first in lane A and exec last in lane B to stagger the two
+  # heaviest scenarios during normal runs.
+  runner-behavior-lane-a:
     runs-on: ubuntu-latest
     needs: [runner-build]
-    timeout-minutes: 60
+    timeout-minutes: 35
     env:
       METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
       HOST: ${{ needs.runner-build.outputs.host }}
@@ -607,6 +610,14 @@ jobs:
           ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test balloon memory reclaim
+        id: balloon
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-balloon.sh
 
       - name: Test local active input with real Claude Code
         id: local_claude_active_input_smoke
@@ -634,65 +645,12 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-benchmark.sh
 
-      - name: Test runner exec
-        id: exec
-        timeout-minutes: 5
-        continue-on-error: true
+      - name: Summarize runner behavior lane A results
         env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-exec.sh
-
-      - name: Test runner local cancel
-        id: cancel
-        timeout-minutes: 5
-        continue-on-error: true
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-cancel.sh
-
-      - name: Test runner service drain + resume
-        id: drain_resume
-        timeout-minutes: 5
-        continue-on-error: true
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-drain-resume.sh
-
-      - name: Test balloon memory reclaim
-        id: balloon
-        timeout-minutes: 5
-        continue-on-error: true
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-balloon.sh
-
-      - name: Run upgrade test
-        id: upgrade_local
-        timeout-minutes: 5
-        continue-on-error: true
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-upgrade-local.sh
-
-      - name: Test VM keep-alive across conversation turns
-        id: keep_alive
-        timeout-minutes: 5
-        continue-on-error: true
-        env:
-          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-        run: .github/scripts/runner-behavior-keep-alive.sh
-
-      - name: Summarize runner behavior results
-        env:
+          BALLOON_RESULT: ${{ steps.balloon.outcome }}
           LOCAL_CLAUDE_ACTIVE_INPUT_SMOKE_RESULT: ${{ steps.local_claude_active_input_smoke.outcome }}
           LOCAL_CODEX_ACTIVE_INPUT_SMOKE_RESULT: ${{ steps.local_codex_active_input_smoke.outcome }}
           BENCHMARK_RESULT: ${{ steps.benchmark.outcome }}
-          EXEC_RESULT: ${{ steps.exec.outcome }}
-          CANCEL_RESULT: ${{ steps.cancel.outcome }}
-          DRAIN_RESUME_RESULT: ${{ steps.drain_resume.outcome }}
-          BALLOON_RESULT: ${{ steps.balloon.outcome }}
-          UPGRADE_LOCAL_RESULT: ${{ steps.upgrade_local.outcome }}
-          KEEP_ALIVE_RESULT: ${{ steps.keep_alive.outcome }}
         run: |
           FAILED=0
 
@@ -706,16 +664,102 @@ jobs:
             fi
           }
 
-          echo "::group::Runner Behavior Results"
+          echo "::group::Runner Behavior Lane A Results"
+          check_result "balloon" "$BALLOON_RESULT"
           check_result "local-claude-active-input-smoke" "$LOCAL_CLAUDE_ACTIVE_INPUT_SMOKE_RESULT"
           check_result "local-codex-active-input-smoke" "$LOCAL_CODEX_ACTIVE_INPUT_SMOKE_RESULT"
           check_result "benchmark" "$BENCHMARK_RESULT"
-          check_result "exec" "$EXEC_RESULT"
+          echo "::endgroup::"
+
+          exit "$FAILED"
+
+  runner-behavior-lane-b:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 35
+    env:
+      METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+      HOST: ${{ needs.runner-build.outputs.host }}
+      JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+      BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
+      DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+      DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test runner local cancel
+        id: cancel
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-cancel.sh
+
+      - name: Test VM keep-alive across conversation turns
+        id: keep_alive
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-keep-alive.sh
+
+      - name: Test runner service drain + resume
+        id: drain_resume
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-drain-resume.sh
+
+      - name: Run upgrade test
+        id: upgrade_local
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-upgrade-local.sh
+
+      - name: Test runner exec
+        id: exec
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-exec.sh
+
+      - name: Summarize runner behavior lane B results
+        env:
+          CANCEL_RESULT: ${{ steps.cancel.outcome }}
+          KEEP_ALIVE_RESULT: ${{ steps.keep_alive.outcome }}
+          DRAIN_RESUME_RESULT: ${{ steps.drain_resume.outcome }}
+          UPGRADE_LOCAL_RESULT: ${{ steps.upgrade_local.outcome }}
+          EXEC_RESULT: ${{ steps.exec.outcome }}
+        run: |
+          FAILED=0
+
+          check_result() {
+            local name=$1 result=$2
+            if [ "$result" = "success" ]; then
+              echo "✅ $name: $result"
+            else
+              echo "::error::$name: expected success, got ${result:-missing}"
+              FAILED=1
+            fi
+          }
+
+          echo "::group::Runner Behavior Lane B Results"
           check_result "cancel" "$CANCEL_RESULT"
-          check_result "drain-resume" "$DRAIN_RESUME_RESULT"
-          check_result "balloon" "$BALLOON_RESULT"
-          check_result "upgrade-local" "$UPGRADE_LOCAL_RESULT"
           check_result "keep-alive" "$KEEP_ALIVE_RESULT"
+          check_result "drain-resume" "$DRAIN_RESUME_RESULT"
+          check_result "upgrade-local" "$UPGRADE_LOCAL_RESULT"
+          check_result "exec" "$EXEC_RESULT"
           echo "::endgroup::"
 
           exit "$FAILED"
@@ -733,7 +777,8 @@ jobs:
       - runner-host-groups
       - runner-build
       - runner-image-architecture-manifest
-      - runner-behavior
+      - runner-behavior-lane-a
+      - runner-behavior-lane-b
       - nbd-cow-test
     # Always run so the gate reports an explicit result (not "skipped").
     if: always()
@@ -779,7 +824,8 @@ jobs:
           check_result "runner-host-groups" "${{ needs.runner-host-groups.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-image-architecture-manifest" "${{ needs.runner-image-architecture-manifest.result }}" "true"
-          check_result "runner-behavior" "${{ needs.runner-behavior.result }}" "true"
+          check_result "runner-behavior-lane-a" "${{ needs.runner-behavior-lane-a.result }}" "true"
+          check_result "runner-behavior-lane-b" "${{ needs.runner-behavior-lane-b.result }}" "true"
           check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
 
           echo "::endgroup::"
