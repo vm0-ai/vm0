@@ -506,6 +506,31 @@ async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidat
     assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
 
 
+async def test_asterisk_form_without_active_firewall_skips_connector_diagnostic(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    write_connector_diagnostic_catalog_cache(tmp_path)
+    reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.openweathermap.org",
+        method="OPTIONS",
+        path="*",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.path == "*"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.openweathermap.org"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+
+
 async def test_active_builtin_connector_url_uses_firewall_path(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):

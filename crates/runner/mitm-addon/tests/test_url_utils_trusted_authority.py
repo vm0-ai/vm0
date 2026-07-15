@@ -37,6 +37,29 @@ class TestGetOriginalUrl:
         flow = real_flow(host="api.example.com", port=443, path="/v1/data?key=val")
         assert get_original_url(flow) == "https://api.example.com/v1/data?key=val"
 
+    @pytest.mark.parametrize(
+        ("port", "expected_url"),
+        [
+            pytest.param(443, "https://api.example.com", id="default-port"),
+            pytest.param(8443, "https://api.example.com:8443", id="non-default-port"),
+        ],
+    )
+    def test_asterisk_form_contributes_an_empty_uri_path(
+        self,
+        real_flow,
+        port,
+        expected_url,
+    ):
+        flow = real_flow(
+            host="api.example.com",
+            port=port,
+            method="OPTIONS",
+            path="*",
+        )
+
+        assert get_original_url(flow) == expected_url
+        assert flow.request.path == "*"
+
     def test_https_uses_sni_for_transparent_destination(self, real_flow, headers):
         flow = real_flow(
             host="203.0.113.10",

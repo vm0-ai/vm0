@@ -1030,6 +1030,12 @@ class FirewallAllow(NamedTuple):
     rel_path: str
 
 
+class FirewallPolicyAllow(NamedTuple):
+    """Asterisk-form base matched and unknown policy allowed without auth."""
+
+    firewall_allow: FirewallAllow
+
+
 def _permission_allow(
     api_entry: dict,
     *,
@@ -1595,9 +1601,11 @@ def _match_compiled_firewall_request_with_api_candidates(
     api_candidates: tuple[_CompiledApiCandidate, ...],
     indexed_rules: bool,
     intent: connector_intent.ConnectorIntent,
-) -> FirewallAllow | FirewallBlock | FirewallAmbiguous | None:
+    is_asterisk_form: bool,
+) -> FirewallAllow | FirewallPolicyAllow | FirewallBlock | FirewallAmbiguous | None:
     collection = _FirewallMatchCollection()
-    unsafe_path: bool | None = True if url_has_backslash else None
+    unsafe_path: bool | None = False if is_asterisk_form else (True if url_has_backslash else None)
+    decision_path = "*" if is_asterisk_form else (url_parts.path or "/")
 
     for candidate in api_candidates:
         fw_entry = candidate.firewall
@@ -1606,7 +1614,8 @@ def _match_compiled_firewall_request_with_api_candidates(
         if base_result is None:
             continue
 
-        rel_path, base_params = base_result
+        matched_rel_path, base_params = base_result
+        rel_path = "*" if is_asterisk_form else matched_rel_path
 
         if unsafe_path is None:
             unsafe_path = has_unsafe_path(url_parts.path)
@@ -1638,7 +1647,7 @@ def _match_compiled_firewall_request_with_api_candidates(
         if not collection.accept_api(api_match):
             continue
 
-        if not api_entry.permissions:
+        if is_asterisk_form or not api_entry.permissions:
             continue
 
         rel_path_segs = _split_path_segments(rel_path)
@@ -1659,17 +1668,20 @@ def _match_compiled_firewall_request_with_api_candidates(
         collection,
         intent,
         upper_method=upper_method,
-        path=url_parts.path or "/",
+        path=decision_path,
     )
     if isinstance(selected_name, FirewallAmbiguous):
         return selected_name
-    return _reduce_selected_owner(
+    result = _reduce_selected_owner(
         collection,
         selected_name=selected_name,
         compiled_network_policies=compiled_network_policies,
         upper_method=upper_method,
         indexed_rules=indexed_rules,
     )
+    if is_asterisk_form and isinstance(result, FirewallAllow):
+        return FirewallPolicyAllow(result)
+    return result
 
 
 def _prepare_compiled_request_match(
@@ -1703,7 +1715,9 @@ def _match_compiled_firewall_request_linear(
     compiled_firewalls: CompiledFirewallSet | None,
     network_policies: object | None = None,
     intent: connector_intent.ConnectorIntent | None = None,
-) -> FirewallAllow | FirewallBlock | FirewallAmbiguous | None:
+    *,
+    is_asterisk_form: bool = False,
+) -> FirewallAllow | FirewallPolicyAllow | FirewallBlock | FirewallAmbiguous | None:
     prepared = _prepare_compiled_request_match(
         url,
         method,
@@ -1722,6 +1736,7 @@ def _match_compiled_firewall_request_linear(
         api_candidates=compiled_firewalls.linear_api_candidates(),
         indexed_rules=False,
         intent=intent or connector_intent.ABSENT,
+        is_asterisk_form=is_asterisk_form,
     )
 
 
@@ -1731,7 +1746,9 @@ def match_compiled_firewall_request(
     compiled_firewalls: CompiledFirewallSet | None,
     network_policies: object | None = None,
     intent: connector_intent.ConnectorIntent | None = None,
-) -> FirewallAllow | FirewallBlock | FirewallAmbiguous | None:
+    *,
+    is_asterisk_form: bool = False,
+) -> FirewallAllow | FirewallPolicyAllow | FirewallBlock | FirewallAmbiguous | None:
     """Match request against production precompiled firewall permissions.
 
     Retained malformed state from the compile functions applies only after the
@@ -1747,12 +1764,18 @@ def match_compiled_firewall_request(
 
     Returns:
       FirewallAllow — granted permission matched or unknown endpoint allowed
+      FirewallPolicyAllow — asterisk-form unknown endpoint allowed without auth
       FirewallBlock — permission denied, unknown endpoint blocked, or matched
         malformed firewall/network policy config or unsafe path failed closed
       FirewallAmbiguous — multiple connector owners require a usable intent
       None — no base URL match (not a firewall request)
 
     ``unknownPolicy="ask"`` is treated as block at the proxy layer.
+
+    When ``is_asterisk_form`` is true, the URL contains the reconstructed
+    authority with an empty path. The matcher selects the applicable base and
+    owner but skips endpoint permissions, then reports ``*`` as the decision
+    path while resolving the request through unknown-policy semantics.
     """
     prepared = _prepare_compiled_request_match(
         url,
@@ -1772,4 +1795,5 @@ def match_compiled_firewall_request(
         api_candidates=compiled_firewalls.indexed_api_candidates(url_parts),
         indexed_rules=True,
         intent=intent or connector_intent.ABSENT,
+        is_asterisk_form=is_asterisk_form,
     )

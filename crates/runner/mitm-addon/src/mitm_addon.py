@@ -695,6 +695,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         classification,
         request_classification.ApiAllow
         | request_classification.BrowserAllow
+        | request_classification.FirewallPolicyAllow
         | request_classification.Allow,
     ) and request_classification.should_stream_capture_request(classification):
         if classification.kind == "api_allow" and not upstream_admission.ensure_bound_destination(
@@ -874,6 +875,23 @@ async def request(flow: http.HTTPFlow) -> None:
             return
         if classification.kind == "public_destination_denied":
             _block_public_destination_denied(flow, classification.public_destination_denial)
+            return
+        if classification.kind == "firewall_policy_allow":
+            public_destination_denial = request_classification.current_public_destination_denial(
+                flow,
+                classification.firewall_allow,
+            )
+            if public_destination_denial is not None:
+                _block_public_destination_denied(flow, public_destination_denial)
+                return
+            prepare_firewall_metadata(
+                flow,
+                classification.firewall_allow,
+                classification.vm_info,
+            )
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+            flow.metadata.pop(metadata_keys.MODEL_USAGE_PROVIDER, None)
+            flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
         if classification.kind == "firewall_allow":
             allow = classification.firewall_allow
