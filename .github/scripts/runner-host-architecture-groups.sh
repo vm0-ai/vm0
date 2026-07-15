@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: runner-host-architecture-groups.sh [matrix|target-matrix|has-groups|hosts ID|select-host ID KEY [HOSTS]]
+Usage: runner-host-architecture-groups.sh [matrix|target-matrix|has-groups|hosts ID|select-group KEY [MATRIX]|select-host ID KEY [HOSTS]]
 
 Emits compact JSON for configured runner host architecture groups.
 Inputs:
@@ -19,6 +19,7 @@ Commands:
   target-matrix  Emit the deploy/rollback matrix contract: id, label, target.
   has-groups  Emit true when at least one host group is configured.
   hosts ID            Emit comma-separated hosts for the given architecture group.
+  select-group KEY [MATRIX]  Emit one deterministic architecture group from the sanitized matrix.
   select-host ID KEY [HOSTS]  Emit one deterministic host from the given architecture group.
 USAGE
 }
@@ -215,6 +216,34 @@ emit_hosts() {
   jq -r --arg id "$group_id" '.[] | select(.id == $id) | .hosts' <<<"$groups"
 }
 
+emit_selected_group() {
+  local selection_key=${1:-}
+  local matrix=${2:-}
+  if [ -z "$selection_key" ]; then
+    echo "missing runner host group selection key" >&2
+    return 2
+  fi
+
+  if [ -z "$matrix" ]; then
+    matrix=$(emit_matrix) || return $?
+  fi
+
+  local group_count
+  if ! group_count=$(jq -er 'if type == "array" then length else error("expected array") end' <<<"$matrix"); then
+    echo "invalid runner host architecture matrix" >&2
+    return 2
+  fi
+  if [ "$group_count" -lt 1 ]; then
+    echo "no runner host architecture groups found" >&2
+    return 2
+  fi
+
+  local hash group_index
+  hash=$(printf '%s' "$selection_key" | md5sum | cut -c1-8)
+  group_index=$(( 0x$hash % group_count ))
+  jq -c --argjson group_index "$group_index" '.[$group_index]' <<<"$matrix"
+}
+
 emit_selected_host() {
   local group_id=${1:-}
   local selection_key=${2:-}
@@ -265,6 +294,9 @@ case "$cmd" in
     ;;
   hosts)
     emit_hosts "${2:-}"
+    ;;
+  select-group)
+    emit_selected_group "${2:-}" "${3:-}"
     ;;
   select-host)
     emit_selected_host "${2:-}" "${3:-}" "${4:-}"

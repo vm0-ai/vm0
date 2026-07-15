@@ -70,6 +70,14 @@ assert_no_hosts_field() {
   jq -e 'all(.[]; has("hosts") | not)' >/dev/null <<<"$output" || fail "expected no hosts field: ${output}"
 }
 
+assert_selected_group_contract() {
+  local output=$1
+  jq -e 'type == "object" and (has("hosts") | not)' >/dev/null <<<"$output" || fail "expected sanitized group object: ${output}"
+  if [[ "$output" == *$'\n'* ]]; then
+    fail "expected compact single-line JSON: ${output}"
+  fi
+}
+
 assert_target_matrix_contract() {
   local output=$1
   jq -e 'all(.[]; (keys | sort) == ["id", "label", "target"])' >/dev/null <<<"$output" || fail "expected target matrix fields only: ${output}"
@@ -116,6 +124,9 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" matrix)
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}]'
+
+selected=$(run_clean "$HOST_GROUPS" select-group pr-1 "$out")
+assert_json_eq "$selected" '{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1, arm-2' "$HOST_GROUPS" target-matrix)
 assert_compact_json "$out"
@@ -166,6 +177,17 @@ out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" matrix
 assert_compact_json "$out"
 assert_no_hosts_field "$out"
 assert_json_eq "$out" '[{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"},{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}]'
+
+mixed_matrix=$out
+selected=$(run_clean "$HOST_GROUPS" select-group pr-1 "$mixed_matrix")
+assert_selected_group_contract "$selected"
+assert_json_eq "$selected" '{"id":"x86_64","label":"x86_64","target":"x86_64-unknown-linux-musl","unameM":"x86_64","cacheSuffix":"x86_64-musl","assetSuffix":"x86_64-linux"}'
+
+retry_selected=$(run_clean "$HOST_GROUPS" select-group pr-1 "$mixed_matrix")
+assert_json_eq "$retry_selected" "$selected"
+
+selected=$(run_clean "$HOST_GROUPS" select-group pr-4 "$mixed_matrix")
+assert_json_eq "$selected" '{"id":"arm64","label":"arm64","target":"aarch64-unknown-linux-musl","unameM":"aarch64","cacheSuffix":"aarch64-musl","assetSuffix":"aarch64-linux"}'
 
 out=$(run_clean AWS_METAL_RUNNER_HOSTS='arm-1,x86-1,x86-2' "$HOST_GROUPS" target-matrix)
 assert_compact_json "$out"
@@ -254,6 +276,16 @@ if run_clean AWS_METAL_RUNNER_HOSTS='arm-1' "$HOST_GROUPS" select-host arm64 >"$
   fail "expected missing selection key to fail"
 fi
 grep -q "missing runner host selection key" "${TMPDIR}/missing-selection-key.err" || fail "expected missing selection key message"
+
+if run_clean "$HOST_GROUPS" select-group >"${TMPDIR}/missing-group-selection-key.out" 2>"${TMPDIR}/missing-group-selection-key.err"; then
+  fail "expected missing group selection key to fail"
+fi
+grep -q "missing runner host group selection key" "${TMPDIR}/missing-group-selection-key.err" || fail "expected missing group selection key message"
+
+if run_clean "$HOST_GROUPS" select-group pr-1 '[]' >"${TMPDIR}/empty-group-selection.out" 2>"${TMPDIR}/empty-group-selection.err"; then
+  fail "expected empty group selection to fail"
+fi
+grep -q "no runner host architecture groups found" "${TMPDIR}/empty-group-selection.err" || fail "expected empty group selection message"
 
 out=$(run_clean "$HOST_GROUPS")
 assert_compact_json "$out"

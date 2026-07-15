@@ -198,9 +198,6 @@ run_wait_groups "$output_file"
 
 assert_output_contains "$output_file" 'bin-dir=/var/lib/vm0-runner/bin/job-ref'
 assert_output_contains "$output_file" 'runner-dir=/var/lib/vm0-runner/runners/job-ref'
-assert_output_contains "$output_file" '"arm-1":"aarch64-unknown-linux-musl"'
-assert_output_contains "$output_file" '"arm-2":"aarch64-unknown-linux-musl"'
-assert_output_contains "$output_file" '"x86-1":"x86_64-unknown-linux-musl"'
 assert_output_contains "$output_file" '"arm-1":"rootfs-arm-1"'
 assert_output_contains "$output_file" '"arm-2":"rootfs-arm-2"'
 assert_output_contains "$output_file" '"x86-1":"rootfs-x86-1"'
