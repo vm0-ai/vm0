@@ -1168,7 +1168,7 @@ fn linux_process_identity(pid: u32) -> Result<Option<LinuxProcessIdentity>, Stri
     let stat_path = format!("/proc/{pid}/stat");
     let stat = match std::fs::read_to_string(&stat_path) {
         Ok(stat) => stat,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if linux_proc_task_disappeared(&error) => return Ok(None),
         Err(error) => return Err(format!("read {stat_path}: {error}")),
     };
 
@@ -1222,7 +1222,7 @@ fn linux_process_group_has_no_live_members(pgid: i32) -> Result<bool, String> {
         let stat_path = entry.path().join("stat");
         let stat = match std::fs::read_to_string(&stat_path) {
             Ok(stat) => stat,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) if linux_proc_task_disappeared(&error) => continue,
             Err(error) => return Err(format!("read {}: {error}", stat_path.display())),
         };
         let process_stat = parse_linux_process_stat(&stat)
@@ -1233,6 +1233,11 @@ fn linux_process_group_has_no_live_members(pgid: i32) -> Result<bool, String> {
     }
 
     Ok(true)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_proc_task_disappeared(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::NotFound || error.raw_os_error() == Some(libc::ESRCH)
 }
 
 #[cfg(not(target_os = "linux"))]
