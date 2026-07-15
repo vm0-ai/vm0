@@ -1,10 +1,249 @@
-use crate::support::{Harness, captured_output_bytes, exec_exit_code, run_exec, shell_quote};
+use crate::support::{
+    Harness, blocking_write_path, blocking_write_pid_path, blocking_write_release_path,
+    blocking_write_started_path, captured_output_bytes, exec_exit_code,
+    finish_raw_guest_connection, join_raw_guest_connection, pid_alive, read_raw_message, run_exec,
+    shell_quote, start_raw_guest_connection, wait_for_path,
+};
 use std::fs;
-use vsock_host::WriteFileEntry;
+use std::io::{Read, Write};
+use std::time::Duration;
+use vsock_host::{SupervisedExecControl, SupervisedExecRequest, WriteFileEntry};
+use vsock_proto::{
+    ExecOutputPolicy, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_PING, MSG_PONG,
+    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+};
 
 #[test]
 fn shell_quote_escapes_single_quotes() {
     assert_eq!(shell_quote("chunked'quote.bin"), "'chunked'\\''quote.bin'");
+}
+
+#[tokio::test]
+async fn blocked_write_keeps_ping_responsive_and_rejects_overlap() {
+    let dir = tempfile::tempdir().expect("create blocked-write temp dir");
+    let blocked_path = blocking_write_path(dir.path(), "blocked");
+    let blocked_path_string = blocked_path.to_string_lossy();
+    let blocked_content = b"blocked content";
+    let overlap_path = dir.path().join("overlap.txt");
+    let overlap_path_string = overlap_path.to_string_lossy();
+    let (guest, mut stream) = start_raw_guest_connection();
+
+    let payload =
+        vsock_proto::encode_write_file(&blocked_path_string, blocked_content, false, false)
+            .expect("encode blocked write");
+    stream
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE, 10, &payload).expect("frame blocked write"))
+        .expect("send blocked write");
+    wait_for_path(
+        &blocking_write_started_path(&blocked_path),
+        Duration::from_secs(5),
+    )
+    .await;
+
+    stream
+        .write_all(&vsock_proto::encode(MSG_PING, 11, &[]).expect("encode ping"))
+        .expect("send ping");
+    let pong = read_raw_message(&mut stream);
+    assert_eq!(pong.msg_type, MSG_PONG);
+    assert_eq!(pong.seq, 11);
+
+    let overlap_payload =
+        vsock_proto::encode_write_file(&overlap_path_string, b"rejected", false, false)
+            .expect("encode overlapping write");
+    stream
+        .write_all(
+            &vsock_proto::encode(MSG_WRITE_FILE, 12, &overlap_payload)
+                .expect("frame overlapping write"),
+        )
+        .expect("send overlapping write");
+    let busy = read_raw_message(&mut stream);
+    assert_eq!(busy.msg_type, MSG_ERROR);
+    assert_eq!(busy.seq, 12);
+    assert_eq!(
+        vsock_proto::decode_error(&busy.payload).expect("decode busy error"),
+        "guest file write already active"
+    );
+    assert!(!overlap_path.exists());
+
+    fs::write(blocking_write_release_path(&blocked_path), b"")
+        .expect("release blocked write helper");
+    let first_result = read_raw_message(&mut stream);
+    assert_eq!(first_result.msg_type, MSG_WRITE_FILE_RESULT);
+    assert_eq!(first_result.seq, 10);
+    assert_eq!(
+        vsock_proto::decode_write_file_result(&first_result.payload)
+            .expect("decode first write result"),
+        (true, "")
+    );
+    assert_eq!(
+        fs::read(&blocked_path).expect("read blocked target"),
+        blocked_content
+    );
+
+    let later_payload =
+        vsock_proto::encode_write_file(&overlap_path_string, b"accepted", false, false)
+            .expect("encode later write");
+    stream
+        .write_all(
+            &vsock_proto::encode(MSG_WRITE_FILE, 13, &later_payload).expect("frame later write"),
+        )
+        .expect("send later write");
+    let later_result = read_raw_message(&mut stream);
+    assert_eq!(later_result.msg_type, MSG_WRITE_FILE_RESULT);
+    assert_eq!(later_result.seq, 13);
+    assert_eq!(
+        vsock_proto::decode_write_file_result(&later_result.payload)
+            .expect("decode later write result"),
+        (true, "")
+    );
+    assert_eq!(
+        fs::read(&overlap_path).expect("read later target"),
+        b"accepted"
+    );
+
+    finish_raw_guest_connection(guest, stream);
+}
+
+#[tokio::test]
+async fn blocked_write_allows_exec_cancel_and_quiesce() {
+    let h = Harness::new().await;
+    let handle = h
+        .host()
+        .start_supervised_exec(SupervisedExecRequest {
+            timeout: ExecTimeoutPolicy::None,
+            command: "exec sleep 60",
+            env: &[],
+            sudo: false,
+            label: "blocked-write-control",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            stdin_bytes: None,
+            control: SupervisedExecControl::Disabled,
+            stream_queue_capacity: None,
+            start_timeout: Duration::from_secs(5),
+        })
+        .await
+        .expect("start supervised exec");
+    let blocked_path = blocking_write_path(&h.dir, "control-blocked");
+    let blocked_path_string = blocked_path.to_string_lossy().to_string();
+
+    let write = h
+        .host()
+        .write_file(&blocked_path_string, b"control content", false);
+    let control = async {
+        wait_for_path(
+            &blocking_write_started_path(&blocked_path),
+            Duration::from_secs(5),
+        )
+        .await;
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            h.host().quiesce_operations(Duration::from_secs(1)),
+        )
+        .await
+        .expect("quiesce should respond while write helper is blocked")
+        .expect_err("quiesce should report the active write as pending");
+        let cancel_result = tokio::time::timeout(
+            Duration::from_secs(3),
+            handle.cancel_and_wait(Duration::from_secs(2)),
+        )
+        .await
+        .expect("exec cancel should not wait for blocked write")
+        .expect("cancel supervised exec");
+        fs::write(blocking_write_release_path(&blocked_path), b"")
+            .expect("release control blocked helper");
+        cancel_result
+    };
+
+    let (write_result, cancel_result) = tokio::join!(write, control);
+    write_result.expect("blocked write should finish after release");
+    assert_eq!(cancel_result.termination, ExecTermination::Cancelled);
+
+    h.host()
+        .quiesce_operations(Duration::from_secs(2))
+        .await
+        .expect("quiesce should succeed after write completion");
+    h.host()
+        .resume_operations(Duration::from_secs(2))
+        .await
+        .expect("resume operations");
+    h.finish();
+}
+
+#[tokio::test]
+async fn shutdown_cancels_blocked_write_helper_before_connection_exit() {
+    let dir = tempfile::tempdir().expect("create shutdown temp dir");
+    let blocked_path = blocking_write_path(dir.path(), "shutdown-blocked");
+    let blocked_path_string = blocked_path.to_string_lossy();
+    let (guest, mut stream) = start_raw_guest_connection();
+    let payload = vsock_proto::encode_write_file(&blocked_path_string, b"shutdown", false, false)
+        .expect("encode shutdown blocked write");
+    stream
+        .write_all(
+            &vsock_proto::encode(MSG_WRITE_FILE, 20, &payload)
+                .expect("frame shutdown blocked write"),
+        )
+        .expect("send shutdown blocked write");
+    let started_path = blocking_write_started_path(&blocked_path);
+    wait_for_path(&started_path, Duration::from_secs(5)).await;
+    let pid: u32 = fs::read_to_string(blocking_write_pid_path(&blocked_path))
+        .expect("read shutdown helper pid")
+        .parse()
+        .expect("parse shutdown helper pid");
+
+    stream
+        .write_all(&vsock_proto::encode(MSG_SHUTDOWN, 21, &[]).expect("encode shutdown"))
+        .expect("send shutdown");
+    let ack = read_raw_message(&mut stream);
+    assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
+    assert_eq!(ack.seq, 21);
+
+    join_raw_guest_connection(guest);
+    let mut trailing = [0u8; 1];
+    assert_eq!(
+        stream
+            .read(&mut trailing)
+            .expect("read shutdown stream EOF"),
+        0,
+        "no write result may follow shutdown acknowledgement"
+    );
+    assert!(
+        !pid_alive(pid),
+        "shutdown helper pid {pid} should be reaped"
+    );
+}
+
+#[tokio::test]
+async fn disconnect_cancels_blocked_write_helper_before_connection_exit() {
+    let dir = tempfile::tempdir().expect("create disconnect temp dir");
+    let blocked_path = blocking_write_path(dir.path(), "disconnect-blocked");
+    let blocked_path_string = blocked_path.to_string_lossy();
+    let (guest, mut stream) = start_raw_guest_connection();
+    let payload = vsock_proto::encode_write_file(&blocked_path_string, b"disconnect", false, false)
+        .expect("encode disconnect blocked write");
+    stream
+        .write_all(
+            &vsock_proto::encode(MSG_WRITE_FILE, 30, &payload)
+                .expect("frame disconnect blocked write"),
+        )
+        .expect("send disconnect blocked write");
+    wait_for_path(
+        &blocking_write_started_path(&blocked_path),
+        Duration::from_secs(5),
+    )
+    .await;
+    let pid: u32 = fs::read_to_string(blocking_write_pid_path(&blocked_path))
+        .expect("read disconnect helper pid")
+        .parse()
+        .expect("parse disconnect helper pid");
+
+    drop(stream);
+    join_raw_guest_connection(guest);
+    assert!(
+        !pid_alive(pid),
+        "disconnect helper pid {pid} should be reaped"
+    );
 }
 // ── write_file ───────────────────────────────────────────────────────
 

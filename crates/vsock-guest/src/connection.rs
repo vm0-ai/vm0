@@ -17,9 +17,9 @@ use crate::exec_operation::{
     ExecOperationRegistry, ExecOperationWorkerRequest, cancel_exec_operation, send_error_response,
     start_exec_operation,
 };
+use crate::file_write_worker::{FileWriteKind, FileWriteSubmitError, FileWriteWorker};
 use crate::handlers::{
     MessageOutcome, decode_write_file_message, decode_write_files_message, handle_basic_message,
-    handle_decoded_write_file_message, handle_decoded_write_files_message,
 };
 use crate::log::log;
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
@@ -57,10 +57,9 @@ enum DecodeDispatchError {
     Shutdown,
 }
 
-/// Signals all exec operation work spawned for this host connection when the
+/// Signals all operation work spawned for this host connection when the
 /// connection loop exits. `run()` may reconnect after a close, but in-flight
-/// exec operations belong to the old connection and should not survive into
-/// the next one.
+/// work belongs to the old connection and must not survive into the next one.
 struct ConnectionCancelGuard(Arc<AtomicBool>);
 
 impl Drop for ConnectionCancelGuard {
@@ -241,20 +240,24 @@ fn handle_resume_operations(
 struct ConnectionDispatcher {
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    file_write_worker: FileWriteWorker,
     exec_operation_registry: ExecOperationRegistry,
     exec_control_registry: ExecControlRegistry,
     operation_state: OperationState,
 }
 
 impl ConnectionDispatcher {
-    fn new(writer: GuestWriter, connection_cancel: Arc<AtomicBool>) -> Self {
-        Self {
+    fn new(writer: GuestWriter, connection_cancel: Arc<AtomicBool>) -> io::Result<Self> {
+        let file_write_worker =
+            FileWriteWorker::start(writer.clone(), Arc::clone(&connection_cancel))?;
+        Ok(Self {
             writer,
             connection_cancel,
+            file_write_worker,
             exec_operation_registry: ExecOperationRegistry::default(),
             exec_control_registry: ExecControlRegistry::default(),
             operation_state: OperationState::default(),
-        }
+        })
     }
 
     fn dispatch(&self, msg: BorrowedRawMessage<'_>) -> io::Result<DispatchOutcome> {
@@ -373,22 +376,35 @@ impl ConnectionDispatcher {
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        let decoded = match decode_write_file_message(msg.payload) {
-            Ok(decoded) => decoded,
-            Err(error) => {
-                send_error_response(msg.seq, &error.to_string(), &self.writer)?;
-                return Ok(());
-            }
+        if let Err(error) = decode_write_file_message(msg.payload) {
+            send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+            return Ok(());
+        }
+        let Some(admission) = self.file_write_worker.try_admit() else {
+            send_error_response(msg.seq, "guest file write already active", &self.writer)?;
+            return Ok(());
         };
         let Some(operation_guard) =
             acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
         else {
             return Ok(());
         };
-        let response = handle_decoded_write_file_message(msg.seq, decoded)?;
-        self.writer.write_frame_after_lock(&response, || {
-            operation_guard.release();
-        })
+        match self.file_write_worker.submit(
+            FileWriteKind::File,
+            msg.seq,
+            msg.payload,
+            operation_guard,
+            admission,
+        ) {
+            Ok(()) => Ok(()),
+            Err(FileWriteSubmitError::Busy) => {
+                send_error_response(msg.seq, "guest file write already active", &self.writer)
+            }
+            Err(FileWriteSubmitError::Disconnected) => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "guest file-write worker stopped",
+            )),
+        }
     }
 
     fn handle_write_files(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
@@ -398,22 +414,35 @@ impl ConnectionDispatcher {
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        let decoded = match decode_write_files_message(msg.payload) {
-            Ok(decoded) => decoded,
-            Err(error) => {
-                send_error_response(msg.seq, &error.to_string(), &self.writer)?;
-                return Ok(());
-            }
+        if let Err(error) = decode_write_files_message(msg.payload) {
+            send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+            return Ok(());
+        }
+        let Some(admission) = self.file_write_worker.try_admit() else {
+            send_error_response(msg.seq, "guest file write already active", &self.writer)?;
+            return Ok(());
         };
         let Some(operation_guard) =
             acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
         else {
             return Ok(());
         };
-        let response = handle_decoded_write_files_message(msg.seq, decoded)?;
-        self.writer.write_frame_after_lock(&response, || {
-            operation_guard.release();
-        })
+        match self.file_write_worker.submit(
+            FileWriteKind::Files,
+            msg.seq,
+            msg.payload,
+            operation_guard,
+            admission,
+        ) {
+            Ok(()) => Ok(()),
+            Err(FileWriteSubmitError::Busy) => {
+                send_error_response(msg.seq, "guest file write already active", &self.writer)
+            }
+            Err(FileWriteSubmitError::Disconnected) => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "guest file-write worker stopped",
+            )),
+        }
     }
 
     fn handle_quiesce_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
@@ -431,7 +460,9 @@ impl ConnectionDispatcher {
                 Ok(DispatchOutcome::Continue)
             }
             MessageOutcome::Shutdown(response) => {
-                if let Err(e) = self.writer.write_frame(&response) {
+                if let Err(e) = self.writer.write_frame_after_lock(&response, || {
+                    self.connection_cancel.store(true, Ordering::Release);
+                }) {
                     log("WARN", &format!("Failed to send shutdown_ack: {e}"));
                 }
                 log("INFO", "Shutdown complete, exiting");
@@ -525,7 +556,8 @@ fn handle_connection_with_outcome(stream: UnixStream) -> Result<ConnectionEnd, C
     log("INFO", "Sent ready signal");
 
     let mut session = ConnectionSession::new();
-    let dispatcher = ConnectionDispatcher::new(writer, connection_cancel.clone());
+    let dispatcher = ConnectionDispatcher::new(writer, connection_cancel.clone())
+        .map_err(|error| session.failure(error))?;
     let mut buf = [0u8; READ_BUFFER_SIZE];
     loop {
         // Read from stream (reader is separate, no lock needed)

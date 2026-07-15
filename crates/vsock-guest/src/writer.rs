@@ -3,6 +3,7 @@ use std::io;
 use std::net::Shutdown;
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -28,6 +29,20 @@ impl GuestWriter {
         self.write_frame_with_deadline(frame, WRITE_DEADLINE)
     }
 
+    pub(crate) fn shutdown(&self) {
+        let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = stream.shutdown(Shutdown::Both);
+    }
+
+    pub(crate) fn shutdown_after_lock<F>(&self, after_lock: F)
+    where
+        F: FnOnce(),
+    {
+        let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+        after_lock();
+        let _ = stream.shutdown(Shutdown::Both);
+    }
+
     fn write_frame_with_deadline(&self, frame: &[u8], deadline: Duration) -> io::Result<()> {
         self.write_frame_with_deadline_after_lock(frame, deadline, || {})
     }
@@ -43,6 +58,29 @@ impl GuestWriter {
         F: FnOnce(),
     {
         self.write_frame_with_deadline_after_lock(frame, WRITE_DEADLINE, after_lock)
+    }
+
+    /// Release operation ownership at the writer boundary, then send the
+    /// terminal frame only if the owning connection remains live.
+    pub(crate) fn write_frame_after_lock_unless_cancelled<F>(
+        &self,
+        frame: &[u8],
+        cancelled: &AtomicBool,
+        after_lock: F,
+    ) -> io::Result<bool>
+    where
+        F: FnOnce(),
+    {
+        let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+        after_lock();
+        if cancelled.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+        let result = send_frame(stream.as_raw_fd(), frame, WRITE_DEADLINE);
+        if result.is_err() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        result.map(|()| true)
     }
 
     /// Build and send one frame while holding the writer mutex.
