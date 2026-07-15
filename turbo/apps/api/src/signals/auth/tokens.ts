@@ -30,6 +30,7 @@ const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["relationship:read", FeatureSwitchKey.RelationshipMemory],
   ["scrape:read", FeatureSwitchKey.ZeroScrape],
+  ["web-search:read", FeatureSwitchKey.ZeroWebSearch],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [

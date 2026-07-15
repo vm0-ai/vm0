@@ -38,6 +38,7 @@ function buildCommands(): Command[] {
     new Command("host"),
     new Command("maps"),
     new Command("scrape"),
+    new Command("web-search"),
     new Command("banking"),
     new Command("goal"),
   ];
@@ -174,6 +175,7 @@ describe("registerZeroCommands", () => {
       "host",
       "maps",
       "scrape",
+      "web-search",
       "banking",
       "goal",
     ]);
@@ -241,6 +243,18 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("scrape");
+  });
+
+  it("should show web-search when web-search:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["web-search:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("web-search");
   });
 
   it("should show credit with either billing read or billing write capability", () => {
