@@ -292,25 +292,39 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
 }
 
 #[tokio::test]
-async fn execute_inner_run_payload_private_write_failure_does_not_start_agent() {
+async fn execute_inner_run_payload_enospc_collects_resources_without_starting_agent() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_private_write_file_result(Err(sandbox_write_file_error(
-        "payload private write failed",
+        "No space left on device (os error 28)",
     )));
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "guest-agent-binary".into(),
+        exit_code: 0,
+        stdout: b"VM0_DF_BLOCKS_V1\n/dev/root 8388608 8388608 0 100% /\nVM0_DF_INODES_V1\n/dev/root 524288 524280 8 100% /\n".to_vec(),
+        stderr: Vec::new(),
+    });
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
-    let (exit_code, error_msg) =
-        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
-            .await
-            .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &minimal_context(), &config, &default_params())
+        .await
+        .unwrap();
 
-    assert_eq!(exit_code, 1);
-    let error = error_msg.unwrap();
+    assert_eq!(outcome.exit_code(), 1);
+    let failure = outcome.failure.as_ref().expect("expected failure");
     assert!(
-        error.contains("payload private write failed"),
-        "got: {error}"
+        failure
+            .error
+            .contains("No space left on device (os error 28)"),
+        "got: {failure:?}"
+    );
+    assert_eq!(
+        failure
+            .resource_diagnostics
+            .expect("expected resource diagnostics")
+            .failure_kind,
+        Some(ResourceFailureKind::GuestRootFilesystemFull)
     );
     let private_writes = overrides.private_write_file_calls();
     assert_eq!(private_writes.len(), 1);
@@ -324,6 +338,14 @@ async fn execute_inner_run_payload_private_write_failure_does_not_start_agent() 
     assert!(
         overrides.start_process_calls().is_empty(),
         "agent must not start after run payload write failure"
+    );
+    assert_eq!(
+        overrides
+            .exec_calls()
+            .iter()
+            .filter(|call| call.cmd.contains("guest-agent-binary"))
+            .count(),
+        1
     );
 }
 
