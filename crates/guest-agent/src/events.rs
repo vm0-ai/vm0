@@ -413,7 +413,7 @@ pub async fn post_event_with_error_flag(
 ) -> Result<(), AgentError> {
     let url = http.events_url()?;
     match http
-        .post_json(url, payload, constants::HTTP_MAX_RETRIES)
+        .post_json(url, payload, constants::HTTP_MAX_ATTEMPTS)
         .await
     {
         Ok(_) => Ok(()),
