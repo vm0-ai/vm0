@@ -1504,7 +1504,11 @@ mod tests {
                 "https://bad,.{tenant}.example.com".to_string(),
             ),
             (
-                "materialized DNS label above 63 bytes",
+                "literal DNS label above 63 bytes",
+                format!("https://{}.{{tenant}}.example.com", "a".repeat(64)),
+            ),
+            (
+                "mixed materialized DNS label above 63 bytes",
                 format!("https://{}{{tenant}}.example.com", "a".repeat(63)),
             ),
             (
