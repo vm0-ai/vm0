@@ -36,7 +36,7 @@ function detailResponse(overrides: Record<string, unknown> = {}) {
     instruction: "Updated instruction",
     files: [],
     fileContents: [],
-    triggers: [],
+    automations: [],
     ...overrides,
   };
 }

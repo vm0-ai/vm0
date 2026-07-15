@@ -26,7 +26,7 @@ function contentLengthExceedsLimit(contentLength: string | null): boolean {
   return Number.isFinite(parsed) && parsed > WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES;
 }
 
-export const postWorkflowAutomationWebhook$ = command(
+const postWorkflowAutomationWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const params = get(pathParamsOf(webhookWorkflowAutomationContract.post));
     const request = get(request$);

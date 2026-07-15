@@ -11,7 +11,7 @@ import {
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationUpdateRequest,
   type ZeroWorkflowUpdateRequest,
-  type LegacyZeroWorkflowDetailResponse,
+  type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -470,15 +470,15 @@ function publicWorkflowAutomation(
 }
 
 function publicWorkflowDetail(
-  detail: LegacyZeroWorkflowDetailResponse,
-): LegacyZeroWorkflowDetailResponse {
+  detail: ZeroWorkflowDetailResponse,
+): ZeroWorkflowDetailResponse {
   return {
     ...detail,
-    triggers: detail.triggers.map(publicWorkflowAutomation),
+    automations: detail.automations.map(publicWorkflowAutomation),
   };
 }
 
-function salesResearch(): LegacyZeroWorkflowDetailResponse {
+function salesResearch(): ZeroWorkflowDetailResponse {
   return {
     id: SALES_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -510,11 +510,11 @@ function salesResearch(): LegacyZeroWorkflowDetailResponse {
         content: '{ "risk": "low", "tone": "direct" }',
       },
     ],
-    triggers: workflowAutomations(),
+    automations: workflowAutomations(),
   };
 }
 
-function opsPlaybook(): LegacyZeroWorkflowDetailResponse {
+function opsPlaybook(): ZeroWorkflowDetailResponse {
   return {
     id: OPS_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -534,11 +534,11 @@ function opsPlaybook(): LegacyZeroWorkflowDetailResponse {
     instruction: null,
     files: [],
     fileContents: [],
-    triggers: [],
+    automations: [],
   };
 }
 
-function launchChecklistWorkflow(): LegacyZeroWorkflowDetailResponse {
+function launchChecklistWorkflow(): ZeroWorkflowDetailResponse {
   return {
     id: CHECKLIST_WORKFLOW_ID,
     agentId: AGENT_ID,
@@ -558,11 +558,11 @@ function launchChecklistWorkflow(): LegacyZeroWorkflowDetailResponse {
     instruction: null,
     files: [],
     fileContents: [],
-    triggers: [],
+    automations: [],
   };
 }
 
-function otherAgentWorkflow(): LegacyZeroWorkflowDetailResponse {
+function otherAgentWorkflow(): ZeroWorkflowDetailResponse {
   return {
     id: OTHER_WORKFLOW_ID,
     agentId: OTHER_AGENT_ID,
@@ -582,7 +582,7 @@ function otherAgentWorkflow(): LegacyZeroWorkflowDetailResponse {
     instruction: null,
     files: [],
     fileContents: [],
-    triggers: [],
+    automations: [],
   };
 }
 
@@ -600,9 +600,7 @@ function agent(id: string, displayName: string): TeamComposeItem {
   };
 }
 
-function summary(
-  workflow: LegacyZeroWorkflowDetailResponse,
-): ZeroWorkflowSummary {
+function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
   return {
     id: workflow.id,
     agentId: workflow.agentId,
@@ -645,9 +643,9 @@ function mockAgentPageApis(): void {
 }
 
 function applyWorkflowUpdate(
-  workflow: LegacyZeroWorkflowDetailResponse,
+  workflow: ZeroWorkflowDetailResponse,
   body: ZeroWorkflowUpdateRequest,
-): LegacyZeroWorkflowDetailResponse {
+): ZeroWorkflowDetailResponse {
   return {
     ...workflow,
     ...(body.name !== undefined ? { name: body.name } : {}),
@@ -674,27 +672,26 @@ function applyWorkflowUpdate(
 }
 
 function mockWorkflowApis(
-  workflows: LegacyZeroWorkflowDetailResponse[],
+  workflows: ZeroWorkflowDetailResponse[],
   onUpdate?: (body: ZeroWorkflowUpdateRequest) => void,
-  detailField: "triggers" | "automations" | "both" = "triggers",
 ): void {
   const setAutomationEnabled = (
     automationId: string,
     enabled: boolean,
   ): ZeroWorkflowAutomationSummary | null => {
     for (const workflow of workflows) {
-      const automationIndex = workflow.triggers.findIndex((automation) => {
+      const automationIndex = workflow.automations.findIndex((automation) => {
         return automation.id === automationId;
       });
       if (automationIndex === -1) {
         continue;
       }
-      const currentAutomation = workflow.triggers[automationIndex];
+      const currentAutomation = workflow.automations[automationIndex];
       if (!currentAutomation) {
         continue;
       }
       const updatedAutomation = { ...currentAutomation, enabled };
-      workflow.triggers[automationIndex] = updatedAutomation;
+      workflow.automations[automationIndex] = updatedAutomation;
       return updatedAutomation;
     }
     return null;
@@ -721,16 +718,6 @@ function mockWorkflowApis(
       });
     }
     const publicDetail = publicWorkflowDetail(detail);
-    if (detailField === "automations") {
-      const { triggers, ...workflow } = publicDetail;
-      return respond(200, { ...workflow, automations: triggers });
-    }
-    if (detailField === "both") {
-      return respond(200, {
-        ...publicDetail,
-        automations: publicDetail.triggers,
-      });
-    }
     return respond(200, publicDetail);
   });
   context.mocks.api(
@@ -739,7 +726,7 @@ function mockWorkflowApis(
       return respond(
         200,
         workflows.flatMap((workflow) => {
-          return workflow.triggers.map((automation) => {
+          return workflow.automations.map((automation) => {
             return {
               workflow: summary(workflow),
               automation: publicWorkflowAutomation(automation),
@@ -754,7 +741,7 @@ function mockWorkflowApis(
     ({ params, respond }) => {
       const automation = workflows
         .flatMap((workflow) => {
-          return workflow.triggers;
+          return workflow.automations;
         })
         .find((item) => {
           return item.id === params.id;
@@ -820,7 +807,7 @@ function mockWorkflowApis(
 }
 
 function mockDeleteWorkflow(
-  workflows: LegacyZeroWorkflowDetailResponse[],
+  workflows: ZeroWorkflowDetailResponse[],
   onDelete: (workflowId: string) => void | Promise<void>,
 ): void {
   context.mocks.api(
@@ -1508,20 +1495,6 @@ describe("workflow detail page", () => {
     expect(search()).toBe("?file=config%2Fsettings.json");
   });
 
-  it("renders canonical automation fields during the rolling deploy", async () => {
-    context.mocks.data.userPreferences({ timezone: "UTC" });
-    mockWorkflowApis([salesResearch()], undefined, "automations");
-    mockConnectedAutomationConnectors();
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
-
-    await screen.findByText("Every weekday at 9:00 AM");
-    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
-    expect(
-      screen.getByRole("switch", { name: "Disable Every weekday at 9:00 AM" }),
-    ).toBeInTheDocument();
-  });
-
   it("checks connector readiness only on request and shows every status", async () => {
     const workflow = {
       ...salesResearch(),
@@ -1933,14 +1906,14 @@ describe("workflow detail page", () => {
 
   it("copies a workflow to another agent from the info tab", async () => {
     const workflows = [salesResearch()];
-    const copiedWorkflow: LegacyZeroWorkflowDetailResponse = {
+    const copiedWorkflow: ZeroWorkflowDetailResponse = {
       ...salesResearch(),
       id: COPIED_WORKFLOW_ID,
       agentId: OTHER_AGENT_ID,
       agentName: "support-bot",
       agentDisplayName: "Support Bot",
       visibility: "private",
-      triggers: [],
+      automations: [],
     };
     const copyRequests: {
       readonly workflowId: string;
@@ -2028,14 +2001,14 @@ describe("workflow detail page", () => {
 
   it("moves a workflow by removing the original after copying", async () => {
     const workflows = [salesResearch()];
-    const copiedWorkflow: LegacyZeroWorkflowDetailResponse = {
+    const copiedWorkflow: ZeroWorkflowDetailResponse = {
       ...salesResearch(),
       id: COPIED_WORKFLOW_ID,
       agentId: OTHER_AGENT_ID,
       agentName: "support-bot",
       agentDisplayName: "Support Bot",
       visibility: "private",
-      triggers: [],
+      automations: [],
     };
     const copyRequests: {
       readonly workflowId: string;
@@ -2204,7 +2177,7 @@ describe("workflow detail page", () => {
   it("renders Gmail new message automation match summaries", async () => {
     const workflow = {
       ...salesResearch(),
-      triggers: [...workflowAutomations(), gmailWorkflowAutomation()],
+      automations: [...workflowAutomations(), gmailWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
 
@@ -2627,7 +2600,7 @@ describe("workflow detail page", () => {
     });
     const workflow = {
       ...salesResearch(),
-      triggers: [
+      automations: [
         {
           ...webhookWorkflowAutomation(),
           enabled: false,
@@ -2663,7 +2636,7 @@ describe("workflow detail page", () => {
   it("reveals an existing webhook secret on demand", async () => {
     const workflow = {
       ...salesResearch(),
-      triggers: [webhookWorkflowAutomation()],
+      automations: [webhookWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
 
@@ -2806,7 +2779,7 @@ describe("workflow detail page", () => {
     context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
     const workflow = {
       ...salesResearch(),
-      triggers: [
+      automations: [
         {
           ...weekdayWorkflowAutomation(),
           schedule: {
@@ -2858,7 +2831,7 @@ describe("workflow detail page", () => {
     }[] = [];
     const workflow = {
       ...salesResearch(),
-      triggers: [
+      automations: [
         {
           ...weekdayWorkflowAutomation(),
           schedule: {
@@ -2908,7 +2881,7 @@ describe("workflow detail page", () => {
     }[] = [];
     const workflow = {
       ...salesResearch(),
-      triggers: [
+      automations: [
         {
           ...gmailWorkflowAutomation(),
           eventConfig: {
@@ -2978,7 +2951,7 @@ describe("workflow detail page", () => {
     }[] = [];
     const workflow = {
       ...salesResearch(),
-      triggers: [gmailLabelWorkflowAutomation()],
+      automations: [gmailLabelWorkflowAutomation()],
     };
     mockWorkflowApis([workflow]);
     mockUpdateWorkflowAutomation((automationId, body) => {

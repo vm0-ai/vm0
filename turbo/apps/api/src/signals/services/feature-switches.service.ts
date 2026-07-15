@@ -3,10 +3,7 @@ import {
   filterUserOverridableFeatureSwitchOverrides,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
-import {
-  FeatureSwitchKey,
-  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY as LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY,
-} from "@vm0/core/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -26,30 +23,12 @@ function isOrgScopedFeatureSwitchKey(key: string): boolean {
   return ORG_SCOPED_FEATURE_SWITCH_KEYS.includes(key);
 }
 
-function canonicalizeFeatureSwitchAliases(
-  switches: Readonly<Record<string, boolean>>,
-): Record<string, boolean> {
-  const canonical = { ...switches };
-  const notionWorkflowAutomations =
-    switches[FeatureSwitchKey.NotionWorkflowAutomations] ??
-    switches[LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY];
-
-  delete canonical[LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY];
-  if (notionWorkflowAutomations !== undefined) {
-    canonical[FeatureSwitchKey.NotionWorkflowAutomations] =
-      notionWorkflowAutomations;
-  }
-
-  return canonical;
-}
-
 function splitFeatureSwitchesByScope(switches: Record<string, boolean>): {
   readonly userSwitches: Record<string, boolean>;
   readonly orgSwitches: Record<string, boolean>;
 } {
-  const userOverridableSwitches = filterUserOverridableFeatureSwitchOverrides(
-    canonicalizeFeatureSwitchAliases(switches),
-  );
+  const userOverridableSwitches =
+    filterUserOverridableFeatureSwitchOverrides(switches);
   const userSwitches: Record<string, boolean> = {};
   const orgSwitches: Record<string, boolean> = {};
 
@@ -111,9 +90,7 @@ async function loadUserFeatureSwitchOverrides(
   let orgSwitches: Record<string, boolean> = {};
 
   for (const row of rows) {
-    const switches = filterUserOverridableFeatureSwitchOverrides(
-      canonicalizeFeatureSwitchAliases(row.switches),
-    );
+    const switches = filterUserOverridableFeatureSwitchOverrides(row.switches);
     if (row.userId === userId) {
       userSwitches = switches;
     }
@@ -225,12 +202,8 @@ async function upsertFeatureSwitches(
   const existing =
     (existingRow?.switches as Record<string, boolean> | undefined) ?? {};
   const merged: Record<string, boolean> = {
-    ...filterUserOverridableFeatureSwitchOverrides(
-      canonicalizeFeatureSwitchAliases(existing),
-    ),
-    ...filterUserOverridableFeatureSwitchOverrides(
-      canonicalizeFeatureSwitchAliases(switches),
-    ),
+    ...filterUserOverridableFeatureSwitchOverrides(existing),
+    ...filterUserOverridableFeatureSwitchOverrides(switches),
   };
   const now = nowDate();
 

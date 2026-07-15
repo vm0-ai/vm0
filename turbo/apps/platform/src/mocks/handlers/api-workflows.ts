@@ -4,7 +4,7 @@ import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
   type ChatThreadWorkflowAutomation,
-  type LegacyZeroWorkflowDetailResponse,
+  type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationCreateRequest,
@@ -17,9 +17,9 @@ import {
   setMockWorkflowAutomations,
 } from "./workflow-automations-store.ts";
 
-const DEFAULT_WORKFLOWS: LegacyZeroWorkflowDetailResponse[] = [];
+const DEFAULT_WORKFLOWS: ZeroWorkflowDetailResponse[] = [];
 
-let mockWorkflows: LegacyZeroWorkflowDetailResponse[] = [...DEFAULT_WORKFLOWS];
+let mockWorkflows: ZeroWorkflowDetailResponse[] = [...DEFAULT_WORKFLOWS];
 
 function notFound(workflowId: string) {
   return {
@@ -27,9 +27,7 @@ function notFound(workflowId: string) {
   };
 }
 
-function summary(
-  workflow: LegacyZeroWorkflowDetailResponse,
-): ZeroWorkflowSummary {
+function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
   return {
     id: workflow.id,
     agentId: workflow.agentId,
@@ -114,7 +112,7 @@ export const apiWorkflowsHandlers = [
 
   mockApi(zeroWorkflowsCollectionContract.create, ({ body, respond }) => {
     const now = new Date().toISOString();
-    const created: LegacyZeroWorkflowDetailResponse = {
+    const created: ZeroWorkflowDetailResponse = {
       id: crypto.randomUUID(),
       agentId: body.agentId,
       agentName: null,
@@ -138,7 +136,7 @@ export const apiWorkflowsHandlers = [
         };
       }),
       fileContents: body.files ?? [],
-      triggers: [],
+      automations: [],
     };
     mockWorkflows = [...mockWorkflows, created];
     return respond(201, summary(created));
@@ -165,7 +163,7 @@ export const apiWorkflowsHandlers = [
     const existing = mockWorkflows[index]!;
     const now = new Date().toISOString();
     const files = body.files ?? existing.fileContents ?? [];
-    const updated: LegacyZeroWorkflowDetailResponse = {
+    const updated: ZeroWorkflowDetailResponse = {
       ...existing,
       updatedByUserId: "test-user-123",
       updatedAt: now,
@@ -228,7 +226,7 @@ export const apiWorkflowsHandlers = [
       return respond(404, notFound(params.workflowId));
     }
     const now = new Date().toISOString();
-    const copied: LegacyZeroWorkflowDetailResponse = {
+    const copied: ZeroWorkflowDetailResponse = {
       ...source,
       id: crypto.randomUUID(),
       agentId: body.toAgentId,
@@ -239,7 +237,7 @@ export const apiWorkflowsHandlers = [
       updatedByUserId: "test-user-123",
       createdAt: now,
       updatedAt: now,
-      triggers: source.triggers.map((automation) => {
+      automations: source.automations.map((automation) => {
         return {
           ...automation,
           id: crypto.randomUUID(),
@@ -285,9 +283,7 @@ export const apiWorkflowsHandlers = [
 function visibilityHandlers() {
   const transition = (
     workflowId: string,
-    apply: (
-      workflow: LegacyZeroWorkflowDetailResponse,
-    ) => LegacyZeroWorkflowDetailResponse,
+    apply: (workflow: ZeroWorkflowDetailResponse) => ZeroWorkflowDetailResponse,
   ): ZeroWorkflowSummary | null => {
     const index = mockWorkflows.findIndex((item) => {
       return item.id === workflowId;
@@ -332,14 +328,14 @@ function updateDetailAutomation(
   ) => ZeroWorkflowAutomationSummary,
 ): ZeroWorkflowAutomationSummary | null {
   for (const workflow of mockWorkflows) {
-    const automationIndex = workflow.triggers.findIndex((automation) => {
+    const automationIndex = workflow.automations.findIndex((automation) => {
       return automation.id === automationId;
     });
     if (automationIndex === -1) {
       continue;
     }
-    const updated = apply(workflow.triggers[automationIndex]!);
-    workflow.triggers = workflow.triggers.map((automation) => {
+    const updated = apply(workflow.automations[automationIndex]!);
+    workflow.automations = workflow.automations.map((automation) => {
       return automation.id === automationId ? updated : automation;
     });
     return updated;
@@ -384,7 +380,7 @@ function mockWorkflowAutomationExists(automationId: string): boolean {
       return automation.id === automationId;
     }) ||
     mockWorkflows.some((workflow) => {
-      return workflow.triggers.some((automation) => {
+      return workflow.automations.some((automation) => {
         return automation.id === automationId;
       });
     })
@@ -411,7 +407,7 @@ function workflowAutomationListHandlers() {
     mockApi(zeroWorkflowAutomationsContract.listWorkspace, ({ respond }) => {
       const entries: ZeroWorkflowAutomationsListEntry[] = mockWorkflows.flatMap(
         (workflow) => {
-          return workflow.triggers.map((automation) => {
+          return workflow.automations.map((automation) => {
             return {
               workflow: summary(workflow),
               automation: publicWorkflowAutomation(automation),
@@ -431,7 +427,7 @@ function workflowAutomationListHandlers() {
       if (!workflow) {
         return respond(404, notFound(params.workflowId));
       }
-      return respond(200, workflow.triggers.map(publicWorkflowAutomation));
+      return respond(200, workflow.automations.map(publicWorkflowAutomation));
     }),
 
     mockApi(
@@ -664,7 +660,7 @@ function workflowAutomationCreateHandlers() {
           base,
           body,
         );
-        workflow.triggers = [...workflow.triggers, automation];
+        workflow.automations = [...workflow.automations, automation];
         return respond(201, automation);
       },
     ),
@@ -714,7 +710,7 @@ function workflowAutomationRunHandlers() {
       zeroWorkflowAutomationsContract.revealWebhookSecret,
       ({ params, respond }) => {
         for (const workflow of mockWorkflows) {
-          const detailAutomation = workflow.triggers.find((item) => {
+          const detailAutomation = workflow.automations.find((item) => {
             return item.id === params.id;
           });
           if (

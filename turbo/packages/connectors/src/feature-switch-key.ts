@@ -73,6 +73,7 @@ export enum FeatureSwitchKey {
   TeamsIntegration = "teamsIntegration",
   ImageEditing = "imageEditing",
   PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
+  PresentationElementDragging = "presentationElementDragging",
   Artifacts = "artifacts",
   ArtifactPreviewImage = "artifactPreviewImage",
   WorkflowTemplateCatalog = "workflowTemplateCatalog",
@@ -82,10 +83,3 @@ export enum FeatureSwitchKey {
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ZeroMail = "zeroMail",
 }
-
-/**
- * Temporary wire alias used while old platform and API versions drain.
- * Remove after the Notion workflow automation feature-switch migration.
- */
-export const LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY =
-  "notionWorkflowTriggers";

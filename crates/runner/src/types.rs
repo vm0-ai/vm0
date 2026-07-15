@@ -278,8 +278,11 @@ const VALID_FIREWALL_RULE_METHODS: &[&str] = &[
 struct FirewallRuleSegmentParam<'a> {
     name: &'a str,
     greedy: bool,
-    mixed_with_literal: bool,
+    prefix: &'a str,
+    suffix: &'a str,
 }
+
+const DNS_LABEL_MAX_LENGTH: usize = 63;
 
 fn validate_firewall_permission_rule(rule: &str) -> Result<(), String> {
     let Some((method, path)) = rule.split_once(' ') else {
@@ -323,7 +326,7 @@ fn validate_firewall_permission_rule(rule: &str) -> Result<(), String> {
                 param.name
             ));
         }
-        if param.greedy && param.mixed_with_literal {
+        if param.greedy && (!param.prefix.is_empty() || !param.suffix.is_empty()) {
             return Err(format!(
                 "greedy parameter {:?} cannot be combined with a literal prefix or suffix",
                 param.name
@@ -395,7 +398,8 @@ fn parse_firewall_rule_segment(
     Ok(Some(FirewallRuleSegmentParam {
         name,
         greedy,
-        mixed_with_literal: !prefix.is_empty() || !suffix.is_empty(),
+        prefix,
+        suffix,
     }))
 }
 
@@ -536,14 +540,15 @@ fn validate_parameterized_firewall_base_for_cache(base: &str) -> Result<(), Stri
         return Err("base URL must not contain userinfo".to_string());
     }
 
-    let host = parameterized_base_host(authority)?;
+    let (host, port_suffix) = parameterized_base_authority(authority)?;
     let mut param_names = HashSet::new();
-    validate_parameterized_firewall_base_host(host, &mut param_names)?;
+    let materialized_host = validate_parameterized_firewall_base_host(host, &mut param_names)?;
+    validate_parameterized_firewall_base_authority(scheme, &materialized_host, port_suffix)?;
     validate_parameterized_firewall_base_path(path, &mut param_names)?;
     Ok(())
 }
 
-fn parameterized_base_host(authority: &str) -> Result<&str, String> {
+fn parameterized_base_authority(authority: &str) -> Result<(&str, &str), String> {
     if authority.ends_with(':') {
         return Err("base URL authority must not include an empty port".to_string());
     }
@@ -556,7 +561,7 @@ fn parameterized_base_host(authority: &str) -> Result<&str, String> {
         );
     }
     let Some((host, port)) = authority.rsplit_once(':') else {
-        return Ok(authority);
+        return Ok((authority, ""));
     };
     if !port.chars().all(|ch| ch.is_ascii_digit()) {
         return Err("base URL authority has invalid port".to_string());
@@ -564,48 +569,86 @@ fn parameterized_base_host(authority: &str) -> Result<&str, String> {
     if host.is_empty() {
         return Err("base URL must include a host".to_string());
     }
-    Ok(host)
+    Ok((host, &authority[host.len()..]))
 }
 
 fn validate_parameterized_firewall_base_host(
     host: &str,
     param_names: &mut HashSet<String>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let segments: Vec<&str> = host.split('.').collect();
     if segments.len() < 2 {
         return Err("base URL host must have at least two segments".to_string());
     }
 
     let mut has_static_segment = false;
+    let mut materialized_host = String::with_capacity(host.len());
     for (index, segment) in segments.iter().enumerate() {
         if segment.is_empty() {
             return Err("base URL host segments must be non-empty".to_string());
         }
-        let Some(param) = parse_firewall_rule_segment(segment)? else {
+        if index > 0 {
+            materialized_host.push('.');
+        }
+        if let Some(param) = parse_firewall_rule_segment(segment)? {
+            if !param_names.insert(param.name.to_string()) {
+                return Err(format!(
+                    "duplicate parameter name {:?} in base URL host",
+                    param.name
+                ));
+            }
+            if param.greedy && index != 0 {
+                return Err(format!(
+                    "greedy parameter {:?} must be the first host segment",
+                    param.name
+                ));
+            }
+            if param.greedy && (!param.prefix.is_empty() || !param.suffix.is_empty()) {
+                return Err(format!(
+                    "greedy parameter {:?} cannot be combined with a literal prefix or suffix in base URL host",
+                    param.name
+                ));
+            }
+            validate_parameterized_firewall_base_host_literal(param.prefix)?;
+            validate_parameterized_firewall_base_host_literal(param.suffix)?;
+            materialized_host.push_str(param.prefix);
+            materialized_host.push('x');
+            materialized_host.push_str(param.suffix);
+        } else {
+            validate_parameterized_firewall_base_host_literal(segment)?;
             has_static_segment = true;
-            continue;
-        };
-        if !param_names.insert(param.name.to_string()) {
-            return Err(format!(
-                "duplicate parameter name {:?} in base URL host",
-                param.name
-            ));
-        }
-        if param.greedy && index != 0 {
-            return Err(format!(
-                "greedy parameter {:?} must be the first host segment",
-                param.name
-            ));
-        }
-        if param.greedy && param.mixed_with_literal {
-            return Err(format!(
-                "greedy parameter {:?} cannot be combined with a literal prefix or suffix in base URL host",
-                param.name
-            ));
+            materialized_host.push_str(segment);
         }
     }
     if !has_static_segment {
         return Err("base URL host must have at least one static segment".to_string());
+    }
+    Ok(materialized_host)
+}
+
+fn validate_parameterized_firewall_base_host_literal(literal: &str) -> Result<(), String> {
+    if literal.contains('*') || literal.contains(',') {
+        return Err("parameterized base URL host contains invalid literal syntax".to_string());
+    }
+    Ok(())
+}
+
+fn validate_parameterized_firewall_base_authority(
+    scheme: &str,
+    materialized_host: &str,
+    port_suffix: &str,
+) -> Result<(), String> {
+    let syntax_target = format!("{scheme}://{materialized_host}{port_suffix}");
+    let parsed = url::Url::parse(&syntax_target)
+        .map_err(|_| "parameterized base URL authority is invalid".to_string())?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "parameterized base URL authority must include a host".to_string())?;
+    if host
+        .split('.')
+        .any(|label| label.len() > DNS_LABEL_MAX_LENGTH)
+    {
+        return Err("parameterized base URL host label is too long".to_string());
     }
     Ok(())
 }
