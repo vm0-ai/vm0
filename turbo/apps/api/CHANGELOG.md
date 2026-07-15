@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.276.0](https://github.com/vm0-ai/vm0/compare/api-v1.275.9...api-v1.276.0) (2026-07-15)
+
+
+### Features
+
+* **connectors:** make nintendo connectors generally available ([#21526](https://github.com/vm0-ai/vm0/issues/21526)) ([17975ab](https://github.com/vm0-ai/vm0/commit/17975abc762f8909990b8be5db128937123355b5))
+
+
+### Refactoring
+
+* **platform:** accept workflow detail automation field ([#21528](https://github.com/vm0-ai/vm0/issues/21528)) ([5a7a9f6](https://github.com/vm0-ai/vm0/commit/5a7a9f619c58baa3499340f16a10b7b383fcda13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.3
+    * @vm0/connectors bumped to 1.161.0
+    * @vm0/core bumped to 8.433.0
+    * @vm0/db bumped to 1.115.10
+
 ## [1.275.9](https://github.com/vm0-ai/vm0/compare/api-v1.275.8...api-v1.275.9) (2026-07-15)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.599.8](https://github.com/vm0-ai/vm0/compare/app-v0.599.7...app-v0.599.8) (2026-07-15)
+
+
+### Refactoring
+
+* **platform:** accept workflow detail automation field ([#21528](https://github.com/vm0-ai/vm0/issues/21528)) ([5a7a9f6](https://github.com/vm0-ai/vm0/commit/5a7a9f619c58baa3499340f16a10b7b383fcda13))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.3
+    * @vm0/connectors bumped to 1.161.0
+    * @vm0/core bumped to 8.433.0
+
 ## [0.599.7](https://github.com/vm0-ai/vm0/compare/app-v0.599.6...app-v0.599.7) (2026-07-15)
 
 
