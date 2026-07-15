@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.19...runner-rs-v0.144.20) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** enforce firewalls for options asterisk requests ([#21572](https://github.com/vm0-ai/vm0/issues/21572)) ([7c98fe1](https://github.com/vm0-ai/vm0/commit/7c98fe1a675d98366f936c974d36cc9a984f329a))
+
 ## [0.144.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.18...runner-rs-v0.144.19) (2026-07-15)
 
 
