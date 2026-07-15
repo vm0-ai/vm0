@@ -28,15 +28,6 @@ pub(super) async fn wait_for_rule_calls(rule: &Rule, expected: usize) {
     .unwrap_or_else(|_| panic!("timed out waiting for {expected} mock call(s)"));
 }
 
-/// Write the rootfs file (the only file cached in R2) into `dir`.
-pub(super) async fn write_mock_image_files(dir: &Path) -> Vec<PathBuf> {
-    let rootfs = dir.join("rootfs.ext4");
-    tokio::fs::write(&rootfs, b"rootfs-content".repeat(1024))
-        .await
-        .unwrap();
-    vec![rootfs]
-}
-
 /// Helper: full atomic unpack from an on-disk archive (test-only path).
 /// Mirrors what `try_download` does after the S3 GET succeeds: open file,
 /// stream into staging, finalize. Lets the round-trip tests exercise the
