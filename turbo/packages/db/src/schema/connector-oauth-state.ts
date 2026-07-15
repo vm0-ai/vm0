@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   pgTable,
   text,
@@ -17,6 +18,8 @@ export const connectorOauthStates = pgTable(
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
+    agentId: uuid("agent_id"),
+    authorizeAgent: boolean("authorize_agent").default(false).notNull(),
     redirectUri: text("redirect_uri").notNull(),
     codeVerifier: text("code_verifier"),
     oauthContext: text("oauth_context"),

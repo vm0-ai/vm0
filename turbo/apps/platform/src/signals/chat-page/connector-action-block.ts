@@ -67,23 +67,14 @@ export const closeChatConnectorActionConnectDialog$ = command(({ set }) => {
   set(setSelectedConnectorType$, null);
 });
 
-export const completeChatConnectorActionConnect$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const active = get(activeChatConnectorActionState$);
-    if (!active) {
-      return;
-    }
-    await set(
-      authorizeDirectedConnector$,
-      active.connectorRef,
-      active.agentId,
-      signal,
-    );
-    signal.throwIfAborted();
-    set(active.markComplete$);
-    set(closeChatConnectorActionConnectDialog$);
-  },
-);
+export const completeChatConnectorActionConnect$ = command(({ get, set }) => {
+  const active = get(activeChatConnectorActionState$);
+  if (!active) {
+    return;
+  }
+  set(active.markComplete$);
+  set(closeChatConnectorActionConnectDialog$);
+});
 
 const CONNECTOR_AUTHORIZE_BASE_URL = "https://app.vm0.ai";
 

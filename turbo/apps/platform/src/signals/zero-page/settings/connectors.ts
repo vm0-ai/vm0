@@ -20,6 +20,7 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -73,6 +74,7 @@ const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
   readonly connectorLabel?: string;
+  readonly agentId?: string;
 };
 export type ConnectorConnectionStatus =
   | "not-connected"
@@ -1004,6 +1006,8 @@ export const submitManualGrant$ = command(
             params: { type },
             body: {
               authMethod,
+              authorizeAgent: true,
+              ...(options.agentId ? { agentId: options.agentId } : {}),
               values: sanitizeTokenInputRecord(inputValues),
             },
             fetchOptions: { signal },
@@ -1068,7 +1072,11 @@ export const connectConnectorNoAuth$ = command(
         await accept(
           connectorClient.connect({
             params: { type },
-            body: { authMethod },
+            body: {
+              authMethod,
+              authorizeAgent: true,
+              ...(options.agentId ? { agentId: options.agentId } : {}),
+            },
             fetchOptions: { signal },
           }),
           [200],
@@ -1255,6 +1263,20 @@ type ConnectConnectorOAuthDeviceAuthParams = {
   readonly options: PostConnectOptions;
   readonly startOptions?: ConnectorDeviceAuthStartOptions;
 };
+
+function connectorOAuthDeviceAuthStartBody(
+  args: ConnectConnectorOAuthDeviceAuthParams,
+) {
+  const optionEntries = Object.entries(args.startOptions ?? {});
+  return {
+    authMethod: args.authMethod,
+    authorizeAgent: true as const,
+    ...(args.options.agentId ? { agentId: args.options.agentId } : {}),
+    ...(optionEntries.length > 0
+      ? { options: Object.fromEntries(optionEntries) }
+      : {}),
+  };
+}
 
 type ConnectorOAuthDeviceAuthSessionClient = InitClientReturn<
   typeof zeroConnectorOauthDeviceAuthSessionContract,
@@ -1565,7 +1587,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
     args: ConnectConnectorOAuthDeviceAuthParams,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const { type, authMethod, options, startOptions } = args;
+    const { type, authMethod, options } = args;
     if (
       connectorConnectOperationIsActive({
         authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
@@ -1599,18 +1621,11 @@ const connectConnectorOAuthDeviceAuth$ = command(
           zeroConnectorOauthDeviceAuthSessionContract,
           { apiBase: OAUTH_WEB_API_BASE },
         );
-        const startOptionEntries = Object.entries(startOptions ?? {});
         const startResponse = await tapError(
           accept(
             client.create({
               params: { type },
-              body:
-                startOptionEntries.length > 0
-                  ? {
-                      authMethod,
-                      options: Object.fromEntries(startOptionEntries),
-                    }
-                  : { authMethod },
+              body: connectorOAuthDeviceAuthStartBody(args),
               fetchOptions: { signal: flowSignal },
             }),
             [200],
@@ -1725,6 +1740,7 @@ export const connectConnectorOAuthDeviceAuthAndSettle$ = command(
 type ConnectConnectorExternalCodeParams = {
   readonly type: ConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
+  readonly agentId?: string;
 };
 
 type CompleteConnectorExternalCodeParams = {
@@ -1863,7 +1879,11 @@ export const connectConnectorExternalCode$ = command(
           accept(
             client.create({
               params: { type },
-              body: { authMethod },
+              body: {
+                authMethod,
+                authorizeAgent: true,
+                ...(args.agentId ? { agentId: args.agentId } : {}),
+              },
               fetchOptions: { signal: flowSignal },
             }),
             [200],
@@ -2119,6 +2139,7 @@ function connectorMatchesAuthMethod(
 function createConnectorOAuthAuthCodeChangedCommand(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
+  agentId: string | undefined,
 ) {
   // Snapshot taken on the first body invocation: `null` marks "no connector
   // yet" and an `updatedAt` value marks "reconnect scenario — wait for it to
@@ -2144,12 +2165,22 @@ function createConnectorOAuthAuthCodeChangedCommand(
     if (current) {
       // initialUpdatedAt === null means the connector didn't exist on the first
       // fetch; any subsequent appearance signals completion.
-      if (initialUpdatedAt === null) {
-        return true;
+      const connectionChanged =
+        initialUpdatedAt === null || current.updatedAt !== initialUpdatedAt;
+      if (!connectionChanged || !agentId) {
+        return connectionChanged;
       }
-      if (current.updatedAt !== initialUpdatedAt) {
-        return true;
-      }
+      const authorization = await accept(
+        get(zeroClient$)(zeroUserConnectorsContract).get({
+          params: { id: agentId },
+          fetchOptions: { signal: sig },
+        }),
+        [200, 404],
+      );
+      return (
+        authorization.status === 200 &&
+        authorization.body.enabledTypes.includes(type)
+      );
     }
     return false;
   });
@@ -2158,9 +2189,12 @@ function createConnectorOAuthAuthCodeChangedCommand(
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
     { get },
-    type: ConnectorType,
-    method: ConnectorStatusAuthMethodDetail,
-    beforeStart: (signal: AbortSignal) => Promise<void>,
+    args: {
+      readonly type: ConnectorType;
+      readonly method: ConnectorStatusAuthMethodDetail;
+      readonly agentId: string | undefined;
+      readonly beforeStart: (signal: AbortSignal) => Promise<void>;
+    },
     signal: AbortSignal,
   ) => {
     const standalone = isStandaloneMode();
@@ -2180,23 +2214,27 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     let navigated = false;
     await withCleanup(
       (async () => {
-        if (!isBrowserAuthGrantKind(method.grantKind)) {
+        if (!isBrowserAuthGrantKind(args.method.grantKind)) {
           throw new Error(
-            `${type}/${method.id} does not support browser authorization`,
+            `${args.type}/${args.method.id} does not support browser authorization`,
           );
         }
 
-        await beforeStart(signal);
+        await args.beforeStart(signal);
         signal.throwIfAborted();
 
         const startResult =
-          method.grantKind === "openid-auth"
+          args.method.grantKind === "openid-auth"
             ? await accept(
                 get(zeroClient$)(zeroConnectorOpenIdStartContract, {
                   apiBase: "api",
                 }).start({
-                  params: { type },
-                  body: { authMethod: method.id },
+                  params: { type: args.type },
+                  body: {
+                    authMethod: args.method.id,
+                    authorizeAgent: true,
+                    ...(args.agentId ? { agentId: args.agentId } : {}),
+                  },
                   fetchOptions: { signal },
                 }),
                 [200],
@@ -2205,8 +2243,12 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 get(zeroClient$)(zeroConnectorOauthStartContract, {
                   apiBase: OAUTH_WEB_API_BASE,
                 }).start({
-                  params: { type },
-                  body: { authMethod: method.id },
+                  params: { type: args.type },
+                  body: {
+                    authMethod: args.method.id,
+                    authorizeAgent: true,
+                    ...(args.agentId ? { agentId: args.agentId } : {}),
+                  },
                   fetchOptions: { signal },
                 }),
                 [200],
@@ -2265,13 +2307,17 @@ export const connectConnectorOAuthAuthCode$ = command(
         const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
           type,
           method.id,
+          options.agentId,
         );
         const authWindow = await set(
           openConnectorOAuthAuthCodeWindow$,
-          type,
-          method,
-          async (sig) => {
-            await set(onConnectorChanged$, sig);
+          {
+            type,
+            method,
+            agentId: options.agentId,
+            beforeStart: async (sig) => {
+              await set(onConnectorChanged$, sig);
+            },
           },
           signal,
         );

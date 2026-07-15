@@ -1199,16 +1199,25 @@ export function createConnectorBddApi(context: TestContext) {
       type: ConnectorType,
       authMethod: ConnectorAuthMethodId,
       values: Readonly<Record<string, string>>,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      options: {
+        readonly statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[];
+        readonly agentId?: string;
+        readonly authorizeAgent?: true;
+      },
     ) {
       const client = setupApp({ context })(zeroConnectorManualGrantContract);
       return await accept(
         client.connect({
           params: { type },
           headers: authenticate(actor),
-          body: { authMethod, values },
+          body: {
+            authMethod,
+            values,
+            ...(options.agentId ? { agentId: options.agentId } : {}),
+            ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
+          },
         }),
-        statuses,
+        options.statuses,
       );
     },
 
@@ -1217,13 +1226,14 @@ export function createConnectorBddApi(context: TestContext) {
       type: ConnectorType,
       authMethod: ConnectorAuthMethodId,
       values: Readonly<Record<string, string>>,
+      agentId?: string,
     ): Promise<ConnectorResponse> {
       const response = await api.requestManualGrant(
         actor,
         type,
         authMethod,
         values,
-        [200],
+        { statuses: [200], agentId, authorizeAgent: true },
       );
       expectStatus(response, 200);
       return response.body;
@@ -1233,16 +1243,24 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       type: ConnectorType,
       authMethod: ConnectorAuthMethodId,
-      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+      options: {
+        readonly statuses: readonly (200 | 400 | 401 | 403 | 500)[];
+        readonly agentId?: string;
+        readonly authorizeAgent?: true;
+      },
     ) {
       const client = setupApp({ context })(zeroConnectorOauthStartContract);
       return await accept(
         client.start({
           params: { type },
           headers: authenticate(actor),
-          body: { authMethod },
+          body: {
+            authMethod,
+            ...(options.agentId ? { agentId: options.agentId } : {}),
+            ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
+          },
         }),
-        statuses,
+        options.statuses,
       );
     },
 
@@ -1250,13 +1268,13 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       type: ConnectorType,
       authMethod: ConnectorAuthMethodId,
+      agentId?: string,
     ): Promise<ConnectorOauthStartResponse> {
-      const response = await api.requestOauthStart(
-        actor,
-        type,
-        authMethod,
-        [200],
-      );
+      const response = await api.requestOauthStart(actor, type, authMethod, {
+        statuses: [200],
+        agentId,
+        authorizeAgent: true,
+      });
       expectStatus(response, 200);
       return response.body;
     },

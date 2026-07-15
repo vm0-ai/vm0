@@ -2402,7 +2402,11 @@ describe("zero artifact sidebar", () => {
       zeroConnectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
         expect(params.type).toBe("google-drive");
-        expect(body.authMethod).toBe(authMethod);
+        expect(body).toStrictEqual({
+          authMethod,
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
         return respond(200, { authorizationUrl });
       },
     );
@@ -2578,6 +2582,9 @@ describe("zero artifact sidebar", () => {
     let enabledTypes: string[] = [];
     let agentAuthorized = false;
     let artifactSynced = false;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes });
+    });
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {
@@ -2851,6 +2858,11 @@ describe("zero artifact sidebar", () => {
       });
     });
     let agentAuthorized = false;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: agentAuthorized ? ["google-drive"] : [],
+      });
+    });
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {

@@ -25,6 +25,11 @@ import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
+  authorizeConnectedConnector$,
+  connectorAgentAuthorizationRequested,
+  validateConnectorAuthorizationTarget$,
+} from "../services/connected-connector-authorization.service";
+import {
   connectManualGrantConnector$,
   connectNoAuthConnector$,
   deleteZeroConnectorLocalState$,
@@ -318,6 +323,19 @@ const connectManualGrantConnectorInner$ = command(
       return bodyResult.response;
     }
 
+    const agentTarget = await set(
+      validateConnectorAuthorizationTarget$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        agentId: bodyResult.data.agentId,
+      },
+      signal,
+    );
+    if (!agentTarget.ok) {
+      return notFound(agentTarget.message);
+    }
+
     const resolver = await get(
       userConnectorActionResolver(auth.orgId, auth.userId),
     );
@@ -354,6 +372,22 @@ const connectManualGrantConnectorInner$ = command(
       return badRequestMessage(result.message);
     }
 
+    if (connectorAgentAuthorizationRequested(bodyResult.data)) {
+      const authorization = await set(
+        authorizeConnectedConnector$,
+        {
+          orgId: auth.orgId,
+          userId: auth.userId,
+          agentId: bodyResult.data.agentId ?? null,
+          connectorType: resolved.type,
+        },
+        signal,
+      );
+      if (authorization.status === "agentNotFound") {
+        return notFound(authorization.message);
+      }
+    }
+
     return { status: 200 as const, body: result.connector };
   },
 );
@@ -368,6 +402,19 @@ const connectNoAuthConnectorInner$ = command(
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
+    }
+
+    const agentTarget = await set(
+      validateConnectorAuthorizationTarget$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        agentId: bodyResult.data.agentId,
+      },
+      signal,
+    );
+    if (!agentTarget.ok) {
+      return notFound(agentTarget.message);
     }
 
     const resolver = await get(
@@ -401,6 +448,22 @@ const connectNoAuthConnectorInner$ = command(
     );
     signal.throwIfAborted();
 
+    if (connectorAgentAuthorizationRequested(bodyResult.data)) {
+      const authorization = await set(
+        authorizeConnectedConnector$,
+        {
+          orgId: auth.orgId,
+          userId: auth.userId,
+          agentId: bodyResult.data.agentId ?? null,
+          connectorType: resolved.type,
+        },
+        signal,
+      );
+      if (authorization.status === "agentNotFound") {
+        return notFound(authorization.message);
+      }
+    }
+
     return { status: 200 as const, body: result.connector };
   },
 );
@@ -423,6 +486,19 @@ const startConnectorOauthInner$ = command(
       return badRequestMessage(
         "Explicit org context required — ensure active org in session",
       );
+    }
+
+    const agentTarget = await set(
+      validateConnectorAuthorizationTarget$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        agentId: bodyResult.data.agentId,
+      },
+      signal,
+    );
+    if (!agentTarget.ok) {
+      return badRequestMessage(agentTarget.message);
     }
 
     const resolver = await get(
@@ -494,6 +570,8 @@ const startConnectorOauthInner$ = command(
       authMethod: authCodeStartType.authMethod,
       userId: auth.userId,
       orgId: auth.orgId,
+      agentId: bodyResult.data.agentId,
+      authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
       redirectUri: prepared.redirectUri,
       codeVerifier: authResult.codeVerifier,
       oauthContext: authResult.oauthContext,
@@ -530,6 +608,19 @@ const startConnectorOpenIdInner$ = command(
       return badRequestMessage(
         "Explicit org context required — ensure active org in session",
       );
+    }
+
+    const agentTarget = await set(
+      validateConnectorAuthorizationTarget$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        agentId: bodyResult.data.agentId,
+      },
+      signal,
+    );
+    if (!agentTarget.ok) {
+      return badRequestMessage(agentTarget.message);
     }
 
     const resolver = await get(
@@ -595,6 +686,8 @@ const startConnectorOpenIdInner$ = command(
       authMethod: openIdStartType.authMethod,
       userId: auth.userId,
       orgId: auth.orgId,
+      agentId: bodyResult.data.agentId,
+      authorizeAgent: connectorAgentAuthorizationRequested(bodyResult.data),
       redirectUri: prepared.expectedReturnTo,
       codeVerifier: authResult.codeVerifier,
       oauthContext: JSON.stringify({ realm: prepared.realm }),
