@@ -103,6 +103,14 @@ describe("platform entrypoint safe area behavior", () => {
     );
   });
 
+  it("keeps the standalone keyboard caret in the app shell coordinate space", () => {
+    const globalCss = readGlobalCss();
+
+    expect(globalCss).toMatch(
+      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*:root\[data-keyboard-open="true"\]\s+#root\s*{\s*position:\s*absolute;\s*}/,
+    );
+  });
+
   it("keeps artifact fullscreen above app chrome", () => {
     const globalCss = readGlobalCss();
 
