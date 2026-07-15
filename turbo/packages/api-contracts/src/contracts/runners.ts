@@ -81,6 +81,11 @@ export const sessionHistoryGenerationRelationshipSchema = z.enum([
   "unknown_target",
   "unknown_reserved",
 ]);
+export const sessionHistoryGenerationLocalAvailabilitySchema = z.enum([
+  "parked_after_discovery",
+  "parked_before_discovery_lt_heartbeat_period",
+  "parked_before_discovery_ge_heartbeat_period",
+]);
 
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
@@ -97,6 +102,8 @@ const runnerClaimTelemetrySchema = z.object({
   preLocalAdmissionOutcome: runnerPreLocalAdmissionOutcomeSchema.optional(),
   sessionHistoryGenerationRelationship:
     sessionHistoryGenerationRelationshipSchema.optional(),
+  sessionHistoryGenerationLocalAvailability:
+    sessionHistoryGenerationLocalAvailabilitySchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
@@ -668,6 +675,9 @@ export type SessionHistoryDownloadSource = z.infer<
 >;
 export type SessionHistoryGenerationRelationship = z.infer<
   typeof sessionHistoryGenerationRelationshipSchema
+>;
+export type SessionHistoryGenerationLocalAvailability = z.infer<
+  typeof sessionHistoryGenerationLocalAvailabilitySchema
 >;
 
 export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

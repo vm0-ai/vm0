@@ -298,6 +298,7 @@ pub(in super::super) struct TestParkedIdleCandidateSpec<'a> {
     pub(in super::super) profile_name: &'a str,
     pub(in super::super) vcpu: u32,
     pub(in super::super) memory_mb: u32,
+    pub(in super::super) history_generation_run_id: Option<RunId>,
     pub(in super::super) parked_at: std::time::Instant,
     pub(in super::super) idle_timeout: Duration,
 }
@@ -309,8 +310,12 @@ pub(in super::super) async fn seed_idle_pool_with_timing(
 ) {
     let budget_lease =
         ResourceBudget::try_reserve_lease(budget, spec.vcpu, spec.memory_mb).unwrap();
-    let candidate =
-        make_synthetic_parked_candidate(spec.session_id, spec.profile_name, budget_lease);
+    let builder = ParkedIdleCandidateBuilder::new(spec.session_id, budget_lease)
+        .with_profile_name(spec.profile_name);
+    let candidate = match spec.history_generation_run_id {
+        Some(run_id) => builder.with_history_generation_run_id(run_id).build(),
+        None => builder.build(),
+    };
     let mut guard = pool.lock().await;
     let result = guard.park_at_for_test(candidate, spec.parked_at, spec.idle_timeout);
     assert!(matches!(result, ParkResult::Parked));
