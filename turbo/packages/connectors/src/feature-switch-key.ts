@@ -73,6 +73,7 @@ export enum FeatureSwitchKey {
   TeamsIntegration = "teamsIntegration",
   ImageEditing = "imageEditing",
   PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
+  PresentationElementDragging = "presentationElementDragging",
   Artifacts = "artifacts",
   ArtifactPreviewImage = "artifactPreviewImage",
   WorkflowTemplateCatalog = "workflowTemplateCatalog",
