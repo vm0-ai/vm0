@@ -94,12 +94,13 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
   if (!availability) {
     return insufficientCredits();
   }
-  if (
-    (!availability.supportByok && params.modelProviderType !== "vm0") ||
-    (availability.restrictedVm0Models &&
-      isLimitedFree1RestrictedRunModel(params.selectedModel))
-  ) {
-    return insufficientCredits();
+  const modelAdmission = checkOrgModelRunAdmission({
+    capabilities: availability,
+    modelProviderType: params.modelProviderType,
+    selectedModel: params.selectedModel,
+  });
+  if (modelAdmission) {
+    return modelAdmission;
   }
   if (availability.status !== "active") {
     return insufficientCredits();
