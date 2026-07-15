@@ -1079,6 +1079,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_feature_switches",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        feature_switch_context_source: "preloaded",
+      }),
+    );
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
@@ -1540,6 +1550,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_feature_switches",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        feature_switch_context_source: "database",
+      }),
     );
     expectApiDispatchSpanKind(
       timingEvents,
