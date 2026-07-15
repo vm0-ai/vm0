@@ -40,6 +40,7 @@ mod park_coordinator;
 mod paths;
 mod prerequisites;
 mod process;
+mod process_log;
 mod runtime;
 mod runtime_dirs;
 mod sandbox;
