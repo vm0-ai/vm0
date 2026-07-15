@@ -185,7 +185,7 @@ describe("zero sidebar mac shortcuts", () => {
       cancelable: true,
     });
     composer.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(true);
+    expect(event.defaultPrevented).toBeTruthy();
 
     await waitFor(() => {
       expect(clipboard.writes).toStrictEqual([window.location.href]);
@@ -213,7 +213,7 @@ describe("zero sidebar mac shortcuts", () => {
       cancelable: true,
     });
     composer.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(false);
+    expect(event.defaultPrevented).toBeFalsy();
 
     expect(clipboard.writes).toStrictEqual([]);
   });
