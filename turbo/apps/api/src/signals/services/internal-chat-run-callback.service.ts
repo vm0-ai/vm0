@@ -68,7 +68,6 @@ import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
   deleteUserMessageQueueItem,
-  hasUserMessageQueueItem,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
@@ -1894,7 +1893,7 @@ async function claimQueuedUserMessageForDispatch(args: {
     // claimed in place: bind the run id onto the existing row and consume the
     // queue item. Legacy queued messages keep the shadow-row-plus-revoke
     // convention so pre-switch rows claim exactly as before.
-    if (await hasUserMessageQueueItem(tx, args.queuedMessage.id)) {
+    if (args.queuedMessage.queueFirst) {
       const [updated] = await tx
         .update(chatMessages)
         .set({ runId: args.runId })
