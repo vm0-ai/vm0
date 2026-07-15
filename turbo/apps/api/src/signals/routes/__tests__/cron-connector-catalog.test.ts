@@ -93,6 +93,10 @@ function digest(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
+function objectEtag(bytes: Uint8Array): string {
+  return `"${createHash("sha256").update(bytes).digest("hex")}"`;
+}
+
 function catalogTemplate(reference: string): string {
   return `\${{ ${reference} }}`;
 }
@@ -411,9 +415,18 @@ function serveObjects(objects: ReadonlyMap<string, Buffer>): void {
     if (!bytes) {
       return Promise.reject(new Error("Object unavailable"));
     }
+    const etag = objectEtag(bytes);
+    if (input.IfNoneMatch === etag) {
+      return Promise.reject(
+        Object.assign(new Error("Not modified"), {
+          $metadata: { httpStatusCode: 304 },
+        }),
+      );
+    }
     return Promise.resolve({
       ContentLength: bytes.length,
       Body: s3Body(bytes),
+      ETag: etag,
     });
   });
 }
@@ -548,6 +561,13 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send.mock.calls.length - callsBeforeUnchanged).toBe(
       1,
     );
+    expect(
+      commandInput(context.mocks.s3.send.mock.calls[callsBeforeUnchanged]?.[0]),
+    ).toMatchObject({
+      Bucket: bucket,
+      Key: ACTIVE_KEY,
+      IfNoneMatch: objectEtag(first.pointer),
+    });
 
     serveObjects(catalogObjects([first, second], second));
     expect((await syncCatalog()).body).toMatchObject({
@@ -562,6 +582,7 @@ describe("connector catalog valid lifecycle", () => {
     });
 
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const callsBeforePublicCatalog = context.mocks.s3.send.mock.calls.length;
     const publicCatalog = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -573,6 +594,9 @@ describe("connector catalog valid lifecycle", () => {
         return connector.connectorRef === first.connectorRef;
       }),
     ).toBeFalsy();
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(
+      callsBeforePublicCatalog,
+    );
   });
 
   it("accepts a complete generated firewall projection", async () => {
@@ -608,7 +632,7 @@ describe("connector catalog valid lifecycle", () => {
     });
   });
 
-  it("rolls back a release identity when its state compare-and-swap loses", async () => {
+  it("rolls back a candidate snapshot when its state compare-and-swap loses", async () => {
     configureSource();
     const losing = buildRelease({
       version: "2026-07-15.losing",
@@ -1091,26 +1115,130 @@ describe("connector catalog rejection and latest-valid retention", () => {
     expect(JSON.stringify(rejected.body)).not.toContain(PRIVATE_VALUE);
   });
 
-  it("rejects immutable catalog version reuse after acceptance", async () => {
+  it("skips large artifacts for a deterministically rejected candidate", async () => {
+    configureSource();
+    const accepted = buildRelease({ version: "2026-07-15.cache-valid" });
+    serveObjects(catalogObjects([accepted], accepted));
+    await syncCatalog();
+
+    const invalid = buildRelease({
+      version: "2026-07-15.cache-invalid",
+      mutatePublic: (artifact) => {
+        artifact.extra = true;
+      },
+    });
+    serveObjects(catalogObjects([accepted, invalid], invalid));
+    const callsBeforeFirstRejection = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      state: "stale",
+      lastAttempt: { failureCode: "invalid-artifact" },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeFirstRejection,
+    ).toBe(6);
+
+    const callsBeforeCachedRejection = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      state: "stale",
+      lastAttempt: { failureCode: "invalid-artifact" },
+    });
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeCachedRejection,
+    ).toBe(1);
+    expect(
+      commandInput(
+        context.mocks.s3.send.mock.calls[callsBeforeCachedRejection]?.[0],
+      ),
+    ).toMatchObject({
+      Key: ACTIVE_KEY,
+      IfNoneMatch: objectEtag(invalid.pointer),
+    });
+  });
+
+  it("caches a malformed active pointer by its observed ETag", async () => {
+    configureSource();
+    const invalid = buildRelease({
+      version: "2026-07-15.malformed-pointer-cache",
+      mutatePointer: (pointer) => {
+        pointer.extra = true;
+      },
+    });
+    serveObjects(catalogObjects([invalid], invalid));
+    expectRejectedBeforeAcceptance(
+      (await syncCatalog()).body,
+      "invalid-pointer",
+    );
+
+    const callsBeforeCachedRejection = context.mocks.s3.send.mock.calls.length;
+    expectRejectedBeforeAcceptance(
+      (await syncCatalog()).body,
+      "invalid-pointer",
+    );
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeCachedRejection,
+    ).toBe(1);
+    expect(
+      commandInput(
+        context.mocks.s3.send.mock.calls[callsBeforeCachedRejection]?.[0],
+      ),
+    ).toMatchObject({
+      Key: ACTIVE_KEY,
+      IfNoneMatch: objectEtag(invalid.pointer),
+    });
+  });
+
+  it("retries transient candidate download failures", async () => {
+    configureSource();
+    const candidate = buildRelease({
+      version: "2026-07-15.transient-candidate",
+    });
+    const unavailableObjects = new Map(catalogObjects([candidate], candidate));
+    unavailableObjects.delete(releaseKeys(candidate.version).publicCatalog);
+    serveObjects(unavailableObjects);
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "rejected",
+      state: "never-synced",
+      lastAttempt: { failureCode: "source-unavailable" },
+    });
+
+    serveObjects(catalogObjects([candidate], candidate));
+    const callsBeforeRetry = context.mocks.s3.send.mock.calls.length;
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: candidate.version },
+    });
+    expect(context.mocks.s3.send.mock.calls.length - callsBeforeRetry).toBe(6);
+    expect(
+      commandInput(context.mocks.s3.send.mock.calls[callsBeforeRetry]?.[0]),
+    ).toMatchObject({
+      Key: ACTIVE_KEY,
+      IfNoneMatch: objectEtag(candidate.pointer),
+    });
+  });
+
+  it("replaces current content when a catalog version is reused", async () => {
     configureSource();
     const original = buildRelease({ version: "2026-07-15.conflict" });
     serveObjects(catalogObjects([original], original));
-    await syncCatalog();
+    const originalResponse = await syncCatalog();
 
     const conflicting = buildRelease({
       version: original.version,
       label: "Conflicting Content",
     });
     serveObjects(catalogObjects([conflicting], conflicting));
-    expect((await syncCatalog()).body).toMatchObject({
-      outcome: "rejected",
-      state: "stale",
+    const replacementResponse = await syncCatalog();
+    expect(replacementResponse.body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
       active: { catalogVersion: original.version },
-      lastAttempt: {
-        outcome: "rejected",
-        failureCode: "conflicting-release",
-      },
     });
+    expect(replacementResponse.body.active?.integrityDigest).not.toBe(
+      originalResponse.body.active?.integrityDigest,
+    );
   });
 
   it("does not return or log raw source failures", async () => {

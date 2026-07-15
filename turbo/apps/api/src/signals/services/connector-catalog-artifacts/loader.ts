@@ -5,7 +5,6 @@ import { z } from "zod";
 
 import { safeJsonParse, safeSync } from "../../utils";
 import {
-  CONNECTOR_CATALOG_ACTIVE_KEY,
   connectorCatalogIntegrityArtifactSchema,
   connectorCatalogPrivateArtifactSchema,
   connectorCatalogPrivateFirewallsArtifactSchema,
@@ -60,6 +59,9 @@ export interface ConnectorCatalogReleaseIdentity {
 export interface ValidatedConnectorCatalogCandidate {
   readonly identity: ConnectorCatalogReleaseIdentity;
   readonly publicCatalogText: string;
+  readonly privateCatalogText: string;
+  readonly privateFirewallsText: string;
+  readonly runnerFirewallsText: string;
 }
 
 export interface ConnectorCatalogArtifactReader {
@@ -189,14 +191,15 @@ function assertNoReservedModelProviderRefs(args: {
   }
 }
 
-export async function loadConnectorCatalogActivePointer(
-  reader: ConnectorCatalogArtifactReader,
-): Promise<ConnectorCatalogActivePointer> {
-  const bytes = await readBoundedArtifact(
-    reader,
-    CONNECTOR_CATALOG_ACTIVE_KEY,
-    CONNECTOR_CATALOG_OBJECT_MAX_BYTES.active,
-  );
+export const CONNECTOR_CATALOG_ACTIVE_MAX_BYTES =
+  CONNECTOR_CATALOG_OBJECT_MAX_BYTES.active;
+
+export function parseConnectorCatalogActivePointer(
+  bytes: Uint8Array,
+): ConnectorCatalogActivePointer {
+  if (bytes.length > CONNECTOR_CATALOG_ACTIVE_MAX_BYTES) {
+    fail("object-too-large");
+  }
   const parsed = decodedJson(bytes);
   const pointer = parseStrict(
     parsed.value,
@@ -217,8 +220,11 @@ interface ParsedConnectorCatalogViews {
   readonly publicArtifact: ConnectorCatalogPublicArtifact;
   readonly publicCatalogText: string;
   readonly privateArtifact: ConnectorCatalogPrivateArtifact;
+  readonly privateCatalogText: string;
   readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
+  readonly privateFirewallsText: string;
   readonly runnerFirewallsArtifact: ConnectorCatalogRunnerFirewallsArtifact;
+  readonly runnerFirewallsText: string;
 }
 
 async function loadIntegrityArtifact(args: {
@@ -328,8 +334,11 @@ function parseCatalogViews(
     publicArtifact,
     publicCatalogText: publicJson.text,
     privateArtifact,
+    privateCatalogText: privateJson.text,
     privateFirewallsArtifact,
+    privateFirewallsText: privateFirewallsJson.text,
     runnerFirewallsArtifact,
+    runnerFirewallsText: runnerFirewallsJson.text,
   };
 }
 
@@ -405,5 +414,8 @@ export async function loadConnectorCatalogCandidate(args: {
   return {
     identity: releaseIdentity(args.pointer, integrity),
     publicCatalogText: views.publicCatalogText,
+    privateCatalogText: views.privateCatalogText,
+    privateFirewallsText: views.privateFirewallsText,
+    runnerFirewallsText: views.runnerFirewallsText,
   };
 }

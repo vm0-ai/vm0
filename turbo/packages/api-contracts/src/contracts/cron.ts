@@ -111,7 +111,6 @@ export const connectorCatalogSyncFailureCodeSchema = z.enum([
   "invalid-artifact",
   "public-leakage",
   "relationship-mismatch",
-  "conflicting-release",
 ]);
 
 const connectorCatalogSyncStatusSchema = z.object({
