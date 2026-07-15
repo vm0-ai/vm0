@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.275.6](https://github.com/vm0-ai/vm0/compare/api-v1.275.5...api-v1.275.6) (2026-07-15)
+
+
+### Refactoring
+
+* stop application writes to legacy event automation ids ([#21511](https://github.com/vm0-ai/vm0/issues/21511)) ([c6244e6](https://github.com/vm0-ai/vm0/commit/c6244e632b2549989ff14757eef5ca0565a5dfff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.115.7
+
 ## [1.275.5](https://github.com/vm0-ai/vm0/compare/api-v1.275.4...api-v1.275.5) (2026-07-14)
 
 
