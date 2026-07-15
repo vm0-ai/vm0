@@ -564,6 +564,8 @@ interface PresentationPointerDrag {
   dragging: boolean;
   readonly initialOffsetX: number;
   readonly initialOffsetY: number;
+  readonly initialPixelX: number;
+  readonly initialPixelY: number;
   readonly initialTranslate: string;
   readonly layoutHeight: number;
   readonly layoutWidth: number;
@@ -572,6 +574,11 @@ interface PresentationPointerDrag {
   readonly slideRect: DOMRect;
   readonly startX: number;
   readonly startY: number;
+}
+
+interface PresentationPixelTranslate {
+  readonly x: number;
+  readonly y: number;
 }
 
 function frameEventElement(target: EventTarget | null): HTMLElement | null {
@@ -622,6 +629,24 @@ function setCandidateTranslate(
   );
 }
 
+function cssPixelValue(value: string | undefined): number {
+  if (!value?.endsWith("px")) {
+    return 0;
+  }
+  const pixelValue = Number(value.slice(0, -2));
+  return Number.isFinite(pixelValue) ? pixelValue : 0;
+}
+
+function appliedCandidatePixelTranslate(
+  candidate: HTMLElement,
+): PresentationPixelTranslate {
+  const [x, y] = candidate.style
+    .getPropertyValue("translate")
+    .trim()
+    .split(/\s+/, 2);
+  return { x: cssPixelValue(x), y: cssPixelValue(y) };
+}
+
 function removeUnsupportedMoveCandidates(doc: Document): void {
   const view = doc.defaultView;
   if (!view) {
@@ -661,7 +686,8 @@ function removeUnsupportedMoveCandidates(doc: Document): void {
 function wireLegacyTextEditing(params: {
   readonly doc: Document;
   readonly syncText: (element: HTMLElement) => void;
-}): void {
+}): () => void {
+  const cleanupListeners: (() => void)[] = [];
   for (const element of Array.from(
     params.doc.querySelectorAll<HTMLElement>(EDITOR_TEXT_SELECTOR),
   )) {
@@ -682,16 +708,26 @@ function wireLegacyTextEditing(params: {
       "read-write-plaintext-only",
       "important",
     );
-    element.addEventListener("pointerdown", () => {
+    const focusElement = () => {
       element.focus();
-    });
-    element.addEventListener("input", () => {
+    };
+    const syncElement = () => {
       params.syncText(element);
-    });
-    element.addEventListener("blur", () => {
-      params.syncText(element);
+    };
+    element.addEventListener("pointerdown", focusElement);
+    element.addEventListener("input", syncElement);
+    element.addEventListener("blur", syncElement);
+    cleanupListeners.push(() => {
+      element.removeEventListener("pointerdown", focusElement);
+      element.removeEventListener("input", syncElement);
+      element.removeEventListener("blur", syncElement);
     });
   }
+  return () => {
+    for (const cleanup of cleanupListeners) {
+      cleanup();
+    }
+  };
 }
 
 interface WireMovableFrameParams {
@@ -709,6 +745,9 @@ interface MovableFrameState {
   readonly offsets: Map<string, { offsetX: number; offsetY: number }>;
   pointerDrag: PresentationPointerDrag | null;
   selected: HTMLElement | null;
+  selectionOverlayFrame: number | null;
+  selectionMutationObserver: MutationObserver | null;
+  selectionResizeObserver: ResizeObserver | null;
   readonly selectionOverlay: HTMLElement;
   textEditing: HTMLElement | null;
 }
@@ -739,6 +778,9 @@ function createMovableFrameState(
     ),
     pointerDrag: null,
     selected: null,
+    selectionOverlayFrame: null,
+    selectionMutationObserver: null,
+    selectionResizeObserver: null,
     selectionOverlay,
     textEditing: null,
   };
@@ -793,11 +835,54 @@ function updateMoveSelectionOverlay(state: MovableFrameState): void {
   state.selectionOverlay.hidden = false;
 }
 
+function queueMoveSelectionOverlayUpdate(state: MovableFrameState): void {
+  if (state.selectionOverlayFrame !== null) {
+    return;
+  }
+  const view = state.selectionOverlay.ownerDocument.defaultView;
+  if (!view) {
+    updateMoveSelectionOverlay(state);
+    return;
+  }
+  state.selectionOverlayFrame = view.requestAnimationFrame(() => {
+    state.selectionOverlayFrame = null;
+    updateMoveSelectionOverlay(state);
+  });
+}
+
+function observeMoveSelection(state: MovableFrameState): void {
+  const resizeObserver = state.selectionResizeObserver;
+  resizeObserver?.disconnect();
+  const mutationObserver = state.selectionMutationObserver;
+  mutationObserver?.disconnect();
+  const candidate = state.selected;
+  if (!candidate) {
+    return;
+  }
+  resizeObserver?.observe(candidate);
+  const layout = candidate.parentElement;
+  if (layout) {
+    resizeObserver?.observe(layout);
+  }
+  const slide = candidate.closest<HTMLElement>(EDITOR_SLIDE_SELECTOR);
+  if (slide && slide !== layout) {
+    resizeObserver?.observe(slide);
+  }
+  mutationObserver?.observe(slide ?? layout ?? candidate, {
+    attributes: true,
+    characterData: true,
+    childList: true,
+    subtree: true,
+  });
+}
+
 function clearMoveSelection(state: MovableFrameState): void {
   if (state.selected) {
     delete state.selected.dataset.vm0EditorSelected;
   }
   state.selected = null;
+  state.selectionMutationObserver?.disconnect();
+  state.selectionResizeObserver?.disconnect();
   state.selectionOverlay.hidden = true;
 }
 
@@ -812,7 +897,59 @@ function selectMoveCandidate(
   clearMoveSelection(state);
   state.selected = candidate;
   state.selected.dataset.vm0EditorSelected = "true";
+  observeMoveSelection(state);
   updateMoveSelectionOverlay(state);
+}
+
+function wireMoveSelectionTracking(
+  doc: Document,
+  state: MovableFrameState,
+): () => void {
+  const view = doc.defaultView;
+  if (!view) {
+    return () => {
+      clearMoveSelection(state);
+      state.selectionOverlay.remove();
+    };
+  }
+  if (typeof view.ResizeObserver !== "undefined") {
+    state.selectionResizeObserver = new view.ResizeObserver(() => {
+      queueMoveSelectionOverlayUpdate(state);
+    });
+  }
+  if (typeof view.MutationObserver !== "undefined") {
+    state.selectionMutationObserver = new view.MutationObserver((records) => {
+      const layoutChanged = records.some((record) => {
+        return !state.selectionOverlay.contains(record.target);
+      });
+      if (layoutChanged) {
+        queueMoveSelectionOverlayUpdate(state);
+      }
+    });
+  }
+  const updateOverlay = () => {
+    queueMoveSelectionOverlayUpdate(state);
+  };
+  view.addEventListener("resize", updateOverlay);
+  doc.addEventListener("scroll", updateOverlay, true);
+  doc.addEventListener("load", updateOverlay, true);
+  doc.fonts?.addEventListener("loadingdone", updateOverlay);
+  return () => {
+    view.removeEventListener("resize", updateOverlay);
+    doc.removeEventListener("scroll", updateOverlay, true);
+    doc.removeEventListener("load", updateOverlay, true);
+    doc.fonts?.removeEventListener("loadingdone", updateOverlay);
+    state.selectionMutationObserver?.disconnect();
+    state.selectionMutationObserver = null;
+    state.selectionResizeObserver?.disconnect();
+    state.selectionResizeObserver = null;
+    if (state.selectionOverlayFrame !== null) {
+      view.cancelAnimationFrame(state.selectionOverlayFrame);
+      state.selectionOverlayFrame = null;
+    }
+    clearMoveSelection(state);
+    state.selectionOverlay.remove();
+  };
 }
 
 function finishMovableTextEditing(
@@ -829,14 +966,15 @@ function finishMovableTextEditing(
 function wireMovableTextEditing(
   params: WireMovableFrameParams,
   state: MovableFrameState,
-): void {
+): () => void {
+  const cleanupListeners: (() => void)[] = [];
   for (const element of Array.from(
     params.doc.querySelectorAll<HTMLElement>(EDITOR_TEXT_SELECTOR),
   )) {
     element.setAttribute("contenteditable", "false");
     element.setAttribute("role", "textbox");
     element.spellcheck = false;
-    element.addEventListener("dblclick", (event) => {
+    const startEditing = (event: MouseEvent) => {
       const candidate = element.closest<HTMLElement>(EDITOR_MOVE_SELECTOR);
       if (candidate) {
         selectMoveCandidate(state, candidate);
@@ -845,34 +983,53 @@ function wireMovableTextEditing(
       element.setAttribute("contenteditable", "true");
       element.focus();
       event.stopPropagation();
-    });
-    element.addEventListener("input", () => {
+    };
+    const syncElement = () => {
       params.syncText(element);
       updateMoveSelectionOverlay(state);
-    });
-    element.addEventListener("blur", () => {
+    };
+    const finishEditing = () => {
       finishMovableTextEditing(params, state, element);
-    });
-    element.addEventListener("keydown", (event) => {
+    };
+    const stopEditing = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         element.blur();
       }
+    };
+    element.addEventListener("dblclick", startEditing);
+    element.addEventListener("input", syncElement);
+    element.addEventListener("blur", finishEditing);
+    element.addEventListener("keydown", stopEditing);
+    cleanupListeners.push(() => {
+      element.removeEventListener("dblclick", startEditing);
+      element.removeEventListener("input", syncElement);
+      element.removeEventListener("blur", finishEditing);
+      element.removeEventListener("keydown", stopEditing);
     });
   }
+  return () => {
+    for (const cleanup of cleanupListeners) {
+      cleanup();
+    }
+  };
 }
 
 function wireMoveSelection(
   params: WireMovableFrameParams,
   state: MovableFrameState,
-): void {
-  params.doc.addEventListener("click", (event) => {
+): () => void {
+  const selectCandidate = (event: MouseEvent) => {
     const candidate = closestFrameElement(event.target, EDITOR_MOVE_SELECTOR);
     if (candidate) {
       selectMoveCandidate(state, candidate);
       return;
     }
     clearMoveSelection(state);
-  });
+  };
+  params.doc.addEventListener("click", selectCandidate);
+  return () => {
+    params.doc.removeEventListener("click", selectCandidate);
+  };
 }
 
 function startPointerDrag(
@@ -906,22 +1063,24 @@ function startPointerDrag(
   const block = state.offsets.get(moveId);
   const initialOffsetX = block?.offsetX ?? 0;
   const initialOffsetY = block?.offsetY ?? 0;
-  const initialPixelX = initialOffsetX * layoutRect.width;
-  const initialPixelY = initialOffsetY * layoutRect.height;
+  const initialTranslate = candidate.style.getPropertyValue("translate");
+  const initialPixel = appliedCandidatePixelTranslate(candidate);
   selectMoveCandidate(state, candidate);
   candidate.setPointerCapture(event.pointerId);
   state.pointerDrag = {
-    baseBottom: candidateRect.bottom - initialPixelY,
-    baseLeft: candidateRect.left - initialPixelX,
-    baseRight: candidateRect.right - initialPixelX,
-    baseTop: candidateRect.top - initialPixelY,
+    baseBottom: candidateRect.bottom - initialPixel.y,
+    baseLeft: candidateRect.left - initialPixel.x,
+    baseRight: candidateRect.right - initialPixel.x,
+    baseTop: candidateRect.top - initialPixel.y,
     candidate,
     currentOffsetX: initialOffsetX,
     currentOffsetY: initialOffsetY,
     dragging: false,
     initialOffsetX,
     initialOffsetY,
-    initialTranslate: candidate.style.getPropertyValue("translate"),
+    initialPixelX: initialPixel.x,
+    initialPixelY: initialPixel.y,
+    initialTranslate,
     layoutHeight: layoutRect.height,
     layoutWidth: layoutRect.width,
     moveId,
@@ -948,12 +1107,12 @@ function updatePointerDrag(
   drag.dragging = true;
   event.preventDefault();
   const pixelX = clampDragAxis(
-    drag.initialOffsetX * drag.layoutWidth + deltaX,
+    drag.initialPixelX + deltaX,
     drag.slideRect.left - drag.baseLeft,
     drag.slideRect.right - drag.baseRight,
   );
   const pixelY = clampDragAxis(
-    drag.initialOffsetY * drag.layoutHeight + deltaY,
+    drag.initialPixelY + deltaY,
     drag.slideRect.top - drag.baseTop,
     drag.slideRect.bottom - drag.baseBottom,
   );
@@ -1015,27 +1174,44 @@ function cancelPointerDrag(
 function wireMovablePointerEvents(
   params: WireMovableFrameParams,
   state: MovableFrameState,
-): void {
-  params.doc.addEventListener("pointerdown", (event) => {
+): () => void {
+  const startDrag = (event: PointerEvent) => {
     startPointerDrag(params, state, event);
-  });
-  params.doc.addEventListener("pointermove", (event) => {
+  };
+  const updateDrag = (event: PointerEvent) => {
     updatePointerDrag(state, event);
-  });
-  params.doc.addEventListener("pointerup", (event) => {
+  };
+  const commitDrag = (event: PointerEvent) => {
     commitPointerDrag(params, state, event);
-  });
-  params.doc.addEventListener("pointercancel", (event) => {
+  };
+  const cancelDrag = (event: PointerEvent) => {
     cancelPointerDrag(state, event);
-  });
+  };
+  params.doc.addEventListener("pointerdown", startDrag);
+  params.doc.addEventListener("pointermove", updateDrag);
+  params.doc.addEventListener("pointerup", commitDrag);
+  params.doc.addEventListener("pointercancel", cancelDrag);
+  return () => {
+    params.doc.removeEventListener("pointerdown", startDrag);
+    params.doc.removeEventListener("pointermove", updateDrag);
+    params.doc.removeEventListener("pointerup", commitDrag);
+    params.doc.removeEventListener("pointercancel", cancelDrag);
+  };
 }
 
-function wireMovableFrame(params: WireMovableFrameParams): void {
+function wireMovableFrame(params: WireMovableFrameParams): () => void {
   const state = createMovableFrameState(params.doc, params.moveBlocks);
   removeUnsupportedMoveCandidates(params.doc);
-  wireMovableTextEditing(params, state);
-  wireMoveSelection(params, state);
-  wireMovablePointerEvents(params, state);
+  const cleanupSelectionTracking = wireMoveSelectionTracking(params.doc, state);
+  const cleanupTextEditing = wireMovableTextEditing(params, state);
+  const cleanupMoveSelection = wireMoveSelection(params, state);
+  const cleanupPointerEvents = wireMovablePointerEvents(params, state);
+  return () => {
+    cleanupTextEditing();
+    cleanupMoveSelection();
+    cleanupPointerEvents();
+    cleanupSelectionTracking();
+  };
 }
 
 function wireEditableFrame(params: {
@@ -1048,10 +1224,10 @@ function wireEditableFrame(params: {
     offsetX: number,
     offsetY: number,
   ) => void;
-}) {
+}): (() => void) | null {
   const doc = params.frame.contentDocument;
   if (!doc) {
-    return;
+    return null;
   }
   const syncText = (element: HTMLElement) => {
     const slideId = element.dataset.vm0EditorSlideId;
@@ -1062,10 +1238,9 @@ function wireEditableFrame(params: {
     params.updateText(slideId, editId, element.textContent ?? "");
   };
   if (!params.movementEnabled) {
-    wireLegacyTextEditing({ doc, syncText });
-    return;
+    return wireLegacyTextEditing({ doc, syncText });
   }
-  wireMovableFrame({
+  return wireMovableFrame({
     doc,
     moveBlocks: params.moveBlocks,
     syncText,
@@ -1088,6 +1263,7 @@ function PreviewPane({
   updateMovement: (moveId: string, offsetX: number, offsetY: number) => void;
   updateText: (slideId: string, editId: string, text: string) => void;
 }) {
+  const frameCleanupRef = mutableValue<(() => void) | null>(null);
   const observerRef = mutableValue<ResizeObserver | null>(null);
   const shellRef = mutableValue<HTMLDivElement | null>(null);
   const scaleRef = mutableValue(0.6);
@@ -1144,6 +1320,10 @@ function PreviewPane({
           {html && (
             <iframe
               ref={(frame) => {
+                if (!frame) {
+                  frameCleanupRef.current?.();
+                  frameCleanupRef.current = null;
+                }
                 iframeRef.current = frame;
                 if (frame) {
                   setSandboxedFrameHtml(frame, html);
@@ -1154,7 +1334,8 @@ function PreviewPane({
               onLoad={(event) => {
                 applyScale();
                 revealPresentationPreviewSlide(event);
-                wireEditableFrame({
+                frameCleanupRef.current?.();
+                frameCleanupRef.current = wireEditableFrame({
                   frame: event.currentTarget,
                   movementEnabled,
                   moveBlocks: moveBlocksRef.current,

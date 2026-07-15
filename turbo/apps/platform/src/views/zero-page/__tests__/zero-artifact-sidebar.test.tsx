@@ -3347,10 +3347,7 @@ ${openFencedHostedSiteUrl}`,
     const presentationUrl =
       "https://deck.sites.vm7.io/clamped-presentation-preview.html";
     const browser = context.mocks.browser.blobDownload();
-    setupPresentationArtifactThread(
-      presentationUrl,
-      clampedPresentationHtml(),
-    );
+    setupPresentationArtifactThread(presentationUrl, clampedPresentationHtml());
 
     await waitFor(() => {
       expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
