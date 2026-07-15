@@ -873,8 +873,9 @@ async def forward_request(
     """Forward an auth.base request through the synchronous worker lifecycle.
 
     When this coroutine starts, it reserves admission capacity unless `admission` is supplied.
-    A supplied admission is consumed and resized to the actual request body; the caller must not
-    release or reuse it after scheduling or awaiting this coroutine.
+    A supplied admission is consumed: it is resized to the actual request body or released if
+    validation or resizing fails. The caller must not release or reuse it after scheduling or
+    awaiting this coroutine.
 
     If the coroutine exits before submitting a worker, it releases the admission. After
     submission, the future's completion callback releases both admission and concurrency
