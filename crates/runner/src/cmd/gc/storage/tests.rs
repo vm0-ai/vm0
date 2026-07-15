@@ -827,8 +827,14 @@ async fn gc_storage_cache_many_candidates_low_fd_child() {
     let mut entry_size = 0;
     for index in 0..entry_count {
         let entry = make_storage_entry(&home, &format!("low-fd-{index}"), "v1", &[0u8; 4096], old);
+        let size = dir_stats(&entry).await.0;
         if index == 0 {
-            entry_size = dir_stats(&entry).await.0;
+            entry_size = size;
+        } else {
+            assert_eq!(
+                size, entry_size,
+                "storage entry {index} must match the first entry's measured size"
+            );
         }
     }
     assert!(
@@ -839,13 +845,15 @@ async fn gc_storage_cache_many_candidates_low_fd_child() {
     let _nofile_limit = set_soft_nofile_limit_for_child(128);
 
     let cap = entry_size * keep_count as u64;
+    let expected_freed = entry_size * (entry_count - keep_count) as u64;
     let freed = gc_storage_cache_with_cap(&home, cap, false).await.unwrap();
     let remaining = count_storage_cache_versions(&home);
 
-    assert!(
-        remaining <= keep_count,
+    assert_eq!(
+        remaining, keep_count,
         "storage GC left {remaining} versions with cap for {keep_count}; freed {freed}"
     );
+    assert_eq!(freed, expected_freed);
 }
 
 struct SoftNofileLimitGuard {
