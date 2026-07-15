@@ -10,7 +10,7 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
   click,
@@ -22,6 +22,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { reloadConnectors$ } from "../../../signals/external/connectors.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setIdeationActiveTab$ } from "../../../signals/zero-page/zero-ideation.ts";
+import { VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT } from "../../../lib/visual-viewport-keyboard.ts";
 import { PLACEHOLDER, threadListSnapshot } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -405,6 +406,69 @@ describe("zero ideation page", () => {
 
     expect(queryAllByRoleFast("button", promptGrid)).toHaveLength(1);
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+  });
+
+  it("keeps the full composer visible when the PWA keyboard shortens the page", async () => {
+    mockConnectorCatalogStatus([]);
+    let standalone = true;
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(display-mode: standalone)" && standalone;
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
+
+    const editor = await screen.findByPlaceholderText(PLACEHOLDER);
+    const scrollContainer = document.querySelector(
+      "[data-agent-chat-scroll-container]",
+    );
+    const composer = editor.closest(".zero-composer");
+    if (
+      !(scrollContainer instanceof HTMLElement) ||
+      !(composer instanceof HTMLElement)
+    ) {
+      throw new Error("Agent chat composer layout not found");
+    }
+    expect(
+      scrollContainer.closest("[data-keyboard-inset-page]"),
+    ).not.toBeNull();
+
+    editor.focus();
+    Object.defineProperty(scrollContainer, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 400, 500);
+      },
+    });
+    Object.defineProperty(composer, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 100, 400, 460);
+      },
+    });
+    document.documentElement.dataset.keyboardOpen = "true";
+    onTestFinished(() => {
+      delete document.documentElement.dataset.keyboardOpen;
+    });
+
+    window.dispatchEvent(new Event(VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT));
+
+    expect(scrollContainer.scrollTop).toBe(76);
+
+    standalone = false;
+    scrollContainer.scrollTop = 0;
+    window.dispatchEvent(new Event(VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT));
+
+    expect(scrollContainer.scrollTop).toBe(0);
+
+    standalone = true;
+    delete document.documentElement.dataset.keyboardOpen;
+    scrollContainer.scrollTop = 0;
+    window.dispatchEvent(new Event(VISUAL_VIEWPORT_KEYBOARD_SETTLED_EVENT));
+
+    expect(scrollContainer.scrollTop).toBe(0);
   });
 
   it("shows current-agent unread chat shortcuts on mobile behind the feature switch", async () => {

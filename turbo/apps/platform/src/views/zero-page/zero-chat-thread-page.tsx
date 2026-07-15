@@ -2699,6 +2699,7 @@ export function ZeroChatThreadPage() {
           50/50 split needs each half ~640px to clear the composer's sm:
           breakpoint, below which the model picker collapses to icons). */}
       <div
+        data-keyboard-inset-page
         className="flex flex-1 min-h-0 bg-transparent"
         style={artifactPanelStyle}
       >

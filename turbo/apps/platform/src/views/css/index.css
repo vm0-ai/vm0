@@ -60,7 +60,7 @@
   --sab: var(--sab-raw);
   --sal: env(safe-area-inset-left, 0px);
   --zero-viewport-height: 100dvh;
-  --zero-viewport-offset-top: 0px;
+  --zero-keyboard-inset: 0px;
   --zero-desktop-titlebar-height: 48px;
 }
 
@@ -77,17 +77,8 @@
 }
 
 @media (display-mode: standalone) {
-  :root[data-keyboard-open="true"] {
-    --zero-viewport-height: var(--zero-keyboard-viewport-height, 100dvh);
-    --zero-viewport-offset-top: var(--zero-keyboard-viewport-offset-top, 0px);
-  }
-
-  /* WebKit paints the native text caret in document coordinates while the
-     software keyboard moves the visual viewport. Keep the offset app shell in
-     that same coordinate space so streaming layout updates cannot separate the
-     caret from its contenteditable composer. See WebKit bug 176896. */
-  :root[data-keyboard-open="true"] #root {
-    position: absolute;
+  :root[data-keyboard-open="true"] [data-keyboard-inset-page] {
+    padding-bottom: var(--zero-keyboard-inset);
   }
 }
 
@@ -108,7 +99,7 @@ body {
 #root {
   box-sizing: border-box;
   position: fixed;
-  top: var(--zero-viewport-offset-top);
+  top: 0;
   right: 0;
   left: 0;
   /* Keep the root-owned safe-area padding opaque behind translucent iOS chrome. */
