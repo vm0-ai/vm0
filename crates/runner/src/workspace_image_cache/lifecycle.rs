@@ -1060,24 +1060,39 @@ impl WorkspaceImageLease {
         mut self,
         request: WorkspaceImagePromotionRequest<'_>,
     ) -> Option<WorkspaceImagePromotionContext> {
-        let target = self.promotion_target(request.cli_agent_session_id_override)?;
+        let WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id,
+            cli_agent_session_id_override,
+            restored_session_identity,
+            terminal_status,
+            completed_at,
+            storage_fingerprints,
+        } = request;
+        let target = self.promotion_target(cli_agent_session_id_override)?;
+        let storage_fingerprints = match terminal_status {
+            WorkspaceCacheTerminalStatus::Success => storage_fingerprints,
+            WorkspaceCacheTerminalStatus::NonzeroExit | WorkspaceCacheTerminalStatus::Cancelled => {
+                storage_fingerprints.tainted_paths_including(self.previous_storage.as_ref())
+            }
+        };
 
         Some(WorkspaceImagePromotionContext {
             cache: self.cache.clone(),
             cache_key: target.cache_key,
             entry_lock: self.entry_lock.take(),
-            run_id: request.run_id,
-            sandbox_id: request.sandbox_id,
+            run_id,
+            sandbox_id,
             profile_name: self.profile_name.clone(),
             cli_agent_session_id: target.cli_agent_session_id,
             working_dir: self.working_dir.clone(),
             active_image: self.active_image.clone(),
             image_size_bytes: self.image_size_bytes,
             consumed_cache_hit: self.consumed_cache_hit,
-            terminal_status: request.terminal_status,
-            completed_at: request.completed_at,
-            storage_fingerprints: request.storage_fingerprints,
-            restored_session_identity: request.restored_session_identity.cloned(),
+            terminal_status,
+            completed_at,
+            storage_fingerprints,
+            restored_session_identity: restored_session_identity.cloned(),
         })
     }
 }
@@ -1186,15 +1201,6 @@ impl WorkspaceImagePromotionContext {
         &self,
         session_history_sidecar: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
     ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
-        let tainted_storage_fingerprints;
-        let promotion_storage_fingerprints = match self.terminal_status {
-            WorkspaceCacheTerminalStatus::Success => &self.storage_fingerprints,
-            WorkspaceCacheTerminalStatus::NonzeroExit | WorkspaceCacheTerminalStatus::Cancelled => {
-                tainted_storage_fingerprints = self.storage_fingerprints.tainted_paths();
-                &tainted_storage_fingerprints
-            }
-        };
-
         let _late_entry_lock_guard = match self.entry_lock.as_ref() {
             Some(_) => None,
             None => {
@@ -1224,7 +1230,7 @@ impl WorkspaceImagePromotionContext {
                 image_size_bytes: self.image_size_bytes,
                 terminal_status: self.terminal_status,
                 completed_at: &self.completed_at,
-                storage_fingerprints: promotion_storage_fingerprints,
+                storage_fingerprints: &self.storage_fingerprints,
                 session_history_sidecar,
             })
             .await

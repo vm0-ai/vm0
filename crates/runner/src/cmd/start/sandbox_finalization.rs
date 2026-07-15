@@ -627,10 +627,14 @@ async fn stop_and_destroy_sandbox(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
     use std::time::Duration;
 
-    use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+    use api_contracts::generated::{
+        constants::runners::paths::CANONICAL_WORKING_DIR,
+        types::runners::storage::{ArtifactEntry, StorageEntry, StorageManifest},
+    };
     use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
@@ -653,6 +657,7 @@ mod tests {
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
     use crate::storage_fingerprints::StorageFingerprint;
+    use crate::storage_plan::build_storage_plan;
     use crate::types::SandboxReuseResult;
     use crate::workspace_image_cache::{
         SessionWorkspaceCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
@@ -1084,7 +1089,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_success_workspace_promotion_does_not_mark_storages_reusable() {
+    async fn non_success_workspace_promotion_preserves_affected_paths_for_next_plan() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -1094,21 +1099,72 @@ mod tests {
             ("sess-nonzero", WorkspaceCacheTerminalStatus::NonzeroExit),
             ("sess-cancelled", WorkspaceCacheTerminalStatus::Cancelled),
         ] {
+            let removed_storage_path = format!("{CANONICAL_WORKING_DIR}/removed-storage");
+            let removed_artifact_path = format!("{CANONICAL_WORKING_DIR}/removed-artifact");
+            let current_storage_path = format!("{CANONICAL_WORKING_DIR}/current-storage");
+            let current_artifact_path = format!("{CANONICAL_WORKING_DIR}/current-artifact");
+
+            let seed_run_id = RunId::new_v4();
+            let seed_sandbox_id = SandboxId::new_v4();
+            let seed_lease = prepare_test_workspace_image_lease(
+                &paths,
+                &cache,
+                seed_run_id,
+                seed_sandbox_id,
+                session_id,
+            )
+            .await;
+            let seed_promotion = test_promotion_context(
+                seed_lease,
+                seed_run_id,
+                seed_sandbox_id,
+                session_id,
+                WorkspaceCacheTerminalStatus::Success,
+                StorageFingerprints {
+                    storages: HashMap::from([(
+                        removed_storage_path.clone(),
+                        StorageFingerprint::new("removed-storage", "v1"),
+                    )]),
+                    artifacts: HashMap::from([(
+                        removed_artifact_path.clone(),
+                        StorageFingerprint::new("removed-artifact", "v1"),
+                    )]),
+                },
+            );
+            assert!(
+                promote_workspace_image_from_active_sandbox(
+                    &MockSandbox::new(format!("workspace-seed-{session_id}")),
+                    Some(seed_promotion),
+                    "test",
+                )
+                .await
+            );
+
             let run_id = RunId::new_v4();
             let sandbox_id = SandboxId::new_v4();
             let lease =
                 prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, session_id)
                     .await;
+            assert!(lease.is_cache_hit());
             let sandbox = MockSandbox::new(format!("workspace-promotion-{session_id}"));
-            let storage_fingerprints = StorageFingerprints {
-                storages: std::collections::HashMap::from([(
-                    CANONICAL_WORKING_DIR.to_owned(),
-                    StorageFingerprint::new("repo", "v1"),
-                )]),
-                artifacts: std::collections::HashMap::from([(
-                    format!("{CANONICAL_WORKING_DIR}/artifact"),
-                    StorageFingerprint::new("artifact", "v1"),
-                )]),
+            let current_manifest = StorageManifest {
+                storages: vec![StorageEntry {
+                    name: "current-storage".into(),
+                    mount_path: current_storage_path.clone(),
+                    vas_storage_name: "current-storage".into(),
+                    vas_version_id: "v1".into(),
+                    instructions_target_filename: None,
+                    archive_url: "https://example.com/current-storage.tar.gz".into(),
+                }],
+                artifacts: vec![ArtifactEntry {
+                    mount_path: current_artifact_path.clone(),
+                    vas_storage_name: "current-artifact".into(),
+                    vas_storage_id: "current-artifact-id".into(),
+                    vas_version_id: "v1".into(),
+                    archive_url: Some("https://example.com/current-artifact.tar.gz".into()),
+                    empty: None,
+                    missing_root_policy: None,
+                }],
             };
             let promotion = test_promotion_context(
                 lease,
@@ -1116,7 +1172,7 @@ mod tests {
                 sandbox_id,
                 session_id,
                 terminal_status,
-                storage_fingerprints,
+                StorageFingerprints::from_manifest(&current_manifest),
             );
 
             let promoted =
@@ -1146,19 +1202,42 @@ mod tests {
             let previous_storage = checkout
                 .previous_storage()
                 .expect("cache hit should expose previous storage fingerprints");
-            assert!(
-                previous_storage
-                    .storages
-                    .get(CANONICAL_WORKING_DIR)
-                    .expect("storage path should be retained for cleanup")
-                    .is_tainted()
-            );
-            assert!(
-                previous_storage
-                    .artifacts
-                    .get(&format!("{CANONICAL_WORKING_DIR}/artifact"))
-                    .expect("artifact path should be retained for cleanup")
-                    .is_tainted()
+            for path in [&removed_storage_path, &current_storage_path] {
+                assert!(
+                    previous_storage
+                        .storages
+                        .get(path)
+                        .is_some_and(StorageFingerprint::is_tainted),
+                    "storage path should be retained as tainted: {path}",
+                );
+            }
+            for path in [&removed_artifact_path, &current_artifact_path] {
+                assert!(
+                    previous_storage
+                        .artifacts
+                        .get(path)
+                        .is_some_and(StorageFingerprint::is_tainted),
+                    "artifact path should be retained as tainted: {path}",
+                );
+            }
+
+            let plan = build_storage_plan(&current_manifest, "/run", Some(previous_storage))
+                .expect("next storage plan should build from promoted fingerprints");
+            assert_eq!(plan.reused_entries(), 0);
+            let guest_manifest = plan.into_guest_manifest();
+            assert!(!guest_manifest.storages[0].cached);
+            assert!(!guest_manifest.artifacts[0].cached);
+            assert_eq!(
+                guest_manifest
+                    .cleanup_paths
+                    .into_iter()
+                    .collect::<HashSet<_>>(),
+                HashSet::from([
+                    removed_storage_path,
+                    removed_artifact_path,
+                    current_storage_path,
+                    current_artifact_path,
+                ])
             );
         }
     }
