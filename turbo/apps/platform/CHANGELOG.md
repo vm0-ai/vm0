@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.599.7](https://github.com/vm0-ai/vm0/compare/app-v0.599.6...app-v0.599.7) (2026-07-15)
+
+
+### Bug Fixes
+
+* **app:** clean up failed realtime subscriptions ([#21520](https://github.com/vm0-ai/vm0/issues/21520)) ([7cc4eb6](https://github.com/vm0-ai/vm0/commit/7cc4eb64f48ad69213866d120ad624e264ff5d5c))
+
 ## [0.599.6](https://github.com/vm0-ai/vm0/compare/app-v0.599.5...app-v0.599.6) (2026-07-15)
 
 
