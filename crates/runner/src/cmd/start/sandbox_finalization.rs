@@ -661,7 +661,7 @@ mod tests {
     use crate::types::SandboxReuseResult;
     use crate::workspace_image_cache::{
         SessionWorkspaceCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
-        WorkspaceImagePromotionContext,
+        WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityRequest,
     };
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
@@ -1089,38 +1089,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_success_workspace_promotion_preserves_affected_paths_for_next_plan() {
+    async fn non_success_workspace_promotion_preserves_affected_paths_across_cache_sources() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
         let cache = SessionWorkspaceCache::new(paths.clone());
 
-        for (session_id, terminal_status) in [
-            ("sess-nonzero", WorkspaceCacheTerminalStatus::NonzeroExit),
-            ("sess-cancelled", WorkspaceCacheTerminalStatus::Cancelled),
+        for (terminal_name, terminal_status) in [
+            ("nonzero", WorkspaceCacheTerminalStatus::NonzeroExit),
+            ("cancelled", WorkspaceCacheTerminalStatus::Cancelled),
         ] {
-            let removed_storage_path = format!("{CANONICAL_WORKING_DIR}/removed-storage");
-            let removed_artifact_path = format!("{CANONICAL_WORKING_DIR}/removed-artifact");
-            let current_storage_path = format!("{CANONICAL_WORKING_DIR}/current-storage");
-            let current_artifact_path = format!("{CANONICAL_WORKING_DIR}/current-artifact");
-
-            let seed_run_id = RunId::new_v4();
-            let seed_sandbox_id = SandboxId::new_v4();
-            let seed_lease = prepare_test_workspace_image_lease(
-                &paths,
-                &cache,
-                seed_run_id,
-                seed_sandbox_id,
-                session_id,
-            )
-            .await;
-            let seed_promotion = test_promotion_context(
-                seed_lease,
-                seed_run_id,
-                seed_sandbox_id,
-                session_id,
-                WorkspaceCacheTerminalStatus::Success,
-                StorageFingerprints {
+            for (source_name, publish_seed) in [("cache-hit", true), ("idle-reuse", false)] {
+                let session_id = format!("sess-{terminal_name}-{source_name}");
+                let removed_storage_path = format!("{CANONICAL_WORKING_DIR}/removed-storage");
+                let removed_artifact_path = format!("{CANONICAL_WORKING_DIR}/removed-artifact");
+                let current_storage_path = format!("{CANONICAL_WORKING_DIR}/current-storage");
+                let current_artifact_path = format!("{CANONICAL_WORKING_DIR}/current-artifact");
+                let previous_storage = StorageFingerprints {
                     storages: HashMap::from([(
                         removed_storage_path.clone(),
                         StorageFingerprint::new("removed-storage", "v1"),
@@ -1129,116 +1114,159 @@ mod tests {
                         removed_artifact_path.clone(),
                         StorageFingerprint::new("removed-artifact", "v1"),
                     )]),
-                },
-            );
-            assert!(
-                promote_workspace_image_from_active_sandbox(
-                    &MockSandbox::new(format!("workspace-seed-{session_id}")),
-                    Some(seed_promotion),
-                    "test",
+                };
+
+                let seed_run_id = RunId::new_v4();
+                let seed_sandbox_id = SandboxId::new_v4();
+                let seed_lease = prepare_test_workspace_image_lease(
+                    &paths,
+                    &cache,
+                    seed_run_id,
+                    seed_sandbox_id,
+                    &session_id,
                 )
-                .await
-            );
-
-            let run_id = RunId::new_v4();
-            let sandbox_id = SandboxId::new_v4();
-            let lease =
-                prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, session_id)
-                    .await;
-            assert!(lease.is_cache_hit());
-            let sandbox = MockSandbox::new(format!("workspace-promotion-{session_id}"));
-            let current_manifest = StorageManifest {
-                storages: vec![StorageEntry {
-                    name: "current-storage".into(),
-                    mount_path: current_storage_path.clone(),
-                    vas_storage_name: "current-storage".into(),
-                    vas_version_id: "v1".into(),
-                    instructions_target_filename: None,
-                    archive_url: "https://example.com/current-storage.tar.gz".into(),
-                }],
-                artifacts: vec![ArtifactEntry {
-                    mount_path: current_artifact_path.clone(),
-                    vas_storage_name: "current-artifact".into(),
-                    vas_storage_id: "current-artifact-id".into(),
-                    vas_version_id: "v1".into(),
-                    archive_url: Some("https://example.com/current-artifact.tar.gz".into()),
-                    empty: None,
-                    missing_root_policy: None,
-                }],
-            };
-            let promotion = test_promotion_context(
-                lease,
-                run_id,
-                sandbox_id,
-                session_id,
-                terminal_status,
-                StorageFingerprints::from_manifest(&current_manifest),
-            );
-
-            let promoted =
-                promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test")
-                    .await;
-
-            assert!(promoted);
-            let exec_calls = sandbox.exec_calls();
-            assert_eq!(exec_calls.len(), 1);
-            assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
-            assert!(!exec_calls[0].cmd.contains("export-session-history-sidecar"));
-            let checkout = cache
-                .prepare(WorkspaceImagePrepareRequest {
-                    identity: WorkspaceImageLeaseIdentity {
-                        run_id: RunId::new_v4(),
-                        sandbox_id: SandboxId::new_v4(),
-                        profile_name: "vm0/default",
-                        cli_agent_session_id: Some(session_id),
-                        working_dir: CANONICAL_WORKING_DIR,
-                        image_size_bytes: b"image".len() as u64,
-                    },
-                    workspace_drive_required: true,
-                })
                 .await;
+                let seed_promotion = test_promotion_context(
+                    seed_lease,
+                    seed_run_id,
+                    seed_sandbox_id,
+                    &session_id,
+                    WorkspaceCacheTerminalStatus::Success,
+                    previous_storage.clone(),
+                );
 
-            assert!(checkout.is_cache_hit());
-            let previous_storage = checkout
-                .previous_storage()
-                .expect("cache hit should expose previous storage fingerprints");
-            for path in [&removed_storage_path, &current_storage_path] {
-                assert!(
-                    previous_storage
-                        .storages
-                        .get(path)
-                        .is_some_and(StorageFingerprint::is_tainted),
-                    "storage path should be retained as tainted: {path}",
+                let run_id = RunId::new_v4();
+                let (sandbox_id, lease) = if publish_seed {
+                    assert!(
+                        promote_workspace_image_from_active_sandbox(
+                            &MockSandbox::new(format!("workspace-seed-{session_id}")),
+                            Some(seed_promotion),
+                            "test",
+                        )
+                        .await
+                    );
+                    let sandbox_id = SandboxId::new_v4();
+                    let lease = prepare_test_workspace_image_lease(
+                        &paths,
+                        &cache,
+                        run_id,
+                        sandbox_id,
+                        &session_id,
+                    )
+                    .await;
+                    assert!(lease.is_cache_hit());
+                    (sandbox_id, lease)
+                } else {
+                    let expected = cache
+                        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+                            sandbox_id: seed_sandbox_id,
+                            profile_name: "vm0/default",
+                            cli_agent_session_id: &session_id,
+                            working_dir: CANONICAL_WORKING_DIR,
+                            image_size_bytes: b"image".len() as u64,
+                        })
+                        .expect("idle reuse promotion identity should be valid");
+                    let lease = seed_promotion
+                        .try_into_active_lease(&expected, true)
+                        .expect("parked promotion should become an active lease");
+                    (seed_sandbox_id, lease)
+                };
+                assert_eq!(lease.previous_storage(), Some(&previous_storage));
+
+                let sandbox = MockSandbox::new(format!("workspace-promotion-{session_id}"));
+                let current_manifest = StorageManifest {
+                    storages: vec![StorageEntry {
+                        name: "current-storage".into(),
+                        mount_path: current_storage_path.clone(),
+                        vas_storage_name: "current-storage".into(),
+                        vas_version_id: "v1".into(),
+                        instructions_target_filename: None,
+                        archive_url: "https://example.com/current-storage.tar.gz".into(),
+                    }],
+                    artifacts: vec![ArtifactEntry {
+                        mount_path: current_artifact_path.clone(),
+                        vas_storage_name: "current-artifact".into(),
+                        vas_storage_id: "current-artifact-id".into(),
+                        vas_version_id: "v1".into(),
+                        archive_url: Some("https://example.com/current-artifact.tar.gz".into()),
+                        empty: None,
+                        missing_root_policy: None,
+                    }],
+                };
+                let promotion = test_promotion_context(
+                    lease,
+                    run_id,
+                    sandbox_id,
+                    &session_id,
+                    terminal_status,
+                    StorageFingerprints::from_manifest(&current_manifest),
+                );
+
+                let promoted =
+                    promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test")
+                        .await;
+
+                assert!(promoted);
+                let exec_calls = sandbox.exec_calls();
+                assert_eq!(exec_calls.len(), 1);
+                assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
+                assert!(!exec_calls[0].cmd.contains("export-session-history-sidecar"));
+                let checkout = cache
+                    .prepare(WorkspaceImagePrepareRequest {
+                        identity: WorkspaceImageLeaseIdentity {
+                            run_id: RunId::new_v4(),
+                            sandbox_id: SandboxId::new_v4(),
+                            profile_name: "vm0/default",
+                            cli_agent_session_id: Some(&session_id),
+                            working_dir: CANONICAL_WORKING_DIR,
+                            image_size_bytes: b"image".len() as u64,
+                        },
+                        workspace_drive_required: true,
+                    })
+                    .await;
+
+                assert!(checkout.is_cache_hit());
+                let previous_storage = checkout
+                    .previous_storage()
+                    .expect("cache hit should expose previous storage fingerprints");
+                for path in [&removed_storage_path, &current_storage_path] {
+                    assert!(
+                        previous_storage
+                            .storages
+                            .get(path)
+                            .is_some_and(StorageFingerprint::is_tainted),
+                        "storage path should be retained as tainted: {path}",
+                    );
+                }
+                for path in [&removed_artifact_path, &current_artifact_path] {
+                    assert!(
+                        previous_storage
+                            .artifacts
+                            .get(path)
+                            .is_some_and(StorageFingerprint::is_tainted),
+                        "artifact path should be retained as tainted: {path}",
+                    );
+                }
+
+                let plan = build_storage_plan(&current_manifest, "/run", Some(previous_storage))
+                    .expect("next storage plan should build from promoted fingerprints");
+                assert_eq!(plan.reused_entries(), 0);
+                let guest_manifest = plan.into_guest_manifest();
+                assert!(!guest_manifest.storages[0].cached);
+                assert!(!guest_manifest.artifacts[0].cached);
+                assert_eq!(
+                    guest_manifest
+                        .cleanup_paths
+                        .into_iter()
+                        .collect::<HashSet<_>>(),
+                    HashSet::from([
+                        removed_storage_path,
+                        removed_artifact_path,
+                        current_storage_path,
+                        current_artifact_path,
+                    ])
                 );
             }
-            for path in [&removed_artifact_path, &current_artifact_path] {
-                assert!(
-                    previous_storage
-                        .artifacts
-                        .get(path)
-                        .is_some_and(StorageFingerprint::is_tainted),
-                    "artifact path should be retained as tainted: {path}",
-                );
-            }
-
-            let plan = build_storage_plan(&current_manifest, "/run", Some(previous_storage))
-                .expect("next storage plan should build from promoted fingerprints");
-            assert_eq!(plan.reused_entries(), 0);
-            let guest_manifest = plan.into_guest_manifest();
-            assert!(!guest_manifest.storages[0].cached);
-            assert!(!guest_manifest.artifacts[0].cached);
-            assert_eq!(
-                guest_manifest
-                    .cleanup_paths
-                    .into_iter()
-                    .collect::<HashSet<_>>(),
-                HashSet::from([
-                    removed_storage_path,
-                    removed_artifact_path,
-                    current_storage_path,
-                    current_artifact_path,
-                ])
-            );
         }
     }
 

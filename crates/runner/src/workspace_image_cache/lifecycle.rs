@@ -1348,7 +1348,7 @@ impl WorkspaceImagePromotionContext {
             consumed_cache_hit,
             terminal_status: _,
             completed_at: _,
-            storage_fingerprints: _,
+            storage_fingerprints,
             restored_session_identity: _,
         } = self;
         let base = WorkspaceImageLeaseBase {
@@ -1365,7 +1365,7 @@ impl WorkspaceImagePromotionContext {
                 cache_key: Some(cache_key),
                 source_image: None,
                 consumed_cache_hit,
-                previous_storage: None,
+                previous_storage: Some(storage_fingerprints),
                 entry_lock,
                 workspace_drive_enabled: workspace_drive_available,
                 result: WorkspaceCacheCheckoutResult::Miss,
