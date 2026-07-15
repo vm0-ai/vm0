@@ -74,6 +74,46 @@ def _metadata_match_pattern_alias_names(pattern: ast.pattern) -> set[str]:
 
 
 class _MetadataKeyVisitor(ast.NodeVisitor):
+    """Conservatively track names that may refer to ``flow.metadata``.
+
+    The visitor is flow-sensitive within each Python scope, but joins control-flow
+    exits as a may analysis: a name remains an alias if it can denote metadata on
+    any represented path. Metadata-valued assignments, defaults, captures, and
+    named expressions introduce aliases; rebinding, deletion, imports, and Python
+    scope bindings shadow or discard them. Ordinary branch joins include only exits
+    that can fall through, while loops also retain zero-iteration and possible body
+    or ``else`` exits.
+
+    The mutable analysis state has these invariants:
+
+    * ``_metadata_alias_scopes`` is never empty. Its last set is the alias state for
+      the current lexical or branch context, and index zero is the module state used
+      to resolve ``global`` declarations and class-body bindings. Scoped and branch
+      visitors push independent sets, then explicitly join or discard their exits.
+    * ``_exception_alias_scopes`` contains collectors for modeled exceptional exits
+      from active constructs. ``may_raise`` is stored separately from the alias set
+      so an exceptional path with no aliases is not confused with no exceptional
+      path. Nested constructs merge into the nearest collector; function and lambda
+      bodies install boundaries, context managers retain paths they may suppress,
+      and ``finally`` transfers both normal and exceptional states.
+    * ``_class_nested_scope_alias_scopes`` holds the surrounding non-class alias
+      base while a class body is active. Functions and implicit comprehension scopes
+      nested there use that base because they do not close over class-local names;
+      the class body itself has a separate alias scope with its own binding rules.
+    * ``_metadata_key_checked_node_ids`` contains only AST identities whose key
+      checks produced violations. Generic and specialized traversal can inspect the
+      same node, so these identities prevent duplicate checks while
+      ``_violation_messages`` independently de-duplicates equal diagnostics and
+      ``violations`` preserves first-seen order. State-only ``finally`` replay
+      snapshots and restores all three collections so it changes aliases only.
+    * ``_named_expr_target_scope_indexes`` contains indexes into
+      ``_metadata_alias_scopes`` for active comprehensions. The first iterable is
+      visited before the implicit comprehension scope is pushed; afterward, named
+      expression targets are written to the containing non-comprehension scope and
+      the current comprehension state. Nested comprehensions reuse that containing
+      target, while entry into a new lexical scope resets the index stack.
+    """
+
     def __init__(self, path: Path) -> None:
         self.path = path
         self.violations: list[str] = []
