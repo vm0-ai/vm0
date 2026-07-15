@@ -16,6 +16,7 @@ mod host_env;
 mod host_file;
 mod http;
 mod idle_pool;
+mod idle_reuse_preparation;
 mod ids;
 mod image_hash;
 mod io_limits;

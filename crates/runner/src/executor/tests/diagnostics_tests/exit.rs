@@ -60,6 +60,34 @@ fn bootstrap_abnormal_exit_diagnostics_allow_captured_stderr_without_resource_pr
     ));
 }
 
+#[test]
+fn explicit_enospc_collects_resources_even_with_structured_failure() {
+    let exit = ProcessExit::new(1, 1, Vec::new(), Vec::new());
+    let diagnostic = fallback_cli_nonzero_diagnostic(1);
+
+    assert!(should_collect_agent_abnormal_exit_diagnostics(
+        false,
+        &exit,
+        "",
+        Some(&diagnostic),
+        Some("thread store initialization failed: No space left on device (os error 28)"),
+    ));
+}
+
+#[test]
+fn unrelated_structured_failure_does_not_collect_resources() {
+    let exit = ProcessExit::new(1, 1, Vec::new(), Vec::new());
+    let diagnostic = fallback_cli_nonzero_diagnostic(1);
+
+    assert!(!should_collect_agent_abnormal_exit_diagnostics(
+        false,
+        &exit,
+        "",
+        Some(&diagnostic),
+        Some("authentication failed"),
+    ));
+}
+
 fn fallback_cli_nonzero_diagnostic(exit_code: i32) -> FailureDiagnostic {
     FailureDiagnostic::new(
         FailureClass::CliNonzero,

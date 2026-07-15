@@ -58,10 +58,11 @@ impl MockSandbox {
         Self::build(id, None)
     }
 
-    pub(crate) fn with_overrides(
-        id: impl Into<String>,
-        overrides: Arc<MockSandboxOverrides>,
-    ) -> Self {
+    /// Create a sandbox attached directly to shared behavior overrides.
+    ///
+    /// This is useful when a test does not need to construct a runtime and
+    /// factory but still needs command matchers or shared observations.
+    pub fn with_overrides(id: impl Into<String>, overrides: Arc<MockSandboxOverrides>) -> Self {
         Self::build(id, Some(overrides))
     }
 
@@ -345,6 +346,14 @@ impl Sandbox for MockSandbox {
                 .position(|m| request.cmd.contains(&m.pattern))
             {
                 Ok(matchers.remove(idx).result)
+            } else if let Some(matcher) = overrides
+                .exec
+                .persistent_matchers
+                .lock_ignoring_poison()
+                .iter()
+                .find(|matcher| request.cmd.contains(&matcher.pattern))
+            {
+                Ok(clone_exec_result(&matcher.result))
             } else {
                 self.exec_results
                     .lock_ignoring_poison()
@@ -786,5 +795,16 @@ impl Sandbox for MockSandbox {
             Vec::new(),
             Vec::new(),
         ))
+    }
+}
+
+fn clone_exec_result(result: &ExecResult) -> ExecResult {
+    ExecResult {
+        termination: result.termination,
+        stdout: result.stdout.clone(),
+        stderr: result.stderr.clone(),
+        diagnostic: result.diagnostic.clone(),
+        stdout_truncated: result.stdout_truncated,
+        stderr_truncated: result.stderr_truncated,
     }
 }
