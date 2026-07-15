@@ -24,7 +24,7 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { writeDb$, type Db } from "../external/db";
-import { bestEffort, settle, tapError } from "../utils";
+import { bestEffort, tapError } from "../utils";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -1152,11 +1152,10 @@ export async function getOrgIdBySlug(
     return cached.orgId;
   }
 
-  const orgResult = await settle(clerk.organizations.getOrganization({ slug }));
-  if (!orgResult.ok) {
+  const org = await tapError(clerk.organizations.getOrganization({ slug }));
+  if (!org) {
     return null;
   }
-  const org = orgResult.value;
   if (!org.slug) {
     return null;
   }
