@@ -26,6 +26,7 @@ interface ReleaseFixtureOptions {
   readonly version: string;
   readonly connectorRef?: string;
   readonly label?: string;
+  readonly generatedFirewall?: boolean;
   readonly publicBytes?: Buffer;
   readonly mutatePublic?: JsonMutation;
   readonly mutatePrivate?: JsonMutation;
@@ -96,6 +97,10 @@ function valueDigest(value: unknown): string {
   return digest(jsonBytes(value));
 }
 
+function catalogTemplate(reference: string): string {
+  return `\${{ ${reference} }}`;
+}
+
 function artifactReference(key: string, content: string): JsonRecord {
   return { key, digest: digest(Buffer.from(content)) };
 }
@@ -122,6 +127,7 @@ function buildPublicConnector(args: {
   readonly label: string;
   readonly iconKey: string;
   readonly iconDigest: string;
+  readonly firewall?: JsonRecord;
 }): JsonRecord {
   return {
     connectorRef: args.connectorRef,
@@ -154,7 +160,7 @@ function buildPublicConnector(args: {
       contentType: "image/svg+xml",
       invertInDarkMode: false,
     },
-    firewall: { kind: "none" },
+    firewall: args.firewall ?? { kind: "none" },
   };
 }
 
@@ -186,8 +192,8 @@ function buildPrivateConnector(connectorRef: string): JsonRecord {
   };
 }
 
-function requiredCapabilities(): readonly string[] {
-  return [
+function requiredCapabilities(generatedFirewall: boolean): readonly string[] {
+  const capabilities = [
     "bundle.required-resources@1",
     "catalog.public@1",
     "catalog.private@1",
@@ -195,10 +201,89 @@ function requiredCapabilities(): readonly string[] {
     "firewall.runner@1",
     "icon.static-files-path@1",
     "skill-none@1",
-    "firewall-none@1",
-    "grant.manual@1",
-    "access.static@1",
+    generatedFirewall ? "firewall-generated@1" : "firewall-none@1",
   ];
+  if (generatedFirewall) {
+    capabilities.push("firewall.categories@1", "firewall.defaults@1");
+  }
+  capabilities.push("grant.manual@1", "access.static@1");
+  return capabilities;
+}
+
+function buildGeneratedFirewall(args: {
+  readonly connectorRef: string;
+  readonly label: string;
+}): {
+  readonly publicFirewall: JsonRecord;
+  readonly privateFirewall: JsonRecord;
+  readonly runnerFirewall: JsonRecord;
+} {
+  const base = "https://api.example.test/v1";
+  const auth = (): JsonRecord => {
+    return {
+      headers: {
+        Authorization: `Bearer ${catalogTemplate("secrets.SERVICE_TOKEN")}`,
+      },
+    };
+  };
+  const permissions = [
+    {
+      name: "items.read",
+      description: "Read items",
+      rules: ["GET /items"],
+    },
+  ];
+  return {
+    publicFirewall: {
+      kind: "generated",
+      permissions: [{ name: "items.read", description: "Read items" }],
+      categories: {
+        byPermission: { "items.read": "Items" },
+        displayOrder: ["Items"],
+      },
+      defaultAllowed: ["items.read"],
+      defaultUnknownPolicy: "deny",
+    },
+    privateFirewall: {
+      connectorRef: args.connectorRef,
+      label: args.label,
+      billable: false,
+      firewall: {
+        name: args.connectorRef,
+        placeholders: { SERVICE_TOKEN: "placeholder-token" },
+        apis: [{ base, auth: auth(), permissions }],
+      },
+      categories: {
+        byPermission: { "items.read": "Items" },
+        displayOrder: ["Items"],
+      },
+      defaultAllowed: ["items.read"],
+      defaultUnknownPolicy: "deny",
+      routing: {
+        fixedHosts: ["api.example.test"],
+        baseUrlVarNames: [],
+        baseUrlTemplates: [],
+        apis: [
+          {
+            base,
+            environmentNames: ["SERVICE_TOKEN"],
+            routes: [{ permissionName: "items.read", rule: "GET /items" }],
+          },
+        ],
+      },
+      diagnostics: { apiCount: 1, permissionCount: 1, ruleCount: 1 },
+    },
+    runnerFirewall: {
+      name: args.connectorRef,
+      apis: [
+        {
+          base,
+          auth: auth(),
+          permissions: [{ name: "items.read", rules: ["GET /items"] }],
+        },
+      ],
+    },
+  };
 }
 
 function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
@@ -210,11 +295,17 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
   const iconKey =
     "platform/views/zero-page/components/settings/icons/" +
     `${connectorRef}-${iconDigest.slice("sha256:".length, 19)}.svg`;
+  const generatedFirewall = options.generatedFirewall
+    ? buildGeneratedFirewall({ connectorRef, label })
+    : undefined;
   const publicConnector = buildPublicConnector({
     connectorRef,
     label,
     iconKey,
     iconDigest,
+    ...(generatedFirewall === undefined
+      ? {}
+      : { firewall: generatedFirewall.publicFirewall }),
   });
   const privateConnector = buildPrivateConnector(connectorRef);
   const publicArtifact: JsonRecord = {
@@ -241,14 +332,38 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
   const privateFirewallsArtifact: JsonRecord = {
     artifactSchemaVersion: 1,
     catalogVersion: options.version,
-    connectors: [],
+    connectors:
+      generatedFirewall === undefined
+        ? []
+        : [generatedFirewall.privateFirewall],
   };
   const runnerFirewallsArtifact: JsonRecord = {
     artifactSchemaVersion: 1,
     catalogVersion: options.version,
-    firewalls: [],
+    firewalls:
+      generatedFirewall === undefined ? [] : [generatedFirewall.runnerFirewall],
   };
 
+  options.mutatePublic?.(publicArtifact);
+  options.mutatePrivate?.(privateArtifact);
+  options.mutatePrivateFirewalls?.(privateFirewallsArtifact);
+  options.mutateRunnerFirewalls?.(runnerFirewallsArtifact);
+  const currentPublicConnector = firstRecord(
+    publicArtifact.connectors,
+    "public connectors",
+  );
+  const currentPrivateConnector = firstRecord(
+    privateArtifact.connectors,
+    "private connectors",
+  );
+  const privateFirewallConnectors = arrayValue(
+    privateFirewallsArtifact.connectors,
+    "private firewall connectors",
+  );
+  const runnerFirewalls = arrayValue(
+    runnerFirewallsArtifact.firewalls,
+    "runner firewalls",
+  );
   const integrityConnector: JsonRecord = {
     connectorRef,
     sourceFiles: [
@@ -267,18 +382,21 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
         "e",
       ),
     ],
-    publicDigest: valueDigest(publicConnector),
-    privateDigest: valueDigest(privateConnector),
-    privateFirewallDigest: null,
-    runnerFirewallDigest: null,
+    publicDigest: valueDigest(currentPublicConnector),
+    privateDigest: valueDigest(currentPrivateConnector),
+    privateFirewallDigest:
+      privateFirewallConnectors.length === 0
+        ? null
+        : valueDigest(
+            firstRecord(privateFirewallConnectors, "private firewalls"),
+          ),
+    runnerFirewallDigest:
+      runnerFirewalls.length === 0
+        ? null
+        : valueDigest(firstRecord(runnerFirewalls, "runner firewalls")),
     skill: { kind: "none" },
     icon: { key: iconKey, digest: iconDigest },
   };
-
-  options.mutatePublic?.(publicArtifact);
-  options.mutatePrivate?.(privateArtifact);
-  options.mutatePrivateFirewalls?.(privateFirewallsArtifact);
-  options.mutateRunnerFirewalls?.(runnerFirewallsArtifact);
   const publicBytes = options.publicBytes ?? jsonBytes(publicArtifact);
   const privateBytes = jsonBytes(privateArtifact);
   const privateFirewallsBytes = jsonBytes(privateFirewallsArtifact);
@@ -297,7 +415,9 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
   const integrity: JsonRecord = {
     artifactSchemaVersion: 1,
     catalogVersion: options.version,
-    requiredCapabilities: requiredCapabilities(),
+    requiredCapabilities: requiredCapabilities(
+      options.generatedFirewall === true,
+    ),
     catalogSource: artifactReference("catalog/catalog.yaml", "catalog"),
     generatorSources: [
       artifactReference("compiler/firewall-generator.ts", "generator"),
@@ -586,6 +706,21 @@ describe("connector catalog valid lifecycle", () => {
         return connector.connectorRef === first.connectorRef;
       }),
     ).toBeFalsy();
+  });
+
+  it("accepts a complete generated firewall projection", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.generated-firewall",
+      generatedFirewall: true,
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: release.version },
+    });
   });
 
   it("serializes overlapping syncs without a mixed snapshot", async () => {
@@ -1075,6 +1210,84 @@ describe("connector catalog rejection and latest-valid retention", () => {
               defaultAllowed: null,
               defaultUnknownPolicy: "allow",
             };
+          },
+        });
+      },
+    },
+    {
+      name: "non-HTTPS firewall base URL",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "firewall-http-base",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            const firewall = recordValue(connector.firewall, "firewall");
+            firstRecord(firewall.apis, "firewall.apis").base =
+              "http://api.example.test/v1";
+          },
+        });
+      },
+    },
+    {
+      name: "unknown firewall environment binding",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "firewall-unknown-binding",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            const firewall = recordValue(connector.firewall, "firewall");
+            const api = firstRecord(firewall.apis, "firewall.apis");
+            const auth = recordValue(api.auth, "firewall api auth");
+            recordValue(auth.headers, "firewall auth headers")["X-Unknown"] =
+              catalogTemplate("secrets.UNKNOWN_SECRET");
+          },
+        });
+      },
+    },
+    {
+      name: "stale firewall routing metadata",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "firewall-routing-mismatch",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            recordValue(connector.routing, "routing").fixedHosts = [
+              "stale.example.test",
+            ];
+          },
+        });
+      },
+    },
+    {
+      name: "stale firewall diagnostics",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "firewall-diagnostics-mismatch",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            recordValue(connector.diagnostics, "diagnostics").ruleCount = 2;
+          },
+        });
+      },
+    },
+    {
+      name: "cross-view firewall label mismatch",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "firewall-label-mismatch",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            firstRecord(artifact.connectors, "connectors").label =
+              "Stale Label";
           },
         });
       },

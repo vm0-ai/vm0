@@ -9,7 +9,13 @@ import {
   staticFilesPublicationManifestSchema,
   validateConnectorCatalogArtifacts,
 } from "./artifacts";
-import { validateFirewallGeneratorResult } from "./firewall";
+import {
+  firewallAuthInjectsCredentials,
+  firewallBaseVariableNames,
+  firewallTemplateReferences,
+  parseFirewallBaseUrl,
+  validateFirewallGeneratorResult,
+} from "./firewall";
 import {
   catalogSourceSchema,
   connectorSourceSchema,
@@ -256,16 +262,177 @@ function validateCatalogAndConnectorSemantics(args: {
   }
 }
 
-function validateFirewallSemantics(
-  privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact,
-): void {
-  for (const connector of privateFirewallsArtifact.connectors) {
+function compareStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function sortedUniqueStrings(values: Iterable<string>): string[] {
+  return [...new Set(values)].sort(compareStrings);
+}
+
+function validateFirewallBindings(args: {
+  readonly privateConnector: ConnectorCatalogPrivateArtifact["connectors"][number];
+  readonly privateFirewall: ConnectorCatalogPrivateFirewallsArtifact["connectors"][number];
+}): void {
+  const knownEnvironmentNames = new Set<string>();
+  for (const method of args.privateConnector.authMethods) {
+    for (const name of Object.keys(method.access.envBindings)) {
+      knownEnvironmentNames.add(name);
+    }
+    for (const name of method.access.platformSecrets ?? []) {
+      knownEnvironmentNames.add(name);
+    }
+  }
+  const references = firewallTemplateReferences(
+    args.privateFirewall.firewall.apis,
+  );
+  const unknown = [...references.secrets, ...references.vars].filter((name) => {
+    return !knownEnvironmentNames.has(name);
+  });
+  if (unknown.length > 0) {
+    throw new Error(
+      `Firewall references unknown connector bindings: ${sortedUniqueStrings(unknown).join(", ")}`,
+    );
+  }
+  const unusedPlaceholders = Object.keys(
+    args.privateFirewall.firewall.placeholders ?? {},
+  ).filter((name) => {
+    return !references.secrets.has(name);
+  });
+  if (unusedPlaceholders.length > 0) {
+    throw new Error(
+      `Firewall has unused placeholders: ${sortedUniqueStrings(unusedPlaceholders).join(", ")}`,
+    );
+  }
+}
+
+function expectedFirewallRouting(
+  privateFirewall: ConnectorCatalogPrivateFirewallsArtifact["connectors"][number],
+): ConnectorCatalogPrivateFirewallsArtifact["connectors"][number]["routing"] {
+  const apis = privateFirewall.firewall.apis;
+  return {
+    fixedHosts: sortedUniqueStrings(
+      apis.flatMap((api) => {
+        const parsed = parseFirewallBaseUrl(api.base);
+        return api.base.includes("${{") ? [] : [parsed.host];
+      }),
+    ),
+    baseUrlVarNames: sortedUniqueStrings(
+      apis.flatMap((api) => {
+        return firewallBaseVariableNames(api.base);
+      }),
+    ),
+    baseUrlTemplates: apis
+      .filter((api) => {
+        return api.base.includes("${{");
+      })
+      .map((api) => {
+        parseFirewallBaseUrl(api.base);
+        return {
+          base: api.base,
+          credentialed: firewallAuthInjectsCredentials(api.auth),
+          ...(api.hostPolicy === undefined
+            ? {}
+            : { hostPolicy: api.hostPolicy }),
+        };
+      })
+      .sort((left, right) => {
+        return compareStrings(left.base, right.base);
+      }),
+    apis: apis.map((api) => {
+      const references = firewallTemplateReferences(api);
+      return {
+        base: api.base,
+        environmentNames: sortedUniqueStrings([
+          ...references.secrets,
+          ...references.vars,
+        ]),
+        routes: (api.permissions ?? []).flatMap((permission) => {
+          return permission.rules.map((rule) => {
+            return { permissionName: permission.name, rule };
+          });
+        }),
+      };
+    }),
+  };
+}
+
+function expectedFirewallDiagnostics(
+  privateFirewall: ConnectorCatalogPrivateFirewallsArtifact["connectors"][number],
+): ConnectorCatalogPrivateFirewallsArtifact["connectors"][number]["diagnostics"] {
+  const permissions = privateFirewall.firewall.apis.flatMap((api) => {
+    return api.permissions ?? [];
+  });
+  return {
+    apiCount: privateFirewall.firewall.apis.length,
+    permissionCount: new Set(
+      permissions.map((permission) => {
+        return permission.name;
+      }),
+    ).size,
+    ruleCount: permissions.reduce((count, permission) => {
+      return count + permission.rules.length;
+    }, 0),
+  };
+}
+
+function validateFirewallProjection(args: {
+  readonly publicConnector: ConnectorCatalogPublicArtifact["connectors"][number];
+  readonly privateConnector: ConnectorCatalogPrivateArtifact["connectors"][number];
+  readonly privateFirewall: ConnectorCatalogPrivateFirewallsArtifact["connectors"][number];
+}): void {
+  if (args.privateFirewall.label !== args.publicConnector.label) {
+    throw new Error(
+      `Firewall label mismatch: ${args.publicConnector.connectorRef}`,
+    );
+  }
+  validateFirewallBindings(args);
+  if (
+    JSON.stringify(args.privateFirewall.routing) !==
+      JSON.stringify(expectedFirewallRouting(args.privateFirewall)) ||
+    JSON.stringify(args.privateFirewall.diagnostics) !==
+      JSON.stringify(expectedFirewallDiagnostics(args.privateFirewall))
+  ) {
+    throw new Error(
+      `Firewall derived metadata mismatch: ${args.publicConnector.connectorRef}`,
+    );
+  }
+}
+
+function validateFirewallSemantics(args: {
+  readonly publicArtifact: ConnectorCatalogPublicArtifact;
+  readonly privateArtifact: ConnectorCatalogPrivateArtifact;
+  readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
+}): void {
+  const publicByRef = new Map(
+    args.publicArtifact.connectors.map((connector) => {
+      return [connector.connectorRef, connector];
+    }),
+  );
+  const privateByRef = new Map(
+    args.privateArtifact.connectors.map((connector) => {
+      return [connector.connectorRef, connector];
+    }),
+  );
+  for (const connector of args.privateFirewallsArtifact.connectors) {
     validateFirewallGeneratorResult({
       connectorRef: connector.connectorRef,
       firewall: connector.firewall,
       categories: connector.categories,
       defaultAllowed: connector.defaultAllowed,
       defaultUnknownPolicy: connector.defaultUnknownPolicy,
+    });
+    const publicConnector = publicByRef.get(connector.connectorRef);
+    const privateConnector = privateByRef.get(connector.connectorRef);
+    if (publicConnector === undefined || privateConnector === undefined) {
+      throw new Error(
+        `Missing connector for firewall ${connector.connectorRef}`,
+      );
+    }
+    validateFirewallProjection({
+      publicConnector,
+      privateConnector,
+      privateFirewall: connector,
     });
   }
 }
@@ -351,6 +518,6 @@ export function validateConnectorCatalogRelationships(args: {
     staticFilesPublicationArtifact,
   });
   validateCatalogAndConnectorSemantics(args);
-  validateFirewallSemantics(args.privateFirewallsArtifact);
+  validateFirewallSemantics(args);
   validateSliceDigests(args);
 }

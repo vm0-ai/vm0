@@ -4,7 +4,15 @@ import { z } from "zod";
 import { safeUrlParse } from "../../utils";
 import { connectorRefSchema, privateNameSchema } from "./common";
 
+const TEMPLATE_REFERENCE_PATTERN = /\b(secrets|vars)\.([A-Z][A-Z0-9_]*)\b/gu;
+const DIRECT_TEMPLATE_PATTERN =
+  /\$\{\{\s*(?:secrets|vars)\.[A-Z][A-Z0-9_]*\s*\}\}/gu;
 const BASE_VARIABLE_PATTERN = /\$\{\{\s*vars\.[A-Z][A-Z0-9_]*\s*\}\}/u;
+const BASE_VARIABLE_CAPTURE_PATTERN =
+  /\$\{\{\s*vars\.([A-Z][A-Z0-9_]*)\s*\}\}/gu;
+const FULL_BASE_VARIABLE_PATTERN =
+  /^\$\{\{\s*vars\.[A-Z][A-Z0-9_]*\s*\}\}(\/.*)?$/u;
+const BASE_SECRET_PATTERN = /\$\{\{\s*secrets\.[A-Z][A-Z0-9_]*\s*\}\}/u;
 const HOST_FORBIDDEN_CHARACTERS = String.raw`%*[]\/?:#@{}`;
 const HOST_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 
@@ -177,7 +185,6 @@ const firewallGeneratorResultSchema = z
   })
   .strict();
 
-type FirewallAuth = z.infer<typeof firewallAuthSchema>;
 type FirewallApi = z.infer<typeof firewallApiSchema>;
 type FirewallConfig = z.infer<typeof firewallConfigSchema>;
 type FirewallGeneratorResult = z.infer<typeof firewallGeneratorResultSchema>;
@@ -210,6 +217,90 @@ function firewallPermissionNames(firewall: FirewallConfig): Set<string> {
   return names;
 }
 
+export function firewallTemplateReferences(value: unknown): {
+  readonly secrets: ReadonlySet<string>;
+  readonly vars: ReadonlySet<string>;
+} {
+  const secrets = new Set<string>();
+  const vars = new Set<string>();
+  function visit(candidate: unknown): void {
+    if (typeof candidate === "string") {
+      for (const match of candidate.matchAll(TEMPLATE_REFERENCE_PATTERN)) {
+        const kind = match[1];
+        const name = match[2];
+        if (kind === undefined || name === undefined) {
+          continue;
+        }
+        (kind === "secrets" ? secrets : vars).add(name);
+      }
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      for (const child of candidate) {
+        visit(child);
+      }
+      return;
+    }
+    if (typeof candidate === "object" && candidate !== null) {
+      for (const child of Object.values(candidate)) {
+        visit(child);
+      }
+    }
+  }
+  visit(value);
+  return { secrets, vars };
+}
+
+function normalizedFirewallBaseUrl(base: string): string {
+  const fullVariableMatch = base.match(FULL_BASE_VARIABLE_PATTERN);
+  if (fullVariableMatch !== null) {
+    return `https://variable.invalid${fullVariableMatch[1] ?? ""}`;
+  }
+  return base.replace(DIRECT_TEMPLATE_PATTERN, "variable");
+}
+
+export function parseFirewallBaseUrl(base: string): URL {
+  if (BASE_SECRET_PATTERN.test(base)) {
+    throw new Error("Firewall API base URLs must use connector variables");
+  }
+  const parsed = safeUrlParse(normalizedFirewallBaseUrl(base));
+  if (
+    parsed === undefined ||
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new Error(`Firewall base URL must be a clean HTTPS URL: ${base}`);
+  }
+  return parsed;
+}
+
+export function firewallBaseVariableNames(base: string): string[] {
+  return [
+    ...new Set(
+      [...base.matchAll(BASE_VARIABLE_CAPTURE_PATTERN)].flatMap((match) => {
+        return match[1] === undefined ? [] : [match[1]];
+      }),
+    ),
+  ].sort();
+}
+
+export function firewallAuthInjectsCredentials(auth: {
+  readonly base?: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly query?: Readonly<Record<string, string>>;
+  readonly awsSigv4?: unknown;
+}): boolean {
+  return (
+    auth.base !== undefined ||
+    Object.keys(auth.headers ?? {}).length > 0 ||
+    Object.keys(auth.query ?? {}).length > 0 ||
+    auth.awsSigv4 !== undefined
+  );
+}
+
 function isFixedProviderHost(base: string): boolean {
   if (!BASE_VARIABLE_PATTERN.test(base)) {
     return true;
@@ -227,19 +318,10 @@ function isFixedProviderHost(base: string): boolean {
   return variableIndex !== -1 && labels.length - variableIndex - 1 >= 2;
 }
 
-function authInjectsCredentials(auth: FirewallAuth): boolean {
-  return (
-    auth.base !== undefined ||
-    Object.keys(auth.headers ?? {}).length > 0 ||
-    Object.keys(auth.query ?? {}).length > 0 ||
-    auth.awsSigv4 !== undefined
-  );
-}
-
 function validateHostPolicy(connectorRef: string, api: FirewallApi): void {
   if (
     BASE_VARIABLE_PATTERN.test(api.base) &&
-    authInjectsCredentials(api.auth) &&
+    firewallAuthInjectsCredentials(api.auth) &&
     !isFixedProviderHost(api.base)
   ) {
     if (api.hostPolicy === undefined) {
@@ -260,6 +342,7 @@ export function validateFirewallGeneratorResult(
   }
   const permissionNames = firewallPermissionNames(result.firewall);
   for (const api of result.firewall.apis) {
+    parseFirewallBaseUrl(api.base);
     validateHostPolicy(result.connectorRef, api);
   }
 
