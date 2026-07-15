@@ -356,7 +356,9 @@ export function presentationElementOffsetRuntimeSource(params: {
 
 export function syncPresentationElementOffsetRuntime(doc: Document): void {
   for (const script of Array.from(
-    doc.querySelectorAll(`#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`),
+    doc.querySelectorAll(
+      `script#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`,
+    ),
   )) {
     script.remove();
   }
@@ -375,7 +377,9 @@ export function appendPresentationElementOffsetPreviewRuntime(
   doc: Document,
 ): void {
   for (const script of Array.from(
-    doc.querySelectorAll(`#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`),
+    doc.querySelectorAll(
+      `script#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`,
+    ),
   )) {
     script.remove();
   }

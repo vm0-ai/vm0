@@ -29,6 +29,10 @@ const SLIDE_SELECTORS = [
   ".slide",
   "section",
 ] as const;
+export const PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES = [
+  "active",
+  "is-active",
+] as const;
 const FALLBACK_EDITABLE_SELECTOR =
   "h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,td,th,span,div";
 const UNSAFE_PREVIEW_URL_PROTOCOLS = [
@@ -180,6 +184,91 @@ function selectSlideElements(doc: Document): Element[] {
     }
   }
   return doc.body ? [doc.body] : [];
+}
+
+function matchesPresentationSlideSelector(element: Element): boolean {
+  return SLIDE_SELECTORS.some((selector) => {
+    return element.matches(selector);
+  });
+}
+
+function presentationSlideWrapperHierarchy(slide: Element): Element[] {
+  const ancestors: Element[] = [];
+  let ancestor = slide.parentElement;
+  let hierarchyLength = 0;
+  while (ancestor && ancestor !== slide.ownerDocument.body) {
+    ancestors.push(ancestor);
+    if (matchesPresentationSlideSelector(ancestor)) {
+      hierarchyLength = ancestors.length;
+    }
+    ancestor = ancestor.parentElement;
+  }
+  return ancestors.slice(0, hierarchyLength);
+}
+
+function observedActiveSlideClassNames(
+  slides: readonly Element[],
+): readonly string[] {
+  const slideElements = slides.flatMap((slide) => {
+    return [
+      slide,
+      ...presentationSlideWrapperHierarchy(slide).filter((ancestor) => {
+        return matchesPresentationSlideSelector(ancestor);
+      }),
+    ];
+  });
+  return PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES.filter((className) => {
+    return slideElements.some((element) => {
+      return element.classList.contains(className);
+    });
+  });
+}
+
+function activatePresentationSlide(
+  slide: Element,
+  activeClassNames: readonly string[],
+): void {
+  for (const className of activeClassNames) {
+    slide.classList.add(className);
+  }
+  slide.removeAttribute("hidden");
+  slide.removeAttribute("inert");
+  slide.setAttribute("aria-hidden", "false");
+  if (
+    slide instanceof HTMLElement &&
+    slide.style.getPropertyValue("display").trim().toLowerCase() === "none"
+  ) {
+    slide.style.removeProperty("display");
+  }
+}
+
+interface PresentationSlidePreviewClone {
+  readonly root: Element;
+  readonly slide: Element;
+}
+
+function clonePresentationSlideForPreview(
+  slide: Element,
+  activeClassNames: readonly string[],
+): PresentationSlidePreviewClone | null {
+  const slideClone = slide.cloneNode(true);
+  if (!(slideClone instanceof Element)) {
+    return null;
+  }
+  activatePresentationSlide(slideClone, activeClassNames);
+  let root = slideClone;
+  for (const ancestor of presentationSlideWrapperHierarchy(slide)) {
+    const ancestorClone = ancestor.cloneNode(false);
+    if (!(ancestorClone instanceof Element)) {
+      continue;
+    }
+    if (matchesPresentationSlideSelector(ancestorClone)) {
+      activatePresentationSlide(ancestorClone, activeClassNames);
+    }
+    ancestorClone.append(root);
+    root = ancestorClone;
+  }
+  return { root, slide: slideClone };
 }
 
 function hasUsefulText(element: Element): boolean {
@@ -873,7 +962,6 @@ function appendPresentationPreviewStyle(
       overflow: hidden !important;
     }
     [data-vm0-editor-stage] > * {
-      display: block !important;
       visibility: visible !important;
       opacity: 1 !important;
       max-width: 100% !important;
@@ -991,15 +1079,20 @@ export function previewPresentationHtml(params: {
   previewDoc.body.append(stage);
   let activeSlideClone: Element | null = null;
   let activeSlideId = "";
-  for (const [index, slide] of selectSlideElements(doc).entries()) {
+  const slides = selectSlideElements(doc);
+  const activeClassNames = observedActiveSlideClassNames(slides);
+  for (const [index, slide] of slides.entries()) {
     if (slideIdForElement(slide, index) === params.activeSlideId) {
-      const slideClone = slide.cloneNode(true);
-      if (slideClone instanceof Element) {
-        sanitizePreviewTree(slideClone);
-        activeSlideClone = slideClone;
+      const previewClone = clonePresentationSlideForPreview(
+        slide,
+        activeClassNames,
+      );
+      if (previewClone) {
+        sanitizePreviewTree(previewClone.root);
+        activeSlideClone = previewClone.slide;
         activeSlideId = slideIdForElement(slide, index);
+        stage.append(previewClone.root);
       }
-      stage.append(slideClone);
       break;
     }
   }

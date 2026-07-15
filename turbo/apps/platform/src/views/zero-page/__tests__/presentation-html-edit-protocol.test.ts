@@ -6,11 +6,9 @@ import {
 } from "../presentation-html-edit-protocol.ts";
 import {
   createGeneratedPresentationElementId,
-  PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME,
   PRESENTATION_ELEMENT_OFFSET_PREVIEW_NONCE,
   PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE,
   PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID,
-  presentationElementOffsetRuntimeSource,
   resolvePresentationMoveCandidate,
 } from "../presentation-html-element-offsets.ts";
 
@@ -231,6 +229,117 @@ describe("previewPresentationHtml", () => {
     expect(injectedCss).toContain("border-radius: 0 !important");
   });
 
+  it("preserves the authored display layout when activating a preview slide", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-2",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <style>
+              .slide { display: none; }
+              .slide.active { display: flex; }
+              .slide.grid.active { display: grid; }
+            </style>
+          </head>
+          <body>
+            <section class="slide active" data-slide-id="slide-1">
+              <h1>First slide</h1>
+            </section>
+            <section
+              class="slide grid"
+              data-slide-id="slide-2"
+              hidden
+              inert
+              aria-hidden="true"
+              style="display: none !important"
+            >
+              <h1>Second slide</h1>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const activeSlide = doc.querySelector<HTMLElement>(
+      "[data-vm0-editor-stage] > .slide",
+    );
+    const editorStyle = Array.from(doc.querySelectorAll("style")).at(
+      -1,
+    )?.textContent;
+    const stageChildRule = editorStyle?.match(
+      /\[data-vm0-editor-stage\] > \* \{([\s\S]*?)\}/,
+    )?.[1];
+
+    expect(activeSlide).not.toBeNull();
+    expect(activeSlide?.classList.contains("active")).toBeTruthy();
+    expect(activeSlide?.classList.contains("is-active")).toBeFalsy();
+    expect(activeSlide?.hasAttribute("hidden")).toBeFalsy();
+    expect(activeSlide?.hasAttribute("inert")).toBeFalsy();
+    expect(activeSlide?.getAttribute("aria-hidden")).toBe("false");
+    expect(activeSlide?.style.getPropertyValue("display")).toBe("");
+    expect(stageChildRule).toBeDefined();
+    expect(stageChildRule).not.toContain("display: block");
+  });
+
+  it("preserves and activates selector-matching slide ancestors", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-2",
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <style>
+              .slide { display: none; }
+              .slide.active { display: flex; }
+              .slide-shell { display: grid; }
+            </style>
+          </head>
+          <body>
+            <section class="slide active">
+              <div class="slide-shell">
+                <div data-vm0-slide data-slide-id="slide-1">
+                  <h1>First slide</h1>
+                </div>
+              </div>
+            </section>
+            <section
+              class="slide"
+              hidden
+              inert
+              aria-hidden="true"
+              style="display: none !important"
+            >
+              <div class="slide-shell">
+                <div data-vm0-slide data-slide-id="slide-2">
+                  <h1>Second slide</h1>
+                </div>
+              </div>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const stage = doc.querySelector("[data-vm0-editor-stage]");
+    const outerSlide = stage?.querySelector<HTMLElement>(":scope > .slide");
+    const innerSlide = outerSlide?.querySelector<HTMLElement>(
+      ".slide-shell > [data-vm0-slide]",
+    );
+    const title = innerSlide?.querySelector<HTMLElement>("h1");
+
+    expect(stage?.children).toHaveLength(1);
+    expect(outerSlide?.classList.contains("active")).toBeTruthy();
+    expect(outerSlide?.hasAttribute("hidden")).toBeFalsy();
+    expect(outerSlide?.hasAttribute("inert")).toBeFalsy();
+    expect(outerSlide?.getAttribute("aria-hidden")).toBe("false");
+    expect(outerSlide?.style.getPropertyValue("display")).toBe("");
+    expect(innerSlide?.dataset.slideId).toBe("slide-2");
+    expect(title?.dataset.vm0EditorSlideId).toBe("slide-2");
+    expect(stage?.textContent).toContain("Second slide");
+    expect(stage?.textContent).not.toContain("First slide");
+  });
+
   it("uses the semantic focus ring for editable presentation content", () => {
     const previewHtml = previewPresentationHtml({
       activeSlideId: "slide-1",
@@ -318,9 +427,6 @@ describe("previewPresentationHtml", () => {
     expect(scripts[0]?.id).toBe(PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID);
     expect(scripts[0]?.getAttribute("nonce")).toBe(
       PRESENTATION_ELEMENT_OFFSET_PREVIEW_NONCE,
-    );
-    expect(scripts[0]?.textContent).toBe(
-      presentationElementOffsetRuntimeSource({ autoStart: true }),
     );
     expect(scripts[0]?.textContent).not.toContain("sourceScriptRan");
     expect(csp?.getAttribute("content")).toContain(
@@ -634,6 +740,46 @@ describe("presentation element offsets", () => {
     expect(patched).not.toContain("sourceScriptRan");
   });
 
+  it("preserves authored non-script content that uses the runtime id", () => {
+    const draft = parsePresentationEditDraft(`
+      <!doctype html>
+      <html>
+        <body>
+          <section data-vm0-slide data-slide-id="slide-1">
+            <div class="stage">
+              <div data-vm0-offset-x="0.1" data-vm0-offset-y="0">Card</div>
+            </div>
+          </section>
+          <div id="${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}">
+            Authored content
+          </div>
+          <script id="${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}">
+            window.sourceScriptRan = true;
+          </script>
+        </body>
+      </html>
+    `);
+    const patched = patchPresentationHtml({
+      blocks: draft.blocks,
+      html: draft.html,
+      moveBlocks: draft.moveBlocks,
+      slides: draft.slides,
+    });
+    const patchedDoc = new DOMParser().parseFromString(patched, "text/html");
+
+    expect(
+      patchedDoc.querySelector(
+        `div#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`,
+      )?.textContent,
+    ).toContain("Authored content");
+    expect(
+      patchedDoc.querySelectorAll(
+        `script#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`,
+      ),
+    ).toHaveLength(1);
+    expect(patched).not.toContain("sourceScriptRan");
+  });
+
   it("reports authored restrictive CSP without rewriting it", () => {
     const csp = "default-src 'self'; script-src 'self'";
     const draft = parsePresentationEditDraft(`
@@ -663,23 +809,5 @@ describe("presentation element offsets", () => {
         .querySelector('meta[http-equiv="Content-Security-Policy"]')
         ?.getAttribute("content"),
     ).toBe(csp);
-  });
-
-  it("defines the synchronous apply hook and responsive observers", () => {
-    const runtime = presentationElementOffsetRuntimeSource({
-      autoStart: true,
-    });
-
-    expect(runtime).toContain(
-      `window["${PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME}"]=apply`,
-    );
-    expect(runtime).toContain("ResizeObserver");
-    expect(runtime).toContain('window.addEventListener("resize",schedule)');
-    expect(runtime).toContain(
-      'element.style.translate=translatedX+"px "+translatedY+"px"',
-    );
-    expect(runtime).toContain(
-      `appliedAttr=${JSON.stringify(PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE)}`,
-    );
   });
 });

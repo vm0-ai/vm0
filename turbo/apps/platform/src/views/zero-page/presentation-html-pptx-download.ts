@@ -15,7 +15,10 @@ import {
   PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME,
   presentationElementOffsetRuntimeSource,
 } from "./presentation-html-element-offsets.ts";
-import { materializePresentationThemeSwitcherDefaults } from "./presentation-html-edit-protocol.ts";
+import {
+  materializePresentationThemeSwitcherDefaults,
+  PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES,
+} from "./presentation-html-edit-protocol.ts";
 
 const EXPORT_FONT_READY_TIMEOUT_MS = 800;
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
@@ -313,6 +316,7 @@ function createExportBootstrapScript(options: DomToPptxOptions): string {
   const options = ${JSON.stringify(options)};
   const scriptUrl = ${JSON.stringify(domToPptxScriptUrl())};
   const slideSelectors = ${JSON.stringify(SLIDE_SELECTORS)};
+  const activeSlideClassNames = ${JSON.stringify(PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES)};
   const fontReadyTimeoutMs = ${JSON.stringify(EXPORT_FONT_READY_TIMEOUT_MS)};
 
   const post = (message) => {
@@ -376,31 +380,6 @@ function createExportSlideScript(): string {
     return document.body ? [document.body] : [];
   };
 
-  const revealSlideNodes = (nodes) => {
-    const revealElement = (element, forceDisplay) => {
-      if (forceDisplay || window.getComputedStyle(element).display === "none") {
-        element.style.setProperty("display", "block", "important");
-      }
-      element.style.setProperty("visibility", "visible", "important");
-      element.style.setProperty("opacity", "1", "important");
-      element.style.setProperty("clip", "auto", "important");
-      element.style.setProperty("clip-path", "none", "important");
-      element.removeAttribute("hidden");
-      element.setAttribute("aria-hidden", "false");
-    };
-
-    for (const node of nodes) {
-      if (!(node instanceof HTMLElement)) {
-        continue;
-      }
-      revealElement(node, true);
-      node.style.setProperty("pointer-events", "none", "important");
-      for (const ancestor of ancestorsUntilBody(node)) {
-        revealElement(ancestor, false);
-      }
-    }
-  };
-
   const ancestorsUntilBody = (node) => {
     const ancestors = [];
     let ancestor = node.parentElement;
@@ -409,6 +388,74 @@ function createExportSlideScript(): string {
       ancestor = ancestor.parentElement;
     }
     return ancestors;
+  };
+
+  const matchesSlideSelector = (element) => {
+    return slideSelectors.some((selector) => element.matches(selector));
+  };
+
+  const detectSlideActivationClassNames = (nodes) => {
+    const slideElements = [];
+    for (const node of nodes) {
+      if (!(node instanceof HTMLElement)) {
+        continue;
+      }
+      for (const element of [node, ...ancestorsUntilBody(node)]) {
+        if (matchesSlideSelector(element)) {
+          slideElements.push(element);
+        }
+      }
+    }
+    return activeSlideClassNames.filter((className) => {
+      return slideElements.some((element) => {
+        return element.classList.contains(className);
+      });
+    });
+  };
+
+  const activateSlideElement = (element, activationClassNames) => {
+    if (!matchesSlideSelector(element)) {
+      return;
+    }
+    for (const className of activationClassNames) {
+      element.classList.add(className);
+    }
+    element.removeAttribute("hidden");
+    element.removeAttribute("inert");
+    element.setAttribute("aria-hidden", "false");
+    if (
+      element.style.getPropertyValue("display").trim().toLowerCase() === "none"
+    ) {
+      element.style.removeProperty("display");
+    }
+  };
+
+  const revealSlideNodes = (nodes) => {
+    const activationClassNames = detectSlideActivationClassNames(nodes);
+    const revealElement = (element) => {
+      activateSlideElement(element, activationClassNames);
+      if (window.getComputedStyle(element).display === "none") {
+        element.style.setProperty("display", "block", "important");
+      }
+      element.style.setProperty("visibility", "visible", "important");
+      element.style.setProperty("opacity", "1", "important");
+      element.style.setProperty("clip", "auto", "important");
+      element.style.setProperty("clip-path", "none", "important");
+      element.removeAttribute("hidden");
+      element.removeAttribute("inert");
+      element.setAttribute("aria-hidden", "false");
+    };
+
+    for (const node of nodes) {
+      if (!(node instanceof HTMLElement)) {
+        continue;
+      }
+      revealElement(node);
+      node.style.setProperty("pointer-events", "none", "important");
+      for (const ancestor of ancestorsUntilBody(node)) {
+        revealElement(ancestor);
+      }
+    }
   };
 `;
 }
