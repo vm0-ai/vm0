@@ -32,7 +32,11 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
-import { readOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
+import {
+  deleteOrgPlanEntitlementFixture,
+  readOrgPlanEntitlementFixture,
+  upsertOrgPlanEntitlementFixture,
+} from "../../../test-fixtures/org-plan-entitlement";
 import {
   createBddApi,
   expectApiError,
@@ -80,6 +84,7 @@ import {
  */
 
 const context = testContext();
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
@@ -147,6 +152,7 @@ const RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES = [
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
   "api_dispatch_check_org_tier",
+  "api_dispatch_check_run_admission",
   "api_dispatch_prepare_run_context",
   "api_dispatch_prepare_context_feature_switches",
   "api_dispatch_prepare_context_resolve_compose",
@@ -1097,6 +1103,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES,
       "nested",
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_check_run_admission"],
+      "top_level",
     );
     expectApiDispatchActions(timingEvents, [
       "api_dispatch_resolve_compose_by_compose_id",
@@ -3860,6 +3871,53 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
+  it("uses staff entitlement capabilities for run admission", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    onTestFinished(async () => {
+      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+    });
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+    await bdd.setupOnboarding(actor, {
+      displayName: "BDD staff entitlement admission",
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD staff entitlement admission agent",
+      visibility: "private",
+    });
+    await seedOrgMetadata({
+      orgId: STAFF_ORG_ID,
+      tier: "limited-free-1",
+      credits: 20_000,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "staff entitlement BYOK run",
+      modelProvider: "anthropic-api-key",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("defaults limited-free runs to Luna, allows Terra, and rejects Sol", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
@@ -3949,6 +4007,17 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       prompt: "vm0 built-in model provider",
       modelProvider: "vm0",
     });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_check_run_admission"],
+      "top_level",
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_check_vm0_credits"],
+      "nested",
+    );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 

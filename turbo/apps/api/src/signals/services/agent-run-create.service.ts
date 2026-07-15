@@ -183,6 +183,8 @@ import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
   checkOrgModelRunAdmission,
   checkOrgCreditsForRunAdmission,
+  checkResolvedOrgCreditsForRunAdmission,
+  resolveOrgCreditAvailability,
 } from "./zero-run-admission.service";
 import { activateUsageAllowanceWindowsForRun } from "./usage-allowance.service";
 import {
@@ -3932,17 +3934,48 @@ async function checkRunConcurrencyLimit(
   return activeCount >= limit ? concurrentRunLimit() : null;
 }
 
-async function checkVm0Credits(
+async function checkFinalRunAdmission(
   db: Db,
-  args: { readonly orgId: string; readonly selectedModel?: string | null },
+  args: {
+    readonly orgId: string;
+    readonly modelProviderType: string | null | undefined;
+    readonly selectedModel: string | null | undefined;
+    readonly enforceVm0Credits: boolean;
+    readonly signal: AbortSignal;
+    readonly timing: ApiDispatchTimingCollector;
+  },
 ): Promise<CreateRunErrorResult | null> {
+  if (args.enforceVm0Credits) {
+    return await args.timing.measure(
+      "api_dispatch_check_vm0_credits",
+      "nested",
+      async () => {
+        const availability = await resolveOrgCreditAvailability({
+          db,
+          orgId: args.orgId,
+        });
+        args.signal.throwIfAborted();
+        return (
+          (await checkResolvedOrgCreditsForRunAdmission({
+            db,
+            orgId: args.orgId,
+            modelProviderType: args.modelProviderType,
+            selectedModel: args.selectedModel,
+            availability,
+          })) ?? null
+        );
+      },
+    );
+  }
+
+  const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
+  args.signal.throwIfAborted();
   return (
-    (await checkOrgCreditsForRunAdmission({
-      db,
-      orgId: args.orgId,
-      modelProviderType: "vm0",
+    checkOrgModelRunAdmission({
+      capabilities,
+      modelProviderType: args.modelProviderType,
       selectedModel: args.selectedModel,
-    })) ?? null
+    }) ?? null
   );
 }
 
@@ -6026,10 +6059,13 @@ async function resolveRunModelProvider(
   }
 
   if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
-    const creditGate = await checkVm0Credits(db, {
-      orgId: args.orgId,
-      selectedModel: args.selectedModelOverride,
-    });
+    const creditGate =
+      (await checkOrgCreditsForRunAdmission({
+        db,
+        orgId: args.orgId,
+        modelProviderType: "vm0",
+        selectedModel: args.selectedModelOverride,
+      })) ?? null;
     options.signal.throwIfAborted();
     if (creditGate) {
       return creditGate;
@@ -7383,35 +7419,29 @@ export const completeAgentRun$ = command(
     );
     signal.throwIfAborted();
 
-    const modelTierGate = await checkOrgModelRunAdmission({
-      db,
-      orgId: args.orgId,
-      modelProviderType: context.modelProvider?.type ?? args.modelProviderType,
-      selectedModel:
-        context.modelProvider?.selectedModel ?? args.selectedModelOverride,
-    });
+    const modelProviderType =
+      context.modelProvider?.type ?? args.modelProviderType;
+    const selectedModel =
+      context.modelProvider?.selectedModel ?? args.selectedModelOverride;
+    const admissionGate = await timing.measure(
+      "api_dispatch_check_run_admission",
+      "top_level",
+      async () => {
+        return await checkFinalRunAdmission(db, {
+          orgId: args.orgId,
+          modelProviderType,
+          selectedModel,
+          enforceVm0Credits:
+            args.enforceVm0Credits === true &&
+            context.modelProvider?.type === "vm0",
+          signal,
+          timing,
+        });
+      },
+    );
     signal.throwIfAborted();
-    if (modelTierGate) {
-      return modelTierGate;
-    }
-
-    if (args.enforceVm0Credits && context.modelProvider?.type === "vm0") {
-      const creditGate = await timing.measure(
-        "api_dispatch_check_vm0_credits",
-        "top_level",
-        async () => {
-          return await checkVm0Credits(db, {
-            orgId: args.orgId,
-            selectedModel:
-              context.modelProvider?.selectedModel ??
-              args.selectedModelOverride,
-          });
-        },
-      );
-      signal.throwIfAborted();
-      if (creditGate) {
-        return creditGate;
-      }
+    if (admissionGate) {
+      return admissionGate;
     }
 
     if (args.beforeDispatch) {
