@@ -19,6 +19,19 @@ pub struct ExecMatcher {
     pub stderr: Vec<u8>,
 }
 
+/// Captured `exec_remote` call fields recorded for test assertions.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RemoteExecCall {
+    /// Sandbox identifier passed to `SandboxControl::exec_remote`.
+    pub sandbox_id: String,
+    /// Command string passed to `SandboxControl::exec_remote`.
+    pub command: String,
+    /// Timeout passed to `SandboxControl::exec_remote`.
+    pub timeout: Duration,
+    /// Whether the remote command requested sudo privileges.
+    pub sudo: bool,
+}
+
 /// Captured `exec` request fields recorded for test assertions.
 ///
 /// The record intentionally keeps environment variable names but not their
