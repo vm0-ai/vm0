@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { previewPresentationHtml } from "../presentation-html-edit-protocol.ts";
+import {
+  parsePresentationEditDraft,
+  patchPresentationHtml,
+  previewPresentationHtml,
+} from "../presentation-html-edit-protocol.ts";
+import {
+  createGeneratedPresentationElementId,
+  PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME,
+  PRESENTATION_ELEMENT_OFFSET_PREVIEW_NONCE,
+  PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE,
+  PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID,
+  presentationElementOffsetRuntimeSource,
+  resolvePresentationMoveCandidate,
+} from "../presentation-html-element-offsets.ts";
 
 describe("previewPresentationHtml", () => {
   it("materializes theme switcher defaults before removing scripts", () => {
@@ -264,5 +277,409 @@ describe("previewPresentationHtml", () => {
     });
 
     expect(previewHtml).toContain(":root { --accent: #ff6600; }");
+    expect(previewHtml).not.toContain("data-vm0-editor-move-id");
+  });
+
+  it("replaces source scripts with one nonce-authorized canonical offset runtime", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-1",
+      movementEditingEnabled: true,
+      html: `
+        <!doctype html>
+        <html>
+          <head>
+            <meta http-equiv="Content-Security-Policy" content="script-src 'self'">
+          </head>
+          <body>
+            <section data-vm0-slide data-slide-id="slide-1">
+              <div class="stage">
+                <div
+                  data-vm0-element-id="element-1"
+                  data-vm0-offset-x="0.025"
+                  data-vm0-offset-y="-0.018519"
+                  data-vm0-offset-runtime-applied="true"
+                  onclick="window.sourceScriptRan = true"
+                >Card</div>
+              </div>
+              <script id="${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}">
+                window.sourceScriptRan = true;
+              </script>
+              <script>window.anotherSourceScriptRan = true;</script>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const scripts = Array.from(doc.querySelectorAll("script"));
+    const csp = doc.querySelector('meta[http-equiv="Content-Security-Policy"]');
+
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]?.id).toBe(PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID);
+    expect(scripts[0]?.getAttribute("nonce")).toBe(
+      PRESENTATION_ELEMENT_OFFSET_PREVIEW_NONCE,
+    );
+    expect(scripts[0]?.textContent).toBe(
+      presentationElementOffsetRuntimeSource({ autoStart: true }),
+    );
+    expect(scripts[0]?.textContent).not.toContain("sourceScriptRan");
+    expect(csp?.getAttribute("content")).toContain(
+      `script-src 'nonce-${PRESENTATION_ELEMENT_OFFSET_PREVIEW_NONCE}'`,
+    );
+    expect(doc.querySelector("[onclick]")).toBeNull();
+    expect(
+      doc.querySelector(
+        `[${PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE}]`,
+      ),
+    ).toBeNull();
+    expect(
+      doc.querySelector('[data-vm0-editor-move-id="slide-1:object-1"]'),
+    ).toBeNull();
+  });
+
+  it("rebuilds transient editor attributes only for supported movement", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-1",
+      movementEditingEnabled: true,
+      html: `
+        <!doctype html>
+        <html>
+          <body>
+            <section
+              data-vm0-slide
+              data-slide-id="slide-1"
+              data-vm0-editor-selected="true"
+            >
+              <div class="stage" data-vm0-editor-stage="forged">
+                <article
+                  data-vm0-editable="text"
+                  data-vm0-edit-id="real-edit-id"
+                  data-vm0-editor-edit-id="forged-edit-id"
+                  data-vm0-editor-move-id="forged-move-id"
+                >
+                  Card <span data-vm0-editor-move-id="slide-1:object-1">body</span>
+                </article>
+              </div>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const article = doc.querySelector<HTMLElement>("article");
+    const nested = doc.querySelector<HTMLElement>("article span");
+    const authoredStage = doc.querySelector<HTMLElement>(".stage");
+
+    expect(article?.dataset.vm0EditorMoveId).toBe("slide-1:object-1");
+    expect(article?.dataset.vm0EditorEditId).toBe("real-edit-id");
+    expect(article?.dataset.vm0EditorSlideId).toBe("slide-1");
+    expect(article?.dataset.vm0EditorSelected).toBeUndefined();
+    expect(nested?.dataset.vm0EditorMoveId).toBeUndefined();
+    expect(authoredStage?.dataset.vm0EditorStage).toBeUndefined();
+    expect(doc.querySelectorAll("[data-vm0-editor-stage]")).toHaveLength(1);
+  });
+});
+
+describe("presentation element offsets", () => {
+  const sourceHtml = `
+    <!doctype html>
+    <html>
+      <body>
+        <section data-vm0-slide data-slide-id="slide-1">
+          <div class="stage">
+            <article><h1 data-vm0-editable="text">Card title</h1></article>
+            <div data-vm0-static>Decoration</div>
+            <div style="translate: 1px 2px">Authored translation</div>
+            <script>window.sourceScriptRan = true;</script>
+          </div>
+        </section>
+      </body>
+    </html>
+  `;
+
+  it("discovers only direct eligible layout-root children without mutating geometry", () => {
+    const draft = parsePresentationEditDraft(sourceHtml);
+
+    expect(draft.moveBlocks).toStrictEqual([
+      {
+        elementId: null,
+        elementIdGenerated: false,
+        moveId: "slide-1:object-1",
+        objectIndex: 0,
+        offsetX: 0,
+        offsetY: 0,
+        slideId: "slide-1",
+      },
+    ]);
+    expect(draft.html).not.toContain("data-vm0-element-id");
+    expect(draft.html).not.toContain("data-vm0-offset-x");
+    expect(draft.movementSupported).toBeTruthy();
+
+    const doc = new DOMParser().parseFromString(sourceHtml, "text/html");
+    const slide = doc.querySelector("[data-vm0-slide]");
+    const nested = doc.querySelector("h1");
+    expect(
+      slide && nested
+        ? resolvePresentationMoveCandidate({ slide, target: nested })?.tagName
+        : null,
+    ).toBe("ARTICLE");
+  });
+
+  it("persists normalized geometry and a single canonical runtime idempotently", () => {
+    const draft = parsePresentationEditDraft(sourceHtml);
+    const moveBlock = draft.moveBlocks[0];
+    if (!moveBlock) {
+      throw new Error("Expected a presentation move block");
+    }
+    const first = patchPresentationHtml({
+      blocks: draft.blocks,
+      html: draft.html,
+      moveBlocks: [
+        {
+          ...moveBlock,
+          elementId: "element-1",
+          offsetX: 0.025_000_4,
+          offsetY: -0.018_518_6,
+        },
+      ],
+      slides: draft.slides,
+    });
+    const firstDoc = new DOMParser().parseFromString(first, "text/html");
+    const moved = firstDoc.querySelector<HTMLElement>("article");
+
+    expect(moved?.dataset.vm0ElementId).toBe("element-1");
+    expect(moved?.dataset.vm0OffsetX).toBe("0.025");
+    expect(moved?.dataset.vm0OffsetY).toBe("-0.018519");
+    expect(first).toContain('"editProtocolVersion": 2');
+    expect(
+      firstDoc.querySelectorAll(
+        `#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`,
+      ),
+    ).toHaveLength(1);
+
+    const reparsed = parsePresentationEditDraft(first);
+    const second = patchPresentationHtml({
+      blocks: reparsed.blocks,
+      html: reparsed.html,
+      moveBlocks: reparsed.moveBlocks,
+      slides: reparsed.slides,
+    });
+    expect(second).toBe(first);
+  });
+
+  it("removes vm0 geometry, generated identity, and runtime at zero", () => {
+    const draft = parsePresentationEditDraft(sourceHtml);
+    const moveBlock = draft.moveBlocks[0];
+    if (!moveBlock) {
+      throw new Error("Expected a presentation move block");
+    }
+    const generatedElementId = createGeneratedPresentationElementId();
+    const moved = patchPresentationHtml({
+      blocks: draft.blocks,
+      html: draft.html,
+      moveBlocks: [
+        {
+          ...moveBlock,
+          elementId: generatedElementId,
+          elementIdGenerated: true,
+          offsetX: 0.125,
+          offsetY: 0.25,
+        },
+      ],
+      slides: draft.slides,
+    });
+    const movedDraft = parsePresentationEditDraft(moved);
+    const movedBlock = movedDraft.moveBlocks[0];
+    if (!movedBlock) {
+      throw new Error("Expected the persisted presentation move block");
+    }
+    const reset = patchPresentationHtml({
+      blocks: movedDraft.blocks,
+      html: movedDraft.html,
+      moveBlocks: [
+        {
+          ...movedBlock,
+          elementId: null,
+          offsetX: 0,
+          offsetY: 0,
+        },
+      ],
+      slides: movedDraft.slides,
+    });
+    const resetDoc = new DOMParser().parseFromString(reset, "text/html");
+
+    expect(resetDoc.querySelector("[data-vm0-element-id]")).toBeNull();
+    expect(resetDoc.querySelector("[data-vm0-offset-x]")).toBeNull();
+    expect(
+      resetDoc.querySelector(
+        `#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`,
+      ),
+    ).toBeNull();
+    expect(reset).toContain('"editProtocolVersion": 1');
+  });
+
+  it("preserves an authored identity after move, reopen, and reset", () => {
+    const draft = parsePresentationEditDraft(`
+      <!doctype html>
+      <html>
+        <body>
+          <section data-vm0-slide data-slide-id="slide-1">
+            <div class="stage">
+              <article data-vm0-element-id="authored-id">Card</article>
+            </div>
+          </section>
+        </body>
+      </html>
+    `);
+    const moveBlock = draft.moveBlocks[0];
+    if (!moveBlock) {
+      throw new Error("Expected a presentation move block");
+    }
+    const moved = patchPresentationHtml({
+      blocks: draft.blocks,
+      html: draft.html,
+      moveBlocks: [{ ...moveBlock, offsetX: 0.1, offsetY: 0.2 }],
+      slides: draft.slides,
+    });
+    const reopened = parsePresentationEditDraft(moved);
+    const reopenedBlock = reopened.moveBlocks[0];
+    if (!reopenedBlock) {
+      throw new Error("Expected a reopened presentation move block");
+    }
+    const reset = patchPresentationHtml({
+      blocks: reopened.blocks,
+      html: reopened.html,
+      moveBlocks: [{ ...reopenedBlock, offsetX: 0, offsetY: 0 }],
+      slides: reopened.slides,
+    });
+    const resetDoc = new DOMParser().parseFromString(reset, "text/html");
+    const resetArticle = resetDoc.querySelector<HTMLElement>("article");
+
+    expect(reopenedBlock.elementIdGenerated).toBeFalsy();
+    expect(resetArticle?.dataset.vm0ElementId).toBe("authored-id");
+    expect(resetArticle?.dataset.vm0OffsetX).toBeUndefined();
+    expect(resetArticle?.dataset.vm0OffsetY).toBeUndefined();
+    expect(reset).toContain('"editProtocolVersion": 1');
+  });
+
+  it("preserves an existing identity without geometry and unknown metadata", () => {
+    const draft = parsePresentationEditDraft(`
+      <!doctype html>
+      <html>
+        <body>
+          <section data-vm0-slide data-slide-id="slide-1">
+            <div class="stage">
+              <article data-vm0-element-id="authored-id">Card</article>
+            </div>
+          </section>
+          <script id="vm0-deck-metadata" type="application/json">
+            {
+              "kind": "presentation-html",
+              "editProtocolVersion": 7,
+              "customField": "keep-me",
+              "slides": { "slide-1": { "customSlideField": true } }
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    const moveBlock = draft.moveBlocks[0];
+    if (!moveBlock) {
+      throw new Error("Expected a presentation move block");
+    }
+    const patched = patchPresentationHtml({
+      blocks: draft.blocks,
+      html: draft.html,
+      moveBlocks: [moveBlock],
+      slides: draft.slides,
+    });
+
+    expect(moveBlock.elementIdGenerated).toBeFalsy();
+    expect(patched).toContain('data-vm0-element-id="authored-id"');
+    expect(patched).toContain('"editProtocolVersion": 7');
+    expect(patched).toContain('"customField": "keep-me"');
+    expect(patched).toContain('"customSlideField": true');
+  });
+
+  it("ignores invalid offsets and replaces a runtime-looking source script", () => {
+    const draft = parsePresentationEditDraft(`
+      <!doctype html>
+      <html>
+        <body>
+          <section data-vm0-slide data-slide-id="slide-1">
+            <div class="stage">
+              <div data-vm0-offset-x="Infinity" data-vm0-offset-y="0.1">Card</div>
+            </div>
+          </section>
+          <script id="${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}">
+            window.sourceScriptRan = true;
+          </script>
+        </body>
+      </html>
+    `);
+    const patched = patchPresentationHtml({
+      blocks: draft.blocks,
+      html: draft.html,
+      slides: draft.slides,
+    });
+    const patchedDoc = new DOMParser().parseFromString(patched, "text/html");
+
+    expect(draft.moveBlocks[0]?.offsetX).toBe(0);
+    expect(draft.moveBlocks[0]?.offsetY).toBe(0);
+    expect(
+      patchedDoc.querySelector(
+        `#${PRESENTATION_ELEMENT_OFFSET_RUNTIME_SCRIPT_ID}`,
+      ),
+    ).toBeNull();
+    expect(patched).not.toContain("sourceScriptRan");
+  });
+
+  it("reports authored restrictive CSP without rewriting it", () => {
+    const csp = "default-src 'self'; script-src 'self'";
+    const draft = parsePresentationEditDraft(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta http-equiv="Content-Security-Policy" content="${csp}">
+        </head>
+        <body>
+          <section data-vm0-slide data-slide-id="slide-1">
+            <div class="stage"><div>Card</div></div>
+          </section>
+        </body>
+      </html>
+    `);
+    const patched = patchPresentationHtml({
+      blocks: draft.blocks,
+      html: draft.html,
+      moveBlocks: draft.moveBlocks,
+      slides: draft.slides,
+    });
+    const patchedDoc = new DOMParser().parseFromString(patched, "text/html");
+
+    expect(draft.movementSupported).toBeFalsy();
+    expect(
+      patchedDoc
+        .querySelector('meta[http-equiv="Content-Security-Policy"]')
+        ?.getAttribute("content"),
+    ).toBe(csp);
+  });
+
+  it("defines the synchronous apply hook and responsive observers", () => {
+    const runtime = presentationElementOffsetRuntimeSource({
+      autoStart: true,
+    });
+
+    expect(runtime).toContain(
+      `window["${PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME}"]=apply`,
+    );
+    expect(runtime).toContain("ResizeObserver");
+    expect(runtime).toContain('window.addEventListener("resize",schedule)');
+    expect(runtime).toContain(
+      'element.style.translate=translatedX+"px "+translatedY+"px"',
+    );
+    expect(runtime).toContain(
+      `appliedAttr=${JSON.stringify(PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE)}`,
+    );
   });
 });
