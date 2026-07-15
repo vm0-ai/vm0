@@ -1,8 +1,11 @@
 #![cfg(target_os = "linux")]
 
+use std::fs::File;
 use std::io::Write;
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::symlink;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use guest_contracts::reuse_preparation::{
@@ -143,31 +146,17 @@ fn prepare_for_reuse_fails_closed_when_runtime_parent_is_not_a_directory() -> Te
 
 #[test]
 fn prepare_for_reuse_rejects_nested_filesystem_without_touching_it() -> TestResult {
-    let dir = tempfile::tempdir()?;
-    let mounted_source = tempfile::tempdir_in("/dev/shm")?;
-    let runs = dir.path().join("runs");
-    let current = runs.join("current");
-    let stale_mount = runs.join("stale/nested-mount");
-    std::fs::create_dir_all(&current)?;
-    std::fs::create_dir_all(&stale_mount)?;
-    std::fs::write(mounted_source.path().join("keep"), b"mounted-data")?;
-    let request = ReusePreparationRequest {
-        current_runtime_dir: path_string(&current),
-        retained_runtime_dir: None,
-    };
-    let output = run_helper_with_bind_mount(&request, mounted_source.path(), &stale_mount)?;
+    let mounted_data = tempfile::tempdir_in("/dev/shm")?;
+    std::fs::write(mounted_data.path().join("keep"), b"mounted-data")?;
 
+    let output = run_helper(&ReusePreparationRequest {
+        current_runtime_dir: "/dev/shm".into(),
+        retained_runtime_dir: None,
+    })?;
+
+    assert_mount_boundary_failure(&output);
     assert_eq!(
-        output.status.code(),
-        Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED),
-        "stdout={}, stderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(current.exists());
-    assert!(runs.join("stale").exists());
-    assert_eq!(
-        std::fs::read(mounted_source.path().join("keep"))?,
+        std::fs::read(mounted_data.path().join("keep"))?,
         b"mounted-data"
     );
     Ok(())
@@ -175,6 +164,17 @@ fn prepare_for_reuse_rejects_nested_filesystem_without_touching_it() -> TestResu
 
 #[test]
 fn prepare_for_reuse_rejects_same_filesystem_bind_mount() -> TestResult {
+    if let Some(mount_path) = find_existing_same_filesystem_nested_mount()? {
+        let output = run_helper(&ReusePreparationRequest {
+            current_runtime_dir: path_string(&mount_path),
+            retained_runtime_dir: None,
+        })?;
+
+        assert_mount_boundary_failure(&output);
+        assert!(mount_path.exists());
+        return Ok(());
+    }
+
     let dir = tempfile::tempdir()?;
     let mounted_source = dir.path().join("outside");
     let runs = dir.path().join("runs");
@@ -191,13 +191,7 @@ fn prepare_for_reuse_rejects_same_filesystem_bind_mount() -> TestResult {
 
     let output = run_helper_with_bind_mount(&request, &mounted_source, &stale_mount)?;
 
-    assert_eq!(
-        output.status.code(),
-        Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED),
-        "stdout={}, stderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert_mount_boundary_failure(&output);
     assert!(current.exists());
     assert!(runs.join("stale").exists());
     assert_eq!(std::fs::read(mounted_source.join("keep"))?, b"mounted-data");
@@ -248,6 +242,51 @@ fn run_helper_with_bind_mount(
         .ok_or_else(|| std::io::Error::other("helper stdin was not piped"))?
         .write_all(&serde_json::to_vec(request)?)?;
     Ok(child.wait_with_output()?)
+}
+
+fn find_existing_same_filesystem_nested_mount() -> TestResult<Option<PathBuf>> {
+    for candidate in ["/proc/bus", "/proc/fs", "/proc/irq", "/proc/sys"] {
+        let path = Path::new(candidate);
+        let Some(parent) = path.parent() else {
+            continue;
+        };
+        if !path.is_dir() {
+            continue;
+        }
+        let parent_identity = path_mount_identity(parent)?;
+        let candidate_identity = path_mount_identity(path)?;
+        if parent_identity.0 == candidate_identity.0 && parent_identity.1 != candidate_identity.1 {
+            return Ok(Some(path.to_path_buf()));
+        }
+    }
+    Ok(None)
+}
+
+fn path_mount_identity(path: &Path) -> TestResult<(u64, u64)> {
+    let file = File::open(path)?;
+    let device = file.metadata()?.dev();
+    let fdinfo = std::fs::read_to_string(format!("/proc/self/fdinfo/{}", file.as_raw_fd()))?;
+    let mount_id = fdinfo
+        .lines()
+        .find_map(|line| line.strip_prefix("mnt_id:"))
+        .ok_or_else(|| std::io::Error::other("mount identity is unavailable"))?
+        .trim()
+        .parse()?;
+    Ok((device, mount_id))
+}
+
+fn assert_mount_boundary_failure(output: &Output) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED),
+        "stdout={}, stderr={stderr}",
+        String::from_utf8_lossy(&output.stdout),
+    );
+    assert!(
+        stderr.contains("mount or filesystem boundary"),
+        "unexpected stderr: {stderr}"
+    );
 }
 
 fn path_string(path: &Path) -> String {

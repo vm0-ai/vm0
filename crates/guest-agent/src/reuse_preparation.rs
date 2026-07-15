@@ -191,14 +191,9 @@ fn open_protected(
     let identity = directory
         .identity()
         .map_err(ReusePreparationError::Cleanup)?;
-    if identity.device() != parent_identity.device()
-        || identity.mount_id() != parent_identity.mount_id()
-    {
-        return Err(ReusePreparationError::Cleanup(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "protected runtime directory crosses a mount or filesystem boundary",
-        )));
-    }
+    identity
+        .ensure_same_mount(parent_identity)
+        .map_err(ReusePreparationError::Cleanup)?;
     Ok(ProtectedRuntime {
         name: name.to_os_string(),
         identity,

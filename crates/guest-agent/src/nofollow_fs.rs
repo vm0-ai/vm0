@@ -34,12 +34,15 @@ pub(crate) struct FileIdentity {
 
 #[cfg(target_os = "linux")]
 impl FileIdentity {
-    pub(crate) fn device(self) -> libc::dev_t {
-        self.device
-    }
-
-    pub(crate) fn mount_id(self) -> u64 {
-        self.mount_id
+    pub(crate) fn ensure_same_mount(self, expected: Self) -> io::Result<()> {
+        if self.device == expected.device && self.mount_id == expected.mount_id {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "refusing to cross a mount or filesystem boundary during cleanup",
+            ))
+        }
     }
 }
 
@@ -92,21 +95,7 @@ impl Dir {
     }
 
     pub(crate) fn identity(&self) -> io::Result<FileIdentity> {
-        let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
-        // SAFETY: `stat` points to writable memory and the directory owns a
-        // live descriptor for the duration of the call.
-        let result = unsafe { libc::fstat(self.0.as_raw_fd(), stat.as_mut_ptr()) };
-        if result != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        // SAFETY: successful `fstat` initialized the full structure.
-        let stat = unsafe { stat.assume_init() };
-        let mount_id = mount_id_for_fd(self.0.as_raw_fd())?;
-        Ok(FileIdentity {
-            device: stat.st_dev,
-            inode: stat.st_ino,
-            mount_id,
-        })
+        file_identity(&self.0)
     }
 
     pub(crate) fn open_child_dir(&self, name: &OsStr) -> io::Result<Self> {
@@ -135,13 +124,7 @@ impl Dir {
         match self.open_child_dir(name) {
             Ok(child) => {
                 let identity = child.identity()?;
-                if identity.device != filesystem.device || identity.mount_id != filesystem.mount_id
-                {
-                    return Err(io::Error::new(
-                        io::ErrorKind::PermissionDenied,
-                        "refusing to cross a mount or filesystem boundary during cleanup",
-                    ));
-                }
+                identity.ensure_same_mount(filesystem)?;
                 if protected.contains(&identity) {
                     return Err(io::Error::new(
                         io::ErrorKind::PermissionDenied,
@@ -168,6 +151,25 @@ impl Dir {
             Err(error) => Err(error),
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn file_identity(file: &File) -> io::Result<FileIdentity> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` points to writable memory and `file` owns a live
+    // descriptor for the duration of the call.
+    let result = unsafe { libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: successful `fstat` initialized the full structure.
+    let stat = unsafe { stat.assume_init() };
+    let mount_id = mount_id_for_fd(file.as_raw_fd())?;
+    Ok(FileIdentity {
+        device: stat.st_dev,
+        inode: stat.st_ino,
+        mount_id,
+    })
 }
 
 #[cfg(target_os = "linux")]
