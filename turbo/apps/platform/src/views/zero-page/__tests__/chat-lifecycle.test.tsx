@@ -5852,9 +5852,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("moves an in-place claimed message out of the composer queue after an update event", async () => {
+  it("shows a later in-place claimed run after the previous run completes", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000731";
     const messageId = "00000000-0000-4000-8000-000000004031";
+    const previousRunId = "run-before-queue-first-claim";
     const runId = "run-queue-first-claimed";
     const prompt = "Run this message immediately";
     const queuedMessage: {
@@ -5874,7 +5875,32 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
 
     mockChatLifecycle(context, {
       threadId,
-      chatMessages: [queuedMessage],
+      chatMessages: [
+        {
+          id: "msg-before-queue-first-user",
+          role: "user",
+          content: "Finish the current task first",
+          runId: previousRunId,
+          createdAt: "2026-06-09T09:59:00Z",
+        },
+        queuedMessage,
+        {
+          id: "msg-before-queue-first-assistant",
+          role: "assistant",
+          content: "The current task is complete.",
+          runId: previousRunId,
+          runEventId: "event-before-queue-first-assistant",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-before-queue-first-completed",
+          role: "assistant",
+          content: null,
+          runId: previousRunId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
       activeRunIds: [runId],
       onMessageGet: (fetchedMessageId) => {
         fetchedMessageIds.push(fetchedMessageId);
@@ -5900,6 +5926,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       ).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
       expect(screen.getByText(prompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
     });
   });
 
