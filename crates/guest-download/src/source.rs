@@ -51,7 +51,7 @@ fn classify_http_error(error: &ureq::Error) -> (bool, String) {
         ureq::Error::StatusCode(code) => {
             (*code >= 500 || *code == 429, format!("HTTP status {code}"))
         }
-        ureq::Error::HostNotFound => request_error("dns"),
+        ureq::Error::HostNotFound => (true, request_error_message("dns")),
         ureq::Error::Timeout(timeout) => (
             true,
             format!(
@@ -59,7 +59,7 @@ fn classify_http_error(error: &ureq::Error) -> (bool, String) {
                 timeout_phase(*timeout)
             ),
         ),
-        ureq::Error::ConnectionFailed => request_error("connection"),
+        ureq::Error::ConnectionFailed => (true, request_error_message("connection")),
         ureq::Error::Io(error) => (
             true,
             format!("HTTP request error (kind=io io_kind={:?})", error.kind()),
@@ -67,25 +67,27 @@ fn classify_http_error(error: &ureq::Error) -> (bool, String) {
         ureq::Error::Tls(_)
         | ureq::Error::Pem(_)
         | ureq::Error::Rustls(_)
-        | ureq::Error::TlsRequired => request_error("tls"),
-        ureq::Error::InvalidProxyUrl | ureq::Error::ConnectProxyFailed(_) => request_error("proxy"),
+        | ureq::Error::TlsRequired => (true, request_error_message("tls")),
+        ureq::Error::InvalidProxyUrl | ureq::Error::ConnectProxyFailed(_) => {
+            (true, request_error_message("proxy"))
+        }
         ureq::Error::Protocol(_)
         | ureq::Error::RedirectFailed
         | ureq::Error::BodyExceedsLimit(_)
         | ureq::Error::TooManyRedirects
         | ureq::Error::LargeResponseHeader(_, _)
         | ureq::Error::Decompress(_, _)
-        | ureq::Error::BodyStalled => request_error("protocol"),
+        | ureq::Error::BodyStalled => (true, request_error_message("protocol")),
         ureq::Error::Http(_) | ureq::Error::BadUri(_) | ureq::Error::RequireHttpsOnly(_) => {
-            request_error("invalid_request")
+            (false, request_error_message("invalid_request"))
         }
-        ureq::Error::Other(_) => request_error("unknown"),
-        _ => request_error("unknown"),
+        ureq::Error::Other(_) => (true, request_error_message("unknown")),
+        _ => (true, request_error_message("unknown")),
     }
 }
 
-fn request_error(kind: &'static str) -> (bool, String) {
-    (true, format!("HTTP request error (kind={kind})"))
+fn request_error_message(kind: &'static str) -> String {
+    format!("HTTP request error (kind={kind})")
 }
 
 fn timeout_phase(timeout: ureq::Timeout) -> &'static str {
