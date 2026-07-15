@@ -253,7 +253,7 @@ impl MaskerState {
         let mut masked_entries = Vec::new();
         for (key, mut value) in entries {
             self.mask_value(&mut value);
-            if let Some(masked_key) = self.masked_string(&key) {
+            if let Some(masked_key) = self.fully_masked_key(&key) {
                 masked_entries.push((masked_key, value));
             } else {
                 map.insert(key, value);
@@ -261,8 +261,34 @@ impl MaskerState {
         }
 
         for (masked_key, value) in masked_entries {
-            let unique_key = unique_masked_key(map, masked_key);
+            let unique_key = self.unique_masked_key(map, masked_key);
             map.insert(unique_key, value);
+        }
+    }
+
+    fn fully_masked_key(&self, key: &str) -> Option<String> {
+        let mut masked = self.masked_string(key)?;
+        // Production patterns are longer than "***", so each pass shortens
+        // the key and the loop terminates after removing cascading matches.
+        while let Some(remasked) = self.masked_string(&masked) {
+            debug_assert!(remasked.len() < masked.len());
+            masked = remasked;
+        }
+        Some(masked)
+    }
+
+    fn unique_masked_key(&self, map: &Map<String, Value>, masked_key: String) -> String {
+        if !map.contains_key(&masked_key) {
+            return masked_key;
+        }
+
+        let mut suffix = 2;
+        loop {
+            let candidate = format!("{masked_key}#{suffix}");
+            if !map.contains_key(&candidate) && self.masked_string(&candidate).is_none() {
+                return candidate;
+            }
+            suffix += 1;
         }
     }
 
@@ -589,21 +615,6 @@ fn redact_ranges(line: String, ranges: &[Range<usize>]) -> String {
     redacted
 }
 
-fn unique_masked_key(map: &Map<String, Value>, masked_key: String) -> String {
-    if !map.contains_key(&masked_key) {
-        return masked_key;
-    }
-
-    let mut suffix = 2;
-    loop {
-        let candidate = format!("{masked_key}#{suffix}");
-        if !map.contains_key(&candidate) {
-            return candidate;
-        }
-        suffix += 1;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -686,6 +697,27 @@ mod tests {
         });
         assert_eq!(first, expected);
         assert_eq!(second, expected);
+    }
+
+    #[test]
+    fn masked_json_keys_do_not_recreate_secret_patterns() {
+        let masker = masker_with(vec!["secret123", "prefix-***-suffix", "***#2"]);
+        let mut val = json!({
+            "***": "reserved base",
+            "***#2": "collision candidate",
+            "prefix-secret123-suffix": "cascading match"
+        });
+
+        masker.mask_value(&mut val);
+
+        assert_eq!(
+            val,
+            json!({
+                "***": "reserved base",
+                "***#3": "collision candidate",
+                "***#4": "cascading match"
+            })
+        );
     }
 
     #[test]
