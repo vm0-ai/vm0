@@ -14,11 +14,14 @@ import {
 import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
 import { tapError } from "../utils";
-import { dispatchRunCallbacks$ } from "./agent-run-callback.service";
-import { drainQueuedUserMessagesForRun$ } from "./internal-chat-run-callback.service";
+import {
+  chatCallbackIdForRun,
+  dispatchFailedRunCallbacks,
+  dispatchRunCallbacks$,
+} from "./agent-run-callback.service";
+import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
-import { drainWorkflowQueueForRun$ } from "./zero-workflow-queue-drain.service";
 
 const L = logger("ZeroRunCancel");
 
@@ -210,7 +213,9 @@ export const dispatchCancelSideEffects$ = command(
     );
     signal.throwIfAborted();
 
-    await tapError(
+    const chatCallbackId = await chatCallbackIdForRun(db, result.runId);
+    signal.throwIfAborted();
+    const callbackResults = await tapError(
       set(
         dispatchRunCallbacks$,
         {
@@ -230,35 +235,35 @@ export const dispatchCancelSideEffects$ = command(
     );
     signal.throwIfAborted();
 
-    // Queued user messages fire as soon as the thread frees up — cancel
-    // included, symmetric with the workflow drain below. User messages keep
-    // priority by draining first (#21392).
-    await tapError(
-      set(drainQueuedUserMessagesForRun$, { runId: result.runId }, signal),
-      (error) => {
-        L.error("Failed to drain queued user messages after cancel", {
-          runId: result.runId,
-          error,
-        });
-      },
-    );
-    signal.throwIfAborted();
+    const chatCallbackDrained = callbackResults?.some((callbackResult) => {
+      return (
+        callbackResult.callbackId === chatCallbackId && callbackResult.success
+      );
+    });
+    if (!chatCallbackDrained) {
+      await tapError(
+        set(
+          drainChatThreadQueueForRun$,
+          {
+            runId: result.runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Failed to drain chat thread queue after cancel", {
+            runId: result.runId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+    }
 
     // Promote one queued run to pending; the runner picks it up on its
     // next poll cycle. Queue dispatch (compose loading + sandbox
     // provisioning) lands in Stage 4.
     await set(drainOrgQueue$, { orgId: result.orgId }, signal);
-    signal.throwIfAborted();
-
-    await tapError(
-      set(drainWorkflowQueueForRun$, { runId: result.runId }, signal),
-      (error) => {
-        L.error("Failed to drain workflow queue after cancel", {
-          runId: result.runId,
-          error,
-        });
-      },
-    );
     signal.throwIfAborted();
 
     // Reconcile credits when the cancelled run had been doing

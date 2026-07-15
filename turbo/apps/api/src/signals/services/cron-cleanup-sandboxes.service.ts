@@ -26,7 +26,8 @@ import {
   drainStaleQueues$,
   type QueuedRunMaintenanceTimeout,
 } from "./zero-run-queue.service";
-import { drainStaleWorkflowQueues$ } from "./zero-workflow-queue-drain.service";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { drainStaleChatThreadQueues$ } from "./chat-thread-queue-drain.service";
 import type { QueueMarkerRevokeNotification } from "./zero-chat-queue-marker.service";
 
 const L = logger("CronCleanupSandboxes");
@@ -527,9 +528,16 @@ export const cleanupSandboxes$ = command(
     signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
     signal.throwIfAborted();
-    await tapError(set(drainStaleWorkflowQueues$, signal), (error) => {
-      L.error("Failed to drain stale workflow queues", { error });
-    });
+    await tapError(
+      set(
+        drainStaleChatThreadQueues$,
+        { dispatchFailedCallbacks: dispatchFailedRunCallbacks },
+        signal,
+      ),
+      (error) => {
+        L.error("Failed to drain stale chat thread queues", { error });
+      },
+    );
     signal.throwIfAborted();
     const queuedTerminalRuns = [
       ...expiredQueueResult.timedOutRuns,
