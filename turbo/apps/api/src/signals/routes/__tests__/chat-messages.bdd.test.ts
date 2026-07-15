@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -26,7 +25,6 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
-import { db } from "../../../lib/db";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -52,6 +50,7 @@ import { createDeferredPromise } from "../../utils";
 import {
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
+  holdOrgAdmissionLockFixture,
   replaceBddVm0ApiKeys,
 } from "../../../test-fixtures/chat-messages";
 
@@ -3609,20 +3608,9 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
     // Hold the real org admission lock after the inline send has persisted its
     // queue-first row. This lets both the inline path and terminal callback
     // drain reach run insertion before either can claim the message.
-    const lockHolderStarted = createDeferredPromise<number>(context.signal);
-    const releaseAdmissionLock = createDeferredPromise<void>(context.signal);
-    const admissionLock = db().transaction(async (tx) => {
-      const result = await tx.execute<{ readonly pid: number }>(sql`
-        SELECT
-          pg_backend_pid() AS "pid",
-          pg_advisory_xact_lock(hashtext(${actor.orgId}))
-      `);
-      const holderPid = result.rows[0]?.pid;
-      if (!holderPid) {
-        throw new Error("Expected the admission lock holder pid");
-      }
-      lockHolderStarted.resolve(holderPid);
-      await releaseAdmissionLock.promise;
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
     });
 
     const callbackQueryStarted = createDeferredPromise<void>(context.signal);
@@ -3631,29 +3619,9 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
       if (!releaseCallbackQuery.settled()) {
         releaseCallbackQuery.resolve(undefined);
       }
-      if (!releaseAdmissionLock.settled()) {
-        releaseAdmissionLock.resolve(undefined);
-      }
-      await admissionLock;
+      admissionLock.release();
+      await admissionLock.done;
     });
-
-    const holderPid = await lockHolderStarted.promise;
-    const admissionWaiterCount = async (): Promise<number> => {
-      const result = await db().execute<{ readonly waiterCount: number }>(sql`
-        SELECT count(*)::int AS "waiterCount"
-        FROM pg_locks AS waiting
-        WHERE waiting.locktype = 'advisory'
-          AND NOT waiting.granted
-          AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
-            SELECT held.classid, held.objid, held.objsubid
-            FROM pg_locks AS held
-            WHERE held.locktype = 'advisory'
-              AND held.pid = ${holderPid}
-              AND held.granted
-          )
-      `);
-      return result.rows[0]?.waiterCount ?? 0;
-    };
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";
@@ -3675,7 +3643,7 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
     // Completing the anchor also starts the org run-queue drain. Pin that
     // known waiter first so the next two waiters identify the inline send and
     // the terminal callback's chat-message drain respectively.
-    await expect.poll(admissionWaiterCount).toBe(1);
+    await expect.poll(admissionLock.waiterCount).toBe(1);
 
     const prompt = "terminal drain and inline send share one claim";
     const messageId = randomUUID();
@@ -3697,14 +3665,14 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
         });
       })
       .toBe(true);
-    await expect.poll(admissionWaiterCount).toBe(2);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
 
     releaseCallbackQuery.resolve(undefined);
-    await expect.poll(admissionWaiterCount).toBe(3);
-    releaseAdmissionLock.resolve(undefined);
+    await expect.poll(admissionLock.waiterCount).toBe(3);
+    admissionLock.release();
 
     const sent = await send;
-    await admissionLock;
+    await admissionLock.done;
     await flushWaitUntilForTest();
     if (sent.status !== 201 || sent.body.runId === null) {
       throw new Error("Expected one race winner to own the queued message");
