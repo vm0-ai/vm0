@@ -283,6 +283,17 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
   const privateBytes = jsonBytes(privateArtifact);
   const privateFirewallsBytes = jsonBytes(privateFirewallsArtifact);
   const runnerFirewallsBytes = jsonBytes(runnerFirewallsArtifact);
+  const staticFilesPublicationArtifact: JsonRecord = {
+    artifactSchemaVersion: 1,
+    files: [
+      {
+        key: iconKey,
+        digest: iconDigest,
+        contentType: "image/svg+xml",
+        size: iconBytes.length,
+      },
+    ],
+  };
   const integrity: JsonRecord = {
     artifactSchemaVersion: 1,
     catalogVersion: options.version,
@@ -305,10 +316,10 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
         key: keys.runnerFirewalls,
         digest: digest(runnerFirewallsBytes),
       },
-      staticFilesPublication: artifactReference(
-        "icons/static-files.json",
-        "static-files",
-      ),
+      staticFilesPublication: {
+        key: "icons/static-files.json",
+        digest: valueDigest(staticFilesPublicationArtifact),
+      },
     },
     assets: [
       {
@@ -840,6 +851,50 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const artifacts = recordValue(integrity.artifacts, "artifacts");
             recordValue(artifacts.publicCatalog, "publicCatalog").digest =
               ZERO_DIGEST;
+          },
+        });
+      },
+    },
+    {
+      name: "static publication digest mismatch",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "bad-static-publication-digest",
+          mutateIntegrity: (integrity) => {
+            const artifacts = recordValue(integrity.artifacts, "artifacts");
+            recordValue(
+              artifacts.staticFilesPublication,
+              "staticFilesPublication",
+            ).digest = ZERO_DIGEST;
+          },
+        });
+      },
+    },
+    {
+      name: "unreferenced icon asset",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "unreferenced-icon",
+          mutateIntegrity: (integrity) => {
+            const extraBytes = Buffer.from("<svg>extra</svg>");
+            const extraDigest = digest(extraBytes);
+            const extraKey =
+              "platform/views/zero-page/components/settings/icons/" +
+              `zz-extra-${extraDigest.slice("sha256:".length, 19)}.svg`;
+            const assets = arrayValue(integrity.assets, "assets");
+            assets.push({
+              key: extraKey,
+              digest: extraDigest,
+              contentType: "image/svg+xml",
+              size: extraBytes.length,
+            });
+            const artifacts = recordValue(integrity.artifacts, "artifacts");
+            recordValue(
+              artifacts.staticFilesPublication,
+              "staticFilesPublication",
+            ).digest = valueDigest({ artifactSchemaVersion: 1, files: assets });
           },
         });
       },

@@ -619,7 +619,7 @@ type RunnerFirewallArtifactConnector = z.infer<
 export type ConnectorCatalogIntegrityArtifact = z.infer<
   typeof connectorCatalogIntegrityArtifactSchema
 >;
-export type StaticFilesPublicationManifest = z.infer<
+type StaticFilesPublicationManifest = z.infer<
   typeof staticFilesPublicationManifestSchema
 >;
 
@@ -1147,6 +1147,10 @@ function assertConnectorRelationships(args: ConnectorCatalogArtifacts): void {
 }
 
 function assertAssetAlignment(args: ConnectorCatalogArtifacts): void {
+  const publicIconKeys = args.publicArtifact.connectors.map((connector) => {
+    return connector.icon.asset.key;
+  });
+  assertUnique(publicIconKeys, "public connector icon key");
   const assetByKey = new Map(
     args.integrity.assets.map((asset) => {
       return [asset.key, asset] as const;
@@ -1169,6 +1173,11 @@ function assertAssetAlignment(args: ConnectorCatalogArtifacts): void {
     expected: new Set(assetByKey.keys()),
     actual: new Set(publicationKeys),
     label: "static-files publication keys",
+  });
+  assertSameValues({
+    expected: new Set(publicIconKeys),
+    actual: new Set(assetByKey.keys()),
+    label: "integrity asset keys",
   });
   const publicationByKey = new Map(
     args.staticFilesPublicationArtifact.files.map((file) => {

@@ -6,7 +6,7 @@ import {
   type ConnectorCatalogPrivateFirewallsArtifact,
   type ConnectorCatalogPublicArtifact,
   type ConnectorCatalogRunnerFirewallsArtifact,
-  type StaticFilesPublicationManifest,
+  staticFilesPublicationManifestSchema,
   validateConnectorCatalogArtifacts,
 } from "./artifacts";
 import { validateFirewallGeneratorResult } from "./firewall";
@@ -333,12 +333,19 @@ export function validateConnectorCatalogRelationships(args: {
   readonly runnerFirewallsArtifact: ConnectorCatalogRunnerFirewallsArtifact;
   readonly integrity: ConnectorCatalogIntegrityArtifact;
 }): void {
-  const staticFilesPublicationArtifact: StaticFilesPublicationManifest = {
-    artifactSchemaVersion: 1,
-    files: args.integrity.assets.map((asset) => {
-      return { ...asset };
-    }),
-  };
+  const staticFilesPublicationArtifact =
+    staticFilesPublicationManifestSchema.parse({
+      artifactSchemaVersion: 1,
+      files: args.integrity.assets.map((asset) => {
+        return { ...asset };
+      }),
+    });
+  if (
+    canonicalDigest(staticFilesPublicationArtifact) !==
+    args.integrity.artifacts.staticFilesPublication.digest
+  ) {
+    throw new Error("Static-files publication digest mismatch");
+  }
   validateConnectorCatalogArtifacts({
     ...args,
     staticFilesPublicationArtifact,
