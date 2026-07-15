@@ -9,6 +9,7 @@ import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -207,8 +208,17 @@ function mockProCheckout(): void {
   });
 }
 
-async function openProvidersTab(): Promise<void> {
-  detachedSetupPage({ context, path: "/?settings=providers" });
+async function openProvidersTab(options?: {
+  readonly vm0ModelEnabled?: boolean;
+}): Promise<void> {
+  detachedSetupPage({
+    context,
+    path: "/?settings=providers",
+    featureSwitches:
+      options?.vm0ModelEnabled === undefined
+        ? undefined
+        : { [FeatureSwitchKey.Vm0Model]: options.vm0ModelEnabled },
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(
@@ -280,11 +290,26 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
+  it("only offers VM0 Model when its feature switch is enabled", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    await openProvidersTab({ vm0ModelEnabled: false });
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+
+    expect(
+      screen.queryByRole("option", { name: "VM0 Model" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows the VM0 Model description without provider routing choices", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
-    await openProvidersTab();
+    await openProvidersTab({ vm0ModelEnabled: true });
 
     click(buttonByText("Add model"));
     await selectDialogModel("VM0 Model");

@@ -306,6 +306,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.Vm0Model]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Show VM0 Model in the workspace Add model selector.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ChatModelFamilySessionContinuity]: {
     maintainer: "lancy@vm0.ai",
     description:
