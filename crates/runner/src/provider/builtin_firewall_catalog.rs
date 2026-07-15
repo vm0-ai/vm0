@@ -1011,27 +1011,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_catalog_cache_accepts_valid_parameterized_base() {
-        let dir = tempfile::tempdir().unwrap();
-        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
-        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
-        let mut valid = catalog("github");
-        valid
-            .firewalls
-            .get_mut("github")
-            .expect("catalog should contain github")
-            .apis[0]
-            .base = "https://github.com/{owner}/{repo}.git".to_string();
+    async fn write_catalog_cache_accepts_valid_parameterized_authorities() {
+        let valid_bases = vec![
+            "https://{tenant}.example.com:0".to_string(),
+            "https://{tenant}.example.com:65535".to_string(),
+            "https://{tenant}.example.com/items/{item}".to_string(),
+            "https://api-{tenant}.example.com".to_string(),
+            "https://{tenant*}.example.com".to_string(),
+            format!("https://{}{{tenant}}.example.com", "a".repeat(62)),
+        ];
 
-        write_catalog_cache(&cache_path, &lock_path, valid)
-            .await
-            .unwrap();
+        for base in valid_bases {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
 
-        let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
-        assert_eq!(
-            cache.firewalls["github"].apis[0].base,
-            "https://github.com/{owner}/{repo}.git"
-        );
+            write_catalog_cache(&cache_path, &lock_path, catalog_with_base(&base))
+                .await
+                .unwrap_or_else(|error| panic!("valid base {base:?} was rejected: {error}"));
+
+            let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
+            assert_eq!(cache.firewalls["github"].apis[0].base, base);
+        }
     }
 
     #[tokio::test]
@@ -1472,33 +1473,83 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_parameterized_base_port_does_not_overwrite_existing_cache() {
-        let dir = tempfile::tempdir().unwrap();
-        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
-        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+    async fn invalid_parameterized_authorities_do_not_publish_or_replace_cache() {
+        let invalid_bases = vec![
+            (
+                "non-numeric port",
+                "https://{tenant}.example.com:abc".to_string(),
+            ),
+            (
+                "non-ASCII decimal port",
+                "https://{tenant}.example.com:\u{ff19}\u{ff19}".to_string(),
+            ),
+            (
+                "port immediately above the valid range",
+                "https://{tenant}.example.com:65536".to_string(),
+            ),
+            (
+                "shared-contract out-of-range port",
+                "https://{tenant}.example.com:99999".to_string(),
+            ),
+            (
+                "excessively long decimal port",
+                format!("https://{{tenant}}.example.com:{}", "9".repeat(100)),
+            ),
+            (
+                "raw wildcard literal",
+                "https://*.{tenant}.example.com".to_string(),
+            ),
+            (
+                "literal comma",
+                "https://bad,.{tenant}.example.com".to_string(),
+            ),
+            (
+                "literal DNS label above 63 bytes",
+                format!("https://{}.{{tenant}}.example.com", "a".repeat(64)),
+            ),
+            (
+                "mixed materialized DNS label above 63 bytes",
+                format!("https://{}{{tenant}}.example.com", "a".repeat(63)),
+            ),
+            (
+                "URL-forbidden literal",
+                "https://a<b.{tenant}.example.com".to_string(),
+            ),
+            (
+                "extra authority colon",
+                "https://{tenant}.example.com:80:90".to_string(),
+            ),
+        ];
 
-        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
-            .await
-            .unwrap();
-        let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        for (name, base) in invalid_bases {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
 
-        let mut invalid = catalog("github");
-        invalid
-            .firewalls
-            .get_mut("github")
-            .expect("catalog should contain github")
-            .apis[0]
-            .base = "https://{tenant}.example.com:abc".to_string();
-        let error = write_catalog_cache(&cache_path, &lock_path, invalid)
-            .await
-            .unwrap_err();
+            let initial_error =
+                write_catalog_cache(&cache_path, &lock_path, catalog_with_base(&base))
+                    .await
+                    .unwrap_err();
+            assert!(
+                !cache_path.exists(),
+                "{name} unexpectedly published an initial cache after {initial_error}"
+            );
 
-        assert!(
-            error.to_string().contains("invalid port"),
-            "unexpected error: {error}"
-        );
-        let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
-        assert_eq!(after, before);
+            write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+                .await
+                .unwrap();
+            let before = tokio::fs::read(&cache_path).await.unwrap();
+
+            let refresh_error =
+                write_catalog_cache(&cache_path, &lock_path, catalog_with_base(&base))
+                    .await
+                    .unwrap_err();
+            let after = tokio::fs::read(&cache_path).await.unwrap();
+            assert_eq!(
+                after, before,
+                "{name} replaced the valid cache after {refresh_error}"
+            );
+        }
     }
 
     #[tokio::test]
