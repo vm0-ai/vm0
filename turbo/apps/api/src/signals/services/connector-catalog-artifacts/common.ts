@@ -8,6 +8,7 @@ export const privateNameSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/u);
 
 export const connectorCatalogVersionSchema = z
   .string()
+  .max(255)
   .regex(/^[a-z0-9][a-z0-9._-]*$/u);
 
 export const artifactKeySchema = z

@@ -749,6 +749,13 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
+      name: "overlong catalog version",
+      expected: "invalid-pointer",
+      release: () => {
+        return buildRelease({ version: "a".repeat(256) });
+      },
+    },
+    {
       name: "wrong pointer reference",
       expected: "invalid-reference",
       release: () => {
