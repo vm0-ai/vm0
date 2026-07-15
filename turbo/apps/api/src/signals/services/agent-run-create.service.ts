@@ -6343,6 +6343,7 @@ async function prepareRunBodyContext(args: {
   readonly get: PrepareRunContextGet;
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly initialBody: CreateRunBody;
@@ -6351,9 +6352,19 @@ async function prepareRunBodyContext(args: {
     "api_dispatch_prepare_context_feature_switches",
     "nested",
     async () => {
+      if (args.preloadedFeatureSwitchContext !== undefined) {
+        args.signal.throwIfAborted();
+        return args.preloadedFeatureSwitchContext;
+      }
       return await args.get(
         loadRunFeatureSwitchContext(args.createArgs, args.signal),
       );
+    },
+    {
+      feature_switch_context_source:
+        args.preloadedFeatureSwitchContext === undefined
+          ? "database"
+          : "preloaded",
     },
   );
   const resolved = await args.timing.measure(
@@ -6648,6 +6659,7 @@ function prepareRunContext(
   args: CreateAgentRunArgs,
   timing: ApiDispatchTimingCollector,
   signal: AbortSignal,
+  preloadedFeatureSwitchContext: FeatureSwitchContext | undefined,
 ): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
@@ -6666,6 +6678,7 @@ function prepareRunContext(
         get,
         db,
         createArgs: args,
+        preloadedFeatureSwitchContext,
         timing,
         signal,
         initialBody,
@@ -7282,6 +7295,7 @@ interface PreparedAgentRun {
 interface PrepareAgentRunArgs {
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
+  readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
 }
 
 interface CompleteAgentRunArgs {
@@ -7330,7 +7344,15 @@ export const prepareAgentRun$ = command(
       "api_dispatch_prepare_run_context",
       "top_level",
       async () => {
-        return await get(prepareRunContext(db, args, timing, signal));
+        return await get(
+          prepareRunContext(
+            db,
+            args,
+            timing,
+            signal,
+            input.preloadedFeatureSwitchContext,
+          ),
+        );
       },
     );
     signal.throwIfAborted();

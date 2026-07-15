@@ -362,6 +362,12 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
           span_kind: "nested",
           trigger_source: "telegram",
         }),
+        expect.objectContaining({
+          op_type: "api_dispatch_prepare_context_feature_switches",
+          span_kind: "nested",
+          trigger_source: "telegram",
+          feature_switch_context_source: "preloaded",
+        }),
       ]),
     );
     const timingActionTypes = timingEvents.map((event) => {
