@@ -1,7 +1,8 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { and, eq, like, or } from "drizzle-orm";
+import { and, eq, like, or, sql } from "drizzle-orm";
 
 import { db } from "../lib/db";
+import { createDeferredPromise } from "../signals/utils";
 
 /**
  * BDD-scoped vm0 managed key prefixes. Fixture writes below only ever touch
@@ -105,4 +106,60 @@ export async function hasVm0ApiKeyLabel(args: {
     )
     .limit(1);
   return rows.length === 1;
+}
+
+/**
+ * Holds the production org admission advisory lock and reports its waiter
+ * count. No product API exposes database lock timing, so this fixture is the
+ * narrow boundary exception for the queue-drain concurrency test.
+ */
+export async function holdOrgAdmissionLockFixture(args: {
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly waiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const result = await tx.execute<{ readonly pid: number }>(sql`
+      SELECT
+        pg_backend_pid() AS "pid",
+        pg_advisory_xact_lock(hashtext(${args.orgId}))
+    `);
+    const holderPid = result.rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the admission lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    waiterCount: async () => {
+      const result = await db().execute<{ readonly waiterCount: number }>(sql`
+        SELECT count(*)::int AS "waiterCount"
+        FROM pg_locks AS waiting
+        WHERE waiting.locktype = 'advisory'
+          AND NOT waiting.granted
+          AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+            SELECT held.classid, held.objid, held.objsubid
+            FROM pg_locks AS held
+            WHERE held.locktype = 'advisory'
+              AND held.pid = ${holderPid}
+              AND held.granted
+          )
+      `);
+      return result.rows[0]?.waiterCount ?? 0;
+    },
+  };
 }

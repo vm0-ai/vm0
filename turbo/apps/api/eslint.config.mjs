@@ -98,24 +98,36 @@ const productionRouteTestImportMessage =
   "Production route composition must not import test-only routes. Mount required test fixture routes explicitly from tests.";
 
 const apiTestDirectDbImportPatterns = [
+  "./lib/db",
+  "./lib/db.ts",
   "./external/db",
   "./external/db.ts",
+  "../lib/db",
+  "../lib/db.ts",
   "../external/db",
   "../external/db.ts",
   "../signals/external/db",
   "../signals/external/db.ts",
+  "../../lib/db",
+  "../../lib/db.ts",
   "../../external/db",
   "../../external/db.ts",
   "../../signals/external/db",
   "../../signals/external/db.ts",
+  "../../../lib/db",
+  "../../../lib/db.ts",
   "../../../external/db",
   "../../../external/db.ts",
   "../../../signals/external/db",
   "../../../signals/external/db.ts",
+  "../../../../lib/db",
+  "../../../../lib/db.ts",
   "../../../../external/db",
   "../../../../external/db.ts",
   "../../../../signals/external/db",
   "../../../../signals/external/db.ts",
+  "src/lib/db",
+  "src/lib/db.ts",
   "src/signals/external/db",
   "src/signals/external/db.ts",
 ];
@@ -245,6 +257,11 @@ export default [
   },
   {
     files: ["src/**/__tests__/**/*.ts", "src/**/*.test.ts"],
+    ignores: [
+      // Central test lifecycle owns connection-pool teardown; it does not
+      // construct or assert API behavior.
+      "src/__tests__/test-context.ts",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",

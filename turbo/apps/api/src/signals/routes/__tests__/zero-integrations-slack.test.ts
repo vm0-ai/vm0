@@ -6,13 +6,15 @@ import type {
   TestSlackStateResponse,
 } from "@vm0/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { sql } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { db } from "../../../lib/db";
 import { server } from "../../../mocks/server";
+import {
+  deleteUnsupportedHistoricalConnectors,
+  seedUnsupportedHistoricalConnectors,
+} from "../../../test-fixtures/historical-connectors";
 import { now } from "../../external/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { ROUTES } from "../../route";
@@ -33,9 +35,6 @@ import {
 const context = testContext();
 const store = createStore();
 const SLACK_STATE_ROUTE = "/api/test/slack-state";
-const REMOVED_CONNECTOR_TYPE = "removed-connector";
-const REMOVED_AUTH_CONNECTOR_TYPE = "github";
-const MISMATCHED_AUTH_CONNECTOR_TYPE = "gitlab";
 
 interface SlackFixture {
   readonly userId: string;
@@ -149,16 +148,7 @@ describe("GET /api/zero/integrations/slack", () => {
     while (historicalConnectorFixtures.length > 0) {
       const historicalFixture = historicalConnectorFixtures.pop();
       if (historicalFixture) {
-        await db().execute(sql`
-          DELETE FROM connectors
-          WHERE org_id = ${historicalFixture.orgId}
-            AND user_id = ${historicalFixture.userId}
-            AND type IN (
-              ${REMOVED_CONNECTOR_TYPE},
-              ${REMOVED_AUTH_CONNECTOR_TYPE},
-              ${MISMATCHED_AUTH_CONNECTOR_TYPE}
-            )
-        `);
+        await deleteUnsupportedHistoricalConnectors(historicalFixture);
       }
     }
     await cleanupSlackFixture(fixture);
@@ -370,15 +360,7 @@ describe("GET /api/zero/integrations/slack", () => {
     it("ignores unsupported historical connectors when loading environment", async () => {
       await seedEnvironmentVersion();
 
-      // These rows model identities accepted by an older registry. The current
-      // production API cannot construct these historical states.
-      await db().execute(sql`
-        INSERT INTO connectors (type, auth_method, user_id, org_id)
-        VALUES
-          (${REMOVED_CONNECTOR_TYPE}, 'api-token', ${fixture.userId}, ${fixture.orgId}),
-          (${REMOVED_AUTH_CONNECTOR_TYPE}, 'removed-auth-method', ${fixture.userId}, ${fixture.orgId}),
-          (${MISMATCHED_AUTH_CONNECTOR_TYPE}, 'oauth', ${fixture.userId}, ${fixture.orgId})
-      `);
+      await seedUnsupportedHistoricalConnectors(fixture);
       historicalConnectorFixtures.push(fixture);
 
       mockAdminAuth();

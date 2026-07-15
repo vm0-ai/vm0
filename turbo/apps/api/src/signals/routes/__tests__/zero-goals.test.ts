@@ -1,11 +1,10 @@
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { sql } from "drizzle-orm";
 
-import { db } from "../../../lib/db";
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { seedInvalidLegacyGoalMessages } from "../../../test-fixtures/legacy-goals";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { createBddApi } from "./helpers/api-bdd";
@@ -355,48 +354,7 @@ describe("zero goals", () => {
     const chat = createChatFilesBddApi(context);
     await createGoal(fixture, "ship goals");
 
-    // This bad persisted shape cannot be produced through the public API, but
-    // older or manually repaired jsonb rows can still be read by the messages
-    // endpoint.
-    const updated = await db().execute(sql`
-      UPDATE chat_messages
-      SET
-        goal_event = '{"type":"state","status":"active","objectiveBrief":123}'::jsonb,
-        goal_snapshot = '{"objectiveBrief":{"bad":true}}'::jsonb
-      WHERE chat_thread_id = ${fixture.threadId}
-        AND goal_event IS NOT NULL
-    `);
-    expect(updated.rowCount).toBe(1);
-    const inserted = await db().execute(sql`
-      INSERT INTO chat_messages (
-        chat_thread_id,
-        role,
-        goal_event,
-        goal_snapshot
-      )
-      VALUES (
-        ${fixture.threadId},
-        'assistant',
-        '{"type":"state","status":"unknown","objectiveBrief":"bad"}'::jsonb,
-        '{"objectiveBrief":{"bad":true}}'::jsonb
-      )
-    `);
-    expect(inserted.rowCount).toBe(1);
-    const insertedMissingSnapshotBrief = await db().execute(sql`
-      INSERT INTO chat_messages (
-        chat_thread_id,
-        role,
-        content,
-        goal_snapshot
-      )
-      VALUES (
-        ${fixture.threadId},
-        'user',
-        'legacy snapshot without objective brief',
-        '{"bad":true}'::jsonb
-      )
-    `);
-    expect(insertedMissingSnapshotBrief.rowCount).toBe(1);
+    await seedInvalidLegacyGoalMessages(fixture.threadId);
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const messages = await chat.listThreadMessages(
