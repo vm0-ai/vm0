@@ -59,49 +59,12 @@ export function connectorCatalogReleaseArtifactKeys(
 const CONNECTOR_SKILL_STORAGE_NAME_PREFIX = "connector-skill@";
 const CONNECTOR_SKILL_STORAGE_PATH_PREFIX = "__system__/volume";
 
-export const SUPPORTED_CONNECTOR_CATALOG_CAPABILITIES = [
-  "bundle.required-resources@1",
-  "catalog.public@1",
-  "catalog.private@1",
-  "firewall.private@1",
-  "firewall.runner@1",
-  "icon.static-files-path@1",
-  "skill-bundled@1",
-  "skill-none@1",
-  "firewall-generated@1",
-  "firewall-none@1",
-  "firewall.categories@1",
-  "firewall.defaults@1",
-  "firewall.host-policy@1",
-  "firewall.auth-base@1",
-  "firewall.sigv4@1",
-  "firewall.billing@1",
-  "client.static-confidential-env@1",
-  "client.static-public-literal@1",
-  "client.dynamic-public@1",
-  "grant.manual@1",
-  "grant.auth-code@1",
-  "grant.openid-auth@1",
-  "grant.external-code@1",
-  "grant.device-auth@1",
-  "access.static@1",
-  "access.refresh-token@1",
-  "binding.optional@1",
-  "binding.platform-secret@1",
-  "manual.normalize-host@1",
-  "revoke.token@1",
-  "revoke.previous-on-replace@1",
-] as const;
-
-export type ConnectorCatalogCapability =
-  (typeof SUPPORTED_CONNECTOR_CATALOG_CAPABILITIES)[number];
-
 const artifactHeaderShape = Object.freeze({
   artifactSchemaVersion: z.literal(SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION),
   catalogVersion: connectorCatalogVersionSchema,
 });
 
-export const artifactReferenceSchema = z
+const artifactReferenceSchema = z
   .object({
     key: artifactKeySchema,
     digest: digestSchema,
@@ -145,64 +108,6 @@ const connectorSkillFrontmatterSchema = z
     description: z.string().trim().min(1),
   })
   .strict();
-
-const staticFilesPublicationFileSchema = z
-  .object({
-    key: publicConnectorIconKeySchema,
-    digest: digestSchema,
-    size: z.number().int().positive(),
-    contentType: z.enum(["image/svg+xml", "image/png"]),
-  })
-  .strict()
-  .superRefine((file, context) => {
-    const expectedSuffix = file.contentType === "image/png" ? ".png" : ".svg";
-    const digestHex = file.digest.slice("sha256:".length);
-    const keyDigest = /-([a-f0-9]{12})\.(?:png|svg)$/u.exec(file.key)?.[1];
-    if (
-      !file.key.endsWith(expectedSuffix) ||
-      keyDigest === undefined ||
-      !digestHex.startsWith(keyDigest)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Static-files key must match its digest prefix and media type",
-        path: ["key"],
-      });
-    }
-  });
-
-export const staticFilesPublicationManifestSchema = z
-  .object({
-    artifactSchemaVersion: z.literal(
-      SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-    ),
-    files: z.array(staticFilesPublicationFileSchema).min(1),
-  })
-  .strict()
-  .superRefine((manifest, context) => {
-    const keys = manifest.files.map((file) => {
-      return file.key;
-    });
-    const sortedKeys = [...keys].sort(compareStrings);
-    if (
-      keys.some((key, index) => {
-        return key !== sortedKeys[index];
-      })
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Static-files publication entries must be alphabetical",
-        path: ["files"],
-      });
-    }
-    if (new Set(keys).size !== keys.length) {
-      context.addIssue({
-        code: "custom",
-        message: "Static-files publication keys must be unique",
-        path: ["files"],
-      });
-    }
-  });
 
 const publicManualFieldSchema = z
   .object({
@@ -534,62 +439,17 @@ export const connectorCatalogRunnerFirewallsArtifactSchema = z
   })
   .strict();
 
-const assetIntegritySchema = publicConnectorIconReferenceSchema.extend({
-  contentType: z.enum(["image/svg+xml", "image/png"]),
-  size: z.number().int().positive(),
-});
-
-const skillArtifactIntegritySchema = artifactReferenceSchema.extend({
-  kind: z.enum(["archive", "manifest"]),
-  size: z.number().int().positive(),
-});
-
-const connectorSkillIntegritySchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("none") }).strict(),
-  z
-    .object({
-      kind: z.literal("bundled"),
-      storageName: connectorSkillStorageNameSchema,
-      versionId: connectorSkillVersionIdSchema,
-      manifest: artifactReferenceSchema,
-      archive: artifactReferenceSchema,
-    })
-    .strict(),
-]);
-
-const connectorIntegritySchema = z
-  .object({
-    connectorRef: connectorRefSchema,
-    sourceFiles: z.array(artifactReferenceSchema).min(5),
-    publicDigest: digestSchema,
-    privateDigest: digestSchema,
-    privateFirewallDigest: digestSchema.nullable(),
-    runnerFirewallDigest: digestSchema.nullable(),
-    skill: connectorSkillIntegritySchema,
-    icon: publicConnectorIconReferenceSchema,
-  })
-  .strict();
-
 export const connectorCatalogIntegrityArtifactSchema = z
   .object({
     ...artifactHeaderShape,
-    requiredCapabilities: z.array(
-      z.enum(SUPPORTED_CONNECTOR_CATALOG_CAPABILITIES),
-    ),
-    catalogSource: artifactReferenceSchema,
-    generatorSources: z.array(artifactReferenceSchema).min(1),
     artifacts: z
       .object({
-        publicCatalog: artifactReferenceSchema,
-        privateCatalog: artifactReferenceSchema,
-        privateFirewalls: artifactReferenceSchema,
-        runnerFirewalls: artifactReferenceSchema,
-        staticFilesPublication: artifactReferenceSchema,
+        publicCatalog: digestSchema,
+        privateCatalog: digestSchema,
+        privateFirewalls: digestSchema,
+        runnerFirewalls: digestSchema,
       })
       .strict(),
-    assets: z.array(assetIntegritySchema).min(1),
-    skillArtifacts: z.array(skillArtifactIntegritySchema),
-    connectors: z.array(connectorIntegritySchema).min(1),
   })
   .strict();
 
@@ -619,9 +479,6 @@ type RunnerFirewallArtifactConnector = z.infer<
 >;
 export type ConnectorCatalogIntegrityArtifact = z.infer<
   typeof connectorCatalogIntegrityArtifactSchema
->;
-type StaticFilesPublicationManifest = z.infer<
-  typeof staticFilesPublicationManifestSchema
 >;
 
 function compareStrings(left: string, right: string): number {
@@ -676,139 +533,7 @@ interface ConnectorCatalogArtifacts {
   readonly privateArtifact: ConnectorCatalogPrivateArtifact;
   readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
   readonly runnerFirewallsArtifact: ConnectorCatalogRunnerFirewallsArtifact;
-  readonly staticFilesPublicationArtifact: StaticFilesPublicationManifest;
   readonly integrity: ConnectorCatalogIntegrityArtifact;
-}
-
-function addPublicCapabilities(
-  capabilities: Set<ConnectorCatalogCapability>,
-  artifact: ConnectorCatalogPublicArtifact,
-): void {
-  for (const connector of artifact.connectors) {
-    const firewall = connector.firewall;
-    if (firewall.kind === "none") {
-      capabilities.add("firewall-none@1");
-      continue;
-    }
-    capabilities.add("firewall-generated@1");
-    if (firewall.categories !== null) {
-      capabilities.add("firewall.categories@1");
-    }
-    if (
-      firewall.defaultAllowed !== null ||
-      firewall.defaultUnknownPolicy !== "allow"
-    ) {
-      capabilities.add("firewall.defaults@1");
-    }
-  }
-}
-
-function addClientCapability(
-  capabilities: Set<ConnectorCatalogCapability>,
-  authMethod: ConnectorCatalogPrivateArtifactConnector["authMethods"][number],
-): void {
-  const client = authMethod.client;
-  if (!client) {
-    return;
-  }
-  if (client.clientRegistration === "dynamic") {
-    capabilities.add("client.dynamic-public@1");
-  } else if (client.clientType === "confidential") {
-    capabilities.add("client.static-confidential-env@1");
-  } else {
-    capabilities.add("client.static-public-literal@1");
-  }
-}
-
-function addAuthMethodCapabilities(
-  capabilities: Set<ConnectorCatalogCapability>,
-  authMethod: ConnectorCatalogPrivateArtifactConnector["authMethods"][number],
-): void {
-  addClientCapability(capabilities, authMethod);
-  capabilities.add(`grant.${authMethod.grant.kind}@1`);
-  capabilities.add(`access.${authMethod.access.kind}@1`);
-  if (
-    Object.values(authMethod.access.envBindings).some((binding) => {
-      return typeof binding !== "string" && binding.optional;
-    })
-  ) {
-    capabilities.add("binding.optional@1");
-  }
-  if ((authMethod.access.platformSecrets?.length ?? 0) > 0) {
-    capabilities.add("binding.platform-secret@1");
-  }
-  if (
-    authMethod.grant.kind === "manual" &&
-    authMethod.grant.fields.some((field) => {
-      return field.normalize === "host";
-    })
-  ) {
-    capabilities.add("manual.normalize-host@1");
-  }
-  if (authMethod.revoke.kind === "token-revoke") {
-    capabilities.add("revoke.token@1");
-    if (authMethod.revoke.revokePreviousOnReplace === true) {
-      capabilities.add("revoke.previous-on-replace@1");
-    }
-  }
-}
-
-function addPrivateCapabilities(
-  capabilities: Set<ConnectorCatalogCapability>,
-  artifact: ConnectorCatalogPrivateArtifact,
-): void {
-  for (const connector of artifact.connectors) {
-    capabilities.add(
-      connector.skill.kind === "bundled" ? "skill-bundled@1" : "skill-none@1",
-    );
-    for (const authMethod of connector.authMethods) {
-      addAuthMethodCapabilities(capabilities, authMethod);
-    }
-  }
-}
-
-function addFirewallCapabilities(
-  capabilities: Set<ConnectorCatalogCapability>,
-  artifact: ConnectorCatalogPrivateFirewallsArtifact,
-): void {
-  for (const connector of artifact.connectors) {
-    if (connector.billable) {
-      capabilities.add("firewall.billing@1");
-    }
-    for (const api of connector.firewall.apis) {
-      if (api.hostPolicy !== undefined) {
-        capabilities.add("firewall.host-policy@1");
-      }
-      if (api.auth.base !== undefined) {
-        capabilities.add("firewall.auth-base@1");
-      }
-      if (api.auth.awsSigv4 !== undefined) {
-        capabilities.add("firewall.sigv4@1");
-      }
-    }
-  }
-}
-
-function deriveConnectorCatalogCapabilities(
-  args: Pick<
-    ConnectorCatalogArtifacts,
-    "publicArtifact" | "privateArtifact" | "privateFirewallsArtifact"
-  >,
-): ConnectorCatalogCapability[] {
-  const capabilities = new Set<ConnectorCatalogCapability>([
-    "bundle.required-resources@1",
-    "catalog.public@1",
-    "catalog.private@1",
-    "firewall.private@1",
-    "firewall.runner@1",
-    "icon.static-files-path@1",
-  ]);
-  addPublicCapabilities(capabilities, args.publicArtifact);
-  addPrivateCapabilities(capabilities, args.privateArtifact);
-  addFirewallCapabilities(capabilities, args.privateFirewallsArtifact);
-  return SUPPORTED_CONNECTOR_CATALOG_CAPABILITIES.filter((capability) => {
-    return capabilities.has(capability);
-  });
 }
 
 function assertHeaderAlignment(args: ConnectorCatalogArtifacts): void {
@@ -840,15 +565,11 @@ function assertReferenceAlignment(args: ConnectorCatalogArtifacts): void {
   const runnerRefs = args.runnerFirewallsArtifact.firewalls.map((firewall) => {
     return firewall.name;
   });
-  const integrityRefs = args.integrity.connectors.map((connector) => {
-    return connector.connectorRef;
-  });
   for (const [values, label] of [
     [publicRefs, "public connector refs"],
     [privateRefs, "private connector refs"],
     [generatedRefs, "private firewall refs"],
     [runnerRefs, "runner firewall refs"],
-    [integrityRefs, "integrity connector refs"],
   ] as const) {
     assertUnique(values, label);
     assertAlphabetical(values, label);
@@ -857,11 +578,6 @@ function assertReferenceAlignment(args: ConnectorCatalogArtifacts): void {
     expected: new Set(publicRefs),
     actual: new Set(privateRefs),
     label: "private connector refs",
-  });
-  assertSameValues({
-    expected: new Set(publicRefs),
-    actual: new Set(integrityRefs),
-    label: "integrity connector refs",
   });
   const expectedGenerated = new Set(
     args.publicArtifact.connectors.flatMap((connector) => {
@@ -882,41 +598,6 @@ function assertReferenceAlignment(args: ConnectorCatalogArtifacts): void {
   });
 }
 
-function assertCapabilityAlignment(args: ConnectorCatalogArtifacts): void {
-  const expectedCapabilities = deriveConnectorCatalogCapabilities(args);
-  if (
-    expectedCapabilities.length !==
-      args.integrity.requiredCapabilities.length ||
-    expectedCapabilities.some((capability, index) => {
-      return capability !== args.integrity.requiredCapabilities[index];
-    })
-  ) {
-    throw new Error("Connector catalog requiredCapabilities mismatch");
-  }
-}
-
-function assertArtifactKeyAlignment(args: ConnectorCatalogArtifacts): void {
-  const releaseKeys = connectorCatalogReleaseArtifactKeys(
-    args.publicArtifact.catalogVersion,
-  );
-  const expectedArtifactKeys = {
-    publicCatalog: releaseKeys.publicCatalog,
-    privateCatalog: releaseKeys.privateCatalog,
-    privateFirewalls: releaseKeys.privateFirewalls,
-    runnerFirewalls: releaseKeys.runnerFirewalls,
-    staticFilesPublication: "icons/static-files.json",
-  };
-  for (const [name, key] of Object.entries(expectedArtifactKeys)) {
-    const reference =
-      args.integrity.artifacts[name as keyof typeof expectedArtifactKeys];
-    if (reference.key !== key) {
-      throw new Error(
-        `Connector catalog integrity artifact key mismatch: ${name}`,
-      );
-    }
-  }
-}
-
 interface ConnectorRelationshipMaps {
   readonly privateByRef: ReadonlyMap<
     string,
@@ -929,10 +610,6 @@ interface ConnectorRelationshipMaps {
   readonly runnerFirewallByRef: ReadonlyMap<
     string,
     RunnerFirewallArtifactConnector
-  >;
-  readonly integrityByRef: ReadonlyMap<
-    string,
-    ConnectorCatalogIntegrityArtifact["connectors"][number]
   >;
 }
 
@@ -955,45 +632,13 @@ function connectorRelationshipMaps(
         return [firewall.name, firewall];
       }),
     ),
-    integrityByRef: new Map(
-      args.integrity.connectors.map((connector) => {
-        return [connector.connectorRef, connector];
-      }),
-    ),
   };
 }
 
-function assertSkillIconAndAuthAlignment(args: {
+function assertAuthAlignment(args: {
   readonly publicConnector: ConnectorCatalogPublicArtifactConnector;
   readonly privateConnector: ConnectorCatalogPrivateArtifactConnector;
-  readonly integrityConnector: ConnectorCatalogIntegrityArtifact["connectors"][number];
 }): void {
-  const expectedSkillIntegrity =
-    args.privateConnector.skill.kind === "none"
-      ? { kind: "none" as const }
-      : {
-          kind: "bundled" as const,
-          storageName: args.privateConnector.skill.storageName,
-          versionId: args.privateConnector.skill.versionId,
-          manifest: args.privateConnector.skill.manifest,
-          archive: args.privateConnector.skill.archive,
-        };
-  if (
-    JSON.stringify(args.integrityConnector.skill) !==
-    JSON.stringify(expectedSkillIntegrity)
-  ) {
-    throw new Error(
-      `Skill integrity mismatch: ${args.publicConnector.connectorRef}`,
-    );
-  }
-  if (
-    JSON.stringify(args.integrityConnector.icon) !==
-    JSON.stringify(args.publicConnector.icon.asset)
-  ) {
-    throw new Error(
-      `Icon integrity mismatch: ${args.publicConnector.connectorRef}`,
-    );
-  }
   const publicMethodIds = args.publicConnector.authMethods.map((method) => {
     return method.id;
   });
@@ -1116,14 +761,9 @@ function assertConnectorRelationship(
   if (!privateConnector) {
     throw new Error(`Missing private connector ${connector.connectorRef}`);
   }
-  const integrityConnector = maps.integrityByRef.get(connector.connectorRef);
-  if (!integrityConnector) {
-    throw new Error(`Missing integrity connector ${connector.connectorRef}`);
-  }
-  assertSkillIconAndAuthAlignment({
+  assertAuthAlignment({
     publicConnector: connector,
     privateConnector,
-    integrityConnector,
   });
   if (connector.firewall.kind === "none") {
     return;
@@ -1147,71 +787,14 @@ function assertConnectorRelationships(args: ConnectorCatalogArtifacts): void {
   }
 }
 
-function assertAssetAlignment(args: ConnectorCatalogArtifacts): void {
-  const publicIconKeys = args.publicArtifact.connectors.map((connector) => {
-    return connector.icon.asset.key;
-  });
-  assertUnique(publicIconKeys, "public connector icon key");
-  const assetByKey = new Map(
-    args.integrity.assets.map((asset) => {
-      return [asset.key, asset] as const;
-    }),
-  );
-  assertUnique(
-    args.integrity.assets.map((asset) => {
-      return asset.key;
-    }),
-    "integrity asset key",
-  );
-  const publicationKeys = args.staticFilesPublicationArtifact.files.map(
-    (file) => {
-      return file.key;
-    },
-  );
-  assertUnique(publicationKeys, "static-files publication key");
-  assertAlphabetical(publicationKeys, "static-files publication keys");
-  assertSameValues({
-    expected: new Set(assetByKey.keys()),
-    actual: new Set(publicationKeys),
-    label: "static-files publication keys",
-  });
-  assertSameValues({
-    expected: new Set(publicIconKeys),
-    actual: new Set(assetByKey.keys()),
-    label: "integrity asset keys",
-  });
-  const publicationByKey = new Map(
-    args.staticFilesPublicationArtifact.files.map((file) => {
-      return [file.key, file];
-    }),
-  );
-  for (const connector of args.publicArtifact.connectors) {
-    const asset = assetByKey.get(connector.icon.asset.key);
-    const publication = publicationByKey.get(connector.icon.asset.key);
-    if (
-      !asset ||
-      asset.digest !== connector.icon.asset.digest ||
-      asset.contentType !== connector.icon.contentType ||
-      !publication ||
-      publication.digest !== asset.digest ||
-      publication.size !== asset.size ||
-      publication.contentType !== asset.contentType
-    ) {
-      throw new Error(
-        `Icon integrity alignment mismatch: ${connector.connectorRef}`,
-      );
-    }
-  }
-}
-
 interface ExpectedSkillArtifact {
   readonly digest: string;
   readonly kind: "archive" | "manifest";
 }
 
-function expectedSkillArtifacts(
+function assertSkillArtifactReferencesConsistent(
   artifact: ConnectorCatalogPrivateArtifact,
-): ReadonlyMap<string, ExpectedSkillArtifact> {
+): void {
   const expected = new Map<string, ExpectedSkillArtifact>();
   for (const connector of artifact.connectors) {
     if (connector.skill.kind === "none") {
@@ -1231,30 +814,6 @@ function expectedSkillArtifacts(
       expected.set(reference.key, { digest: reference.digest, kind });
     }
   }
-  return expected;
-}
-
-function assertSkillArtifactAlignment(args: ConnectorCatalogArtifacts): void {
-  const expected = expectedSkillArtifacts(args.privateArtifact);
-  const actualKeys = args.integrity.skillArtifacts.map((artifact) => {
-    return artifact.key;
-  });
-  assertUnique(actualKeys, "integrity skill artifact key");
-  assertSameValues({
-    expected: new Set(expected.keys()),
-    actual: new Set(actualKeys),
-    label: "integrity skill artifact keys",
-  });
-  for (const artifact of args.integrity.skillArtifacts) {
-    const expectedArtifact = expected.get(artifact.key);
-    if (
-      !expectedArtifact ||
-      artifact.digest !== expectedArtifact.digest ||
-      artifact.kind !== expectedArtifact.kind
-    ) {
-      throw new Error(`Skill artifact integrity mismatch: ${artifact.key}`);
-    }
-  }
 }
 
 export function validateConnectorCatalogArtifacts(
@@ -1262,9 +821,6 @@ export function validateConnectorCatalogArtifacts(
 ): void {
   assertHeaderAlignment(args);
   assertReferenceAlignment(args);
-  assertCapabilityAlignment(args);
-  assertArtifactKeyAlignment(args);
   assertConnectorRelationships(args);
-  assertAssetAlignment(args);
-  assertSkillArtifactAlignment(args);
+  assertSkillArtifactReferencesConsistent(args.privateArtifact);
 }

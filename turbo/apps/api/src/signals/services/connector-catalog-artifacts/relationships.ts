@@ -1,12 +1,9 @@
-import { createHash } from "node:crypto";
-
 import {
   type ConnectorCatalogIntegrityArtifact,
   type ConnectorCatalogPrivateArtifact,
   type ConnectorCatalogPrivateFirewallsArtifact,
   type ConnectorCatalogPublicArtifact,
   type ConnectorCatalogRunnerFirewallsArtifact,
-  staticFilesPublicationManifestSchema,
   validateConnectorCatalogArtifacts,
 } from "./artifacts";
 import {
@@ -24,35 +21,6 @@ import {
   type ConnectorAuthMethodSource,
   type ConnectorGrantSource,
 } from "./source";
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function canonicalJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => {
-      return canonicalJsonValue(item);
-    });
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-  return Object.fromEntries(
-    Object.keys(value)
-      .sort()
-      .map((key) => {
-        return [key, canonicalJsonValue(value[key])];
-      }),
-  );
-}
-
-function canonicalDigest(value: unknown): string {
-  const bytes = Buffer.from(
-    `${JSON.stringify(canonicalJsonValue(value), null, 2)}\n`,
-  );
-  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-}
 
 function assertEqualValues(
   expected: readonly string[],
@@ -437,62 +405,6 @@ function validateFirewallSemantics(args: {
   }
 }
 
-function validateSliceDigests(args: {
-  readonly publicArtifact: ConnectorCatalogPublicArtifact;
-  readonly privateArtifact: ConnectorCatalogPrivateArtifact;
-  readonly privateFirewallsArtifact: ConnectorCatalogPrivateFirewallsArtifact;
-  readonly runnerFirewallsArtifact: ConnectorCatalogRunnerFirewallsArtifact;
-  readonly integrity: ConnectorCatalogIntegrityArtifact;
-}): void {
-  const privateByRef = new Map(
-    args.privateArtifact.connectors.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-  const privateFirewallByRef = new Map(
-    args.privateFirewallsArtifact.connectors.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-  const runnerByRef = new Map(
-    args.runnerFirewallsArtifact.firewalls.map((firewall) => {
-      return [firewall.name, firewall];
-    }),
-  );
-  const integrityByRef = new Map(
-    args.integrity.connectors.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-
-  for (const publicConnector of args.publicArtifact.connectors) {
-    const connectorRef = publicConnector.connectorRef;
-    const privateConnector = privateByRef.get(connectorRef);
-    const integrityConnector = integrityByRef.get(connectorRef);
-    if (privateConnector === undefined || integrityConnector === undefined) {
-      throw new Error(`Missing integrity slice for ${connectorRef}`);
-    }
-    if (
-      integrityConnector.publicDigest !== canonicalDigest(publicConnector) ||
-      integrityConnector.privateDigest !== canonicalDigest(privateConnector)
-    ) {
-      throw new Error(`Catalog slice digest mismatch for ${connectorRef}`);
-    }
-    const privateFirewall = privateFirewallByRef.get(connectorRef);
-    const runnerFirewall = runnerByRef.get(connectorRef);
-    const privateFirewallDigest =
-      privateFirewall === undefined ? null : canonicalDigest(privateFirewall);
-    const runnerFirewallDigest =
-      runnerFirewall === undefined ? null : canonicalDigest(runnerFirewall);
-    if (
-      integrityConnector.privateFirewallDigest !== privateFirewallDigest ||
-      integrityConnector.runnerFirewallDigest !== runnerFirewallDigest
-    ) {
-      throw new Error(`Firewall slice digest mismatch for ${connectorRef}`);
-    }
-  }
-}
-
 export function validateConnectorCatalogRelationships(args: {
   readonly publicArtifact: ConnectorCatalogPublicArtifact;
   readonly privateArtifact: ConnectorCatalogPrivateArtifact;
@@ -500,24 +412,7 @@ export function validateConnectorCatalogRelationships(args: {
   readonly runnerFirewallsArtifact: ConnectorCatalogRunnerFirewallsArtifact;
   readonly integrity: ConnectorCatalogIntegrityArtifact;
 }): void {
-  const staticFilesPublicationArtifact =
-    staticFilesPublicationManifestSchema.parse({
-      artifactSchemaVersion: 1,
-      files: args.integrity.assets.map((asset) => {
-        return { ...asset };
-      }),
-    });
-  if (
-    canonicalDigest(staticFilesPublicationArtifact) !==
-    args.integrity.artifacts.staticFilesPublication.digest
-  ) {
-    throw new Error("Static-files publication digest mismatch");
-  }
-  validateConnectorCatalogArtifacts({
-    ...args,
-    staticFilesPublicationArtifact,
-  });
+  validateConnectorCatalogArtifacts(args);
   validateCatalogAndConnectorSemantics(args);
   validateFirewallSemantics(args);
-  validateSliceDigests(args);
 }

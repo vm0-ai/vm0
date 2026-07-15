@@ -93,16 +93,8 @@ function digest(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
-function valueDigest(value: unknown): string {
-  return digest(jsonBytes(value));
-}
-
 function catalogTemplate(reference: string): string {
   return `\${{ ${reference} }}`;
-}
-
-function artifactReference(key: string, content: string): JsonRecord {
-  return { key, digest: digest(Buffer.from(content)) };
 }
 
 function releaseKeys(version: string): {
@@ -190,24 +182,6 @@ function buildPrivateConnector(connectorRef: string): JsonRecord {
       },
     ],
   };
-}
-
-function requiredCapabilities(generatedFirewall: boolean): readonly string[] {
-  const capabilities = [
-    "bundle.required-resources@1",
-    "catalog.public@1",
-    "catalog.private@1",
-    "firewall.private@1",
-    "firewall.runner@1",
-    "icon.static-files-path@1",
-    "skill-none@1",
-    generatedFirewall ? "firewall-generated@1" : "firewall-none@1",
-  ];
-  if (generatedFirewall) {
-    capabilities.push("firewall.categories@1", "firewall.defaults@1");
-  }
-  capabilities.push("grant.manual@1", "access.static@1");
-  return capabilities;
 }
 
 function buildGeneratedFirewall(args: {
@@ -348,115 +322,25 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
   options.mutatePrivate?.(privateArtifact);
   options.mutatePrivateFirewalls?.(privateFirewallsArtifact);
   options.mutateRunnerFirewalls?.(runnerFirewallsArtifact);
-  const currentPublicConnector = firstRecord(
-    publicArtifact.connectors,
-    "public connectors",
-  );
-  const currentPrivateConnector = firstRecord(
-    privateArtifact.connectors,
-    "private connectors",
-  );
-  const privateFirewallConnectors = arrayValue(
-    privateFirewallsArtifact.connectors,
-    "private firewall connectors",
-  );
-  const runnerFirewalls = arrayValue(
-    runnerFirewallsArtifact.firewalls,
-    "runner firewalls",
-  );
-  const integrityConnector: JsonRecord = {
-    connectorRef,
-    sourceFiles: [
-      artifactReference(
-        `catalog/connectors/${connectorRef}/connector.yaml`,
-        "a",
-      ),
-      artifactReference(`catalog/connectors/${connectorRef}/setup.yaml`, "b"),
-      artifactReference(`catalog/connectors/${connectorRef}/icon.svg`, "c"),
-      artifactReference(
-        `catalog/connectors/${connectorRef}/firewall.yaml`,
-        "d",
-      ),
-      artifactReference(
-        `catalog/connectors/${connectorRef}/metadata.yaml`,
-        "e",
-      ),
-    ],
-    publicDigest: valueDigest(currentPublicConnector),
-    privateDigest: valueDigest(currentPrivateConnector),
-    privateFirewallDigest:
-      privateFirewallConnectors.length === 0
-        ? null
-        : valueDigest(
-            firstRecord(privateFirewallConnectors, "private firewalls"),
-          ),
-    runnerFirewallDigest:
-      runnerFirewalls.length === 0
-        ? null
-        : valueDigest(firstRecord(runnerFirewalls, "runner firewalls")),
-    skill: { kind: "none" },
-    icon: { key: iconKey, digest: iconDigest },
-  };
   const publicBytes = options.publicBytes ?? jsonBytes(publicArtifact);
   const privateBytes = jsonBytes(privateArtifact);
   const privateFirewallsBytes = jsonBytes(privateFirewallsArtifact);
   const runnerFirewallsBytes = jsonBytes(runnerFirewallsArtifact);
-  const staticFilesPublicationArtifact: JsonRecord = {
-    artifactSchemaVersion: 1,
-    files: [
-      {
-        key: iconKey,
-        digest: iconDigest,
-        contentType: "image/svg+xml",
-        size: iconBytes.length,
-      },
-    ],
-  };
   const integrity: JsonRecord = {
     artifactSchemaVersion: 1,
     catalogVersion: options.version,
-    requiredCapabilities: requiredCapabilities(
-      options.generatedFirewall === true,
-    ),
-    catalogSource: artifactReference("catalog/catalog.yaml", "catalog"),
-    generatorSources: [
-      artifactReference("compiler/firewall-generator.ts", "generator"),
-    ],
     artifacts: {
-      publicCatalog: { key: keys.publicCatalog, digest: digest(publicBytes) },
-      privateCatalog: {
-        key: keys.privateCatalog,
-        digest: digest(privateBytes),
-      },
-      privateFirewalls: {
-        key: keys.privateFirewalls,
-        digest: digest(privateFirewallsBytes),
-      },
-      runnerFirewalls: {
-        key: keys.runnerFirewalls,
-        digest: digest(runnerFirewallsBytes),
-      },
-      staticFilesPublication: {
-        key: "icons/static-files.json",
-        digest: valueDigest(staticFilesPublicationArtifact),
-      },
+      publicCatalog: digest(publicBytes),
+      privateCatalog: digest(privateBytes),
+      privateFirewalls: digest(privateFirewallsBytes),
+      runnerFirewalls: digest(runnerFirewallsBytes),
     },
-    assets: [
-      {
-        key: iconKey,
-        digest: iconDigest,
-        contentType: "image/svg+xml",
-        size: iconBytes.length,
-      },
-    ],
-    skillArtifacts: [],
-    connectors: [integrityConnector],
   };
   options.mutateIntegrity?.(integrity);
   const integrityBytes = jsonBytes(integrity);
   const pointer: JsonRecord = {
     catalogVersion: options.version,
-    integrity: { key: keys.integrity, digest: digest(integrityBytes) },
+    integrityDigest: digest(integrityBytes),
   };
   options.mutatePointer?.(pointer);
 
@@ -883,14 +767,17 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
-      name: "wrong pointer reference",
-      expected: "invalid-reference",
+      name: "legacy pointer reference",
+      expected: "invalid-pointer",
       release: () => {
         return buildRelease({
-          version: "wrong-pointer-reference",
+          version: "legacy-pointer-reference",
           mutatePointer: (pointer) => {
-            recordValue(pointer.integrity, "pointer.integrity").key =
-              "connectors/v1/releases/other/integrity/catalog.json";
+            pointer.integrity = {
+              key: "connectors/v1/releases/legacy-pointer-reference/integrity/catalog.json",
+              digest: pointer.integrityDigest,
+            };
+            delete pointer.integrityDigest;
           },
         });
       },
@@ -902,8 +789,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "bad-integrity-digest",
           mutatePointer: (pointer) => {
-            recordValue(pointer.integrity, "pointer.integrity").digest =
-              ZERO_DIGEST;
+            pointer.integrityDigest = ZERO_DIGEST;
           },
         });
       },
@@ -921,16 +807,16 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
-      name: "unsupported capability",
-      expected: "unsupported-capability",
+      name: "legacy integrity property",
+      expected: "invalid-artifact",
       release: () => {
         return buildRelease({
-          version: "unsupported-capability",
+          version: "legacy-integrity-property",
           mutateIntegrity: (integrity) => {
-            arrayValue(
-              integrity.requiredCapabilities,
-              "requiredCapabilities",
-            ).push("catalog.future@2");
+            integrity.catalogSource = {
+              key: "catalog/catalog.yaml",
+              digest: ZERO_DIGEST,
+            };
           },
         });
       },
@@ -965,150 +851,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           version: "bad-view-digest",
           mutateIntegrity: (integrity) => {
             const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(artifacts.publicCatalog, "publicCatalog").digest =
-              ZERO_DIGEST;
-          },
-        });
-      },
-    },
-    {
-      name: "static publication digest mismatch",
-      expected: "relationship-mismatch",
-      release: () => {
-        return buildRelease({
-          version: "bad-static-publication-digest",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(
-              artifacts.staticFilesPublication,
-              "staticFilesPublication",
-            ).digest = ZERO_DIGEST;
-          },
-        });
-      },
-    },
-    {
-      name: "unreferenced icon asset",
-      expected: "relationship-mismatch",
-      release: () => {
-        return buildRelease({
-          version: "unreferenced-icon",
-          mutateIntegrity: (integrity) => {
-            const extraBytes = Buffer.from("<svg>extra</svg>");
-            const extraDigest = digest(extraBytes);
-            const extraKey =
-              "platform/views/zero-page/components/settings/icons/" +
-              `zz-extra-${extraDigest.slice("sha256:".length, 19)}.svg`;
-            const assets = arrayValue(integrity.assets, "assets");
-            assets.push({
-              key: extraKey,
-              digest: extraDigest,
-              contentType: "image/svg+xml",
-              size: extraBytes.length,
-            });
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(
-              artifacts.staticFilesPublication,
-              "staticFilesPublication",
-            ).digest = valueDigest({ artifactSchemaVersion: 1, files: assets });
-          },
-        });
-      },
-    },
-    {
-      name: "local staging key",
-      expected: "invalid-reference",
-      release: () => {
-        return buildRelease({
-          version: "staging-key",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "generated/connectors/v1/releases/staging-key/public/catalog.json";
-          },
-        });
-      },
-    },
-    {
-      name: "legacy catalog key",
-      expected: "invalid-reference",
-      release: () => {
-        return buildRelease({
-          version: "legacy-key",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "catalog-v1/releases/legacy-key/public/catalog.json";
-          },
-        });
-      },
-    },
-    {
-      name: "discarded connector catalog namespace",
-      expected: "invalid-reference",
-      release: () => {
-        return buildRelease({
-          version: "discarded-namespace",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "connector-catalog/v1/releases/discarded-namespace/public/catalog.json";
-          },
-        });
-      },
-    },
-    {
-      name: "cross-release key",
-      expected: "invalid-reference",
-      release: () => {
-        return buildRelease({
-          version: "cross-release",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "connectors/v1/releases/other/public/catalog.json";
-          },
-        });
-      },
-    },
-    {
-      name: "unversioned key",
-      expected: "invalid-reference",
-      release: () => {
-        return buildRelease({
-          version: "unversioned-key",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "connectors/public/catalog.json";
-          },
-        });
-      },
-    },
-    {
-      name: "wrong schema generation key",
-      expected: "invalid-reference",
-      release: () => {
-        return buildRelease({
-          version: "wrong-schema-key",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "connectors/v2/releases/wrong-schema-key/public/catalog.json";
-          },
-        });
-      },
-    },
-    {
-      name: "traversal key",
-      expected: "invalid-artifact",
-      release: () => {
-        return buildRelease({
-          version: "traversal-key",
-          mutateIntegrity: (integrity) => {
-            const artifacts = recordValue(integrity.artifacts, "artifacts");
-            recordValue(artifacts.publicCatalog, "publicCatalog").key =
-              "connectors/v1/releases/traversal-key/../public/catalog.json";
+            artifacts.publicCatalog = ZERO_DIGEST;
           },
         });
       },
@@ -1165,31 +908,32 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
-      name: "cross-view icon mismatch",
-      expected: "relationship-mismatch",
+      name: "invalid icon reference",
+      expected: "invalid-artifact",
       release: () => {
         return buildRelease({
-          version: "icon-mismatch",
-          mutateIntegrity: (integrity) => {
-            const connector = firstRecord(integrity.connectors, "connectors");
-            recordValue(connector.icon, "icon").digest = ZERO_DIGEST;
+          version: "invalid-icon-reference",
+          mutatePublic: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            const icon = recordValue(connector.icon, "icon");
+            recordValue(icon.asset, "icon asset").digest = ZERO_DIGEST;
           },
         });
       },
     },
     {
-      name: "cross-view skill mismatch",
-      expected: "relationship-mismatch",
+      name: "invalid skill reference",
+      expected: "invalid-artifact",
       release: () => {
         return buildRelease({
-          version: "skill-mismatch",
-          mutateIntegrity: (integrity) => {
-            const connector = firstRecord(integrity.connectors, "connectors");
+          version: "invalid-skill-reference",
+          mutatePrivate: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
             const versionId = "a".repeat(64);
-            const prefix = `__system__/volume/connector-skill@external-test/${versionId}`;
+            const prefix = `__system__/volume/connector-skill@wrong/${versionId}`;
             connector.skill = {
               kind: "bundled",
-              storageName: "connector-skill@external-test",
+              storageName: "connector-skill@wrong",
               versionId,
               manifest: {
                 key: `${prefix}/manifest.json`,

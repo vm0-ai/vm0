@@ -108,7 +108,6 @@ export const connectorCatalogSyncFailureCodeSchema = z.enum([
   "invalid-reference",
   "digest-mismatch",
   "unsupported-schema",
-  "unsupported-capability",
   "invalid-artifact",
   "public-leakage",
   "relationship-mismatch",

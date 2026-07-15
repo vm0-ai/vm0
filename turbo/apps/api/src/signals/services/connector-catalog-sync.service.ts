@@ -48,22 +48,15 @@ interface SyncStateSnapshot {
   readonly lastAttemptOutcome: "accepted" | "unchanged" | "rejected" | null;
   readonly lastSuccessAt: Date | null;
   readonly lastFailureCode: ConnectorCatalogSyncFailureCode | null;
-  readonly activeIntegrityKey: string | null;
   readonly activeIntegrityDigest: string | null;
 }
 
 interface StoredReleaseIdentity {
-  readonly integrityKey: string;
   readonly integrityDigest: string;
-  readonly publicCatalogKey: string;
   readonly publicCatalogDigest: string;
-  readonly privateCatalogKey: string;
   readonly privateCatalogDigest: string;
-  readonly privateFirewallsKey: string;
   readonly privateFirewallsDigest: string;
-  readonly runnerFirewallsKey: string;
   readonly runnerFirewallsDigest: string;
-  readonly requiredCapabilities: readonly string[];
 }
 
 type CandidateCommitResult = "accepted" | "rejected" | "retry";
@@ -98,7 +91,6 @@ async function readSyncState(
       lastAttemptOutcome: connectorCatalogSyncState.lastAttemptOutcome,
       lastSuccessAt: connectorCatalogSyncState.lastSuccessAt,
       lastFailureCode: connectorCatalogSyncState.lastFailureCode,
-      activeIntegrityKey: connectorCatalogReleaseIdentities.integrityKey,
       activeIntegrityDigest: connectorCatalogReleaseIdentities.integrityDigest,
     })
     .from(connectorCatalogSyncState)
@@ -139,23 +131,15 @@ async function readReleaseIdentity(
 ): Promise<StoredReleaseIdentity | undefined> {
   const [identity] = await db
     .select({
-      integrityKey: connectorCatalogReleaseIdentities.integrityKey,
       integrityDigest: connectorCatalogReleaseIdentities.integrityDigest,
-      publicCatalogKey: connectorCatalogReleaseIdentities.publicCatalogKey,
       publicCatalogDigest:
         connectorCatalogReleaseIdentities.publicCatalogDigest,
-      privateCatalogKey: connectorCatalogReleaseIdentities.privateCatalogKey,
       privateCatalogDigest:
         connectorCatalogReleaseIdentities.privateCatalogDigest,
-      privateFirewallsKey:
-        connectorCatalogReleaseIdentities.privateFirewallsKey,
       privateFirewallsDigest:
         connectorCatalogReleaseIdentities.privateFirewallsDigest,
-      runnerFirewallsKey: connectorCatalogReleaseIdentities.runnerFirewallsKey,
       runnerFirewallsDigest:
         connectorCatalogReleaseIdentities.runnerFirewallsDigest,
-      requiredCapabilities:
-        connectorCatalogReleaseIdentities.requiredCapabilities,
     })
     .from(connectorCatalogReleaseIdentities)
     .where(
@@ -221,8 +205,7 @@ function pointerMatchesActiveState(
   }
   return (
     pointer.catalogVersion === state.activeCatalogVersion &&
-    pointer.integrity.key === state.activeIntegrityKey &&
-    pointer.integrity.digest === state.activeIntegrityDigest
+    pointer.integrityDigest === state.activeIntegrityDigest
   );
 }
 
@@ -232,8 +215,7 @@ function pointerConflictsWithStoredIdentity(
 ): boolean {
   return (
     identity !== undefined &&
-    (pointer.integrity.key !== identity.integrityKey ||
-      pointer.integrity.digest !== identity.integrityDigest)
+    pointer.integrityDigest !== identity.integrityDigest
   );
 }
 
@@ -242,21 +224,11 @@ function storedIdentityMatches(
   candidate: ConnectorCatalogReleaseIdentity,
 ): boolean {
   return (
-    stored.integrityKey === candidate.integrity.key &&
-    stored.integrityDigest === candidate.integrity.digest &&
-    stored.publicCatalogKey === candidate.publicCatalog.key &&
-    stored.publicCatalogDigest === candidate.publicCatalog.digest &&
-    stored.privateCatalogKey === candidate.privateCatalog.key &&
-    stored.privateCatalogDigest === candidate.privateCatalog.digest &&
-    stored.privateFirewallsKey === candidate.privateFirewalls.key &&
-    stored.privateFirewallsDigest === candidate.privateFirewalls.digest &&
-    stored.runnerFirewallsKey === candidate.runnerFirewalls.key &&
-    stored.runnerFirewallsDigest === candidate.runnerFirewalls.digest &&
-    stored.requiredCapabilities.length ===
-      candidate.requiredCapabilities.length &&
-    stored.requiredCapabilities.every((capability, index) => {
-      return capability === candidate.requiredCapabilities[index];
-    })
+    stored.integrityDigest === candidate.integrityDigest &&
+    stored.publicCatalogDigest === candidate.publicCatalogDigest &&
+    stored.privateCatalogDigest === candidate.privateCatalogDigest &&
+    stored.privateFirewallsDigest === candidate.privateFirewallsDigest &&
+    stored.runnerFirewallsDigest === candidate.runnerFirewallsDigest
   );
 }
 
@@ -358,17 +330,11 @@ async function persistReleaseIdentity(args: {
       sourceId: args.sourceId,
       schemaVersion: identity.schemaVersion,
       catalogVersion: identity.catalogVersion,
-      integrityKey: identity.integrity.key,
-      integrityDigest: identity.integrity.digest,
-      publicCatalogKey: identity.publicCatalog.key,
-      publicCatalogDigest: identity.publicCatalog.digest,
-      privateCatalogKey: identity.privateCatalog.key,
-      privateCatalogDigest: identity.privateCatalog.digest,
-      privateFirewallsKey: identity.privateFirewalls.key,
-      privateFirewallsDigest: identity.privateFirewalls.digest,
-      runnerFirewallsKey: identity.runnerFirewalls.key,
-      runnerFirewallsDigest: identity.runnerFirewalls.digest,
-      requiredCapabilities: [...identity.requiredCapabilities],
+      integrityDigest: identity.integrityDigest,
+      publicCatalogDigest: identity.publicCatalogDigest,
+      privateCatalogDigest: identity.privateCatalogDigest,
+      privateFirewallsDigest: identity.privateFirewallsDigest,
+      runnerFirewallsDigest: identity.runnerFirewallsDigest,
       firstValidatedAt: args.attemptedAt,
     })
     .onConflictDoNothing();
@@ -648,7 +614,7 @@ async function commitValidatedCandidate(
       sourceId: runtime.source.sourceId,
       schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
       catalogVersion: candidate.identity.catalogVersion,
-      integrityDigest: candidate.identity.integrity.digest,
+      integrityDigest: candidate.identity.integrityDigest,
       outcome,
     });
   }

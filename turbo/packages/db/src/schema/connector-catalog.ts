@@ -26,7 +26,6 @@ export const CONNECTOR_CATALOG_FAILURE_CODES = [
   "invalid-reference",
   "digest-mismatch",
   "unsupported-schema",
-  "unsupported-capability",
   "invalid-artifact",
   "public-leakage",
   "relationship-mismatch",
@@ -41,25 +40,19 @@ export const connectorCatalogReleaseIdentities = pgTable(
     sourceId: varchar("source_id", { length: 64 }).notNull(),
     schemaVersion: integer("schema_version").notNull(),
     catalogVersion: varchar("catalog_version", { length: 255 }).notNull(),
-    integrityKey: text("integrity_key").notNull(),
     integrityDigest: varchar("integrity_digest", { length: 71 }).notNull(),
-    publicCatalogKey: text("public_catalog_key").notNull(),
     publicCatalogDigest: varchar("public_catalog_digest", {
       length: 71,
     }).notNull(),
-    privateCatalogKey: text("private_catalog_key").notNull(),
     privateCatalogDigest: varchar("private_catalog_digest", {
       length: 71,
     }).notNull(),
-    privateFirewallsKey: text("private_firewalls_key").notNull(),
     privateFirewallsDigest: varchar("private_firewalls_digest", {
       length: 71,
     }).notNull(),
-    runnerFirewallsKey: text("runner_firewalls_key").notNull(),
     runnerFirewallsDigest: varchar("runner_firewalls_digest", {
       length: 71,
     }).notNull(),
-    requiredCapabilities: text("required_capabilities").array().notNull(),
     firstValidatedAt: timestamp("first_validated_at").notNull(),
   },
   (table) => {

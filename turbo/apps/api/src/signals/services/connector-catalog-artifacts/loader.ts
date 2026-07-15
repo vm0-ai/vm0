@@ -5,7 +5,6 @@ import { z } from "zod";
 
 import { safeJsonParse, safeSync } from "../../utils";
 import {
-  artifactReferenceSchema,
   CONNECTOR_CATALOG_ACTIVE_KEY,
   connectorCatalogIntegrityArtifactSchema,
   connectorCatalogPrivateArtifactSchema,
@@ -14,15 +13,14 @@ import {
   connectorCatalogReleaseArtifactKeys,
   connectorCatalogRunnerFirewallsArtifactSchema,
   connectorCatalogVersionSchema,
-  SUPPORTED_CONNECTOR_CATALOG_CAPABILITIES,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-  type ConnectorCatalogCapability,
   type ConnectorCatalogIntegrityArtifact,
   type ConnectorCatalogPrivateArtifact,
   type ConnectorCatalogPrivateFirewallsArtifact,
   type ConnectorCatalogPublicArtifact,
   type ConnectorCatalogRunnerFirewallsArtifact,
 } from "./artifacts";
+import { digestSchema } from "./common";
 import {
   assertPublicCatalogArtifactHasNoPrivateFields,
   privateCatalogArtifactSensitiveValues,
@@ -31,7 +29,7 @@ import { validateConnectorCatalogRelationships } from "./relationships";
 
 const CONNECTOR_CATALOG_OBJECT_MAX_BYTES = {
   active: 16 * 1024,
-  integrity: 4 * 1024 * 1024,
+  integrity: 16 * 1024,
   publicCatalog: 8 * 1024 * 1024,
   privateCatalog: 8 * 1024 * 1024,
   privateFirewalls: 32 * 1024 * 1024,
@@ -41,7 +39,7 @@ const CONNECTOR_CATALOG_OBJECT_MAX_BYTES = {
 const connectorCatalogActivePointerSchema = z
   .object({
     catalogVersion: connectorCatalogVersionSchema,
-    integrity: artifactReferenceSchema,
+    integrityDigest: digestSchema,
   })
   .strict();
 
@@ -49,20 +47,14 @@ export type ConnectorCatalogActivePointer = z.infer<
   typeof connectorCatalogActivePointerSchema
 >;
 
-interface ConnectorCatalogArtifactReference {
-  readonly key: string;
-  readonly digest: string;
-}
-
 export interface ConnectorCatalogReleaseIdentity {
   readonly schemaVersion: number;
   readonly catalogVersion: string;
-  readonly integrity: ConnectorCatalogArtifactReference;
-  readonly publicCatalog: ConnectorCatalogArtifactReference;
-  readonly privateCatalog: ConnectorCatalogArtifactReference;
-  readonly privateFirewalls: ConnectorCatalogArtifactReference;
-  readonly runnerFirewalls: ConnectorCatalogArtifactReference;
-  readonly requiredCapabilities: readonly ConnectorCatalogCapability[];
+  readonly integrityDigest: string;
+  readonly publicCatalogDigest: string;
+  readonly privateCatalogDigest: string;
+  readonly privateFirewallsDigest: string;
+  readonly runnerFirewallsDigest: string;
 }
 
 export interface ValidatedConnectorCatalogCandidate {
@@ -158,53 +150,11 @@ function assertSupportedArtifactSchema(value: unknown): void {
   }
 }
 
-function assertSupportedCapabilities(value: unknown): void {
-  if (!isRecord(value) || !Array.isArray(value.requiredCapabilities)) {
-    return;
-  }
-  if (
-    value.requiredCapabilities.some((capability) => {
-      return (
-        typeof capability === "string" &&
-        !SUPPORTED_CONNECTOR_CATALOG_CAPABILITIES.some((supported) => {
-          return supported === capability;
-        })
-      );
-    })
-  ) {
-    fail("unsupported-capability");
-  }
-}
-
-function assertPointerIntegrityKey(
-  pointer: ConnectorCatalogActivePointer,
-): void {
-  const expected = connectorCatalogReleaseArtifactKeys(
-    pointer.catalogVersion,
-  ).integrityCatalog;
-  if (pointer.integrity.key !== expected) {
-    fail("invalid-reference");
-  }
-}
-
-function assertIntegrityReferences(args: {
+function assertIntegrityCatalogVersion(args: {
   readonly pointer: ConnectorCatalogActivePointer;
   readonly integrity: ConnectorCatalogIntegrityArtifact;
 }): void {
   if (args.integrity.catalogVersion !== args.pointer.catalogVersion) {
-    fail("invalid-reference");
-  }
-  const expected = connectorCatalogReleaseArtifactKeys(
-    args.pointer.catalogVersion,
-  );
-  const references = args.integrity.artifacts;
-  if (
-    references.publicCatalog.key !== expected.publicCatalog ||
-    references.privateCatalog.key !== expected.privateCatalog ||
-    references.privateFirewalls.key !== expected.privateFirewalls ||
-    references.runnerFirewalls.key !== expected.runnerFirewalls ||
-    references.staticFilesPublication.key !== "icons/static-files.json"
-  ) {
     fail("invalid-reference");
   }
 }
@@ -223,14 +173,12 @@ function assertNoReservedModelProviderRefs(args: {
   readonly privateRefs: readonly string[];
   readonly privateFirewallRefs: readonly string[];
   readonly runnerFirewallRefs: readonly string[];
-  readonly integrityRefs: readonly string[];
 }): void {
   const refs = [
     ...args.publicRefs,
     ...args.privateRefs,
     ...args.privateFirewallRefs,
     ...args.runnerFirewallRefs,
-    ...args.integrityRefs,
   ];
   if (
     refs.some((ref) => {
@@ -255,7 +203,6 @@ export async function loadConnectorCatalogActivePointer(
     connectorCatalogActivePointerSchema,
     "invalid-pointer",
   );
-  assertPointerIntegrityKey(pointer);
   return pointer;
 }
 
@@ -280,54 +227,56 @@ async function loadIntegrityArtifact(args: {
 }): Promise<ConnectorCatalogIntegrityArtifact> {
   const bytes = await readBoundedArtifact(
     args.reader,
-    args.pointer.integrity.key,
+    connectorCatalogReleaseArtifactKeys(args.pointer.catalogVersion)
+      .integrityCatalog,
     CONNECTOR_CATALOG_OBJECT_MAX_BYTES.integrity,
   );
-  assertDigest(bytes, args.pointer.integrity.digest);
+  assertDigest(bytes, args.pointer.integrityDigest);
   const json = decodedJson(bytes);
   assertSupportedArtifactSchema(json.value);
-  assertSupportedCapabilities(json.value);
   const integrity = parseStrict(
     json.value,
     connectorCatalogIntegrityArtifactSchema,
     "invalid-artifact",
   );
-  assertIntegrityReferences({ pointer: args.pointer, integrity });
+  assertIntegrityCatalogVersion({ pointer: args.pointer, integrity });
   return integrity;
 }
 
 async function loadCatalogViewBytes(args: {
   readonly reader: ConnectorCatalogArtifactReader;
+  readonly catalogVersion: string;
   readonly integrity: ConnectorCatalogIntegrityArtifact;
 }): Promise<ConnectorCatalogViewBytes> {
-  const references = args.integrity.artifacts;
+  const keys = connectorCatalogReleaseArtifactKeys(args.catalogVersion);
+  const digests = args.integrity.artifacts;
   const [publicCatalog, privateCatalog, privateFirewalls, runnerFirewalls] =
     await Promise.all([
       readBoundedArtifact(
         args.reader,
-        references.publicCatalog.key,
+        keys.publicCatalog,
         CONNECTOR_CATALOG_OBJECT_MAX_BYTES.publicCatalog,
       ),
       readBoundedArtifact(
         args.reader,
-        references.privateCatalog.key,
+        keys.privateCatalog,
         CONNECTOR_CATALOG_OBJECT_MAX_BYTES.privateCatalog,
       ),
       readBoundedArtifact(
         args.reader,
-        references.privateFirewalls.key,
+        keys.privateFirewalls,
         CONNECTOR_CATALOG_OBJECT_MAX_BYTES.privateFirewalls,
       ),
       readBoundedArtifact(
         args.reader,
-        references.runnerFirewalls.key,
+        keys.runnerFirewalls,
         CONNECTOR_CATALOG_OBJECT_MAX_BYTES.runnerFirewalls,
       ),
     ]);
-  assertDigest(publicCatalog, references.publicCatalog.digest);
-  assertDigest(privateCatalog, references.privateCatalog.digest);
-  assertDigest(privateFirewalls, references.privateFirewalls.digest);
-  assertDigest(runnerFirewalls, references.runnerFirewalls.digest);
+  assertDigest(publicCatalog, digests.publicCatalog);
+  assertDigest(privateCatalog, digests.privateCatalog);
+  assertDigest(privateFirewalls, digests.privateFirewalls);
+  assertDigest(runnerFirewalls, digests.runnerFirewalls);
   return { publicCatalog, privateCatalog, privateFirewalls, runnerFirewalls };
 }
 
@@ -405,9 +354,6 @@ function validateCatalogViews(
         return firewall.name;
       },
     ),
-    integrityRefs: integrity.connectors.map((connector) => {
-      return connector.connectorRef;
-    }),
   });
   const publicLeak = safeSync(() => {
     assertPublicCatalogArtifactHasNoPrivateFields(
@@ -436,12 +382,11 @@ function releaseIdentity(
   return {
     schemaVersion: SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
     catalogVersion: pointer.catalogVersion,
-    integrity: { ...pointer.integrity },
-    publicCatalog: { ...integrity.artifacts.publicCatalog },
-    privateCatalog: { ...integrity.artifacts.privateCatalog },
-    privateFirewalls: { ...integrity.artifacts.privateFirewalls },
-    runnerFirewalls: { ...integrity.artifacts.runnerFirewalls },
-    requiredCapabilities: [...integrity.requiredCapabilities],
+    integrityDigest: pointer.integrityDigest,
+    publicCatalogDigest: integrity.artifacts.publicCatalog,
+    privateCatalogDigest: integrity.artifacts.privateCatalog,
+    privateFirewallsDigest: integrity.artifacts.privateFirewalls,
+    runnerFirewallsDigest: integrity.artifacts.runnerFirewalls,
   };
 }
 
@@ -452,6 +397,7 @@ export async function loadConnectorCatalogCandidate(args: {
   const integrity = await loadIntegrityArtifact(args);
   const bytes = await loadCatalogViewBytes({
     reader: args.reader,
+    catalogVersion: args.pointer.catalogVersion,
     integrity,
   });
   const views = parseCatalogViews(bytes, args.pointer.catalogVersion);
