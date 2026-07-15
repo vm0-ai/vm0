@@ -44,7 +44,7 @@ interface ConnectorCatalogSource {
   readonly sourceId: string;
 }
 
-export type ConnectorCatalogRawSyncStatus = Omit<
+type ConnectorCatalogRawSyncStatus = Omit<
   ConnectorCatalogSyncStatus,
   "filtering"
 >;

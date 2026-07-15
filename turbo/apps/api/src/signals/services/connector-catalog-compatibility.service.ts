@@ -62,24 +62,12 @@ interface ActiveSnapshot extends ActiveSnapshotIdentity {
   readonly privateCatalog: string;
 }
 
-export interface ConnectorCatalogCompatibilityResult {
-  readonly snapshot: ActiveSnapshotIdentity | null;
-  readonly filtering: ConnectorCatalogFilteringStatus;
-}
-
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function registrationKey(connectorRef: string, authMethodId: string): string {
   return `${connectorRef}\0${authMethodId}`;
-}
-
-function snapshotIdentity(snapshot: ActiveSnapshot): ActiveSnapshotIdentity {
-  return {
-    catalogVersion: snapshot.catalogVersion,
-    integrityDigest: snapshot.integrityDigest,
-  };
 }
 
 function executableCapabilityState(): ExecutableCapabilityState {
@@ -357,20 +345,14 @@ async function reconcileCompatibility(args: {
   readonly db: Db;
   readonly sourceId: string;
   readonly capability: ExecutableCapabilityState;
-}): Promise<ConnectorCatalogCompatibilityResult> {
+}): Promise<ConnectorCatalogFilteringStatus> {
   const hasState = await lockSyncState(args.db, args.sourceId);
   if (!hasState) {
-    return {
-      snapshot: null,
-      filtering: staleFilteringStatus(args.capability.digest),
-    };
+    return staleFilteringStatus(args.capability.digest);
   }
   const snapshot = await activeSnapshotForUpdate(args.db, args.sourceId);
   if (snapshot === undefined) {
-    return {
-      snapshot: null,
-      filtering: staleFilteringStatus(args.capability.digest),
-    };
+    return staleFilteringStatus(args.capability.digest);
   }
 
   await args.db
@@ -426,15 +408,12 @@ async function reconcileCompatibility(args: {
     .limit(1);
   if (existing !== undefined) {
     return {
-      snapshot: snapshotIdentity(snapshot),
-      filtering: {
-        capabilityDigest: args.capability.digest,
-        evaluatedAt: existing.evaluatedAt.toISOString(),
-        stale: false,
-        filteredAuthMethods: connectorCatalogFilteredAuthMethodsSchema.parse(
-          existing.filteredAuthMethods,
-        ),
-      },
+      capabilityDigest: args.capability.digest,
+      evaluatedAt: existing.evaluatedAt.toISOString(),
+      stale: false,
+      filteredAuthMethods: connectorCatalogFilteredAuthMethodsSchema.parse(
+        existing.filteredAuthMethods,
+      ),
     };
   }
 
@@ -450,13 +429,10 @@ async function reconcileCompatibility(args: {
     filteredAuthMethods: [...filteredAuthMethods],
   });
   return {
-    snapshot: snapshotIdentity(snapshot),
-    filtering: {
-      capabilityDigest: args.capability.digest,
-      evaluatedAt: evaluatedAt.toISOString(),
-      stale: false,
-      filteredAuthMethods,
-    },
+    capabilityDigest: args.capability.digest,
+    evaluatedAt: evaluatedAt.toISOString(),
+    stale: false,
+    filteredAuthMethods,
   };
 }
 
@@ -464,34 +440,33 @@ async function compatibilityStatus(args: {
   readonly db: ReadonlyDb;
   readonly sourceId: string;
   readonly capabilityDigest: string;
-}): Promise<ConnectorCatalogCompatibilityResult> {
+  readonly snapshot: ActiveSnapshotIdentity | null;
+}): Promise<ConnectorCatalogFilteringStatus> {
+  if (args.snapshot === null) {
+    return staleFilteringStatus(args.capabilityDigest);
+  }
+
   const [result] = await args.db
     .select({
-      catalogVersion: connectorCatalogActiveSnapshot.catalogVersion,
-      integrityDigest: connectorCatalogActiveSnapshot.integrityDigest,
       evaluatedAt: connectorCatalogCompatibilityEvaluation.evaluatedAt,
       filteredAuthMethods:
         connectorCatalogCompatibilityEvaluation.filteredAuthMethods,
     })
-    .from(connectorCatalogActiveSnapshot)
-    .leftJoin(
-      connectorCatalogCompatibilityEvaluation,
+    .from(connectorCatalogCompatibilityEvaluation)
+    .where(
       and(
-        eq(
-          connectorCatalogCompatibilityEvaluation.sourceId,
-          connectorCatalogActiveSnapshot.sourceId,
-        ),
+        eq(connectorCatalogCompatibilityEvaluation.sourceId, args.sourceId),
         eq(
           connectorCatalogCompatibilityEvaluation.schemaVersion,
-          connectorCatalogActiveSnapshot.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
         ),
         eq(
           connectorCatalogCompatibilityEvaluation.catalogVersion,
-          connectorCatalogActiveSnapshot.catalogVersion,
+          args.snapshot.catalogVersion,
         ),
         eq(
           connectorCatalogCompatibilityEvaluation.integrityDigest,
-          connectorCatalogActiveSnapshot.integrityDigest,
+          args.snapshot.integrityDigest,
         ),
         eq(
           connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
@@ -499,41 +474,17 @@ async function compatibilityStatus(args: {
         ),
       ),
     )
-    .where(
-      and(
-        eq(connectorCatalogActiveSnapshot.sourceId, args.sourceId),
-        eq(
-          connectorCatalogActiveSnapshot.schemaVersion,
-          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
-        ),
-      ),
-    )
     .limit(1);
-  if (result?.evaluatedAt === null || result === undefined) {
-    return {
-      snapshot:
-        result === undefined
-          ? null
-          : {
-              catalogVersion: result.catalogVersion,
-              integrityDigest: result.integrityDigest,
-            },
-      filtering: staleFilteringStatus(args.capabilityDigest),
-    };
+  if (result === undefined) {
+    return staleFilteringStatus(args.capabilityDigest);
   }
   return {
-    snapshot: {
-      catalogVersion: result.catalogVersion,
-      integrityDigest: result.integrityDigest,
-    },
-    filtering: {
-      capabilityDigest: args.capabilityDigest,
-      evaluatedAt: result.evaluatedAt.toISOString(),
-      stale: false,
-      filteredAuthMethods: connectorCatalogFilteredAuthMethodsSchema.parse(
-        result.filteredAuthMethods,
-      ),
-    },
+    capabilityDigest: args.capabilityDigest,
+    evaluatedAt: result.evaluatedAt.toISOString(),
+    stale: false,
+    filteredAuthMethods: connectorCatalogFilteredAuthMethodsSchema.parse(
+      result.filteredAuthMethods,
+    ),
   };
 }
 
@@ -541,7 +492,7 @@ export const reconcileConnectorCatalogCompatibility$ = command(
   async (
     { set },
     signal: AbortSignal,
-  ): Promise<ConnectorCatalogCompatibilityResult> => {
+  ): Promise<ConnectorCatalogFilteringStatus> => {
     const source = connectorCatalogSource();
     const capability = executableCapabilityState();
     const status = await set(writeDb$).transaction(async (tx) => {
@@ -559,14 +510,16 @@ export const reconcileConnectorCatalogCompatibility$ = command(
 export const connectorCatalogCompatibilityStatus$ = command(
   async (
     { get },
+    snapshot: ActiveSnapshotIdentity | null,
     signal: AbortSignal,
-  ): Promise<ConnectorCatalogCompatibilityResult> => {
+  ): Promise<ConnectorCatalogFilteringStatus> => {
     const source = connectorCatalogSource();
     const capability = executableCapabilityState();
     const status = await compatibilityStatus({
       db: get(db$),
       sourceId: source.sourceId,
       capabilityDigest: capability.digest,
+      snapshot,
     });
     signal.throwIfAborted();
     return status;
