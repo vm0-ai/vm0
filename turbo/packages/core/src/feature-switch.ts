@@ -387,6 +387,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerChatThreadSuggestions]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.SidebarManageIconCollapse]: {
     maintainer: "ming@vm0.ai",
     description:

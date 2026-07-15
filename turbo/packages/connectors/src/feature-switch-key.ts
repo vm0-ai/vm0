@@ -66,6 +66,7 @@ export enum FeatureSwitchKey {
   AgentUnreadIndicators = "agentUnreadIndicators",
   MobileUnreadChatThreadShortcuts = "mobileUnreadChatThreadShortcuts",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
+  ComposerChatThreadSuggestions = "composerChatThreadSuggestions",
   SidebarManageIconCollapse = "sidebarManageIconCollapse",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   TeamsIntegration = "teamsIntegration",
