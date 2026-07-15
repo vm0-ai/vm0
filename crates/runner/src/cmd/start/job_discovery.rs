@@ -103,6 +103,11 @@ struct AdmittedClaim {
     cancel: RunCancellationHandle,
 }
 
+struct PreparedAffinityCandidate {
+    candidate: JobCandidate,
+    exact_generation_reservation: Option<Box<ReservedIdleSandbox>>,
+}
+
 struct ReuseAdmissionRequest<'a> {
     profile_name: &'a str,
     device_rate_limits: &'a Option<sandbox::DeviceRateLimits>,
@@ -459,7 +464,10 @@ async fn claim_with_local_admission(
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
-    let mut candidate = prepare_affinity_protected_candidate(
+    let PreparedAffinityCandidate {
+        mut candidate,
+        exact_generation_reservation,
+    } = prepare_affinity_protected_candidate(
         candidate,
         profile_name,
         job_vcpu,
@@ -472,15 +480,20 @@ async fn claim_with_local_admission(
 
     // Reserve either the exact reusable sandbox or fresh capacity before
     // claiming so a losing claim can restore all local ownership.
-    let resource = acquire_local_admission_resource(
-        &candidate,
-        profile_name,
-        job_vcpu,
-        job_memory,
-        device_rate_limits,
-        ctx,
-    )
-    .await?;
+    let resource = match exact_generation_reservation {
+        Some(reservation) => LocalAdmissionResource::Reusable(reservation),
+        None => {
+            acquire_local_admission_resource(
+                &candidate,
+                profile_name,
+                job_vcpu,
+                job_memory,
+                device_rate_limits,
+                ctx,
+            )
+            .await?
+        }
+    };
 
     // Insert cancel token before claiming so provider-side cancel channels
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
@@ -562,20 +575,59 @@ async fn prepare_affinity_protected_candidate(
     job_memory: u32,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &DiscoveredJobContext<'_>,
-) -> Option<JobCandidate> {
-    if !candidate.is_affinity_protected() {
-        return Some(
-            candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
+) -> Option<PreparedAffinityCandidate> {
+    if candidate.is_history_generation_affinity_protected()
+        && let (Some(cli_agent_session_id), Some(history_generation_run_id)) = (
+            candidate.cli_agent_session_id().map(str::to_owned),
+            candidate.history_generation_run_id(),
+        )
+    {
+        if let Some(reservation) = reserve_reusable_idle(
+            &cli_agent_session_id,
+            profile_name,
+            device_rate_limits,
+            Some(history_generation_run_id),
+            ctx,
+        )
+        .await
+        {
+            return Some(PreparedAffinityCandidate {
+                candidate: candidate
+                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
+                exact_generation_reservation: Some(Box::new(reservation)),
+            });
+        }
+
+        let delay = candidate
+            .history_generation_affinity_protection_remaining()
+            .unwrap_or_default();
+        let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+        info!(
+            run_id = %candidate.run_id(),
+            session_fingerprint = %session_fingerprint,
+            delay_ms = delay.as_millis(),
+            "exact session-history generation protected by another runner, deferring claim"
         );
+        ctx.spawn_ctx.provider.defer_poll_after(delay).await;
+        return None;
+    }
+
+    if !candidate.is_affinity_protected() {
+        return Some(PreparedAffinityCandidate {
+            candidate: candidate
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
+            exact_generation_reservation: None,
+        });
     }
     let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
-        return Some(
-            candidate
+        return Some(PreparedAffinityCandidate {
+            candidate: candidate
                 .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::MissingSessionMetadata),
-        );
+            exact_generation_reservation: None,
+        });
     };
 
-    let has_exact_reusable = ctx.idle_pool.lock().await.has_reusable(
+    let has_reusable = ctx.idle_pool.lock().await.has_reusable(
         &cli_agent_session_id,
         profile_name,
         device_rate_limits,
@@ -585,10 +637,12 @@ async fn prepare_affinity_protected_candidate(
         && held_session_states
             .iter()
             .any(|state| state.session_id == cli_agent_session_id);
-    if has_exact_reusable || has_fresh_affinity {
-        return Some(
-            candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
-        );
+    if has_reusable || has_fresh_affinity {
+        return Some(PreparedAffinityCandidate {
+            candidate: candidate
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
+            exact_generation_reservation: None,
+        });
     }
 
     let delay = candidate
@@ -632,7 +686,7 @@ async fn acquire_local_admission_resource(
     loop {
         if let Some(session_id) = candidate.cli_agent_session_id()
             && let Some(reservation) =
-                reserve_reusable_idle(session_id, profile_name, device_rate_limits, ctx).await
+                reserve_reusable_idle(session_id, profile_name, device_rate_limits, None, ctx).await
         {
             return Some(LocalAdmissionResource::Reusable(Box::new(reservation)));
         }
@@ -671,11 +725,20 @@ async fn reserve_reusable_idle(
     session_id: &str,
     profile_name: &str,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    history_generation_run_id: Option<RunId>,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<ReservedIdleSandbox> {
     let (reservation, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let reservation = pool.reserve_reusable(session_id, profile_name, device_rate_limits)?;
+        let reservation = match history_generation_run_id {
+            Some(history_generation_run_id) => pool.reserve_reusable_generation(
+                session_id,
+                profile_name,
+                device_rate_limits,
+                history_generation_run_id,
+            )?,
+            None => pool.reserve_reusable(session_id, profile_name, device_rate_limits)?,
+        };
         let snapshot = pool.status_snapshot();
         (reservation, snapshot)
     };

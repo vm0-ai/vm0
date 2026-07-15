@@ -981,6 +981,27 @@ impl IdlePool {
         Some(ReservedIdleSandbox { entry })
     }
 
+    pub fn reserve_reusable_generation(
+        &mut self,
+        session_id: &str,
+        profile_name: &str,
+        device_rate_limits: &Option<DeviceRateLimits>,
+        history_generation_run_id: RunId,
+    ) -> Option<ReservedIdleSandbox> {
+        if !self.has_reusable(session_id, profile_name, device_rate_limits)
+            || self
+                .entries
+                .get(session_id)
+                .and_then(|entry| entry.metadata.history_generation_run_id)
+                != Some(history_generation_run_id)
+        {
+            return None;
+        }
+        let entry = self.entries.remove(session_id)?;
+        self.bump_revision();
+        Some(ReservedIdleSandbox { entry })
+    }
+
     pub fn restore_reserved(
         &mut self,
         reservation: ReservedIdleSandbox,
@@ -1091,6 +1112,7 @@ impl IdlePool {
                         last_completed_at: last_completed_at.clone(),
                         reusable_sandbox: Some(ReusableSandboxState {
                             profile: entry.metadata.profile_name.clone(),
+                            history_generation_run_id: entry.metadata.history_generation_run_id,
                         }),
                     })
             })
@@ -1471,6 +1493,47 @@ mod tests {
         assert_eq!(pool.status_snapshot().idle_vms[0].sandbox_id, sandbox_id);
     }
 
+    #[test]
+    fn reusable_generation_reservation_requires_exact_generation() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let held_generation_run_id = RunId::new_v4();
+        let requested_generation_run_id = RunId::new_v4();
+        let candidate =
+            ParkedIdleCandidateBuilder::new("session-generation", make_budget_lease(2, 2048))
+                .with_history_generation_run_id(held_generation_run_id)
+                .with_last_completed_at("2026-07-15T00:00:00.000Z")
+                .build();
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let parked_revision = pool.status_snapshot().revision;
+
+        assert!(
+            pool.reserve_reusable_generation(
+                "session-generation",
+                "vm0/default",
+                &None,
+                requested_generation_run_id,
+            )
+            .is_none(),
+            "a different generation must remain parked"
+        );
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.status_snapshot().revision, parked_revision);
+
+        let reservation = pool
+            .reserve_reusable_generation(
+                "session-generation",
+                "vm0/default",
+                &None,
+                held_generation_run_id,
+            )
+            .expect("the exact generation should reserve");
+        assert_eq!(
+            reservation.history_generation_run_id(),
+            Some(held_generation_run_id)
+        );
+        assert_eq!(pool.len(), 0);
+    }
+
     #[tokio::test]
     async fn reserved_restore_preserves_newer_same_session_entry() {
         let mut pool = IdlePool::new(pool_config(0));
@@ -1769,11 +1832,15 @@ mod tests {
     #[test]
     fn held_session_states_include_only_entries_with_timestamps() {
         let mut pool = IdlePool::new(pool_config(0));
+        let history_generation_run_id = RunId::new_v4();
         let unconfirmed = make_candidate_for("sess-unconfirmed", 2, 2048);
         let confirmed_b = make_candidate_for("sess-b", 2, 2048)
             .with_last_completed_at("2026-05-28T00:00:01.000Z".to_string());
-        let confirmed_a = make_candidate_for("sess-a", 2, 2048)
-            .with_last_completed_at("2026-05-28T00:00:00.000Z".to_string());
+        let confirmed_a = ParkedIdleCandidateBuilder::new("sess-a", make_budget_lease(2, 2048))
+            .with_mock_sandbox_name("test")
+            .with_history_generation_run_id(history_generation_run_id)
+            .with_last_completed_at("2026-05-28T00:00:00.000Z")
+            .build();
 
         let _ = pool.park(unconfirmed);
         let _ = pool.park(confirmed_b);
@@ -1787,6 +1854,7 @@ mod tests {
                     last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
                     reusable_sandbox: Some(ReusableSandboxState {
                         profile: "vm0/default".to_string(),
+                        history_generation_run_id: Some(history_generation_run_id),
                     }),
                 },
                 HeldSessionState {
@@ -1794,6 +1862,7 @@ mod tests {
                     last_completed_at: "2026-05-28T00:00:01.000Z".to_string(),
                     reusable_sandbox: Some(ReusableSandboxState {
                         profile: "vm0/default".to_string(),
+                        history_generation_run_id: None,
                     }),
                 },
             ],

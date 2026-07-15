@@ -360,6 +360,8 @@ impl JobProvider for ApiProvider {
                     let run_id = job.run_id;
                     let cli_agent_session_id = job.cli_agent_session_id;
                     let history_generation_run_id = job.history_generation_run_id;
+                    let history_generation_affinity_protected_until =
+                        job.history_generation_affinity_protected_until;
                     let affinity_protected_until = job.affinity_protected_until;
                     let profile = job
                         .experimental_profile
@@ -368,6 +370,9 @@ impl JobProvider for ApiProvider {
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
                         .with_history_generation_run_id(history_generation_run_id)
+                        .with_history_generation_affinity_protected_until(
+                            history_generation_affinity_protected_until,
+                        )
                         .with_discovery_source(JobDiscoverySource::Poll)
                         .with_poll_reason(poll_reason_value(reason))
                         .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed);
@@ -1903,6 +1908,7 @@ mod tests {
                         "experimentalProfile": "vm0/default",
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
+                        "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
                         "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
                     }
                 }));
@@ -1927,6 +1933,7 @@ mod tests {
             Some(history_generation_run_id)
         );
         assert!(discovered.is_affinity_protected());
+        assert!(discovered.is_history_generation_affinity_protected());
         assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)

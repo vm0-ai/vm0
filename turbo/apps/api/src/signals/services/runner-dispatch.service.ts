@@ -32,6 +32,7 @@ export async function notifyRunnerJob(
         runnerGroup: args.runnerGroup,
         profile: args.profile,
         cliAgentSessionId: args.cliAgentSessionId,
+        historyGenerationRunId: args.historyGenerationRunId,
         createdAt: args.createdAt,
         currentDate,
       }),
@@ -56,6 +57,8 @@ export async function notifyRunnerJob(
     args.profile,
     {
       cliAgentSessionId: args.cliAgentSessionId,
+      historyGenerationAffinityProtectedUntil:
+        affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
       affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
       historyGenerationRunId: args.historyGenerationRunId,
     },
@@ -67,6 +70,7 @@ export async function notifyRunnerJob(
     profile: args.profile,
     notification_target: "broadcast",
     session_affinity: affinity.status,
+    history_generation_affinity: affinity.historyGenerationStatus,
   };
   // Queue-relative actions are cumulative boundaries. Affinity and publish
   // durations are nested children and must not be added to those boundaries.
