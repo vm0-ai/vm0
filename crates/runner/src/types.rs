@@ -37,6 +37,8 @@ pub struct Job {
     #[serde(default)]
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
+    pub history_generation_affinity_protected_until: Option<String>,
+    #[serde(default)]
     pub affinity_protected_until: Option<String>,
 }
 
@@ -1192,6 +1194,8 @@ impl ExecutionContext {
 #[serde(rename_all = "camelCase")]
 pub struct ReusableSandboxState {
     pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_generation_run_id: Option<RunId>,
 }
 
 /// Runner state snapshot sent to the server via heartbeat.
@@ -1906,6 +1910,9 @@ mod tests {
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
                 reusable_sandbox: Some(ReusableSandboxState {
                     profile: "vm0/default".into(),
+                    history_generation_run_id: Some(
+                        "11111111-1111-4111-8111-111111111111".parse().unwrap(),
+                    ),
                 }),
             }],
             mode: "running".into(),
@@ -1928,7 +1935,8 @@ mod tests {
                 "sessionId": "session-abc",
                 "lastCompletedAt": "2026-05-28T00:00:00.000Z",
                 "reusableSandbox": {
-                    "profile": "vm0/default"
+                    "profile": "vm0/default",
+                    "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
                 }
             }])
         );
@@ -1939,12 +1947,24 @@ mod tests {
     fn held_session_state_accepts_legacy_shape_and_omits_absent_capability() {
         let state: HeldSessionState = serde_json::from_value(json!({
             "sessionId": "session-legacy",
-            "lastCompletedAt": "2026-05-28T00:00:00.000Z"
+            "lastCompletedAt": "2026-05-28T00:00:00.000Z",
+            "reusableSandbox": {
+                "profile": "vm0/default"
+            }
         }))
         .unwrap();
-        assert!(state.reusable_sandbox.is_none());
+        assert!(
+            state
+                .reusable_sandbox
+                .as_ref()
+                .is_some_and(|sandbox| sandbox.history_generation_run_id.is_none())
+        );
 
         let serialized = serde_json::to_value(state).unwrap();
-        assert!(serialized.get("reusableSandbox").is_none());
+        assert!(
+            serialized["reusableSandbox"]
+                .get("historyGenerationRunId")
+                .is_none()
+        );
     }
 }
