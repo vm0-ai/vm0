@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.64](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.63...nbd-cow-v0.4.64) (2026-07-15)
+
+
+### Documentation
+
+* **nbd-cow:** document detailed destroy runtime contract ([#21652](https://github.com/vm0-ai/vm0/issues/21652)) ([4b58ead](https://github.com/vm0-ai/vm0/commit/4b58ead42b3ff9f168db65dac94205f452ef5554))
+
 ## [0.4.63](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.62...nbd-cow-v0.4.63) (2026-07-15)
 
 

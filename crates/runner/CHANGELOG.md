@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.24...runner-rs-v0.144.25) (2026-07-15)
+
+
+### Documentation
+
+* **mitm-addon:** correct request capture test comment ([#21650](https://github.com/vm0-ai/vm0/issues/21650)) ([b612869](https://github.com/vm0-ai/vm0/commit/b612869daf6b03d15308d16def1e847f15711dd9))
+
 ## [0.144.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.23...runner-rs-v0.144.24) (2026-07-15)
 
 ## [0.144.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.22...runner-rs-v0.144.23) (2026-07-15)
