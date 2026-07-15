@@ -46,6 +46,7 @@ interface S3Credentials {
 
 interface DownloadS3BufferOptions {
   readonly maxBytes?: number;
+  readonly signal?: AbortSignal;
 }
 
 export type ConditionalS3BufferDownload =
@@ -61,6 +62,7 @@ export class S3ObjectSizeLimitError extends Error {
     readonly key: string,
     readonly size: number,
     readonly maxBytes: number,
+    readonly etag: string | null = null,
   ) {
     super(`S3 object is too large: ${size} bytes exceeds ${maxBytes} bytes`);
     this.name = "S3ObjectSizeLimitError";
@@ -248,9 +250,11 @@ export function downloadS3BufferWithMaxBytes(
   bucket: string,
   key: string,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Computed<Promise<Buffer>> {
   return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key, {
     maxBytes,
+    signal,
   });
 }
 
@@ -259,6 +263,7 @@ export function downloadS3BufferWithMaxBytesIfChanged(
   key: string,
   maxBytes: number,
   ifNoneMatch: string | null,
+  signal?: AbortSignal,
 ): Computed<Promise<ConditionalS3BufferDownload>> {
   return computed(async (get): Promise<ConditionalS3BufferDownload> => {
     const client = get(s3ClientForBucket(bucket));
@@ -269,6 +274,7 @@ export function downloadS3BufferWithMaxBytesIfChanged(
           Key: key,
           IfNoneMatch: ifNoneMatch ?? undefined,
         }),
+        { abortSignal: signal },
       ),
     );
     if (!downloaded.ok) {
@@ -280,7 +286,7 @@ export function downloadS3BufferWithMaxBytesIfChanged(
     const response: GetObjectCommandOutput = downloaded.value;
     return {
       kind: "downloaded",
-      buffer: await readS3ObjectBody(response, key, { maxBytes }),
+      buffer: await readS3ObjectBody(response, key, { maxBytes, signal }),
       etag: response.ETag ?? null,
     };
   });
@@ -353,6 +359,7 @@ function downloadS3BufferWithClient(
     const client = get(client$);
     const response = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
+      { abortSignal: options.signal },
     );
     return await readS3ObjectBody(response, key, options);
   });
@@ -362,6 +369,7 @@ async function readS3ObjectBody(
   response: {
     readonly Body?: unknown;
     readonly ContentLength?: number;
+    readonly ETag?: string;
   },
   key: string,
   options: DownloadS3BufferOptions,
@@ -373,6 +381,10 @@ async function readS3ObjectBody(
     closeS3Body(response.Body);
     throw new Error("S3 object body is not an async byte stream");
   }
+  if (options.signal?.aborted) {
+    closeS3Body(response.Body);
+    options.signal.throwIfAborted();
+  }
   if (
     options.maxBytes !== undefined &&
     response.ContentLength !== undefined &&
@@ -383,11 +395,16 @@ async function readS3ObjectBody(
       key,
       response.ContentLength,
       options.maxBytes,
+      response.ETag ?? null,
     );
   }
   const chunks: Uint8Array[] = [];
   let totalLength = 0;
   for await (const chunk of response.Body) {
+    if (options.signal?.aborted) {
+      closeS3Body(response.Body);
+      options.signal.throwIfAborted();
+    }
     if (!(chunk instanceof Uint8Array)) {
       closeS3Body(response.Body);
       throw new Error("S3 object body yielded a non-byte chunk");
@@ -395,7 +412,12 @@ async function readS3ObjectBody(
     totalLength += chunk.length;
     if (options.maxBytes !== undefined && totalLength > options.maxBytes) {
       closeS3Body(response.Body);
-      throw new S3ObjectSizeLimitError(key, totalLength, options.maxBytes);
+      throw new S3ObjectSizeLimitError(
+        key,
+        totalLength,
+        options.maxBytes,
+        response.ETag ?? null,
+      );
     }
     chunks.push(chunk);
   }

@@ -22,7 +22,7 @@ import {
   S3ObjectSizeLimitError,
   type ConditionalS3BufferDownload,
 } from "../external/s3";
-import { safeSync, settle } from "../utils";
+import { safeSync, safeUrlParse, settle } from "../utils";
 import {
   CONNECTOR_CATALOG_ACTIVE_KEY,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
@@ -77,12 +77,26 @@ type CandidateCommitResult = "accepted" | "retry";
 
 class CandidateCommitRetry extends Error {}
 
+class ConnectorCatalogPersistenceError extends Error {
+  constructor() {
+    super("Connector catalog snapshot persistence failed");
+    this.name = "ConnectorCatalogPersistenceError";
+  }
+}
+
 function connectorCatalogSource(): ConnectorCatalogSource {
   const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
   const endpoint =
     env("S3_ENDPOINT") ??
     `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
-  const authority = new URL(endpoint).origin;
+  const endpointUrl = safeUrlParse(endpoint);
+  if (
+    endpointUrl === undefined ||
+    (endpointUrl.protocol !== "http:" && endpointUrl.protocol !== "https:")
+  ) {
+    throw new Error("Connector catalog source endpoint is invalid");
+  }
+  const authority = endpointUrl.origin;
   const sourceId = createHash("sha256")
     .update(authority)
     .update("\0")
@@ -213,12 +227,16 @@ function observedPointerFromState(
 }
 
 function cachedRejectionForPointer(
-  pointer: ConnectorCatalogActivePointer,
+  observation: PointerObservation & {
+    readonly pointer: ConnectorCatalogActivePointer;
+  },
   state: SyncStateSnapshot | undefined,
 ): ConnectorCatalogSyncFailureCode | undefined {
   if (
-    pointer.catalogVersion !== state?.lastRejectedCatalogVersion ||
-    pointer.integrityDigest !== state.lastRejectedIntegrityDigest
+    observation.pointer.catalogVersion !== state?.lastRejectedCatalogVersion ||
+    observation.pointer.integrityDigest !== state.lastRejectedIntegrityDigest ||
+    ((observation.etag !== null || state.lastRejectedPointerEtag !== null) &&
+      observation.etag !== state.lastRejectedPointerEtag)
   ) {
     return undefined;
   }
@@ -481,7 +499,7 @@ async function commitCandidate(args: {
   if (result.error instanceof CandidateCommitRetry) {
     return "retry";
   }
-  throw result.error;
+  throw new ConnectorCatalogPersistenceError();
 }
 
 async function responseFromState(args: {
@@ -594,10 +612,16 @@ async function loadPointerForSync(
   );
   runtime.signal.throwIfAborted();
   if (!downloaded.ok) {
+    const pointerObservation =
+      downloaded.error instanceof S3ObjectSizeLimitError &&
+      downloaded.error.etag !== null
+        ? { pointer: null, etag: downloaded.error.etag }
+        : undefined;
     return await rejectSyncAttempt(
       runtime,
       baseline,
       classifySyncFailure(downloaded.error),
+      pointerObservation,
     );
   }
   if (downloaded.value.kind === "not-modified") {
@@ -752,7 +776,7 @@ async function syncConnectorCatalogAttempt(
     return await completeUnchangedSync(runtime, baseline, pointerObservation);
   }
 
-  const cachedFailure = cachedRejectionForPointer(pointer, baseline);
+  const cachedFailure = cachedRejectionForPointer(pointerObservation, baseline);
   if (cachedFailure) {
     return await rejectSyncAttempt(
       runtime,
@@ -804,6 +828,7 @@ export const syncConnectorCatalog$ = command(
             CONNECTOR_CATALOG_ACTIVE_KEY,
             CONNECTOR_CATALOG_ACTIVE_MAX_BYTES,
             ifNoneMatch,
+            signal,
           ),
         );
         signal.throwIfAborted();
@@ -812,7 +837,7 @@ export const syncConnectorCatalog$ = command(
       reader: {
         readArtifact: async (key, maxBytes) => {
           const bytes = await get(
-            downloadS3BufferWithMaxBytes(source.bucket, key, maxBytes),
+            downloadS3BufferWithMaxBytes(source.bucket, key, maxBytes, signal),
           );
           signal.throwIfAborted();
           return bytes;

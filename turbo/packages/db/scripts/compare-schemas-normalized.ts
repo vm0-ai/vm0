@@ -263,12 +263,12 @@ function compareConstraints(
 } {
   const map1 = new Map(
     constraints1.map((c) => {
-      return [c.constraint_name, c];
+      return [`${c.table_name}.${c.constraint_name}`, c];
     }),
   );
   const map2 = new Map(
     constraints2.map((c) => {
-      return [c.constraint_name, c];
+      return [`${c.table_name}.${c.constraint_name}`, c];
     }),
   );
 

@@ -188,6 +188,42 @@ function buildPrivateConnector(connectorRef: string): JsonRecord {
   };
 }
 
+function buildBundledSkill(connectorRef: string): JsonRecord {
+  const versionId = "a".repeat(64);
+  const storageName = `connector-skill@${connectorRef}`;
+  const prefix = `__system__/volume/${storageName}/${versionId}`;
+  return {
+    kind: "bundled",
+    storageName,
+    versionId,
+    frontmatter: {
+      name: `${connectorRef} skill`,
+      description: `Use the ${connectorRef} connector`,
+    },
+    manifest: {
+      key: `${prefix}/manifest.json`,
+      digest: ZERO_DIGEST,
+    },
+    archive: {
+      key: `${prefix}/archive.tar.gz`,
+      digest: ZERO_DIGEST,
+    },
+  };
+}
+
+function setPrivateFirewallBase(artifact: JsonRecord, base: string): void {
+  const connector = firstRecord(artifact.connectors, "connectors");
+  const firewall = recordValue(connector.firewall, "firewall");
+  firstRecord(firewall.apis, "firewall.apis").base = base;
+  const routing = recordValue(connector.routing, "routing");
+  firstRecord(routing.apis, "routing.apis").base = base;
+}
+
+function setRunnerFirewallBase(artifact: JsonRecord, base: string): void {
+  const firewall = firstRecord(artifact.firewalls, "firewalls");
+  firstRecord(firewall.apis, "firewall.apis").base = base;
+}
+
 function buildGeneratedFirewall(args: {
   readonly connectorRef: string;
   readonly label: string;
@@ -614,6 +650,77 @@ describe("connector catalog valid lifecycle", () => {
     });
   });
 
+  it("accepts canonical firewall bases with authority parameters", async () => {
+    configureSource();
+    const base = "https://{awsHost+}.amazonaws.com";
+    const release = buildRelease({
+      version: "2026-07-15.parameterized-firewall",
+      generatedFirewall: true,
+      mutatePrivateFirewalls: (artifact) => {
+        setPrivateFirewallBase(artifact, base);
+        const connector = firstRecord(artifact.connectors, "connectors");
+        const routing = recordValue(connector.routing, "routing");
+        routing.fixedHosts = ["{awshost+}.amazonaws.com"];
+      },
+      mutateRunnerFirewalls: (artifact) => {
+        setRunnerFirewallBase(artifact, base);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: release.version },
+    });
+  });
+
+  it("accepts a complete bundled skill descriptor", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.bundled-skill",
+      mutatePrivate: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        connector.skill = buildBundledSkill("external-test");
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: release.version },
+    });
+  });
+
+  it("accepts source identities and platform requirements without local support", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.future-capability",
+      mutatePublic: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        firstRecord(connector.authMethods, "authMethods").id =
+          "service-account";
+      },
+      mutatePrivate: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        const method = firstRecord(connector.authMethods, "authMethods");
+        method.id = "service-account";
+        const access = recordValue(method.access, "access");
+        access.platformSecrets = ["FUTURE_PLATFORM_KEY"];
+        recordValue(access.envBindings, "envBindings").PLATFORM_KEY =
+          "$secrets.FUTURE_PLATFORM_KEY";
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      state: "current",
+      active: { catalogVersion: release.version },
+    });
+  });
+
   it("serializes overlapping syncs without a mixed snapshot", async () => {
     configureSource();
     const release = buildRelease({ version: "2026-07-15.concurrent" });
@@ -953,21 +1060,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           version: "invalid-skill-reference",
           mutatePrivate: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
-            const versionId = "a".repeat(64);
-            const prefix = `__system__/volume/connector-skill@wrong/${versionId}`;
-            connector.skill = {
-              kind: "bundled",
-              storageName: "connector-skill@wrong",
-              versionId,
-              manifest: {
-                key: `${prefix}/manifest.json`,
-                digest: ZERO_DIGEST,
-              },
-              archive: {
-                key: `${prefix}/archive.tar.gz`,
-                digest: ZERO_DIGEST,
-              },
-            };
+            connector.skill = buildBundledSkill("wrong");
           },
         });
       },
@@ -1003,6 +1096,85 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const firewall = recordValue(connector.firewall, "firewall");
             firstRecord(firewall.apis, "firewall.apis").base =
               "http://api.example.test/v1";
+          },
+        });
+      },
+    },
+    {
+      name: "non-canonical firewall base hostname",
+      expected: "relationship-mismatch",
+      release: () => {
+        const base = "https://API.EXAMPLE.TEST/v1";
+        return buildRelease({
+          version: "firewall-noncanonical-hostname",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            setPrivateFirewallBase(artifact, base);
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            setRunnerFirewallBase(artifact, base);
+          },
+        });
+      },
+    },
+    {
+      name: "unsafe firewall base path",
+      expected: "relationship-mismatch",
+      release: () => {
+        const base = "https://api.example.test/v1/../admin";
+        return buildRelease({
+          version: "firewall-unsafe-base-path",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            setPrivateFirewallBase(artifact, base);
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            setRunnerFirewallBase(artifact, base);
+          },
+        });
+      },
+    },
+    {
+      name: "non-canonical firewall host policy",
+      expected: "invalid-artifact",
+      release: () => {
+        const hostPolicy = {
+          kind: "providerOwned",
+          exactHosts: ["API.EXAMPLE.TEST"],
+        };
+        return buildRelease({
+          version: "firewall-noncanonical-host-policy",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            const firewall = recordValue(connector.firewall, "firewall");
+            firstRecord(firewall.apis, "firewall.apis").hostPolicy = hostPolicy;
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            const firewall = firstRecord(artifact.firewalls, "firewalls");
+            firstRecord(firewall.apis, "firewall.apis").hostPolicy = hostPolicy;
+          },
+        });
+      },
+    },
+    {
+      name: "invalid firewall auth base URL",
+      expected: "relationship-mismatch",
+      release: () => {
+        const authBase = "http://webhook.example.test/token";
+        return buildRelease({
+          version: "firewall-invalid-auth-base",
+          generatedFirewall: true,
+          mutatePrivateFirewalls: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            const firewall = recordValue(connector.firewall, "firewall");
+            const api = firstRecord(firewall.apis, "firewall.apis");
+            recordValue(api.auth, "firewall auth").base = authBase;
+          },
+          mutateRunnerFirewalls: (artifact) => {
+            const firewall = firstRecord(artifact.firewalls, "firewalls");
+            const api = firstRecord(firewall.apis, "firewall.apis");
+            recordValue(api.auth, "firewall auth").base = authBase;
           },
         });
       },
@@ -1154,6 +1326,84 @@ describe("connector catalog rejection and latest-valid retention", () => {
     ).toMatchObject({
       Key: ACTIVE_KEY,
       IfNoneMatch: objectEtag(invalid.pointer),
+    });
+  });
+
+  it("re-evaluates a rejected identity when the pointer ETag changes", async () => {
+    configureSource();
+    const invalid = buildRelease({
+      version: "2026-07-15.changed-rejection-etag",
+      mutatePublic: (artifact) => {
+        artifact.extra = true;
+      },
+    });
+    serveObjects(catalogObjects([invalid], invalid));
+    expectRejectedBeforeAcceptance(
+      (await syncCatalog()).body,
+      "invalid-artifact",
+    );
+
+    const changedPointer = Buffer.concat([invalid.pointer, Buffer.from("\n")]);
+    const changedObjects = new Map(catalogObjects([invalid], invalid));
+    changedObjects.set(ACTIVE_KEY, changedPointer);
+    serveObjects(changedObjects);
+    const callsBeforeReevaluation = context.mocks.s3.send.mock.calls.length;
+    expectRejectedBeforeAcceptance(
+      (await syncCatalog()).body,
+      "invalid-artifact",
+    );
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeReevaluation,
+    ).toBe(6);
+    expect(
+      commandInput(
+        context.mocks.s3.send.mock.calls[callsBeforeReevaluation]?.[0],
+      ),
+    ).toMatchObject({
+      Key: ACTIVE_KEY,
+      IfNoneMatch: objectEtag(invalid.pointer),
+    });
+  });
+
+  it("caches an oversized active pointer by its observed ETag", async () => {
+    configureSource();
+    const oversizedPointer = Buffer.alloc(16 * 1024 + 1);
+    const etag = objectEtag(oversizedPointer);
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = commandInput(command);
+      if (input.IfNoneMatch === etag) {
+        return Promise.reject(
+          Object.assign(new Error("Not modified"), {
+            $metadata: { httpStatusCode: 304 },
+          }),
+        );
+      }
+      return Promise.resolve({
+        ContentLength: oversizedPointer.length,
+        Body: s3Body(oversizedPointer),
+        ETag: etag,
+      });
+    });
+    expectRejectedBeforeAcceptance(
+      (await syncCatalog()).body,
+      "object-too-large",
+    );
+
+    const callsBeforeCachedRejection = context.mocks.s3.send.mock.calls.length;
+    expectRejectedBeforeAcceptance(
+      (await syncCatalog()).body,
+      "object-too-large",
+    );
+    expect(
+      context.mocks.s3.send.mock.calls.length - callsBeforeCachedRejection,
+    ).toBe(1);
+    expect(
+      commandInput(
+        context.mocks.s3.send.mock.calls[callsBeforeCachedRejection]?.[0],
+      ),
+    ).toMatchObject({
+      Key: ACTIVE_KEY,
+      IfNoneMatch: etag,
     });
   });
 

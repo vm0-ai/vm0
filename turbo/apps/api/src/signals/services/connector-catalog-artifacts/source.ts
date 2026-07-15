@@ -1,3 +1,4 @@
+import { connectorCatalogAuthMethodIdSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 import {
   connectorCatalogVersionSchema,
@@ -9,13 +10,7 @@ export const publicFieldIdSchema = z.string().regex(/^[a-z][a-zA-Z0-9]*$/u);
 export const internalOptionNameSchema = z
   .string()
   .regex(/^[a-zA-Z][a-zA-Z0-9_]*$/u);
-export const connectorAuthMethodIdSchema = z.enum([
-  "api",
-  "api-token",
-  "cli",
-  "oauth",
-  "openid",
-]);
+export const connectorAuthMethodIdSchema = connectorCatalogAuthMethodIdSchema;
 const connectorCategoryIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
 const connectorGenerationTypeSchema = z.enum([
   "audio",
@@ -33,10 +28,6 @@ export const connectorValueRefSchema = z
 const connectorSecretRefSchema = z
   .string()
   .regex(/^\$secrets\.[A-Z][A-Z0-9_]*$/u);
-const connectorPlatformSecretSchema = z.enum([
-  "GOOGLE_ADS_DEVELOPER_TOKEN",
-  "STEAM_WEB_API_KEY",
-]);
 
 const categoryGroupSourceSchema = z
   .object({
@@ -204,7 +195,7 @@ const staticAccessSourceSchema = z
   .object({
     kind: z.literal("static"),
     envBindings: z.record(z.string().min(1), envBindingSourceSchema),
-    platformSecrets: z.array(connectorPlatformSecretSchema).optional(),
+    platformSecrets: z.array(privateNameSchema).optional(),
   })
   .strict();
 
@@ -212,7 +203,7 @@ const refreshTokenAccessSourceSchema = z
   .object({
     kind: z.literal("refresh-token"),
     envBindings: z.record(z.string().min(1), envBindingSourceSchema),
-    platformSecrets: z.array(connectorPlatformSecretSchema).optional(),
+    platformSecrets: z.array(privateNameSchema).optional(),
     inputs: z.record(z.string().min(1), connectorValueRefSchema),
     outputs: z.record(z.string().min(1), connectorValueRefSchema),
     refreshableSecrets: z.array(privateNameSchema),

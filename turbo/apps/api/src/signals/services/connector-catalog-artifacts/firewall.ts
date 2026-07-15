@@ -1,4 +1,10 @@
 import { isIP } from "node:net";
+
+import {
+  validateAuthBaseUrl,
+  validateBaseUrl,
+  validateBaseUrlHostPolicy,
+} from "@vm0/connectors/firewall-types";
 import { z } from "zod";
 
 import { safeUrlParse } from "../../utils";
@@ -7,6 +13,7 @@ import { connectorRefSchema, privateNameSchema } from "./common";
 const TEMPLATE_REFERENCE_PATTERN = /\b(secrets|vars)\.([A-Z][A-Z0-9_]*)\b/gu;
 const DIRECT_TEMPLATE_PATTERN =
   /\$\{\{\s*(?:secrets|vars)\.[A-Z][A-Z0-9_]*\s*\}\}/gu;
+const BASE_URL_PARAMETER_PATTERN = /\{[A-Za-z][A-Za-z0-9]*(?:[+*])?\}/gu;
 const BASE_VARIABLE_PATTERN = /\$\{\{\s*vars\.[A-Z][A-Z0-9_]*\s*\}\}/u;
 const BASE_VARIABLE_CAPTURE_PATTERN =
   /\$\{\{\s*vars\.([A-Z][A-Z0-9_]*)\s*\}\}/gu;
@@ -83,6 +90,7 @@ function hostHasFixedOwnership(
     : withoutLeadingDot.toLowerCase();
   if (
     normalized === "" ||
+    withoutLeadingDot !== normalized ||
     !/^[\x21-\x7e]+$/u.test(value) ||
     [...HOST_FORBIDDEN_CHARACTERS].some((character) => {
       return normalized.includes(character);
@@ -259,11 +267,54 @@ function normalizedFirewallBaseUrl(base: string): string {
   return base.replace(DIRECT_TEMPLATE_PATTERN, "variable");
 }
 
-export function parseFirewallBaseUrl(base: string): URL {
+function rawUrlHostname(value: string): string | undefined {
+  const schemeEnd = value.indexOf("://");
+  if (schemeEnd === -1) {
+    return undefined;
+  }
+  const authorityStart = schemeEnd + 3;
+  const pathStart = value.indexOf("/", authorityStart);
+  const authority = value.slice(
+    authorityStart,
+    pathStart === -1 ? value.length : pathStart,
+  );
+  if (authority.startsWith("[")) {
+    const bracketEnd = authority.indexOf("]");
+    return bracketEnd === -1 ? undefined : authority.slice(0, bracketEnd + 1);
+  }
+  const portSeparator = authority.lastIndexOf(":");
+  return portSeparator === -1 ? authority : authority.slice(0, portSeparator);
+}
+
+function assertCanonicalFirewallBaseHostname(normalizedBase: string): void {
+  const comparableBase = normalizedBase.replace(
+    BASE_URL_PARAMETER_PATTERN,
+    "variable",
+  );
+  const parsedComparableBase = safeUrlParse(comparableBase);
+  const rawHostname = rawUrlHostname(comparableBase);
+  if (
+    parsedComparableBase === undefined ||
+    rawHostname === undefined ||
+    rawHostname.endsWith(".") ||
+    rawHostname !== parsedComparableBase.hostname
+  ) {
+    throw new Error(
+      "Firewall API base hostname literals must use canonical lowercase ASCII",
+    );
+  }
+}
+
+export function parseFirewallBaseUrl(
+  base: string,
+  connectorRef = "connector-catalog",
+): URL {
   if (BASE_SECRET_PATTERN.test(base)) {
     throw new Error("Firewall API base URLs must use connector variables");
   }
-  const parsed = safeUrlParse(normalizedFirewallBaseUrl(base));
+  validateBaseUrl(base, connectorRef);
+  const normalizedBase = normalizedFirewallBaseUrl(base);
+  const parsed = safeUrlParse(normalizedBase);
   if (
     parsed === undefined ||
     parsed.protocol !== "https:" ||
@@ -274,6 +325,7 @@ export function parseFirewallBaseUrl(base: string): URL {
   ) {
     throw new Error(`Firewall base URL must be a clean HTTPS URL: ${base}`);
   }
+  assertCanonicalFirewallBaseHostname(normalizedBase);
   return parsed;
 }
 
@@ -342,7 +394,15 @@ export function validateFirewallGeneratorResult(
   }
   const permissionNames = firewallPermissionNames(result.firewall);
   for (const api of result.firewall.apis) {
-    parseFirewallBaseUrl(api.base);
+    parseFirewallBaseUrl(api.base, result.connectorRef);
+    validateBaseUrlHostPolicy({
+      base: api.base,
+      serviceName: result.connectorRef,
+      hostPolicy: api.hostPolicy,
+    });
+    if (api.auth.base !== undefined) {
+      validateAuthBaseUrl(api.auth.base, result.connectorRef);
+    }
     validateHostPolicy(result.connectorRef, api);
   }
 

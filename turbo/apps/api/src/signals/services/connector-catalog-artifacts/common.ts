@@ -1,8 +1,9 @@
+import { connectorCatalogRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 
 export const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 
-export const connectorRefSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
+export const connectorRefSchema = connectorCatalogRefSchema;
 
 export const privateNameSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/u);
 
