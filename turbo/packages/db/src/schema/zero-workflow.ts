@@ -313,12 +313,6 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
   "zero_workflow_webhook_deliveries",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    triggerId: uuid("trigger_id").references(
-      () => {
-        return zeroWorkflowAutomations.id;
-      },
-      { onDelete: "cascade" },
-    ),
     automationId: uuid("automation_id")
       .notNull()
       .references(
@@ -337,14 +331,6 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_zero_workflow_webhook_deliveries_key").on(
-        table.triggerId,
-        table.deliveryKey,
-      ),
-      index("idx_zero_workflow_webhook_deliveries_received").on(
-        table.triggerId,
-        table.receivedAt,
-      ),
       uniqueIndex("idx_zero_workflow_webhook_deliveries_automation_key").on(
         table.automationId,
         table.deliveryKey,
@@ -361,12 +347,6 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
   "zero_workflow_github_processed_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    triggerId: uuid("trigger_id").references(
-      () => {
-        return zeroWorkflowAutomations.id;
-      },
-      { onDelete: "cascade" },
-    ),
     automationId: uuid("automation_id")
       .notNull()
       .references(
@@ -387,10 +367,6 @@ export const zeroWorkflowGithubProcessedEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_zero_workflow_github_processed_delivery").on(
-        table.triggerId,
-        table.githubDeliveryId,
-      ),
       uniqueIndex("idx_zero_workflow_github_processed_automation_delivery").on(
         table.automationId,
         table.githubDeliveryId,

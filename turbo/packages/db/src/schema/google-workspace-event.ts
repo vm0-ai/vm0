@@ -82,12 +82,6 @@ export const googleWorkspaceProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    triggerId: uuid("trigger_id").references(
-      () => {
-        return zeroWorkflowAutomations.id;
-      },
-      { onDelete: "cascade" },
-    ),
     automationId: uuid("automation_id")
       .notNull()
       .references(
@@ -105,19 +99,9 @@ export const googleWorkspaceProcessedEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_google_workspace_processed_events_cloudevent").on(
-        table.subscriptionStateId,
-        table.triggerId,
-        table.cloudEventId,
-      ),
       uniqueIndex(
         "idx_google_workspace_processed_events_automation_cloudevent",
       ).on(table.subscriptionStateId, table.automationId, table.cloudEventId),
-      uniqueIndex("idx_google_workspace_processed_events_transcript").on(
-        table.subscriptionStateId,
-        table.triggerId,
-        table.transcriptName,
-      ),
       uniqueIndex(
         "idx_google_workspace_processed_events_automation_transcript",
       ).on(table.subscriptionStateId, table.automationId, table.transcriptName),

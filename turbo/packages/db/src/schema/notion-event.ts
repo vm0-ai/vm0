@@ -71,12 +71,6 @@ export const notionWorkflowPendingEvents = pgTable(
   "notion_workflow_pending_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    triggerId: uuid("trigger_id").references(
-      () => {
-        return zeroWorkflowAutomations.id;
-      },
-      { onDelete: "cascade" },
-    ),
     automationId: uuid("automation_id")
       .notNull()
       .references(
@@ -119,9 +113,6 @@ export const notionWorkflowPendingEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_notion_pending_events_trigger_page_family_active")
-        .on(table.triggerId, table.pageId, table.eventFamily)
-        .where(sql`status IN ('pending', 'running')`),
       uniqueIndex("idx_notion_pending_events_automation_page_family_active")
         .on(table.automationId, table.pageId, table.eventFamily)
         .where(sql`status IN ('pending', 'running')`),
