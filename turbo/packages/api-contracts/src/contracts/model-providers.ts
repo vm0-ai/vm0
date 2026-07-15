@@ -18,6 +18,8 @@ export {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   shouldInlineModelProviderFirewall,
+  VM0_AUTO_MODEL_PROVIDER_FIREWALL,
+  VM0_AUTO_PROXY_BASE_URL,
 } from "./model-provider-firewalls";
 export type {
   ModelProviderFramework,
@@ -214,6 +216,7 @@ function filterModelProviderTypesForFeatures(
 export const VM0_ORG_SLUG = "vm0";
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
+  "vm0-auto",
   "claude-fable-5",
   "claude-opus-4-8",
   "claude-sonnet-5",
@@ -245,6 +248,7 @@ export interface DefaultOrgModelPolicySeed {
 }
 
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
+  "vm0-auto": "VM0 Auto",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-opus-4-7": "Claude Opus 4.7",
@@ -348,6 +352,10 @@ interface Vm0ModelConfig {
 // `MODEL_PROVIDER_TYPES.vm0.models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
+  "vm0-auto": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+  },
   "claude-fable-5": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -1025,6 +1033,7 @@ export const MODEL_PROVIDER_TYPES = {
 } as const satisfies Record<ModelProviderType, unknown>;
 
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
+  "vm0-auto": ["vm0"],
   "claude-fable-5": [
     "vm0",
     "claude-code-oauth-token",

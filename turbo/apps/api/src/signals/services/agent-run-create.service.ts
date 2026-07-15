@@ -26,6 +26,8 @@ import {
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   shouldInlineModelProviderFirewall,
+  VM0_AUTO_MODEL_PROVIDER_FIREWALL,
+  VM0_AUTO_PROXY_BASE_URL,
   type ModelProviderCodexRuntimeConfig,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
@@ -1772,6 +1774,31 @@ async function vm0ModelProviderEnvironment(
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
+  }
+
+  if (selectedModel === "vm0-auto") {
+    const proxyToken = optionalEnv("VM0_AUTO_PROXY_TOKEN")?.trim();
+    if (!proxyToken) {
+      return null;
+    }
+    return {
+      id: null,
+      type: "vm0",
+      concreteType,
+      framework: "codex",
+      environment: {
+        OPENAI_API_KEY: `\${{ secrets.OPENAI_API_KEY }}`,
+        OPENAI_BASE_URL: VM0_AUTO_PROXY_BASE_URL,
+        OPENAI_MODEL: selectedModel,
+      },
+      secrets: {
+        OPENAI_API_KEY: proxyToken,
+        VM0_AUTO_UPSTREAM_API_KEY: apiKey,
+      },
+      selectedModel,
+      firewall: VM0_AUTO_MODEL_PROVIDER_FIREWALL,
+      inlineFirewall: true,
+    };
   }
 
   return {

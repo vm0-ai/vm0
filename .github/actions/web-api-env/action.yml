@@ -245,6 +245,9 @@ runs:
         add_secret ABLY_API_KEY ABLY_API_KEY
         add_secret OPENROUTER_API_KEY OPENROUTER_API_KEY
         add_secret OPENAI_API_KEY OPENAI_API_KEY
+        if [[ "$INPUT_APP" == "api" ]]; then
+          add_secret VM0_AUTO_PROXY_TOKEN VM0_AUTO_PROXY_TOKEN
+        fi
         add_secret FAL_KEY FAL_KEY
         add_secret BYTEPLUS_API_KEY BYTEPLUS_API_KEY
         add_secret BYTEPLUS_STT_API_KEY BYTEPLUS_STT_API_KEY
