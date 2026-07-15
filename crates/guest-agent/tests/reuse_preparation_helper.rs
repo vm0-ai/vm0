@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use std::io::Write;
-use std::os::unix::fs::{PermissionsExt, symlink};
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
@@ -118,27 +118,26 @@ fn prepare_for_reuse_rejects_retained_runtime_from_another_parent() -> TestResul
 }
 
 #[test]
-fn prepare_for_reuse_fails_closed_when_stale_directory_cannot_be_opened() -> TestResult {
+fn prepare_for_reuse_fails_closed_when_runtime_parent_is_not_a_directory() -> TestResult {
     let dir = tempfile::tempdir()?;
     let runs = dir.path().join("runs");
     let current = runs.join("current");
-    let stale = runs.join("stale");
-    std::fs::create_dir_all(&current)?;
-    std::fs::create_dir_all(&stale)?;
-    std::fs::set_permissions(&stale, std::fs::Permissions::from_mode(0o000))?;
+    let outside = dir.path().join("outside");
+    std::fs::write(&runs, b"not-a-directory")?;
+    std::fs::create_dir_all(&outside)?;
+    std::fs::write(outside.join("keep"), b"outside")?;
 
     let output = run_helper(&ReusePreparationRequest {
         current_runtime_dir: path_string(&current),
         retained_runtime_dir: None,
     })?;
 
-    std::fs::set_permissions(&stale, std::fs::Permissions::from_mode(0o700))?;
     assert_eq!(
         output.status.code(),
         Some(REUSE_PREPARATION_EXIT_CLEANUP_FAILED)
     );
-    assert!(current.exists());
-    assert!(stale.exists());
+    assert_eq!(std::fs::read(&runs)?, b"not-a-directory");
+    assert_eq!(std::fs::read(outside.join("keep"))?, b"outside");
     Ok(())
 }
 
