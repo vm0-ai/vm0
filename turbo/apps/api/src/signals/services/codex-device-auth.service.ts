@@ -14,6 +14,7 @@ import {
   safeJsonParse,
   safeSync,
   settle,
+  tapError,
 } from "../utils";
 import {
   decryptPersistentSecretValue,
@@ -220,18 +221,18 @@ async function decodeProviderState(
   if (!encryptedProviderState) {
     return null;
   }
-  const decrypted = await settle(
+  const decrypted = await tapError(
     decryptPersistentSecretValue(encryptedProviderState, {
       orgId: session.orgId,
       userId: session.userId,
     }),
   );
-  if (!decrypted.ok) {
+  if (!decrypted) {
     return null;
   }
   const decoded = safeSync(() => {
     const parsed = codexDeviceAuthProviderStateSchema.safeParse(
-      safeJsonParse(decrypted.value),
+      safeJsonParse(decrypted),
     );
     return parsed.success ? parsed.data : null;
   });

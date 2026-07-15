@@ -12,7 +12,7 @@ import { and, eq, lte } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { calculateNextRun } from "./time-automation";
 import {
@@ -403,7 +403,7 @@ export const executeDueWorkflowAutomations$ = command(
           claimed.scheduleType === "once" && !claimed.enabled,
       };
 
-      const runResult = await settle(
+      const result = await tapError(
         set(
           runWorkflowAutomationNow$,
           {
@@ -423,14 +423,15 @@ export const executeDueWorkflowAutomations$ = command(
           },
           signal,
         ),
+        async (error) => {
+          await recordPreRunFailure(db, claimed, error, signal);
+          skipped++;
+        },
       );
       signal.throwIfAborted();
-      if (!runResult.ok) {
-        await recordPreRunFailure(db, claimed, runResult.error, signal);
-        skipped++;
+      if (!result) {
         continue;
       }
-      const result = runResult.value;
       if (result.kind === "enqueued") {
         executed++;
         continue;

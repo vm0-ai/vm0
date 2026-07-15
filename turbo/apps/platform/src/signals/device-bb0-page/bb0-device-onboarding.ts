@@ -3,7 +3,7 @@ import { bb0DeviceConfirmContract } from "@vm0/api-contracts/contracts/device-to
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { jsonParseOr, settle } from "../utils.ts";
+import { jsonParseOr, tapError } from "../utils.ts";
 
 const BB0_PROVISIONING_SERVICE_UUID = "bb000001-8f16-4b2a-9bb0-000000000001";
 
@@ -411,10 +411,11 @@ async function enableBb0InfoNotifications(
     { signal },
   );
 
-  const settled = await settle(
-    startNotifications.call(session.characteristics.info),
+  return Boolean(
+    await tapError(
+      startNotifications.call(session.characteristics.info).then(() => true),
+    ),
   );
-  return settled.ok;
 }
 
 function readNotificationText(event: Event): string {

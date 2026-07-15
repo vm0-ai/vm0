@@ -3349,14 +3349,14 @@ async function decryptFirewallAuthSecrets(
     orgId,
     auth.userId,
   );
-  const decryptedResult = await settle(
+  const secrets = await tapError(
     decryptPersistentSecretsMap(encryptedSecrets, featureSwitchContext),
   );
   return {
     ok: true,
     orgId,
     featureSwitchContext,
-    secrets: decryptedResult.ok ? decryptedResult.value : null,
+    secrets: secrets ?? null,
   };
 }
 

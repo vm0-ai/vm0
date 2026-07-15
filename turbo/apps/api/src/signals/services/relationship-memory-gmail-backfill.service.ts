@@ -25,7 +25,7 @@ import {
 import { logger } from "../../lib/log";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   ensureGmailWatchForUser,
   fetchGmailMessageContextById,
@@ -780,28 +780,25 @@ export const advanceGmailRelationshipBackfillJobs$ = command(
         continue;
       }
 
-      const result = await settle(
+      const result = await tapError(
         processBackfillJob(db, lockedJob, signal),
-        signal,
+        async (error) => {
+          failed += 1;
+          log.warn("Gmail relationship backfill failed", {
+            jobId: lockedJob.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          await markBackfillFailed({ db, job: lockedJob, error });
+        },
       );
       signal.throwIfAborted();
-      if (result.ok) {
-        processed += 1;
-        scanned += result.value.scanned;
-        enqueued += result.value.enqueued;
+      if (!result) {
         continue;
       }
 
-      failed += 1;
-      log.warn("Gmail relationship backfill failed", {
-        jobId: lockedJob.id,
-        error:
-          result.error instanceof Error
-            ? result.error.message
-            : String(result.error),
-      });
-      await markBackfillFailed({ db, job: lockedJob, error: result.error });
-      signal.throwIfAborted();
+      processed += 1;
+      scanned += result.scanned;
+      enqueued += result.enqueued;
     }
 
     return { processed, failed, scanned, enqueued };

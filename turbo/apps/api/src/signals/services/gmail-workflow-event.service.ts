@@ -1035,14 +1035,13 @@ async function verifyPubSubOidc(args: {
   const token = args.authorization.slice("Bearer ".length);
   const verifier =
     pubSubOidcVerifierOverride.get() ?? defaultPubSubOidcVerifier;
-  const claimsResult = await settle(verifier(token, audience, args.signal));
+  const claims = await tapError(verifier(token, audience, args.signal));
   args.signal.throwIfAborted();
-  if (!claimsResult.ok) {
+  if (!claims) {
     return { kind: "unauthorized" };
   }
 
-  return claimsResult.value.email === expectedEmail &&
-    claimsResult.value.emailVerified
+  return claims.email === expectedEmail && claims.emailVerified
     ? { kind: "ok" }
     : { kind: "unauthorized" };
 }

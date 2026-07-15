@@ -405,15 +405,11 @@ async function fetchShareImage(args: {
     return xShareError("BAD_REQUEST", "Choose an image with a public URL");
   }
 
-  const responseResult = await settle(
-    fetch(parsed, { signal: args.signal }),
-    args.signal,
-  );
-  if (!responseResult.ok) {
+  const response = await tapError(fetch(parsed, { signal: args.signal }));
+  args.signal.throwIfAborted();
+  if (!response) {
     return xShareError("BAD_REQUEST", "Couldn't load the image");
   }
-  const response = responseResult.value;
-  args.signal.throwIfAborted();
 
   if (!response.ok) {
     return xShareError("BAD_REQUEST", "Couldn't load the image");
@@ -593,7 +589,7 @@ export const shareImageToX$ = command(
       return image;
     }
 
-    const postResult = await settle(
+    const postResult = await tapError(
       (async () => {
         const mediaId = await uploadXImageMedia({
           accessToken: accessTokenResult.accessToken,
@@ -612,9 +608,9 @@ export const shareImageToX$ = command(
           tweetUrl: `https://x.com/i/web/status/${tweetId}`,
         };
       })(),
-      signal,
     );
-    if (!postResult.ok) {
+    signal.throwIfAborted();
+    if (!postResult) {
       return xShareError(
         "PROVIDER_UNAVAILABLE",
         "X couldn't publish the post, try again",
@@ -630,6 +626,6 @@ export const shareImageToX$ = command(
     await set(processOrgUsageEvents$, args.orgId, signal);
     signal.throwIfAborted();
 
-    return postResult.value;
+    return postResult;
   },
 );

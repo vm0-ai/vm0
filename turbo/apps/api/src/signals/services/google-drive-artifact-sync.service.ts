@@ -34,7 +34,12 @@ import {
   listS3Objects,
   s3ObjectExists,
 } from "../external/s3";
-import { createDeferredPromise, onRejection, safeSync, settle } from "../utils";
+import {
+  createDeferredPromise,
+  onRejection,
+  safeSync,
+  tapError,
+} from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -381,20 +386,20 @@ export function googleDriveArtifactStatusLookup(args: {
     // rather than failing the whole artifacts response. AbortError from the
     // 2s timeout intentionally propagates under the project-wide ban on
     // swallowing aborts.
-    const settled = await settle(
+    const files = await tapError(
       listArtifactFilesWithRefresh({
         tokens,
         threadId: args.threadId,
         signal: AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
       }),
     );
-    if (!settled.ok) {
+    if (files === undefined) {
       return { type: "unknown" };
     }
-    if (settled.value === "unauthorized") {
+    if (files === "unauthorized") {
       return { type: "unknown" };
     }
-    return { type: "ready", syncedByKey: buildStatusMap(settled.value) };
+    return { type: "ready", syncedByKey: buildStatusMap(files) };
   });
 }
 

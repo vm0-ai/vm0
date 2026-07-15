@@ -44,7 +44,7 @@ import {
 } from "../services/zero-telegram-post.service";
 import { handleTelegramInternalCallback$ } from "../services/internal-telegram-run-callback.service";
 import { inferMimetype } from "../../lib/mimetype";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 
 const c = initContract();
@@ -249,18 +249,18 @@ const getTelegramDownloadFileInner$ = command(
       return errorResponse(404, "Telegram bot not found", "NOT_FOUND");
     }
 
-    const settled = await settle(
+    const response = await tapError(
       downloadTelegramFile({ botToken, fileId: query.file_id, signal }),
     );
     signal.throwIfAborted();
-    if (!settled.ok) {
+    if (!response) {
       return errorResponse(
         502,
         "Failed to download file from Telegram",
         "BAD_GATEWAY",
       );
     }
-    return settled.value;
+    return response;
   },
 );
 
@@ -404,18 +404,18 @@ const getIntegrationTelegramAvatar$ = command(
       return errorResponse(404, "Telegram bot not found", "NOT_FOUND");
     }
 
-    const settled = await settle(
+    const response = await tapError(
       loadTelegramAvatar({ botToken, profileUserId, signal }),
     );
     signal.throwIfAborted();
-    if (!settled.ok) {
+    if (!response) {
       return errorResponse(
         502,
         "Failed to load Telegram bot avatar",
         "BAD_GATEWAY",
       );
     }
-    return settled.value;
+    return response;
   },
 );
 

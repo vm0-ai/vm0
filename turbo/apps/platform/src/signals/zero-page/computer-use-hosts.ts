@@ -7,7 +7,7 @@ import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForNavigation } from "../api-base.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { onRef, settle } from "../utils.ts";
+import { onRef, tapError } from "../utils.ts";
 
 const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
   "/api/zero/desktop/updates/stable/darwin/arm64/dmg";
@@ -81,13 +81,12 @@ export async function isUnsupportedIntelMacForZeroDesktop(
     return false;
   }
 
-  const highEntropyValuesResult = await settle(
+  const highEntropyValues = await tapError(
     userAgentData.getHighEntropyValues(["architecture", "platform"]),
   );
-  if (!highEntropyValuesResult.ok) {
+  if (!highEntropyValues) {
     return false;
   }
-  const highEntropyValues = highEntropyValuesResult.value;
 
   const platform =
     highEntropyValues.platform ??

@@ -11,7 +11,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { db$ } from "../external/db";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 type DayInsightData = Partial<Omit<DayInsight, "date">>;
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
@@ -75,25 +75,25 @@ async function queryCurrentOrgMemberUserIds(
 ): Promise<Set<string> | null> {
   const userIds = new Set<string>();
   for (let offset = 0; ; offset += ORG_MEMBERSHIP_PAGE_SIZE) {
-    const result = await settle(
+    const page = await tapError(
       organizations.getOrganizationMembershipList({
         organizationId: orgId,
         limit: ORG_MEMBERSHIP_PAGE_SIZE,
         offset,
       }),
     );
-    if (!result.ok) {
+    if (!page) {
       return null;
     }
 
-    for (const membership of result.value.data) {
+    for (const membership of page.data) {
       const userId = membership.publicUserData?.userId;
       if (userId) {
         userIds.add(userId);
       }
     }
 
-    if (result.value.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
+    if (page.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
       return userIds;
     }
   }
