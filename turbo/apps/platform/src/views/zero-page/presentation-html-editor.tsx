@@ -18,6 +18,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { createPresentationDraftByUrlFactory } from "../../signals/zero-page/presentation-html-editor-draft.ts";
+import { materializePresentationHtml } from "../../signals/zero-page/presentation-html-materialization.ts";
 import { detach, Reason, tapError } from "../../signals/utils.ts";
 import { downloadPresentationHtmlStringPptx } from "./presentation-html-pptx-download.ts";
 import {
@@ -32,7 +33,6 @@ import {
 import {
   attachmentFilenameFromUrl,
   publicAttachmentUrl,
-  readableAttachmentResourceUrl,
 } from "./zero-attachment-url.ts";
 import { fallbackHtmlPreviewTitle } from "./zero-attachment-preview.tsx";
 
@@ -87,21 +87,19 @@ function createPresentationEditorSession(
 }
 
 const presentationDraftByUrl = createPresentationDraftByUrlFactory<EditorDraft>(
-  async (url, signal) => {
+  async (url, signal, createClient) => {
     const publicUrl = publicAttachmentUrl(url);
-    const response = await fetch(readableAttachmentResourceUrl(publicUrl), {
-      cache: "reload",
-      mode: "cors",
+    const materialized = await materializePresentationHtml({
+      createClient,
       signal,
+      toastError: false,
+      url: publicUrl,
     });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch presentation HTML (${response.status})`);
-    }
-    const draft = parsePresentationEditDraft(await response.text());
+    const draft = parsePresentationEditDraft(materialized.html);
     return {
       ...draft,
       editorSession: createPresentationEditorSession(draft),
-      publicUrl,
+      publicUrl: materialized.sourceUrl,
     };
   },
 );
@@ -1217,9 +1215,13 @@ export function PresentationHtmlEditor({
   const filename = attachmentFilenameFromUrl(url);
   const title = fallbackHtmlPreviewTitle(filename, url);
   const loadable = useLoadable(presentationDraftByUrl.get(url));
+  const closeEditor = () => {
+    presentationDraftByUrl.invalidate(url);
+    onClose();
+  };
 
   if (loadable.state === "loading") {
-    return <PresentationEditorLoading title={title} onClose={onClose} />;
+    return <PresentationEditorLoading title={title} onClose={closeEditor} />;
   }
   if (loadable.state === "hasError") {
     const message =
@@ -1229,7 +1231,7 @@ export function PresentationHtmlEditor({
     return (
       <PresentationEditorError
         message={message}
-        onClose={onClose}
+        onClose={closeEditor}
         title={title}
       />
     );
@@ -1239,7 +1241,7 @@ export function PresentationHtmlEditor({
       key={url}
       draft={loadable.data}
       filename={filename}
-      onClose={onClose}
+      onClose={closeEditor}
       sourceUrl={url}
       title={title}
     />

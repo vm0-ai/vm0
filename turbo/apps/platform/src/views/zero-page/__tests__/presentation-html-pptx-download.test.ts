@@ -9,6 +9,7 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
         <!doctype html>
         <html>
           <head>
+            <meta http-equiv="Content-Security-Policy" content="script-src 'none'">
             <style>
               :root {
                 --bg:#FFFFFF;
@@ -65,6 +66,14 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
     expect(doc.querySelector("base")?.getAttribute("href")).toBe(
       "https://presentation.example.test/index.html",
     );
+    expect(
+      Array.from(doc.querySelectorAll("meta[http-equiv]")).some((meta) => {
+        return (
+          meta.getAttribute("http-equiv")?.toLowerCase() ===
+          "content-security-policy"
+        );
+      }),
+    ).toBeFalsy();
     expect(
       doc.querySelector('[data-vm0-materialized-theme="true"]'),
     ).not.toBeNull();
@@ -186,7 +195,9 @@ describe("buildPresentationHtmlPptxExportHtml", () => {
       })
       .join("\n");
 
-    expect(scriptText).toContain("revealElement(ancestor, false)");
+    expect(scriptText).toContain("visiblePeerDisplay(element)");
+    expect(scriptText).toContain("revealElement(ancestor)");
+    expect(scriptText).toContain("revealElement(node)");
     expect(scriptText).toContain(
       'window.getComputedStyle(element).display === "none"',
     );

@@ -426,6 +426,27 @@ function completePresentationPptxExport(
   );
 }
 
+function mockPresentationMaterialization(
+  presentationUrl: string,
+  html: string,
+): { readonly requestedUrls: string[] } {
+  const requestedUrls: string[] = [];
+  context.mocks.api(
+    zeroHostContract.materializePresentationHtml,
+    ({ body, respond }) => {
+      requestedUrls.push(body.url);
+      return respond(200, {
+        version: 1,
+        html,
+        sourceUrl: presentationUrl,
+        sourceDeploymentId: "66666666-6666-4666-8666-666666666666",
+        slideCount: 1,
+      });
+    },
+  );
+  return { requestedUrls };
+}
+
 function setupPresentationArtifactThread(
   presentationUrl: string,
   html = presentationHtml(),
@@ -434,7 +455,7 @@ function setupPresentationArtifactThread(
       typeof detachedSetupPage
     >[0]["featureSwitches"];
   } = {},
-): void {
+): { readonly requestedUrls: string[] } {
   const filename =
     new URL(presentationUrl).pathname.split("/").pop() ?? "presentation.html";
   context.mocks.http.get(presentationUrl, () => {
@@ -447,6 +468,10 @@ function setupPresentationArtifactThread(
       headers: { "Content-Type": "text/html" },
     });
   });
+  const materialization = mockPresentationMaterialization(
+    presentationUrl,
+    html,
+  );
   setupChatThread({
     artifactFiles: [
       artifactFile(presentationUrl, {
@@ -461,6 +486,7 @@ function setupPresentationArtifactThread(
     featureSwitches: options.featureSwitches,
     path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
   });
+  return materialization;
 }
 
 function setupHostedSiteArtifactThread(
@@ -2347,7 +2373,7 @@ describe("zero artifact sidebar", () => {
   it("downloads a presentation artifact as PPTX from the sidebar", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     const downloads = captureDownloads(context.signal);
-    setupPresentationArtifactThread(presentationUrl);
+    const materialization = setupPresentationArtifactThread(presentationUrl);
 
     await waitFor(() => {
       expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
@@ -2389,6 +2415,7 @@ describe("zero artifact sidebar", () => {
       expect(downloadButton).not.toBeDisabled();
       expect(downloadButton.querySelector(".animate-spin")).toBeNull();
     });
+    expect(materialization.requestedUrls).toStrictEqual([presentationUrl]);
   });
 
   it("uploads a presentation artifact to Google Slides without opening a new tab", async () => {
@@ -2513,6 +2540,7 @@ describe("zero artifact sidebar", () => {
         headers: { "Content-Type": "text/html" },
       });
     });
+    mockPresentationMaterialization(presentationUrl, presentationHtml());
     let agentAuthorized = false;
     context.mocks.api(
       zeroUserConnectorsContract.update,
@@ -2723,6 +2751,17 @@ ${openFencedHostedSiteUrl}`,
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return new Response(null, { status: 503 });
     });
+    context.mocks.api(
+      zeroHostContract.materializePresentationHtml,
+      ({ respond }) => {
+        return respond(503, {
+          error: {
+            code: "PROVIDER_UNAVAILABLE",
+            message: "Presentation rendering is temporarily unavailable",
+          },
+        });
+      },
+    );
     setupChatThread({
       artifactFiles: [
         artifactFile(presentationUrl, {
@@ -2745,7 +2784,7 @@ ${openFencedHostedSiteUrl}`,
 
     await waitFor(() => {
       expect(
-        screen.getByText("Failed to fetch presentation HTML (503)"),
+        screen.getByText("Presentation rendering is temporarily unavailable"),
       ).toBeInTheDocument();
     });
   });
@@ -2894,7 +2933,7 @@ ${openFencedHostedSiteUrl}`,
         });
       },
     );
-    setupPresentationArtifactThread(presentationUrl);
+    const materialization = setupPresentationArtifactThread(presentationUrl);
 
     await waitFor(() => {
       expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
@@ -3112,6 +3151,7 @@ ${openFencedHostedSiteUrl}`,
         screen.queryByText("Presentation updated"),
       ).not.toBeInTheDocument();
     });
+    expect(materialization.requestedUrls).toStrictEqual([presentationUrl]);
   });
 
   it("refreshes artifact metadata while another artifact preview is open", async () => {

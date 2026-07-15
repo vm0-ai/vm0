@@ -47,6 +47,7 @@ import {
   openArtifactDownloadMenu$,
   startArtifactDownload$,
 } from "../../signals/zero-page/zero-artifact-actions.ts";
+import { materializePresentationHtml } from "../../signals/zero-page/presentation-html-materialization.ts";
 import {
   syncArtifactFileToGoogleDrive,
   waitForGoogleDriveAuthorization$,
@@ -62,8 +63,8 @@ import {
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
 import {
-  buildPresentationHtmlPptxBlobFromUrl,
-  downloadPresentationHtmlPptx,
+  buildPresentationHtmlPptxBlob,
+  downloadPresentationHtmlStringPptx,
 } from "./presentation-html-pptx-download.ts";
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
@@ -236,15 +237,35 @@ function authorizeGoogleDriveAndRun(params: {
 }
 
 async function downloadPresentationPptx(params: {
+  createClient: ZeroClientFactory;
   filename: string;
   signal: AbortSignal;
   url: string;
 }): Promise<void> {
-  await tapError(downloadPresentationHtmlPptx(params), (error) => {
-    if (!(error instanceof DOMException && error.name === "AbortError")) {
-      toast.error("PPTX download failed");
-    }
-  });
+  await tapError(
+    (async () => {
+      const materialized = await materializePresentationHtml({
+        createClient: params.createClient,
+        signal: params.signal,
+        toastError: true,
+        url: params.url,
+      });
+      await downloadPresentationHtmlStringPptx({
+        baseUrl: materialized.sourceUrl,
+        filename: params.filename,
+        html: materialized.html,
+        signal: params.signal,
+      });
+    })(),
+    (error) => {
+      if (
+        !(error instanceof ApiError) &&
+        !(error instanceof DOMException && error.name === "AbortError")
+      ) {
+        toast.error("PPTX download failed");
+      }
+    },
+  );
 }
 
 type UploadPresentationSlidesFn = (
@@ -257,6 +278,7 @@ type UploadPresentationSlidesFn = (
 ) => Promise<{ readonly webViewLink: string | null }>;
 
 async function uploadPresentationToGoogleSlides(params: {
+  createClient: ZeroClientFactory;
   filename: string;
   pageSignal: AbortSignal;
   threadId: string;
@@ -266,10 +288,17 @@ async function uploadPresentationToGoogleSlides(params: {
   const toastId = toast.loading("Uploading to Google Slides...");
   await tapError(
     (async () => {
-      const built = await buildPresentationHtmlPptxBlobFromUrl({
-        filename: params.filename,
+      const materialized = await materializePresentationHtml({
+        createClient: params.createClient,
         signal: params.pageSignal,
+        toastError: true,
         url: params.url,
+      });
+      const built = await buildPresentationHtmlPptxBlob({
+        baseUrl: materialized.sourceUrl,
+        filename: params.filename,
+        html: materialized.html,
+        signal: params.pageSignal,
       });
       await params.upload(
         {
@@ -585,6 +614,7 @@ function GoogleSlidesMenuItem({
   );
   const run = () => {
     return uploadPresentationToGoogleSlides({
+      createClient,
       filename,
       pageSignal,
       threadId,
@@ -731,6 +761,40 @@ function startArtifactDownloadWithCleanup(params: {
   );
 }
 
+function PresentationPptxMenuItem(params: {
+  readonly closeMenu: () => void;
+  readonly filename: string;
+  readonly finish: (key: string) => void;
+  readonly menuKey: string;
+  readonly pageSignal: AbortSignal;
+  readonly start: (key: string) => void;
+  readonly url: string;
+}) {
+  const createClient = useGet(zeroClient$);
+  return (
+    <ArtifactDownloadMenuItem
+      onClick={() => {
+        startArtifactDownloadWithCleanup({
+          closeMenu: params.closeMenu,
+          description: "presentation html pptx download",
+          download: downloadPresentationPptx({
+            createClient,
+            filename: params.filename,
+            signal: params.pageSignal,
+            url: params.url,
+          }),
+          finish: params.finish,
+          menuKey: params.menuKey,
+          start: params.start,
+        });
+      }}
+    >
+      <IconDownload size={14} stroke={1.5} />
+      Download (.pptx)
+    </ArtifactDownloadMenuItem>
+  );
+}
+
 function shouldShowGoogleSlidesUpload(
   artifactKind: ChatThreadArtifactFile["artifactKind"] | undefined,
   features: Record<string, boolean | undefined>,
@@ -834,25 +898,15 @@ export function ArtifactDownloadMenu({
           Download
         </ArtifactDownloadMenuItem>
         {artifactKind === "presentation-html" && (
-          <ArtifactDownloadMenuItem
-            onClick={() => {
-              startArtifactDownloadWithCleanup({
-                closeMenu,
-                description: "presentation html pptx download",
-                download: downloadPresentationPptx({
-                  filename: downloadFilename,
-                  signal: pageSignal,
-                  url,
-                }),
-                finish: finishArtifactDownload,
-                menuKey,
-                start: startArtifactDownload,
-              });
-            }}
-          >
-            <IconDownload size={14} stroke={1.5} />
-            Download (.pptx)
-          </ArtifactDownloadMenuItem>
+          <PresentationPptxMenuItem
+            closeMenu={closeMenu}
+            filename={downloadFilename}
+            finish={finishArtifactDownload}
+            menuKey={menuKey}
+            pageSignal={pageSignal}
+            start={startArtifactDownload}
+            url={url}
+          />
         )}
         {shouldShowGoogleSlidesUpload(artifactKind, features) && syncTarget && (
           <GoogleSlidesMenuItem

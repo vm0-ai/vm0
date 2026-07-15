@@ -1687,6 +1687,19 @@ describe("zero attachment chips", () => {
         headers: { "Content-Type": "text/html" },
       });
     });
+    context.mocks.api(
+      zeroHostContract.materializePresentationHtml,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({ url: presentationUrl });
+        return respond(200, {
+          version: 1,
+          html,
+          sourceUrl: presentationUrl,
+          sourceDeploymentId: "77777777-7777-4777-8777-777777777777",
+          slideCount: 1,
+        });
+      },
+    );
     context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
       return respond(200, {
         runs: [

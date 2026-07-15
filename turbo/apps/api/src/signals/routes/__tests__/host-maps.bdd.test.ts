@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import {
@@ -50,6 +50,9 @@ const GOOGLE_PLACE_DETAILS_URL =
 const OPENSTREETMAP_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
+const CLOUDFLARE_CONTENT_URL =
+  "https://api.cloudflare.com/client/v4/accounts/test-account/browser-rendering/content";
+const PRESENTATION_WAF_SECRET = "test-presentation-waf-secret-32-chars";
 const OPENROUTER_HTML_EDIT_STARTING_CREDITS = 1000;
 const OPENROUTER_HTML_EDIT_EXPECTED_CHARGE = 4;
 
@@ -142,6 +145,35 @@ function geocodeOkHandler(requests: URL[]) {
       ],
     });
   });
+}
+
+interface PresentationContentRequest {
+  readonly authorization: string | null;
+  readonly body: unknown;
+  readonly url: string;
+}
+
+function mockPresentationContent(
+  renderedDocuments: readonly string[],
+): PresentationContentRequest[] {
+  const requests: PresentationContentRequest[] = [];
+  server.use(
+    http.post(CLOUDFLARE_CONTENT_URL, async ({ request }) => {
+      const index = requests.length;
+      requests.push({
+        authorization: request.headers.get("authorization"),
+        body: await request.json(),
+        url: request.url,
+      });
+      return HttpResponse.json({
+        meta: { status: 200, title: "Presentation" },
+        success: true,
+        errors: [],
+        result: renderedDocuments[index] ?? renderedDocuments.at(-1),
+      });
+    }),
+  );
+  return requests;
 }
 
 describe("FILE-01: hosted-site deployments through host APIs", () => {
@@ -373,6 +405,175 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(rejected.body.error.message).toBe(
       "Hosted site is not a presentation HTML artifact",
     );
+  });
+
+  it("materializes the current presentation deployment without persisting a snapshot [HOST-C]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    api.captureHostedSitesS3();
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "materialize-token");
+    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", PRESENTATION_WAF_SECRET);
+    mockEnv("R2_ACCOUNT_ID", "test-account");
+
+    const contentRequests = mockPresentationContent([
+      `<!doctype html><html><head>
+        <script id="vm0-deck-metadata" type="application/json">{"slides":{"slide-1":{"speakerNotes":"Opening"}}}</script>
+        <script>globalThis.unsafe = true</script>
+      </head><body onload="alert('unsafe')">
+        <section class="slide" data-slide-id="slide-1">
+          <a href="javascript:alert('unsafe')">Rendered once</a>
+          <img alt="Inline chart" src="data:image/png;base64,aW5saW5lLWNoYXJ0">
+          <a href="data:text/html;base64,dW5zYWZl">Unsafe data link</a>
+        </section>
+        <iframe src="https://example.com"></iframe>
+      </body></html>`,
+      `<!doctype html><html><body>
+        <section class="slide">Rendered again</section>
+        <section class="slide">Current deployment</section>
+      </body></html>`,
+    ]);
+
+    const site = `bdd-materialize-${randomUUID().slice(0, 8)}`;
+    const prepared = await api.prepareHostedSite(actor, {
+      site,
+      artifactKind: "presentation-html",
+      spaFallback: false,
+      files: [
+        hostedTextFile(
+          "/index.html",
+          '<div id="deck"></div><script>buildDeck()</script>',
+        ),
+      ],
+    });
+    await api.completeHostedSite(actor, prepared.deploymentId);
+
+    const first = await api.requestMaterializePresentationHtml(
+      actor,
+      { url: prepared.url },
+      [200],
+    );
+    if ("error" in first.body) {
+      throw new Error(first.body.error.message);
+    }
+    expect(first.headers.get("cache-control")).toBe("no-store");
+    expect(first.body).toMatchObject({
+      version: 1,
+      sourceUrl: prepared.url,
+      sourceDeploymentId: prepared.deploymentId,
+      slideCount: 1,
+    });
+    expect(first.body.html).toContain(
+      '<script id="vm0-deck-metadata" type="application/json">',
+    );
+    expect(first.body.html).toContain("Content-Security-Policy");
+    expect(first.body.html).toContain(`<base href="${prepared.url}">`);
+    expect(first.body.html).not.toContain("globalThis.unsafe");
+    expect(first.body.html).not.toContain("onload=");
+    expect(first.body.html).not.toContain("javascript:");
+    expect(first.body.html).toContain(
+      'src="data:image/png;base64,aW5saW5lLWNoYXJ0"',
+    );
+    expect(first.body.html).not.toContain("data:text/html");
+    expect(first.body.html).not.toContain("<iframe");
+
+    const outsider = bdd.user();
+    const hidden = await api.requestMaterializePresentationHtml(
+      outsider,
+      { url: prepared.url },
+      [404],
+    );
+    expectApiError(hidden.body);
+    expect(hidden.body.error.message).toBe("Hosted site not found");
+    expect(contentRequests).toHaveLength(1);
+
+    const redeployed = await api.redeployPresentationHtml(actor, {
+      url: prepared.url,
+      html: "<!doctype html><html><body>redeployed source</body></html>",
+    });
+    const second = await api.requestMaterializePresentationHtml(
+      actor,
+      { url: prepared.url },
+      [200],
+    );
+    if ("error" in second.body) {
+      throw new Error(second.body.error.message);
+    }
+    expect(second.body).toMatchObject({
+      sourceDeploymentId: redeployed.deploymentId,
+      slideCount: 2,
+    });
+    expect(second.body.html).toContain("Current deployment");
+    expect(contentRequests).toHaveLength(2);
+    expect(contentRequests[0]).toMatchObject({
+      authorization: "Bearer materialize-token",
+      url: `${CLOUDFLARE_CONTENT_URL}?cacheTTL=0`,
+      body: {
+        actionTimeout: 15_000,
+        bestAttempt: true,
+        url: prepared.url,
+        cookies: [
+          {
+            name: "vm0_artifact_preview",
+            value: PRESENTATION_WAF_SECRET,
+            url: new URL(prepared.url).origin,
+            httpOnly: true,
+            secure: true,
+            sameSite: "Strict",
+          },
+        ],
+        viewport: {
+          width: 1280,
+          height: 800,
+          deviceScaleFactor: 0.5,
+        },
+        gotoOptions: { waitUntil: "networkidle0" },
+        rejectResourceTypes: [
+          "xhr",
+          "fetch",
+          "eventsource",
+          "websocket",
+          "ping",
+        ],
+        waitForSelector: {
+          selector: expect.stringContaining(".slide"),
+          timeout: 10_000,
+        },
+      },
+    });
+  });
+
+  it("rejects rendered HTML that still has no presentation slides [HOST-C]", async () => {
+    const bdd = createBddApi(context);
+    const api = createHostMapsBddApi(context);
+    const actor = bdd.user();
+    api.captureHostedSitesS3();
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "materialize-token");
+    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", PRESENTATION_WAF_SECRET);
+    mockEnv("R2_ACCOUNT_ID", "test-account");
+    mockPresentationContent([
+      "<!doctype html><html><body><main>No slides</main></body></html>",
+    ]);
+
+    const prepared = await api.prepareHostedSite(actor, {
+      site: `bdd-empty-deck-${randomUUID().slice(0, 8)}`,
+      artifactKind: "presentation-html",
+      spaFallback: false,
+      files: [hostedTextFile("/index.html", '<div id="deck"></div>')],
+    });
+    await api.completeHostedSite(actor, prepared.deploymentId);
+
+    const response = await api.requestMaterializePresentationHtml(
+      actor,
+      { url: prepared.url },
+      [422],
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expectApiError(response.body);
+    expect(response.body.error).toStrictEqual({
+      code: "PRESENTATION_NOT_FOUND",
+      message: "No presentation slides were found after rendering",
+    });
   });
 
   it("redeploys hosted-site HTML in place and rejects presentation sites [HOST-C]", async () => {

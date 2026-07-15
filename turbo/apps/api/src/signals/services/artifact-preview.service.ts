@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
@@ -16,6 +15,7 @@ import {
   loadUserFeatureSwitchContext,
   userFeatureSwitchContext,
 } from "./feature-switches.service";
+import { renderHostedBrowserSnapshot } from "./hosted-browser-renderer.service";
 import { publishArtifactsChangedForRun } from "./run-uploaded-files.service";
 
 const log = logger("artifacts:preview");
@@ -26,30 +26,9 @@ const log = logger("artifacts:preview");
 // batches are tiny.
 const PREVIEW_BATCH_SIZE = 10;
 const PREVIEW_SCAN_PAGE_SIZE = 50;
-// Render at a full 1280-wide desktop layout for fidelity, but rasterize at half
-// resolution (deviceScaleFactor 0.5 -> 640x400) since the grid only shows the
-// image a few hundred px wide. WebP keeps the file small (~tens of KB).
-const PREVIEW_VIEWPORT = {
-  width: 1280,
-  height: 800,
-  deviceScaleFactor: 0.5,
-} as const;
 const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
 const PREVIEW_IMAGE_BASENAME = "preview-v2";
-const PREVIEW_WAF_COOKIE_NAME = "vm0_artifact_preview";
-
-const browserSnapshotSchema = z.object({
-  meta: z.object({
-    status: z.number().optional(),
-    title: z.string().optional(),
-  }),
-  success: z.literal(true),
-  result: z.object({
-    content: z.string().min(1),
-    screenshot: z.string().min(1),
-  }),
-});
 
 // Videos are immutable, so a fixed poster key (no versioning) is fine. The
 // Cloudflare Media Transformations frame endpoint only outputs jpg/png.
@@ -160,94 +139,25 @@ function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
   return and(...conditions);
 }
 
-function isCloudflareChallenge(content: string, title?: string): boolean {
-  const page = `${title ?? ""}\n${content}`.toLowerCase();
-  const hasChallengeCopy = [
-    "performing security verification",
-    "incompatible browser extension or network configuration",
-    "verify you are human",
-    "checking your browser",
-    "just a moment",
-  ].some((marker) => {
-    return page.includes(marker);
-  });
-  const hasChallengeImplementation = [
-    "challenges.cloudflare.com",
-    "/cdn-cgi/challenge-platform/",
-    "challenge-platform",
-    "cf-chl-",
-    "__cf_chl_",
-  ].some((marker) => {
-    return page.includes(marker);
-  });
-  return hasChallengeCopy && hasChallengeImplementation;
-}
-
 async function renderArtifactSnapshot(
   token: string,
   wafSecret: string,
   url: string,
   signal: AbortSignal,
 ): Promise<Buffer> {
-  const previewUrl = new URL(url);
-  const hostDomain = env("ZERO_HOST_DOMAIN");
-  if (
-    previewUrl.protocol !== "https:" ||
-    !previewUrl.hostname.endsWith(`.${hostDomain}`)
-  ) {
-    throw new Error(
-      `artifact preview URL must be a subdomain of ${hostDomain}`,
-    );
-  }
-
-  const accountId = env("R2_ACCOUNT_ID");
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/browser-rendering/snapshot?cacheTTL=0`,
+  const snapshot = await renderHostedBrowserSnapshot(
     {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        url,
-        cookies: [
-          {
-            name: PREVIEW_WAF_COOKIE_NAME,
-            value: wafSecret,
-            url: previewUrl.origin,
-            httpOnly: true,
-            secure: true,
-            sameSite: "Strict",
-          },
-        ],
-        formats: ["content", "screenshot"],
-        viewport: PREVIEW_VIEWPORT,
-        gotoOptions: { waitUntil: "networkidle0" },
-        screenshotOptions: { type: "webp", quality: 80 },
-      }),
-      signal,
+      token,
+      wafSecret,
+      url,
+      formats: ["content", "screenshot"],
     },
+    signal,
   );
-  if (!response.ok) {
-    throw new Error(
-      `browser-rendering snapshot failed (${response.status}): ${await response.text()}`,
-    );
+  if (!snapshot.screenshot) {
+    throw new Error("browser-rendering snapshot did not return a screenshot");
   }
-
-  const responseBody: unknown = await response.json();
-  const snapshot = browserSnapshotSchema.parse(responseBody);
-  if (snapshot.meta.status !== undefined && snapshot.meta.status >= 400) {
-    throw new Error(
-      `browser-rendering snapshot returned page status ${snapshot.meta.status}`,
-    );
-  }
-  if (isCloudflareChallenge(snapshot.result.content, snapshot.meta.title)) {
-    throw new Error(
-      "browser-rendering snapshot returned a Cloudflare challenge",
-    );
-  }
-  return Buffer.from(snapshot.result.screenshot, "base64");
+  return Buffer.from(snapshot.screenshot, "base64");
 }
 
 /**

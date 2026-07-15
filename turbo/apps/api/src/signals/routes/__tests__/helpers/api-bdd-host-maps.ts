@@ -8,6 +8,7 @@ import {
   type HostedSitePrepareResponse,
   type HostedSiteRedeployHtmlRequest,
   type HostedSiteRedeployPresentationHtmlRequest,
+  type MaterializePresentationHtmlRequest,
 } from "@vm0/api-contracts/contracts/zero-host";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 
@@ -37,6 +38,17 @@ type HostPrepareStatus = 200 | 400 | 401 | 402 | 403 | 409 | 500;
 type HostCompleteStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
 type HostFilesStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type HostRedeployStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
+type HostMaterializePresentationStatus =
+  | 200
+  | 400
+  | 401
+  | 403
+  | 404
+  | 409
+  | 413
+  | 422
+  | 500
+  | 503;
 type HostSpeakerNotesStatus = 200 | 400 | 401 | 402 | 403 | 500;
 type HostHtmlDomEditStatus = 200 | 400 | 401 | 402 | 403 | 500 | 503;
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
@@ -276,6 +288,20 @@ export function createHostMapsBddApi(context: TestContext) {
     ) {
       return await accept(
         hostClient().redeployPresentationHtml({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestMaterializePresentationHtml(
+      actor: ApiTestUser | null,
+      body: MaterializePresentationHtmlRequest,
+      statuses: readonly HostMaterializePresentationStatus[],
+    ) {
+      return await accept(
+        hostClient().materializePresentationHtml({
           headers: authenticate(context, actor),
           body,
         }),

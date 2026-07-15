@@ -1,7 +1,3 @@
-import {
-  publicAttachmentUrl,
-  readableAttachmentResourceUrl,
-} from "./zero-attachment-url.ts";
 import domToPptxBundleUrl from "../../../node_modules/dom-to-pptx/dist/dom-to-pptx.bundle.js?url";
 import JSZip from "jszip";
 import {
@@ -11,6 +7,7 @@ import {
   withCleanup,
 } from "../../signals/utils.ts";
 import { materializePresentationThemeSwitcherDefaults } from "./presentation-html-edit-protocol.ts";
+import { readableAttachmentResourceUrl } from "./zero-attachment-url.ts";
 
 const EXPORT_FONT_READY_TIMEOUT_MS = 800;
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
@@ -372,9 +369,34 @@ function createExportSlideScript(): string {
   };
 
   const revealSlideNodes = (nodes) => {
-    const revealElement = (element, forceDisplay) => {
-      if (forceDisplay || window.getComputedStyle(element).display === "none") {
-        element.style.setProperty("display", "block", "important");
+    const revealTargets = nodes.flatMap((node) => {
+      return node instanceof HTMLElement
+        ? [node, ...ancestorsUntilBody(node)]
+        : [];
+    });
+    const visiblePeerDisplay = (element) => {
+      const classNames = Array.from(element.classList);
+      const peer = revealTargets.find((candidate) => {
+        if (candidate === element || candidate.tagName !== element.tagName) {
+          return false;
+        }
+        if (
+          classNames.length > 0 &&
+          !classNames.some((className) => candidate.classList.contains(className))
+        ) {
+          return false;
+        }
+        return window.getComputedStyle(candidate).display !== "none";
+      });
+      return peer ? window.getComputedStyle(peer).display : "block";
+    };
+    const revealElement = (element) => {
+      if (window.getComputedStyle(element).display === "none") {
+        element.style.setProperty(
+          "display",
+          visiblePeerDisplay(element),
+          "important",
+        );
       }
       element.style.setProperty("visibility", "visible", "important");
       element.style.setProperty("opacity", "1", "important");
@@ -388,10 +410,10 @@ function createExportSlideScript(): string {
       if (!(node instanceof HTMLElement)) {
         continue;
       }
-      revealElement(node, true);
+      revealElement(node);
       node.style.setProperty("pointer-events", "none", "important");
       for (const ancestor of ancestorsUntilBody(node)) {
-        revealElement(ancestor, false);
+        revealElement(ancestor);
       }
     }
   };
@@ -966,6 +988,14 @@ async function htmlWithExportScript(
 ): Promise<string> {
   materializePresentationThemeSwitcherDefaults(doc);
   await inlineFetchableImages(doc, baseUrl, signal);
+  for (const meta of doc.querySelectorAll("meta[http-equiv]")) {
+    if (
+      meta.getAttribute("http-equiv")?.toLowerCase() ===
+      "content-security-policy"
+    ) {
+      meta.remove();
+    }
+  }
   for (const script of doc.querySelectorAll("script")) {
     script.remove();
   }
@@ -1536,24 +1566,6 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-async function fetchPresentationHtml(
-  url: string,
-  signal: AbortSignal,
-): Promise<{ readonly baseUrl: string; readonly html: string }> {
-  const htmlUrl = publicAttachmentUrl(url);
-  const response = await fetch(readableAttachmentResourceUrl(htmlUrl), {
-    cache: "reload",
-    mode: "cors",
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch presentation HTML (${response.status})`);
-  }
-  const html = await response.text();
-  signal.throwIfAborted();
-  return { baseUrl: htmlUrl, html };
-}
-
 interface PresentationPptxBlob {
   readonly blob: Blob;
   readonly filename: string;
@@ -1593,40 +1605,6 @@ export async function buildPresentationHtmlPptxBlob(params: {
   });
   params.signal.throwIfAborted();
   return { blob: finalBlob, filename: options.fileName };
-}
-
-export async function buildPresentationHtmlPptxBlobFromUrl(params: {
-  readonly filename: string;
-  readonly signal: AbortSignal;
-  readonly url: string;
-}): Promise<PresentationPptxBlob> {
-  const { baseUrl, html } = await fetchPresentationHtml(
-    params.url,
-    params.signal,
-  );
-  return buildPresentationHtmlPptxBlob({
-    baseUrl,
-    filename: params.filename,
-    html,
-    signal: params.signal,
-  });
-}
-
-export async function downloadPresentationHtmlPptx(params: {
-  readonly filename: string;
-  readonly signal: AbortSignal;
-  readonly url: string;
-}): Promise<void> {
-  const { baseUrl, html } = await fetchPresentationHtml(
-    params.url,
-    params.signal,
-  );
-  await downloadPresentationHtmlStringPptx({
-    baseUrl,
-    filename: params.filename,
-    html,
-    signal: params.signal,
-  });
 }
 
 export async function downloadPresentationHtmlStringPptx(params: {

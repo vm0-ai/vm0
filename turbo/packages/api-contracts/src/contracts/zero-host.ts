@@ -93,6 +93,21 @@ export const hostedSiteRedeployPresentationHtmlRequestSchema = z.object({
   html: z.string().min(1),
 });
 
+export const materializePresentationHtmlRequestSchema = z.object({
+  url: z.string().url(),
+});
+
+export const materializedPresentationHtmlResponseSchema = z.object({
+  version: z.literal(1),
+  html: z
+    .string()
+    .min(1)
+    .max(5 * 1024 * 1024),
+  sourceUrl: z.string().url(),
+  sourceDeploymentId: z.string().uuid(),
+  slideCount: z.number().int().positive().max(500),
+});
+
 export const hostedSiteRedeployHtmlRequestSchema = z.object({
   url: z.string().url(),
   html: z.string().min(1),
@@ -241,6 +256,25 @@ export const zeroHostContract = c.router({
     },
     summary: "Redeploy an existing presentation HTML hosted site",
   },
+  materializePresentationHtml: {
+    method: "POST",
+    path: "/api/zero/host/presentation-html/materialize",
+    headers: authHeadersSchema,
+    body: materializePresentationHtmlRequestSchema,
+    responses: {
+      200: materializedPresentationHtmlResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      413: apiErrorSchema,
+      422: apiErrorSchema,
+      503: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Materialize presentation HTML after executing its scripts",
+  },
   redeployHtml: {
     method: "POST",
     path: "/api/zero/host/html/redeploy",
@@ -297,6 +331,12 @@ export type HostedSitePrepareRequest = z.infer<
 >;
 export type HostedSiteRedeployPresentationHtmlRequest = z.infer<
   typeof hostedSiteRedeployPresentationHtmlRequestSchema
+>;
+export type MaterializePresentationHtmlRequest = z.infer<
+  typeof materializePresentationHtmlRequestSchema
+>;
+export type MaterializedPresentationHtmlResponse = z.infer<
+  typeof materializedPresentationHtmlResponseSchema
 >;
 export type HostedSiteRedeployHtmlRequest = z.infer<
   typeof hostedSiteRedeployHtmlRequestSchema

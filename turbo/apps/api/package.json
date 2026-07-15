@@ -46,6 +46,7 @@
     "hono": "^4.12.25",
     "html-to-text": "^9.0.5",
     "music-metadata": "^11.13.0",
+    "parse5": "^7.3.0",
     "pg": "^8.20.0",
     "resend": "^6.12.4",
     "signal-timers": "^1.0.4",
