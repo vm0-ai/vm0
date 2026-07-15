@@ -486,7 +486,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       connector: {
         connectorRef: "nintendo-switch-parental-controls",
         label: "Nintendo Switch Parental Controls",
-        visibility: "unavailable",
+        visibility: "available",
         credentialResolution: "network-boundary",
       },
       environmentNames: ["NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN"],
