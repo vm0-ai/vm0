@@ -85,7 +85,7 @@
   /* WebKit paints the native text caret in document coordinates while the
      software keyboard moves the visual viewport. Keep the offset app shell in
      that same coordinate space so streaming layout updates cannot separate the
-     caret from its contenteditable composer. */
+     caret from its contenteditable composer. See WebKit bug 176896. */
   :root[data-keyboard-open="true"] #root {
     position: absolute;
   }
