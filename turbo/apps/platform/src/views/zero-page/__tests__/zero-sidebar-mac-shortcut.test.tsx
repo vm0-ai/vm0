@@ -163,4 +163,58 @@ describe("zero sidebar mac shortcuts", () => {
       expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
     });
   });
+
+  it("copies the current URL with cmd+l in standalone PWA mode", async () => {
+    context.mocks.browser.standaloneDisplayMode(true);
+    const clipboard = context.mocks.browser.clipboardWriteText();
+    prepareDefaultAgent();
+    mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    composer.focus();
+    const event = new KeyboardEvent("keydown", {
+      key: "l",
+      code: "KeyL",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([window.location.href]);
+    });
+  });
+
+  it("leaves cmd+l to the browser outside standalone PWA mode", async () => {
+    context.mocks.browser.standaloneDisplayMode(false);
+    const clipboard = context.mocks.browser.clipboardWriteText();
+    prepareDefaultAgent();
+    mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    composer.focus();
+    const event = new KeyboardEvent("keydown", {
+      key: "l",
+      code: "KeyL",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+
+    expect(clipboard.writes).toStrictEqual([]);
+  });
 });
