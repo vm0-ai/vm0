@@ -11,7 +11,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
+import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import { lockConnectorState } from "./auth-state-lock.service";
 import {
   decryptStoredSecretValue,
@@ -220,14 +220,13 @@ async function refreshAndPersistXAccessToken(args: {
     return xShareError("PROVIDER_UNAVAILABLE", "X sharing is not configured");
   }
 
-  const refreshedResult = await settle(
+  const refreshed = await tapError(
     refreshXToken(clientId, clientSecret, args.refreshToken, args.signal),
-    args.signal,
   );
-  if (!refreshedResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     return xShareError("CONFLICT", "Reconnect X to post images");
   }
-  const refreshed = refreshedResult.value;
 
   const nextRefreshToken = refreshed.refreshToken ?? args.refreshToken;
   const tokenExpiresAt = new Date(

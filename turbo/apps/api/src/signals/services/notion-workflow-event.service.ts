@@ -38,7 +38,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
+import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -581,11 +581,11 @@ async function refreshNotionAccessToken(args: {
   const refreshToken = await decryptStoredSecretValue(
     args.refreshSecret.encryptedValue,
   );
-  const refreshResult = await settle(
+  const refreshed = await tapError(
     refreshNotionToken(clientId, clientSecret, refreshToken, args.signal),
-    args.signal,
   );
-  if (!refreshResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     await markNotionConnectorNeedsReconnect({
       db: args.db,
       connectorId: args.connector.id,
@@ -599,15 +599,13 @@ async function refreshNotionAccessToken(args: {
   }
 
   const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshResult.value.expiresIn,
+    refreshed.expiresIn,
     args.currentTime,
   );
   await args.db
     .update(secretsTable)
     .set({
-      encryptedValue: await encryptStoredSecretValue(
-        refreshResult.value.accessToken,
-      ),
+      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
       updatedAt: args.currentTime,
     })
     .where(
@@ -620,13 +618,11 @@ async function refreshNotionAccessToken(args: {
     );
   args.signal.throwIfAborted();
 
-  if (refreshResult.value.refreshToken) {
+  if (refreshed.refreshToken) {
     await args.db
       .update(secretsTable)
       .set({
-        encryptedValue: await encryptStoredSecretValue(
-          refreshResult.value.refreshToken,
-        ),
+        encryptedValue: await encryptStoredSecretValue(refreshed.refreshToken),
         updatedAt: args.currentTime,
       })
       .where(
@@ -654,7 +650,7 @@ async function refreshNotionAccessToken(args: {
     kind: "ok",
     access: {
       connectorId: args.connector.id,
-      accessToken: refreshResult.value.accessToken,
+      accessToken: refreshed.accessToken,
     },
   };
 }

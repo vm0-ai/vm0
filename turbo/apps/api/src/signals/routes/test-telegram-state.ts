@@ -43,7 +43,7 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -1930,9 +1930,8 @@ const postTestTelegramState$ = command(
       return testEndpointNotFoundResponse();
     }
 
-    const settled = await settle(request.json());
+    const rawBody: unknown = (await tapError(request.json())) ?? null;
     signal.throwIfAborted();
-    const rawBody: unknown = settled.ok ? settled.value : null;
     const body = isSeedRecord(rawBody) ? rawBody : {};
     const botId = readString(body.bot_id);
     const telegramUserId = readString(body.telegram_user_id);

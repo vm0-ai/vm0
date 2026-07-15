@@ -8,7 +8,7 @@ import { request$ } from "../context/hono";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import { dispatchZeroSlackProbe$ } from "../services/zero-slack-webhooks.service";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -97,9 +97,8 @@ const postSlackDispatchProbe$ = command(
       return testEndpointNotFoundResponse();
     }
 
-    const settled = await settle(request.json());
+    const rawBody: unknown = (await tapError(request.json())) ?? null;
     signal.throwIfAborted();
-    const rawBody: unknown = settled.ok ? settled.value : null;
 
     const body = parseProbeBody(rawBody);
     if (!body) {
