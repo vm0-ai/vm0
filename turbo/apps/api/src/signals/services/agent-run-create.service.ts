@@ -18,6 +18,8 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
+  getVm0ModelCodexRuntimeConfig,
+  getVm0ModelProviderConfig,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
@@ -26,8 +28,6 @@ import {
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   shouldInlineModelProviderFirewall,
-  VM0_AUTO_MODEL_PROVIDER_FIREWALL,
-  VM0_AUTO_PROXY_BASE_URL,
   type ModelProviderCodexRuntimeConfig,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
@@ -1776,11 +1776,13 @@ async function vm0ModelProviderEnvironment(
     return null;
   }
 
-  if (selectedModel === "vm0-auto") {
-    const proxyToken = optionalEnv("VM0_AUTO_PROXY_TOKEN")?.trim();
-    if (!proxyToken) {
+  if (selectedModel === "vm0-model") {
+    const proxyToken = optionalEnv("VM0_MODEL_PROXY_TOKEN")?.trim();
+    const proxyHost = optionalEnv("VM0_MODEL_PROXY_HOST")?.trim();
+    if (!proxyToken || !proxyHost) {
       return null;
     }
+    const vm0ModelConfig = getVm0ModelProviderConfig(proxyHost);
     return {
       id: null,
       type: "vm0",
@@ -1788,15 +1790,16 @@ async function vm0ModelProviderEnvironment(
       framework: "codex",
       environment: {
         OPENAI_API_KEY: `\${{ secrets.OPENAI_API_KEY }}`,
-        OPENAI_BASE_URL: VM0_AUTO_PROXY_BASE_URL,
+        OPENAI_BASE_URL: vm0ModelConfig.baseUrl,
         OPENAI_MODEL: selectedModel,
       },
       secrets: {
         OPENAI_API_KEY: proxyToken,
-        VM0_AUTO_UPSTREAM_API_KEY: apiKey,
+        VM0_MODEL_UPSTREAM_API_KEY: apiKey,
       },
       selectedModel,
-      firewall: VM0_AUTO_MODEL_PROVIDER_FIREWALL,
+      codexRuntimeConfig: getVm0ModelCodexRuntimeConfig(vm0ModelConfig.baseUrl),
+      firewall: vm0ModelConfig.firewall,
       inlineFirewall: true,
     };
   }

@@ -51,38 +51,50 @@ export const MODEL_PROVIDER_ENV_PLACEHOLDERS = {
   CHATGPT_REFRESH_TOKEN: "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
 } as const;
 
-export const VM0_AUTO_PROXY_BASE_URL =
-  "https://www.vm0.ai/api/internal/vm0-auto/v1";
+const VM0_MODEL_PROXY_PATH = "/api/internal/vm0-model/v1";
 
-const VM0_AUTO_UPSTREAM_API_KEY_PLACEHOLDER =
+const VM0_MODEL_UPSTREAM_API_KEY_PLACEHOLDER =
   "sk-vm0-upstream-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
+export interface Vm0ModelProviderConfig {
+  readonly baseUrl: string;
+  readonly firewall: ExpandedFirewallConfig;
+}
+
 /**
- * VM0 Auto uses the public Responses shape while keeping both credentials in
+ * VM0 Model uses the public Responses shape while keeping both credentials in
  * firewall auth. Codex sees only the canonical OPENAI_API_KEY placeholder; the
  * firewall injects the proxy credential as Authorization and a managed OpenAI
  * credential in the internal upstream header consumed by the proxy.
  */
-export const VM0_AUTO_MODEL_PROVIDER_FIREWALL = {
-  name: "model-provider:vm0-auto",
-  apis: [
-    {
-      base: `${VM0_AUTO_PROXY_BASE_URL}/responses`,
-      auth: {
-        headers: {
-          Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
-          "X-VM0-Upstream-Authorization":
-            "Bearer ${{ secrets.VM0_AUTO_UPSTREAM_API_KEY }}",
+export function getVm0ModelProviderConfig(
+  proxyHost: string,
+): Vm0ModelProviderConfig {
+  const baseUrl = new URL(VM0_MODEL_PROXY_PATH, proxyHost).toString();
+  return {
+    baseUrl,
+    firewall: {
+      name: "model-provider:vm0-model",
+      apis: [
+        {
+          base: `${baseUrl}/responses`,
+          auth: {
+            headers: {
+              Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
+              "X-VM0-Upstream-Authorization":
+                "Bearer ${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}",
+            },
+          },
+          permissions: [],
         },
+      ],
+      placeholders: {
+        OPENAI_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+        VM0_MODEL_UPSTREAM_API_KEY: VM0_MODEL_UPSTREAM_API_KEY_PLACEHOLDER,
       },
-      permissions: [],
     },
-  ],
-  placeholders: {
-    OPENAI_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-    VM0_AUTO_UPSTREAM_API_KEY: VM0_AUTO_UPSTREAM_API_KEY_PLACEHOLDER,
-  },
-} as const satisfies ExpandedFirewallConfig;
+  };
+}
 
 const MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS: Record<
   LegacySingleSecretProvider,

@@ -57,14 +57,14 @@ class TestResponseHeadersHandler:
     def test_accepts_and_strips_signed_model_usage_receipt(self, real_flow):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-auto"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         receipt = (
             base64.urlsafe_b64encode(
                 json.dumps(
                     {
                         "version": 1,
-                        "billingSku": "auto-standard-v1",
+                        "billingSku": "model-standard-v1",
                         "issuedAt": int(time.time()),
                     },
                     separators=(",", ":"),
@@ -97,14 +97,14 @@ class TestResponseHeadersHandler:
 
         mitm_addon.responseheaders(flow)
 
-        assert flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] == "auto-standard-v1"
+        assert flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] == "model-standard-v1"
         assert "x-vm0-usage-receipt" not in flow.response.headers
         assert "x-vm0-usage-signature" not in flow.response.headers
 
     def test_rejects_invalid_model_usage_receipt_signature(self, real_flow):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-auto"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
             status_code=200,
@@ -126,7 +126,7 @@ class TestResponseHeadersHandler:
     def test_rejects_non_ascii_model_usage_receipt(self, real_flow):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-auto"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
             status_code=200,

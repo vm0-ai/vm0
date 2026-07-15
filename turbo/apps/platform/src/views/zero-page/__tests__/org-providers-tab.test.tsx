@@ -280,6 +280,22 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
+  it("hides provider routing choices for VM0 Model", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    await openProvidersTab();
+
+    click(buttonByText("Add model"));
+    await selectDialogModel("VM0 Model");
+
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    expect(within(dialog).queryByText("Provided by")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("radiogroup", { name: "Provided by" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens a workspace API key model route form", async () => {
     await openAddApiKeyModelDialog();
 

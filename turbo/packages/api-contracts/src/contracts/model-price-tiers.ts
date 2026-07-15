@@ -5,7 +5,7 @@
  * without importing the full model provider contract schema.
  */
 export const SUPPORTED_RUN_MODELS = [
-  "vm0-auto",
+  "vm0-model",
   "claude-fable-5",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
@@ -39,7 +39,7 @@ export type Vm0ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
 export const VM0_MODEL_PRICE_TIER = Object.freeze<
   Record<SupportedRunModel, Vm0ModelPriceTier>
 >({
-  "vm0-auto": "$$",
+  "vm0-model": "$$",
   "claude-fable-5": "$$$$",
   "gpt-5.6-sol": "$$$",
   "gpt-5.6-terra": "$$",

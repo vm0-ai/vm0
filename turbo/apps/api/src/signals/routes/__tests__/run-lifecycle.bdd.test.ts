@@ -11,8 +11,6 @@ import {
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
-  VM0_AUTO_MODEL_PROVIDER_FIREWALL,
-  VM0_AUTO_PROXY_BASE_URL,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -4019,12 +4017,20 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
-  it("routes vm0-auto through its fixed proxy and injects both managed credentials", async () => {
+  it("routes vm0-model through the marketing tunnel and injects both managed credentials", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const fw = createFirewallApi(context);
-    const selectedModel = "vm0-auto";
-    mockOptionalEnv("VM0_AUTO_PROXY_TOKEN", "vm0-auto-proxy-token");
+    const selectedModel = "vm0-model";
+    const proxyHost = "https://tunnel-yuma-vm0-marketing.vm7.ai:8443";
+    const proxyBaseUrl = `${proxyHost}/api/internal/vm0-model/v1`;
+    const firewallName = "model-provider:vm0-model";
+    const proxyAuthHeaders = {
+      Authorization: `Bearer \${{ secrets.OPENAI_API_KEY }}`,
+      "X-VM0-Upstream-Authorization": `Bearer \${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}`,
+    } as const;
+    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
+    mockOptionalEnv("VM0_MODEL_PROXY_HOST", proxyHost);
     await seedVm0ManagedModelKey(selectedModel);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
@@ -4042,13 +4048,13 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       {
         agentId,
-        prompt: "vm0 auto proxy run",
+        prompt: "vm0 model proxy run",
         model: selectedModel,
       },
       [201],
     );
     if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected VM0 Auto chat send to create a run");
+      throw new Error("Expected VM0 Model chat send to create a run");
     }
 
     await api.heartbeatRunner(runnerGroup);
@@ -4057,24 +4063,34 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
       OPENAI_API_KEY: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-      OPENAI_BASE_URL: VM0_AUTO_PROXY_BASE_URL,
+      OPENAI_BASE_URL: proxyBaseUrl,
       OPENAI_MODEL: selectedModel,
     });
-    expect(claim.environment?.OPENAI_API_KEY).not.toBe("vm0-auto-proxy-token");
+    expect(claim.environment?.OPENAI_API_KEY).not.toBe("vm0-model-proxy-token");
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "vm0-model",
+      name: "VM0 Model",
+      baseUrl: proxyBaseUrl,
+      envKey: "OPENAI_API_KEY",
+      wireApi: "responses",
+      supportsWebsockets: false,
+      modelCatalog: {
+        models: [expect.objectContaining({ slug: selectedModel })],
+      },
+    });
     expect(
       claim.firewalls?.map((firewall) => {
         return firewallEntryName(firewall);
       }),
-    ).toContain(VM0_AUTO_MODEL_PROVIDER_FIREWALL.name);
-    expect(
-      inlineFirewallApis(
-        claim.firewalls,
-        VM0_AUTO_MODEL_PROVIDER_FIREWALL.name,
-      ),
-    ).toStrictEqual(VM0_AUTO_MODEL_PROVIDER_FIREWALL.apis);
-    expect(claim.billableFirewalls).toContain(
-      VM0_AUTO_MODEL_PROVIDER_FIREWALL.name,
-    );
+    ).toContain(firewallName);
+    expect(inlineFirewallApis(claim.firewalls, firewallName)).toStrictEqual([
+      {
+        base: `${proxyBaseUrl}/responses`,
+        auth: { headers: proxyAuthHeaders },
+        permissions: [],
+      },
+    ]);
+    expect(claim.billableFirewalls).toContain(firewallName);
     expect(claim.modelUsageProvider).toBe(selectedModel);
     expect(claim.encryptedSecrets).toBeTruthy();
 
@@ -4082,21 +4098,21 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       { authorization: `Bearer ${claim.sandboxToken}` },
       {
         encryptedSecrets: claim.encryptedSecrets!,
-        authHeaders: VM0_AUTO_MODEL_PROVIDER_FIREWALL.apis[0]!.auth.headers,
+        authHeaders: proxyAuthHeaders,
       },
       [200],
     );
     if (resolved.status !== 200) {
-      throw new Error("Expected VM0 Auto firewall auth to resolve");
+      throw new Error("Expected VM0 Model firewall auth to resolve");
     }
     expect(resolved.body.headers).toStrictEqual({
-      Authorization: "Bearer vm0-auto-proxy-token",
+      Authorization: "Bearer vm0-model-proxy-token",
       "X-VM0-Upstream-Authorization":
         "Bearer vm0-key-run-lifecycle-bdd-default-model",
     });
     expect(resolved.body.resolvedSecrets).toStrictEqual([
       "OPENAI_API_KEY",
-      "VM0_AUTO_UPSTREAM_API_KEY",
+      "VM0_MODEL_UPSTREAM_API_KEY",
     ]);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
@@ -8592,7 +8608,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
           {
             idempotencyKey: randomUUID(),
             kind: "model",
-            provider: "vm0-auto",
+            provider: "vm0-model",
             billingSku,
             category: "tokens.output",
             quantity: 100,
