@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.277.4](https://github.com/vm0-ai/vm0/compare/api-v1.277.3...api-v1.277.4) (2026-07-15)
+
+
+### Bug Fixes
+
+* **api:** require app version 0.599.19 ([#21616](https://github.com/vm0-ai/vm0/issues/21616)) ([14643c9](https://github.com/vm0-ai/vm0/commit/14643c9799fdd5970ee4e818db3b78b8ce182e22))
+
 ## [1.277.3](https://github.com/vm0-ai/vm0/compare/api-v1.277.2...api-v1.277.3) (2026-07-15)
 
 

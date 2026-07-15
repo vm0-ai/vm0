@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.22...runner-rs-v0.144.23) (2026-07-15)
+
+
+### Bug Fixes
+
+* **mitm-addon:** prevent binding after client disconnect ([#21617](https://github.com/vm0-ai/vm0/issues/21617)) ([07e44af](https://github.com/vm0-ai/vm0/commit/07e44af0967872fd1d2f80879f08728d18432853))
+
 ## [0.144.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.21...runner-rs-v0.144.22) (2026-07-15)
 
 ## [0.144.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.20...runner-rs-v0.144.21) (2026-07-15)
