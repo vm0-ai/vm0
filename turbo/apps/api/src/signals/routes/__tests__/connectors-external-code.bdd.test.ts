@@ -577,9 +577,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
     context.mocks.ably.publish.mockResolvedValue(undefined);
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.NintendoStoreConnector]: true,
-    });
 
     const session = await connectorsApi.startExternalCode(
       actor,
@@ -691,7 +688,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectNoVisibleSecret(secretList, "bdd-nintendo-access-token");
 
     await connectorsApi.deleteConnectorByType(actor, "nintendo-store");
-    await connectorsApi.deleteFeatureSwitches(actor);
   });
 
   it("replaces the remote Nintendo registration and keeps local deletion resilient", async () => {
@@ -699,9 +695,6 @@ describe("CONN-02: external-code session lifecycle", () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
     context.mocks.ably.publish.mockResolvedValue(undefined);
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: true,
-    });
 
     const session = await connectorsApi.startExternalCode(
       actor,

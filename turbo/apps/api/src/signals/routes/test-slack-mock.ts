@@ -10,7 +10,7 @@ import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
-import { safeJsonParse, settle } from "../utils";
+import { bestEffort, safeJsonParse } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -78,7 +78,7 @@ async function logSlackMockCall(
   contentType: string,
 ): Promise<void> {
   const parsed = await readSlackMockBody(request, contentType);
-  await settle(
+  await bestEffort(
     db.insert(e2eSlackMockCallLog).values({
       method,
       teamId: parsed.teamId,

@@ -177,18 +177,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NintendoStoreConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Nintendo Store connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Nintendo Switch Parental Controls connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",

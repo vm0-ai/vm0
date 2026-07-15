@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.275.9](https://github.com/vm0-ai/vm0/compare/api-v1.275.8...api-v1.275.9) (2026-07-15)
+
+
+### Refactoring
+
+* replace 18 settle branches with existing utils ([#21521](https://github.com/vm0-ai/vm0/issues/21521)) ([00e3b8b](https://github.com/vm0-ai/vm0/commit/00e3b8b27d00cab22b329951cfa980ca9a1f208f))
+
+
+### Performance Improvements
+
+* **api:** batch usage allowance settlement ([#21495](https://github.com/vm0-ai/vm0/issues/21495)) ([4e470a8](https://github.com/vm0-ai/vm0/commit/4e470a86836f5808ded8a4c419c62a9df2c5dccd))
+
 ## [1.275.8](https://github.com/vm0-ai/vm0/compare/api-v1.275.7...api-v1.275.8) (2026-07-15)
 
 

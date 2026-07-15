@@ -31,8 +31,6 @@ export enum FeatureSwitchKey {
   CloseConnector = "closeConnector",
   TikTokAdsConnector = "tiktokAdsConnector",
   AwsConnector = "awsConnector",
-  NintendoSwitchParentalControlsConnector = "nintendoSwitchParentalControlsConnector",
-  NintendoStoreConnector = "nintendoStoreConnector",
   PosthogConnector = "posthogConnector",
   PayPalConnector = "payPalConnector",
   RampConnector = "rampConnector",
