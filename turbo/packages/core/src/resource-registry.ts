@@ -3336,14 +3336,14 @@ const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "editorial-magazine":
     "d1ae6492925d2e9ed7cc0acc1684c33fea6613b6bef34b21aa228f01fc76c5d7",
   "landing-consulting":
-    "3b2fa8e03ebe9bdd8397bfa4fdf526e9f10b11d2b1676829f7b32eeaa8336cf8",
+    "01323dcebc9413781ad518d86f6b6611c3fb39a8bfd6287b2abced7c9432b6c7",
   lumina: "38ae1652ababd62fbb2dcbc612a7a9458dae0b88283e09b34d113882f94ca063",
   meridian: "6d31c74008ea8f854da929edb135ecbc8410dc3790e9c5ff8d43681029c1ecff",
   "mosaic-geometric":
-    "e9e489d2bcd817968c30ebae6b41513e3e175c58fd7a1db36351918ff45e1576",
+    "fd036b42ef323011f0a2c771ceb0bbc6cfb6fb29272633f4e187cd672a89d336",
   "neo-brutalism":
     "70ca020b00cd79abdb471e3145f2bd706c1a2978fdd5870e372565033f3a4ead",
-  nocturne: "efd5031c618ea76fa20d460f583c69c086459a965e006e38ef189390fe1692a6",
+  nocturne: "83d26dbd95a839310db7553b3a2e4dfe2cc3d9678d988fa864d4dd61f6941213",
   "pixel-glitch":
     "bf3f5312f2281490f592c8d1c02477e57632299ea93b9e3eef65fe1dc2236e29",
   "playful-pop":
@@ -3351,10 +3351,10 @@ const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   prospectus:
     "0dc2b86b15970312003f6a60a90b03c47729870a38f85ae79c89547cd1cb485d",
   schoolhouse:
-    "bb3e49899d1bcd24b1e88ba8566a9ddd09039502fb51becffcd9f35051463e63",
+    "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad",
   "sticker-scrapbook":
-    "f59e1ee3e70b6ca220e584bf230749ef8768941fcdf7873f4704d6f02ad72c73",
-  strata: "c91074decc1642d5c17644aa2aac43702dc727220046807e8f29db1eb47bd450",
+    "cddd7f14573af6aa922b2873658dc81fbcd45dfb42b84da8be9b8e0866874dab",
+  strata: "39ebdffe9de88faebb6427d734927b57ebe69b9b98db5efbee59b5f7ab120cc6",
   "taped-consulting":
     "7b05540c82b410abd1f236ef8a42ff53601489a4a8531413983830d42cec614b",
   vantage: "096678c9f5bc1760b9f2c25bf10949296ddaa98511a2ecae2bc59528bd7969ed",
