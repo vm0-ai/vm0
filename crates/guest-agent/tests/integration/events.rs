@@ -56,7 +56,8 @@ async fn send_event_masks_secrets() {
     let mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .body_includes(r#""data":"contains *** here""#);
+            .body_includes(r#""tool_input":{"***":"contains *** here"}"#)
+            .body_excludes("super-secret-value");
         then.status(200);
     });
 
@@ -64,11 +65,34 @@ async fn send_event_masks_secrets() {
     let encoded_secret = engine.encode("super-secret-value");
     let masker = SecretMasker::from_raw(&encoded_secret);
 
-    let event = json!({"type": "test", "data": "contains super-secret-value here"});
+    let event = json!({
+        "type": "test",
+        "tool_input": {"super-secret-value": "contains super-secret-value here"}
+    });
     let result = send_shared_event(event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
+}
+
+#[test]
+fn prepare_event_keeps_system_sequence_field_when_name_is_secret() {
+    let engine = base64::engine::general_purpose::STANDARD;
+    let encoded_secret = engine.encode("sequenceNumber");
+    let masker = SecretMasker::from_raw(&encoded_secret);
+    let event = json!({
+        "type": "test",
+        "nested": {"sequenceNumber": "event-controlled"}
+    });
+
+    let payload =
+        guest_agent::events::prepare_event_payload_for_run_id(event, 7, &masker, TEST_RUN_ID);
+
+    assert_eq!(payload["runId"], TEST_RUN_ID);
+    assert_eq!(payload["events"][0]["type"], "test");
+    assert_eq!(payload["events"][0]["sequenceNumber"], 7);
+    assert_eq!(payload["events"][0]["nested"]["***"], "event-controlled");
+    assert!(payload["events"][0]["nested"]["sequenceNumber"].is_null());
 }
 
 #[tokio::test]
