@@ -742,13 +742,7 @@ describe("connector catalog valid lifecycle", () => {
     const losingPublicKey = releaseKeys(losing.version).publicCatalog;
     const blocked = deferredGate();
     const resume = deferredGate();
-    const activePointers = [
-      losing.pointer,
-      winning.pointer,
-      winning.pointer,
-      losing.pointer,
-      winning.pointer,
-    ];
+    const activePointers = [losing.pointer, winning.pointer, winning.pointer];
     let activeReads = 0;
     let blockedLosingPublic = false;
     context.mocks.s3.send.mockImplementation(async (command: unknown) => {
@@ -792,19 +786,20 @@ describe("connector catalog valid lifecycle", () => {
     });
   });
 
-  it("restarts when active changes during validation", async () => {
+  it("advances on the next sync when active changes during validation", async () => {
     configureSource();
-    const superseded = buildRelease({ version: "2026-07-15.old" });
+    const observed = buildRelease({ version: "2026-07-15.observed" });
     const current = buildRelease({ version: "2026-07-15.current" });
-    const objects = catalogObjects([superseded, current], current);
-    let activeReads = 0;
+    const objects = catalogObjects([observed, current], current);
+    let activePointer = observed.pointer;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       const key = commandInput(command).Key;
+      if (key === observed.integrityKey) {
+        activePointer = current.pointer;
+      }
       const bytes =
         key === ACTIVE_KEY
-          ? ++activeReads === 1
-            ? superseded.pointer
-            : current.pointer
+          ? activePointer
           : typeof key === "string"
             ? objects.get(key)
             : undefined;
@@ -819,9 +814,12 @@ describe("connector catalog valid lifecycle", () => {
 
     expect((await syncCatalog()).body).toMatchObject({
       outcome: "accepted",
+      active: { catalogVersion: observed.version },
+    });
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
       active: { catalogVersion: current.version },
     });
-    expect(activeReads).toBe(4);
   });
 });
 

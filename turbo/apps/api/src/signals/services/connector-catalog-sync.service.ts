@@ -23,7 +23,6 @@ import {
 import { settle } from "../utils";
 import { SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION } from "./connector-catalog-artifacts/artifacts";
 import {
-  connectorCatalogPointersEqual,
   connectorCatalogArtifactFailureCode,
   loadConnectorCatalogActivePointer,
   loadConnectorCatalogCandidate,
@@ -696,13 +695,6 @@ async function syncConnectorCatalogAttempt(
   );
   if (candidateResult.kind !== "loaded") {
     return candidateResult;
-  }
-  const currentPointerResult = await loadPointerForSync(runtime, baseline);
-  if (currentPointerResult.kind !== "loaded") {
-    return currentPointerResult;
-  }
-  if (!connectorCatalogPointersEqual(pointer, currentPointerResult.value)) {
-    return { kind: "retry" };
   }
   return await commitValidatedCandidate(
     runtime,

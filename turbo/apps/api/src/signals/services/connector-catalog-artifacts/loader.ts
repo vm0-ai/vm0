@@ -241,17 +241,6 @@ function assertNoReservedModelProviderRefs(args: {
   }
 }
 
-export function connectorCatalogPointersEqual(
-  left: ConnectorCatalogActivePointer,
-  right: ConnectorCatalogActivePointer,
-): boolean {
-  return (
-    left.catalogVersion === right.catalogVersion &&
-    left.integrity.key === right.integrity.key &&
-    left.integrity.digest === right.integrity.digest
-  );
-}
-
 export async function loadConnectorCatalogActivePointer(
   reader: ConnectorCatalogArtifactReader,
 ): Promise<ConnectorCatalogActivePointer> {
