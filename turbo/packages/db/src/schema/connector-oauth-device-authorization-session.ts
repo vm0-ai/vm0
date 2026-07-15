@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   pgEnum,
@@ -28,6 +29,8 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    agentId: uuid("agent_id"),
+    authorizeAgent: boolean("authorize_agent").default(false).notNull(),
     connectorType: varchar("connector_type", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorOauthDeviceAuthorizationSessionStatusEnum("status")

@@ -9,7 +9,6 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -232,7 +231,12 @@ function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
   };
 }
 
-function mockConnectorOauthStart(args?: { readonly onStart?: () => void }): {
+function mockConnectorOauthStart(args?: {
+  readonly onStart?: (
+    agentId: string | undefined,
+    authorizeAgent: true | undefined,
+  ) => void;
+}): {
   readonly authWindow: Window;
 } {
   const authWindow = context.mocks.browser.authWindow();
@@ -244,8 +248,8 @@ function mockConnectorOauthStart(args?: { readonly onStart?: () => void }): {
 
   context.mocks.api(
     zeroConnectorOauthStartContract.start,
-    ({ params, respond }) => {
-      args?.onStart?.();
+    ({ body, params, respond }) => {
+      args?.onStart?.(body.agentId, body.authorizeAgent);
       return respond(200, {
         authorizationUrl: `https://oauth.test/${params.type}/authorize`,
       });
@@ -296,7 +300,14 @@ function getButtonByText(text: string): HTMLElement {
 
 describe("directed connector connect page", () => {
   it("starts an OAuth flow from a directed link", async () => {
-    const { authWindow } = mockConnectorOauthStart();
+    let startedAgentId: string | undefined;
+    let authorizeAgent: true | undefined;
+    const { authWindow } = mockConnectorOauthStart({
+      onStart: (agentId, requestedAuthorization) => {
+        startedAgentId = agentId;
+        authorizeAgent = requestedAuthorization;
+      },
+    });
     mockPublicConnectorStatus({
       connectorRef: "github",
       label: "Public GitHub",
@@ -331,7 +342,10 @@ describe("directed connector connect page", () => {
       connectNotice: null,
     });
 
-    detachedSetupPage({ context, path: "/connectors/github/connect" });
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/connect?agentId=${AGENT_ID}`,
+    });
 
     await waitFor(() => {
       expect(
@@ -344,6 +358,8 @@ describe("directed connector connect page", () => {
       expect(authWindow.location.href).toBe(
         "https://oauth.test/github/authorize",
       );
+      expect(startedAgentId).toBe(AGENT_ID);
+      expect(authorizeAgent).toBeTruthy();
     });
   });
 
@@ -367,7 +383,7 @@ describe("directed connector connect page", () => {
     });
   });
 
-  it("connects a no-auth connector directly before authorizing the agent", async () => {
+  it("asks the server to connect and authorize a no-auth connector", async () => {
     mockPublicConnectorStatus(
       publicNoAuthConnectorStatus({
         connectorRef: "stripe",
@@ -380,7 +396,11 @@ describe("directed connector connect page", () => {
       ({ body, params, respond }) => {
         connectCalls += 1;
         expect(params.type).toBe("stripe");
-        expect(body).toStrictEqual({ authMethod: "api" });
+        expect(body).toStrictEqual({
+          authMethod: "api",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
         return respond(200, {
           id: crypto.randomUUID(),
           type: "stripe",
@@ -397,20 +417,6 @@ describe("directed connector connect page", () => {
         });
       },
     );
-    let updateCalls = 0;
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      ({ body, params, respond }) => {
-        updateCalls += 1;
-        expect(params.id).toBe(AGENT_ID);
-        expect(body).toStrictEqual({
-          enabledTypes: ["stripe"],
-          operation: "add",
-        });
-        return respond(200, { enabledTypes: body.enabledTypes });
-      },
-    );
-
     detachedSetupPage({
       context,
       path: `/connectors/stripe/connect?agentId=${AGENT_ID}`,
@@ -425,7 +431,6 @@ describe("directed connector connect page", () => {
 
     await waitFor(() => {
       expect(connectCalls).toBe(1);
-      expect(updateCalls).toBe(1);
       expect(screen.getByText("Public Stripe connected")).toBeInTheDocument();
     });
     expect(
@@ -504,7 +509,7 @@ describe("directed connector connect page", () => {
     });
   });
 
-  it("waits for manual grant agent authorization before closing", async () => {
+  it("asks the server to connect and authorize a manual grant", async () => {
     mockPublicConnectorStatus(
       publicManualTokenConnectorStatus({
         connectorRef: "axiom",
@@ -517,6 +522,7 @@ describe("directed connector connect page", () => {
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.type).toBe("axiom");
+        expect(body.agentId).toBe(AGENT_ID);
         submittedValues = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
@@ -534,21 +540,6 @@ describe("directed connector connect page", () => {
         });
       },
     );
-    const authorizationResponse = Promise.withResolvers<void>();
-    let authorizedAgentId: string | null = null;
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      async ({ body, params, respond }) => {
-        authorizedAgentId = params.id;
-        expect(body).toStrictEqual({
-          enabledTypes: ["axiom"],
-          operation: "add",
-        });
-        await authorizationResponse.promise;
-        return respond(200, { enabledTypes: body.enabledTypes });
-      },
-    );
-
     detachedSetupPage({
       context,
       path: `/connectors/axiom/connect?agentId=${AGENT_ID}`,
@@ -570,21 +561,10 @@ describe("directed connector connect page", () => {
     );
     click(getButtonByText("Save"));
 
-    try {
-      await waitFor(() => {
-        expect(submittedValues).toStrictEqual({
-          apiToken: "xaat-directed-connect",
-        });
-        expect(authorizedAgentId).toBe(AGENT_ID);
-      });
-      expect(
-        screen.getByRole("dialog", { name: "Public Axiom" }),
-      ).toBeInTheDocument();
-    } finally {
-      authorizationResponse.resolve();
-    }
-
     await waitFor(() => {
+      expect(submittedValues).toStrictEqual({
+        apiToken: "xaat-directed-connect",
+      });
       expect(
         screen.queryByRole("dialog", { name: "Public Axiom" }),
       ).not.toBeInTheDocument();

@@ -97,7 +97,11 @@ export const zeroConnectorOauthStartContract = c.router({
     path: "/api/zero/connectors/:type/oauth/start",
     headers: authHeadersSchema,
     pathParams: z.object({ type: connectorCatalogRefSchema }),
-    body: z.object({ authMethod: connectorCatalogAuthMethodIdSchema }),
+    body: z.object({
+      authMethod: connectorCatalogAuthMethodIdSchema,
+      agentId: z.uuid().optional(),
+      authorizeAgent: z.literal(true).optional(),
+    }),
     responses: {
       200: connectorOauthStartResponseSchema,
       400: apiErrorSchema,
@@ -115,7 +119,11 @@ export const zeroConnectorOpenIdStartContract = c.router({
     path: "/api/zero/connectors/:type/openid/start",
     headers: authHeadersSchema,
     pathParams: z.object({ type: connectorCatalogRefSchema }),
-    body: z.object({ authMethod: connectorCatalogAuthMethodIdSchema }),
+    body: z.object({
+      authMethod: connectorCatalogAuthMethodIdSchema,
+      agentId: z.uuid().optional(),
+      authorizeAgent: z.literal(true).optional(),
+    }),
     responses: {
       200: connectorOauthStartResponseSchema,
       400: apiErrorSchema,
@@ -135,6 +143,8 @@ export const zeroConnectorManualGrantContract = c.router({
     pathParams: z.object({ type: connectorCatalogRefSchema }),
     body: z.object({
       authMethod: connectorCatalogAuthMethodIdSchema,
+      agentId: z.uuid().optional(),
+      authorizeAgent: z.literal(true).optional(),
       values: z.record(z.string(), z.string()),
     }),
     responses: {
@@ -157,6 +167,8 @@ export const zeroConnectorNoAuthGrantContract = c.router({
     pathParams: z.object({ type: connectorCatalogRefSchema }),
     body: z.object({
       authMethod: connectorCatalogAuthMethodIdSchema,
+      agentId: z.uuid().optional(),
+      authorizeAgent: z.literal(true).optional(),
     }),
     responses: {
       200: connectorResponseSchema,
@@ -178,6 +190,8 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
     pathParams: z.object({ type: connectorCatalogRefSchema }),
     body: z.object({
       authMethod: connectorCatalogAuthMethodIdSchema,
+      agentId: z.uuid().optional(),
+      authorizeAgent: z.literal(true).optional(),
       options: z.record(z.string(), z.string()).optional(),
     }),
     responses: {
@@ -218,6 +232,8 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
     pathParams: z.object({ type: connectorCatalogRefSchema }),
     body: z.object({
       authMethod: connectorCatalogAuthMethodIdSchema,
+      agentId: z.uuid().optional(),
+      authorizeAgent: z.literal(true).optional(),
     }),
     responses: {
       200: connectorExternalCodeSessionStartResponseSchema,

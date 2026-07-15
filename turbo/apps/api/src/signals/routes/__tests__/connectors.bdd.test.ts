@@ -107,6 +107,64 @@ const CONNECTOR_OAUTH_COOKIE_CLEARS = [
 ] as const;
 
 describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant lifecycle", () => {
+  it("authorizes a manual-grant connector for the requested agent in the connect request", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Manual Connector Agent",
+    });
+
+    await connectorsApi.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { OPENAI_TOKEN: "manual-agent-token" },
+      agent.agentId,
+    );
+
+    await expect(
+      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+    ).resolves.toContain("openai");
+  });
+
+  it("authorizes a manual-grant connector for the current default agent when no agent is requested", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Default Connector Agent",
+    });
+    await authOrgApi.setDefaultAgent(actor, agent.agentId);
+
+    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
+      OPENAI_TOKEN: "default-agent-token",
+    });
+
+    await expect(
+      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+    ).resolves.toContain("openai");
+  });
+
+  it("keeps the previous manual-grant request shape connection-only during rollout", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Legacy Connector Agent",
+    });
+    await authOrgApi.setDefaultAgent(actor, agent.agentId);
+
+    const response = await connectorsApi.requestManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { OPENAI_TOKEN: "legacy-client-token" },
+      { statuses: [200] },
+    );
+    expect(response.status).toBe(200);
+    await expect(
+      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+    ).resolves.not.toContain("openai");
+  });
+
   it("discovers, connects, reads, computes scope diff, and deletes a manual connector through APIs", async () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -153,7 +211,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
         OPENAI_TOKEN: "sk-bdd-manual-secret",
         EXTRA_TOKEN: "secret-value-should-not-echo",
       },
-      [400],
+      { statuses: [400] },
     );
     expectApiError(badGrant.body);
     expect(badGrant.body.error.message).toContain("EXTRA_TOKEN");
@@ -361,7 +419,7 @@ describe("CONN-02: OAuth start and callback", () => {
       null,
       "github",
       "oauth",
-      [401],
+      { statuses: [401] },
     );
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
@@ -370,7 +428,7 @@ describe("CONN-02: OAuth start and callback", () => {
       actor,
       "openai",
       "api-token",
-      [400],
+      { statuses: [400] },
     );
     expectApiError(wrongGrant.body);
     expect(wrongGrant.body.error.message).toContain(
@@ -381,7 +439,7 @@ describe("CONN-02: OAuth start and callback", () => {
       actor,
       "github",
       "api-token",
-      [400],
+      { statuses: [400] },
     );
     expectApiError(missingMethod.body);
     expect(missingMethod.body.error.message).toContain(
@@ -2414,8 +2472,16 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "OAuth Connector Agent",
+    });
 
-    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    const start = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "oauth",
+      agent.agentId,
+    );
     const authorizationUrl = new URL(start.authorizationUrl);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "http://localhost:3000/api/test/oauth-provider/authorize",
@@ -2466,6 +2532,9 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       connectionStatus: "connected",
     });
     expectNoVisibleSecret(oauthConnector, "bdd-test-oauth-access-token");
+    await expect(
+      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+    ).resolves.toContain("test-oauth");
 
     const listed = await connectorsApi.listConnectors(actor);
     expect(listed.connectorProvidedBindings).toContainEqual(

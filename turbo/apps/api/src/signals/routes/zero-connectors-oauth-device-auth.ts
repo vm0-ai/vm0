@@ -34,6 +34,8 @@ const startConnectorOauthDeviceAuthSessionInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        agentId: body.data.agentId,
+        authorizeAgent: body.data.authorizeAgent,
         type: params.type,
         authMethod: body.data.authMethod,
         options: body.data.options,

@@ -104,7 +104,10 @@ function artifactDownloadFilename(
 }
 
 type WaitForGoogleDriveAuthorizationFn = (
-  params: { readonly agentId: string },
+  params: {
+    readonly agentId: string;
+    readonly authorizeConnected?: boolean;
+  },
   signal: AbortSignal,
 ) => Promise<unknown>;
 
@@ -139,6 +142,7 @@ function isPlainPrimaryLinkClick(
 
 function runWhenGoogleDriveReady(params: {
   agentId: string | null | undefined;
+  authorizeConnected: boolean;
   pageSignal: AbortSignal;
   run: GoogleDriveReadyRun;
   waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
@@ -152,7 +156,7 @@ function runWhenGoogleDriveReady(params: {
   detach(
     (async () => {
       await params.waitForGoogleDriveAuthorization(
-        { agentId },
+        { agentId, authorizeConnected: params.authorizeConnected },
         params.pageSignal,
       );
       await params.run();
@@ -176,6 +180,7 @@ function startGoogleDriveConnectAndRun(params: {
     toast.error("Agent is still loading");
     return;
   }
+  const agentId = params.agentId;
   const authWindow = window.open(
     "about:blank",
     "_blank",
@@ -189,7 +194,11 @@ function startGoogleDriveConnectAndRun(params: {
     (async () => {
       const request = {
         params: { type: params.connector.connectorRef },
-        body: { authMethod: params.authMethod.id },
+        body: {
+          authMethod: params.authMethod.id,
+          agentId,
+          authorizeAgent: true as const,
+        },
         fetchOptions: { signal: params.pageSignal },
       };
       const result =
@@ -217,7 +226,8 @@ function startGoogleDriveConnectAndRun(params: {
     "artifact google drive oauth start",
   );
   runWhenGoogleDriveReady({
-    agentId: params.agentId,
+    agentId,
+    authorizeConnected: false,
     pageSignal: params.pageSignal,
     run: params.run,
     waitForGoogleDriveAuthorization: params.waitForGoogleDriveAuthorization,
@@ -232,7 +242,7 @@ function authorizeGoogleDriveAndRun(params: {
   waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
   description: string;
 }): void {
-  runWhenGoogleDriveReady(params);
+  runWhenGoogleDriveReady({ ...params, authorizeConnected: true });
 }
 
 async function downloadPresentationPptx(params: {

@@ -58,6 +58,11 @@ import {
   zeroConnectorByType,
 } from "./zero-connector-data.service";
 import { normalizeDeviceAuthStartOptions } from "./connector-catalog-form-fields.service";
+import {
+  authorizeConnectedConnector$,
+  connectorAgentAuthorizationRequested,
+  validateConnectorAuthorizationTarget$,
+} from "./connected-connector-authorization.service";
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const SLOW_DOWN_INCREMENT_SECONDS = 5;
@@ -87,6 +92,28 @@ type PollSuccess = {
   readonly status: 200;
   readonly body: ConnectorOauthDeviceAuthSessionPollResponse;
 };
+
+function deviceAuthStartResponse(args: {
+  readonly sessionId: string;
+  readonly sessionToken: string;
+  readonly type: ConnectorCatalogRef;
+  readonly startResult: Awaited<
+    ReturnType<typeof startConnectorDeviceAuthorization>
+  >;
+  readonly intervalSeconds: number;
+}): ConnectorOauthDeviceAuthSessionStartResponse {
+  return {
+    sessionId: args.sessionId,
+    sessionToken: args.sessionToken,
+    type: args.type,
+    status: "pending",
+    userCode: args.startResult.userCode,
+    verificationUri: args.startResult.verificationUri,
+    verificationUriComplete: args.startResult.verificationUriComplete,
+    expiresIn: args.startResult.expiresIn,
+    interval: args.intervalSeconds,
+  };
+}
 
 const DEVICE_AUTH_POLL_STATE_MAX_BYTES = 4096;
 
@@ -758,6 +785,69 @@ async function completeSessionResponse(args: {
   return { status: 200, body: { status: "complete", connector } };
 }
 
+const authorizeDeviceSessionConnector$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly session: DeviceAuthSessionRow;
+      readonly connectorType: ConnectorCatalogRef;
+    },
+    signal: AbortSignal,
+  ) => {
+    if (!args.session.authorizeAgent) {
+      return null;
+    }
+    const authorization = await set(
+      authorizeConnectedConnector$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: args.session.agentId,
+        connectorType: args.connectorType,
+      },
+      signal,
+    );
+    return authorization.status === "agentNotFound"
+      ? badRequestMessage(authorization.message)
+      : null;
+  },
+);
+
+const completedDeviceSessionResponse$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly session: DeviceAuthSessionRow;
+      readonly method: ResolvedDeviceAuthMethod;
+    },
+    signal: AbortSignal,
+  ) => {
+    const response = await completeSessionResponse({
+      connectorLoader: () => {
+        return get(
+          zeroConnectorByType({
+            orgId: args.orgId,
+            userId: args.userId,
+            type: args.method.type,
+            includeHiddenStoredConnector: true,
+          }),
+        );
+      },
+      signal,
+    });
+    const error = await set(
+      authorizeDeviceSessionConnector$,
+      { ...args, connectorType: args.method.type },
+      signal,
+    );
+    return error ?? response;
+  },
+);
+
 async function runClaimedSession(
   args: PollClaimedSessionArgs,
 ): Promise<PollSuccess> {
@@ -846,12 +936,23 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
+      readonly agentId: string | undefined;
+      readonly authorizeAgent: true | undefined;
       readonly type: ConnectorCatalogRef;
       readonly authMethod: ConnectorCatalogAuthMethodId;
       readonly options?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
   ) => {
+    const agentTarget = await set(
+      validateConnectorAuthorizationTarget$,
+      args,
+      signal,
+    );
+    if (!agentTarget.ok) {
+      return badRequestMessage(agentTarget.message);
+    }
+
     const resolver = await get(
       userConnectorActionResolver(args.orgId, args.userId),
     );
@@ -933,6 +1034,8 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         .values({
           orgId: args.orgId,
           userId: args.userId,
+          agentId: args.agentId,
+          authorizeAgent: connectorAgentAuthorizationRequested(args),
           connectorType: resolvedMethod.type,
           authMethod: resolvedMethod.authMethod,
           status: "awaiting_user_authorization",
@@ -956,17 +1059,13 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       throw new Error("Failed to create OAuth device authorization session");
     }
 
-    const body: ConnectorOauthDeviceAuthSessionStartResponse = {
+    const body = deviceAuthStartResponse({
       sessionId: session.id,
       sessionToken,
       type: resolvedMethod.type,
-      status: "pending",
-      userCode: startResult.userCode,
-      verificationUri: startResult.verificationUri,
-      verificationUriComplete: startResult.verificationUriComplete,
-      expiresIn: startResult.expiresIn,
-      interval: intervalSeconds,
-    };
+      startResult,
+      intervalSeconds,
+    });
     return { status: 200 as const, body };
   },
 );
@@ -1017,19 +1116,11 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     }
 
     if (session.status === "complete") {
-      return await completeSessionResponse({
-        connectorLoader: () => {
-          return get(
-            zeroConnectorByType({
-              orgId: args.orgId,
-              userId: args.userId,
-              type: resolvedMethod.type,
-              includeHiddenStoredConnector: true,
-            }),
-          );
-        },
+      return await set(
+        completedDeviceSessionResponse$,
+        { ...args, session, method: resolvedMethod },
         signal,
-      });
+      );
     }
 
     if (
@@ -1064,7 +1155,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       return await claimNoLongerCurrentResponse({ writeDb, session, signal });
     }
 
-    return await pollClaimedSession({
+    const response = await pollClaimedSession({
       ...resolvedClient,
       writeDb,
       orgId: args.orgId,
@@ -1091,5 +1182,14 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
         return connectorResult.connector;
       },
     });
+    if (response.body.status !== "complete") {
+      return response;
+    }
+    const authorizationError = await set(
+      authorizeDeviceSessionConnector$,
+      { ...args, session, connectorType: resolvedMethod.type },
+      signal,
+    );
+    return authorizationError ?? response;
   },
 );

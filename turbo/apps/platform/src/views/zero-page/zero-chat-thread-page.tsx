@@ -5565,8 +5565,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
-  const [, complete] = useLoadableSet(completeChatConnectorActionConnect$);
-  const pageSignal = useGet(pageSignal$);
+  const complete = useSet(completeChatConnectorActionConnect$);
 
   if (!active) {
     return null;
@@ -5574,9 +5573,10 @@ function ChatConnectorActionConnectModal() {
 
   return (
     <ConnectModal
+      agentId={active.agentId}
       onClose={close}
       onSuccess={() => {
-        return complete(pageSignal);
+        complete();
       }}
     />
   );
