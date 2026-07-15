@@ -7,6 +7,7 @@ export interface RunnerHeldSessionState {
   readonly lastCompletedAt: string;
   readonly reusableSandbox?: {
     readonly profile: string;
+    readonly historyGenerationRunId?: string;
   };
 }
 

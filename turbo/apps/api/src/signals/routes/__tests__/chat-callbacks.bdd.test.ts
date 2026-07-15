@@ -3020,6 +3020,11 @@ describe("CHAT-02: auto-send after failures", () => {
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstHeaders);
+    // This journey verifies failed-run auto-send context, not overlap with the
+    // successful anchor's detached terminal materialization. Drain the tracked
+    // waitUntil work so later lifecycle/follow-up rows cannot move its boundary
+    // after the failed run starts; callback ordering has dedicated gate coverage.
+    await flushWaitUntilForTest();
 
     const completedFirst = await api.readRun(actor, first.runId);
     expect(completedFirst.result?.agentSessionId).toMatch(/[0-9a-f-]{36}/);

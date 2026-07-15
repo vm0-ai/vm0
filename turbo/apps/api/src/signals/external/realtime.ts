@@ -275,6 +275,7 @@ export async function publishRunnerJobNotification(
   profile: string,
   metadata?: {
     readonly cliAgentSessionId: string | null;
+    readonly historyGenerationAffinityProtectedUntil: string | null;
     readonly affinityProtectedUntil: string | null;
     readonly historyGenerationRunId: string | undefined;
   },
@@ -290,6 +291,12 @@ export async function publishRunnerJobNotification(
           : {}),
         ...(metadata?.affinityProtectedUntil
           ? { affinityProtectedUntil: metadata.affinityProtectedUntil }
+          : {}),
+        ...(metadata?.historyGenerationAffinityProtectedUntil
+          ? {
+              historyGenerationAffinityProtectedUntil:
+                metadata.historyGenerationAffinityProtectedUntil,
+            }
           : {}),
         ...(metadata?.historyGenerationRunId
           ? { historyGenerationRunId: metadata.historyGenerationRunId }

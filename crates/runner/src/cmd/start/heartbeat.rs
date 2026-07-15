@@ -370,6 +370,7 @@ mod tests {
     use crate::idle_pool::{
         IdlePoolConfig, ParkResult, ParkedIdleCandidate, test_support::ParkedIdleCandidateBuilder,
     };
+    use crate::ids::RunId;
     use crate::paths::RunnerPaths;
     use crate::provider::mock::MockJobProvider;
     use crate::workspace_image_cache::{
@@ -903,6 +904,7 @@ mod tests {
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
             reusable_sandbox: Some(crate::types::ReusableSandboxState {
                 profile: "vm0/default".into(),
+                history_generation_run_id: Some(RunId::new_v4()),
             }),
         }];
         let cache = vec![HeldSessionState {
@@ -923,6 +925,14 @@ mod tests {
                 .map(|state| state.profile.as_str()),
             Some("vm0/default")
         );
+        assert!(
+            merged[0]
+                .reusable_sandbox
+                .as_ref()
+                .and_then(|state| state.history_generation_run_id)
+                .is_some(),
+            "newer workspace-cache timestamps must preserve idle generation metadata"
+        );
     }
 
     #[test]
@@ -932,6 +942,7 @@ mod tests {
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
             reusable_sandbox: Some(crate::types::ReusableSandboxState {
                 profile: "vm0/default".into(),
+                history_generation_run_id: None,
             }),
         }];
         let cache = vec![HeldSessionState {

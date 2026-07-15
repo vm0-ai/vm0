@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.435.1](https://github.com/vm0-ai/vm0/compare/core-v8.435.0...core-v8.435.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* disable chat message queue by default ([#21600](https://github.com/vm0-ai/vm0/issues/21600)) ([837997d](https://github.com/vm0-ai/vm0/commit/837997d45b854d0e19827ad3e8fdef94fb11e344))
+
 ## [8.435.0](https://github.com/vm0-ai/vm0/compare/core-v8.434.1...core-v8.435.0) (2026-07-15)
 
 
