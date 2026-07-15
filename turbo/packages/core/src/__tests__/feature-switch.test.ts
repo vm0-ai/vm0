@@ -154,7 +154,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
-      true,
+      false,
     );
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
@@ -245,7 +245,7 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.OrgPlanEntitlementReads,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.PresentationElementDragging,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -266,6 +266,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
+      [FeatureSwitchKey.PresentationElementDragging]: true,
       [FeatureSwitchKey.ZeroScrape]: true,
       [FeatureSwitchKey.ZeroWebSearch]: true,
       [FeatureSwitchKey.Dummy]: false,
