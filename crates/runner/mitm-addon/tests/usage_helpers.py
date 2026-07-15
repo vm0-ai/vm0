@@ -184,6 +184,9 @@ class UsageWebhookServer:
         server_ref = self
 
         class _Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                server_ref._handle_request(self)
+
             def do_POST(self) -> None:
                 server_ref._handle_request(self)
 

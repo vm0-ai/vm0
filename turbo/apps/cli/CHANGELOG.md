@@ -1,5 +1,68 @@
 # Changelog
 
+## [9.241.1](https://github.com/vm0-ai/vm0/compare/cli-v9.241.0...cli-v9.241.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* require static DOM for HTML presentations ([#21625](https://github.com/vm0-ai/vm0/issues/21625)) ([f55e3a9](https://github.com/vm0-ai/vm0/commit/f55e3a930869187b0195d1dc1eaf967f3eed68ab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.196.0
+    * @vm0/connectors bumped to 1.165.0
+    * @vm0/core bumped to 8.436.1
+
+## [9.241.0](https://github.com/vm0-ai/vm0/compare/cli-v9.240.10...cli-v9.241.0) (2026-07-15)
+
+
+### Features
+
+* add dot matrix and frosted scatter website templates ([#20944](https://github.com/vm0-ai/vm0/issues/20944)) ([ab6471c](https://github.com/vm0-ai/vm0/commit/ab6471c0eace009cad8aa87c99f9b1f830a4ade3))
+* add managed perplexity web search ([#21466](https://github.com/vm0-ai/vm0/issues/21466)) ([ca4786b](https://github.com/vm0-ai/vm0/commit/ca4786b58cb9af5778bf5f66d7843870a5d6a9d8))
+* add managed zero scrape ([#20778](https://github.com/vm0-ai/vm0/issues/20778)) ([4e72f67](https://github.com/vm0-ai/vm0/commit/4e72f67713b096f72ba4cab591c440906783e68f))
+* add microsoft teams cli support ([#20489](https://github.com/vm0-ai/vm0/issues/20489)) ([c908d0a](https://github.com/vm0-ai/vm0/commit/c908d0a502222793856de48bb90b5fdadd079a49))
+* add persistent zero mail review cards ([#21458](https://github.com/vm0-ai/vm0/issues/21458)) ([4f4b056](https://github.com/vm0-ai/vm0/commit/4f4b0562dd32800e5fc6adbc75fd4a8f4cf2444a))
+* add zero memory document rag substrate ([#20846](https://github.com/vm0-ai/vm0/issues/20846)) ([52f1e35](https://github.com/vm0-ai/vm0/commit/52f1e35b51a72850a5d4a5d0e1cfba89b9382944))
+* add zero memory lifecycle api, cli, and ui surfaces ([#20850](https://github.com/vm0-ai/vm0/issues/20850)) ([7ef3ee0](https://github.com/vm0-ai/vm0/commit/7ef3ee0b50901584644ab1ceed240d5c6cd97dcc))
+* **cli:** diagnose ambiguous connector routes ([#21122](https://github.com/vm0-ai/vm0/issues/21122)) ([5fdcde1](https://github.com/vm0-ai/vm0/commit/5fdcde1a1265d8f4fb30d2f704d7b04d4576f551))
+* **cli:** pull refreshed presentation runbooks ([#21322](https://github.com/vm0-ai/vm0/issues/21322)) ([5ad6944](https://github.com/vm0-ai/vm0/commit/5ad6944d6f66702a3a5a252c4d0d41f8fc5a6d00))
+* make microsoft and outlook connectors generally available ([#21401](https://github.com/vm0-ai/vm0/issues/21401)) ([3aa658f](https://github.com/vm0-ai/vm0/commit/3aa658f8cf655bd22d84331678db801c914a5541))
+
+
+### Bug Fixes
+
+* **cli:** map api service hosts to app links ([#21470](https://github.com/vm0-ai/vm0/issues/21470)) ([e97c63b](https://github.com/vm0-ai/vm0/commit/e97c63b9d290be9e7a63c28c6c852673f3424e0c))
+* **cli:** refresh registry resource release marker ([#20835](https://github.com/vm0-ai/vm0/issues/20835)) ([c445024](https://github.com/vm0-ai/vm0/commit/c44502432d0afd91cc63a213ee0aa79bd730dfd2))
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+* require static DOM for HTML presentations ([#21625](https://github.com/vm0-ai/vm0/issues/21625)) ([f55e3a9](https://github.com/vm0-ai/vm0/commit/f55e3a930869187b0195d1dc1eaf967f3eed68ab))
+
+
+### Refactoring
+
+* **cli:** consume connector permission metadata from catalog api ([#21201](https://github.com/vm0-ai/vm0/issues/21201)) ([141353d](https://github.com/vm0-ai/vm0/commit/141353d0eeb30436769a2e872f1f185c8129a11a))
+* **cli:** consume server connector diagnostics ([#21316](https://github.com/vm0-ai/vm0/issues/21316)) ([44bb274](https://github.com/vm0-ai/vm0/commit/44bb2748789aa375205e7d99758a35af106c250e))
+* **cli:** rename workflow triggers to automations ([#21464](https://github.com/vm0-ai/vm0/issues/21464)) ([b2004a9](https://github.com/vm0-ai/vm0/commit/b2004a9867e09acc514fe91f5fb2e34f5d19a3f4))
+* **cli:** use server permission-deny diagnostics ([#21302](https://github.com/vm0-ai/vm0/issues/21302)) ([3aff081](https://github.com/vm0-ai/vm0/commit/3aff0819589c8892cb760b3a6c8db314aabd692f))
+* **connectors:** make catalog identities server-authored ([#21128](https://github.com/vm0-ai/vm0/issues/21128)) ([fceb0b2](https://github.com/vm0-ai/vm0/commit/fceb0b2d2afa301c9edd05fbd3c2898ec4ae186f))
+* guard workflow automation terminology ([#21500](https://github.com/vm0-ai/vm0/issues/21500)) ([bc290f8](https://github.com/vm0-ai/vm0/commit/bc290f83b5ad4b54630a969c5e282645f523c05a))
+* **platform:** render connector icons from catalog metadata ([#21108](https://github.com/vm0-ai/vm0/issues/21108)) ([71209cb](https://github.com/vm0-ai/vm0/commit/71209cbc7906dd741e9677854d248a9128e0ebd3))
+* reduce fallback slop in codex event usage parsing ([#21018](https://github.com/vm0-ai/vm0/issues/21018)) ([4acc00d](https://github.com/vm0-ai/vm0/commit/4acc00da2f74d96138bb1b3759d3d4af7a5c4658))
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+* serve connector secret display from api ([#21228](https://github.com/vm0-ai/vm0/issues/21228)) ([272a58b](https://github.com/vm0-ai/vm0/commit/272a58b79234ef63da93c84191f879b9ef16934a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.195.0
+    * @vm0/connectors bumped to 1.164.0
+    * @vm0/core bumped to 8.436.0
+
 ## [9.240.10](https://github.com/vm0-ai/vm0/compare/cli-v9.240.9...cli-v9.240.10) (2026-07-15)
 
 

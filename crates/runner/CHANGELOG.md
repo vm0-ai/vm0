@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.144.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.25...runner-rs-v0.144.26) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** reject firewall auth redirects ([#21659](https://github.com/vm0-ai/vm0/issues/21659)) ([9f2423b](https://github.com/vm0-ai/vm0/commit/9f2423bf945f14db27555c89494a7c78aa4b3c1f))
+
+## [0.144.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.24...runner-rs-v0.144.25) (2026-07-15)
+
+
+### Documentation
+
+* **mitm-addon:** correct request capture test comment ([#21650](https://github.com/vm0-ai/vm0/issues/21650)) ([b612869](https://github.com/vm0-ai/vm0/commit/b612869daf6b03d15308d16def1e847f15711dd9))
+
 ## [0.144.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.23...runner-rs-v0.144.24) (2026-07-15)
 
 ## [0.144.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.22...runner-rs-v0.144.23) (2026-07-15)
