@@ -1,4 +1,8 @@
 //! Bounded record reader for Firecracker process output.
+//!
+//! Normal records retain at most [`PROCESS_LOG_RECORD_MAX_BYTES`]. Oversized
+//! records produce one [`ProcessLogRecord::Truncated`] event while the reader
+//! continues discarding through the next delimiter or EOF.
 
 use std::io;
 
@@ -127,14 +131,16 @@ mod tests {
 
     #[tokio::test]
     async fn reads_lf_crlf_and_final_partial_records() {
-        let records = collect_records(b"first\nsecond\r\n\nfinal").await.unwrap();
+        let records = collect_records(b"first\nsecond\r\n\nfinal\r")
+            .await
+            .unwrap();
 
         assert_eq!(
             records,
             [
                 OwnedProcessLogRecord::Line("first".to_string()),
                 OwnedProcessLogRecord::Line("second".to_string()),
-                OwnedProcessLogRecord::Line("final".to_string()),
+                OwnedProcessLogRecord::Line("final\r".to_string()),
             ]
         );
     }
