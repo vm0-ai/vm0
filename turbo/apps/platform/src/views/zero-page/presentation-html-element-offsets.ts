@@ -15,18 +15,6 @@ const OFFSET_PRECISION = 6;
 const MAX_OFFSET_MAGNITUDE = 1_000_000;
 const OFFSET_ZERO_THRESHOLD = 0.5 / 10 ** OFFSET_PRECISION;
 const SERIALIZED_OFFSET_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
-const SLIDE_SELECTOR = [
-  "[data-vm0-slide]",
-  "[data-slide]",
-  "[data-slide-index]",
-  "[data-page]",
-  ".ppt-slide",
-  ".presentation-slide",
-  ".deck-slide",
-  ".slide-page",
-  ".slide",
-  "section",
-].join(",");
 
 interface PresentationElementOffset {
   readonly x: number;
@@ -345,13 +333,21 @@ export function presentationMovementSupport(
     : { reason: null, supported: true };
 }
 
+// This source is persisted as executable JavaScript in authored HTML. Keep its
+// identifiers static instead of interpolating values into executable code.
+const PRESENTATION_ELEMENT_OFFSET_RUNTIME_INSTALL_SOURCE = `(()=>{const xAttr="data-vm0-offset-x",yAttr="data-vm0-offset-y",appliedAttr="data-vm0-offset-runtime-applied",slideSelector="[data-vm0-slide],[data-slide],[data-slide-index],[data-page],.ppt-slide,.presentation-slide,.deck-slide,.slide-page,.slide,section",numberPattern=/^-?(?:0|[1-9]\\d*)(?:\\.\\d{1,6})?$/,maxOffset=1000000,owned=new WeakSet();let frame=0,observer=null;const read=(value)=>{if(value===null||!numberPattern.test(value.trim()))return null;const parsed=Number(value);return Number.isFinite(parsed)&&Math.abs(parsed)<=maxOffset?parsed:null};const clamp=(value,min,max)=>min<=max?Math.min(Math.max(value,min),max):0;const apply=()=>{for(const element of document.querySelectorAll("["+xAttr+"]["+yAttr+"]")){if(!(element instanceof HTMLElement))continue;const x=read(element.getAttribute(xAttr)),y=read(element.getAttribute(yAttr));if(x===null||y===null||(x===0&&y===0))continue;const parent=element.parentElement;if(!parent)continue;if(!owned.has(element)){const authored=getComputedStyle(element).translate;if(authored&&authored!=="none"&&authored!=="0px"&&authored!=="0px 0px")continue;owned.add(element)}element.style.removeProperty("translate");const parentRect=parent.getBoundingClientRect(),baseRect=element.getBoundingClientRect(),slide=parent.closest(slideSelector),slideRect=(slide??parent).getBoundingClientRect();if(parentRect.width<=0||parentRect.height<=0||baseRect.width<=0||baseRect.height<=0)continue;const translatedX=clamp(x*parentRect.width,slideRect.left-baseRect.left,slideRect.right-baseRect.right),translatedY=clamp(y*parentRect.height,slideRect.top-baseRect.top,slideRect.bottom-baseRect.bottom);element.style.translate=translatedX+"px "+translatedY+"px";element.setAttribute(appliedAttr,"true")}};const schedule=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(apply)};const observeTargets=()=>{if(!observer)return;const targets=new Set();for(const element of document.querySelectorAll("["+xAttr+"]["+yAttr+"]")){targets.add(element);if(element.parentElement)targets.add(element.parentElement)}for(const target of targets)observer.observe(target)};window.__vm0ApplyPresentationElementOffsets=apply;`;
+const PRESENTATION_ELEMENT_OFFSET_RUNTIME_AUTO_START_SOURCE = `const start=()=>{apply();schedule()};if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start,{once:true})}else{start()}window.addEventListener("resize",schedule);if(typeof ResizeObserver!=="undefined"){observer=new ResizeObserver(schedule);observeTargets()}`;
+const PRESENTATION_ELEMENT_OFFSET_RUNTIME_END_SOURCE = "})();";
+
 export function presentationElementOffsetRuntimeSource(params: {
   readonly autoStart: boolean;
 }): string {
-  const autoStartSource = params.autoStart
-    ? `const start=()=>{apply();schedule()};if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start,{once:true})}else{start()}window.addEventListener("resize",schedule);if(typeof ResizeObserver!=="undefined"){observer=new ResizeObserver(schedule);observeTargets()}`
-    : "";
-  return `(()=>{const xAttr=${JSON.stringify(PRESENTATION_ELEMENT_OFFSET_X_ATTRIBUTE)},yAttr=${JSON.stringify(PRESENTATION_ELEMENT_OFFSET_Y_ATTRIBUTE)},appliedAttr=${JSON.stringify(PRESENTATION_ELEMENT_OFFSET_RUNTIME_APPLIED_ATTRIBUTE)},slideSelector=${JSON.stringify(SLIDE_SELECTOR)},numberPattern=/^-?(?:0|[1-9]\\d*)(?:\\.\\d{1,6})?$/,maxOffset=${String(MAX_OFFSET_MAGNITUDE)},owned=new WeakSet();let frame=0,observer=null;const read=(value)=>{if(value===null||!numberPattern.test(value.trim()))return null;const parsed=Number(value);return Number.isFinite(parsed)&&Math.abs(parsed)<=maxOffset?parsed:null};const clamp=(value,min,max)=>min<=max?Math.min(Math.max(value,min),max):0;const apply=()=>{for(const element of document.querySelectorAll("["+xAttr+"]["+yAttr+"]")){if(!(element instanceof HTMLElement))continue;const x=read(element.getAttribute(xAttr)),y=read(element.getAttribute(yAttr));if(x===null||y===null||(x===0&&y===0))continue;const parent=element.parentElement;if(!parent)continue;if(!owned.has(element)){const authored=getComputedStyle(element).translate;if(authored&&authored!=="none"&&authored!=="0px"&&authored!=="0px 0px")continue;owned.add(element)}element.style.removeProperty("translate");const parentRect=parent.getBoundingClientRect(),baseRect=element.getBoundingClientRect(),slide=parent.closest(slideSelector),slideRect=(slide??parent).getBoundingClientRect();if(parentRect.width<=0||parentRect.height<=0||baseRect.width<=0||baseRect.height<=0)continue;const translatedX=clamp(x*parentRect.width,slideRect.left-baseRect.left,slideRect.right-baseRect.right),translatedY=clamp(y*parentRect.height,slideRect.top-baseRect.top,slideRect.bottom-baseRect.bottom);element.style.translate=translatedX+"px "+translatedY+"px";element.setAttribute(appliedAttr,"true")}};const schedule=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(apply)};const observeTargets=()=>{if(!observer)return;const targets=new Set();for(const element of document.querySelectorAll("["+xAttr+"]["+yAttr+"]")){targets.add(element);if(element.parentElement)targets.add(element.parentElement)}for(const target of targets)observer.observe(target)};window[${JSON.stringify(PRESENTATION_ELEMENT_OFFSET_APPLY_FUNCTION_NAME)}]=apply;${autoStartSource}})();`;
+  return params.autoStart
+    ? PRESENTATION_ELEMENT_OFFSET_RUNTIME_INSTALL_SOURCE +
+        PRESENTATION_ELEMENT_OFFSET_RUNTIME_AUTO_START_SOURCE +
+        PRESENTATION_ELEMENT_OFFSET_RUNTIME_END_SOURCE
+    : PRESENTATION_ELEMENT_OFFSET_RUNTIME_INSTALL_SOURCE +
+        PRESENTATION_ELEMENT_OFFSET_RUNTIME_END_SOURCE;
 }
 
 export function syncPresentationElementOffsetRuntime(doc: Document): void {
