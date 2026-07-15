@@ -44,7 +44,7 @@ pub struct CapturedEvent {
     ///
     /// The event message, when present, uses the `message` key.
     pub fields: BTreeMap<String, String>,
-    /// The [`Visit`] recording method used for each entry in [`Self::fields`].
+    /// The `tracing::field::Visit` recording method used for each entry in [`Self::fields`].
     ///
     /// Each value is one of `str`, `i64`, `u64`, `i128`, `u128`, `bool`, or `debug`.
     pub field_kinds: BTreeMap<String, &'static str>,
