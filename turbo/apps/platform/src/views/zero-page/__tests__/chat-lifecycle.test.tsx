@@ -47,6 +47,7 @@ import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
+import { pathname$ } from "../../../signals/route.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -3569,6 +3570,9 @@ describe("chat lifecycle", () => {
         screen.getByText("Previous thread launch note"),
       ).toBeInTheDocument();
     });
+    expect(context.store.get(pathname$)).toBe(
+      `/chats/${KEYBOARD_PREV_THREAD_ID}`,
+    );
 
     const previousThreadRegion = screen.getByLabelText("Chat thread");
     previousThreadRegion.focus();
@@ -3583,6 +3587,9 @@ describe("chat lifecycle", () => {
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
     });
+    expect(context.store.get(pathname$)).toBe(
+      `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
+    );
 
     const restoredScrollContainer = chatScrollContainer();
     setScrollMetrics(restoredScrollContainer, {

@@ -8,8 +8,8 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { searchParams$ } from "../route.ts";
 import {
   SIDEBAR_PARAM,
-  loadLeftThread$,
-  loadRightThread$,
+  setupLeftThread$,
+  setupRightThread$,
   unloadRightThread$,
 } from "./chat-thread-panes.ts";
 import {
@@ -34,17 +34,13 @@ const internalSetupChatPage$ = command(
     const shouldLoadRight = sidebarThreadId && sidebarThreadId !== threadId;
 
     await Promise.all([
-      set(loadLeftThread$, threadId, signal),
+      set(setupLeftThread$, threadId, signal),
       set(scrollToThread$, threadId, signal),
       shouldLoadRight
-        ? set(loadRightThread$, sidebarThreadId, signal)
-        : Promise.resolve(),
+        ? set(setupRightThread$, sidebarThreadId, signal)
+        : set(unloadRightThread$),
     ]);
     signal.throwIfAborted();
-
-    if (sidebarThreadId && !shouldLoadRight) {
-      set(unloadRightThread$);
-    }
   },
 );
 
