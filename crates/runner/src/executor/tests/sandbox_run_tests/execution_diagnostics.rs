@@ -657,6 +657,7 @@ async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
         "diagnostic command must not collect raw environment output"
     );
     assert!(active_diagnostic_cmd.contains("df -P -k / /home/user/workspace"));
+    assert!(active_diagnostic_cmd.contains("df -P -i / /home/user/workspace"));
     assert!(active_diagnostic_cmd.contains("section rootfs-usage"));
     assert!(active_diagnostic_cmd.contains("timeout 1s du -sxh -- \"$target_path\""));
     assert!(active_diagnostic_cmd.contains("du -sxh -- \"$target_path\""));
@@ -670,7 +671,7 @@ async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
 }
 
 #[tokio::test]
-async fn execute_inner_ignores_non_exited_abnormal_exit_diagnostics() {
+async fn execute_inner_keeps_partial_resource_output_when_diagnostic_helper_fails() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -695,7 +696,13 @@ async fn execute_inner_ignores_non_exited_abnormal_exit_diagnostics() {
     let failure = outcome.failure.as_ref().expect("expected failure");
     assert_eq!(failure.exit_code, 126);
     assert_eq!(failure.error, "Agent exited with code 126");
-    assert!(failure.resource_diagnostics.is_none());
+    assert_eq!(
+        failure
+            .resource_diagnostics
+            .expect("valid partial resource output should be retained")
+            .failure_kind,
+        Some(ResourceFailureKind::GuestRootFilesystemFull)
+    );
 }
 
 #[tokio::test]
@@ -831,6 +838,62 @@ async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagn
             .exec_calls()
             .iter()
             .all(|call| !call.cmd.contains("guest-agent-binary"))
+    );
+}
+
+#[tokio::test]
+async fn execute_inner_codex_enospc_preserves_structured_failure_and_collects_resources() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, 1, Vec::new(), Vec::new()));
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliNonzero,
+        AgentFramework::Codex,
+        PromptMetadata::from_prompt("continue"),
+    )
+    .with_cli_exit_code(1)
+    .with_failure_detail_source(FailureDetailSource::CodexJsonl);
+    overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+    let guest_error = "thread store initialization failed: No space left on device (os error 28)";
+    overrides.push_read_file_result(Ok(Some(guest_error.as_bytes().to_vec())));
+    overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+        pattern: "guest-agent-binary".into(),
+        exit_code: 0,
+        stdout: b"VM0_DF_BLOCKS_V1\n/dev/root 8388608 8388608 0 100% /\nVM0_DF_INODES_V1\n/dev/root 524288 524288 0 100% /\n".to_vec(),
+        stderr: Vec::new(),
+    });
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+    let outcome = run_new_sandbox_outcome(&factory, &minimal_context(), &config, &default_params())
+        .await
+        .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(failure.exit_code, 1);
+    assert_eq!(failure.error, guest_error);
+    let retained_diagnostic = failure
+        .diagnostic
+        .as_ref()
+        .expect("structured Codex diagnostic should be retained");
+    assert_eq!(retained_diagnostic.failure_class, FailureClass::CliNonzero);
+    assert_eq!(retained_diagnostic.framework, AgentFramework::Codex);
+    assert_eq!(retained_diagnostic.cli_exit_code, Some(1));
+    assert_eq!(
+        failure
+            .resource_diagnostics
+            .expect("expected ENOSPC resource diagnostics")
+            .failure_kind,
+        Some(ResourceFailureKind::GuestRootFilesystemFull)
+    );
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(
+        overrides
+            .exec_calls()
+            .iter()
+            .filter(|call| call.cmd.contains("guest-agent-binary"))
+            .count(),
+        1
     );
 }
 

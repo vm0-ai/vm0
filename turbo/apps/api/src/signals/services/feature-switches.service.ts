@@ -8,7 +8,7 @@ import {
   LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY as LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY,
 } from "@vm0/core/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
@@ -89,36 +89,38 @@ function mergeScopedFeatureSwitches(
   return merged;
 }
 
-async function loadFeatureSwitchOverrideRow(
-  db: ReadonlyDb,
-  orgId: string,
-  userId: string,
-): Promise<Record<string, boolean>> {
-  const [row] = await db
-    .select({ switches: userFeatureSwitches.switches })
-    .from(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, orgId),
-        eq(userFeatureSwitches.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  return filterUserOverridableFeatureSwitchOverrides(
-    canonicalizeFeatureSwitchAliases(row?.switches ?? {}),
-  );
-}
-
 async function loadUserFeatureSwitchOverrides(
   db: ReadonlyDb,
   orgId: string,
   userId: string,
 ): Promise<Record<string, boolean>> {
-  const [userSwitches, orgSwitches] = await Promise.all([
-    loadFeatureSwitchOverrideRow(db, orgId, userId),
-    loadFeatureSwitchOverrideRow(db, orgId, ORG_SENTINEL_USER_ID),
-  ]);
+  const rows = await db
+    .select({
+      userId: userFeatureSwitches.userId,
+      switches: userFeatureSwitches.switches,
+    })
+    .from(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, orgId),
+        inArray(userFeatureSwitches.userId, [userId, ORG_SENTINEL_USER_ID]),
+      ),
+    );
+
+  let userSwitches: Record<string, boolean> = {};
+  let orgSwitches: Record<string, boolean> = {};
+
+  for (const row of rows) {
+    const switches = filterUserOverridableFeatureSwitchOverrides(
+      canonicalizeFeatureSwitchAliases(row.switches),
+    );
+    if (row.userId === userId) {
+      userSwitches = switches;
+    }
+    if (row.userId === ORG_SENTINEL_USER_ID) {
+      orgSwitches = switches;
+    }
+  }
 
   return mergeScopedFeatureSwitches(userSwitches, orgSwitches);
 }

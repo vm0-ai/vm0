@@ -304,6 +304,8 @@ pub struct ResourceFailureDiagnostics {
     pub failure_kind: Option<ResourceFailureKind>,
     pub guest_root_fs_used_percent: Option<u16>,
     pub guest_root_fs_available_kb: Option<u64>,
+    pub guest_root_fs_inode_used_percent: Option<u16>,
+    pub guest_root_fs_available_inodes: Option<u64>,
     pub guest_workspace_fs_used_percent: Option<u16>,
     pub guest_memory_available_mb: Option<u64>,
 }
@@ -322,6 +324,8 @@ impl ResourceFailureDiagnostics {
         self.failure_kind.is_none()
             && self.guest_root_fs_used_percent.is_none()
             && self.guest_root_fs_available_kb.is_none()
+            && self.guest_root_fs_inode_used_percent.is_none()
+            && self.guest_root_fs_available_inodes.is_none()
             && self.guest_workspace_fs_used_percent.is_none()
             && self.guest_memory_available_mb.is_none()
     }

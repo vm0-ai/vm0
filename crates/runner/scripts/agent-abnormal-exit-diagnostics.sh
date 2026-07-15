@@ -29,10 +29,17 @@ fi
 section resources
 ulimit -a 2>&1
 df -h 2>&1
+echo "VM0_DF_BLOCKS_V1"
 if [ -e /home/user/workspace ]; then
   df -P -k / /home/user/workspace 2>&1
 else
   df -P -k / 2>&1
+fi
+echo "VM0_DF_INODES_V1"
+if [ -e /home/user/workspace ]; then
+  df -P -i / /home/user/workspace 2>&1
+else
+  df -P -i / 2>&1
 fi
 if command -v free >/dev/null 2>&1; then
   free -m 2>&1

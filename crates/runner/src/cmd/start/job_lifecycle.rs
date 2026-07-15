@@ -174,6 +174,11 @@ impl CompletionReady {
         self.session_affinity_changed
     }
 
+    #[cfg(test)]
+    pub(super) fn result_for_test(&self) -> (i32, Option<&str>) {
+        (self.payload.exit_code, self.payload.error.as_deref())
+    }
+
     pub(super) async fn complete_and_release(
         self,
         provider: &dyn JobProvider,
