@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.432.0](https://github.com/vm0-ai/vm0/compare/core-v8.431.4...core-v8.432.0) (2026-07-15)
+
+
+### Features
+
+* enable chat message queue for all users ([#21494](https://github.com/vm0-ai/vm0/issues/21494)) ([1cfe5d4](https://github.com/vm0-ai/vm0/commit/1cfe5d4511f61b142c65243b9ab3468967845ce6))
+
 ## [8.431.4](https://github.com/vm0-ai/vm0/compare/core-v8.431.3...core-v8.431.4) (2026-07-14)
 
 
