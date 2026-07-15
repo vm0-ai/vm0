@@ -231,17 +231,15 @@ function handleChatThreadClick(
     loadLeftThread,
     loadRightThread,
     onChatPage,
-    pageSignal,
     threadId,
     unloadRightThread,
   }: {
     closeSidebarOnSelect: () => void;
     currentLeftId: string | null;
     currentRightId: string | null;
-    loadLeftThread: (threadId: string, signal: AbortSignal) => Promise<void>;
-    loadRightThread: (threadId: string, signal: AbortSignal) => Promise<void>;
+    loadLeftThread: (threadId: string) => void;
+    loadRightThread: (threadId: string) => void;
     onChatPage: boolean;
-    pageSignal: AbortSignal;
     threadId: string;
     unloadRightThread: () => void;
   },
@@ -271,22 +269,14 @@ function handleChatThreadClick(
       // Same thread already in right → toggle close.
       unloadRightThread();
     } else {
-      detach(
-        loadRightThread(threadId, pageSignal),
-        Reason.DomCallback,
-        "loadRightThread",
-      );
+      loadRightThread(threadId);
     }
   } else {
     // Plain click → drive the left pane.
     if (threadId === currentLeftId) {
       return;
     }
-    detach(
-      loadLeftThread(threadId, pageSignal),
-      Reason.DomCallback,
-      "loadLeftThread",
-    );
+    loadLeftThread(threadId);
   }
 
   closeSidebarOnSelect();
@@ -564,7 +554,6 @@ function ChatThreadItemLink({
           loadLeftThread: state.loadLeftThread,
           loadRightThread: state.loadRightThread,
           onChatPage: state.onChatPage,
-          pageSignal: state.pageSignal,
           threadId: session.id,
           unloadRightThread: state.unloadRightThread,
         });
