@@ -1,5 +1,6 @@
-use std::io;
+use std::io::{self, Read};
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Once;
@@ -15,11 +16,89 @@ use vsock_proto::ExecTermination;
 
 static WRITE_FILE_HELPER: Once = Once::new();
 const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
+const BLOCKING_WRITE_SUFFIX: &str = ".vm0-vsock-test-block";
 
 fn install_write_file_helper() {
     WRITE_FILE_HELPER.call_once(|| {
         vsock_guest::set_debug_guest_write_file_path_for_tests(WRITE_FILE_HELPER_BIN.into());
     });
+}
+
+pub(crate) type RawGuestHandle = JoinHandle<io::Result<()>>;
+
+pub(crate) fn start_raw_guest_connection() -> (RawGuestHandle, UnixStream) {
+    install_write_file_helper();
+    let (guest_stream, mut host_stream) = UnixStream::pair().expect("create raw guest stream pair");
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("set raw guest read timeout");
+    let handle = thread::spawn(move || vsock_guest::handle_connection(guest_stream));
+    let ready = read_raw_message(&mut host_stream);
+    assert_eq!(ready.msg_type, vsock_proto::MSG_READY);
+    (handle, host_stream)
+}
+
+pub(crate) fn join_raw_guest_connection(handle: RawGuestHandle) {
+    handle
+        .join()
+        .expect("raw guest connection thread panicked")
+        .expect("raw guest connection returned an error");
+}
+
+pub(crate) fn finish_raw_guest_connection(handle: RawGuestHandle, stream: UnixStream) {
+    drop(stream);
+    join_raw_guest_connection(handle);
+}
+
+pub(crate) fn read_raw_message(stream: &mut impl Read) -> vsock_proto::RawMessage {
+    let mut header = [0u8; 4];
+    stream
+        .read_exact(&mut header)
+        .expect("read raw guest message header");
+    let body_len = u32::from_be_bytes(header) as usize;
+    let mut body = vec![0u8; body_len];
+    stream
+        .read_exact(&mut body)
+        .expect("read raw guest message body");
+    let mut frame = Vec::with_capacity(header.len() + body.len());
+    frame.extend_from_slice(&header);
+    frame.extend_from_slice(&body);
+    let mut messages = vsock_proto::Decoder::new()
+        .decode(&frame)
+        .expect("decode raw guest message");
+    assert_eq!(messages.len(), 1);
+    messages.remove(0)
+}
+
+pub(crate) fn blocking_write_path(dir: &Path, name: &str) -> std::path::PathBuf {
+    dir.join(format!("{name}{BLOCKING_WRITE_SUFFIX}"))
+}
+
+pub(crate) fn blocking_write_started_path(path: &Path) -> std::path::PathBuf {
+    path_with_suffix(path, ".started")
+}
+
+pub(crate) fn blocking_write_release_path(path: &Path) -> std::path::PathBuf {
+    path_with_suffix(path, ".release")
+}
+
+pub(crate) fn release_blocking_write(path: &Path) {
+    UnixStream::connect(blocking_write_release_path(path)).expect("release blocked write helper");
+}
+
+pub(crate) fn blocking_write_pid_path(path: &Path) -> std::path::PathBuf {
+    path_with_suffix(path, ".pid")
+}
+
+pub(crate) fn pid_alive(pid: u32) -> bool {
+    // SAFETY: signal zero performs a process-existence check without sending a signal.
+    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+}
+
+fn path_with_suffix(path: &Path, suffix: &str) -> std::path::PathBuf {
+    let mut value = path.as_os_str().to_os_string();
+    value.push(suffix);
+    std::path::PathBuf::from(value)
 }
 
 /// Spawn a guest agent in a background OS thread that connects to the given socket path.

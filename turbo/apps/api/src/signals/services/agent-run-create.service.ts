@@ -4225,6 +4225,7 @@ function loadResumeSession(
     async (): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
       const [conversation] = await db
         .select({
+          runId: conversations.runId,
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
@@ -4261,6 +4262,7 @@ function loadResumeSession(
           if (hash) {
             return Promise.resolve({
               sessionId: cliAgentSessionId,
+              historyGenerationRunId: conversation.runId,
               historyRef: {
                 kind: "blob",
                 hash,
@@ -5480,6 +5482,7 @@ function dispatchRun(
         runId: args.run.id,
         profile: payload.profile,
         cliAgentSessionId: payload.cliAgentSessionId,
+        historyGenerationRunId: payload.historyGenerationRunId,
         createdAt: persisted.runnerJobCreatedAt,
       });
       args.timing.flush({
@@ -7122,6 +7125,8 @@ async function committedAtomicLaunchResponse(args: {
     runId: args.committed.run.id,
     profile: args.committed.runnerJobPayload.profile,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
+    historyGenerationRunId:
+      args.committed.runnerJobPayload.historyGenerationRunId,
     createdAt: args.committed.runnerJobCreatedAt,
   });
   args.timing.flush({

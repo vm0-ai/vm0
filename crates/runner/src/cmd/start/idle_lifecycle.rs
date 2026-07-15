@@ -251,6 +251,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
             restored_session_identity: None,
+            history_generation_run_id: None,
             workspace_image_size_bytes: b"workspace image".len() as u64,
             workspace_promotion: Some(fixture.promotion),
         });

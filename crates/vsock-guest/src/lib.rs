@@ -11,6 +11,7 @@ mod drain;
 mod error;
 mod exec_control;
 mod exec_operation;
+mod file_write_worker;
 mod handlers;
 mod log;
 mod process;

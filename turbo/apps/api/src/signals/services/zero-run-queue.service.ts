@@ -66,6 +66,7 @@ interface RunnerNotification {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly cliAgentSessionId: string | null;
+  readonly historyGenerationRunId: string | undefined;
   readonly createdAt: Date;
 }
 
@@ -329,6 +330,7 @@ async function promoteQueuedCandidate(
         runnerGroup: args.payload.runnerGroup,
         profile: args.payload.profile,
         cliAgentSessionId: args.payload.cliAgentSessionId,
+        historyGenerationRunId: args.payload.historyGenerationRunId,
         createdAt: runnerJobCreatedAt,
       },
     };

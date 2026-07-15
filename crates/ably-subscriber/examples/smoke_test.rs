@@ -1,15 +1,14 @@
 //! Smoke test: publish messages via the real Ably REST API and verify reception.
 //!
-//! Requires a real Ably API key — not run in CI.
+//! Requires a real Ably API key in the `ABLY_API_KEY` environment variable.
+//! Provision it with a secret manager or hidden shell prompt; do not put the
+//! value in the command itself.
 //!
 //! ```sh
-//! cargo run -p ably-subscriber --example smoke_test -- <API_KEY>
+//! cargo run -p ably-subscriber --example smoke_test
 //! ```
 //!
-//! Or via environment variable:
-//! ```sh
-//! ABLY_API_KEY=keyName:keySecret cargo run -p ably-subscriber --example smoke_test
-//! ```
+//! `ABLY_API_KEY` format: `keyName:keySecret` (from your Ably dashboard).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -253,20 +252,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt::init();
 
     // --- Parse API key ---
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let env_key = std::env::var("ABLY_API_KEY").ok();
-
-    let api_key = if let Some(ref key) = env_key {
-        key.as_str()
-    } else {
-        args.first()
-            .ok_or("usage: smoke_test <API_KEY>  (or set ABLY_API_KEY)")?
-            .as_str()
-    };
+    const USAGE: &str =
+        "usage: smoke_test (set ABLY_API_KEY; API keys are not accepted as arguments)";
+    if std::env::args_os().nth(1).is_some() {
+        return Err(USAGE.into());
+    }
+    let api_key = std::env::var("ABLY_API_KEY").map_err(
+        |_| "ABLY_API_KEY must be set to keyName:keySecret; API keys are not accepted as arguments",
+    )?;
 
     let (key_name, key_secret) = api_key
         .split_once(':')
-        .ok_or("API_KEY must be in format keyName:keySecret")?;
+        .ok_or("ABLY_API_KEY must be in format keyName:keySecret")?;
 
     let auth_header = BASE64.encode(api_key.as_bytes());
     let rest_host = "rest.ably.io";

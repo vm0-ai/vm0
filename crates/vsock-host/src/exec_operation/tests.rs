@@ -431,6 +431,7 @@ fn shared_with_logged_operation(
     let shared = Arc::new(Shared {
         writer: tokio::sync::Mutex::new(write_half),
         frame_builder: tokio::sync::Mutex::new(()),
+        file_write_gate: tokio::sync::Mutex::new(()),
         fd,
         seq: AtomicU32::new(2),
         state: std::sync::Mutex::new(ConnectionState::Connected {

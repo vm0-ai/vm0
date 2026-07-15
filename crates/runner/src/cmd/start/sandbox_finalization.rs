@@ -190,6 +190,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             source_ip,
             storage_fingerprints,
             restored_session_identity,
+            history_generation_run_id: Some(run_id),
             workspace_image_size_bytes,
             workspace_promotion,
         });
@@ -637,7 +638,7 @@ mod tests {
     };
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult, ParkingGate,
-        test_support::ParkedIdleCandidateBuilder,
+        RestoreReservedIdleResult, test_support::ParkedIdleCandidateBuilder,
     };
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -843,7 +844,17 @@ mod tests {
         )
         .await;
 
-        assert_eq!(fixture.idle_pool.lock().await.len(), 1);
+        {
+            let mut idle_pool = fixture.idle_pool.lock().await;
+            let reservation = idle_pool
+                .reserve_reusable("sess-network-log-park", "vm0/default", &None)
+                .expect("finalized sandbox should be reusable");
+            assert_eq!(reservation.history_generation_run_id(), Some(run_id));
+            assert!(matches!(
+                idle_pool.restore_reserved(reservation),
+                RestoreReservedIdleResult::Restored
+            ));
+        }
         assert!(
             !fixture
                 .network_log_manager
@@ -1433,6 +1444,7 @@ mod tests {
             budget_lease: existing_lease,
             storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
             restored_session_identity: None,
+            history_generation_run_id: None,
             workspace_image_size_bytes: b"image".len() as u64,
             workspace_promotion: Some(old_promotion),
         })
