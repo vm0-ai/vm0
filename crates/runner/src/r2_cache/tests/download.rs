@@ -8,7 +8,7 @@ use super::fixtures::{
     excessive_sparse_metadata_archive, get_object_body, get_object_body_for_key,
     get_object_body_with_content_length, mock_cache, nested_template_archive,
     production_template_archive, regular_template_archive, sparse_template_archive,
-    template_archive_with_extra, zstd_bytes,
+    template_archive_with_extra, template_archive_with_trailing_decompressed_data, zstd_bytes,
 };
 use aws_smithy_mocks::mock;
 
@@ -216,6 +216,46 @@ async fn misleading_content_length_cannot_hide_trailing_actual_body() {
 }
 
 #[tokio::test]
+async fn actual_compressed_stream_limit_is_enforced_without_content_length() {
+    let limit = archive_limits(0).max_compressed_bytes();
+    let skippable_payload_bytes = u32::try_from(limit).unwrap();
+    let mut archive = Vec::with_capacity(usize::try_from(limit + 8).unwrap());
+    archive.extend_from_slice(&0x184d_2a50u32.to_le_bytes());
+    archive.extend_from_slice(&skippable_payload_bytes.to_le_bytes());
+    archive.resize(usize::try_from(limit + 8).unwrap(), 0);
+
+    let get = get_object_body(archive);
+    let cache = mock_cache("test-bucket", &[&get]);
+    let dst = tempfile::tempdir().unwrap();
+    let destination = dst.path().join("template.ext4");
+    tokio::fs::write(&destination, b"existing-rootfs")
+        .await
+        .unwrap();
+
+    let error = cache
+        .try_download_template_to_file("hash", &destination, 0)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, R2DownloadError::InvalidObject(_)));
+    assert!(error.to_string().contains("compressed byte limit"));
+    assert_eq!(
+        tokio::fs::read(&destination).await.unwrap(),
+        b"existing-rootfs"
+    );
+    assert!(!file_staging_dir(&destination).exists());
+}
+
+#[tokio::test]
+async fn trailing_decompressed_data_in_same_frame_is_rejected() {
+    assert_invalid_preserves_destination(
+        get_object_body(template_archive_with_trailing_decompressed_data(b"hello")),
+        SMALL_TEMPLATE_BYTES,
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn oversized_logical_template_is_rejected() {
     assert_invalid_preserves_destination(
         get_object_body(regular_template_archive(b"too-long")),
@@ -254,10 +294,17 @@ async fn nested_template_path_is_rejected() {
 #[tokio::test]
 async fn unsupported_member_and_extension_types_are_rejected() {
     for entry_type in [
+        tar::EntryType::Link,
         tar::EntryType::Symlink,
+        tar::EntryType::Char,
+        tar::EntryType::Block,
+        tar::EntryType::Directory,
+        tar::EntryType::Fifo,
         tar::EntryType::Continuous,
+        tar::EntryType::XGlobalHeader,
         tar::EntryType::XHeader,
         tar::EntryType::GNULongName,
+        tar::EntryType::GNULongLink,
     ] {
         assert_invalid_preserves_destination(get_object_body(archive_with_type(entry_type)), 0)
             .await;

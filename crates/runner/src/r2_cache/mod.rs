@@ -114,6 +114,8 @@
 //!
 //! The extractor independently enforces:
 //!
+//! - a 128 MiB zstd decoder-window ceiling, pinned explicitly rather than
+//!   inherited from the dependency default;
 //! - an 8 MiB cumulative metadata budget while tar locates the member, parses
 //!   GNU sparse extension headers, and validates the trailer;
 //! - a decompressed ceiling derived from the expected logical size, metadata,

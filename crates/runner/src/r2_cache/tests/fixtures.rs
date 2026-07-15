@@ -47,6 +47,12 @@ pub(super) fn template_archive_with_extra(contents: &[u8]) -> Vec<u8> {
     ])
 }
 
+pub(super) fn template_archive_with_trailing_decompressed_data(contents: &[u8]) -> Vec<u8> {
+    let mut raw = raw_archive_from_entries(&[(TEMPLATE_FILE, tar::EntryType::Regular, contents)]);
+    raw.extend_from_slice(b"trailing decompressed data");
+    zstd_bytes(&raw)
+}
+
 pub(super) fn empty_template_archive() -> Vec<u8> {
     archive_from_entries(&[])
 }
@@ -60,8 +66,11 @@ pub(super) fn archive_with_type(entry_type: tar::EntryType) -> Vec<u8> {
 }
 
 fn archive_from_entries(entries: &[(&str, tar::EntryType, &[u8])]) -> Vec<u8> {
-    let encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
-    let mut builder = tar::Builder::new(encoder);
+    zstd_bytes(&raw_archive_from_entries(entries))
+}
+
+fn raw_archive_from_entries(entries: &[(&str, tar::EntryType, &[u8])]) -> Vec<u8> {
+    let mut builder = tar::Builder::new(Vec::new());
     for (name, entry_type, contents) in entries {
         let mut header = tar::Header::new_gnu();
         header.set_path(name).unwrap();
@@ -73,8 +82,7 @@ fn archive_from_entries(entries: &[(&str, tar::EntryType, &[u8])]) -> Vec<u8> {
         header.set_cksum();
         builder.append(&header, Cursor::new(*contents)).unwrap();
     }
-    let encoder = builder.into_inner().unwrap();
-    encoder.finish().unwrap()
+    builder.into_inner().unwrap()
 }
 
 pub(super) async fn production_template_archive(path: &Path) -> Vec<u8> {

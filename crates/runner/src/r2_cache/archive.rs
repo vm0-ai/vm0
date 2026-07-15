@@ -13,6 +13,7 @@ const TAR_BLOCK_BYTES: u64 = 512;
 const TAR_TRAILER_BYTES: u64 = TAR_BLOCK_BYTES * 2;
 pub(super) const MAX_TEMPLATE_METADATA_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ZSTD_STREAMING_OVERHEAD_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_ZSTD_WINDOW_LOG: u32 = 27;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TemplateArchiveLimits {
@@ -237,9 +238,14 @@ fn unpack_template_from_reader<R: Read>(
     limits: TemplateArchiveLimits,
 ) -> Result<(), TemplateUnpackError> {
     let compressed = CompressedLimitReader::new(reader, limits.max_compressed_bytes);
-    let decoder = zstd::stream::read::Decoder::new(compressed)
-        .map_err(TemplateUnpackError::invalid)?
-        .single_frame();
+    let mut decoder =
+        zstd::stream::read::Decoder::new(compressed).map_err(TemplateUnpackError::invalid)?;
+    // Pin zstd's current 128 MiB streaming-decoder default so a dependency
+    // default change cannot let an object advertise an unbounded window.
+    decoder
+        .window_log_max(MAX_ZSTD_WINDOW_LOG)
+        .map_err(TemplateUnpackError::invalid)?;
+    let decoder = decoder.single_frame();
     let phase = Rc::new(Cell::new(ReadPhase::Metadata));
     let mut decompressed = DecompressedLimitReader::new(decoder, limits, Rc::clone(&phase));
 
@@ -462,6 +468,30 @@ mod tests {
 
         assert_eq!(output.len(), 1024);
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn archive_limit_arithmetic_rejects_overflow() {
+        let error = TemplateArchiveLimits::new(u64::MAX).unwrap_err();
+
+        assert!(matches!(error, R2Error::Io(_)));
+    }
+
+    #[test]
+    fn decoder_rejects_window_larger_than_explicit_limit() {
+        // Zstd frame header with no content size and a 2^28-byte window.
+        let frame = [0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x90];
+        let staging = tempfile::tempdir().unwrap();
+
+        let error = unpack_template_from_reader(
+            Cursor::new(frame),
+            staging.path(),
+            0,
+            TemplateArchiveLimits::new(0).unwrap(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, TemplateUnpackError::Invalid(_)));
     }
 
     #[test]
