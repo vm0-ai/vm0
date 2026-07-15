@@ -332,10 +332,10 @@ class TestAddCaptureFields:
         assert entry["response_body_encoding"] == "binary"  # marked as binary
 
     def test_request_decompression_error_marks_body_binary(self, real_flow):
-        # Content-Encoding: gzip + non-gzip bytes on the REQUEST side makes
-        # flow.request.content raise ValueError.  add_capture_fields must
-        # catch it and mark request_body_encoding as binary, mirroring the
-        # response-side behaviour (#10792).
+        # Request capture decodes the captured stream buffer or raw_content with the
+        # bounded helper. Malformed gzip returns None, so add_capture_fields marks the
+        # body binary without accessing flow.request.content, unlike the response
+        # fallback above.
         flow = real_flow(
             method="POST",
             host="api.example.com",

@@ -252,7 +252,12 @@ impl PooledNbdCowDevice {
     /// Destroy the device and distinguish NBD shutdown failures from COW file
     /// cleanup failures.
     ///
-    /// Finalization starts immediately. When this returns an error with
+    /// Finalization starts when this method is called, before the returned
+    /// future is polled. Dropping the returned future does not cancel cleanup;
+    /// it continues in the background and logs its result. Must be called from
+    /// a Tokio runtime.
+    ///
+    /// When this returns an error with
     /// [`PooledDestroyError::backing_files_safe_to_delete`] set, the NBD device
     /// was released and callers may safely delete the containing workspace or
     /// snapshot attempt directory.
