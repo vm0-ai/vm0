@@ -698,14 +698,6 @@ async function requestSendMessageWithBearer(
 describe("CHAT-02: web chat send and client-id idempotency", () => {
   it("creates a web chat run and replays client ids idempotently", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for queue-first coverage");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatMessageQueue]: true },
-    );
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const clientThreadId = randomUUID();
@@ -1026,17 +1018,7 @@ describe("CHAT-02: interrupting active chat runs", () => {
 describe("CHAT-02: queueing and recalling messages", () => {
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for legacy queue coverage");
-    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    // Keep the explicit rollback path covered now that queue-first is the
-    // default. Queue-first recall-by-deletion is covered below.
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatMessageQueue]: false },
-    );
 
     const first = await sendChatRun(actor, {
       agentId,
@@ -1070,94 +1052,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
     );
     expect(queuedRetry.body).toStrictEqual(queued.body);
 
-    const beforeRecall = await chat.listThreadMessages(actor, first.threadId);
-    expect(
-      userMessages(beforeRecall.messages).filter((message) => {
-        return message.id === queuedId;
-      }),
-    ).toHaveLength(1);
-
-    const recallId = randomUUID();
-    const recalled = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        revokesMessageId: queuedId,
-        clientMessageId: recallId,
-      },
-      [201],
-    );
-    if (recalled.status !== 201) {
-      throw new Error("Expected the recall send to be accepted");
-    }
-    expect(recalled.body.runId).toBeNull();
-    const afterRecall = await chat.listThreadMessages(actor, first.threadId);
-    const recallRows = userMessages(afterRecall.messages).filter((message) => {
-      return message.revokesMessageId === queuedId;
-    });
-    expect(recallRows).toHaveLength(1);
-    expect(recallRows[0]).toMatchObject({ id: recallId, content: null });
-
-    const repeatedRecall = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        revokesMessageId: queuedId,
-        clientMessageId: randomUUID(),
-      },
-      [201],
-    );
-    expect(repeatedRecall.body).toMatchObject({
-      runId: null,
-      threadId: first.threadId,
-    });
-    const afterRepeated = await chat.listThreadMessages(actor, first.threadId);
-    expect(
-      userMessages(afterRepeated.messages).filter((message) => {
-        return message.revokesMessageId === queuedId;
-      }),
-    ).toHaveLength(1);
-
-    // Run-associated messages cannot be recalled.
-    const associated = userMessages(afterRepeated.messages).find((message) => {
-      return message.runId === first.runId;
-    });
-    if (!associated) {
-      throw new Error("Expected the active run's user message to be listed");
-    }
-    const rejectedRecall = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        revokesMessageId: associated.id,
-        clientMessageId: randomUUID(),
-      },
-      [400],
-    );
-    expectApiError(rejectedRecall.body);
-    expect(rejectedRecall.body.error.message).toBe(
-      "Only queued user messages can be recalled",
-    );
-
-    // The recall's client message id is burned for normal sends.
-    const reusedRecallId = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt: "reuse the recall client id",
-        clientMessageId: recallId,
-      },
-      [409],
-    );
-    expectApiError(reusedRecallId.body);
-    expect(reusedRecallId.body.error.message).toBe(
-      "clientMessageId is already in use",
-    );
-
     // Another user's send cannot claim the queued message's client id.
     const stranger = bdd.user();
     const strangerAgent = await bdd.createAgent(stranger, {
@@ -1186,12 +1080,77 @@ describe("CHAT-02: queueing and recalling messages", () => {
       strangerThread.id,
     );
     expect(strangerMessages.messages).toStrictEqual([]);
-    const ownerMessages = await chat.listThreadMessages(actor, first.threadId);
+
+    const beforeRecall = await chat.listThreadMessages(actor, first.threadId);
     expect(
-      ownerMessages.messages.some((message) => {
-        return message.content === "cross-user retry";
+      userMessages(beforeRecall.messages).filter((message) => {
+        return message.id === queuedId;
+      }),
+    ).toHaveLength(1);
+
+    const recalled = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        revokesMessageId: queuedId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    if (recalled.status !== 201) {
+      throw new Error("Expected the recall send to be accepted");
+    }
+    expect(recalled.body.runId).toBeNull();
+    const afterRecall = await chat.listThreadMessages(actor, first.threadId);
+    expect(
+      afterRecall.messages.some((message) => {
+        return message.id === queuedId || message.revokesMessageId === queuedId;
       }),
     ).toBeFalsy();
+
+    const repeatedRecall = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        revokesMessageId: queuedId,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    expect(repeatedRecall.body).toMatchObject({
+      runId: null,
+      threadId: first.threadId,
+    });
+    const afterRepeated = await chat.listThreadMessages(actor, first.threadId);
+    expect(
+      afterRepeated.messages.some((message) => {
+        return message.id === queuedId || message.revokesMessageId === queuedId;
+      }),
+    ).toBeFalsy();
+
+    // Run-associated messages cannot be recalled.
+    const associated = userMessages(afterRepeated.messages).find((message) => {
+      return message.runId === first.runId;
+    });
+    if (!associated) {
+      throw new Error("Expected the active run's user message to be listed");
+    }
+    const rejectedRecall = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: first.threadId,
+        revokesMessageId: associated.id,
+        clientMessageId: randomUUID(),
+      },
+      [400],
+    );
+    expectApiError(rejectedRecall.body);
+    expect(rejectedRecall.body.error.message).toBe(
+      "Only queued user messages can be recalled",
+    );
 
     await cancelChatRun(actor, first.runId);
     expect((await api.readRun(actor, first.runId)).status).toBe("cancelled");
@@ -3172,14 +3131,6 @@ describe("CHAT-02: generation templates and attachments", () => {
 describe("CHAT-02: queued attachments on auto-send", () => {
   it("carries queued attachments into the auto-sent follow-up run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for queue-first coverage");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatMessageQueue]: true },
-    );
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const anchor = await sendChatRun(actor, {
@@ -3521,18 +3472,10 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
   }, 90_000);
 });
 
-describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
+describe("CHAT-02: shared user message queue", () => {
   it("dispatches idle-thread sends by claiming the persisted message in place", async () => {
     const { actor, agentId } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for queue-first sends");
-    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatMessageQueue]: true },
-    );
 
     const messageId = randomUUID();
     const sent = await chat.requestSendMessage(
@@ -3590,14 +3533,9 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
   it("serializes a terminal drain against an idle queue-first send", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for queue-first sends");
+      throw new Error("Expected an org-scoped actor for queue serialization");
     }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatMessageQueue]: true },
-    );
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -3714,15 +3652,7 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
 
   it("claims queued messages in place on auto-send and recalls by deletion", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for queue-first sends");
-    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatMessageQueue]: true },
-    );
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -3834,15 +3764,7 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
 
   it("auto-fires queued messages when the active run is cancelled", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for queue-first sends");
-    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatMessageQueue]: true },
-    );
 
     const anchor = await sendChatRun(actor, {
       agentId,

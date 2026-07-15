@@ -80,7 +80,6 @@ export enum FeatureSwitchKey {
   WorkflowTemplateCatalog = "workflowTemplateCatalog",
   WebsiteTemplates = "websiteTemplates",
   WorkflowQueue = "workflowQueue",
-  ChatMessageQueue = "chatMessageQueue",
   OrgPlanEntitlementReads = "orgPlanEntitlementReads",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ZeroMail = "zeroMail",

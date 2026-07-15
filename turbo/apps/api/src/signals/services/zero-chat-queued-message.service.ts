@@ -12,8 +12,6 @@ import type { Db } from "../external/db";
 
 export interface QueuedUserMessage {
   readonly id: string;
-  /** Whether this snapshot was loaded with a queue-first pointer row. */
-  readonly queueFirst: boolean;
   readonly content: string | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
@@ -49,12 +47,6 @@ export async function loadNextUnclaimedQueuedUserMessage(
   const [message] = await db
     .select({
       id: chatMessages.id,
-      queueFirst: sql<boolean>`EXISTS (
-        SELECT 1
-        FROM ${chatMessageQueue}
-        WHERE ${chatMessageQueue.itemType} = 'user_message'
-          AND ${chatMessageQueue.chatMessageId} = ${chatMessages.id}
-      )`,
       content: chatMessages.content,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
@@ -86,11 +78,7 @@ export async function hasUnclaimedQueuedUserMessage(
   return message !== undefined;
 }
 
-/**
- * Queue-first user messages carry a `chat_message_queue` pointer row next to
- * the message body. The row's presence selects the claim style: in-place
- * `run_id` update instead of the legacy shadow-row-plus-revoke convention.
- */
+/** Persist the queue pointer used by the shared per-thread scheduler. */
 export async function enqueueUserMessageQueueItem(
   db: Db,
   args: {

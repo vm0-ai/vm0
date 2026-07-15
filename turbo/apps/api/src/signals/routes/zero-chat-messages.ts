@@ -215,7 +215,6 @@ interface PreparedNormalSend {
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly chatMessageQueueEnabled: boolean;
 }
 
 function shouldTouchThreadSortFromNormalSend(
@@ -232,7 +231,6 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplatesEnabled: boolean;
-  readonly chatMessageQueueEnabled: boolean;
   readonly chatModelFamilySessionContinuityEnabled: boolean;
 }
 
@@ -1122,10 +1120,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.WebsiteTemplates,
       context,
     ),
-    chatMessageQueueEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ChatMessageQueue,
-      context,
-    ),
     chatModelFamilySessionContinuityEnabled: isFeatureEnabled(
       FeatureSwitchKey.ChatModelFamilySessionContinuity,
       context,
@@ -1579,8 +1573,7 @@ function appendUnassociatedUserMessage(params: {
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
   readonly generationTemplate: IncomingGenerationTemplate;
-  /** Queue-first sends also write a chat_message_queue pointer row. */
-  readonly queueFirstOrgId: string | undefined;
+  readonly orgId: string;
 }): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
@@ -1611,14 +1604,12 @@ function appendUnassociatedUserMessage(params: {
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
     if (inserted) {
-      if (params.queueFirstOrgId) {
-        await enqueueUserMessageQueueItem(tx, {
-          orgId: params.queueFirstOrgId,
-          userId: params.userId,
-          chatThreadId: params.threadId,
-          chatMessageId: inserted.id,
-        });
-      }
+      await enqueueUserMessageQueueItem(tx, {
+        orgId: params.orgId,
+        userId: params.userId,
+        chatThreadId: params.threadId,
+        chatMessageId: inserted.id,
+      });
       if (params.touchThreadSort) {
         await touchChatThreadLastMessageAt(
           tx,
@@ -2419,7 +2410,6 @@ const prepareNormalSend$ = command(
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-      chatMessageQueueEnabled: featureSwitches.chatMessageQueueEnabled,
     };
   },
 );
@@ -2429,8 +2419,7 @@ async function queueUnassociatedNormalMessage(params: {
   readonly body: NormalSendBody;
   readonly userId: string;
   readonly touchThreadSort: boolean;
-  readonly queueFirstOrgId: string | undefined;
-  readonly publishCreated: boolean;
+  readonly orgId: string;
 }): Promise<{
   readonly response:
     | CreatedChatMessageResponse
@@ -2448,15 +2437,9 @@ async function queueUnassociatedNormalMessage(params: {
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
     generationTemplate: params.body.generationTemplate,
-    queueFirstOrgId: params.queueFirstOrgId,
+    orgId: params.orgId,
   });
   if (message.kind === "queued" && message.inserted) {
-    if (params.publishCreated) {
-      await publishChatMessageCreated(
-        params.userId,
-        params.prepared.thread.threadId,
-      );
-    }
     await publishThreadListChanged(params.userId);
   }
   const response = clientMessageIdResolutionResponse(
@@ -3271,13 +3254,10 @@ export const sendNormalMessage$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    // Queue-first dispatch (ChatMessageQueue switch): the message is always
-    // persisted with a chat_message_queue pointer row first; an inline drain
-    // then claims it in place when the thread is idle and the message is the
-    // queue head. The legacy check-then-act path stays behind the switch.
-    const queueFirst =
-      !args.body.revokesMessageId && prepared.chatMessageQueueEnabled;
-    if (queueFirst) {
+    // Normal user messages always enter the shared thread queue first. An
+    // inline drain claims the message in place when the thread is idle and the
+    // message is the queue head.
+    if (!args.body.revokesMessageId) {
       return await set(
         sendQueueFirstNormalMessage$,
         { args, prepared },
@@ -3298,22 +3278,7 @@ export const sendNormalMessage$ = command(
     );
     signal.throwIfAborted();
     if (hasActiveRun) {
-      if (args.body.revokesMessageId) {
-        return badRequestMessage("Recommended follow-up cannot be queued");
-      }
-      const { response } = await queueUnassociatedNormalMessage({
-        prepared,
-        body: args.body,
-        userId: args.userId,
-        touchThreadSort: shouldTouchThreadSortFromNormalSend(
-          args.zeroPreCreateSource,
-          prepared.thread.isNewThread,
-        ),
-        queueFirstOrgId: undefined,
-        publishCreated: true,
-      });
-      signal.throwIfAborted();
-      return response;
+      return badRequestMessage("Recommended follow-up cannot be queued");
     }
     signal.throwIfAborted();
 
@@ -3351,12 +3316,7 @@ const sendQueueFirstNormalMessage$ = command(
             args.zeroPreCreateSource,
             prepared.thread.isNewThread,
           ),
-          queueFirstOrgId: args.orgId,
-          // Queue-first inserts are an internal transition. Publish only if
-          // the dispatch decision below leaves the message genuinely queued;
-          // an idle-thread send stays in the transcript optimistically until
-          // its in-place claim is broadcast as a message update.
-          publishCreated: false,
+          orgId: args.orgId,
         });
       },
     );

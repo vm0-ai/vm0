@@ -188,17 +188,6 @@ async function entitledChatActor(): Promise<EntitledChatActor> {
   return { actor, agentId: agent.agentId, runnerGroup, providerId, storage };
 }
 
-async function enableChatMessageQueue(actor: ApiTestUser): Promise<void> {
-  if (!actor.orgId) {
-    throw new Error("Expected an org-scoped actor for queue-first coverage");
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    { ...actor, orgId: actor.orgId },
-    { [FeatureSwitchKey.ChatMessageQueue]: true },
-  );
-}
-
 async function entitledChatMemberActor(): Promise<EntitledChatActor> {
   const adminFixture = await entitledChatActor();
   if (!adminFixture.actor.orgId) {
@@ -851,7 +840,6 @@ function deferredGate(): {
 describe("CHAT-02: completed chat callback", () => {
   it("persists assistant output, reorders threads, titles the thread, recommends follow-ups, notifies, and auto-sends the queued template message", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableChatMessageQueue(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const titlePrompts: string[] = [];
@@ -1170,7 +1158,6 @@ describe("CHAT-02: completed chat callback", () => {
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableChatMessageQueue(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
@@ -2088,7 +2075,6 @@ Continue after the long Unicode prefix.`;
   it("auto-sends a queued user message before continuing an active goal", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
-    await enableChatMessageQueue(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
@@ -2200,7 +2186,6 @@ Continue after the long Unicode prefix.`;
 
   it("marks an auto-sent follow-up when org concurrency queues the new run", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableChatMessageQueue(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
 
@@ -2549,7 +2534,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
 
   it("extracts assistant output from Codex items and result fallbacks, skips non-events, and acknowledges progress without reading events", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableChatMessageQueue(actor);
     const routeRequests = chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
@@ -3026,7 +3010,6 @@ describe("CHAT-02: failed chat callbacks", () => {
 describe("CHAT-02: auto-send after failures", () => {
   it("auto-sends the queued message after a failure, carrying attachments, incomplete-round context, and the continued session", async () => {
     const { actor, agentId, runnerGroup, storage } = await entitledChatActor();
-    await enableChatMessageQueue(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
@@ -3591,7 +3574,6 @@ describe("CHAT-02: auto-send across a model switch", () => {
 describe("CHAT-02: thread deletion while a run is active", () => {
   it("skips terminal processing when the thread is gone", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    await enableChatMessageQueue(actor);
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const run = await startChatRun(actor, {
