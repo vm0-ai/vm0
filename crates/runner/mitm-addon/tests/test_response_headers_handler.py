@@ -122,3 +122,25 @@ class TestResponseHeadersHandler:
         assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
         assert "x-vm0-usage-receipt" not in flow.response.headers
         assert "x-vm0-usage-signature" not in flow.response.headers
+
+    def test_rejects_non_ascii_model_usage_receipt(self, real_flow):
+        flow = real_flow(with_response=False, host="model.vm0.ai")
+        flow.request.headers["authorization"] = "Bearer proxy-secret"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-auto"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {
+                    "content-type": "application/json",
+                    "x-vm0-usage-receipt": "réceipt",
+                    "x-vm0-usage-signature": "aW52YWxpZA",
+                }
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
+        assert "x-vm0-usage-receipt" not in flow.response.headers
+        assert "x-vm0-usage-signature" not in flow.response.headers

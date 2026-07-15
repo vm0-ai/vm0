@@ -50,12 +50,15 @@ def apply_signed_usage_receipt(flow: http.HTTPFlow) -> bool:
     encoded_receipt = receipt_values[0]
     if not encoded_receipt or len(encoded_receipt) > _MAX_RECEIPT_BYTES:
         return False
+    receipt_bytes = _ascii_bytes(encoded_receipt)
+    if receipt_bytes is None:
+        return False
     signature = _decode_base64url(signature_values[0])
     if signature is None:
         return False
     expected = hmac.new(
         token.encode("utf-8"),
-        _SIGNATURE_DOMAIN + encoded_receipt.encode("ascii"),
+        _SIGNATURE_DOMAIN + receipt_bytes,
         hashlib.sha256,
     ).digest()
     if not hmac.compare_digest(signature, expected):
@@ -73,6 +76,13 @@ def _bearer_token(value: str) -> str | None:
         return None
     token = value[len("Bearer ") :].strip()
     return token or None
+
+
+def _ascii_bytes(value: str) -> bytes | None:
+    try:
+        return value.encode("ascii")
+    except UnicodeEncodeError:
+        return None
 
 
 def _decode_base64url(value: str) -> bytes | None:
