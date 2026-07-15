@@ -355,7 +355,11 @@ async def _bind_api_upstream_destination_from_original_address(
             break
     if original_address is None or original_address_source is None:
         return False
-    if bool(getattr(server, "connected", False)) or getattr(server, "error", None):
+    if (
+        bool(getattr(server, "connected", False))
+        or getattr(server, "error", None)
+        or getattr(client, "timestamp_end", None) is not None
+    ):
         return False
     if connection_endpoints.server_address(server) != starting_server_address:
         return False
