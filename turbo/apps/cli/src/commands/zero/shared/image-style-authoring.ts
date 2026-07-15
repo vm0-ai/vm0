@@ -1,12 +1,12 @@
 import {
   type GenerationOutputKind,
-  type RegistryEntry,
+  type ImageStyleRegistryEntry,
 } from "./resource-registry";
 
 interface StyledImageCompilationOptions {
   readonly prompt: string;
   readonly details: readonly string[];
-  readonly style: RegistryEntry;
+  readonly style: ImageStyleRegistryEntry;
 }
 
 interface StyledImageCompilationPacket {
@@ -35,15 +35,14 @@ interface StyledImageCompilationPacket {
   readonly instructions: string;
 }
 
-function formatStyleSource(source: RegistryEntry["source"]): readonly string[] {
-  if (source.repo && source.ref) {
-    return [
-      `- Repository: \`${source.repo}@${source.ref}\``,
-      `- Path: \`${source.path}\``,
-      `- SKILL.md: \`https://raw.githubusercontent.com/${source.repo}/${source.ref}/${source.path}/SKILL.md\``,
-    ];
-  }
-  return [`- Path: \`${source.path}\``];
+function formatStyleSource(
+  source: ImageStyleRegistryEntry["source"],
+): readonly string[] {
+  return [
+    `- Repository: \`${source.repo}@${source.ref}\``,
+    `- Path: \`${source.path}\``,
+    `- SKILL.md: \`https://raw.githubusercontent.com/${source.repo}/${source.ref}/${source.path}/SKILL.md\``,
+  ];
 }
 
 const outputDir = "./generated/images";
@@ -83,7 +82,7 @@ export function createStyledImageCompilationPacket(
     "",
     "## Selected Image Style",
     `- \`${options.style.id}\` — ${options.style.name}`,
-    `- ${options.style.desc ?? options.style.description}`,
+    `- ${options.style.description}`,
     "",
     "## Style Source",
     ...formatStyleSource(options.style.source),

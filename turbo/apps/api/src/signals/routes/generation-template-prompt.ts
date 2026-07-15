@@ -256,10 +256,7 @@ function buildIllustrationGenerationTemplatePrompt(
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
-  const styleSource =
-    imageStyle.source.repo && imageStyle.source.ref
-      ? `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`
-      : imageStyle.source.path;
+  const styleSource = `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`;
 
   return {
     status: "resolved",
@@ -268,7 +265,7 @@ function buildIllustrationGenerationTemplatePrompt(
       "Selected illustration style:",
       "- Artifact type: illustration",
       `- Style: ${imageStyle.name} (${imageStyle.id})`,
-      `- Style description: ${imageStyle.desc ?? imageStyle.description}`,
+      `- Style description: ${imageStyle.description}`,
       `- Style source: ${styleSource}`,
       "",
       "When you produce an illustration or image from the user's request:",

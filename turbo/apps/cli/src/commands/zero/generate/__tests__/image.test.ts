@@ -300,7 +300,8 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("image prompt-compilation packet");
     expect(stdout).toContain("## Selected Image Style");
     expect(stdout).toContain("image-style:ink-storefront");
-    expect(stdout).toContain("portrait 1024x1536");
+    expect(stdout).toContain("Single-color hand-drawn ink fineliner");
+    expect(stdout).not.toContain("portrait 1024x1536");
     expect(stdout).toContain("## Style Source");
     expect(stdout).toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain("ink-storefront");

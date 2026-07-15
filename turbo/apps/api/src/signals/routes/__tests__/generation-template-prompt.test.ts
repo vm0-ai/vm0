@@ -6,6 +6,7 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import { findImageStyle } from "@vm0/core/resource-registry";
 import { buildGenerationTemplatePrompt } from "../generation-template-prompt";
 
 describe("buildGenerationTemplatePrompt", () => {
@@ -80,6 +81,7 @@ describe("buildGenerationTemplatePrompt", () => {
 
   it("builds illustration template guidance", () => {
     const item = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const imageStyle = findImageStyle(item.illustrationStyleId)!;
 
     const result = buildGenerationTemplatePrompt({
       type: "illustration",
@@ -96,6 +98,10 @@ describe("buildGenerationTemplatePrompt", () => {
     // States the attached style and the exact command that applies it, so the
     // agent does not re-ask for an already-selected style (vm0-ai/vm0#17525).
     expect(result.prompt).toContain(item.illustrationStyleId);
+    expect(result.prompt).toContain(
+      `- Style description: ${imageStyle.description}`,
+    );
+    expect(result.prompt).not.toContain(imageStyle.desc);
     expect(result.prompt).toContain(
       `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile`,
     );
