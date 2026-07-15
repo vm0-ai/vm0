@@ -69,7 +69,6 @@ const SCHEMA = {
   R2_USER_ARTIFACTS_BUCKET_NAME: z.string().min(1),
   R2_USER_ARTIFACTS_ACCESS_KEY_ID: z.string().min(1),
   R2_USER_ARTIFACTS_SECRET_ACCESS_KEY: z.string().min(1),
-  R2_CONNECTOR_CATALOG_BUCKET_NAME: z.string().min(1).optional(),
   PUBLIC_ARTIFACTS_BASE_URL: z.url(),
   R2_HOSTED_SITES_BUCKET_NAME: z.string().min(1).optional(),
   R2_HOSTED_SITES_ACCESS_KEY_ID: z.string().min(1).optional(),

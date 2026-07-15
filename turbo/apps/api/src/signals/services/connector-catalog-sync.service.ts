@@ -71,12 +71,8 @@ type CandidateCommitResult = "accepted" | "rejected" | "retry";
 
 class CandidateCommitRetry extends Error {}
 
-function connectorCatalogSource(): ConnectorCatalogSource | undefined {
-  const bucket = env("R2_CONNECTOR_CATALOG_BUCKET_NAME");
-  if (!bucket) {
-    return undefined;
-  }
-
+function connectorCatalogSource(): ConnectorCatalogSource {
+  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
   const endpoint =
     env("S3_ENDPOINT") ??
     `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
@@ -178,7 +174,6 @@ async function readReleaseIdentity(
 }
 
 function statusFromState(
-  configured: boolean,
   state: SyncStateSnapshot | undefined,
 ): ConnectorCatalogSyncStatus {
   let active: ConnectorCatalogSyncStatus["active"] = null;
@@ -206,7 +201,6 @@ function statusFromState(
   }
 
   return {
-    configured,
     state:
       active === null
         ? "never-synced"
@@ -495,7 +489,7 @@ async function responseFromState(args: {
   const state = await readSyncState(args.db, args.sourceId);
   return {
     outcome: args.outcome,
-    ...statusFromState(true, state),
+    ...statusFromState(state),
   };
 }
 
@@ -720,13 +714,9 @@ async function syncConnectorCatalogAttempt(
 export const connectorCatalogStatus$ = command(
   async ({ get }, signal: AbortSignal): Promise<ConnectorCatalogSyncStatus> => {
     const source = connectorCatalogSource();
-    if (!source) {
-      return statusFromState(false, undefined);
-    }
-
     const state = await readSyncState(get(db$), source.sourceId);
     signal.throwIfAborted();
-    return statusFromState(true, state);
+    return statusFromState(state);
   },
 );
 
@@ -736,13 +726,6 @@ export const syncConnectorCatalog$ = command(
     signal: AbortSignal,
   ): Promise<ConnectorCatalogSyncResponse> => {
     const source = connectorCatalogSource();
-    if (!source) {
-      return {
-        outcome: "disabled",
-        ...statusFromState(false, undefined),
-      };
-    }
-
     const runtime: ConnectorCatalogSyncRuntime = {
       db: set(writeDb$),
       source,

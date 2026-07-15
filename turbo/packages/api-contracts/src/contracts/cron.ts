@@ -116,7 +116,6 @@ export const connectorCatalogSyncFailureCodeSchema = z.enum([
 ]);
 
 const connectorCatalogSyncStatusSchema = z.object({
-  configured: z.boolean(),
   state: z.enum(["never-synced", "current", "stale"]),
   active: z
     .object({
@@ -137,7 +136,7 @@ const connectorCatalogSyncStatusSchema = z.object({
 
 const connectorCatalogSyncResponseSchema =
   connectorCatalogSyncStatusSchema.extend({
-    outcome: z.enum(["disabled", "accepted", "unchanged", "rejected"]),
+    outcome: z.enum(["accepted", "unchanged", "rejected"]),
   });
 
 export type ConnectorCatalogSyncFailureCode = z.infer<

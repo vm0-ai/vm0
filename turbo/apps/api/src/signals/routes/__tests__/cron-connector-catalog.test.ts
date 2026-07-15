@@ -536,7 +536,7 @@ function serveObjects(objects: ReadonlyMap<string, Buffer>): void {
 
 function configureSource(): string {
   const bucket = `connector-catalog-test-${randomUUID()}`;
-  mockEnv("R2_CONNECTOR_CATALOG_BUCKET_NAME", bucket);
+  mockEnv("R2_USER_STORAGES_BUCKET_NAME", bucket);
   return bucket;
 }
 
@@ -568,7 +568,6 @@ function expectRejectedBeforeAcceptance(
 ): void {
   expect(body).toMatchObject({
     outcome: "rejected",
-    configured: true,
     state: "never-synced",
     active: null,
     lastAttempt: {
@@ -581,7 +580,6 @@ function expectRejectedBeforeAcceptance(
 
 beforeEach(() => {
   mockEnv("CRON_SECRET", CRON_SECRET);
-  mockEnv("R2_CONNECTOR_CATALOG_BUCKET_NAME", undefined);
   mockNow(new Date(FIRST_SYNC_TIME));
 });
 
@@ -589,7 +587,7 @@ afterEach(() => {
   clearMockNow();
 });
 
-describe("connector catalog cron authentication and inactive state", () => {
+describe("connector catalog cron authentication and initial state", () => {
   it("rejects missing and invalid cron credentials for both operations", async () => {
     for (const operation of [cronClient().sync, cronClient().status]) {
       const response = await accept(
@@ -609,29 +607,9 @@ describe("connector catalog cron authentication and inactive state", () => {
     }
   });
 
-  it("returns a disabled no-op without a configured bucket", async () => {
-    expect((await readStatus()).body).toStrictEqual({
-      configured: false,
-      state: "never-synced",
-      active: null,
-      lastAttempt: null,
-      lastSuccessAt: null,
-    });
-    expect((await syncCatalog()).body).toStrictEqual({
-      outcome: "disabled",
-      configured: false,
-      state: "never-synced",
-      active: null,
-      lastAttempt: null,
-      lastSuccessAt: null,
-    });
-    expect(context.mocks.s3.send).not.toHaveBeenCalled();
-  });
-
-  it("reports never-synced without reading R2 for a configured source", async () => {
+  it("reports never-synced without reading the shared storage bucket", async () => {
     configureSource();
     expect((await readStatus()).body).toStrictEqual({
-      configured: true,
       state: "never-synced",
       active: null,
       lastAttempt: null,
@@ -643,7 +621,7 @@ describe("connector catalog cron authentication and inactive state", () => {
 
 describe("connector catalog valid lifecycle", () => {
   it("accepts, advances, rolls back, and leaves the public catalog static", async () => {
-    configureSource();
+    const bucket = configureSource();
     const first = buildRelease({ version: "2026-07-15.1" });
     const second = buildRelease({
       version: "2026-07-15.2",
@@ -653,11 +631,16 @@ describe("connector catalog valid lifecycle", () => {
     const acceptedFirst = await syncCatalog();
     expect(acceptedFirst.body).toMatchObject({
       outcome: "accepted",
-      configured: true,
       state: "current",
       active: { catalogVersion: first.version },
       lastAttempt: { outcome: "accepted", failureCode: null },
       lastSuccessAt: FIRST_SYNC_TIME,
+    });
+    expect(
+      commandInput(context.mocks.s3.send.mock.calls[0]?.[0]),
+    ).toMatchObject({
+      Bucket: bucket,
+      Key: ACTIVE_KEY,
     });
 
     const callsBeforeStatus = context.mocks.s3.send.mock.calls.length;
