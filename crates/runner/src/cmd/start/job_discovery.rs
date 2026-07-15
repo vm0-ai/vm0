@@ -35,7 +35,9 @@ use crate::idle_pool::{
 };
 use crate::ids::RunId;
 use crate::paths::short_digest;
-use crate::provider::{ClaimedJob, JobCandidate, PreLocalAdmissionOutcome};
+use crate::provider::{
+    ClaimedJob, JobCandidate, PreLocalAdmissionOutcome, SessionHistoryGenerationRelationship,
+};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
@@ -70,6 +72,29 @@ struct LocalAdmission {
 enum LocalAdmissionResource {
     Fresh(BudgetLease),
     Reusable(Box<ReservedIdleSandbox>),
+}
+
+impl LocalAdmissionResource {
+    fn session_history_generation_relationship(
+        &self,
+        target_generation_run_id: Option<RunId>,
+    ) -> SessionHistoryGenerationRelationship {
+        let Some(target_generation_run_id) = target_generation_run_id else {
+            return SessionHistoryGenerationRelationship::UnknownTarget;
+        };
+        match self {
+            Self::Fresh(_) => SessionHistoryGenerationRelationship::Fresh,
+            Self::Reusable(reservation) => match reservation.history_generation_run_id() {
+                Some(reserved_generation_run_id)
+                    if reserved_generation_run_id == target_generation_run_id =>
+                {
+                    SessionHistoryGenerationRelationship::Exact
+                }
+                Some(_) => SessionHistoryGenerationRelationship::Different,
+                None => SessionHistoryGenerationRelationship::UnknownReserved,
+            },
+        }
+    }
 }
 
 struct AdmittedClaim {
@@ -504,6 +529,10 @@ async fn claim_with_local_admission(
             return None;
         }
     }
+    let relationship = admission
+        .resource
+        .session_history_generation_relationship(candidate.history_generation_run_id());
+    candidate.set_session_history_generation_relationship(relationship);
     // claim() runs in the branch handler: non-interruptible, so a valid
     // successful claim is always paired with complete().
     let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {

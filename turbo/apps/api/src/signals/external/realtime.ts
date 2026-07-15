@@ -273,9 +273,10 @@ export async function publishRunnerJobNotification(
   group: string,
   runId: string,
   profile: string,
-  affinity?: {
+  metadata?: {
     readonly cliAgentSessionId: string | null;
     readonly affinityProtectedUntil: string | null;
+    readonly historyGenerationRunId: string | undefined;
   },
 ): Promise<boolean> {
   const published = await tapError(
@@ -284,11 +285,14 @@ export async function publishRunnerJobNotification(
       await channel.publish("job", {
         runId,
         profile,
-        ...(affinity?.cliAgentSessionId
-          ? { cliAgentSessionId: affinity.cliAgentSessionId }
+        ...(metadata?.cliAgentSessionId
+          ? { cliAgentSessionId: metadata.cliAgentSessionId }
           : {}),
-        ...(affinity?.affinityProtectedUntil
-          ? { affinityProtectedUntil: affinity.affinityProtectedUntil }
+        ...(metadata?.affinityProtectedUntil
+          ? { affinityProtectedUntil: metadata.affinityProtectedUntil }
+          : {}),
+        ...(metadata?.historyGenerationRunId
+          ? { historyGenerationRunId: metadata.historyGenerationRunId }
           : {}),
       });
       L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);

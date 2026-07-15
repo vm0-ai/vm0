@@ -10,6 +10,7 @@ import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { settle, tapError } from "../utils";
+import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
@@ -85,6 +86,23 @@ interface DispatchSingleCallbackInput {
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
+export async function chatCallbackIdForRun(
+  db: Db,
+  runId: string,
+): Promise<string | undefined> {
+  const [callback] = await db
+    .select({ id: agentRunCallbacks.id })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      ),
+    )
+    .limit(1);
+  return callback?.id;
+}
+
 interface DispatchInternalRunCallbackInput {
   readonly db: Db;
   readonly callback: CallbackRecord;
@@ -119,7 +137,24 @@ const dispatchInternalCallback$ = command(
         );
       }
       case "chat": {
-        return await set(handleChatInternalCallback$, input.envelope, signal);
+        return await set(
+          handleChatInternalCallback$,
+          {
+            callback: input.envelope,
+            drainThreadQueue: (chatThreadId, inputSignal, timing) => {
+              return set(
+                drainChatThreadQueueForThread$,
+                {
+                  chatThreadId,
+                  dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+                  timing,
+                },
+                inputSignal,
+              );
+            },
+          },
+          signal,
+        );
       }
       case "github:issues": {
         return await set(

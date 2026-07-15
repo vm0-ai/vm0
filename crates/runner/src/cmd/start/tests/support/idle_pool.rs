@@ -34,9 +34,56 @@ pub(in super::super) async fn seed_idle_pool(
     vcpu: u32,
     memory_mb: u32,
 ) -> SandboxId {
+    seed_idle_pool_with_generation(
+        pool,
+        budget,
+        session_id,
+        profile_name,
+        vcpu,
+        memory_mb,
+        None,
+    )
+    .await
+}
+
+pub(in super::super) async fn seed_idle_pool_with_history_generation(
+    pool: &SharedIdlePool,
+    budget: &Arc<ResourceBudget>,
+    session_id: &str,
+    profile_name: &str,
+    vcpu: u32,
+    memory_mb: u32,
+    history_generation_run_id: RunId,
+) -> SandboxId {
+    seed_idle_pool_with_generation(
+        pool,
+        budget,
+        session_id,
+        profile_name,
+        vcpu,
+        memory_mb,
+        Some(history_generation_run_id),
+    )
+    .await
+}
+
+async fn seed_idle_pool_with_generation(
+    pool: &SharedIdlePool,
+    budget: &Arc<ResourceBudget>,
+    session_id: &str,
+    profile_name: &str,
+    vcpu: u32,
+    memory_mb: u32,
+    history_generation_run_id: Option<RunId>,
+) -> SandboxId {
     let budget_lease = ResourceBudget::try_reserve_lease(budget, vcpu, memory_mb).unwrap();
-    let candidate = make_synthetic_parked_candidate(session_id, profile_name, budget_lease)
+    let builder = ParkedIdleCandidateBuilder::new(session_id, budget_lease)
+        .with_profile_name(profile_name)
         .with_last_completed_at(TEST_SESSION_LAST_COMPLETED_AT.to_string());
+    let candidate = match history_generation_run_id {
+        Some(run_id) => builder.with_history_generation_run_id(run_id).build(),
+        None => builder.build(),
+    };
     let sandbox_id = candidate.sandbox_id();
     let mut guard = pool.lock().await;
     let result = guard.park(candidate);

@@ -67,7 +67,7 @@ import {
   type BeforeRunDispatch,
 } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { drainQueuedUserMessagesForThread$ } from "../services/internal-chat-run-callback.service";
+import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -3395,8 +3395,11 @@ const sendQueueFirstNormalMessage$ = command(
       await publishChatMessageCreated(args.userId, threadId);
       signal.throwIfAborted();
       await set(
-        drainQueuedUserMessagesForThread$,
-        { chatThreadId: threadId },
+        drainChatThreadQueueForThread$,
+        {
+          chatThreadId: threadId,
+          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        },
         signal,
       );
       signal.throwIfAborted();

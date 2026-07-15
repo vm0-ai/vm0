@@ -1,5 +1,4 @@
 import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   zeroWorkflows,
   zeroWorkflowAutomations,
@@ -8,14 +7,13 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
+import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   claimNextWorkflowQueueEvent,
   decryptWorkflowQueueEventParams,
-  pendingWorkflowQueueThreadIds,
   restoreWorkflowQueueEventAndPause,
   type ClaimedWorkflowQueueEvent,
 } from "./chat-message-queue.service";
@@ -26,8 +24,6 @@ const log = logger("ZeroWorkflowQueueDrain");
 // Consecutive stale events (deleted/disabled automations) skipped per drain call
 // before giving up; a successful run creation always stops the loop.
 const MAX_DRAIN_ATTEMPTS = 5;
-
-const DRAIN_SWEEP_LIMIT = 20;
 
 interface DequeueTarget {
   readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
@@ -70,7 +66,10 @@ async function loadDequeueTarget(
 export const drainWorkflowQueueForThread$ = command(
   async (
     { set },
-    args: { readonly chatThreadId: string },
+    args: {
+      readonly chatThreadId: string;
+      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
@@ -130,7 +129,7 @@ export const drainWorkflowQueueForThread$ = command(
           recordLastRunId: params.recordLastRunId,
           recordLastRunAt: params.recordLastRunAt,
           bypassWorkflowQueue: true,
-          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         },
         signal,
       );
@@ -171,55 +170,5 @@ export const drainWorkflowQueueForThread$ = command(
       signal.throwIfAborted();
       return;
     }
-  },
-);
-
-/**
- * Terminal-run hook: resolve the run's chat thread and advance that thread's
- * workflow queue. No-op for runs without a chat thread or threads without a
- * workflow queue.
- */
-export const drainWorkflowQueueForRun$ = command(
-  async (
-    { set },
-    args: { readonly runId: string },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    const [run] = await db
-      .select({ chatThreadId: zeroRuns.chatThreadId })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-    if (!run?.chatThreadId) {
-      return;
-    }
-    await set(
-      drainWorkflowQueueForThread$,
-      { chatThreadId: run.chatThreadId },
-      signal,
-    );
-  },
-);
-
-/**
- * Safety-net sweep for the cleanup cron: re-drain workflow queues that have
- * pending events but no in-flight run, covering terminal-run drains that were
- * lost (process crash, dropped callback).
- */
-export const drainStaleWorkflowQueues$ = command(
-  async ({ set }, signal: AbortSignal): Promise<number> => {
-    const db = set(writeDb$);
-    const threadIds = await pendingWorkflowQueueThreadIds(
-      db,
-      DRAIN_SWEEP_LIMIT,
-    );
-    signal.throwIfAborted();
-    for (const chatThreadId of threadIds) {
-      await set(drainWorkflowQueueForThread$, { chatThreadId }, signal);
-      signal.throwIfAborted();
-    }
-    return threadIds.length;
   },
 );

@@ -27,7 +27,17 @@ interface QueuedRunnerJobPayload {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly cliAgentSessionId: string | null;
+  readonly historyGenerationRunId: string | undefined;
   readonly executionContext: StoredExecutionContext;
+}
+
+function historyGenerationRunId(
+  executionContext: StoredExecutionContext,
+): string | undefined {
+  const resumeSession = executionContext.resumeSession;
+  return resumeSession && "historyRef" in resumeSession
+    ? resumeSession.historyGenerationRunId
+    : undefined;
 }
 
 export async function encryptQueuedRunnerJobPayload(
@@ -73,6 +83,9 @@ export async function decryptQueuedRunnerJobPayload(
     runnerGroup: wirePayload.runnerGroup,
     profile: wirePayload.profile,
     cliAgentSessionId: wirePayload.sessionId,
+    historyGenerationRunId: historyGenerationRunId(
+      wirePayload.executionContext,
+    ),
     executionContext: wirePayload.executionContext,
   };
 }
@@ -88,6 +101,7 @@ export function queuedRunnerJobPayload(args: {
     runnerGroup: args.runnerGroup,
     profile: args.profile,
     cliAgentSessionId: args.cliAgentSessionId,
+    historyGenerationRunId: historyGenerationRunId(args.executionContext),
     executionContext: args.executionContext,
   };
 }

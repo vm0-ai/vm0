@@ -14,11 +14,15 @@ import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
 import { tapError } from "../utils";
-import { dispatchRunCallbacks$ } from "./agent-run-callback.service";
+import {
+  chatCallbackIdForRun,
+  dispatchFailedRunCallbacks,
+  dispatchRunCallbacks$,
+} from "./agent-run-callback.service";
+import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
-import { drainWorkflowQueueForRun$ } from "./zero-workflow-queue-drain.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -374,7 +378,9 @@ export const dispatchCompleteSideEffects$ = command(
     const db = set(writeDb$);
     const callbackStatus =
       input.status === "completed" ? "completed" : "failed";
-    await tapError(
+    const chatCallbackId = await chatCallbackIdForRun(db, input.runId);
+    signal.throwIfAborted();
+    const callbackResults = await tapError(
       set(
         dispatchRunCallbacks$,
         {
@@ -394,23 +400,35 @@ export const dispatchCompleteSideEffects$ = command(
     );
     signal.throwIfAborted();
 
+    const chatCallbackDrained = callbackResults?.some((result) => {
+      return result.callbackId === chatCallbackId && result.success;
+    });
+    if (!chatCallbackDrained) {
+      await tapError(
+        set(
+          drainChatThreadQueueForRun$,
+          {
+            runId: input.runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Failed to drain chat thread queue", {
+            runId: input.runId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+    }
+
     await tapError(
       set(drainOrgQueue$, { orgId: input.orgId }, signal),
       (error) => {
         L.error("Failed to drain org queue", {
           runId: input.runId,
           orgId: input.orgId,
-          error,
-        });
-      },
-    );
-    signal.throwIfAborted();
-
-    await tapError(
-      set(drainWorkflowQueueForRun$, { runId: input.runId }, signal),
-      (error) => {
-        L.error("Failed to drain workflow queue", {
-          runId: input.runId,
           error,
         });
       },
