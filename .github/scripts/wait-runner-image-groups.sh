@@ -50,6 +50,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 bin_dir=""
 runner_dir=""
+target_map="{}"
 rootfs_hash_map="{}"
 snapshot_hash_map="{}"
 
@@ -94,11 +95,15 @@ while IFS= read -r group; do
 
   bin_dir="$group_bin_dir"
   runner_dir="$group_runner_dir"
+  while IFS= read -r host; do
+    target_map="$(jq -c --arg host "$host" --arg target "$target" '. + {($host): $target}' <<<"$target_map")"
+  done < <(printf '%s\n' "$hosts" | tr ',' '\n' | sed '/^$/d')
   rootfs_hash_map="$(merge_json_map "$rootfs_hash_map" "$group_rootfs_hash_map")"
   snapshot_hash_map="$(merge_json_map "$snapshot_hash_map" "$group_snapshot_hash_map")"
 done < <(jq -c '.[]' <<<"$groups_json")
 
 emit "bin-dir" "$bin_dir"
 emit "runner-dir" "$runner_dir"
+emit "target-map" "$target_map"
 emit "rootfs-hash-map" "$rootfs_hash_map"
 emit "snapshot-hash-map" "$snapshot_hash_map"

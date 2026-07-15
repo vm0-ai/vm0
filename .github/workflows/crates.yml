@@ -11,6 +11,18 @@ concurrency:
   group: crates-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'merge_group' && format('merge-queue-{0}', github.run_id) || 'main') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  RUNNER_BEHAVIOR_JOBS: >-
+    runner-upgrade-local,
+    runner-drain-resume,
+    runner-balloon,
+    runner-benchmark,
+    runner-local-claude-active-input-smoke,
+    runner-local-codex-active-input-smoke,
+    runner-exec,
+    runner-keep-alive,
+    runner-cancel
+
 jobs:
   # Detect release-please context across all event types (PR, push, merge queue).
   detect-release:
@@ -253,9 +265,6 @@ jobs:
       # Keep cross-job architecture metadata sanitized. Jobs that need hosts
       # resolve the host subset from matrix.id inside that job.
       matrix: ${{ steps.groups.outputs.matrix }}
-      representative-group-id: ${{ steps.groups.outputs.representative-group-id }}
-      representative-target: ${{ steps.groups.outputs.representative-target }}
-      representative-cache-suffix: ${{ steps.groups.outputs.representative-cache-suffix }}
     steps:
       - uses: actions/checkout@v7
 
@@ -279,13 +288,7 @@ jobs:
             exit 1
           fi
 
-          REPRESENTATIVE=$(jq -c '.[0]' <<<"$MATRIX")
-          {
-            echo "matrix=${MATRIX}"
-            echo "representative-group-id=$(jq -r '.id' <<<"$REPRESENTATIVE")"
-            echo "representative-target=$(jq -r '.target' <<<"$REPRESENTATIVE")"
-            echo "representative-cache-suffix=$(jq -r '.cacheSuffix' <<<"$REPRESENTATIVE")"
-          } >> "$GITHUB_OUTPUT"
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
 
           echo "Runner host architecture groups:"
           jq . <<<"$MATRIX"
@@ -494,12 +497,12 @@ jobs:
       needs.detect.outputs.crates-runner-consumer-needed == 'true'
     timeout-minutes: 20
     outputs:
-      host: ${{ steps.selected-host.outputs.host }}
       job-ref: ${{ needs.detect.outputs.metal-job-ref }}
       image-job-ref: ${{ needs.detect.outputs.runner-image-job-ref }}
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
-      default-rootfs-hash: ${{ steps.manifest.outputs.selected-rootfs-hash }}
-      default-snapshot-hash: ${{ steps.manifest.outputs.selected-snapshot-hash }}
+      target-map: ${{ steps.manifest.outputs.target-map }}
+      rootfs-hash-map: ${{ steps.manifest.outputs.rootfs-hash-map }}
+      snapshot-hash-map: ${{ steps.manifest.outputs.snapshot-hash-map }}
     steps:
       - uses: actions/checkout@v7
 
@@ -510,95 +513,17 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      - name: Select representative metal host
-        id: selected-host
-        env:
-          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST_GROUP_ID: ${{ needs.runner-host-groups.outputs.representative-group-id }}
-          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
-        run: |
-          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
-          NUM_HOSTS=$(printf '%s\n' "$HOSTS" | tr ',' '\n' | grep -c . || true)
-          if [ "$NUM_HOSTS" -lt 1 ]; then
-            echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
-            exit 1
-          fi
-          HOST=$(.github/scripts/runner-host-architecture-groups.sh select-host "$RUNNER_HOST_GROUP_ID" "$JOB_REF" "$HOSTS")
-          {
-            echo "host=${HOST}"
-            echo "hosts<<HOSTS"
-            echo "$HOSTS"
-            echo "HOSTS"
-          } >> "$GITHUB_OUTPUT"
-          echo "Selected representative metal host: ${HOST} (group ${RUNNER_HOST_GROUP_ID}, ${NUM_HOSTS} host(s) in group)"
-
-      - name: Wait for runner image manifest
+      - name: Wait for runner image manifests
         id: manifest
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.sha }}
           LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           JOB_REF: ${{ needs.detect.outputs.runner-image-job-ref }}
-          # Target-specific manifests only contain hosts for that architecture group.
-          METAL_HOSTS: ${{ steps.selected-host.outputs.hosts }}
-          SELECTED_HOST: ${{ steps.selected-host.outputs.host }}
-          TARGET: ${{ needs.runner-host-groups.outputs.representative-target }}
-          PROFILE: vm0/default
-        run: .github/scripts/wait-runner-image.sh
-
-  runner-image-architecture-manifest:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-    needs: [detect, runner-host-groups]
-    if: |
-      needs.detect.outputs.metal-job-ref != '' &&
-      needs.detect.outputs.crates-runner-consumer-needed == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.runner-host-groups.outputs.matrix || '[]') }}
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Setup SSH via Cloudflare Tunnel
-        uses: ./.github/actions/setup-ssh-tunnel
-        with:
-          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-
-      - name: Resolve metal hosts
-        id: hosts
-        env:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
-          RUNNER_HOST_GROUP_ID: ${{ matrix.id }}
-        run: |
-          HOSTS=$(.github/scripts/runner-host-architecture-groups.sh hosts "$RUNNER_HOST_GROUP_ID")
-          if ! printf '%s\n' "$HOSTS" | grep -q .; then
-            echo "::error::No metal hosts found for runner host group $RUNNER_HOST_GROUP_ID"
-            exit 1
-          fi
-          {
-            echo "hosts<<HOSTS"
-            echo "$HOSTS"
-            echo "HOSTS"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Wait for runner image manifest for ${{ matrix.label }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.sha }}
-          LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          JOB_REF: ${{ needs.detect.outputs.runner-image-job-ref }}
-          METAL_HOSTS: ${{ steps.hosts.outputs.hosts }}
-          TARGET: ${{ matrix.target }}
           PROFILE: vm0/default
-        run: .github/scripts/wait-runner-image.sh
+        run: .github/scripts/wait-runner-image-groups.sh
 
   runner-local-claude-active-input-smoke:
     runs-on: ubuntu-latest
@@ -614,16 +539,26 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Test local active input with real Claude Code
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           set -euo pipefail
 
@@ -757,16 +692,26 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Test local active input with real Codex
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           set -euo pipefail
 
@@ -910,15 +855,25 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Run benchmark
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
@@ -966,15 +921,25 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Test runner exec
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
 
@@ -1474,15 +1439,25 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Test runner local cancel
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
 
@@ -1596,15 +1571,25 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Test runner service drain + resume
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
 
@@ -1831,15 +1816,25 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Test balloon memory reclaim
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
 
@@ -2102,15 +2097,25 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Run upgrade test
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           GROUP="vm0/upgrade-${JOB_REF}"
@@ -2267,15 +2272,25 @@ jobs:
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      - name: Select runner test context
+        id: runner-test-context
+        env:
+          RUNNER_IMAGE_JOB_REF: ${{ needs.runner-build.outputs.image-job-ref }}
+          AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          RUNNER_TARGET_MAP: ${{ needs.runner-build.outputs.target-map }}
+          RUNNER_ROOTFS_HASH_MAP: ${{ needs.runner-build.outputs.rootfs-hash-map }}
+          RUNNER_SNAPSHOT_HASH_MAP: ${{ needs.runner-build.outputs.snapshot-hash-map }}
+        run: .github/scripts/runner-test-context.sh
+
       - name: Test VM keep-alive across conversation turns
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
-          HOST: ${{ needs.runner-build.outputs.host }}
+          HOST: ${{ steps.runner-test-context.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
           BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+          DEFAULT_ROOTFS_HASH: ${{ steps.runner-test-context.outputs.rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ steps.runner-test-context.outputs.snapshot-hash }}
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           SVC="${JOB_REF}-keepalive"
@@ -2416,7 +2431,6 @@ jobs:
       - mitm-addon-test
       - runner-host-groups
       - runner-build
-      - runner-image-architecture-manifest
       - runner-local-claude-active-input-smoke
       - runner-local-codex-active-input-smoke
       - runner-benchmark
@@ -2470,7 +2484,6 @@ jobs:
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
           check_result "runner-host-groups" "${{ needs.runner-host-groups.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
-          check_result "runner-image-architecture-manifest" "${{ needs.runner-image-architecture-manifest.result }}" "true"
           check_result "runner-local-claude-active-input-smoke" "${{ needs.runner-local-claude-active-input-smoke.result }}" "true"
           check_result "runner-local-codex-active-input-smoke" "${{ needs.runner-local-codex-active-input-smoke.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
