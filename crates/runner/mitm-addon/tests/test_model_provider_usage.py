@@ -86,6 +86,42 @@ class TestReportModelProviderUsage:
         for event in body["events"]:
             uuid.UUID(event["idempotencyKey"])
 
+    def test_reports_signed_model_pricing_as_gross_credits(self, real_flow, usage_webhook_api):
+        flow = real_flow(with_response=False, host="model.vm0.ai")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-luna"
+        flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] = "model-standard-v1"
+        flow.metadata[metadata_keys.MODEL_USAGE_PRICING] = {
+            "billingSku": "model-standard-v1",
+            "unitSize": 100,
+            "unitPrices": {
+                "tokens.input": 7,
+                "tokens.output": 13,
+                "tokens.cache_read": 11,
+                "tokens.cache_creation": 17,
+            },
+        }
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "tokens.input": 100,
+            "tokens.output": 50,
+            "tokens.cache_read": 25,
+            "tokens.cache_creation": 10,
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+
+        events = webhook.requests[0].json_body()["events"]
+        assert {event["category"]: event["grossCredits"] for event in events} == {
+            "tokens.input": 7,
+            "tokens.output": 7,
+            "tokens.cache_read": 3,
+            "tokens.cache_creation": 2,
+        }
+
     def test_falls_back_to_response_model_then_unknown(self, real_flow, usage_webhook_api):
         """Provider falls back only when selected vm0 model metadata is absent."""
         flow = real_flow(with_response=False, host="api.anthropic.com")

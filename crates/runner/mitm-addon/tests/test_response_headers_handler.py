@@ -46,6 +46,45 @@ def signed_usage_receipt_headers(billing_sku: str) -> dict[str, str]:
     }
 
 
+def signed_usage_pricing_headers(billing_sku: str) -> dict[str, str]:
+    pricing = (
+        base64.urlsafe_b64encode(
+            json.dumps(
+                {
+                    "version": 1,
+                    "billingSku": billing_sku,
+                    "issuedAt": int(time.time()),
+                    "unitSize": 1_000_000,
+                    "unitPrices": {
+                        "tokens.input": 1000,
+                        "tokens.cache_read": 100,
+                        "tokens.cache_creation": 1250,
+                        "tokens.output": 6000,
+                    },
+                },
+                separators=(",", ":"),
+            ).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    signature = (
+        base64.urlsafe_b64encode(
+            hmac.new(
+                b"proxy-secret",
+                b"vm0-model-usage-pricing-v1\0" + pricing.encode(),
+                hashlib.sha256,
+            ).digest()
+        )
+        .decode()
+        .rstrip("=")
+    )
+    return {
+        "x-vm0-usage-pricing": pricing,
+        "x-vm0-usage-pricing-signature": signature,
+    }
+
+
 class TestResponseHeadersHandler:
     """Tests for the responseheaders() hook contract."""
 
@@ -102,6 +141,37 @@ class TestResponseHeadersHandler:
         assert flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] == "model-standard-v1"
         assert "x-vm0-usage-receipt" not in flow.response.headers
         assert "x-vm0-usage-signature" not in flow.response.headers
+
+    def test_accepts_and_strips_signed_model_usage_pricing(self, real_flow):
+        flow = real_flow(with_response=False, host="model.vm0.ai")
+        flow.request.headers["authorization"] = "Bearer proxy-secret"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {
+                    **signed_usage_receipt_headers("model-standard-v1"),
+                    **signed_usage_pricing_headers("model-standard-v1"),
+                }
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        assert flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] == "model-standard-v1"
+        assert flow.metadata[metadata_keys.MODEL_USAGE_PRICING] == {
+            "billingSku": "model-standard-v1",
+            "unitSize": 1_000_000,
+            "unitPrices": {
+                "tokens.input": 1000,
+                "tokens.cache_read": 100,
+                "tokens.cache_creation": 1250,
+                "tokens.output": 6000,
+            },
+        }
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
     def test_rejects_signed_model_usage_receipt_from_other_provider(self, real_flow):
         flow = real_flow(with_response=False, host="api.openai.com")

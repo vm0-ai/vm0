@@ -1065,6 +1065,7 @@ def _is_valid_websocket_key(value: str) -> bool:
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
     model_usage_receipt.apply_signed_usage_receipt(flow)
+    model_usage_receipt.apply_signed_usage_pricing(flow)
     if connector_diagnostics.install_response_stream_if_needed(flow):
         return
     response_streaming.configure_response_stream(flow)

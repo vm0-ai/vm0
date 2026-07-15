@@ -161,6 +161,14 @@ function priceUsageEvents(
   );
   const pricedEvents: PricedUsageEvent[] = [];
   for (const record of records) {
+    if (record.kind === "model" && record.grossCredits !== null) {
+      pricedEvents.push({
+        record,
+        grossCredits: record.grossCredits,
+        billingError: null,
+      });
+      continue;
+    }
     const pricingProvider = record.billingSku ?? record.provider;
     const exactPricing = pricingByKey.get(
       `${record.kind}|${pricingProvider}|${record.category}`,
@@ -287,7 +295,11 @@ async function processOrgUsageEventsInTransaction(
     ),
   ];
 
-  const pricingRecords = await tx.select().from(usagePricing);
+  const pricingRecords = pendingRecords.some((record) => {
+    return record.grossCredits === null;
+  })
+    ? await tx.select().from(usagePricing)
+    : [];
   const pricedEvents = priceUsageEvents(pendingRecords, pricingRecords, orgId);
 
   const allowanceByUsageEvent =

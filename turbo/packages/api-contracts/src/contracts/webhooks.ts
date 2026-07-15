@@ -915,7 +915,9 @@ export type WebhookStoragesCommitContract =
  * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
  * Receives billing usage records from the sandbox for persistence in the
- * `usage_event` ledger. Reporters send `{ runId, events }` batches.
+ * `usage_event` ledger. Reporters send `{ runId, events }` batches. Trusted
+ * model-provider reporters may include `grossCredits`, calculated from a
+ * signed proxy price schedule; legacy events omit it and use server pricing.
  */
 const webhookUsageEventItemSchema = z
   .object({
@@ -925,6 +927,7 @@ const webhookUsageEventItemSchema = z
     billingSku: z.string().min(1).max(100).optional(),
     category: z.string().min(1).max(100),
     quantity: z.number().int().min(0),
+    grossCredits: z.number().int().min(0).optional(),
   })
   .strict();
 

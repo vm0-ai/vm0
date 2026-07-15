@@ -25,6 +25,8 @@ class _RequiredUsageEvent(TypedDict):
 
 class UsageEvent(_RequiredUsageEvent, total=False):
     billingSku: str
+    billingUnitPrice: int
+    billingUnitSize: int
 
 
 UsageFlushTrigger = Literal["timer", "threshold", "runner", "shutdown", "test"]
@@ -48,6 +50,8 @@ class _AggregateKey:
     provider: str
     billing_sku: str | None
     category: str
+    billing_unit_price: int | None
+    billing_unit_size: int | None
 
 
 @dataclass

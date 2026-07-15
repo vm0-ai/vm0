@@ -211,6 +211,8 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
         billingSku: event.billingSku,
         category: event.category,
         quantity: event.quantity,
+        grossCredits:
+          event.kind === MODEL_USAGE_KIND ? event.grossCredits : undefined,
         idempotencyKey: event.idempotencyKey,
       };
     });
