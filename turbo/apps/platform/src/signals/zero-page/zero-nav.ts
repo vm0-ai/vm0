@@ -10,6 +10,8 @@ import { eventDrivenChatThreads$ } from "../chat-page/chat-thread-event-sourcing
 import { setChatShortcutHelpOpen$ } from "../chat-page/chat-shortcut-help.ts";
 import { openAgentListDialog$ } from "./zero-sidebar-state.ts";
 import { pinnedAgents$ } from "./zero-pinned-agents.ts";
+import { writeToClipboard } from "./clipboard.ts";
+import { isStandaloneMode } from "./settings/connectors.ts";
 
 type PinnedAgentShortcutDirection = "prev" | "next";
 
@@ -136,6 +138,15 @@ export const setupGlobalKeyboardShortcuts$ = command(
           allowInEditableTarget: true,
           run: () => {
             set(toggleSidebarOff$);
+          },
+        },
+        "mod+l": {
+          allowInEditableTarget: true,
+          shouldHandle: () => {
+            return isStandaloneMode();
+          },
+          run: async () => {
+            await writeToClipboard(window.location.href);
           },
         },
         "mod+shift+o": {
