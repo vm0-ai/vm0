@@ -438,11 +438,14 @@ async function configureTelegramBot(args: {
   readonly agentName: string;
 }): Promise<ReturnType<typeof badGateway> | undefined> {
   const webhookConfigured = await tapError(
-    setWebhook(
-      args.botToken,
-      buildTelegramWebhookUrl(args.telegramBotId),
-      args.webhookSecret,
-    ).then(() => true),
+    (async () => {
+      await setWebhook(
+        args.botToken,
+        buildTelegramWebhookUrl(args.telegramBotId),
+        args.webhookSecret,
+      );
+      return true;
+    })(),
     (error) => {
       log.error("Failed to set Telegram webhook", { error });
     },

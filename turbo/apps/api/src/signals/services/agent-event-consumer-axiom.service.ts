@@ -35,7 +35,10 @@ export const ingestAxiomEvents$ = command(
     }
 
     const flushed = await tapError(
-      flushAxiom({ throwOnError: true, client: "sessions" }).then(() => true),
+      (async () => {
+        await flushAxiom({ throwOnError: true, client: "sessions" });
+        return true;
+      })(),
     );
     signal.throwIfAborted();
     if (!flushed) {

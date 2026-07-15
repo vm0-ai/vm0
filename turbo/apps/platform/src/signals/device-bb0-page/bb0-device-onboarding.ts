@@ -413,7 +413,10 @@ async function enableBb0InfoNotifications(
 
   return Boolean(
     await tapError(
-      startNotifications.call(session.characteristics.info).then(() => true),
+      (async () => {
+        await startNotifications.call(session.characteristics.info);
+        return true;
+      })(),
     ),
   );
 }
