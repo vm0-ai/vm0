@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.17...runner-rs-v0.144.18) (2026-07-15)
+
+
+### Documentation
+
+* **mitm-addon:** document metadata visitor invariants ([#21541](https://github.com/vm0-ai/vm0/issues/21541)) ([8a545c2](https://github.com/vm0-ai/vm0/commit/8a545c2bcbf6ec1c9d017a3891e7addcc7d3d683))
+
 ## [0.144.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.16...runner-rs-v0.144.17) (2026-07-14)
 
 
