@@ -102,7 +102,7 @@ export async function exchangeCloseCode(
     expiresIn: data.expires_in,
     scopes: data.scope ? data.scope.split(" ") : authCodeGrant.scopes,
     userInfo: {
-      id: userInfo.id ?? data.user_id ?? "unknown",
+      id: userInfo.id,
       email: userInfo.email,
       organizationId: data.organization_id ?? null,
     },
