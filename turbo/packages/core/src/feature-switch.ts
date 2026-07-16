@@ -480,8 +480,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Queue workflow automation events per workflow and run them serially instead of firing concurrent runs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",
