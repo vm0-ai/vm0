@@ -11,6 +11,7 @@ import {
   type ExecutionContext,
   type HeldSessionState,
   type SessionHistoryDownloadSource,
+  type SessionHistoryGenerationLocalAvailability,
   type SessionHistoryGenerationRelationship,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
@@ -649,6 +650,9 @@ type SessionHistoryGenerationClaimOutcome =
 function recordSessionHistoryGenerationClaimAttempt(args: {
   readonly runId: string;
   readonly relationship: SessionHistoryGenerationRelationship | undefined;
+  readonly localAvailability:
+    | SessionHistoryGenerationLocalAvailability
+    | undefined;
   readonly outcome: SessionHistoryGenerationClaimOutcome;
   readonly authType: RunnerAuthContext["type"];
   readonly runnerGroup?: string;
@@ -662,6 +666,9 @@ function recordSessionHistoryGenerationClaimAttempt(args: {
     claim_outcome: args.outcome,
     auth_type: args.authType,
   };
+  if (args.localAvailability) {
+    dimensions.generation_local_availability = args.localAvailability;
+  }
   if (args.runnerGroup) {
     dimensions.runner_group = args.runnerGroup;
   }
@@ -683,6 +690,9 @@ function recordSessionHistoryGenerationClaimAttempt(args: {
 function recordSessionHistoryGenerationClaimAttemptForJob(args: {
   readonly runId: string;
   readonly relationship: SessionHistoryGenerationRelationship | undefined;
+  readonly localAvailability:
+    | SessionHistoryGenerationLocalAvailability
+    | undefined;
   readonly outcome: SessionHistoryGenerationClaimOutcome;
   readonly authType: RunnerAuthContext["type"];
   readonly job: ClaimableJob["job"];
@@ -690,6 +700,7 @@ function recordSessionHistoryGenerationClaimAttemptForJob(args: {
   recordSessionHistoryGenerationClaimAttempt({
     runId: args.runId,
     relationship: args.relationship,
+    localAvailability: args.localAvailability,
     outcome: args.outcome,
     authType: args.authType,
     runnerGroup: args.job.runnerGroup,
@@ -1977,6 +1988,9 @@ const claimAuthorizedJob$ = command(
       readonly generationRelationship:
         | SessionHistoryGenerationRelationship
         | undefined;
+      readonly generationLocalAvailability:
+        | SessionHistoryGenerationLocalAvailability
+        | undefined;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
@@ -1989,6 +2003,7 @@ const claimAuthorizedJob$ = command(
       recordSessionHistoryGenerationClaimAttemptForJob({
         runId,
         relationship: args.generationRelationship,
+        localAvailability: args.generationLocalAvailability,
         outcome,
         authType: args.authType,
         job: jobWithRun.job,
@@ -2102,6 +2117,8 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
   const generationRelationship =
     body.data.telemetry?.sessionHistoryGenerationRelationship;
+  const generationLocalAvailability =
+    body.data.telemetry?.sessionHistoryGenerationLocalAvailability;
   const db = set(writeDb$);
   claimRouteTiming.recordElapsed(
     "claim_route_request_prepare",
@@ -2116,6 +2133,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       recordSessionHistoryGenerationClaimAttempt({
         runId,
         relationship: generationRelationship,
+        localAvailability: generationLocalAvailability,
         outcome: "unavailable",
         authType: auth.type,
       });
@@ -2138,6 +2156,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     jobWithRun,
     generationRelationship,
+    generationLocalAvailability,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
     claimRouteTiming,

@@ -575,6 +575,32 @@ describe("runner claim capability contract", () => {
     expect(result.success).toBe(true);
   });
 
+  it.each([
+    "parked_after_discovery",
+    "parked_before_discovery_lt_heartbeat_period",
+    "parked_before_discovery_ge_heartbeat_period",
+  ])("accepts %s generation local availability", (localAvailability) => {
+    const result = runnersJobClaimContract.claim.body.safeParse({
+      telemetry: {
+        sessionHistoryGenerationRelationship: "exact",
+        sessionHistoryGenerationLocalAvailability: localAvailability,
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects non-enum generation local availability", () => {
+    const result = runnersJobClaimContract.claim.body.safeParse({
+      telemetry: {
+        sessionHistoryGenerationRelationship: "exact",
+        sessionHistoryGenerationLocalAvailability: "parked_for_123_ms",
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("accepts old claim bodies without generation telemetry", () => {
     expect(runnersJobClaimContract.claim.body.safeParse({}).success).toBe(true);
   });

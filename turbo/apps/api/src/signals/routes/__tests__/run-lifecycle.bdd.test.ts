@@ -7629,6 +7629,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       {
         telemetry: {
           sessionHistoryGenerationRelationship: "different",
+          sessionHistoryGenerationLocalAvailability:
+            "parked_before_discovery_lt_heartbeat_period",
         },
       },
     );
@@ -7639,7 +7641,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       attributed.runId,
       [404],
       {
-        telemetry: { sessionHistoryGenerationRelationship: "exact" },
+        telemetry: {
+          sessionHistoryGenerationRelationship: "exact",
+          sessionHistoryGenerationLocalAvailability: "parked_after_discovery",
+        },
       },
     );
     expectApiError(lateUser.body);
@@ -7655,7 +7660,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       attributed.runId,
       [404],
       {
-        telemetry: { sessionHistoryGenerationRelationship: "exact" },
+        telemetry: {
+          sessionHistoryGenerationRelationship: "exact",
+          sessionHistoryGenerationLocalAvailability: "parked_after_discovery",
+        },
       },
     );
     expectApiError(lateOfficial.body);
@@ -7668,6 +7676,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: true,
         duration_ms: 0,
         generation_relationship: "different",
+        generation_local_availability:
+          "parked_before_discovery_lt_heartbeat_period",
         claim_outcome: "accepted",
         auth_type: "official-runner",
         runner_group: runnerGroup,
@@ -7677,6 +7687,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: false,
         duration_ms: 0,
         generation_relationship: "exact",
+        generation_local_availability: "parked_after_discovery",
         claim_outcome: "unavailable",
         auth_type: "official-runner",
       }),
@@ -7685,6 +7696,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(event).not.toHaveProperty("history_generation_run_id");
       expect(event).not.toHaveProperty("session_id");
       expect(event).not.toHaveProperty("history_hash");
+      expect(event).not.toHaveProperty("parked_at");
+      expect(event).not.toHaveProperty("discovered_at");
+      expect(event).not.toHaveProperty("generation_local_availability_ms");
       expect(JSON.stringify(event)).not.toContain(actorRunnerKey.token);
     }
 
@@ -7723,9 +7737,38 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         "runner_session_history_generation_claim_attempt",
       ),
     ).toHaveLength(0);
-
     await api.requestCancelRun(actor, attributed.runId, [200]);
     await api.requestCancelRun(actor, guarded.runId, [200]);
+
+    const previousRunner = await api.createRun(actor, {
+      agentId,
+      prompt: "accept prior generation attribution without local availability",
+      modelProvider: "anthropic-api-key",
+    });
+    const previousRunnerClaim = await api.requestClaimRunnerJob(
+      true,
+      previousRunner.runId,
+      [200],
+      {
+        telemetry: { sessionHistoryGenerationRelationship: "fresh" },
+      },
+    );
+    expect(previousRunnerClaim.status).toBe(200);
+    const previousRunnerEvents = sandboxOperationEventsForRunByAction(
+      previousRunner.runId,
+      "runner_session_history_generation_claim_attempt",
+    );
+    expect(previousRunnerEvents).toStrictEqual([
+      expect.objectContaining({
+        generation_relationship: "fresh",
+        claim_outcome: "accepted",
+      }),
+    ]);
+    expect(previousRunnerEvents[0]).not.toHaveProperty(
+      "generation_local_availability",
+    );
+
+    await api.requestCancelRun(actor, previousRunner.runId, [200]);
   });
 
   it("records generic preclaim response construction failures", async () => {
@@ -7772,7 +7815,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       resumed.runId,
       [500],
       {
-        telemetry: { sessionHistoryGenerationRelationship: "exact" },
+        telemetry: {
+          sessionHistoryGenerationRelationship: "exact",
+          sessionHistoryGenerationLocalAvailability:
+            "parked_before_discovery_ge_heartbeat_period",
+        },
       },
     );
     expect(failedClaim.status).toBe(500);
@@ -7786,6 +7833,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: false,
         duration_ms: 0,
         generation_relationship: "exact",
+        generation_local_availability:
+          "parked_before_discovery_ge_heartbeat_period",
         claim_outcome: "preclaim_error",
         auth_type: "official-runner",
         runner_group: runnerGroup,

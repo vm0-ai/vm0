@@ -25,7 +25,8 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    PreLocalAdmissionOutcome, SessionHistoryGenerationRelationship,
+    PreLocalAdmissionOutcome, SessionHistoryGenerationLocalAvailability,
+    SessionHistoryGenerationRelationship,
 };
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
@@ -64,6 +65,8 @@ struct ClaimRequestTelemetry {
     pre_local_admission_outcome: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_history_generation_relationship: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_history_generation_local_availability: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_due_to_job_discovered_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -848,6 +851,9 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             session_history_generation_relationship: candidate
                 .session_history_generation_relationship()
                 .map(SessionHistoryGenerationRelationship::as_str),
+            session_history_generation_local_availability: candidate
+                .session_history_generation_local_availability()
+                .map(SessionHistoryGenerationLocalAvailability::as_str),
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -1647,6 +1653,9 @@ mod tests {
         candidate.set_session_history_generation_relationship(
             SessionHistoryGenerationRelationship::Exact,
         );
+        candidate.set_session_history_generation_local_availability(
+            SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod,
+        );
 
         let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
 
@@ -1667,6 +1676,10 @@ mod tests {
         assert_eq!(
             body["telemetry"]["sessionHistoryGenerationRelationship"],
             "exact"
+        );
+        assert_eq!(
+            body["telemetry"]["sessionHistoryGenerationLocalAvailability"],
+            "parked_before_discovery_ge_heartbeat_period"
         );
         assert!(
             !body
@@ -1711,6 +1724,11 @@ mod tests {
         assert_eq!(
             body["telemetry"]["preLocalAdmissionOutcome"],
             "local_holder"
+        );
+        assert!(
+            body["telemetry"]
+                .get("sessionHistoryGenerationLocalAvailability")
+                .is_none()
         );
     }
 

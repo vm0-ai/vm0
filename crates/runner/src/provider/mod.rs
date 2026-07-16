@@ -83,6 +83,23 @@ impl SessionHistoryGenerationRelationship {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionHistoryGenerationLocalAvailability {
+    AfterDiscovery,
+    BeforeDiscoveryLtHeartbeatPeriod,
+    BeforeDiscoveryGeHeartbeatPeriod,
+}
+
+impl SessionHistoryGenerationLocalAvailability {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::AfterDiscovery => "parked_after_discovery",
+            Self::BeforeDiscoveryLtHeartbeatPeriod => "parked_before_discovery_lt_heartbeat_period",
+            Self::BeforeDiscoveryGeHeartbeatPeriod => "parked_before_discovery_ge_heartbeat_period",
+        }
+    }
+}
+
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -105,6 +122,8 @@ pub struct JobCandidate {
     cli_agent_session_id: Option<String>,
     history_generation_run_id: Option<RunId>,
     session_history_generation_relationship: Option<SessionHistoryGenerationRelationship>,
+    session_history_generation_local_availability:
+        Option<SessionHistoryGenerationLocalAvailability>,
     history_generation_affinity_protected_until: Option<DateTime<Utc>>,
     affinity_protected_until: Option<DateTime<Utc>>,
 }
@@ -139,6 +158,7 @@ impl JobCandidate {
             cli_agent_session_id: None,
             history_generation_run_id: None,
             session_history_generation_relationship: None,
+            session_history_generation_local_availability: None,
             history_generation_affinity_protected_until: None,
             affinity_protected_until: None,
         }
@@ -187,6 +207,10 @@ impl JobCandidate {
 
     pub(crate) fn job_discovered_elapsed(&self) -> Duration {
         self.discovered_at.elapsed()
+    }
+
+    pub(crate) fn discovered_at(&self) -> Instant {
+        self.discovered_at
     }
 
     pub(crate) fn local_admission_elapsed(&self) -> Option<Duration> {
@@ -242,6 +266,12 @@ impl JobCandidate {
         &self,
     ) -> Option<SessionHistoryGenerationRelationship> {
         self.session_history_generation_relationship
+    }
+
+    pub(crate) fn session_history_generation_local_availability(
+        &self,
+    ) -> Option<SessionHistoryGenerationLocalAvailability> {
+        self.session_history_generation_local_availability
     }
 
     pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
@@ -301,6 +331,13 @@ impl JobCandidate {
         relationship: SessionHistoryGenerationRelationship,
     ) {
         self.session_history_generation_relationship = Some(relationship);
+    }
+
+    pub(crate) fn set_session_history_generation_local_availability(
+        &mut self,
+        availability: SessionHistoryGenerationLocalAvailability,
+    ) {
+        self.session_history_generation_local_availability = Some(availability);
     }
 
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {
