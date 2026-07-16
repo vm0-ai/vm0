@@ -114,8 +114,6 @@ export function createStyledImageCompilationPacket(
     "```bash",
     'zero generate image --provider built-in --compiled-prompt "<compiled prompt>" <resolved compatible CLI options>',
     "```",
-    "Include compatible execution settings resolved from the user request and style source. Omit unresolved options so the CLI can apply its defaults.",
-    'Add one `--image-url "<required reference URL>"` per required model input identified in `SKILL.md`.',
     "",
     "## Verification",
     "- Verify the final image exists, is nonblank, and uses the resolved dimensions and other locked parameters.",
