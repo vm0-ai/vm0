@@ -696,14 +696,21 @@ function ExpandedFooterAccountInsights() {
 
 // --- Three-column (Slack-style) layout, gated behind ThreeColumnNav ---
 
-// Short, single-word rail captions keyed by nav id so labels stay legible in
-// the narrow rail even when the underlying nav label is longer ("Activity
-// logs", "Where Zero works").
-const RAIL_LABELS: Partial<Record<SidebarNavId, string>> = {
-  chat: "New",
-  activities: "Activity",
-  works: "Works",
-};
+// Short, single-word rail captions so labels stay legible in the narrow rail
+// even when the underlying nav label is longer ("Activity logs", "Where Zero
+// works").
+function railLabel(id: SidebarNavId, fallback: string): string {
+  switch (id) {
+    case "chat":
+      return "New";
+    case "activities":
+      return "Activity";
+    case "works":
+      return "Works";
+    default:
+      return fallback;
+  }
+}
 
 function LabeledRailLink({
   id,
@@ -769,7 +776,7 @@ function LabeledRailLink({
             : "text-sidebar-foreground/60"
         }`}
       >
-        {RAIL_LABELS[id] ?? label}
+        {railLabel(id, label)}
       </span>
     </Link>
   );
