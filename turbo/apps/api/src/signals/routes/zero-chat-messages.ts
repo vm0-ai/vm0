@@ -100,7 +100,6 @@ import {
   deleteUserMessageQueueItem,
   discardUnclaimedUserMessage,
   enqueueUserMessageQueueItem,
-  hasUserMessageQueueItem,
   loadNextUnclaimedQueuedUserMessage,
 } from "../services/zero-chat-queued-message.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
@@ -1726,10 +1725,10 @@ function appendRecallUserMessage(params: {
   readonly clientMessageId: string | undefined;
 }): Promise<AppendMessageResult> {
   return params.db.transaction(async (tx) => {
-    // Queue-first messages (identified by their queue item) are recalled by
-    // deletion: consume the queue item and remove the unclaimed message row.
-    // No revoke control row is written.
-    if (await hasUserMessageQueueItem(tx, params.revokesMessageId)) {
+    // Deleting the queue item atomically wins the queued message before
+    // removing its immutable row. If a concurrent claim wins first, its
+    // replacement remains linked and the revoker check below rejects recall.
+    if (await deleteUserMessageQueueItem(tx, params.revokesMessageId)) {
       const [deleted] = await tx
         .delete(chatMessages)
         .where(
@@ -1742,12 +1741,8 @@ function appendRecallUserMessage(params: {
         )
         .returning({ createdAt: chatMessages.createdAt });
       if (!deleted) {
-        return {
-          ok: false,
-          message: "Only queued user messages can be recalled",
-        };
+        throw new Error("Claimed queue item has no recallable user message");
       }
-      await deleteUserMessageQueueItem(tx, params.revokesMessageId);
       return { ok: true, createdAt: nowDate() };
     }
 

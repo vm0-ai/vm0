@@ -50,6 +50,7 @@ import { createDeferredPromise } from "../../utils";
 import {
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
+  holdChatMessageWritesFixture,
   holdOrgAdmissionLockFixture,
   replaceBddVm0ApiKeys,
 } from "../../../test-fixtures/chat-messages";
@@ -3825,6 +3826,109 @@ describe("CHAT-02: shared user message queue", () => {
     ).toStrictEqual([expect.objectContaining({ status: "cancelled" })]);
 
     await cancelChatRun(actor, sent.body.runId);
+  }, 90_000);
+
+  it("preserves an appended claim when recall races the queue drain", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue serialization");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "recall claim race anchor",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    const messageId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "recall races the appended claim",
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    // Stop the terminal drain at run admission until its preceding message
+    // writes are complete, then pause only the replacement insert. The claim
+    // holds the queue row while recall reaches the competing queue deletion.
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: actor.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+
+    const messageWritesLock = await holdChatMessageWritesFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      messageWritesLock.release();
+      await messageWritesLock.done;
+    });
+    admissionLock.release();
+    await admissionLock.done;
+    await expect.poll(messageWritesLock.blockedWaiterCount).toBe(1);
+
+    const recall = chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        revokesMessageId: messageId,
+        clientMessageId: randomUUID(),
+      },
+      [400],
+    );
+    await expect.poll(messageWritesLock.blockedWaiterCount).toBe(2);
+    messageWritesLock.release();
+
+    const recalled = await recall;
+    expectApiError(recalled.body);
+    expect(recalled.body.error.message).toBe(
+      "Only queued user messages can be recalled",
+    );
+    await messageWritesLock.done;
+    await flushWaitUntilForTest();
+
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === messageId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const claimed = userMessages(messages.messages).find((message) => {
+      return message.revokesMessageId === messageId;
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the queue drain to append a claimed message");
+    }
+    const original = await chat.getThreadMessage(
+      actor,
+      anchor.threadId,
+      messageId,
+    );
+    expect(original.runId).toBeUndefined();
+    expect(claimed.content).toBe("recall races the appended claim");
+
+    await cancelChatRun(actor, claimed.runId);
   }, 90_000);
 
   it("appends replacements on auto-send and recalls queued messages by deletion", async () => {

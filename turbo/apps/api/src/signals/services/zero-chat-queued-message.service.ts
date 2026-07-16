@@ -111,23 +111,6 @@ export async function deleteUserMessageQueueItem(
   return deleted.length > 0;
 }
 
-export async function hasUserMessageQueueItem(
-  db: Db,
-  chatMessageId: string,
-): Promise<boolean> {
-  const [item] = await db
-    .select({ id: chatMessageQueue.id })
-    .from(chatMessageQueue)
-    .where(
-      and(
-        eq(chatMessageQueue.itemType, "user_message"),
-        eq(chatMessageQueue.chatMessageId, chatMessageId),
-      ),
-    )
-    .limit(1);
-  return item !== undefined;
-}
-
 interface ClaimedUserMessage {
   readonly createdAt: Date;
 }
