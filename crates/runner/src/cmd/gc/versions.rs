@@ -176,6 +176,7 @@ async fn analyze_version_gc_with_reader(
         let file_type = match entry.file_type().await {
             Ok(file_type) => file_type,
             Err(e) => {
+                directory_scan_complete = false;
                 warn!(
                     "version entry {}: cannot read file type ({e}), skipping",
                     entry.path().display()
