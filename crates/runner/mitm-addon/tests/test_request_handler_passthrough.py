@@ -124,11 +124,10 @@ async def test_vm0_api_test_paths_skip_auto_allow(
 ):
     """`/api/test/*` routes exist to exercise the firewall pipeline itself.
 
-    If they fell into Step 2's auto-allow fast path, the test-oauth E2E
-    test would never get proxy-injected Authorization headers and the
-    pipeline it's supposed to exercise would be silently bypassed. The
-    carve-out drops these paths into Step 3 so the registered firewall
-    runs `handle_firewall_request`.
+    If they entered the platform API auto-allow fast path, the test-oauth E2E test
+    would never get proxy-injected Authorization headers and the pipeline it's
+    supposed to exercise would be silently bypassed. The carve-out instead lets
+    the registered firewall match and run `handle_firewall_request`.
     """
     reg_path = _write_registry(
         tmp_path,
