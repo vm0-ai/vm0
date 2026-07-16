@@ -276,7 +276,7 @@ describe("upgradeChatIdb", () => {
     expectArtifactItemsStoreCreated(createdStores, createObjectStore);
   });
 
-  it("resets v12 local cache data and recreates empty stores", () => {
+  it("resets v13 local cache data and recreates empty stores", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_SNAPSHOT_STORE,
@@ -285,7 +285,7 @@ describe("upgradeChatIdb", () => {
       ARTIFACT_ITEMS_STORE,
     ]);
 
-    upgradeChatIdb(db, 12);
+    upgradeChatIdb(db, 13);
 
     expect(deleteObjectStore).toHaveBeenCalledTimes(5);
     expectAllLocalCacheStoresDeleted(deleteObjectStore);
@@ -304,7 +304,7 @@ describe("upgradeChatIdb", () => {
       ARTIFACT_ITEMS_STORE,
     ]);
 
-    upgradeChatIdb(db, 13);
+    upgradeChatIdb(db, 14);
 
     expect(deleteObjectStore).not.toHaveBeenCalled();
     expect(createObjectStore).not.toHaveBeenCalled();
