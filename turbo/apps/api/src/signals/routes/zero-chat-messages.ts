@@ -1782,7 +1782,10 @@ function appendRecallUserMessage(params: {
     }
 
     const [target] = await tx
-      .select({ id: chatMessages.id })
+      .select({
+        error: chatMessages.error,
+        revokesMessageId: chatMessages.revokesMessageId,
+      })
       .from(chatMessages)
       .where(
         and(
@@ -1790,11 +1793,14 @@ function appendRecallUserMessage(params: {
           eq(chatMessages.chatThreadId, params.threadId),
           eq(chatMessages.role, "user"),
           isNull(chatMessages.runId),
-          isNull(chatMessages.revokesMessageId),
         ),
       )
       .limit(1);
-    if (!target) {
+    if (
+      !target ||
+      (target.revokesMessageId !== null &&
+        target.error !== INSUFFICIENT_CREDITS_MARKER)
+    ) {
       const [exists] = await tx
         .select({ id: chatMessages.id })
         .from(chatMessages)

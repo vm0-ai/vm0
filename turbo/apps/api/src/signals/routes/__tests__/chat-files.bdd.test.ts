@@ -303,19 +303,28 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
 
     const messages = await api.listThreadMessages(actor, threadId);
-    expect(messages.messages).toHaveLength(2);
+    expect(messages.messages).toHaveLength(3);
 
+    const queuedMessage = messages.messages.find((message) => {
+      return message.id === clientMessageId;
+    });
     const userMessage = messages.messages.find((message) => {
-      return message.role === "user";
+      return message.revokesMessageId === clientMessageId;
     });
     const assistantMessage = messages.messages.find((message) => {
       return message.role === "assistant";
     });
 
+    expect(queuedMessage).toMatchObject({
+      role: "user",
+      content: "Build a launch-plan presentation",
+    });
+    expect(queuedMessage?.error).toBeUndefined();
     expect(userMessage).toMatchObject({
       role: "user",
       content: "Build a launch-plan presentation",
       error: "insufficient_credits",
+      revokesMessageId: clientMessageId,
       attachFiles: [
         {
           id: uploadId,
@@ -345,7 +354,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
 
     const afterRetry = await api.listThreadMessages(actor, threadId);
-    expect(afterRetry.messages).toHaveLength(2);
+    expect(afterRetry.messages).toHaveLength(3);
 
     const secondThread = await api.createThread(actor, {
       agentId: agent.agentId,
