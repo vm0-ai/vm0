@@ -3927,7 +3927,7 @@ export function createChatThreadSignals(
     writePersistentMessages$: messages.writePersistentMessages$,
     dataSource,
   });
-  const workflowComposer = createWorkflowComposerSignals(draft);
+  const workflowComposer = createWorkflowComposerSignals(draft, threadId);
   const thinkingIndicator = createThinkingIndicatorSignals(
     messages.thinkingText$,
     messages.thinkingMessageId$,
