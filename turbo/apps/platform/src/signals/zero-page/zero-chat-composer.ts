@@ -128,6 +128,18 @@ export const setComputerUseDownloadDialogOpen$ = command(
   },
 );
 
+// -- Connector permission dialog (composer popover) -------------------------
+
+const internalComposerPermissionConnector$ = state<ConnectorType | null>(null);
+export const composerPermissionConnector$ = computed((get) => {
+  return get(internalComposerPermissionConnector$);
+});
+export const setComposerPermissionConnector$ = command(
+  ({ set }, connectorType: ConnectorType | null) => {
+    set(internalComposerPermissionConnector$, connectorType);
+  },
+);
+
 // -- Model picker open state ------------------------------------------------
 
 const internalModelPickerOpen$ = state(false);
