@@ -596,6 +596,37 @@ describe("organization model providers settings", () => {
     ).resolves.toBeInTheDocument();
   });
 
+  it("preserves limited-free restrictions with a legacy billing response", async () => {
+    mockAdminOrg();
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("limited-free-1"));
+    });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "kimi-k2.7-code",
+        "Kimi K2.7 Code",
+        true,
+      ),
+    ]);
+    await openModelSettings();
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: /GPT 5\.5\s+Pro/u }));
+    expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
+
+    await selectDialogModel("GLM-5.2");
+    expect(buttonByText("Add model", dialog)).toBeInTheDocument();
+    click(screen.getByRole("radio", { name: /API key\s+Pro/u }));
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("reassigns the workspace default model when deleting the default route", async () => {
     mockApiKeyModelRouteStory();
     await openProvidersTab();

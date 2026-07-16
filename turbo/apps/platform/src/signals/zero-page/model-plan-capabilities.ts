@@ -21,12 +21,12 @@ export const DEFAULT_MODEL_PLAN_CAPABILITIES =
 export const modelPlanCapabilities$ = computed(
   async (get): Promise<ModelPlanCapabilities> => {
     const billing = await get(billingStatusAsync$);
+    // Older API deployments only return the tier. Preserve the previous
+    // frontend behavior while browser clients and API versions overlap.
+    const legacyLimitedFree = billing.tier === "limited-free-1";
     return {
-      supportByok:
-        billing.supportByok ?? DEFAULT_MODEL_PLAN_CAPABILITIES.supportByok,
-      restrictedVm0Models:
-        billing.restrictedVm0Models ??
-        DEFAULT_MODEL_PLAN_CAPABILITIES.restrictedVm0Models,
+      supportByok: billing.supportByok ?? !legacyLimitedFree,
+      restrictedVm0Models: billing.restrictedVm0Models ?? legacyLimitedFree,
     };
   },
 );
