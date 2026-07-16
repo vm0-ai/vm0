@@ -1766,7 +1766,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     info!("shutting down factories");
     let phase = teardown.phase_start("shutdown_factory_instances");
-    shutdown_factory_instances(&mut factories, Some(&teardown)).await;
+    shutdown_factory_instances(&mut factories, Some(&teardown)).await?;
     teardown.phase_complete("shutdown_factory_instances", phase);
 
     // Keep the pool-scoped INPUT filters installed until dnsmasq is gone.
