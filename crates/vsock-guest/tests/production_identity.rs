@@ -14,6 +14,7 @@ const SANDBOX_UID: u32 = 42_420;
 const SANDBOX_GID: u32 = 42_420;
 const SANDBOX_SUPPLEMENTARY_GID: u32 = 42_421;
 const SANDBOX_HOME: &str = "/home/user";
+const PRIVILEGED_REPORT_DIR: &str = "/root";
 
 #[derive(Debug, Eq, PartialEq)]
 struct Identity {
@@ -80,7 +81,8 @@ fn production_write_file_identity_matches_sudo_policy() {
     );
 
     let sudo_report = ReportFile::new(
-        std::env::temp_dir().join(format!("vm0-production-identity-sudo-{process_id}.txt")),
+        Path::new(PRIVILEGED_REPORT_DIR)
+            .join(format!("vm0-production-identity-sudo-{process_id}.txt")),
     );
     let sudo_report_path = sudo_report.path.to_string_lossy().into_owned();
     send_write_file(&mut stream, 2, &sudo_report_path, true);
