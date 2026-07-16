@@ -1,8 +1,9 @@
 import { command } from "ccstate";
 
-import { setAgentName$, resetActiveTab$ } from "./agent-name.ts";
+import { agentName$, setAgentName$, resetActiveTab$ } from "./agent-name.ts";
 import { discardAgentEdit$ } from "./instructions.ts";
 import { discardAgentConnectorsDraft$ } from "./connectors.ts";
+import { resetSettingsForm$ } from "../settings/settings-tab.ts";
 
 // ---------------------------------------------------------------------------
 // Public re-exports
@@ -38,7 +39,10 @@ export { deleteAgent$ } from "./delete.ts";
 // dependency chain.
 // ---------------------------------------------------------------------------
 
-export const setActiveAgent$ = command(({ set }, agentName: string) => {
+export const setActiveAgent$ = command(({ get, set }, agentName: string) => {
+  if (get(agentName$) !== agentName) {
+    set(resetSettingsForm$);
+  }
   set(setAgentName$, agentName);
   set(resetActiveTab$);
   set(discardAgentEdit$);
