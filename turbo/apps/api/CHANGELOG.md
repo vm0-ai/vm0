@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.282.1](https://github.com/vm0-ai/vm0/compare/api-v1.282.0...api-v1.282.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **db:** enforce append-only chat event tables ([#21903](https://github.com/vm0-ai/vm0/issues/21903)) ([880cffc](https://github.com/vm0-ai/vm0/commit/880cffc307658b6fd865b233c5a7675271a965fd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.119.1
+
 ## [1.282.0](https://github.com/vm0-ai/vm0/compare/api-v1.281.1...api-v1.282.0) (2026-07-16)
 
 
