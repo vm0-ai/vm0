@@ -72,7 +72,7 @@ async function setup(
     context,
     fixture,
     options.workflowQueue === false
-      ? {}
+      ? { [FeatureSwitchKey.WorkflowQueue]: false }
       : { [FeatureSwitchKey.WorkflowQueue]: true },
   );
   mocks.clerk.session(actor.userId, actor.orgId);
