@@ -79,8 +79,8 @@ handle_flush_request() {
 }
 mkfifo "$fifo"
 exec 3<>"$fifo"
-# Match the addon lifecycle: the signal handler only wakes the worker, which
-# performs file I/O outside the trap and coalesces repeated requests naturally.
+# Match the addon lifecycle: the signal handler only wakes the worker. File I/O
+# runs outside the trap, and every queued wake reads the latest request markers.
 trap 'printf "\n" >&3' USR1
 trap 'exit 0' TERM
 echo ready
