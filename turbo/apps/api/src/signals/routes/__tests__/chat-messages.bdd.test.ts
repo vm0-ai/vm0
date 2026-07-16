@@ -3687,6 +3687,122 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 
+  it("publishes the claim run-created signal when the message-updated publish fails", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    let failedMessageUpdatedPublish = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        typeof topic === "string" &&
+        topic.startsWith("chatThreadMessageUpdated:") &&
+        !failedMessageUpdatedPublish
+      ) {
+        failedMessageUpdatedPublish = true;
+        return Promise.reject(new Error("message updated publication failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "claim signals survive a failed publish",
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected an idle-thread queue-first send to dispatch");
+    }
+    const threadId = sent.body.threadId;
+
+    await expect
+      .poll(() => {
+        return failedMessageUpdatedPublish;
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
+          return topic === `chatThreadRunCreated:${threadId}`;
+        });
+      })
+      .toBe(true);
+
+    await cancelChatRun(actor, sent.body.runId);
+  }, 90_000);
+
+  it("publishes the drain run-created signal when the message-updated publish fails", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "message updated publication failure anchor",
+    });
+
+    const queuedMessageId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queued send drains despite a failed message-updated publish",
+        clientMessageId: queuedMessageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({
+      runId: null,
+      threadId: anchor.threadId,
+    });
+
+    context.mocks.ably.publish.mockClear();
+    let failedMessageUpdatedPublish = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        typeof topic === "string" &&
+        topic.startsWith("chatThreadMessageUpdated:") &&
+        !failedMessageUpdatedPublish
+      ) {
+        failedMessageUpdatedPublish = true;
+        return Promise.reject(new Error("message updated publication failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await cancelChatRun(actor, anchor.runId);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.id === queuedMessageId && typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.id === queuedMessageId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued message to be drained");
+    }
+    expect(failedMessageUpdatedPublish).toBeTruthy();
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
+          return topic === `chatThreadRunCreated:${anchor.threadId}`;
+        });
+      })
+      .toBe(true);
+
+    await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+
   it("serializes a terminal drain against an idle queue-first send", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {

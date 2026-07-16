@@ -2230,6 +2230,32 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
     writePersistentMessages$,
   });
 
+  // Queued user rows are claimed server-side by updating the persisted row in
+  // place, which a sinceId sync can never observe. Re-fetch every locally
+  // cached row still considered queued so a lost `chatThreadMessageUpdated`
+  // event cannot leave the message pending forever.
+  const reconcileQueuedMessages$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const persistentIds = new Set(
+        get(persistentChatMessages$).map((message) => {
+          return message.id;
+        }),
+      );
+      const queuedIds = new Set(
+        queuedMessagesFromRaw(get(rawMessages$))
+          .map((message) => {
+            return message.id;
+          })
+          .filter((id) => {
+            return persistentIds.has(id);
+          }),
+      );
+      for (const messageId of queuedIds) {
+        await set(fetchUpdatedMessage$, { messageId }, signal);
+      }
+    },
+  );
+
   return {
     initializeIndexedDbMessages$,
     writePersistentMessages$,
@@ -2243,6 +2269,7 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
     activeGoalObjective$,
     syncRemoteMessages$,
     fetchUpdatedMessage$,
+    reconcileQueuedMessages$,
   };
 }
 
@@ -2383,6 +2410,7 @@ interface RunTrackingDeps {
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
+  reconcileQueuedMessages$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   autoScroll$: Command<void, []>;
   dataSource: ChatThreadRemote;
@@ -2577,6 +2605,7 @@ function createRunTracking({
   initializeIndexedDbMessages$,
   syncRemoteMessages$,
   fetchUpdatedMessage$,
+  reconcileQueuedMessages$,
   reloadArtifacts$,
   autoScroll$,
   dataSource,
@@ -2615,6 +2644,9 @@ function createRunTracking({
       // fetch are queued instead of missed.
       await set(fetchUpdatedMessage$, { messageId: latestMessageId }, sig);
     }
+    // In-place queue claims are equally invisible to the sinceId fetch, so
+    // heal any stale locally-queued rows during the same catchup.
+    await set(reconcileQueuedMessages$, sig);
     await set(markThreadReadIfNeeded$, sig);
     sig.throwIfAborted();
     L.debug("subscribeChatThread$ catchup done", { threadId });
@@ -2649,6 +2681,10 @@ function createRunTracking({
     const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onRunChanged$ fired", { threadId });
       await set(syncRemoteMessages$, sig);
+      // A run change is exactly when a queued row gets claimed in place, so
+      // reconcile stale locally-queued rows even if the dedicated
+      // messageUpdated event was lost.
+      await set(reconcileQueuedMessages$, sig);
       sig.throwIfAborted();
       animationFrame(
         () => {
@@ -3877,6 +3913,7 @@ export function createChatThreadSignals(
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
     fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
+    reconcileQueuedMessages$: messages.reconcileQueuedMessages$,
     reloadArtifacts$: artifact.reloadArtifacts$,
     autoScroll$: scrollSignals.autoScroll$,
     dataSource,

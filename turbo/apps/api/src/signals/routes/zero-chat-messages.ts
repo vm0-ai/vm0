@@ -2619,17 +2619,45 @@ function scheduleClaimedQueueFirstMessageSideEffects(params: {
           });
         });
       }
-      await publishChatThreadMessageUpdated(
-        params.userId,
-        params.threadId,
-        params.messageId,
+      // Each publish is independently best-effort: one failed Ably publish
+      // must not drop the remaining signals, or the client can be left with
+      // a stale queued row it can only heal via subscribe-time catchup.
+      await tapError(
+        publishChatThreadMessageUpdated(
+          params.userId,
+          params.threadId,
+          params.messageId,
+        ),
+        (error) => {
+          L.warn("Failed to publish claimed queue-first message updated", {
+            threadId: params.threadId,
+            messageId: params.messageId,
+            error,
+          });
+        },
       );
       if (params.appendQueueMarker) {
-        await publishChatMessageCreated(params.userId, params.threadId);
+        await tapError(
+          publishChatMessageCreated(params.userId, params.threadId),
+          (error) => {
+            L.warn("Failed to publish claimed queue-first message created", {
+              threadId: params.threadId,
+              error,
+            });
+          },
+        );
       }
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadRunCreated:${params.threadId}`,
+      await tapError(
+        publishUserSignal(
+          [params.userId],
+          `chatThreadRunCreated:${params.threadId}`,
+        ),
+        (error) => {
+          L.warn("Failed to publish claimed queue-first run created", {
+            threadId: params.threadId,
+            error,
+          });
+        },
       );
       if (params.appendInitialThinking) {
         await bestEffort(
