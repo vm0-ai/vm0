@@ -20,10 +20,7 @@ import {
   loadActiveGoalForThread,
   type GoalBootstrap,
 } from "./zero-goal.service";
-import {
-  DEFAULT_GOAL_OBJECTIVE_BRIEF,
-  normalizeGoalObjectiveBrief,
-} from "./zero-goal-objective-brief-normalization.service";
+import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
@@ -84,10 +81,6 @@ type ModelContext =
       readonly failure: Exclude<RunGoalResult, { kind: "ok" }>;
     };
 
-const GOAL_MEMORY_OBJECTIVE_EXCERPT_MAX_CHARS = 1024;
-const GOAL_MEMORY_RETRIEVAL_QUERY_MAX_CHARS = 1400;
-const GOAL_MEMORY_NO_SEARCH_SEPARATOR_MIN_CHARS = 32;
-
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
@@ -121,100 +114,6 @@ function failureMessage(error: RunGoalResult): string {
     return `${error.response.status} ${error.response.body.error.code}: ${error.response.body.error.message}`;
   }
   return `Unexpected successful run result: ${error.runId}`;
-}
-
-function stripGoalMemoryQueryMarkdown(text: string): string {
-  return text
-    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^[-*_]{3,}\s*$/gm, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 $2")
-    .replace(/^["'](.+)["']$/, "$1")
-    .trim();
-}
-
-function compactGoalMemoryQueryText(text: string): string {
-  return stripGoalMemoryQueryMarkdown(text)
-    .replace(
-      new RegExp(
-        `[^\\p{L}\\p{N}]{${GOAL_MEMORY_NO_SEARCH_SEPARATOR_MIN_CHARS},}`,
-        "gu",
-      ),
-      " ",
-    )
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function capGoalMemoryQueryText(text: string, maxChars: number): string {
-  if (text.length <= maxChars) {
-    return text;
-  }
-  let endIndex = 0;
-  let charCount = 0;
-  for (const char of text) {
-    if (charCount === maxChars) {
-      return text.slice(0, endIndex).trimEnd();
-    }
-    endIndex += char.length;
-    charCount += 1;
-  }
-  return text;
-}
-
-function hasGoalMemorySearchTerm(text: string): boolean {
-  return /[\p{L}\p{N}]/u.test(text);
-}
-
-function goalMemoryPlaceholderKey(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isDefaultGoalMemoryPlaceholder(text: string): boolean {
-  return (
-    goalMemoryPlaceholderKey(text) ===
-    goalMemoryPlaceholderKey(DEFAULT_GOAL_OBJECTIVE_BRIEF)
-  );
-}
-
-function buildGoalMemoryRetrievalQuery(goal: {
-  readonly objective: string;
-  readonly objectiveBrief: string;
-}): string {
-  const objectiveBrief = compactGoalMemoryQueryText(goal.objectiveBrief);
-  const objectiveExcerpt = capGoalMemoryQueryText(
-    compactGoalMemoryQueryText(goal.objective),
-    GOAL_MEMORY_OBJECTIVE_EXCERPT_MAX_CHARS,
-  );
-  const isDefaultObjectiveBrief =
-    isDefaultGoalMemoryPlaceholder(objectiveBrief);
-  if (
-    isDefaultObjectiveBrief &&
-    (objectiveExcerpt.length === 0 ||
-      isDefaultGoalMemoryPlaceholder(objectiveExcerpt))
-  ) {
-    return "";
-  }
-  const parts = isDefaultObjectiveBrief
-    ? [objectiveExcerpt]
-    : objectiveBrief === objectiveExcerpt ||
-        objectiveExcerpt.startsWith(`${objectiveBrief} `)
-      ? [objectiveExcerpt]
-      : [objectiveBrief, objectiveExcerpt];
-  const query = capGoalMemoryQueryText(
-    parts
-      .filter((part) => {
-        return part.length > 0;
-      })
-      .join(" "),
-    GOAL_MEMORY_RETRIEVAL_QUERY_MAX_CHARS,
-  );
-  return hasGoalMemorySearchTerm(query) ? query : "";
 }
 
 function buildGoalContinuationPrompt(goal: {
@@ -407,8 +306,6 @@ const runGoalNow$ = command(
       }),
     };
     const prompt = buildGoalContinuationPrompt(normalizedGoal);
-    const memoryRuntimeRetrievalQuery =
-      buildGoalMemoryRetrievalQuery(normalizedGoal);
     const result = await set(
       createZeroRun$,
       {
@@ -428,7 +325,6 @@ const runGoalNow$ = command(
         },
         apiStartTime: now(),
         triggerSource: "workflow-event",
-        memoryRuntimeRetrievalQuery,
         chatThreadId: goal.threadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:

@@ -23,7 +23,6 @@ import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
-import { cronDrainRelationshipMemoryRoutes } from "./routes/cron-drain-relationship-memory";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
@@ -111,7 +110,6 @@ import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroMemoryRoutes } from "./routes/zero-memory";
 import { zeroMemoryActivityRoutes } from "./routes/zero-memory-activity";
 import { zeroMemoryDevRefreshRoutes } from "./routes/zero-memory-dev-refresh";
-import { zeroRelationshipsRoutes } from "./routes/zero-relationships";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
@@ -252,7 +250,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,
-  ...cronDrainRelationshipMemoryRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
   ...cronRenewGmailWatchesRoutes,
@@ -311,7 +308,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMemoryRoutes,
   ...zeroMemoryActivityRoutes,
   ...zeroMemoryDevRefreshRoutes,
-  ...zeroRelationshipsRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,

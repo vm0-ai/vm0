@@ -4313,6 +4313,13 @@
       "when": 1784232246678,
       "tag": "0615_retire_orphaned_queued_chat_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 616,
+      "version": "7",
+      "when": 1784233890680,
+      "tag": "0616_white_stature",
+      "breakpoints": true
     }
   ]
 }

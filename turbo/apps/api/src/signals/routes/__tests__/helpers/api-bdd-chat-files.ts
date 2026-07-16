@@ -59,9 +59,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-memory-activity";
 import {
   zeroMemoryContract,
-  type MemoryCreateRequest,
   type MemoryDetailResponse,
-  type MemoryLifecycleMemory,
 } from "@vm0/api-contracts/contracts/zero-memory";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
@@ -1334,20 +1332,6 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async createMemory(
-      actor: ApiTestUser,
-      body: MemoryCreateRequest,
-    ): Promise<MemoryLifecycleMemory> {
-      const response = await accept(
-        memoryClient().createMemory({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        [200],
-      );
-      return response.body.memory;
     },
 
     async requestReadMemory(

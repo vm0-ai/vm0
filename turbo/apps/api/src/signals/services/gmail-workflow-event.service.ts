@@ -47,7 +47,6 @@ import {
 } from "./zero-workflow-automation-run.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
-import { enqueueGmailRelationshipRefreshJob } from "./relationship-memory-gmail-queue.service";
 
 const log = logger("api:gmail-workflow-event");
 
@@ -448,7 +447,7 @@ async function refreshGmailAccessToken(args: {
   };
 }
 
-export async function resolveGmailAccess(args: {
+async function resolveGmailAccess(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -862,7 +861,7 @@ function collectBodyText(part: GmailMessagePart | undefined): string {
     .join("\n");
 }
 
-export function messageIsInbound(message: GmailMessageContext): boolean {
+function messageIsInbound(message: GmailMessageContext): boolean {
   const labels = new Set(message.labelIds);
   if (!labels.has("INBOX")) {
     return false;
@@ -913,26 +912,6 @@ async function fetchGmailMessageContext(args: {
     subject: firstHeaderValue(headers, "Subject"),
     bodyText: bodyText.length > 0 ? bodyText : null,
   };
-}
-
-export async function fetchGmailMessageContextById(args: {
-  readonly accessToken: string;
-  readonly messageId: string;
-  readonly threadId: string | null;
-  readonly labelIds: readonly string[];
-  readonly historyId?: string;
-  readonly signal: AbortSignal;
-}): Promise<GmailMessageContext | null> {
-  return await fetchGmailMessageContext({
-    accessToken: args.accessToken,
-    event: {
-      historyId: args.historyId ?? args.messageId,
-      messageId: args.messageId,
-      threadId: args.threadId,
-      labelIds: args.labelIds,
-    },
-    signal: args.signal,
-  });
 }
 
 function includesIgnoreCase(haystack: string, needle: string): boolean {
@@ -1550,41 +1529,6 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
   );
   if (!message || !messageIsInbound(message)) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
-  }
-
-  if (message.occurredAt) {
-    await tapError(
-      enqueueGmailRelationshipRefreshJob(args.db, {
-        orgId: args.state.orgId,
-        userId: args.state.userId,
-        connectorId: args.state.connectorId,
-        message: {
-          mailboxEmail: args.decoded.emailAddress,
-          historyId: args.event.historyId,
-          messageId: message.messageId,
-          threadId: message.threadId,
-          occurredAt: message.occurredAt,
-          direction: "received",
-          from: message.from,
-          to: message.to,
-          cc: message.cc,
-          subject: message.subject,
-          bodyText: message.bodyText,
-        },
-      }),
-      (error) => {
-        log.warn("Failed to enqueue Gmail relationship memory refresh", {
-          watchStateId: args.state.id,
-          messageId: message.messageId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      },
-    );
-  } else {
-    log.warn("Skipped Gmail relationship memory refresh without message time", {
-      watchStateId: args.state.id,
-      messageId: message.messageId,
-    });
   }
 
   let dispatched = 0;
