@@ -1422,10 +1422,12 @@ class TestRegistryBuiltinCache:
         assert second_compiled is not None
         assert _first_firewall_core(first_compiled) is _first_firewall_core(second_compiled)
 
-    def test_inline_firewall_api_ids_are_preserved(self, tmp_path):
+    def test_inline_firewall_api_ids_preserve_custom_ids_and_global_positions(self, tmp_path):
         path = tmp_path / "registry.json"
         vm = inline_vm("run-inline")
-        vm["firewalls"][0]["firewall"]["apis"][0]["id"] = "custom-api-id"
+        apis = vm["firewalls"][0]["firewall"]["apis"]
+        apis[0]["id"] = "custom-api-id"
+        apis.append({**apis[0], "id": "", "base": "https://upload.example.com"})
         write_multi_vm_registry(path, {"10.200.0.1": vm})
 
         context = registry.get_vm_context("10.200.0.1", str(path))
@@ -1433,4 +1435,7 @@ class TestRegistryBuiltinCache:
         assert context is not None
         vm_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
-        assert vm_info["firewalls"][0]["apis"][0]["id"] == "custom-api-id"
+        assert [api["id"] for api in vm_info["firewalls"][0]["apis"]] == [
+            "custom-api-id",
+            "run-inline:1",
+        ]
