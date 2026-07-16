@@ -2630,15 +2630,22 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       thread.id,
       (messages) => {
         return userMessages(messages).some((message) => {
-          return message.id === sent.body.messageId && message.runId === run1Id;
+          return (
+            message.revokesMessageId === sent.body.messageId &&
+            message.runId === run1Id
+          );
         });
       },
     );
     expect(
       userMessages(zeroPage.messages).find((message) => {
-        return message.id === sent.body.messageId;
+        return message.revokesMessageId === sent.body.messageId;
       }),
-    ).toMatchObject({ content: "hello from v1", runId: run1Id });
+    ).toMatchObject({
+      content: "hello from v1",
+      runId: run1Id,
+      revokesMessageId: sent.body.messageId,
+    });
     await flushWaitUntilForTest();
     const afterV1SideEffects = await chat.listThreadMessages(actor, thread.id);
     expect(initialThinkingRequests).toBe(0);

@@ -234,31 +234,36 @@ async function startChatRun(
         : {}
       : { model: body.selectedModel }),
   };
-  let sent = await chat.requestSendMessage(actor, requestBody, [201]);
+  const sent = await chat.requestSendMessage(actor, requestBody, [201]);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
-  if (sent.body.runId === null) {
-    const threadId = sent.body.threadId;
-    // Queue-first sends may be claimed by a terminal callback drain between
-    // enqueue and the inline dispatch decision. Replay the idempotent client
-    // message id until that winning run association is visible.
-    await expect
-      .poll(async () => {
-        sent = await chat.requestSendMessage(
-          actor,
-          { ...requestBody, threadId },
-          [201],
-        );
-        return sent.status === 201 ? sent.body.runId : null;
-      })
-      .not.toBeNull();
+  let runId: string | null | undefined = sent.body.runId;
+  if (runId === null) {
+    // A terminal callback may claim the queued row between enqueue and the
+    // inline dispatch decision. Recover as a refreshed client does: read the
+    // appended replacement instead of retrying the client message id.
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.body.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === messageId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    runId = userMessages(messages.messages).find((message) => {
+      return message.revokesMessageId === messageId;
+    })?.runId;
   }
-  if (sent.body.runId === null) {
+  if (runId === undefined || runId === null) {
     throw new Error("Expected the entitled chat send to create a run");
   }
   return {
-    runId: sent.body.runId,
+    runId,
     threadId: sent.body.threadId,
     messageId,
   };
@@ -2588,8 +2593,18 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       actor,
       first.threadId,
     );
-    expect(progressMessages.messages).toHaveLength(1);
-    expect(progressMessages.messages[0]?.role).toBe("user");
+    const progressUserMessages = userMessages(progressMessages.messages);
+    expect(progressUserMessages).toHaveLength(2);
+    const progressOriginal = progressUserMessages.find((message) => {
+      return message.id === first.messageId;
+    });
+    expect(progressOriginal?.runId).toBeUndefined();
+    expect(progressUserMessages).toContainEqual(
+      expect.objectContaining({
+        runId: first.runId,
+        revokesMessageId: first.messageId,
+      }),
+    );
 
     // Blank assistant text, non-agent_message Codex items, and result-shaped
     // fields on non-result events are skipped.
@@ -2805,7 +2820,22 @@ describe("CHAT-02: failed chat callbacks", () => {
         });
       });
     });
-    expect(userMessages(messages.messages)).toHaveLength(4);
+    const users = userMessages(messages.messages);
+    const originals = users.filter((message) => {
+      return message.runId === undefined;
+    });
+    const replacements = users.filter((message) => {
+      return message.runId !== undefined;
+    });
+    expect(originals).toHaveLength(4);
+    expect(replacements).toHaveLength(4);
+    expect(
+      replacements.every((replacement) => {
+        return originals.some((original) => {
+          return replacement.revokesMessageId === original.id;
+        });
+      }),
+    ).toBeTruthy();
     const failed = assistantMessages(messages.messages).filter((message) => {
       return message.runLifecycleEvent === "failed";
     });
