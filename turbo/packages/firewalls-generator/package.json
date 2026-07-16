@@ -23,6 +23,7 @@
     "update-specs:google-cloud": "tsx src/update-specs.ts google-cloud",
     "update-specs:google-search-console": "tsx src/update-specs.ts google-search-console",
     "update-specs:google-sheets": "tsx src/update-specs.ts google-sheets",
+    "update-specs:google-slides": "tsx src/update-specs.ts google-slides",
     "update-specs:notion": "tsx src/update-specs.ts notion",
     "update-specs:playstation": "tsx src/update-specs.ts playstation",
     "update-specs:sentry": "tsx src/update-specs.ts sentry",

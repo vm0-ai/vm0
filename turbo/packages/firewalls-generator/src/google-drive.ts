@@ -18,8 +18,13 @@ const GOOGLE_DRIVE_ROUTE_KEY_KINDS = [
   "base",
   "upload",
   "resumable-upload",
+  "slides",
 ] as const;
 type GoogleDriveRouteKeyKind = (typeof GOOGLE_DRIVE_ROUTE_KEY_KINDS)[number];
+type GoogleDriveUploadRouteKeyKind = Extract<
+  GoogleDriveRouteKeyKind,
+  "upload" | "resumable-upload"
+>;
 
 interface DiscoveryMethod {
   id?: string;
@@ -57,11 +62,14 @@ export const GOOGLE_DRIVE_DISCOVERY_URLS = [
   "https://www.googleapis.com/discovery/v1/apis/drive/v2/rest",
   "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
 ] as const;
+export const GOOGLE_SLIDES_DISCOVERY_URL =
+  "https://slides.googleapis.com/$discovery/rest?version=v1";
 
 const GOOGLE_DRIVE_BASE_URL = "https://www.googleapis.com/drive";
 const GOOGLE_DRIVE_UPLOAD_BASE_URL = "https://www.googleapis.com/upload/drive";
 const GOOGLE_DRIVE_RESUMABLE_UPLOAD_BASE_URL =
   "https://www.googleapis.com/resumable/upload/drive";
+const GOOGLE_SLIDES_BASE_URL = "https://slides.googleapis.com";
 const GOOGLE_DRIVE_TOKEN_PLACEHOLDER =
   "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
@@ -73,6 +81,7 @@ const DEFAULT_ALLOWED_GOOGLE_DRIVE_PERMISSIONS = [
   "drives.read",
   "files.read",
   "operations.read",
+  "presentations.read",
   "replies.read",
   "revisions.read",
 ];
@@ -85,6 +94,7 @@ const GOOGLE_DRIVE_CATEGORY_ORDER = [
   "Revisions",
   "Shared Drives",
   "Notifications",
+  "Presentations",
 ] as const;
 
 export const GOOGLE_DRIVE_PERMISSION_MANIFEST: readonly GoogleDriveManifestPermission[] =
@@ -365,6 +375,29 @@ export const GOOGLE_DRIVE_PERMISSION_MANIFEST: readonly GoogleDriveManifestPermi
       description: "Read long-running Drive operations.",
       routeKeys: ["base:GET /v3/operations/{name}"],
     },
+    {
+      name: "presentations.create",
+      category: "Presentations",
+      description: "Create Google Slides presentations.",
+      routeKeys: ["slides:POST /v1/presentations"],
+    },
+    {
+      name: "presentations.read",
+      category: "Presentations",
+      description:
+        "Read Google Slides presentations, pages, speaker notes, and thumbnails.",
+      routeKeys: [
+        "slides:GET /v1/presentations/{presentationsId}",
+        "slides:GET /v1/presentations/{presentationId}/pages/{pageObjectId}",
+        "slides:GET /v1/presentations/{presentationId}/pages/{pageObjectId}/thumbnail",
+      ],
+    },
+    {
+      name: "presentations.write",
+      category: "Presentations",
+      description: "Apply batch updates to Google Slides presentations.",
+      routeKeys: ["slides:POST /v1/presentations/{presentationId}:batchUpdate"],
+    },
   ];
 
 function extractMethods(
@@ -406,7 +439,7 @@ function baseRuleForMethod(
 
 function uploadRuleForMethod(
   method: DiscoveryMethod,
-  kind: Exclude<GoogleDriveRouteKeyKind, "base">,
+  kind: GoogleDriveUploadRouteKeyKind,
 ): string | null {
   const httpMethod = method.httpMethod;
   if (!httpMethod) {
@@ -434,7 +467,7 @@ function uploadRuleForMethod(
 
 function mediaUploadPutRuleForMethod(
   method: DiscoveryMethod,
-  kind: Exclude<GoogleDriveRouteKeyKind, "base">,
+  kind: GoogleDriveUploadRouteKeyKind,
 ): string | null {
   const protocol =
     kind === "upload"
@@ -504,6 +537,17 @@ export function buildGoogleDriveOfficialRouteKeys(
   return routeKeys;
 }
 
+export function buildGoogleSlidesOfficialRouteKeys(
+  discovery: GoogleDriveDiscoveryDocument,
+): Set<string> {
+  const routeKeys = new Set<string>();
+  console.error(`  API version: ${discovery.version ?? "unknown"}`);
+  for (const method of extractMethods(discovery.resources ?? {})) {
+    routeKeys.add(`slides:${baseRuleForMethod(discovery, method)}`);
+  }
+  return routeKeys;
+}
+
 export function validateGoogleDrivePermissionManifest(
   officialRouteKeys: ReadonlySet<string>,
   manifest: readonly GoogleDriveManifestPermission[],
@@ -531,9 +575,21 @@ async function loadGoogleDriveDiscoveries(): Promise<
   return discoveries;
 }
 
+async function loadGoogleSlidesDiscovery(): Promise<GoogleDriveDiscoveryDocument> {
+  const res = await fetchSpec(
+    GOOGLE_SLIDES_DISCOVERY_URL,
+    "google-slides discovery document",
+  );
+  return (await res.json()) as GoogleDriveDiscoveryDocument;
+}
+
 export async function generate(): Promise<void> {
   const discoveries = await loadGoogleDriveDiscoveries();
-  const officialRouteKeys = buildGoogleDriveOfficialRouteKeys(discoveries);
+  const slidesDiscovery = await loadGoogleSlidesDiscovery();
+  const officialRouteKeys = new Set([
+    ...buildGoogleDriveOfficialRouteKeys(discoveries),
+    ...buildGoogleSlidesOfficialRouteKeys(slidesDiscovery),
+  ]);
   const compiled = compileGoogleManifestFirewall<
     GoogleDriveRouteKeyKind,
     GoogleDriveManifestPermission
@@ -555,6 +611,10 @@ export async function generate(): Promise<void> {
         base: GOOGLE_DRIVE_RESUMABLE_UPLOAD_BASE_URL,
         kind: "resumable-upload",
       },
+      {
+        base: GOOGLE_SLIDES_BASE_URL,
+        kind: "slides",
+      },
     ],
     categoryOrder: GOOGLE_DRIVE_CATEGORY_ORDER,
   });
@@ -568,13 +628,14 @@ export async function generate(): Promise<void> {
       ...GOOGLE_DRIVE_DISCOVERY_URLS.map((url) => {
         return `// Source: ${url}`;
       }),
+      `// Source: ${GOOGLE_SLIDES_DISCOVERY_URL}`,
       "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:google-drive",
       "//",
       "// DO NOT EDIT THIS FILE MANUALLY.",
     ],
     firewallVarName: "googleDriveFirewall",
     firewallName: "google-drive",
-    firewallDescription: "Google Drive API",
+    firewallDescription: "Google Drive and Slides APIs",
     tokenPlaceholderName: "GOOGLE_DRIVE_TOKEN",
     tokenPlaceholderValue: GOOGLE_DRIVE_TOKEN_PLACEHOLDER,
     apis: compiled.apis,
