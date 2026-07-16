@@ -6463,10 +6463,7 @@ function ConnectorsPopoverButton({
                             aria-label={`Configure ${item.label} permissions`}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
-                            <IconAdjustmentsHorizontal
-                              size={15}
-                              stroke={1.5}
-                            />
+                            <IconAdjustmentsHorizontal size={15} stroke={1.5} />
                           </button>
                         )}
                       <LoadingSwitch
