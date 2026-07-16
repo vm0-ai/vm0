@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.280.1](https://github.com/vm0-ai/vm0/compare/api-v1.280.0...api-v1.280.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* use app tenant for teams bot replies ([#21782](https://github.com/vm0-ai/vm0/issues/21782)) ([5f35f05](https://github.com/vm0-ai/vm0/commit/5f35f058bc30e375bcb756ac70a105844b251b6a))
+
 ## [1.280.0](https://github.com/vm0-ai/vm0/compare/api-v1.279.4...api-v1.280.0) (2026-07-16)
 
 

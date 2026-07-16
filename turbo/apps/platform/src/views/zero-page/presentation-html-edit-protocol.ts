@@ -464,6 +464,29 @@ function sanitizePreviewDocument(doc: Document): void {
   appendPresentationElementOffsetPreviewRuntime(doc);
 }
 
+function applyPresentationPreviewBase(
+  doc: Document,
+  sourceUrl: string | undefined,
+): void {
+  if (!sourceUrl) {
+    return;
+  }
+  const authoredBase = doc.head.querySelector<HTMLBaseElement>("base[href]");
+  if (authoredBase) {
+    const authoredHref = authoredBase.getAttribute("href") ?? "";
+    authoredBase.setAttribute(
+      "href",
+      URL.canParse(authoredHref, sourceUrl)
+        ? new URL(authoredHref, sourceUrl).href
+        : sourceUrl,
+    );
+    return;
+  }
+  const base = doc.createElement("base");
+  base.setAttribute("href", sourceUrl);
+  doc.head.prepend(base);
+}
+
 function extractVariableObjectText(
   scriptText: string,
   variableName: string,
@@ -1083,6 +1106,7 @@ export function previewPresentationHtml(params: {
   readonly additionalHeadStyle?: string;
   readonly html: string;
   readonly movementEditingEnabled?: boolean;
+  readonly sourceUrl?: string;
 }): string {
   const doc = new DOMParser().parseFromString(params.html, "text/html");
   const movementEditingEnabled =
@@ -1096,6 +1120,7 @@ export function previewPresentationHtml(params: {
   for (const node of Array.from(doc.head.childNodes)) {
     previewDoc.head.append(node.cloneNode(true));
   }
+  applyPresentationPreviewBase(previewDoc, params.sourceUrl);
   const stage = previewDoc.createElement("div");
   previewDoc.body.append(stage);
   let activeSlideClone: Element | null = null;

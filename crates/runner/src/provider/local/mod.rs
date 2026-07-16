@@ -113,6 +113,7 @@ fn job_candidate_from_discovered(discovered: LocalDiscoveredJob) -> JobCandidate
         discovered.profile_name,
         discovered.job_path,
     )
+    .with_affinity_metadata(discovered.cli_agent_session_id, None)
 }
 
 #[async_trait::async_trait]
