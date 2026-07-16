@@ -1,0 +1,47 @@
+def sync_for_iterable():
+    for item in flow.metadata | {"firewall_rule_match": "GET /items"}:
+        pass
+
+async def async_for_iterable():
+    async for item in flow.metadata | {"firewall_rule_match": "GET /items"}:
+        pass
+
+def sync_for_target_rebinding():
+    target_meta = flow.metadata
+    for target_meta in rows:
+        target_meta["vm_run_id"] = "loop-item"
+    target_meta["vm_sandbox_token"] = "sandbox"
+
+async def async_for_target_rebinding():
+    target_meta = flow.metadata
+    async for target_meta in async_rows:
+        target_meta["vm_run_id"] = "loop-item"
+    target_meta["vm_sandbox_token"] = "sandbox"
+
+def sync_for_body_alias():
+    body_meta = {}
+    for item in rows:
+        body_meta = flow.metadata
+    body_meta["capture_body"] = True
+
+async def async_for_body_alias():
+    body_meta = {}
+    async for item in async_rows:
+        body_meta = flow.metadata
+    body_meta["capture_body"] = True
+
+def sync_for_else_alias():
+    else_meta = {}
+    for item in rows:
+        pass
+    else:
+        else_meta = flow.metadata
+    else_meta["original_url"] = "https://api.example.com"
+
+async def async_for_else_alias():
+    else_meta = {}
+    async for item in async_rows:
+        pass
+    else:
+        else_meta = flow.metadata
+    else_meta["original_url"] = "https://api.example.com"

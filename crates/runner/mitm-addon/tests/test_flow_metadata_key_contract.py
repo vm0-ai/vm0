@@ -159,6 +159,17 @@ def test_registered_flow_metadata_guard_flags_composed_iterables(tmp_path):
     )
 
 
+def test_registered_flow_metadata_guard_tracks_for_statement_variants(tmp_path):
+    source_path = tmp_path / "for_statement_flow.py"
+    _write_python_source(source_path, "for_statement_flow.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "for_statement_flow.expected.txt"
+    )
+
+
 def test_registered_flow_metadata_guard_tracks_context_manager_exception_paths(tmp_path):
     source_path = tmp_path / "context_manager_flow.py"
     _write_python_source(source_path, "context_manager_flow.base.py.txt")
