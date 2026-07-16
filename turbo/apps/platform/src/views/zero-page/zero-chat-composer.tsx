@@ -5322,22 +5322,27 @@ function TemplatePickerCategoryContent({
             onSelect={onWorkflowCategoryChange}
           />
         )}
-        <div
-          data-workflow-template-grid-scroll=""
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
-        >
-          {workflowCatalog.items.length > 0 ? (
-            <WorkflowTemplateGrid
-              items={workflowCatalog.items}
-              value={value}
-              onSelect={onSelectWorkflow}
-            />
-          ) : (
-            <TemplateEmptyPanel
-              title="No matches"
-              description="Try a different search."
-            />
-          )}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            data-workflow-template-grid-scroll=""
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+          >
+            {workflowCatalog.items.length > 0 ? (
+              <WorkflowTemplateGrid
+                items={workflowCatalog.items}
+                value={value}
+                onSelect={onSelectWorkflow}
+              />
+            ) : (
+              <TemplateEmptyPanel
+                title="No matches"
+                description="Try a different search."
+              />
+            )}
+          </div>
+          {/* Soften the hard clip where cards scroll up under the pill row,
+              mirroring the chat-to-composer top fade. */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-card to-transparent" />
         </div>
       </div>
     );
