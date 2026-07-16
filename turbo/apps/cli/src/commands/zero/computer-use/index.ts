@@ -552,7 +552,7 @@ async function waitForCommand(
       if (process.stdout.isTTY) {
         process.stdout.write(".");
       }
-      await sleep(1_000);
+      await sleep(500);
       continue;
     }
 

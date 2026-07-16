@@ -246,6 +246,71 @@ describe("computer-use command visibility", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("should poll pending command results every 500ms", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    let pollCount = 0;
+    server.use(
+      http.post("http://localhost:3000/api/zero/computer-use/commands", () => {
+        return HttpResponse.json({
+          commandId: "cmd_poll",
+          status: "queued",
+        });
+      }),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_poll",
+        () => {
+          pollCount += 1;
+
+          if (pollCount === 1) {
+            return HttpResponse.json({
+              id: "cmd_poll",
+              kind: "apps.list",
+              status: "running",
+              hostId: "host_1",
+              hostName: "Desktop",
+              payload: {},
+              timeoutMs: 2_000,
+              createdAt: "2026-07-16T10:00:00.000Z",
+              claimedAt: "2026-07-16T10:00:00.100Z",
+            });
+          }
+
+          return HttpResponse.json({
+            id: "cmd_poll",
+            kind: "apps.list",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: {},
+            result: { apps: [] },
+            timeoutMs: 2_000,
+            createdAt: "2026-07-16T10:00:00.000Z",
+            claimedAt: "2026-07-16T10:00:00.100Z",
+            completedAt: "2026-07-16T10:00:00.500Z",
+          });
+        },
+      ),
+    );
+
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      await zeroComputerUseCommand.parseAsync([
+        "node",
+        "cli",
+        "list-apps",
+        "--timeout",
+        "2",
+      ]);
+
+      expect(pollCount).toBe(2);
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500);
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
   it("should write screenshot and app state data to local files in command result console output", async () => {
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
