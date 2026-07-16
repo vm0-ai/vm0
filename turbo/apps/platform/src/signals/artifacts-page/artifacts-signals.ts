@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { IDBPDatabase } from "idb";
 import {
   artifactItemSchema,
   artifactsContract,
@@ -15,8 +16,7 @@ import {
 } from "./artifact-search.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { authenticatedIdentity$ } from "../auth.ts";
-import { openChatIdb } from "../external/chat-idb-store.ts";
+import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
@@ -70,9 +70,9 @@ interface ArtifactsPageData {
   readonly artifacts: readonly ArtifactItem[];
 }
 
-function artifactItemCacheStores(userId: string, orgId: string) {
+function artifactItemCacheStores(dbPromise: Promise<IDBPDatabase>) {
   return createArtifactItemCacheStores(() => {
-    return openChatIdb(userId, orgId);
+    return dbPromise;
   });
 }
 
@@ -279,7 +279,7 @@ export const reloadArtifacts$ = command(({ set }) => {
 export const remoteArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
     get(internalArtifactsReload$);
-    const { userId, orgId } = await get(authenticatedIdentity$);
+    const dbPromise = get(chatIdb$);
     const client = get(zeroClient$)(artifactsContract);
     const artifacts: ArtifactItem[] = [];
     let cursor: string | undefined;
@@ -298,9 +298,7 @@ export const remoteArtifacts$ = computed(
       }
       cursor = result.body.nextCursor;
     }
-    await artifactItemCacheStores(userId, orgId).writeStore.replaceItems(
-      artifacts,
-    );
+    await artifactItemCacheStores(dbPromise).writeStore.replaceItems(artifacts);
     return { artifacts };
   },
 );
@@ -309,10 +307,9 @@ export const remoteArtifacts$ = computed(
 // (reads degrade to an empty list), so it is always a safe fallback.
 export const cachedArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
-    const { userId, orgId } = await get(authenticatedIdentity$);
+    const dbPromise = get(chatIdb$);
     const artifacts = await artifactItemCacheStores(
-      userId,
-      orgId,
+      dbPromise,
     ).readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT });
     return { artifacts };
   },
@@ -407,9 +404,9 @@ export const toggleArtifactFavorite$ = command(
     });
     signal.throwIfAborted();
 
-    const { userId, orgId } = await get(authenticatedIdentity$);
+    const dbPromise = get(chatIdb$);
     signal.throwIfAborted();
-    await artifactItemCacheStores(userId, orgId).writeStore.upsertItems([
+    await artifactItemCacheStores(dbPromise).writeStore.upsertItems([
       { ...item, isFavorited: nextIsFavorited },
     ]);
     signal.throwIfAborted();

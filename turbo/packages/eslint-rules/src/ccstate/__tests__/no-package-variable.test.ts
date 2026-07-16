@@ -50,6 +50,18 @@ ruleTester.run("no-package-variable", rule, {
     {
       code: "function init() { const cache = new Map(); }",
     },
+    // A keyed collection is allowed when its factory is only used by a bounded owner.
+    {
+      code: "function createOwner() { const resources = new Map(); return { resources }; } function setup() { const owner = createOwner(); return owner; }",
+    },
+    // Non-cache test flags on globalThis remain available to tests.
+    {
+      code: 'Reflect.set(globalThis, "loadPreviewInTest", true);',
+    },
+    // Readonly lookup data can be built once at package scope.
+    {
+      code: "const isAllowed = (() => { const allowed: ReadonlySet<string> = new Set(['a']); return (key: string) => allowed.has(key); })();",
+    },
     // Destructuring pattern at package scope — skipped
     {
       code: "const { a, b } = getConfig();",
@@ -110,6 +122,28 @@ ruleTester.run("no-package-variable", rule, {
       code: "const cache = new Map();",
       options: [{ allowedConstructors: ["LoggerRegistry"] }],
       errors: [{ messageId: "noPackageVariable" }],
+    },
+    // A factory closure can hide a package-lifetime keyed cache.
+    {
+      code: "function createResourceFactory() { const resources = new Map(); return (key) => resources.get(key); } const getResource = createResourceFactory();",
+      errors: [{ messageId: "noPackageFactoryCache" }],
+    },
+    // The same pattern can be hidden in a package-scope IIFE.
+    {
+      code: "const getResource = (() => { const resources = new Map(); return (key) => resources.get(key); })();",
+      errors: [{ messageId: "noPackageFactoryCache" }],
+    },
+    {
+      code: 'Reflect.set(globalThis, "vm0PreviewCache", new Map());',
+      errors: [{ messageId: "noGlobalCache" }],
+    },
+    {
+      code: "function getResource() {} getResource._cache = new Map();",
+      errors: [{ messageId: "noFunctionPropertyCache" }],
+    },
+    {
+      code: 'function getResource() {} getResource["_cache"] = new Map();',
+      errors: [{ messageId: "noFunctionPropertyCache" }],
     },
   ],
 });

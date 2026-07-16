@@ -33,6 +33,10 @@ import {
   type ComposerSlashWorkflow,
   type SlashWorkflowRange,
 } from "./workflow-composer-domain.ts";
+import {
+  createTemplatePreviewRuntime,
+  type TemplatePreviewRuntime,
+} from "./template-preview-runtime.ts";
 
 const EDITOR_CONTENT_CLASS =
   "w-full max-h-[200px] overflow-y-auto whitespace-pre-wrap " +
@@ -65,6 +69,7 @@ interface WorkflowHighlightStorage {
 
 export interface WorkflowComposerSignals {
   readonly editor: Editor;
+  readonly templatePreview: TemplatePreviewRuntime;
   readonly setContainerRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
@@ -725,6 +730,7 @@ export function createWorkflowComposerSignals(
   const editorFocusedState$ = state(false);
   const selectedSuggestionIndexState$ = state(0);
   const runtime = createWorkflowComposerRuntime();
+  const templatePreview = createTemplatePreviewRuntime();
 
   const editor = createWorkflowEditor(runtime);
   const feedback = createFeedbackSignals(threadId ?? "", draft, {
@@ -815,6 +821,7 @@ export function createWorkflowComposerSignals(
 
   return {
     editor,
+    templatePreview,
     setContainerRef$: mountEditor(false, false),
     setAutoFocusContainerRef$: mountEditor(true, false),
     setCompactContainerRef$: mountEditor(false, true),

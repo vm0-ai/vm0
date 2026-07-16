@@ -551,26 +551,6 @@ function mockAgentConnectorAuthorizations(
   });
 }
 
-function resetPresentationTemplateHtmlPreviewCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateHtmlPreviewCache");
-}
-
-function resetPresentationCardPreviewImageDecodeCache(): void {
-  Reflect.deleteProperty(
-    globalThis,
-    "vm0PresentationCardPreviewImageDecodeCache",
-  );
-}
-
-function resetPresentationTemplateThumbnailCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateThumbnailCache");
-}
-
-function resetTemplatePreviewPrewarmCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0TemplatePreviewPrewarmCache");
-  Reflect.deleteProperty(globalThis, "vm0TemplatePreviewIdlePrewarmKeys");
-}
-
 function trackTemplatePreviewImagePreloads(): {
   readonly srcs: readonly string[];
   readonly restore: () => void;
@@ -864,10 +844,6 @@ function workflowSummary({
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
-  resetPresentationTemplateHtmlPreviewCache();
-  resetPresentationCardPreviewImageDecodeCache();
-  resetPresentationTemplateThumbnailCache();
-  resetTemplatePreviewPrewarmCache();
 });
 
 describe("chat composer models", () => {
@@ -3454,7 +3430,6 @@ describe("chat composer templates", () => {
     } finally {
       restoreIdleCallback();
       imagePreloads.restore();
-      resetTemplatePreviewPrewarmCache();
     }
   });
 
@@ -4498,33 +4473,16 @@ describe("chat composer templates", () => {
 
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    Reflect.set(globalThis, "vm0PresentationTemplateHtmlPreviewCache", {
-      activeIndexes: new Map<string, number>(),
-      activeTokens: new Map<string, symbol>(),
-      defaultLoads: new Set<string>(),
-      detailTokens: new Map<string, symbol>(),
-      drafts: new Map([
-        [
-          template.embedUrl,
-          {
-            blocks: [],
-            html: `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
-              .map((_, index) => {
-                return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
-              })
-              .join("")}</body></html>`,
-            slides: template.previewImages.map((_, index) => {
-              return {
-                id: `slide-${index + 1}`,
-                notes: "",
-                title: `Slide ${index + 1}`,
-              };
-            }),
-          },
-        ],
-      ]),
-      failed: new Set<string>(),
-      pendingLoads: new Map<string, Promise<null>>(),
+    vi.stubGlobal("vm0LoadTemplateDetailHtmlPreviewInHappyDom", true);
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
+          .map((_, index) => {
+            return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
+          })
+          .join("")}</body></html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
     });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 

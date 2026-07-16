@@ -4,6 +4,8 @@ import {
   type IDBPDatabase,
   type OpenDBCallbacks,
 } from "idb";
+import { computed } from "ccstate";
+import { authenticatedIdentity$ } from "../auth.ts";
 import { logger } from "../log.ts";
 import { CHAT_IDB_VERSION, upgradeChatIdb } from "./chat-idb-schema.ts";
 
@@ -16,7 +18,8 @@ type OpenChatIdbDatabase = <DBTypes extends DBSchema | unknown = unknown>(
 ) => Promise<IDBPDatabase<DBTypes>>;
 
 interface ChatIdbStoreState {
-  readonly dbPromises: Map<string, Promise<IDBPDatabase>>;
+  dbName: string | null;
+  dbPromise: Promise<IDBPDatabase> | null;
   reloadTriggered: boolean;
 }
 
@@ -46,7 +49,8 @@ export function createChatIdbStore(
       window.location.reload();
     });
   const state: ChatIdbStoreState = {
-    dbPromises: new Map(),
+    dbName: null,
+    dbPromise: null,
     reloadTriggered: false,
   };
 
@@ -61,7 +65,10 @@ export function createChatIdbStore(
       nextVersion: event.newVersion,
     });
     db.close();
-    state.dbPromises.delete(dbName);
+    if (state.dbName === dbName) {
+      state.dbName = null;
+      state.dbPromise = null;
+    }
 
     if (state.reloadTriggered) {
       return;
@@ -95,14 +102,23 @@ export function createChatIdbStore(
       }
 
       const dbName = chatIdbName(userId, orgId);
-      const existing = state.dbPromises.get(dbName);
-      if (existing !== undefined) {
-        return existing;
+      if (state.dbName === dbName && state.dbPromise !== null) {
+        return state.dbPromise;
       }
 
       L.debug("openDB", { dbName });
-      const promise = openChatIdbConnection(dbName);
-      state.dbPromises.set(dbName, promise);
+      const previous = state.dbPromise;
+      const promise = (async () => {
+        if (previous !== null) {
+          const [previousResult] = await Promise.allSettled([previous]);
+          if (previousResult?.status === "fulfilled") {
+            previousResult.value.close();
+          }
+        }
+        return openChatIdbConnection(dbName);
+      })();
+      state.dbName = dbName;
+      state.dbPromise = promise;
       return promise;
     },
   };
@@ -111,3 +127,8 @@ export function createChatIdbStore(
 const defaultChatIdbStore = createChatIdbStore();
 
 export const openChatIdb = defaultChatIdbStore.openChatIdb;
+
+export const chatIdb$ = computed(async (get): Promise<IDBPDatabase> => {
+  const { userId, orgId } = await get(authenticatedIdentity$);
+  return openChatIdb(userId, orgId);
+});
