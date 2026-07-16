@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.281.1](https://github.com/vm0-ai/vm0/compare/api-v1.281.0...api-v1.281.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **chat:** append insufficient-credit replacements ([#21884](https://github.com/vm0-ai/vm0/issues/21884)) ([9bd1ec4](https://github.com/vm0-ai/vm0/commit/9bd1ec4f6c43a3e466ad305b336d518a4e345007))
+* **chat:** restore append-only queued message claims ([#21883](https://github.com/vm0-ai/vm0/issues/21883)) ([c4ba9fd](https://github.com/vm0-ai/vm0/commit/c4ba9fd85a3010950cd95cc2be0db75fc2997472))
+* emit one complete usage chat message per run ([#21885](https://github.com/vm0-ai/vm0/issues/21885)) ([6a0446d](https://github.com/vm0-ai/vm0/commit/6a0446db9ab725dc26017308bef383f11a8e8a60))
+
+
+### Refactoring
+
+* **mail:** store email drafts outside chat messages ([#21887](https://github.com/vm0-ai/vm0/issues/21887)) ([b269ede](https://github.com/vm0-ai/vm0/commit/b269edec386afe0413eddb62bfc90c046a91be89))
+* **runner:** publish profile-qualified workspace cache state ([#21874](https://github.com/vm0-ai/vm0/issues/21874)) ([68b399b](https://github.com/vm0-ai/vm0/commit/68b399b571023b63db4a2f4f625eef1c9ded9b48))
+
+
+### Performance Improvements
+
+* **api:** collapse resumed-session resolution into one snapshot query ([#21872](https://github.com/vm0-ai/vm0/issues/21872)) ([856b69d](https://github.com/vm0-ai/vm0/commit/856b69d5cee4241d1f0b09cad1b58747a68d6c2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.1
+    * @vm0/core bumped to 8.438.1
+    * @vm0/db bumped to 1.118.1
+
 ## [1.281.0](https://github.com/vm0-ai/vm0/compare/api-v1.280.2...api-v1.281.0) (2026-07-16)
 
 
