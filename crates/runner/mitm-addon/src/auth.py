@@ -188,6 +188,10 @@ def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) ->
     )
 
 
+def _request_method_forbids_managed_credentials(method: str) -> bool:
+    return method.upper() == "TRACE"
+
+
 def _firewall_auth_context_needs_resolution(context: _FirewallAuthContext) -> bool:
     return context.auth_request.firewall_billable or _firewall_auth_context_injects_credentials(
         context
@@ -555,8 +559,29 @@ def _preflight_firewall_auth(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
+    injects_credentials = _firewall_auth_context_injects_credentials(context)
+    request_method = flow.request.method.upper()
+    if _request_method_forbids_managed_credentials(request_method) and injects_credentials:
+        log_proxy_entry(
+            context.proxy_log_path,
+            "warn",
+            "Refusing to inject firewall credentials into TRACE request",
+            type="firewall",
+            firewall_base=context.firewall_base,
+            request_method=request_method,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=403,
+            action="BLOCK",
+            error_code="unsafe_auth_method",
+            message="Firewall credentials cannot be injected into TRACE requests",
+            permission=context.allow.name,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
     request_scheme = flow.request.scheme.lower()
-    if request_scheme != "https" and _firewall_auth_context_injects_credentials(context):
+    if request_scheme != "https" and injects_credentials:
         log_proxy_entry(
             context.proxy_log_path,
             "warn",
@@ -1001,6 +1026,9 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
     injects_credentials = auth_config_injects_credentials(auth_config)
+    if injects_credentials and _request_method_forbids_managed_credentials(flow.request.method):
+        return FirewallHeaderPhaseAuthResult.FALLBACK
+
     needs_auth_resolution = injects_credentials or is_billable_firewall(allow.name, vm_info)
     request_scheme = flow.request.scheme.lower()
     if request_scheme != "https" and injects_credentials:
