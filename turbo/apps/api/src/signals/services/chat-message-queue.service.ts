@@ -9,7 +9,6 @@ import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
-import { zeroWorkflowQueueEvents } from "@vm0/db/schema/zero-workflow-queue";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -105,57 +104,10 @@ function chatMessageQueueLock(chatThreadId: string) {
   return sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 }
 
-/**
- * The pre-cutover advisory lock. Taken alongside the thread lock while old
- * API versions (which serialize on this key against the legacy table) may
- * still be running. Remove with the legacy dual-read.
- */
-function legacyWorkflowQueueLock(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly workflowId: string;
-}) {
-  const key = `workflow_queue:${args.orgId}:${args.userId}:${args.workflowId}`;
-  return sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
-}
-
-interface WorkflowThreadMapping {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly workflowId: string;
-  readonly queuePausedAt: Date | null;
-}
-
-async function loadWorkflowThreadMapping(
-  db: Db,
-  chatThreadId: string,
-): Promise<WorkflowThreadMapping | null> {
-  const [row] = await db
-    .select({
-      orgId: workflowUserAutomationThreads.orgId,
-      userId: workflowUserAutomationThreads.userId,
-      workflowId: workflowUserAutomationThreads.workflowId,
-      queuePausedAt: workflowUserAutomationThreads.queuePausedAt,
-    })
-    .from(workflowUserAutomationThreads)
-    .where(eq(workflowUserAutomationThreads.chatThreadId, chatThreadId))
-    .limit(1);
-  return row ?? null;
-}
-
-/**
- * Pause is read from both homes while old API versions may still write the
- * legacy `workflow_user_trigger_threads` columns: paused when either side
- * says so. Collapses to the `chat_threads` columns once dual-write ends.
- */
 async function queuePausedForThread(
   db: Db,
   chatThreadId: string,
-  mapping: WorkflowThreadMapping | null,
 ): Promise<boolean> {
-  if (mapping?.queuePausedAt) {
-    return true;
-  }
   const [thread] = await db
     .select({ queuePausedAt: chatThreads.queuePausedAt })
     .from(chatThreads)
@@ -202,15 +154,7 @@ async function pendingWorkflowEventExists(
       ),
     )
     .limit(1);
-  if (row) {
-    return true;
-  }
-  const [legacy] = await db
-    .select({ id: zeroWorkflowQueueEvents.id })
-    .from(zeroWorkflowQueueEvents)
-    .where(eq(zeroWorkflowQueueEvents.chatThreadId, chatThreadId))
-    .limit(1);
-  return legacy !== undefined;
+  return row !== undefined;
 }
 
 async function pendingTickExistsForAutomation(
@@ -222,15 +166,7 @@ async function pendingTickExistsForAutomation(
     .from(chatMessageQueue)
     .where(eq(chatMessageQueue.triggerId, triggerId))
     .limit(1);
-  if (tick) {
-    return true;
-  }
-  const [legacy] = await db
-    .select({ id: zeroWorkflowQueueEvents.id })
-    .from(zeroWorkflowQueueEvents)
-    .where(eq(zeroWorkflowQueueEvents.triggerId, triggerId))
-    .limit(1);
-  return legacy !== undefined;
+  return tick !== undefined;
 }
 
 type WorkflowQueueAdmission = "proceed" | "enqueued";
@@ -258,16 +194,8 @@ export async function admitWorkflowAutomationEvent(
 
   return await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(args.chatThreadId));
-    await tx.execute(
-      legacyWorkflowQueueLock({
-        orgId: automation.orgId,
-        userId: automation.ownerUserId,
-        workflowId: automation.workflowId,
-      }),
-    );
 
-    const mapping = await loadWorkflowThreadMapping(tx, args.chatThreadId);
-    const paused = await queuePausedForThread(tx, args.chatThreadId, mapping);
+    const paused = await queuePausedForThread(tx, args.chatThreadId);
 
     if (!paused) {
       const busy = await activeRunExistsForWorkflowThread(
@@ -310,45 +238,12 @@ export interface ClaimedWorkflowQueueEvent {
   readonly triggerBrief: string | null;
   readonly encryptedParams: string;
   readonly createdAt: Date;
-  /** Which table the row was claimed from; restores go back to the same. */
-  readonly source: "chat_message_queue" | "legacy";
-  /** Legacy FIFO key remainder; null for chat_message_queue rows. */
-  readonly workflowId: string | null;
-}
-
-async function claimLegacyWorkflowQueueEvent(
-  tx: Db,
-  mapping: WorkflowThreadMapping,
-): Promise<ClaimedWorkflowQueueEvent | null> {
-  const [event] = await tx
-    .select()
-    .from(zeroWorkflowQueueEvents)
-    .where(
-      and(
-        eq(zeroWorkflowQueueEvents.orgId, mapping.orgId),
-        eq(zeroWorkflowQueueEvents.userId, mapping.userId),
-        eq(zeroWorkflowQueueEvents.workflowId, mapping.workflowId),
-      ),
-    )
-    .orderBy(
-      asc(zeroWorkflowQueueEvents.createdAt),
-      asc(zeroWorkflowQueueEvents.id),
-    )
-    .limit(1);
-  if (!event) {
-    return null;
-  }
-  await tx
-    .delete(zeroWorkflowQueueEvents)
-    .where(eq(zeroWorkflowQueueEvents.id, event.id));
-  return { ...event, source: "legacy" };
 }
 
 /**
  * Pop the oldest pending workflow event for the thread's queue, or return
  * null when the queue must not advance: paused, a queued user chat message
  * waiting (user messages always drain first), or an in-flight run.
- * Legacy rows (written by pre-cutover API versions) drain before new rows.
  * The claimed row is deleted; a failed dequeue re-inserts it via
  * `restoreWorkflowQueueEventAndPause`.
  */
@@ -358,11 +253,7 @@ export async function claimNextWorkflowQueueEvent(
 ): Promise<ClaimedWorkflowQueueEvent | null> {
   return await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(chatThreadId));
-    const mapping = await loadWorkflowThreadMapping(tx, chatThreadId);
-    if (mapping) {
-      await tx.execute(legacyWorkflowQueueLock(mapping));
-    }
-    if (await queuePausedForThread(tx, chatThreadId, mapping)) {
+    if (await queuePausedForThread(tx, chatThreadId)) {
       return null;
     }
 
@@ -371,13 +262,6 @@ export async function claimNextWorkflowQueueEvent(
     }
     if (await activeRunExistsForWorkflowThread(tx, chatThreadId)) {
       return null;
-    }
-
-    if (mapping) {
-      const legacy = await claimLegacyWorkflowQueueEvent(tx, mapping);
-      if (legacy) {
-        return legacy;
-      }
     }
 
     const [item] = await tx
@@ -411,26 +295,13 @@ export async function claimNextWorkflowQueueEvent(
       triggerBrief: item.triggerBrief,
       encryptedParams: item.encryptedParams,
       createdAt: item.createdAt,
-      source: "chat_message_queue",
-      workflowId: null,
     };
   });
 }
 
-/**
- * Pause is written to both homes while old API versions may still read the
- * legacy `workflow_user_trigger_threads` columns. Collapses to the
- * `chat_threads` columns once the legacy dual-read is removed.
- */
 async function setPauseState(
   db: Db,
-  target: {
-    readonly chatThreadId: string;
-    readonly mapping: Pick<
-      WorkflowThreadMapping,
-      "orgId" | "userId" | "workflowId"
-    > | null;
-  },
+  chatThreadId: string,
   pause: {
     readonly pausedAt: Date;
     readonly pauseReason: string | null;
@@ -444,33 +315,13 @@ async function setPauseState(
       pauseReason: pause?.pauseReason ?? null,
       updatedAt,
     })
-    .where(eq(chatThreads.id, target.chatThreadId));
-  if (target.mapping) {
-    await db
-      .update(workflowUserAutomationThreads)
-      .set({
-        queuePausedAt: pause?.pausedAt ?? null,
-        pauseReason: pause?.pauseReason ?? null,
-        updatedAt,
-      })
-      .where(
-        and(
-          eq(workflowUserAutomationThreads.orgId, target.mapping.orgId),
-          eq(workflowUserAutomationThreads.userId, target.mapping.userId),
-          eq(
-            workflowUserAutomationThreads.workflowId,
-            target.mapping.workflowId,
-          ),
-        ),
-      );
-  }
+    .where(eq(chatThreads.id, chatThreadId));
 }
 
 /**
  * Put a claimed event back at its original queue position (id and createdAt
- * are preserved, in the table it was claimed from) and pause the queue so the
- * failure does not burn through the backlog. Used when run creation for a
- * dequeued event fails.
+ * are preserved) and pause the queue so the failure does not burn through
+ * the backlog. Used when run creation for a dequeued event fails.
  */
 export async function restoreWorkflowQueueEventAndPause(
   db: Db,
@@ -483,37 +334,26 @@ export async function restoreWorkflowQueueEventAndPause(
   const { event } = args;
   await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(event.chatThreadId));
-    const mapping = await loadWorkflowThreadMapping(tx, event.chatThreadId);
-    if (mapping) {
-      await tx.execute(legacyWorkflowQueueLock(mapping));
-    }
 
-    if (event.source === "legacy" && event.workflowId !== null) {
-      await tx
-        .insert(zeroWorkflowQueueEvents)
-        .values({ ...event, workflowId: event.workflowId })
-        .onConflictDoNothing();
-    } else {
-      await tx
-        .insert(chatMessageQueue)
-        .values({
-          id: event.id,
-          orgId: event.orgId,
-          userId: event.userId,
-          chatThreadId: event.chatThreadId,
-          itemType: "workflow_event",
-          triggerId: event.triggerId,
-          triggerSource: event.triggerSource,
-          triggerBrief: event.triggerBrief,
-          encryptedParams: event.encryptedParams,
-          createdAt: event.createdAt,
-        })
-        .onConflictDoNothing();
-    }
+    await tx
+      .insert(chatMessageQueue)
+      .values({
+        id: event.id,
+        orgId: event.orgId,
+        userId: event.userId,
+        chatThreadId: event.chatThreadId,
+        itemType: "workflow_event",
+        triggerId: event.triggerId,
+        triggerSource: event.triggerSource,
+        triggerBrief: event.triggerBrief,
+        encryptedParams: event.encryptedParams,
+        createdAt: event.createdAt,
+      })
+      .onConflictDoNothing();
 
     await setPauseState(
       tx,
-      { chatThreadId: event.chatThreadId, mapping },
+      event.chatThreadId,
       { pausedAt: args.pausedAt, pauseReason: args.pauseReason },
       args.pausedAt,
     );
@@ -539,34 +379,9 @@ export async function pendingWorkflowQueueThreadIds(
       ),
     )
     .limit(limit);
-  const threadIds = new Set(
-    rows.map((row) => {
-      return row.chatThreadId;
-    }),
-  );
-  const legacyRows = await db
-    .selectDistinct({ chatThreadId: zeroWorkflowQueueEvents.chatThreadId })
-    .from(zeroWorkflowQueueEvents)
-    .innerJoin(
-      workflowUserAutomationThreads,
-      and(
-        eq(workflowUserAutomationThreads.orgId, zeroWorkflowQueueEvents.orgId),
-        eq(
-          workflowUserAutomationThreads.userId,
-          zeroWorkflowQueueEvents.userId,
-        ),
-        eq(
-          workflowUserAutomationThreads.workflowId,
-          zeroWorkflowQueueEvents.workflowId,
-        ),
-      ),
-    )
-    .where(isNull(workflowUserAutomationThreads.queuePausedAt))
-    .limit(limit);
-  for (const row of legacyRows) {
-    threadIds.add(row.chatThreadId);
-  }
-  return [...threadIds].slice(0, limit);
+  return rows.map((row) => {
+    return row.chatThreadId;
+  });
 }
 
 export interface WorkflowQueueThreadRow {
@@ -580,9 +395,7 @@ export interface WorkflowQueueThreadRow {
 
 /**
  * Resolve the caller-owned workflow-queue key for a chat thread. Null when
- * the thread has no workflow queue or belongs to another org/user. Pause
- * state prefers the `chat_threads` columns and falls back to the legacy
- * mapping columns written by pre-cutover API versions.
+ * the thread has no workflow queue or belongs to another org/user.
  */
 export async function loadWorkflowQueueThread(
   db: ReadonlyDb,
@@ -597,8 +410,6 @@ export async function loadWorkflowQueueThread(
       orgId: workflowUserAutomationThreads.orgId,
       userId: workflowUserAutomationThreads.userId,
       workflowId: workflowUserAutomationThreads.workflowId,
-      legacyPausedAt: workflowUserAutomationThreads.queuePausedAt,
-      legacyPauseReason: workflowUserAutomationThreads.pauseReason,
       queuePausedAt: chatThreads.queuePausedAt,
       pauseReason: chatThreads.pauseReason,
     })
@@ -623,8 +434,8 @@ export async function loadWorkflowQueueThread(
     userId: row.userId,
     workflowId: row.workflowId,
     chatThreadId: args.threadId,
-    queuePausedAt: row.queuePausedAt ?? row.legacyPausedAt,
-    pauseReason: row.pauseReason ?? row.legacyPauseReason,
+    queuePausedAt: row.queuePausedAt,
+    pauseReason: row.pauseReason,
   };
 }
 
@@ -686,24 +497,8 @@ export async function listPendingWorkflowQueueEvents(
         eq(chatMessageQueue.itemType, "workflow_event"),
       ),
     );
-  const legacyRows = await db
-    .select({
-      id: zeroWorkflowQueueEvents.id,
-      triggerId: zeroWorkflowQueueEvents.triggerId,
-      triggerSource: zeroWorkflowQueueEvents.triggerSource,
-      triggerBrief: zeroWorkflowQueueEvents.triggerBrief,
-      createdAt: zeroWorkflowQueueEvents.createdAt,
-    })
-    .from(zeroWorkflowQueueEvents)
-    .where(
-      and(
-        eq(zeroWorkflowQueueEvents.orgId, thread.orgId),
-        eq(zeroWorkflowQueueEvents.userId, thread.userId),
-        eq(zeroWorkflowQueueEvents.workflowId, thread.workflowId),
-      ),
-    );
   const events: PendingWorkflowQueueEvent[] = [];
-  for (const event of [...rows, ...legacyRows]) {
+  for (const event of rows) {
     if (event.triggerId !== null && event.triggerSource !== null) {
       events.push({
         id: event.id,
@@ -743,20 +538,7 @@ export async function deleteWorkflowQueueEventById(
       ),
     )
     .returning({ chatThreadId: chatMessageQueue.chatThreadId });
-  if (deleted) {
-    return deleted;
-  }
-  const [legacyDeleted] = await db
-    .delete(zeroWorkflowQueueEvents)
-    .where(
-      and(
-        eq(zeroWorkflowQueueEvents.id, args.eventId),
-        eq(zeroWorkflowQueueEvents.orgId, args.orgId),
-        eq(zeroWorkflowQueueEvents.userId, args.userId),
-      ),
-    )
-    .returning({ chatThreadId: zeroWorkflowQueueEvents.chatThreadId });
-  return legacyDeleted ?? null;
+  return deleted ?? null;
 }
 
 export async function clearWorkflowQueueEvents(
@@ -769,15 +551,6 @@ export async function clearWorkflowQueueEvents(
       and(
         eq(chatMessageQueue.chatThreadId, thread.chatThreadId),
         eq(chatMessageQueue.itemType, "workflow_event"),
-      ),
-    );
-  await db
-    .delete(zeroWorkflowQueueEvents)
-    .where(
-      and(
-        eq(zeroWorkflowQueueEvents.orgId, thread.orgId),
-        eq(zeroWorkflowQueueEvents.userId, thread.userId),
-        eq(zeroWorkflowQueueEvents.workflowId, thread.workflowId),
       ),
     );
 }
@@ -795,10 +568,5 @@ export async function setWorkflowQueuePause(
   } | null,
   updatedAt: Date,
 ): Promise<void> {
-  await setPauseState(
-    db,
-    { chatThreadId: thread.chatThreadId, mapping: thread },
-    pause,
-    updatedAt,
-  );
+  await setPauseState(db, thread.chatThreadId, pause, updatedAt);
 }
