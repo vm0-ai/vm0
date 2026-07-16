@@ -5944,87 +5944,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("shows a later in-place claimed run after the previous run completes", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000731";
-    const messageId = "00000000-0000-4000-8000-000000004031";
-    const previousRunId = "run-before-queue-first-claim";
-    const runId = "run-queue-first-claimed";
-    const prompt = "Run this message immediately";
-    const queuedMessage: {
-      id: string;
-      role: "user";
-      content: string;
-      runId: string | undefined;
-      createdAt: string;
-    } = {
-      id: messageId,
-      role: "user",
-      content: prompt,
-      runId: undefined,
-      createdAt: "2026-06-09T10:00:00Z",
-    };
-    const fetchedMessageIds: string[] = [];
-
-    mockChatLifecycle(context, {
-      threadId,
-      chatMessages: [
-        {
-          id: "msg-before-queue-first-user",
-          role: "user",
-          content: "Finish the current task first",
-          runId: previousRunId,
-          createdAt: "2026-06-09T09:59:00Z",
-        },
-        queuedMessage,
-        {
-          id: "msg-before-queue-first-assistant",
-          role: "assistant",
-          content: "The current task is complete.",
-          runId: previousRunId,
-          runEventId: "event-before-queue-first-assistant",
-          createdAt: "2026-06-09T10:00:01Z",
-        },
-        {
-          id: "msg-before-queue-first-completed",
-          role: "assistant",
-          content: null,
-          runId: previousRunId,
-          runLifecycleEvent: "completed",
-          createdAt: "2026-06-09T10:00:02Z",
-        },
-      ],
-      activeRunIds: [runId],
-      onMessageGet: (fetchedMessageId) => {
-        fetchedMessageIds.push(fetchedMessageId);
-      },
-    });
-
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-
-    await waitFor(() => {
-      expect(screen.getByText("1 message waiting to send")).toBeInTheDocument();
-      expect(screen.getByLabelText("Queued message")).toHaveTextContent(prompt);
-    });
-
-    queuedMessage.runId = runId;
-    context.mocks.ably.trigger(`chatThreadMessageUpdated:${threadId}`, {
-      messageId,
-    });
-
-    await waitFor(() => {
-      expect(fetchedMessageIds).toContain(messageId);
-      expect(
-        screen.queryByText("1 message waiting to send"),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
-      expect(screen.getByText(prompt)).toBeInTheDocument();
-      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-thinking-indicator]"),
-      ).not.toBeNull();
-    });
-  });
-
   it("catches recommended follow-ups written before realtime subscription is ready", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
@@ -6088,76 +6007,49 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("reconciles stale locally-queued messages claimed before realtime subscription is ready", async () => {
-    const claimedQueued: Extract<PagedChatMessage, { role: "user" }> = {
-      id: "00000000-0000-4000-8000-000000004101",
-      role: "user",
-      content: "First queued send",
-      runId: undefined,
-      createdAt: "2026-06-09T10:02:00Z",
-    };
-    const stillQueued: Extract<PagedChatMessage, { role: "user" }> = {
-      id: "00000000-0000-4000-8000-000000004102",
-      role: "user",
-      content: "Second queued send",
-      runId: undefined,
-      createdAt: "2026-06-09T10:03:00Z",
-    };
-    const fetchedMessageIds: string[] = [];
-    let claimedAfterInitialList = false;
+  it("restores an appended queued-message claim after refresh", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000731";
+    const queuedMessageId = "00000000-0000-4000-8000-000000004031";
+    const claimedMessageId = "00000000-0000-4000-8000-000000004032";
+    const runId = "run-queue-first-claimed";
+    const prompt = "Run this message immediately";
 
     mockChatLifecycle(context, {
-      threadId: FOLLOWUP_THREAD_ID,
-      threadTitle: "Queued reconciliation",
+      threadId,
       chatMessages: [
         {
-          id: "msg-reconcile-user",
+          id: queuedMessageId,
           role: "user",
-          content: "Original prompt",
-          runId: "run-reconcile-done",
+          content: prompt,
+          runId: undefined,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
-          id: "msg-reconcile-assistant",
-          role: "assistant",
-          content: "Original reply.",
-          runId: "run-reconcile-done",
-          createdAt: "2026-06-09T10:01:00Z",
+          id: claimedMessageId,
+          role: "user",
+          content: prompt,
+          runId,
+          revokesMessageId: queuedMessageId,
+          createdAt: "2026-06-09T10:00:01Z",
         },
-        claimedQueued,
-        stillQueued,
       ],
-      afterInitialMessagesList: () => {
-        if (claimedAfterInitialList) {
-          return;
-        }
-        claimedAfterInitialList = true;
-        // Simulate the server claiming the queued row in place while the
-        // dedicated chatThreadMessageUpdated event is lost: only a targeted
-        // refetch of the row can observe the new runId.
-        claimedQueued.runId = "run-reconcile-claimed";
-      },
-      onMessageGet: (messageId) => {
-        fetchedMessageIds.push(messageId);
-      },
+      activeRunIds: [runId],
     });
 
-    detachedSetupPage({
-      context,
-      path: `/chats/${FOLLOWUP_THREAD_ID}`,
-    });
+    // Optimistic sends are not persisted to IndexedDB. A refreshed page must
+    // recover entirely from the immutable queued row and its replacement.
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
     await waitFor(() => {
-      // The claimed row is not the latest message, so only the queued-row
-      // reconciliation pass can have refetched it.
-      expect(fetchedMessageIds).toContain(claimedQueued.id);
-      // Healed row is now associated with an in-flight run, so the thread
-      // shows the running indicator instead of a queued-only transcript.
+      expect(
+        screen.queryByText("1 message waiting to send"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(screen.getByText(prompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(
         document.querySelector("[data-thinking-indicator]"),
       ).not.toBeNull();
-      expect(screen.getByText("First queued send")).toBeInTheDocument();
-      expect(screen.getByText("Second queued send")).toBeInTheDocument();
     });
   });
 

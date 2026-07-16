@@ -695,9 +695,9 @@ async function requestSendMessageWithBearer(
   );
 }
 
-describe("CHAT-02: web chat send and client-id idempotency", () => {
-  it("creates a web chat run and replays client ids idempotently", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
+describe("CHAT-02: web chat send and client ids", () => {
+  it("creates a web chat run with client-provided ids", async () => {
+    const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const clientThreadId = randomUUID();
@@ -752,15 +752,37 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
       actor,
       clientThreadId,
       (items) => {
-        return userMessages(items).length === 1;
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === clientMessageId &&
+            message.runId === runId
+          );
+        });
       },
     );
-    expect(userMessages(messages.messages)).toHaveLength(1);
-    expect(userMessages(messages.messages)[0]).toMatchObject({
+    const userRows = userMessages(messages.messages);
+    expect(userRows).toHaveLength(2);
+    expect(userRows).toContainEqual(
+      expect.objectContaining({
+        id: clientMessageId,
+        content: prompt,
+      }),
+    );
+    expect(userRows).toContainEqual(
+      expect.objectContaining({
+        content: prompt,
+        runId,
+        revokesMessageId: clientMessageId,
+      }),
+    );
+    const original = userRows.find((message) => {
+      return message.id === clientMessageId;
+    });
+    expect(original).toMatchObject({
       id: clientMessageId,
       content: prompt,
-      runId,
     });
+    expect(original?.runId).toBeUndefined();
 
     await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {
@@ -770,48 +792,7 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
       },
     );
 
-    // Identical retry resolves through the associated client message.
-    const retry = await chat.requestSendMessage(
-      actor,
-      { agentId, prompt, clientThreadId, clientMessageId },
-      [201],
-    );
-    expect(retry.body).toStrictEqual(first.body);
-
-    // Same client thread with a fresh client message id resolves to the
-    // thread's first run instead of creating a second one.
-    const threadRetry = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        prompt: "retried after losing the response",
-        clientThreadId,
-        clientMessageId: randomUUID(),
-      },
-      [201],
-    );
-    if (threadRetry.status !== 201) {
-      throw new Error("Expected the client-thread retry to resolve");
-    }
-    expect(threadRetry.body.runId).toBe(runId);
-    const afterRetries = await chat.listThreadMessages(actor, clientThreadId);
-    expect(userMessages(afterRetries.messages)).toHaveLength(1);
-
-    const { sandboxHeaders } = await claimChatRun(runnerGroup, runId);
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(runId, sandboxHeaders);
-
-    const completedRetry = await chat.requestSendMessage(
-      actor,
-      { agentId, prompt, clientThreadId, clientMessageId },
-      [201],
-    );
-    expect(completedRetry.body).toStrictEqual({
-      ...first.body,
-      status: "completed",
-    });
-
-    // A pre-created client thread with no runs cannot be replayed into.
+    // A pre-created client thread with no runs cannot be sent into.
     const emptyClientThreadId = randomUUID();
     const created = await chat.createThread(actor, {
       agentId,
@@ -819,7 +800,7 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
       clientThreadId: emptyClientThreadId,
     });
     expect(created.id).toBe(emptyClientThreadId);
-    const emptyRetry = await chat.requestSendMessage(
+    const emptyThreadSend = await chat.requestSendMessage(
       actor,
       {
         agentId,
@@ -828,8 +809,8 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
       },
       [400],
     );
-    expectApiError(emptyRetry.body);
-    expect(emptyRetry.body.error.message).toBe(
+    expectApiError(emptyThreadSend.body);
+    expect(emptyThreadSend.body.error.message).toBe(
       "Client thread id is already in use",
     );
   }, 90_000);
@@ -1245,18 +1226,30 @@ describe("CHAT-02: org queue markers", () => {
       queuedThread,
       (items) => {
         return (
-          userMessages(items).length === 1 &&
+          userMessages(items).some((message) => {
+            return message.runId === queuedRun.body.runId;
+          }) &&
           assistantMessages(items).some((message) => {
             return message.runEventId === "queue:queued";
           })
         );
       },
     );
-    expect(userMessages(beforeDequeue.messages)).toHaveLength(1);
-    expect(userMessages(beforeDequeue.messages)[0]).toMatchObject({
+    const queuedRunUserRows = userMessages(beforeDequeue.messages);
+    expect(queuedRunUserRows).toHaveLength(2);
+    const queuedRunMessage = queuedRunUserRows.find((message) => {
+      return message.runId === queuedRun.body.runId;
+    });
+    expect(queuedRunMessage).toMatchObject({
       content: "wait behind the active run",
       runId: queuedRun.body.runId,
     });
+    expect(queuedRunMessage?.revokesMessageId).toBeDefined();
+    const queuedRunOriginal = queuedRunUserRows.find((message) => {
+      return message.id === queuedRunMessage?.revokesMessageId;
+    });
+    expect(queuedRunOriginal?.content).toBe("wait behind the active run");
+    expect(queuedRunOriginal?.runId).toBeUndefined();
     const marker = assistantMessages(beforeDequeue.messages).find((message) => {
       return message.runEventId === "queue:queued";
     });
@@ -3170,12 +3163,14 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       anchor.threadId,
       (items) => {
         return userMessages(items).some((message) => {
-          return message.id === queuedId && message.runId !== undefined;
+          return (
+            message.revokesMessageId === queuedId && message.runId !== undefined
+          );
         });
       },
     );
     const promoted = userMessages(messages.messages).find((message) => {
-      return message.id === queuedId;
+      return message.revokesMessageId === queuedId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to auto-send into a run");
@@ -3188,11 +3183,16 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       size: 12,
       url: expect.stringContaining(`${fileId}/notes.txt`),
     });
-    expect(
-      messages.messages.some((message) => {
-        return message.revokesMessageId === queuedId;
-      }),
-    ).toBeFalsy();
+    const original = await chat.getThreadMessage(
+      actor,
+      anchor.threadId,
+      queuedId,
+    );
+    expect(original).toMatchObject({
+      id: queuedId,
+      content: "queued with attachment",
+    });
+    expect(original.runId).toBeUndefined();
 
     const followUp = await api.readRun(actor, promoted.runId);
     expect(followUp.prompt).toContain("queued with attachment");
@@ -3473,7 +3473,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
 });
 
 describe("CHAT-02: shared user message queue", () => {
-  it("dispatches idle-thread sends by claiming the persisted message in place", async () => {
+  it("dispatches idle-thread sends by appending a run-associated replacement", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -3492,37 +3492,44 @@ describe("CHAT-02: shared user message queue", () => {
     }
     const runId = sent.body.runId;
 
-    // The claim binds the run onto the persisted message in place: the same
-    // row gains the run id and no shadow/revoke copy is ever written.
+    // The queued row stays immutable. Claiming appends the run-associated
+    // replacement and links it back to the queued row.
     const messages = await waitForThreadMessages(
       actor,
       sent.body.threadId,
       (items) => {
         return userMessages(items).some((message) => {
-          return message.id === messageId && message.runId === runId;
+          return (
+            message.revokesMessageId === messageId && message.runId === runId
+          );
         });
       },
     );
     const rows = userMessages(messages.messages);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      id: messageId,
+    expect(rows).toHaveLength(2);
+    const claimed = rows.find((message) => {
+      return message.revokesMessageId === messageId;
+    });
+    expect(claimed).toMatchObject({
       content: "queue-first direct dispatch",
       runId,
+      revokesMessageId: messageId,
     });
-    expect(
-      messages.messages.some((message) => {
-        return message.revokesMessageId === messageId;
-      }),
-    ).toBeFalsy();
+    expect(claimed?.id).not.toBe(messageId);
+    const queued = await chat.getThreadMessage(
+      actor,
+      sent.body.threadId,
+      messageId,
+    );
+    expect(queued).toMatchObject({
+      id: messageId,
+      content: "queue-first direct dispatch",
+    });
+    expect(queued.runId).toBeUndefined();
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return (
-            call[0] === `chatThreadMessageUpdated:${sent.body.threadId}` &&
-            (call[1] as { messageId?: string } | undefined)?.messageId ===
-              messageId
-          );
+          return call[0] === `chatThreadMessageCreated:${sent.body.threadId}`;
         });
       })
       .toBe(true);
@@ -3677,140 +3684,18 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.id === queuedMessageId && typeof message.runId === "string"
+            message.revokesMessageId === queuedMessageId &&
+            typeof message.runId === "string"
           );
         });
       },
     );
     const promoted = userMessages(messages.messages).find((message) => {
-      return message.id === queuedMessageId;
+      return message.revokesMessageId === queuedMessageId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to remain drainable");
     }
-    await cancelChatRun(actor, promoted.runId);
-  }, 90_000);
-
-  it("publishes the claim run-created signal when the message-updated publish fails", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    let failedMessageUpdatedPublish = false;
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (
-        typeof topic === "string" &&
-        topic.startsWith("chatThreadMessageUpdated:") &&
-        !failedMessageUpdatedPublish
-      ) {
-        failedMessageUpdatedPublish = true;
-        return Promise.reject(new Error("message updated publication failed"));
-      }
-      return Promise.resolve(undefined);
-    });
-
-    const sent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        prompt: "claim signals survive a failed publish",
-        clientMessageId: randomUUID(),
-      },
-      [201],
-    );
-    if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected an idle-thread queue-first send to dispatch");
-    }
-    const threadId = sent.body.threadId;
-
-    await expect
-      .poll(() => {
-        return failedMessageUpdatedPublish;
-      })
-      .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
-          return topic === `chatThreadRunCreated:${threadId}`;
-        });
-      })
-      .toBe(true);
-
-    await cancelChatRun(actor, sent.body.runId);
-  }, 90_000);
-
-  it("publishes the drain run-created signal when the message-updated publish fails", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const anchor = await sendChatRun(actor, {
-      agentId,
-      prompt: "message updated publication failure anchor",
-    });
-
-    const queuedMessageId = randomUUID();
-    const queued = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        prompt: "queued send drains despite a failed message-updated publish",
-        clientMessageId: queuedMessageId,
-      },
-      [201],
-    );
-    expect(queued.body).toMatchObject({
-      runId: null,
-      threadId: anchor.threadId,
-    });
-
-    context.mocks.ably.publish.mockClear();
-    let failedMessageUpdatedPublish = false;
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (
-        typeof topic === "string" &&
-        topic.startsWith("chatThreadMessageUpdated:") &&
-        !failedMessageUpdatedPublish
-      ) {
-        failedMessageUpdatedPublish = true;
-        return Promise.reject(new Error("message updated publication failed"));
-      }
-      return Promise.resolve(undefined);
-    });
-
-    await cancelChatRun(actor, anchor.runId);
-    const messages = await waitForThreadMessages(
-      actor,
-      anchor.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return (
-            message.id === queuedMessageId && typeof message.runId === "string"
-          );
-        });
-      },
-    );
-    const promoted = userMessages(messages.messages).find((message) => {
-      return message.id === queuedMessageId;
-    });
-    if (!promoted?.runId) {
-      throw new Error("Expected the queued message to be drained");
-    }
-    // The drain publishes are scheduled side effects, so they can land after
-    // the message row is already observable as drained. Poll instead of
-    // asserting synchronously.
-    await expect
-      .poll(() => {
-        return failedMessageUpdatedPublish;
-      })
-      .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
-          return topic === `chatThreadRunCreated:${anchor.threadId}`;
-        });
-      })
-      .toBe(true);
-
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 
@@ -3902,15 +3787,18 @@ describe("CHAT-02: shared user message queue", () => {
 
     const messages = await chat.listThreadMessages(actor, anchor.threadId);
     const claimed = userMessages(messages.messages).filter((message) => {
-      return message.id === messageId && message.runId !== undefined;
+      return (
+        message.revokesMessageId === messageId && message.runId !== undefined
+      );
     });
     expect(claimed).toHaveLength(1);
     expect(claimed[0]?.runId).toBe(sent.body.runId);
-    expect(
-      messages.messages.some((message) => {
-        return message.revokesMessageId === messageId;
-      }),
-    ).toBeFalsy();
+    const queued = await chat.getThreadMessage(
+      actor,
+      anchor.threadId,
+      messageId,
+    );
+    expect(queued.runId).toBeUndefined();
 
     const runList = await api.listAgentRuns(actor, {
       status: "queued,pending,running,completed,failed,timeout,cancelled",
@@ -3934,7 +3822,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, sent.body.runId);
   }, 90_000);
 
-  it("claims queued messages in place on auto-send and recalls by deletion", async () => {
+  it("appends replacements on auto-send and recalls queued messages by deletion", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -4004,8 +3892,9 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(repeatedRecall.body).toMatchObject({ runId: null });
 
-    // Completing the anchor auto-sends the queued message: the original row
-    // itself gains the follow-up run id (no shadow row, no revoke pointer).
+    // Completing the anchor auto-sends the queued message by appending a
+    // run-associated replacement while preserving the queued row.
+    context.mocks.ably.publish.mockClear();
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
     const messages = await waitForThreadMessages(
@@ -4013,30 +3902,30 @@ describe("CHAT-02: shared user message queue", () => {
       anchor.threadId,
       (items) => {
         return userMessages(items).some((message) => {
-          return message.id === queuedId && typeof message.runId === "string";
+          return (
+            message.revokesMessageId === queuedId &&
+            typeof message.runId === "string"
+          );
         });
       },
     );
     const promoted = userMessages(messages.messages).find((message) => {
-      return message.id === queuedId;
+      return message.revokesMessageId === queuedId;
     });
     if (!promoted?.runId) {
-      throw new Error("Expected the queued message to claim a run in place");
+      throw new Error("Expected the queued message to append a replacement");
     }
     expect(promoted.content).toBe("queue-first waits for the anchor");
-    expect(
-      messages.messages.some((message) => {
-        return message.revokesMessageId === queuedId;
-      }),
-    ).toBeFalsy();
+    const original = await chat.getThreadMessage(
+      actor,
+      anchor.threadId,
+      queuedId,
+    );
+    expect(original.runId).toBeUndefined();
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return (
-            call[0] === `chatThreadMessageUpdated:${anchor.threadId}` &&
-            (call[1] as { messageId?: string } | undefined)?.messageId ===
-              queuedId
-          );
+          return call[0] === `chatThreadMessageCreated:${anchor.threadId}`;
         });
       })
       .toBe(true);
@@ -4070,7 +3959,7 @@ describe("CHAT-02: shared user message queue", () => {
     expect(queued.body).toMatchObject({ runId: null });
 
     // Cancelling the anchor frees the thread; the cancel side effects drain
-    // the queue, so the queued message claims a fresh run in place without
+    // the queue, so the queued message gets a fresh associated row without
     // waiting for a completed-run callback or another send (#21392).
     await cancelChatRun(actor, anchor.runId);
     const messages = await waitForThreadMessages(
@@ -4079,7 +3968,7 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.id === queuedId &&
+            message.revokesMessageId === queuedId &&
             typeof message.runId === "string" &&
             message.runId !== anchor.runId
           );
@@ -4087,17 +3976,18 @@ describe("CHAT-02: shared user message queue", () => {
       },
     );
     const fired = userMessages(messages.messages).find((message) => {
-      return message.id === queuedId;
+      return message.revokesMessageId === queuedId;
     });
     if (!fired?.runId) {
       throw new Error("Expected the queued message to fire after cancel");
     }
     expect(fired.content).toBe("queue-first fires after cancel");
-    expect(
-      messages.messages.some((message) => {
-        return message.revokesMessageId === queuedId;
-      }),
-    ).toBeFalsy();
+    const original = await chat.getThreadMessage(
+      actor,
+      anchor.threadId,
+      queuedId,
+    );
+    expect(original.runId).toBeUndefined();
 
     const followUp = await api.readRun(actor, fired.runId);
     expect(followUp.prompt).toContain("queue-first fires after cancel");

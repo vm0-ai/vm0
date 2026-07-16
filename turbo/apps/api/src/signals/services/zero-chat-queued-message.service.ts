@@ -128,20 +128,85 @@ export async function hasUserMessageQueueItem(
   return item !== undefined;
 }
 
+interface ClaimedUserMessage {
+  readonly createdAt: Date;
+}
+
 /**
- * Claim a queue-first user message for a created run: bind the run id onto
- * the existing message row and consume its queue item. Serialized on the
- * thread row like the legacy claim. Returns the claimed message's createdAt,
- * or null when the message was already claimed or recalled.
+ * Append the run-associated replacement for a queued user message and consume
+ * its queue item. Callers serialize dispatch decisions before invoking this.
  */
-export async function claimUserMessageInPlace(
+export async function appendClaimedUserMessage(
   db: Db,
   args: {
     readonly threadId: string;
     readonly messageId: string;
     readonly runId: string;
   },
-): Promise<{ readonly createdAt: Date } | null> {
+): Promise<ClaimedUserMessage | null> {
+  const [queued] = await db
+    .select({
+      content: chatMessages.content,
+      attachFiles: chatMessages.attachFiles,
+      attachFileMetadata: chatMessages.attachFileMetadata,
+      generationTemplate: chatMessages.generationTemplate,
+    })
+    .from(chatMessageQueue)
+    .innerJoin(
+      chatMessages,
+      eq(chatMessages.id, chatMessageQueue.chatMessageId),
+    )
+    .where(
+      and(
+        eq(chatMessageQueue.itemType, "user_message"),
+        eq(chatMessageQueue.chatMessageId, args.messageId),
+        eq(chatMessageQueue.chatThreadId, args.threadId),
+        eq(chatMessages.chatThreadId, args.threadId),
+        eq(chatMessages.role, "user"),
+        isNull(chatMessages.runId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!queued) {
+    return null;
+  }
+
+  const [claimed] = await db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: args.threadId,
+      role: "user",
+      content: queued.content,
+      runId: args.runId,
+      revokesMessageId: args.messageId,
+      attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
+      attachFileMetadata: queued.attachFileMetadata
+        ? [...queued.attachFileMetadata]
+        : null,
+      generationTemplate: queued.generationTemplate,
+    })
+    .onConflictDoNothing({ target: chatMessages.revokesMessageId })
+    .returning({ createdAt: chatMessages.createdAt });
+  if (!claimed) {
+    return null;
+  }
+  await deleteUserMessageQueueItem(db, args.messageId);
+  return claimed;
+}
+
+/**
+ * Serialize an inline queue claim on the thread, append its associated user
+ * message, and consume the queue item.
+ */
+export async function claimQueuedUserMessage(
+  db: Db,
+  args: {
+    readonly threadId: string;
+    readonly messageId: string;
+    readonly runId: string;
+  },
+): Promise<ClaimedUserMessage | null> {
   return await db.transaction(async (tx) => {
     const threadRows = await tx.execute<{ readonly id: string }>(sql`
       SELECT ${chatThreads.id} AS "id"
@@ -152,24 +217,7 @@ export async function claimUserMessageInPlace(
     if (!threadRows.rows[0]) {
       return null;
     }
-
-    const [claimed] = await tx
-      .update(chatMessages)
-      .set({ runId: args.runId })
-      .where(
-        and(
-          eq(chatMessages.id, args.messageId),
-          eq(chatMessages.chatThreadId, args.threadId),
-          eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
-        ),
-      )
-      .returning({ createdAt: chatMessages.createdAt });
-    if (!claimed) {
-      return null;
-    }
-    await deleteUserMessageQueueItem(tx, args.messageId);
-    return claimed;
+    return await appendClaimedUserMessage(tx, args);
   });
 }
 

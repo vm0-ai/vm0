@@ -1039,31 +1039,34 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected the queued message to be auto-claimed");
     }
     expect(claimed.runId).not.toBe(first.runId);
-    expect(claimed.id).toBe(queued.id);
-    expect(claimed.revokesMessageId).toBeUndefined();
+    expect(claimed.id).not.toBe(queued.id);
+    expect(claimed.revokesMessageId).toBe(queued.id);
     expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
-    // Queue-first claims bind the follow-up run onto the persisted message in
-    // place instead of writing a shadow/revoke copy.
-    expect(
-      userMessages(afterAutoSend.messages)
-        .filter((message) => {
-          return message.content === "queued next turn";
-        })
-        .map((message) => {
-          return message.id;
-        })
-        .sort(),
-    ).toStrictEqual([queued.id]);
+    const original = await chat.getThreadMessage(
+      actor,
+      first.threadId,
+      queued.id,
+    );
+    expect(original.runId).toBeUndefined();
+    // The raw message page contains both immutable rows; the client folds the
+    // original into its run-associated replacement.
+    const matchingMessageIds = userMessages(afterAutoSend.messages)
+      .filter((message) => {
+        return message.content === "queued next turn";
+      })
+      .map((message) => {
+        return message.id;
+      });
+    expect(matchingMessageIds).toHaveLength(2);
+    expect(matchingMessageIds).toStrictEqual(
+      expect.arrayContaining([queued.id, claimed.id]),
+    );
     // The auto-send publishes happen in background callback processing, so
     // poll until each expected channel has been published before asserting.
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return (
-            call[0] === `chatThreadMessageUpdated:${first.threadId}` &&
-            (call[1] as { messageId?: string } | undefined)?.messageId ===
-              queued.id
-          );
+          return call[0] === `chatThreadMessageCreated:${first.threadId}`;
         });
       })
       .toBe(true);
@@ -1075,8 +1078,8 @@ describe("CHAT-02: completed chat callback", () => {
       })
       .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadMessageUpdated:${first.threadId}`,
-      { messageId: queued.id },
+      `chatThreadMessageCreated:${first.threadId}`,
+      null,
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadRunCreated:${first.threadId}`,
@@ -1212,7 +1215,10 @@ describe("CHAT-02: completed chat callback", () => {
       first.threadId,
       (messages) => {
         return userMessages(messages).some((message) => {
-          return message.id === queued.id && message.runId !== undefined;
+          return (
+            message.revokesMessageId === queued.id &&
+            message.runId !== undefined
+          );
         });
       },
     );
@@ -1229,7 +1235,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(markerBeforeRelease.recommendedFollowups).toBeUndefined();
 
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.id === queued.id;
+      return message.revokesMessageId === queued.id;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to auto-send");
@@ -2158,12 +2164,15 @@ Continue after the long Unicode prefix.`;
       first.threadId,
       (messages) => {
         return userMessages(messages).some((message) => {
-          return message.id === queued.id && message.runId !== undefined;
+          return (
+            message.revokesMessageId === queued.id &&
+            message.runId !== undefined
+          );
         });
       },
     );
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.id === queued.id;
+      return message.revokesMessageId === queued.id;
     });
     expect(
       claimed?.runId,
@@ -2230,7 +2239,10 @@ Continue after the long Unicode prefix.`;
       first.threadId,
       (messages) => {
         const claimed = userMessages(messages).find((message) => {
-          return message.id === queued.id && message.runId !== undefined;
+          return (
+            message.revokesMessageId === queued.id &&
+            message.runId !== undefined
+          );
         });
         return (
           claimed !== undefined &&
@@ -2244,7 +2256,7 @@ Continue after the long Unicode prefix.`;
       },
     );
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.id === queued.id;
+      return message.revokesMessageId === queued.id;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to auto-send");
@@ -2544,11 +2556,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return (
-            call[0] === `chatThreadMessageUpdated:${first.threadId}` &&
-            (call[1] as { messageId?: string } | undefined)?.messageId ===
-              first.messageId
-          );
+          return call[0] === `chatThreadMessageCreated:${first.threadId}`;
         });
       })
       .toBe(true);
@@ -3566,11 +3574,7 @@ describe("CHAT-02: thread deletion while a run is active", () => {
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return (
-            call[0] === `chatThreadMessageUpdated:${run.threadId}` &&
-            (call[1] as { messageId?: string } | undefined)?.messageId ===
-              run.messageId
-          );
+          return call[0] === `chatThreadMessageCreated:${run.threadId}`;
         });
       })
       .toBe(true);
