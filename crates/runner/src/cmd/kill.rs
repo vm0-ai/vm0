@@ -1732,17 +1732,20 @@ mod tests {
 
     #[tokio::test]
     async fn cleanup_orphan_succeeds_when_dirs_missing() {
-        let control = MockSandboxControl::new("/tmp/nonexistent-base");
-        let results = cleanup_orphan(
-            "sbox-456",
-            std::path::Path::new("/tmp/no-such-dir"),
-            &control,
-        )
-        .await;
+        let workspace_base = tempfile::tempdir().unwrap();
+        let sock_base = tempfile::tempdir().unwrap();
+        let control = MockSandboxControl::new(sock_base.path());
+        let workspace = workspace_base.path().join("workspaces").join("sbox-456");
+        let sock_dir = control.runtime_dir("sbox-456");
+
+        assert!(!workspace.exists(), "workspace should start missing");
+        assert!(!sock_dir.exists(), "socket directory should start missing");
+
+        let results = cleanup_orphan("sbox-456", workspace_base.path(), &control).await;
 
         // Both should "succeed" — NotFound is treated as success
         assert_eq!(results.len(), 2);
-        assert!(results[0].1);
-        assert!(results[1].1);
+        assert!(results[0].1, "workspace cleanup should succeed");
+        assert!(results[1].1, "socket cleanup should succeed");
     }
 }
