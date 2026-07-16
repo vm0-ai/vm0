@@ -1220,22 +1220,9 @@ export {
 } from "./zero-feature-switches";
 export {
   zeroMemoryContract,
-  type MemorySourceListResponse,
-  type MemorySourceProvider,
-  type SlackMemoryBackfillRequest,
-  type SlackMemoryStatusResponse,
+  type MemoryDetailResponse,
   type ZeroMemoryContract,
 } from "./zero-memory";
-export {
-  zeroRelationshipsContract,
-  relationshipRecordSchema,
-  relationshipResolveResponseSchema,
-  relationshipSearchResponseSchema,
-  type RelationshipRecord,
-  type RelationshipResolveResponse,
-  type RelationshipSearchResponse,
-  type ZeroRelationshipsContract,
-} from "./zero-relationships";
 export {
   zeroMemoryDevRefreshContract,
   type MemoryDevRefreshResponse,

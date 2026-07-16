@@ -59,8 +59,6 @@ export enum FeatureSwitchKey {
 
   ZapierConnector = "zapierConnector",
   MemoryViewer = "memoryViewer",
-  RelationshipMemory = "relationshipMemory",
-  RelationshipMemoryRuntimeInjection = "relationshipMemoryRuntimeInjection",
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   DesktopX64Download = "desktopX64Download",

@@ -21,7 +21,6 @@ import {
   notionWebhookEvents,
   notionWebhookSecrets,
   notionWorkflowPendingEvents,
-  type NotionWorkflowPendingEventFamily,
   type NotionWorkflowPendingEventContext,
 } from "@vm0/db/schema/notion-event";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
@@ -51,7 +50,6 @@ import {
   type RunWorkflowAutomationResult,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
-import { recordNotionPageMemorySource } from "./notion-memory-source.service";
 
 const log = logger("api:notion-workflow-event");
 
@@ -2144,75 +2142,6 @@ function notionRunFailureMessage(
     : result.response.body.error.message;
 }
 
-function notionMemoryEventType(
-  eventFamily: NotionWorkflowPendingEventFamily,
-): "page.created" | "page.content_updated" | "page.properties_updated" {
-  return eventFamily === "page_content_updated"
-    ? "page.content_updated"
-    : "page.created";
-}
-
-async function recordNotionPendingPageMemorySource(args: {
-  readonly db: Db;
-  readonly row: DueNotionAutomationRow;
-  readonly pending: NotionPendingRow;
-  readonly connectorId: string;
-  readonly page: NotionPageResponse;
-  readonly parent: {
-    readonly title: string | null;
-    readonly url: string | null;
-  };
-}): Promise<boolean> {
-  const context = args.pending.latestEventContext;
-  return await recordNotionPageMemorySource({
-    db: args.db,
-    orgId: args.row.automation.orgId,
-    userId: args.row.automation.ownerUserId,
-    connectorId: args.connectorId,
-    page: {
-      id: args.page.id,
-      title: notionTitleFromProperties(args.page.properties),
-      url: args.page.url ?? null,
-      createdTime: args.page.created_time ?? null,
-      lastEditedTime: args.page.last_edited_time ?? null,
-    },
-    parent: args.parent,
-    workspaceId: context?.workspaceId ?? null,
-    workspaceName: context?.workspaceName ?? null,
-    eventId: args.pending.latestNotionEventId,
-    eventFamily: args.pending.eventFamily,
-    eventType: notionMemoryEventType(args.pending.eventFamily),
-    scopeType: args.pending.scopeType,
-    scopeId: args.pending.scopeId,
-    authorIds:
-      context?.authors.map((author) => {
-        return author.id;
-      }) ?? [],
-    occurredAt: args.pending.latestEventAt,
-    reason: `notion_${args.pending.eventFamily}`,
-  });
-}
-
-async function recordNotionMemorySourceForPending(
-  args: ProcessClaimedNotionPendingEventArgs,
-  connectorId: string,
-  page: NotionPageResponse,
-  parent: {
-    readonly title: string | null;
-    readonly url: string | null;
-  },
-): Promise<void> {
-  await recordNotionPendingPageMemorySource({
-    db: args.db,
-    row: args.row,
-    pending: args.pending,
-    connectorId,
-    page,
-    parent,
-  });
-  args.signal.throwIfAborted();
-}
-
 async function resolveCurrentParentReference(args: {
   readonly accessToken: string;
   readonly config: NotionChildPageCreatedEventConfig;
@@ -2401,13 +2330,6 @@ async function processClaimedNotionChildPagePendingEvent(
     config: config.data,
     signal: args.signal,
   });
-  await recordNotionMemorySourceForPending(
-    args,
-    config.data.connectorId,
-    childPage,
-    parent,
-  );
-
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,
@@ -2524,13 +2446,6 @@ async function processClaimedNotionDatabaseItemPendingEvent(
     config: config.data,
     signal: args.signal,
   });
-  await recordNotionMemorySourceForPending(
-    args,
-    config.data.connectorId,
-    page,
-    dataSource,
-  );
-
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,
@@ -2685,13 +2600,6 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
     scope: config.data.scope,
     signal: args.signal,
   });
-  await recordNotionMemorySourceForPending(
-    args,
-    config.data.connectorId,
-    page,
-    pageContentUpdatedScopeParent(scope),
-  );
-
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,

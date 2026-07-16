@@ -47,7 +47,6 @@ import {
 } from "./zero-workflow-automation-run.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
-import { enqueueGmailRelationshipRefreshJob } from "./relationship-memory-gmail-queue.service";
 
 const log = logger("api:gmail-workflow-event");
 
@@ -1550,41 +1549,6 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
   );
   if (!message || !messageIsInbound(message)) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
-  }
-
-  if (message.occurredAt) {
-    await tapError(
-      enqueueGmailRelationshipRefreshJob(args.db, {
-        orgId: args.state.orgId,
-        userId: args.state.userId,
-        connectorId: args.state.connectorId,
-        message: {
-          mailboxEmail: args.decoded.emailAddress,
-          historyId: args.event.historyId,
-          messageId: message.messageId,
-          threadId: message.threadId,
-          occurredAt: message.occurredAt,
-          direction: "received",
-          from: message.from,
-          to: message.to,
-          cc: message.cc,
-          subject: message.subject,
-          bodyText: message.bodyText,
-        },
-      }),
-      (error) => {
-        log.warn("Failed to enqueue Gmail relationship memory refresh", {
-          watchStateId: args.state.id,
-          messageId: message.messageId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      },
-    );
-  } else {
-    log.warn("Skipped Gmail relationship memory refresh without message time", {
-      watchStateId: args.state.id,
-      messageId: message.messageId,
-    });
   }
 
   let dispatched = 0;

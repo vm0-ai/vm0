@@ -10,7 +10,6 @@ import {
   index,
   check,
   jsonb,
-  real,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
@@ -248,31 +247,6 @@ export const zeroWorkflowAutomations = pgTable(
             AND interval_seconds IS NULL
             AND at_time IS NULL
           )`,
-      ),
-    ];
-  },
-);
-
-export const zeroWorkflowAutomationMemoryEmbeddings = pgTable(
-  "zero_workflow_automation_memory_embeddings",
-  {
-    workflowAutomationId: uuid("workflow_automation_id")
-      .primaryKey()
-      .references(
-        () => {
-          return zeroWorkflowAutomations.id;
-        },
-        { onDelete: "cascade" },
-      ),
-    embeddingModel: text("embedding_model").notNull(),
-    queryHash: varchar("query_hash", { length: 64 }).notNull(),
-    embedding: real("embedding").array().notNull(),
-  },
-  (table) => {
-    return [
-      check(
-        "zero_workflow_automation_memory_embeddings_dimensions_check",
-        sql`cardinality(${table.embedding}) = 1536`,
       ),
     ];
   },

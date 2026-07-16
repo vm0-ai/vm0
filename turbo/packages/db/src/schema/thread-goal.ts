@@ -8,7 +8,6 @@ import {
   uniqueIndex,
   index,
   check,
-  real,
 } from "drizzle-orm/pg-core";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
@@ -53,31 +52,6 @@ export const threadGoals = pgTable(
       check(
         "thread_goals_status_check",
         sql`status IN ('active', 'paused', 'blocked', 'complete')`,
-      ),
-    ];
-  },
-);
-
-export const threadGoalMemoryEmbeddings = pgTable(
-  "thread_goal_memory_embeddings",
-  {
-    goalId: uuid("goal_id")
-      .primaryKey()
-      .references(
-        () => {
-          return threadGoals.id;
-        },
-        { onDelete: "cascade" },
-      ),
-    embeddingModel: text("embedding_model").notNull(),
-    queryHash: varchar("query_hash", { length: 64 }).notNull(),
-    embedding: real("embedding").array().notNull(),
-  },
-  (table) => {
-    return [
-      check(
-        "thread_goal_memory_embeddings_dimensions_check",
-        sql`cardinality(${table.embedding}) = 1536`,
       ),
     ];
   },

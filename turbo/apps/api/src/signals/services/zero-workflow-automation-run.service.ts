@@ -106,7 +106,6 @@ interface WorkflowAutomationRunInput {
   readonly appendSystemPrompt: string;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
-  readonly memoryEmbeddingWorkflowAutomationId?: string;
 }
 
 function generateCallbackSecret(): string {
@@ -375,11 +374,6 @@ async function buildTimedWorkflowAutomationRunInput(args: {
           args.automation,
           args.command.triggerBrief,
         ),
-        ...(args.automation.kind === "schedule" &&
-        (args.automation.scheduleType === "cron" ||
-          args.automation.scheduleType === "loop")
-          ? { memoryEmbeddingWorkflowAutomationId: args.automation.id }
-          : {}),
       };
     },
   );
@@ -584,8 +578,6 @@ export const runWorkflowAutomationNow$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
-        memoryEmbeddingWorkflowAutomationId:
-          runInput.memoryEmbeddingWorkflowAutomationId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         timing,
       },
