@@ -509,6 +509,7 @@ const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
+  "vm0-model",
   "claude-sonnet-5",
   "gpt-5.6-terra",
   "gpt-5.6-luna",

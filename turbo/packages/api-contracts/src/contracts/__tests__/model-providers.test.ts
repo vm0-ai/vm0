@@ -159,7 +159,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("identifies models blocked on limited-free-1", () => {
-    expect(isLimitedFree1RestrictedRunModel("vm0-model")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("vm0-model")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-terra")).toBe(false);
