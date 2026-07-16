@@ -739,105 +739,92 @@ function assertConnectorAuthProviderMethodContract(
   }
 }
 
-function connectorAuthCodeGrantProviderFor(
+function connectorAuthProviderRegistrationFor(
   selection: ConnectorAuthProviderMethodSelection,
-): RuntimeAuthCodeGrantProvider {
+): PreparedRuntimeAuthProviderRegistration {
   const registration = getRuntimeAuthProviderRegistration(
     selection.connectorRef,
     selection.authMethodId,
   );
+  assertConnectorAuthProviderMethodContract(selection, registration);
+  return registration;
+}
+
+function connectorAuthCodeGrantProviderFor(
+  selection: ConnectorAuthProviderMethodSelection,
+): RuntimeAuthCodeGrantProvider {
+  const registration = connectorAuthProviderRegistrationFor(selection);
   const { grant } = registration.entry;
   if (grant?.kind !== "auth-code") {
     throw new Error(
       `Missing auth-code grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  assertConnectorAuthProviderMethodContract(selection, registration);
   return grant;
 }
 
 function connectorDeviceAuthGrantProviderFor(
   selection: ConnectorAuthProviderMethodSelection,
 ): RuntimeDeviceAuthGrantProvider {
-  const registration = getRuntimeAuthProviderRegistration(
-    selection.connectorRef,
-    selection.authMethodId,
-  );
+  const registration = connectorAuthProviderRegistrationFor(selection);
   const { grant } = registration.entry;
   if (grant?.kind !== "device-auth") {
     throw new Error(
       `Missing device-auth grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  assertConnectorAuthProviderMethodContract(selection, registration);
   return grant;
 }
 
 function connectorOpenIdAuthGrantProviderFor(
   selection: ConnectorAuthProviderMethodSelection,
 ): RuntimeOpenIdAuthGrantProvider {
-  const registration = getRuntimeAuthProviderRegistration(
-    selection.connectorRef,
-    selection.authMethodId,
-  );
+  const registration = connectorAuthProviderRegistrationFor(selection);
   const { grant } = registration.entry;
   if (grant?.kind !== "openid-auth") {
     throw new Error(
       `Missing openid-auth grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  assertConnectorAuthProviderMethodContract(selection, registration);
   return grant;
 }
 
 function connectorExternalCodeGrantProviderFor(
   selection: ConnectorAuthProviderMethodSelection,
 ): RuntimeExternalCodeGrantProvider {
-  const registration = getRuntimeAuthProviderRegistration(
-    selection.connectorRef,
-    selection.authMethodId,
-  );
+  const registration = connectorAuthProviderRegistrationFor(selection);
   const { grant } = registration.entry;
   if (grant?.kind !== "external-code") {
     throw new Error(
       `Missing external-code grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  assertConnectorAuthProviderMethodContract(selection, registration);
   return grant;
 }
 
 function connectorRefreshTokenAccessProviderFor(
   selection: ConnectorAuthProviderMethodSelection,
 ): RuntimeRefreshTokenAccessProvider {
-  const registration = getRuntimeAuthProviderRegistration(
-    selection.connectorRef,
-    selection.authMethodId,
-  );
+  const registration = connectorAuthProviderRegistrationFor(selection);
   const { access } = registration.entry;
   if (access?.kind !== "refresh-token") {
     throw new Error(
       `Missing refresh-token access provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  assertConnectorAuthProviderMethodContract(selection, registration);
   return access;
 }
 
 function connectorTokenRevokeProviderFor(
   selection: ConnectorAuthProviderMethodSelection,
 ): RuntimeTokenRevokeProvider {
-  const registration = getRuntimeAuthProviderRegistration(
-    selection.connectorRef,
-    selection.authMethodId,
-  );
+  const registration = connectorAuthProviderRegistrationFor(selection);
   const { revoke } = registration.entry;
   if (revoke?.kind !== "token-revoke") {
     throw new Error(
       `Missing token-revoke provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  assertConnectorAuthProviderMethodContract(selection, registration);
   return revoke;
 }
 
