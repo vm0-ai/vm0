@@ -6,7 +6,7 @@ import {
   useLoadable,
   useSet,
 } from "ccstate-react";
-import { IconBolt, IconCheck, IconCpu } from "@tabler/icons-react";
+import { IconBolt, IconCpu } from "@tabler/icons-react";
 import {
   Select,
   SelectContent,
@@ -414,13 +414,9 @@ function modelFirstSelectionFromRaw(
 function ModelFirstPolicyRowContent({
   policy,
   limitedFree1,
-  selected = false,
-  showSelectedIndicator = false,
 }: {
   policy: OrgModelPolicy;
   limitedFree1: boolean;
-  selected?: boolean;
-  showSelectedIndicator?: boolean;
 }) {
   const iconType = getModelFirstIconType(policy.model);
   const builtInPriceTier =
@@ -440,11 +436,6 @@ function ModelFirstPolicyRowContent({
         <ByokBadge />
       )}
       {restricted && <ProBadge />}
-      {showSelectedIndicator && (
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center text-foreground">
-          {selected && <IconCheck size={15} stroke={1.8} />}
-        </span>
-      )}
     </span>
   );
 }
