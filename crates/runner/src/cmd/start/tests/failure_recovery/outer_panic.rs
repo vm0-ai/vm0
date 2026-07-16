@@ -97,6 +97,7 @@ async fn outer_job_panic_after_active_stop_panic_preserves_status_for_reconcilia
 
     let (mut config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, Arc::clone(&overrides));
+    // This hook runs after destroy bookkeeping for completed and uncertain outcomes.
     config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::DestroyCompleted);
     config.orphan_reap.process_discovery = Some(OrphanReapProcessDiscovery {
         firecrackers: Arc::new(Vec::new()),
