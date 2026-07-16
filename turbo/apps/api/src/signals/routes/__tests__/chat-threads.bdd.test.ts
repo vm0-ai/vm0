@@ -4,6 +4,7 @@ import { HttpResponse, http } from "msw";
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   zeroWorkflowsCollectionContract,
@@ -44,6 +45,15 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  deleteVm0ManagedDefaultModelKey,
+  seedVm0ManagedDefaultModelKey,
+} from "./helpers/runtime-state";
+import {
+  generatedStripeCustomerId,
+  generatedStripeSubscriptionId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -132,23 +142,34 @@ interface EntitledChatActor {
   readonly runnerGroup: string;
 }
 
-async function entitledChatActor(
+type EntitledChatActorWithoutRunner = Omit<EntitledChatActor, "runnerGroup">;
+
+async function entitledChatActorWithoutRunner(
   displayName: string,
-): Promise<EntitledChatActor> {
+): Promise<EntitledChatActorWithoutRunner> {
   const actor = bdd.user();
   chatCallbacks.acceptChatObjectStorage();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   chatCallbacks.disableVapid();
-  const runnerGroup = api.configureRunnerGroup();
   await api.grantProEntitlement(actor);
   await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName,
     visibility: "private",
   });
-  return { actor, agentId: agent.agentId, runnerGroup };
+  return { actor, agentId: agent.agentId };
+}
+
+async function entitledChatActor(
+  displayName: string,
+): Promise<EntitledChatActor> {
+  const runnerGroup = api.configureRunnerGroup();
+  return {
+    ...(await entitledChatActorWithoutRunner(displayName)),
+    runnerGroup,
+  };
 }
 
 async function sendChatRun(
@@ -1430,8 +1451,8 @@ describe("CHAT-01 chat thread read state", () => {
 });
 
 describe("CHAT-03 run usage messages", () => {
-  it("appends immutable usage messages as settled usage changes", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor(
+  it("emits one immutable usage message per run", async () => {
+    const { actor, agentId } = await entitledChatActorWithoutRunner(
       "Usage message agent",
     );
     const provider = `bdd-usage-${randomUUID().slice(0, 8)}`;
@@ -1445,7 +1466,9 @@ describe("CHAT-03 run usage messages", () => {
       agentId,
       prompt: "record billable usage",
     });
-    const { sandboxHeaders } = await claimChatRun(runnerGroup, runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, runId)}`,
+    };
     await webhooks.requestAgentUsageEvent(
       {
         runId,
@@ -1469,13 +1492,16 @@ describe("CHAT-03 run usage messages", () => {
       sandboxHeaders,
       [200],
     );
-
-    await completeChatRunOk(runId, sandboxHeaders);
-    await flushWaitUntilForTest();
+    const billing = createBillingMediaApi(context);
+    await billing.processUsageEvents();
 
     let usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages.length).toBeGreaterThanOrEqual(1);
-    expect(usageMessages.at(-1)).toMatchObject({
+    expect(usageMessages).toHaveLength(1);
+    const usageMessage = usageMessages[0];
+    if (!usageMessage) {
+      throw new Error("Expected one usage message");
+    }
+    expect(usageMessage).toMatchObject({
       role: "assistant",
       content: null,
       usage: {
@@ -1495,15 +1521,11 @@ describe("CHAT-03 run usage messages", () => {
       },
     });
 
-    const initialUsageMessageCount = usageMessages.length;
-    const billing = createBillingMediaApi(context);
-
     onTestFinished(() => {
       clearMockNow();
     });
-    // Sandbox tokens are validated against the mockable clock, so record the
-    // late usage through the webhook first and only advance time for the
-    // settlement cron that charges it and re-emits the usage message.
+    // Sandbox tokens are validated against the mockable clock, so record late
+    // usage before advancing time for settlement.
     await webhooks.requestAgentUsageEvent(
       {
         runId,
@@ -1523,11 +1545,7 @@ describe("CHAT-03 run usage messages", () => {
     mockNow(new Date("2030-01-01T00:00:00.000Z"));
     await billing.processUsageEvents();
     usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toHaveLength(initialUsageMessageCount + 1);
-    expect(usageMessages.at(-1)?.usage).toMatchObject({
-      totalCredits: 18,
-      settledAt: "2030-01-01T00:00:00.000Z",
-    });
+    expect(usageMessages).toStrictEqual([usageMessage]);
 
     clearMockNow();
     await webhooks.requestAgentUsageEvent(
@@ -1549,16 +1567,107 @@ describe("CHAT-03 run usage messages", () => {
     mockNow(new Date("2030-01-01T00:00:01.000Z"));
     await billing.processUsageEvents();
     usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toHaveLength(initialUsageMessageCount + 2);
-    expect(usageMessages.at(-1)?.usage).toMatchObject({
-      totalCredits: 29,
-      settledAt: "2030-01-01T00:00:01.000Z",
+    expect(usageMessages).toStrictEqual([usageMessage]);
+  }, 60_000);
+
+  it("emits complete allowance-covered usage in one message", async () => {
+    const seededModel = await seedVm0ManagedDefaultModelKey(context);
+    const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    expect(seededModel).toBe(selectedModel);
+    onTestFinished(async () => {
+      await deleteVm0ManagedDefaultModelKey(context);
     });
-    // With no pending usage left the settlement cron has nothing to charge,
-    // so re-running it must not append another usage message.
-    await billing.processUsageEvents();
-    usageMessages = await usageMessagesForRun(actor, threadId, runId);
-    expect(usageMessages).toHaveLength(initialUsageMessageCount + 2);
+
+    const { actor, agentId } = await entitledChatActorWithoutRunner(
+      "Allowance usage message agent",
+    );
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected allowance chat actor to have an org");
+    }
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 10 });
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId,
+      userId: actor.userId,
+      customerId: generatedStripeCustomerId(),
+      subscriptionId: generatedStripeSubscriptionId(),
+      effectiveAt: new Date(now()),
+      expiresAt: new Date(now() + 365 * 24 * 60 * 60 * 1000),
+      shortWindowSeconds: 5 * 60 * 60,
+      shortWindowUnits: 100,
+      weeklyWindowSeconds: 7 * 24 * 60 * 60,
+      weeklyWindowUnits: 100,
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const provider = `allowance-chat-${randomUUID().slice(0, 8)}`;
+    const category = "api_request";
+    await seedUsagePricingRows([
+      { kind: "connector", provider, category, unitPrice: 1, unitSize: 1 },
+    ]);
+    const { runId, threadId } = await sendChatRun(actor, {
+      agentId,
+      prompt: "record allowance-covered usage",
+      model: selectedModel,
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, runId)}`,
+    };
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider,
+            category,
+            quantity: 70,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await createBillingMediaApi(context).processUsageEvents();
+
+    const usageMessages = await usageMessagesForRun(actor, threadId, runId);
+    expect(usageMessages).toHaveLength(1);
+    expect(usageMessages[0]).toMatchObject({
+      role: "assistant",
+      content: null,
+      usage: {
+        version: 1,
+        breakdown: [
+          {
+            kind: "connector",
+            credits: 70,
+            providers: [{ provider, credits: 70 }],
+          },
+        ],
+        totalCredits: 70,
+        settledAt: expect.any(String),
+      },
+    });
+    const billingStatus = await api.readBillingStatus(actor);
+    if (!billingStatus.usageAllowance) {
+      throw new Error("Expected allowance windows for chat usage");
+    }
+    expect(
+      Object.fromEntries(
+        billingStatus.usageAllowance.windows.map((window) => {
+          return [window.kind, window.consumedUnits];
+        }),
+      ),
+    ).toStrictEqual({ short: 70, weekly: 70 });
   }, 60_000);
 
   it("emits zero-credit usage messages and skips runs without usage", async () => {
