@@ -28,6 +28,8 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
+const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+const BOT_FRAMEWORK_TOKEN_URL = `https://login.microsoftonline.com/${TEAMS_APP_TENANT_ID}/oauth2/v2.0/token`;
 
 interface CapturedTeamsActivity {
   conversationBody?: Record<string, unknown>;
@@ -68,14 +70,11 @@ function teamsFixture(): TeamsConnectFixture {
 
 function mockOutgoingTeams(captured: CapturedTeamsActivity): void {
   server.use(
-    http.post(
-      "https://login.microsoftonline.com/:tenant/oauth2/v2.0/token",
-      async ({ request }) => {
-        const form = await request.formData();
-        expect(form.get("scope")).toBe("https://api.botframework.com/.default");
-        return HttpResponse.json({ access_token: "bot-framework-token" });
-      },
-    ),
+    http.post(BOT_FRAMEWORK_TOKEN_URL, async ({ request }) => {
+      const form = await request.formData();
+      expect(form.get("scope")).toBe("https://api.botframework.com/.default");
+      return HttpResponse.json({ access_token: "bot-framework-token" });
+    }),
     http.post(
       "https://smba.trafficmanager.net/amer/v3/conversations",
       async ({ request }) => {
