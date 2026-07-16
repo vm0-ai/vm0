@@ -112,7 +112,7 @@ describe("buildGenerationTemplatePrompt", () => {
       "registry description is not a substitute for the source",
     );
     expect(result.prompt).toContain(
-      "caller-provided CLI overrides first, explicit requirements in the user request second",
+      "explicit requirements in the user request first, locked style requirements second",
     );
     expect(result.prompt).toContain(
       "Explicit user dimensions override conflicting style dimensions",

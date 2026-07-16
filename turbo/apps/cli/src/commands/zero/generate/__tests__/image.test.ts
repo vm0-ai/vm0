@@ -315,9 +315,9 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("required model inputs");
     expect(stdout).toContain("authoring-only examples");
     expect(stdout).toContain("## Requested Parameters");
-    expect(stdout).toContain("Caller-provided CLI generation overrides: none");
-    expect(stdout).not.toContain("size=1024x1024");
-    expect(stdout).not.toContain("Caller-provided source image URLs:");
+    expect(stdout).toContain("may include CLI defaults");
+    expect(stdout).toContain("Requested size: 1024x1024");
+    expect(stdout).toContain("Source image URLs: none");
     expect(stdout).toContain("## Parameter Precedence");
     expect(stdout).toContain(
       "Explicit requirements in the User Prompt, including exact dimensions or aspect ratio",
@@ -333,44 +333,6 @@ describe("zero generate image command", () => {
     );
     expect(stdout).toContain("--compiled-prompt");
     expect(stdout).toContain("<resolved compatible CLI options>");
-  });
-
-  it("should label only caller-provided image compilation parameters as overrides", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "image",
-      "--style",
-      "image-style:ink-storefront",
-      "--prompt",
-      "A florist named Luna Floral",
-      "--compile",
-      "--model",
-      "gpt-image-1.5",
-      "--size",
-      "1024x1536",
-      "--quality",
-      "high",
-      "--background",
-      "opaque",
-      "--format",
-      "jpeg",
-      "--image-url",
-      "https://example.com/source.png",
-      "--mask-image-url",
-      "https://example.com/mask.png",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain(
-      "Caller-provided CLI generation overrides: model=gpt-image-1.5, size=1024x1536, quality=high, background=opaque, format=jpeg",
-    );
-    expect(stdout).toContain(
-      "Caller-provided source image URLs: https://example.com/source.png",
-    );
-    expect(stdout).toContain(
-      "Caller-provided mask image URL: https://example.com/mask.png",
-    );
   });
 
   it("should fail with mode guidance when no image prompt mode is selected", async () => {

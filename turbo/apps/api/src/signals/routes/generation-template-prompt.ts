@@ -274,7 +274,7 @@ function buildIllustrationGenerationTemplatePrompt(
       "When you produce an illustration or image from the user's request:",
       `- Run once to fetch the locked style compilation packet: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile`,
       `- Read the packet's style source (${styleSource}) and its SKILL.md before compiling or generating; the registry description is not a substitute for the source. If the source cannot be read, stop and report the limitation instead of generating.`,
-      "- Follow the packet's labeled sources and precedence: caller-provided CLI overrides first, explicit requirements in the user request second, locked style requirements third, and CLI defaults last. Explicit user dimensions override conflicting style dimensions.",
+      "- Follow the packet's precedence: explicit requirements in the user request first, locked style requirements second, and CLI fallback values last. Explicit user dimensions override conflicting style dimensions.",
       "- Keep visual fields such as background color, composition, medium, palette, and rendering treatment in the compiled prompt. Do not translate them into similarly named CLI flags; `--background` is only the alpha-mode setting `auto`, `opaque`, or `transparent`.",
       "- Pass only compatible execution parameters and required model inputs, never authoring-only examples.",
       '- Then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with the resolved compatible CLI options and required reference image URLs, without `--style`.',

@@ -2740,7 +2740,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
     expect(firstPrompt).toContain(
-      "caller-provided CLI overrides first, explicit requirements in the user request second",
+      "explicit requirements in the user request first, locked style requirements second",
     );
     expect(firstPrompt).toContain(
       "Explicit user dimensions override conflicting style dimensions",
