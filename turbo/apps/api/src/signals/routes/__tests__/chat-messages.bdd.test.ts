@@ -3868,7 +3868,10 @@ describe("CHAT-02: shared user message queue", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    // The first waiter is the completion-triggered org run-queue drain; the
+    // second proves the callback's chat-message drain has finished its prior
+    // writes and is blocked at run admission before we pause its claim insert.
+    await expect.poll(admissionLock.waiterCount).toBe(2);
 
     const messageWritesLock = await holdChatMessageWritesFixture({
       signal: context.signal,
