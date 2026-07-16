@@ -201,12 +201,29 @@ describe("chat message action cards", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000010";
     const messageId = "c0000000-0000-4000-a000-000000000011";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000012";
     const createdAt = "2026-07-14T10:00:00.000Z";
     let sentBody: unknown = null;
 
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      return respond(200, {
+        mailDraftId,
+        mailDraft: {
+          version: 1,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: ["recipient@example.com"],
+          subject: "Hello",
+          body: "Mail body",
+          status: "draft",
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
     context.mocks.api(zeroMailContract.updateDraft, ({ body, respond }) => {
       return respond(200, {
-        messageId,
+        mailDraftId,
         mailDraft: {
           version: 1,
           provider: "gmail",
@@ -221,7 +238,7 @@ describe("chat message action cards", () => {
     context.mocks.api(zeroMailContract.sendDraft, ({ body, respond }) => {
       sentBody = body;
       return respond(200, {
-        messageId,
+        mailDraftId,
         mailDraft: {
           version: 1,
           provider: "gmail",
@@ -243,17 +260,7 @@ describe("chat message action cards", () => {
           role: "assistant",
           content: null,
           createdAt,
-          mailDraft: {
-            version: 1,
-            provider: "gmail",
-            from: "sender@example.com",
-            to: ["recipient@example.com"],
-            subject: "Hello",
-            body: "Mail body",
-            status: "draft",
-            createdAt,
-            updatedAt: createdAt,
-          },
+          mailDraftId,
         },
       ],
     });
@@ -264,10 +271,12 @@ describe("chat message action cards", () => {
       featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
-    const card = await screen.findByRole("region", { name: "Review email" });
-    expect(within(card).getByRole("textbox", { name: "From" })).toHaveValue(
-      "sender@example.com",
-    );
+    const from = await screen.findByRole("textbox", { name: "From" });
+    const card = from.closest<HTMLElement>("[data-mail-draft-card]");
+    if (!card) {
+      throw new Error("Mail draft card not found");
+    }
+    expect(from).toHaveValue("sender@example.com");
     expect(within(card).getByRole("textbox", { name: "To" })).toHaveValue(
       "recipient@example.com",
     );

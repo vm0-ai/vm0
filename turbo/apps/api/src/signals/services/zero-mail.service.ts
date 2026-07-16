@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -14,6 +15,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
+import { mailDrafts } from "@vm0/db/schema/mail-draft";
 import { secrets } from "@vm0/db/schema/secret";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { z } from "zod";
@@ -66,7 +68,7 @@ interface MailConnection {
 
 interface MailDraftResult {
   readonly kind: "ok";
-  readonly messageId: string;
+  readonly mailDraftId: string;
   readonly mailDraft: ZeroMailDraft;
 }
 
@@ -193,21 +195,20 @@ async function loadOwnedMailDraft(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
-  readonly threadId: string;
-  readonly messageId: string;
+  readonly mailDraftId: string;
 }): Promise<StoredMailDraftRow | null> {
   const [row] = await args.db
     .select({
       agentId: chatThreads.agentComposeId,
-      mailDraft: chatMessages.mailDraft,
+      mailDraft: mailDrafts.draft,
     })
-    .from(chatMessages)
+    .from(mailDrafts)
+    .innerJoin(chatMessages, eq(chatMessages.mailDraftId, mailDrafts.id))
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
     .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
     .where(
       and(
-        eq(chatMessages.id, args.messageId),
-        eq(chatMessages.chatThreadId, args.threadId),
+        eq(mailDrafts.id, args.mailDraftId),
         eq(chatThreads.userId, args.userId),
         eq(agentComposes.orgId, args.orgId),
       ),
@@ -222,45 +223,31 @@ async function loadOwnedMailDraft(args: {
   };
 }
 
-async function publishMailDraftUpdated(args: {
-  readonly userId: string;
-  readonly threadId: string;
-  readonly messageId: string;
-}): Promise<void> {
-  await tapError(
-    publishUserSignal(
-      [args.userId],
-      `chatThreadMessageUpdated:${args.threadId}`,
-      { messageId: args.messageId },
-    ),
-    (error) => {
-      L.warn("Failed to publish mail draft update", {
-        threadId: args.threadId,
-        messageId: args.messageId,
-        error,
-      });
-    },
-  );
-}
-
 async function persistMailDraft(args: {
   readonly db: Db;
   readonly mailDraft: ZeroMailDraft;
   readonly threadId: string;
   readonly userId: string;
 }): Promise<ZeroMailDraftMutationResult> {
-  const [created] = await args.db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: args.threadId,
-      role: "assistant",
-      content: null,
-      mailDraft: args.mailDraft,
-    })
-    .returning({ id: chatMessages.id });
-  if (!created) {
-    throw new Error("Mail draft insert did not return a message id");
-  }
+  const created = await args.db.transaction(async (tx) => {
+    const mailDraftId = randomUUID();
+    const [message] = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: null,
+        mailDraftId,
+      })
+      .returning({ id: chatMessages.id });
+    if (!message) {
+      throw new Error("Mail draft message insert did not return an id");
+    }
+    await tx
+      .insert(mailDrafts)
+      .values({ id: mailDraftId, draft: args.mailDraft });
+    return { mailDraftId, messageId: message.id };
+  });
   await tapError(
     publishUserSignal(
       [args.userId],
@@ -269,14 +256,14 @@ async function persistMailDraft(args: {
     (error) => {
       L.warn("Failed to publish mail draft creation", {
         threadId: args.threadId,
-        messageId: created.id,
+        messageId: created.messageId,
         error,
       });
     },
   );
   return {
     kind: "ok",
-    messageId: created.id,
+    mailDraftId: created.mailDraftId,
     mailDraft: args.mailDraft,
   };
 }
@@ -302,44 +289,38 @@ function draftWithFields(
 
 async function replaceEditableDraft(args: {
   readonly db: Db;
-  readonly threadId: string;
-  readonly messageId: string;
+  readonly mailDraftId: string;
   readonly mailDraft: ZeroMailDraft;
 }): Promise<ZeroMailDraft | null> {
   const [updated] = await args.db
-    .update(chatMessages)
-    .set({ mailDraft: args.mailDraft })
+    .update(mailDrafts)
+    .set({ draft: args.mailDraft })
     .where(
       and(
-        eq(chatMessages.id, args.messageId),
-        eq(chatMessages.chatThreadId, args.threadId),
-        sql<boolean>`${chatMessages.mailDraft}->>'status' IN ('draft', 'failed')`,
+        eq(mailDrafts.id, args.mailDraftId),
+        sql<boolean>`${mailDrafts.draft}->>'status' IN ('draft', 'failed')`,
       ),
     )
-    .returning({ mailDraft: chatMessages.mailDraft });
-  return updated?.mailDraft
-    ? zeroMailDraftSchema.parse(updated.mailDraft)
-    : null;
+    .returning({ mailDraft: mailDrafts.draft });
+  return updated ? zeroMailDraftSchema.parse(updated.mailDraft) : null;
 }
 
 async function replaceSendingDraft(args: {
   readonly db: Db;
-  readonly threadId: string;
-  readonly messageId: string;
+  readonly mailDraftId: string;
   readonly mailDraft: ZeroMailDraft;
 }): Promise<ZeroMailDraft> {
   const [updated] = await args.db
-    .update(chatMessages)
-    .set({ mailDraft: args.mailDraft })
+    .update(mailDrafts)
+    .set({ draft: args.mailDraft })
     .where(
       and(
-        eq(chatMessages.id, args.messageId),
-        eq(chatMessages.chatThreadId, args.threadId),
-        sql<boolean>`${chatMessages.mailDraft}->>'status' = 'sending'`,
+        eq(mailDrafts.id, args.mailDraftId),
+        sql<boolean>`${mailDrafts.draft}->>'status' = 'sending'`,
       ),
     )
-    .returning({ mailDraft: chatMessages.mailDraft });
-  if (!updated?.mailDraft) {
+    .returning({ mailDraft: mailDrafts.draft });
+  if (!updated) {
     throw new Error("Mail draft sending state changed unexpectedly");
   }
   return zeroMailDraftSchema.parse(updated.mailDraft);
@@ -698,14 +679,34 @@ export const createZeroMailDraft$ = command(
   },
 );
 
+export const getZeroMailDraft$ = command(
+  async (
+    { get },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly mailDraftId: string;
+    },
+  ): Promise<ZeroMailDraftMutationResult> => {
+    const stored = await loadOwnedMailDraft({ db: get(db$), ...args });
+    if (!stored) {
+      return { kind: "not_found", message: "Mail draft not found" };
+    }
+    return {
+      kind: "ok",
+      mailDraftId: args.mailDraftId,
+      mailDraft: stored.mailDraft,
+    };
+  },
+);
+
 export const updateZeroMailDraft$ = command(
   async (
     { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly threadId: string;
-      readonly messageId: string;
+      readonly mailDraftId: string;
       readonly to: readonly string[];
       readonly subject: string;
       readonly body: string;
@@ -723,8 +724,7 @@ export const updateZeroMailDraft$ = command(
     );
     const updated = await replaceEditableDraft({
       db: set(writeDb$),
-      threadId: args.threadId,
-      messageId: args.messageId,
+      mailDraftId: args.mailDraftId,
       mailDraft,
     });
     if (!updated) {
@@ -733,8 +733,7 @@ export const updateZeroMailDraft$ = command(
         message: "This mail draft can no longer be edited",
       };
     }
-    await publishMailDraftUpdated(args);
-    return { kind: "ok", messageId: args.messageId, mailDraft: updated };
+    return { kind: "ok", mailDraftId: args.mailDraftId, mailDraft: updated };
   },
 );
 
@@ -744,8 +743,7 @@ export const cancelZeroMailDraft$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly threadId: string;
-      readonly messageId: string;
+      readonly mailDraftId: string;
     },
   ): Promise<ZeroMailDraftMutationResult> => {
     const db = get(db$);
@@ -756,8 +754,7 @@ export const cancelZeroMailDraft$ = command(
     const updatedAt = nowDate().toISOString();
     const updated = await replaceEditableDraft({
       db: set(writeDb$),
-      threadId: args.threadId,
-      messageId: args.messageId,
+      mailDraftId: args.mailDraftId,
       mailDraft: {
         ...stored.mailDraft,
         status: "cancelled",
@@ -771,8 +768,7 @@ export const cancelZeroMailDraft$ = command(
         message: "This mail draft can no longer be cancelled",
       };
     }
-    await publishMailDraftUpdated(args);
-    return { kind: "ok", messageId: args.messageId, mailDraft: updated };
+    return { kind: "ok", mailDraftId: args.mailDraftId, mailDraft: updated };
   },
 );
 
@@ -782,8 +778,7 @@ export const sendZeroMailDraft$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly threadId: string;
-      readonly messageId: string;
+      readonly mailDraftId: string;
       readonly to: readonly string[];
       readonly subject: string;
       readonly body: string;
@@ -798,8 +793,7 @@ export const sendZeroMailDraft$ = command(
     const claimedAt = nowDate().toISOString();
     const claimed = await replaceEditableDraft({
       db: set(writeDb$),
-      threadId: args.threadId,
-      messageId: args.messageId,
+      mailDraftId: args.mailDraftId,
       mailDraft: {
         ...draftWithFields(stored.mailDraft, args, claimedAt),
         status: "sending",
@@ -811,8 +805,6 @@ export const sendZeroMailDraft$ = command(
         message: "This mail draft has already been sent or is being sent",
       };
     }
-    await publishMailDraftUpdated(args);
-
     const providerSignal = AbortSignal.timeout(MAIL_SEND_TIMEOUT_MS);
     const connections = await loadMailConnections({
       db,
@@ -867,11 +859,9 @@ export const sendZeroMailDraft$ = command(
           };
     const updated = await replaceSendingDraft({
       db: set(writeDb$),
-      threadId: args.threadId,
-      messageId: args.messageId,
+      mailDraftId: args.mailDraftId,
       mailDraft: completed,
     });
-    await publishMailDraftUpdated(args);
-    return { kind: "ok", messageId: args.messageId, mailDraft: updated };
+    return { kind: "ok", mailDraftId: args.mailDraftId, mailDraft: updated };
   },
 );

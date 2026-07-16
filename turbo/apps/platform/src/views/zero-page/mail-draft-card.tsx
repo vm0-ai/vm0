@@ -1,5 +1,5 @@
 import type { ChangeEvent, FocusEvent, FormEvent, MouseEvent } from "react";
-import { useGet } from "ccstate-react";
+import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconAlertTriangle,
@@ -13,6 +13,7 @@ import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
 } from "@vm0/api-contracts/contracts/zero-mail";
+import type { Computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button, Input, cn } from "@vm0/ui";
 
@@ -28,9 +29,8 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 
 interface MailDraftCardProps {
-  readonly threadId: string;
-  readonly messageId: string;
-  readonly mailDraft: ZeroMailDraft;
+  readonly mailDraftId: string;
+  readonly mailDraft$: Computed<Promise<ZeroMailDraft>>;
 }
 
 interface DraftStatusCopy {
@@ -287,13 +287,15 @@ function MailDraftActions({
   );
 }
 
-function EnabledMailDraftCard({
-  threadId,
-  messageId,
-  mailDraft: serverMailDraft,
-}: MailDraftCardProps) {
+function ReadyMailDraftCard({
+  mailDraftId,
+  serverMailDraft,
+}: {
+  readonly mailDraftId: string;
+  readonly serverMailDraft: ZeroMailDraft;
+}) {
   const pageSignal = useGet(pageSignal$);
-  const localDraft = useGet(mailDraftOverrides$)[messageId];
+  const localDraft = useGet(mailDraftOverrides$)[mailDraftId];
   const mailDraft = newestDraft(serverMailDraft, localDraft);
   const [updateLoadable, updateDraft] = useLoadableSet(updateMailDraft$);
   const [cancelLoadable, cancelDraft] = useLoadableSet(cancelMailDraft$);
@@ -324,10 +326,7 @@ function EnabledMailDraftCard({
       return;
     }
     detach(
-      updateDraft(
-        { threadId, messageId, fields: fieldsFromForm(form) },
-        pageSignal,
-      ),
+      updateDraft({ mailDraftId, fields: fieldsFromForm(form) }, pageSignal),
       Reason.DomCallback,
     );
   };
@@ -336,7 +335,7 @@ function EnabledMailDraftCard({
     event.preventDefault();
     detach(
       sendDraft(
-        { threadId, messageId, fields: fieldsFromForm(event.currentTarget) },
+        { mailDraftId, fields: fieldsFromForm(event.currentTarget) },
         pageSignal,
       ),
       Reason.DomCallback,
@@ -344,10 +343,7 @@ function EnabledMailDraftCard({
   };
 
   const onCancel = () => {
-    detach(
-      cancelDraft({ threadId, messageId }, pageSignal),
-      Reason.DomCallback,
-    );
+    detach(cancelDraft({ mailDraftId }, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -376,6 +372,38 @@ function EnabledMailDraftCard({
         ) : null}
       </section>
     </form>
+  );
+}
+
+function EnabledMailDraftCard({ mailDraftId, mailDraft$ }: MailDraftCardProps) {
+  const mailDraftLoadable = useLoadable(mailDraft$);
+  if (mailDraftLoadable.state === "loading") {
+    return (
+      <section
+        aria-label="Review email"
+        className="flex w-full max-w-2xl items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm"
+      >
+        <IconLoader2 size={16} className="animate-spin" aria-hidden />
+        Loading email draft
+      </section>
+    );
+  }
+  if (mailDraftLoadable.state === "hasError") {
+    return (
+      <section
+        aria-label="Review email"
+        className="flex w-full max-w-2xl items-center gap-2 rounded-2xl border border-destructive/30 bg-card px-4 py-3 text-sm text-destructive shadow-sm"
+      >
+        <IconAlertTriangle size={16} aria-hidden />
+        The email draft could not be loaded.
+      </section>
+    );
+  }
+  return (
+    <ReadyMailDraftCard
+      mailDraftId={mailDraftId}
+      serverMailDraft={mailDraftLoadable.data}
+    />
   );
 }
 

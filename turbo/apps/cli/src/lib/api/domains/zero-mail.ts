@@ -14,7 +14,10 @@ export async function createZeroMailDraft(args: {
   readonly to: readonly string[];
   readonly subject: string;
   readonly body: string;
-}): Promise<{ readonly messageId: string; readonly mailDraft: ZeroMailDraft }> {
+}): Promise<{
+  readonly mailDraftId: string;
+  readonly mailDraft: ZeroMailDraft;
+}> {
   const config = await getClientConfig();
   const client = initClient(zeroMailContract, config);
   const result = await client.createDraft({

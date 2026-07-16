@@ -116,6 +116,7 @@ import type {
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+import { createMailDraftLoaderSignals } from "./mail-draft.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -903,6 +904,7 @@ function createAgentInfoSignals(
 // ---------------------------------------------------------------------------
 
 function createThreadUIState() {
+  const mailDrafts = createMailDraftLoaderSignals();
   // Timeline expansion
   const internalExpandedIds$ = state(new Set<string>());
 
@@ -955,6 +957,7 @@ function createThreadUIState() {
   );
 
   return {
+    mailDrafts,
     timelineExpandedIds$,
     toggleTimelineExpanded$,
     copiedMessageId$,

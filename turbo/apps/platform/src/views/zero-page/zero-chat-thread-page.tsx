@@ -3203,7 +3203,7 @@ function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
     message.role === "assistant" &&
     (Boolean(message.content) ||
       Boolean(message.error) ||
-      Boolean(message.mailDraft))
+      Boolean(message.mailDraftId))
   );
 }
 
@@ -6642,7 +6642,7 @@ function PagedAssistantMessageItem({
     openImageLightbox(url);
   };
 
-  if (message.mailDraft) {
+  if (message.mailDraftId) {
     return (
       <div
         className={cn(
@@ -6651,9 +6651,9 @@ function PagedAssistantMessageItem({
         )}
       >
         <MailDraftCard
-          threadId={thread.threadId}
-          messageId={message.id}
-          mailDraft={message.mailDraft}
+          key={message.mailDraftId}
+          mailDraftId={message.mailDraftId}
+          mailDraft$={thread.mailDrafts.byId(message.mailDraftId)}
         />
       </div>
     );

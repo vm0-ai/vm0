@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 
+import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -7,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { testMailDraftStateRoutes } from "../test-mail-draft-state";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
@@ -66,6 +68,12 @@ function client() {
   return setupApp({ context })(zeroMailContract);
 }
 
+function stateClient() {
+  return setupApp({ context, routes: testMailDraftStateRoutes })(
+    testMailDraftStateContract,
+  );
+}
+
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
@@ -111,8 +119,7 @@ describe("POST /api/zero/mail/drafts", () => {
       client().updateDraft({
         headers: authHeaders(),
         params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
+          mailDraftId: created.body.mailDraftId,
         },
         body: {
           to: ["final@example.com"],
@@ -133,8 +140,7 @@ describe("POST /api/zero/mail/drafts", () => {
       client().sendDraft({
         headers: authHeaders(),
         params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
+          mailDraftId: created.body.mailDraftId,
         },
         body: {
           to: ["final@example.com"],
@@ -157,8 +163,7 @@ describe("POST /api/zero/mail/drafts", () => {
       client().sendDraft({
         headers: authHeaders(),
         params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
+          mailDraftId: created.body.mailDraftId,
         },
         body: {
           to: ["final@example.com"],
@@ -176,13 +181,59 @@ describe("POST /api/zero/mail/drafts", () => {
       fixture.thread.id,
     );
     const persisted = page.messages.find((message) => {
-      return message.id === created.body.messageId;
+      return message.mailDraftId === created.body.mailDraftId;
     });
-    expect(persisted?.mailDraft).toMatchObject({
+    expect(persisted).toMatchObject({
+      mailDraftId: created.body.mailDraftId,
+    });
+
+    const loaded = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: created.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(loaded.body.mailDraft).toMatchObject({
       to: ["final@example.com"],
       subject: "Updated subject",
       body: "Updated body",
       status: "sent",
     });
+  });
+
+  it("deletes the stored draft when its owning thread is deleted", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const created = await accept(
+      client().createDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          to: ["recipient@example.com"],
+          subject: "Disposable subject",
+          body: "Disposable body",
+        },
+      }),
+      [201],
+    );
+
+    const persisted = await accept(
+      stateClient().get({
+        params: { mailDraftId: created.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(persisted.body.exists).toBeTruthy();
+
+    await chat.deleteThread(fixture.actor, fixture.thread.id);
+
+    const deleted = await accept(
+      stateClient().get({
+        params: { mailDraftId: created.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(deleted.body.exists).toBeFalsy();
   });
 });
