@@ -701,14 +701,18 @@ function ExpandedFooterAccountInsights() {
 // works").
 function railLabel(id: SidebarNavId, fallback: string): string {
   switch (id) {
-    case "chat":
+    case "chat": {
       return "New";
-    case "activities":
+    }
+    case "activities": {
       return "Activity";
-    case "works":
+    }
+    case "works": {
       return "Works";
-    default:
+    }
+    default: {
       return fallback;
+    }
   }
 }
 
