@@ -2739,14 +2739,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(firstPrompt).toContain(
       `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
+    expect(firstPrompt).toContain("Follow the returned packet completely");
     expect(firstPrompt).toContain(
-      "explicit requirements in the user request first, locked style requirements second",
-    );
-    expect(firstPrompt).toContain(
-      "Explicit user dimensions override conflicting style dimensions",
-    );
-    expect(firstPrompt).toContain(
-      "Do not translate them into similarly named CLI flags",
+      "If the source is unavailable, stop without generating",
     );
     expect(firstPrompt).toContain("--compiled-prompt");
     expect(firstPrompt).toContain(style.illustrationStyleId);

@@ -105,30 +105,13 @@ describe("buildGenerationTemplatePrompt", () => {
       `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile`,
     );
     expect(result.prompt).toContain("Style source: vm0-ai/vm0-skills@main:");
+    expect(result.prompt).toContain("Follow the returned packet completely");
     expect(result.prompt).toContain(
-      "its SKILL.md before compiling or generating",
-    );
-    expect(result.prompt).toContain(
-      "registry description is not a substitute for the source",
-    );
-    expect(result.prompt).toContain(
-      "explicit requirements in the user request first, locked style requirements second",
-    );
-    expect(result.prompt).toContain(
-      "Explicit user dimensions override conflicting style dimensions",
-    );
-    expect(result.prompt).toContain(
-      "Do not translate them into similarly named CLI flags",
-    );
-    expect(result.prompt).toContain(
-      "`--background` is only the alpha-mode setting `auto`, `opaque`, or `transparent`",
-    );
-    expect(result.prompt).toContain("required model inputs");
-    expect(result.prompt).toContain("authoring-only examples");
-    expect(result.prompt).toContain(
-      "stop and report the limitation instead of generating",
+      "If the source is unavailable, stop without generating",
     );
     expect(result.prompt).toContain("--compiled-prompt");
+    expect(result.prompt).toContain("resolved compatible CLI options");
+    expect(result.prompt).toContain("required reference image URLs");
   });
 
   it("builds video template preset guidance", () => {
