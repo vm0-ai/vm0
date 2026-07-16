@@ -2147,7 +2147,7 @@ describe("CHAT-02: model-first provider policies", () => {
 });
 
 describe("CHAT-02: run-level model overrides", () => {
-  it("uses send model overrides for the run without mutating the thread model", async () => {
+  it("uses send model overrides without mutating the thread model while preserving same-family sessions", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2196,8 +2196,8 @@ describe("CHAT-02: run-level model overrides", () => {
       (await api.readRun(actor, first.runId)).result?.agentSessionId,
     ).toMatch(/[0-9a-f-]{36}/);
 
-    // A run-level override of another model starts a fresh session that carries
-    // the prior web round as context instead of resuming the CLI session.
+    // A run-level override of another model in the same family resumes the CLI
+    // session while carrying the prior web round as context.
     const second = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
@@ -2212,7 +2212,9 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(appended).toContain(`User: ${firstPrompt}`);
     expect(appended).toContain("Assistant: opus answer");
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
-    expect(secondClaim.claim.resumeSession).toBeNull();
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
@@ -2225,15 +2227,17 @@ describe("CHAT-02: run-level model overrides", () => {
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
 
     // Follow-ups without a send model override go back to the thread's stored
-    // model. Because the latest run used a different run-level override, this
-    // starts a fresh session instead of resuming the previous CLI session.
+    // model. Both models remain in the Claude family, so session continuity is
+    // preserved.
     const third = await sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "continue on the thread model",
     });
     const thirdClaim = await claimChatRun(runnerGroup, third.runId);
-    expect(thirdClaim.claim.resumeSession).toBeNull();
+    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${second.runId}`,
+    );
     expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-opus-4-6",
     );
