@@ -644,8 +644,8 @@ impl ApiClient {
         })
     }
 
-    /// Send a heartbeat with runner state. Uses a short timeout (3s) to
-    /// avoid blocking the main loop.
+    /// Send a heartbeat with runner state. The short timeout (3s) bounds this
+    /// best-effort request and any lifecycle drain waiting for it.
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
         let resp = send_api(
             self.http

@@ -24,8 +24,11 @@
 //! - lifecycle signals are registered before slow startup work;
 //! - discovery is pinned across `select!` ticks so heartbeat and cleanup
 //!   branches do not restart polling;
+//! - heartbeat work is pinned and single-flight so its I/O does not stall the
+//!   main reactor or overlap a newer snapshot;
 //! - the first heartbeat and idle-cleanup ticks are deferred;
-//! - teardown drops discovery before provider shutdown.
+//! - teardown drains heartbeat work and drops discovery before provider
+//!   shutdown.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -85,8 +88,9 @@ mod signals;
 use active_sessions::new_active_cli_agent_sessions;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
-    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeldSessionStateSnapshot,
-    collect_heartbeat_state, refresh_workspace_cache_held_session_snapshot, send_heartbeat,
+    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
+    HeldSessionStateSnapshot, collect_heartbeat_state,
+    refresh_workspace_cache_held_session_snapshot,
 };
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
@@ -1359,6 +1363,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     )
     .await;
     debug_assert!(held_session_snapshot.workspace_cache_loaded());
+    let mut heartbeat = HeartbeatController::new(hb_ctx);
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -1418,7 +1423,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     if transitioned {
                         // Live observability: fire an immediate "stopping"
                         // heartbeat before teardown removes the runner.
-                        send_heartbeat(&hb_ctx, RunnerMode::Stopping).await;
+                        heartbeat.flush(RunnerMode::Stopping).await;
                     }
                     continue;
                 }
@@ -1459,6 +1464,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         if matches!(mode, RunnerMode::Running) && !can_discover {
             test_hooks.test_observer.notify_budget_exhausted_reactor();
         }
+        let heartbeat_sending = heartbeat.is_sending();
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
             // The future is pinned outside the loop so heartbeat/cleanup
@@ -1525,8 +1531,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         drained_ready_candidates,
                         "session affinity state triggered immediate heartbeat"
                     );
-                    send_heartbeat(&hb_ctx, live_mode).await;
+                    heartbeat.request(live_mode);
                 }
+            }
+            // The active heartbeat future is pinned in the controller so
+            // network and state-refresh waits yield to every other reactor
+            // branch instead of being awaited by a trigger handler.
+            _ = heartbeat.wait_for_send(), if heartbeat_sending => {
+                let live_mode = *mode_rx.borrow();
+                heartbeat.finish_send(live_mode);
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
@@ -1616,7 +1629,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
-                send_heartbeat(&hb_ctx, live_mode).await;
+                heartbeat.request(live_mode);
             }
             // Immediate heartbeat after session affinity state changes —
             // eliminates the up-to-10s blind spot for affinity routing.
@@ -1632,7 +1645,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 };
                 if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
                     info!(source, "session affinity state triggered immediate heartbeat");
-                    send_heartbeat(&hb_ctx, live_mode).await;
+                    heartbeat.request(live_mode);
                 }
             }
         }
@@ -1644,6 +1657,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let teardown = TeardownTimer::start();
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");
+
+    let phase = teardown.phase_start("heartbeat_drain");
+    heartbeat.drain().await;
+    drop(heartbeat);
+    teardown.phase_complete("heartbeat_drain", phase);
 
     // Drop the pinned discover future before provider shutdown so any
     // provider-local discovery resources are released first. This also keeps

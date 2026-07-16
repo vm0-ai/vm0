@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use futures_util::future::BoxFuture;
 use tracing::{debug, info};
 
 use super::active_sessions::{ActiveCliAgentSessions, active_cli_agent_session_ids};
@@ -20,6 +21,7 @@ pub(super) const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
 /// References needed to collect and send a heartbeat.
 ///
 /// Avoids passing 8+ arguments through `send_heartbeat`.
+#[derive(Clone)]
 pub(super) struct HeartbeatContext<'a> {
     idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
     runner_id: &'a str,
@@ -60,6 +62,95 @@ impl<'a> HeartbeatContext<'a> {
             active_cli_agent_sessions: init.active_cli_agent_sessions,
             held_session_snapshot: init.held_session_snapshot,
         }
+    }
+}
+
+/// Single-flight heartbeat work polled alongside the main reactor.
+///
+/// Trigger handlers only call [`request`](Self::request). The active future is
+/// kept outside `tokio::select!`, so other ready branches neither await nor
+/// cancel it. Any number of triggers during one send collapse into one
+/// follow-up built from live state when that send starts.
+pub(super) struct HeartbeatController<'a> {
+    context: HeartbeatContext<'a>,
+    in_flight: Option<BoxFuture<'a, ()>>,
+    pending: bool,
+}
+
+impl<'a> HeartbeatController<'a> {
+    pub(super) fn new(context: HeartbeatContext<'a>) -> Self {
+        Self {
+            context,
+            in_flight: None,
+            pending: false,
+        }
+    }
+
+    pub(super) fn request(&mut self, mode: RunnerMode) {
+        if self.in_flight.is_some() {
+            self.pending = true;
+        } else {
+            self.start(mode);
+        }
+    }
+
+    pub(super) fn is_sending(&self) -> bool {
+        self.in_flight.is_some()
+    }
+
+    /// Wait for the stored future from an enabled `tokio::select!` branch.
+    pub(super) async fn wait_for_send(&mut self) {
+        debug_assert!(self.in_flight.is_some());
+        match &mut self.in_flight {
+            Some(send) => send.await,
+            None => std::future::pending().await,
+        }
+    }
+
+    /// Clear a completed send and start one live-state follow-up when dirty.
+    pub(super) fn finish_send(&mut self, live_mode: RunnerMode) {
+        debug_assert!(self.in_flight.is_some());
+        self.in_flight = None;
+        if std::mem::take(&mut self.pending) {
+            self.start(live_mode);
+        }
+    }
+
+    /// Finish current work and emit one lifecycle-critical snapshot.
+    ///
+    /// Natural stopping uses this to replace all ordinary pending work with a
+    /// single `Stopping` heartbeat before teardown.
+    pub(super) async fn flush(&mut self, mode: RunnerMode) {
+        self.request(mode);
+        loop {
+            self.wait_for_send().await;
+            self.in_flight = None;
+            if std::mem::take(&mut self.pending) {
+                self.start(mode);
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Finish only the active send and discard ordinary coalesced work.
+    ///
+    /// Hard stopping calls this before provider shutdown. Awaiting the bounded
+    /// request preserves local ordering without assuming that dropping a
+    /// client future retracts a request already queued remotely.
+    pub(super) async fn drain(&mut self) {
+        if let Some(send) = self.in_flight.take() {
+            send.await;
+        }
+        self.pending = false;
+    }
+
+    fn start(&mut self, mode: RunnerMode) {
+        debug_assert!(self.in_flight.is_none());
+        let context = self.context.clone();
+        self.in_flight = Some(Box::pin(async move {
+            send_heartbeat(&context, mode).await;
+        }));
     }
 }
 

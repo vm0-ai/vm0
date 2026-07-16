@@ -1,10 +1,28 @@
 use super::super::super::*;
 use super::super::support::{
-    assert_run_exits_within, minimal_context, mock_run_config, mock_run_config_with_delay,
-    mock_run_config_with_overrides, push_job, shutdown, test_profiles, wait_budget_count,
-    wait_budget_exhausted_reactor, wait_cancel_token, wait_discover_entered, wait_status_mode,
+    MockRunEnv, assert_run_exits_within, minimal_context, mock_run_config,
+    mock_run_config_with_delay, mock_run_config_with_overrides, push_job, shutdown, test_profiles,
+    wait_budget_count, wait_budget_exhausted_reactor, wait_cancel_token, wait_cancel_token_removed,
+    wait_discover_entered, wait_status_mode,
 };
 use std::sync::Arc;
+
+async fn wait_for_blocked_routine_heartbeat(env: &MockRunEnv) {
+    wait_discover_entered(env, Duration::from_secs(2)).await;
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    assert!(
+        env.handle
+            .wait_heartbeat_past(0, Duration::from_secs(5))
+            .await,
+        "first routine heartbeat should enter the provider",
+    );
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(1, Duration::from_secs(5))
+            .await,
+        "first routine heartbeat should remain blocked",
+    );
+}
 
 // -----------------------------------------------------------------------
 // Test 2: Discover survives heartbeat ticks (regression #8783)
@@ -69,6 +87,207 @@ async fn discover_survives_heartbeat_ticks() {
     );
 
     shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn blocked_heartbeat_does_not_block_job_discovery_or_reaping() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    env.handle.block_heartbeats();
+    let run_handle = tokio::spawn(run(config));
+    wait_for_blocked_routine_heartbeat(&env).await;
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    assert!(
+        env.handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .is_some(),
+        "job should complete while heartbeat I/O is blocked",
+    );
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+    assert_eq!(env.handle.heartbeat_in_flight(), 1);
+    assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
+    env.handle.unblock_heartbeats();
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(0, Duration::from_secs(5))
+            .await,
+        "blocked heartbeat should finish after release",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&gate),
+    ));
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    env.handle.block_heartbeats();
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    assert!(
+        env.handle
+            .wait_heartbeat_past(0, Duration::from_secs(5))
+            .await,
+        "first routine heartbeat should enter the provider",
+    );
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(1, Duration::from_secs(5))
+            .await,
+        "first routine heartbeat should remain blocked",
+    );
+
+    // Change mode without notifying the reactor. The next routine tick must
+    // both wake the reactor and coalesce a current-mode follow-up.
+    env.mode_tx.send_if_modified(|mode| {
+        *mode = RunnerMode::Draining;
+        false
+    });
+    let status_path = env._temp_dir.path().join("status.json");
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    wait_status_mode(&status_path, "draining", Duration::from_secs(5)).await;
+
+    // A further tick while the first request is blocked must collapse into
+    // the same dirty follow-up rather than overlap or queue another payload.
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    tokio::task::yield_now().await;
+    assert_eq!(env.handle.heartbeat_count(), 1);
+    assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
+
+    env.handle.unblock_heartbeats();
+    assert!(
+        env.handle
+            .wait_heartbeat_past(1, Duration::from_secs(5))
+            .await,
+        "coalesced trigger should produce one follow-up",
+    );
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(0, Duration::from_secs(5))
+            .await,
+        "follow-up heartbeat should finish",
+    );
+
+    {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert_eq!(heartbeats.len(), 2);
+        assert_eq!(heartbeats[0].mode, "running");
+        assert_eq!(heartbeats[1].mode, "draining");
+        assert_eq!(heartbeats[1].running_count, 1);
+    }
+    assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
+
+    gate.notify_one();
+    assert!(
+        env.handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .is_some(),
+        "gated job should complete after release",
+    );
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn hard_shutdown_drains_current_heartbeat_and_discards_pending_work() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let status_path = env._temp_dir.path().join("status.json");
+    env.handle.block_heartbeats();
+    let run_handle = tokio::spawn(run(config));
+    wait_for_blocked_routine_heartbeat(&env).await;
+
+    // Add an ordinary pending trigger, then enter Stopping. The reactor must
+    // observe the mode while provider I/O is still blocked, but teardown must
+    // wait for the current send rather than assuming drop cancels it remotely.
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    tokio::task::yield_now().await;
+    env.mode_tx.send(RunnerMode::Stopping).unwrap();
+    wait_status_mode(&status_path, "stopping", Duration::from_secs(5)).await;
+
+    assert!(!run_handle.is_finished());
+    assert_eq!(env.handle.heartbeat_count(), 1);
+    assert_eq!(env.handle.heartbeat_in_flight(), 1);
+
+    env.handle.unblock_heartbeats();
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should finish after the current heartbeat is released",
+    )
+    .await;
+
+    let modes: Vec<String> = env
+        .handle
+        .heartbeats
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .iter()
+        .map(|heartbeat| heartbeat.mode.clone())
+        .collect();
+    assert_eq!(modes, ["running", "stopping"]);
+    assert_eq!(env.handle.heartbeat_in_flight(), 0);
+    assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn natural_shutdown_flushes_stopping_after_current_heartbeat() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    env.handle.block_heartbeats();
+    let run_handle = tokio::spawn(run(config));
+    wait_for_blocked_routine_heartbeat(&env).await;
+
+    let mut mode_rx = env.mode_tx.subscribe();
+    env.drain();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if *mode_rx.borrow_and_update() == RunnerMode::Stopping {
+                break;
+            }
+            mode_rx.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("natural drain should commit Stopping while heartbeat is blocked");
+
+    assert!(!run_handle.is_finished());
+    assert_eq!(env.handle.heartbeat_count(), 1);
+    assert_eq!(env.handle.heartbeat_in_flight(), 1);
+
+    env.handle.unblock_heartbeats();
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "natural shutdown should finish after the current heartbeat is released",
+    )
+    .await;
+
+    let modes: Vec<String> = env
+        .handle
+        .heartbeats
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .iter()
+        .map(|heartbeat| heartbeat.mode.clone())
+        .collect();
+    assert_eq!(modes, ["running", "stopping", "stopping"]);
+    assert_eq!(env.handle.heartbeat_in_flight(), 0);
+    assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 }
 
 /// Invariant: heartbeat ticks must fire while the unified reactor is
