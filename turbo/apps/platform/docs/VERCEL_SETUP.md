@@ -74,13 +74,16 @@ Alternate providers must serve the artifact from a hostname under the intended
 environment domain. An unrecognized provider hostname is treated as preview
 and cannot infer a separate API or web service origin.
 
-| Variable                               | Description                     | Required         |
-| -------------------------------------- | ------------------------------- | ---------------- |
-| `VITE_CLERK_PUBLISHABLE_KEY`           | Clerk authentication            | For auth feature |
-| `VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW`    | Preview analytics script        | No               |
-| `VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION` | Production analytics script     | No               |
-| `VITE_POSTHOG_KEY`                     | Production product analytics    | No               |
-| `VITE_SENTRY_DSN`                      | Production browser error intake | No               |
+| Variable                               | Description                      | Required         |
+| -------------------------------------- | -------------------------------- | ---------------- |
+| `VITE_CLERK_PUBLISHABLE_KEY_PREVIEW`   | Preview Clerk authentication     | For auth feature |
+| `VITE_CLERK_PUBLISHABLE_KEY_PROD`      | Production Clerk authentication  | For auth feature |
+| `VITE_VAPID_PUBLIC_KEY_PREVIEW`        | Preview Web Push subscription    | No               |
+| `VITE_VAPID_PUBLIC_KEY_PROD`           | Production Web Push subscription | No               |
+| `VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW`    | Preview analytics script         | No               |
+| `VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION` | Production analytics script      | No               |
+| `VITE_POSTHOG_KEY`                     | Production product analytics     | No               |
+| `VITE_SENTRY_DSN_PROD`                 | Production browser error intake  | No               |
 
 ## Troubleshooting
 

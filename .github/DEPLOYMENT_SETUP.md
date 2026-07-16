@@ -72,6 +72,11 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
   - Find in Neon console → Project Settings → General
 - `CLERK_PUBLISHABLE_KEY`: Your Clerk publishable key (Required)
   - Get from: https://dashboard.clerk.com
+- `CLERK_PUBLISHABLE_KEY_PREVIEW`: Preview Clerk publishable key for the portable platform build (Required)
+- `CLERK_PUBLISHABLE_KEY_PROD`: Production Clerk publishable key for the portable platform build (Required)
+- `VAPID_PUBLIC_KEY_PREVIEW`: Preview Web Push public key for the portable platform build (Optional)
+- `VAPID_PUBLIC_KEY_PROD`: Production Web Push public key for the portable platform build (Optional)
+- `SENTRY_DSN_APP_PROD`: Production browser Sentry DSN for the portable platform build (Optional)
 - `PREVIEW_DOMAIN`: Domain for stable preview URLs (Optional)
   - Example: `vm6.ai`
   - Requires wildcard DNS and Vercel domain configuration (see "Stable Preview URLs" section)
@@ -109,7 +114,8 @@ This uses Drizzle Kit to push your schema defined in `turbo/packages/db/src/sche
 These must be configured for the application to work:
 
 - **CLERK_SECRET_KEY**: Required for user authentication
-- **CLERK_PUBLISHABLE_KEY**: Clerk publishable key (injected as NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY for web/site, VITE_CLERK_PUBLISHABLE_KEY for platform)
+- **CLERK_PUBLISHABLE_KEY**: Clerk publishable key injected into the web/site and backend deployments
+- **CLERK_PUBLISHABLE_KEY_PREVIEW / CLERK_PUBLISHABLE_KEY_PROD**: Both platform keys are injected into every platform build; the browser selects one from the serving hostname
 - **DATABASE_URL**: Automatically injected by the workflow from Neon
 
 ### E2B Configuration (Compose Jobs)

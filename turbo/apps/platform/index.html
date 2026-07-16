@@ -313,7 +313,11 @@
       // shaped pk_<env>_<base64(host$)>; decoding it here avoids hard-coding
       // the FAPI domain per environment.
       (function () {
-        var k = "%VITE_CLERK_PUBLISHABLE_KEY%";
+        var h = location.hostname.toLowerCase();
+        var production = h === "vm0.ai" || h.endsWith(".vm0.ai");
+        var k = production
+          ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
+          : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
         var m = /^pk_(?:test|live)_(.+)$/.exec(k);
         if (!m) return;
         var host = atob(m[1]).replace(/\$+$/, "");
