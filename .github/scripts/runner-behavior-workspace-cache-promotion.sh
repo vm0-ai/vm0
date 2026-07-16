@@ -111,7 +111,7 @@ for _ in $(seq 1 60); do
     fail "Workspace cache turn 1 exited before setup completed"
   fi
   SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
-    "$RUNNER_DIR/status.json" 2>/dev/null)
+    "$RUNNER_DIR/status.json" 2>/dev/null || true)
   if [ -n "$SANDBOX_ID" ] \
     && sudo timeout 3 "$BIN_DIR/runner" exec --timeout 2 \
       --sandbox "$SANDBOX_ID" -- sh -c \
