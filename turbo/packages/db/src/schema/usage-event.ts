@@ -34,12 +34,9 @@ import { agentRuns } from "./agent-run";
  *
  * Charging is applied by the billing processor. New trusted model-provider
  * events may include `grossCredits`, calculated by the runner from a signed
- * proxy price schedule; older events fall back to the
- * `(kind, billingSku ?? provider, category)` pricing-table lookup. The
- * processor applies allowances to the gross amount and writes
- * `creditsCharged`. `billingSku` is an optional opaque pricing identity for
- * trusted dynamic providers; `provider` remains the logical product shown in
- * usage records.
+ * proxy price schedule; other events use the `(kind, provider, category)`
+ * pricing-table lookup. The processor applies allowances to the gross amount
+ * and writes `creditsCharged`.
  *
  * `billingError` is a short code naming a billing-time problem on the
  * row. NULL on healthy rows. Ops queries `WHERE billing_error IS NOT
@@ -70,7 +67,6 @@ export const usageEvent = pgTable(
     userId: text("user_id").notNull(),
     kind: varchar("kind", { length: 30 }).notNull(),
     provider: varchar("provider", { length: 100 }).notNull(),
-    billingSku: varchar("billing_sku", { length: 100 }),
     category: varchar("category", { length: 100 }).notNull(),
     quantity: bigint("quantity", { mode: "number" }).notNull(),
     grossCredits: bigint("gross_credits", { mode: "number" }),

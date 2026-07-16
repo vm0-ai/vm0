@@ -4271,6 +4271,13 @@
       "when": 1784196245309,
       "tag": "0609_add_usage_event_gross_credits",
       "breakpoints": true
+    },
+    {
+      "idx": 610,
+      "version": "7",
+      "when": 1784200108803,
+      "tag": "0610_cheerful_sebastian_shaw",
+      "breakpoints": true
     }
   ]
 }

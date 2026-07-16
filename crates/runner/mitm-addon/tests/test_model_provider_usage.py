@@ -108,7 +108,6 @@ class TestReportModelProviderUsage:
             usage.flush_usage_events(trigger="test")
 
         events = webhook.requests[0].json_body()["events"]
-        assert all("billingSku" not in event for event in events)
         assert {event["category"]: event["grossCredits"] for event in events} == {
             "tokens.input": 7,
             "tokens.output": 7,
