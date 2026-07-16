@@ -328,7 +328,6 @@ describe("zero generate image command", () => {
       "`--background` accepts only `auto`, `opaque`, or `transparent`",
     );
     expect(stdout).toContain("--compiled-prompt");
-    expect(stdout).toContain("<resolved compatible CLI options>");
   });
 
   it("should fail with mode guidance when no image prompt mode is selected", async () => {

@@ -112,12 +112,12 @@ export function createStyledImageCompilationPacket(
     "",
     "## Next Command Template",
     "```bash",
-    'zero generate image --provider built-in --compiled-prompt "<compiled prompt>" <resolved compatible CLI options>',
+    'zero generate image --compiled-prompt "<compiled prompt>"',
     "```",
     "",
     "## Verification",
-    "- Verify the final image exists, is nonblank, and uses the resolved dimensions and other locked parameters.",
-    "- Check that required reference anchors were passed and authoring-only examples were not passed.",
+    "- Verify the final image exists and is nonblank.",
+    "- Check that the selected style's required reference anchors or source assets were used when applicable.",
     "- Report the final image URL or path and the selected registry resource ID.",
   ].join("\n");
 
