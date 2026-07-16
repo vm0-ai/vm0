@@ -662,7 +662,7 @@ function ArtifactCardActions({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-48"
+          className="w-48 [&_svg]:text-muted-foreground"
           onClick={(event) => {
             event.stopPropagation();
           }}
@@ -675,12 +675,7 @@ function ArtifactCardActions({
               onStartChat(item);
             }}
           >
-            <IconMessagePlus
-              size={14}
-              stroke={1.7}
-              className="text-muted-foreground"
-              aria-hidden
-            />
+            <IconMessagePlus size={14} stroke={1.7} aria-hidden />
             Ask about it
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -688,12 +683,7 @@ function ArtifactCardActions({
               onOpenChat(item.threadId);
             }}
           >
-            <IconHistory
-              size={14}
-              stroke={1.7}
-              className="text-muted-foreground"
-              aria-hidden
-            />
+            <IconHistory size={14} stroke={1.7} aria-hidden />
             View creation chat
           </DropdownMenuItem>
           {isZipArtifact(item) ? (
@@ -706,12 +696,7 @@ function ArtifactCardActions({
                 );
               }}
             >
-              <IconDownload
-                size={14}
-                stroke={1.7}
-                className="text-muted-foreground"
-                aria-hidden
-              />
+              <IconDownload size={14} stroke={1.7} aria-hidden />
               Download
             </DropdownMenuItem>
           ) : (
@@ -722,12 +707,7 @@ function ArtifactCardActions({
                 rel="noreferrer"
                 aria-label={`Open preview for ${item.filename}`}
               >
-                <IconExternalLink
-                  size={14}
-                  stroke={1.7}
-                  className="text-muted-foreground"
-                  aria-hidden
-                />
+                <IconExternalLink size={14} stroke={1.7} aria-hidden />
                 Open a new tab
               </a>
             </DropdownMenuItem>
