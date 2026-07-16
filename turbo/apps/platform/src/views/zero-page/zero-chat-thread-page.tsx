@@ -287,8 +287,7 @@ import {
   feedbackItemsValue$,
   feedbackThreadIdValue$,
   feedbackSendCountValue$,
-  setFeedbackItemNote$,
-  removeFeedbackItem$,
+  replaceFeedbackItems$,
   submitFeedback$,
   dismissFeedback$,
 } from "../../signals/zero-page/chat-feedback.ts";
@@ -4156,8 +4155,8 @@ function useChatThreadComputerUse(
 }
 
 // Bridges the global inline-feedback signals to the composer's `feedback` prop.
-// Returns undefined when no feedback is drafted in this thread, so the composer
-// keeps its textarea.
+// Returns undefined when no feedback is drafted in this thread, so the shared
+// TipTap document represents the normal draft.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
   sendFeedback: (prompt: string) => Promise<boolean>,
@@ -4165,8 +4164,7 @@ function useChatThreadComposerFeedback(
   const items = useGet(feedbackItemsValue$);
   const feedbackThreadId = useGet(feedbackThreadIdValue$);
   const sendCount = useGet(feedbackSendCountValue$);
-  const setNote = useSet(setFeedbackItemNote$);
-  const removeItem = useSet(removeFeedbackItem$);
+  const replaceItems = useSet(replaceFeedbackItems$);
   const compose = useSet(submitFeedback$);
   const dismiss = useSet(dismissFeedback$);
 
@@ -4178,25 +4176,15 @@ function useChatThreadComposerFeedback(
   return {
     items,
     sendCount,
-    onChangeNote: (id, note) => {
-      setNote({ id, note });
-    },
-    onRemove: (id) => {
-      removeItem(id);
+    onItemsChange: (nextItems) => {
+      replaceItems(nextItems);
     },
     onSubmit: () => {
       const prompt = compose();
       if (prompt === null) {
         return;
       }
-      detach(
-        (async () => {
-          if (await sendFeedback(prompt)) {
-            dismiss();
-          }
-        })(),
-        Reason.DomCallback,
-      );
+      detach(sendFeedback(prompt), Reason.DomCallback);
     },
     onDismiss: () => {
       dismiss();

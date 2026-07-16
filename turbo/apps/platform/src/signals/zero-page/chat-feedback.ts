@@ -356,16 +356,43 @@ export const removeFeedbackItem$ = command(({ get, set }, id: number) => {
   );
 });
 
-// Compose every noted fragment into one prompt. Returns null when nothing has a
-// note yet.
-export const submitFeedback$ = command(({ get }): string | null => {
+// TipTap owns the editable feedback document while feedback is active. Mirror
+// its current items back into the selection state and release highlights for
+// any block removed from the document.
+export const replaceFeedbackItems$ = command(
+  ({ get, set }, items: readonly FeedbackItem[]) => {
+    const retainedIds = new Set(
+      items.map((item) => {
+        return item.id;
+      }),
+    );
+    const ranges = new Map(
+      Array.from(get(feedbackRanges$)).filter(([id]) => {
+        return retainedIds.has(id);
+      }),
+    );
+    set(feedbackRanges$, ranges);
+    applyFeedbackHighlight(ranges);
+    set(feedbackItems$, items);
+    if (items.length === 0) {
+      set(feedbackThreadId$, null);
+    }
+  },
+);
+
+// Compose every noted fragment into one prompt and clear the shared editor
+// state before the asynchronous send begins. Failed sends intentionally do not
+// restore the feedback draft.
+export const submitFeedback$ = command(({ get, set }): string | null => {
   const noted = get(feedbackItems$).filter((item) => {
     return item.note.trim().length > 0;
   });
   if (noted.length === 0) {
     return null;
   }
-  return formatFeedbackPrompt(noted);
+  const prompt = formatFeedbackPrompt(noted);
+  set(dismissFeedback$);
+  return prompt;
 });
 
 export const dismissFeedback$ = command(({ set }) => {

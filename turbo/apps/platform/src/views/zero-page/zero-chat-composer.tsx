@@ -35,7 +35,6 @@ import {
   IconPlug,
   IconPhoto,
   IconPlus,
-  IconQuote,
   IconRoute,
   IconSearch,
   IconTarget,
@@ -71,7 +70,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-  matchShortcut,
   processShortcut,
   type KeyboardEventLike,
 } from "@vm0/ui";
@@ -351,10 +349,8 @@ export interface ZeroChatComposerProps {
   /** Cancels the active goal through the goal API. */
   onCancelActiveGoal?: () => void;
   /**
-   * Inline feedback drafted from selected assistant text. When at least one
-   * quoted fragment is present the composer swaps its textarea for the stacked
-   * quote + note rows and its Send button dispatches the feedback turn — so the
-   * feedback lives inside the composer instead of a separate panel above it.
+   * Inline feedback drafted from selected assistant text. The quoted fragments
+   * and editable notes live in the same TipTap document as the normal draft.
    */
   feedback?: ComposerFeedback;
 }
@@ -363,8 +359,7 @@ export interface ComposerFeedback {
   items: readonly FeedbackItem[];
   /** Fragments carrying a non-empty note — what Send will dispatch. */
   sendCount: number;
-  onChangeNote: (id: number, note: string) => void;
-  onRemove: (id: number) => void;
+  onItemsChange: (items: readonly FeedbackItem[]) => void;
   onSubmit: () => void;
   onDismiss: () => void;
 }
@@ -747,172 +742,6 @@ function QueuedMessagesStrip({
           />
         ) : null}
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Inline feedback rows — the docked feedback stack, rendered inside the
-// composer card in place of the textarea. Each selected passage is a quote line
-// above a borderless, composer-styled note input; fragments append to the
-// bottom so reading order matches selection order, and they share the
-// composer's toolbar and Send button.
-// ---------------------------------------------------------------------------
-
-// Grow the note input to fit its content so multi-line comments expand the
-// composer instead of scrolling inside a single row.
-function autoGrowFeedbackNote(element: HTMLTextAreaElement | null): void {
-  if (!element) {
-    return;
-  }
-  element.style.height = "auto";
-  element.style.height = `${element.scrollHeight}px`;
-}
-
-function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
-  autoGrowFeedbackNote(element);
-}
-
-function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
-  if (!element) {
-    return;
-  }
-  window.requestAnimationFrame(() => {
-    if (element.isConnected) {
-      element.focus({ preventScroll: true });
-    }
-  });
-  autoGrowFeedbackNote(element);
-}
-
-function ComposerFeedbackRow({
-  item,
-  autoFocus,
-  showDivider,
-  fill,
-  onChangeNote,
-  onRemove,
-  onKeyDown,
-}: {
-  item: FeedbackItem;
-  autoFocus: boolean;
-  showDivider: boolean;
-  fill: boolean;
-  onChangeNote: (note: string) => void;
-  onRemove: () => void;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-}) {
-  return (
-    <div
-      className={cn(
-        // Bottom padding on every row; top padding only when a dashed divider
-        // separates stacked fragments. The first row gets no top inset so the
-        // quote chip sits as high as the attachment chips do (matching the
-        // composer's pt-3), letting the card extend upward instead of leaving a
-        // gap above the chip.
-        "flex flex-col gap-1.5 pb-1.5",
-        showDivider && "border-t border-dashed border-border/60 pt-1.5",
-      )}
-    >
-      {/* Quote reference reuses the selected-template chip treatment (bordered
-          pill, icon square, in-pill remove) so feedback references read the same
-          as template chips. */}
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted">
-            <IconQuote
-              size={12}
-              stroke={1.5}
-              className="-scale-x-100 text-muted-foreground"
-            />
-          </span>
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.quote}
-          </span>
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label="Remove feedback"
-            title="Remove feedback"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <textarea
-        ref={autoFocus ? focusFeedbackNoteRef : autoGrowFeedbackNoteRef}
-        value={item.note}
-        onChange={(event) => {
-          autoGrowFeedbackNote(event.target);
-          return onChangeNote(event.target.value);
-        }}
-        onKeyDown={onKeyDown}
-        rows={1}
-        placeholder="What should change about this?"
-        className={cn(
-          "w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0",
-          // The active (newest) note carries the composer's resting height so the
-          // ghost text stays anchored above the toolbar — matching the textarea
-          // body. Quote chips then stack above it and grow the card upward,
-          // mirroring the attachment-chips layout, instead of the chip eating
-          // into a fixed-height container and pushing the ghost text down.
-          fill && "min-h-[96px]",
-        )}
-      />
-    </div>
-  );
-}
-
-function ComposerFeedbackRows({
-  feedback,
-  submissionLoading,
-}: {
-  feedback: ComposerFeedback;
-  submissionLoading: boolean;
-}) {
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sends, Shift+Enter inserts a newline — matching the main composer.
-    // Escape clears the drafted feedback.
-    if (matchShortcut("enter", event)) {
-      event.preventDefault();
-      if (!submissionLoading) {
-        feedback.onSubmit();
-      }
-    } else if (matchShortcut("escape", event)) {
-      event.preventDefault();
-      feedback.onDismiss();
-    }
-  };
-
-  // Newest fragment sits at the bottom (nearest Send) and takes focus.
-  const newestId = feedback.items[feedback.items.length - 1]?.id;
-
-  return (
-    // px-4 / pt-3 mirror the attachment-chips inset so the feedback chip lines
-    // up with attachments on both the left and top edges. The resting height
-    // lives on the newest note (via `fill`) rather than this container, so the
-    // quote chip grows the card upward instead of being capped inside a fixed
-    // height — keeping the layout consistent with the attachment-chips band.
-    <div className="flex flex-col px-4 pb-2 pt-3">
-      {feedback.items.map((item, index) => {
-        return (
-          <ComposerFeedbackRow
-            key={item.id}
-            item={item}
-            autoFocus={item.id === newestId}
-            showDivider={index > 0}
-            fill={item.id === newestId}
-            onChangeNote={(note) => {
-              return feedback.onChangeNote(item.id, note);
-            }}
-            onRemove={() => {
-              return feedback.onRemove(item.id);
-            }}
-            onKeyDown={handleKeyDown}
-          />
-        );
-      })}
     </div>
   );
 }
@@ -6906,6 +6735,7 @@ type KeyboardSendAction = "none" | "send" | "queue";
 
 function ComposerInputSlot({
   composer,
+  feedback,
   onDraftChange,
   sending,
   autoFocus,
@@ -6914,6 +6744,7 @@ function ComposerInputSlot({
   onPaste,
 }: {
   readonly composer: WorkflowComposerSignals;
+  readonly feedback: ComposerFeedback | null;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
@@ -6926,6 +6757,7 @@ function ComposerInputSlot({
   return (
     <TiptapWorkflowComposer
       composer={composer}
+      feedback={feedback}
       onDraftChange={onDraftChange}
       sending={sending}
       autoFocus={autoFocus}
@@ -7253,9 +7085,8 @@ export function useZeroChatComposer({
   );
   const uploadsReady = attachmentUploadsState === "hasData";
 
-  // When feedback fragments are present the composer is in "feedback mode": the
-  // textarea is replaced by the stacked quote + note rows and Send dispatches
-  // the feedback turn instead of the draft.
+  // Feedback changes what the shared TipTap document and Send action represent;
+  // it never swaps the editor surface.
   const activeFeedback = resolveActiveFeedback(feedback);
 
   // File upload handlers (paste / drag-drop)
@@ -7513,6 +7344,20 @@ export function useZeroChatComposer({
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
 
   const handleKeyDown = (e: KeyboardEventLike) => {
+    if (activeFeedback) {
+      processShortcut(
+        {
+          enter: () => {
+            if (!submissionLoading) {
+              activeFeedback.onSubmit();
+            }
+          },
+          escape: activeFeedback.onDismiss,
+        },
+        e,
+      );
+      return;
+    }
     const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
     const isTouchOnlyDevice =
       isTouchDevice && !window.matchMedia("(any-pointer: fine)").matches;
@@ -7633,24 +7478,16 @@ export function useZeroChatComposer({
                   }}
                 />
               )}
-              {activeFeedback ? (
-                <ComposerFeedbackRows
-                  feedback={activeFeedback}
-                  submissionLoading={submissionLoading}
-                />
-              ) : (
-                <>
-                  <ComposerInputSlot
-                    composer={composer}
-                    onDraftChange={onDraftChange}
-                    sending={sending}
-                    autoFocus={autoFocus}
-                    enableMobileSingleLine={enableMobileSingleLine}
-                    onKeyDown={handleKeyDown}
-                    onPaste={handlePaste}
-                  />
-                </>
-              )}
+              <ComposerInputSlot
+                composer={composer}
+                feedback={activeFeedback}
+                onDraftChange={onDraftChange}
+                sending={sending}
+                autoFocus={autoFocus}
+                enableMobileSingleLine={enableMobileSingleLine}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+              />
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                   <ComposerUploadControl
