@@ -185,6 +185,17 @@ export function createBddApi(context: TestContext) {
     context.mocks.clerk.users.getUserList.mockResolvedValue({
       data: [clerkUserProfile(nextUser)],
     });
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: nextUser.orgId
+        ? [
+            {
+              role: nextUser.orgRole ?? "org:admin",
+              organization: { id: nextUser.orgId },
+              publicUserData: { userId: nextUser.userId },
+            },
+          ]
+        : [],
+    });
     return authHeaders(nextUser);
   }
 
