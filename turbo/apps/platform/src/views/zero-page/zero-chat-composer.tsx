@@ -1518,31 +1518,24 @@ function WorkflowTemplateCard({
   );
 }
 
-// Resolves the workflow template tab's data in one place: the feature-gated
-// catalog, the persona pills present in it, the active pill (falling back to
-// "all"), and the items after both the pill and the search filter. Kept out of
+// Resolves the workflow template tab's data in one place: the persona pills
+// present in the catalog, the active pill (falling back to "all"), and the
+// items after both the pill and the search filter. Kept out of
 // TemplatePickerDialog so that component stays under its complexity budget.
 function resolveWorkflowCatalog({
-  showCatalog,
   categoryFilter,
   search,
 }: {
-  showCatalog: boolean;
   categoryFilter: string;
   search: string;
 }): ResolvedWorkflowTemplateCatalog {
-  const catalogItems = showCatalog
-    ? WORKFLOW_TEMPLATE_ITEMS
-    : WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
-        return item.category === WORKFLOW_TEMPLATE_CATEGORIES[0];
-      });
   const pills = WORKFLOW_TEMPLATE_CATEGORIES.filter((categoryName) => {
-    return catalogItems.some((item) => {
+    return WORKFLOW_TEMPLATE_ITEMS.some((item) => {
       return item.category === categoryName;
     });
   });
   const active = pills.includes(categoryFilter) ? categoryFilter : "all";
-  const items = catalogItems.filter((item) => {
+  const items = WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
     const matchesCategory = active === "all" || item.category === active;
     return matchesCategory && workflowTemplateMatchesSearch(item, search);
   });
@@ -4857,16 +4850,12 @@ function TemplatePickerDialog({
   const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
   const filteredVideoItems = VIDEO_TEMPLATE_ITEMS;
   const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS;
-  // The persona catalog rolls out behind a feature switch, and a persona pill
-  // filters the grid, ideation-gallery style. resolveWorkflowCatalog() keeps
-  // that branching out of this component to stay under the complexity budget.
-  const features = useLastResolved(featureSwitch$);
-  const showWorkflowTemplateCatalog =
-    features?.[FeatureSwitchKey.WorkflowTemplateCatalog] ?? false;
+  // A persona pill filters the grid, ideation-gallery style.
+  // resolveWorkflowCatalog() keeps that logic out of this component to stay
+  // under the complexity budget.
   const workflowCategoryFilter = useGet(templatePickerWorkflowCategory$);
   const setWorkflowCategoryFilter = useSet(setTemplatePickerWorkflowCategory$);
   const workflowCatalog = resolveWorkflowCatalog({
-    showCatalog: showWorkflowTemplateCatalog,
     categoryFilter: workflowCategoryFilter,
     search,
   });

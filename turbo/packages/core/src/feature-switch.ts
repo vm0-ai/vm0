@@ -468,13 +468,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Render a static preview image (screenshot) for HTML/website artifacts on deploy so the artifacts grid shows an image instead of a live iframe.",
     enabled: true,
   },
-  [FeatureSwitchKey.WorkflowTemplateCatalog]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show the full persona-grouped built-in workflow template catalog in the chat composer template picker. Off shows only the General starter template.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.WebsiteTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
