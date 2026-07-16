@@ -32,7 +32,6 @@ enum WorkspacePromotionAction {
 struct SessionHistorySidecarSourceGuard<'a> {
     entry_guard: WorkspaceSessionHistorySidecarEntryGuard<'a>,
     source: WorkspaceSessionHistorySidecarPromotionSource,
-    remove_on_drop: bool,
 }
 
 impl<'a> SessionHistorySidecarSourceGuard<'a> {
@@ -43,7 +42,6 @@ impl<'a> SessionHistorySidecarSourceGuard<'a> {
         Self {
             entry_guard,
             source,
-            remove_on_drop: true,
         }
     }
 
@@ -51,11 +49,10 @@ impl<'a> SessionHistorySidecarSourceGuard<'a> {
         &self.source.tmp_path
     }
 
-    async fn discard(mut self) {
+    async fn discard(self) {
         self.entry_guard
             .discard_session_history_sidecar_source(&self.source)
             .await;
-        self.remove_on_drop = false;
     }
 
     async fn promote(&self) -> crate::error::RunnerResult<WorkspaceImagePromotionOutcome> {
@@ -67,9 +64,7 @@ impl<'a> SessionHistorySidecarSourceGuard<'a> {
 
 impl Drop for SessionHistorySidecarSourceGuard<'_> {
     fn drop(&mut self) {
-        if self.remove_on_drop {
-            let _ = std::fs::remove_file(&self.source.tmp_path);
-        }
+        let _ = std::fs::remove_file(&self.source.tmp_path);
     }
 }
 
