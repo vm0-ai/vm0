@@ -325,6 +325,8 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     needs: [detect]
@@ -335,8 +337,19 @@ jobs:
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
         with:
           workspaces: crates -> target
-          shared-key: coverage
+          shared-key: coverage-line-tables-only
           save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Report coverage disk usage after cache restore
+        run: |
+          df -h "$GITHUB_WORKSPACE"
+          for path in crates/target crates/target/llvm-cov-target; do
+            if [ -e "$path" ]; then
+              du -sh "$path"
+            else
+              echo "$path: not present"
+            fi
+          done
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -345,6 +358,18 @@ jobs:
         run: |
           cd crates
           cargo llvm-cov --all-targets --all-features --lcov --output-path lcov.info
+
+      - name: Report final coverage disk usage
+        if: success() || failure()
+        run: |
+          df -h "$GITHUB_WORKSPACE"
+          for path in crates/target crates/target/llvm-cov-target; do
+            if [ -e "$path" ]; then
+              du -sh "$path"
+            else
+              echo "$path: not present"
+            fi
+          done
 
       - name: Upload coverage to Codecov
         if: success() || failure()
