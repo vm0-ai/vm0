@@ -113,6 +113,142 @@ async function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
+function databaseErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return undefined;
+  }
+  return typeof error.code === "string" ? error.code : undefined;
+}
+
+async function expectAppendOnlyUpdateRejected(
+  client: Client,
+  args: {
+    readonly tableName: "chat_messages" | "chat_thread_events";
+    readonly query: string;
+    readonly rowId: string;
+  },
+): Promise<void> {
+  try {
+    await client.query(args.query, [args.rowId]);
+  } catch (error) {
+    const expectedMessage = `${args.tableName} is append-only; UPDATE is not allowed`;
+    if (
+      databaseErrorCode(error) === "P0001" &&
+      error instanceof Error &&
+      error.message.includes(expectedMessage)
+    ) {
+      return;
+    }
+    throw error;
+  }
+
+  throw new Error(`${args.tableName} accepted an UPDATE`);
+}
+
+async function validateChatEventSourcesAreAppendOnly(
+  dbUrl: string,
+): Promise<void> {
+  console.log("=== Phase 2.5: Validate append-only chat event sources ===\n");
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  let agentComposeId: string | undefined;
+  let threadId: string | undefined;
+  let messageId: string | undefined;
+  let eventId: string | undefined;
+
+  try {
+    const agentCompose = await client.query<{ id: string }>(`
+      INSERT INTO "agent_composes" ("user_id", "name", "org_id")
+      VALUES ('append-only-test-user', 'append-only-migration-test', 'append-only-test-org')
+      RETURNING "id"
+    `);
+    agentComposeId = agentCompose.rows[0]?.id;
+    if (!agentComposeId) {
+      throw new Error("Failed to create append-only agent compose fixture");
+    }
+
+    const thread = await client.query<{ id: string }>(
+      `
+        INSERT INTO "chat_threads" ("user_id", "agent_compose_id", "title")
+        VALUES ('append-only-test-user', $1, 'append-only migration test')
+        RETURNING "id"
+      `,
+      [agentComposeId],
+    );
+    threadId = thread.rows[0]?.id;
+    if (!threadId) {
+      throw new Error("Failed to create append-only chat thread fixture");
+    }
+
+    const message = await client.query<{ id: string }>(
+      `
+        INSERT INTO "chat_messages" ("chat_thread_id", "role", "content")
+        VALUES ($1, 'user', 'append-only migration test')
+        RETURNING "id"
+      `,
+      [threadId],
+    );
+    messageId = message.rows[0]?.id;
+    if (!messageId) {
+      throw new Error("Failed to create append-only chat message fixture");
+    }
+
+    const event = await client.query<{ id: string }>(
+      `
+        INSERT INTO "chat_thread_events" (
+          "user_id",
+          "org_id",
+          "chat_thread_id",
+          "kind",
+          "agent_compose_id",
+          "title"
+        )
+        VALUES (
+          'append-only-test-user',
+          'append-only-test-org',
+          $1,
+          'created',
+          $2,
+          'append-only migration test'
+        )
+        RETURNING "id"
+      `,
+      [threadId, agentComposeId],
+    );
+    eventId = event.rows[0]?.id;
+    if (!eventId) {
+      throw new Error("Failed to create append-only chat thread event fixture");
+    }
+
+    await expectAppendOnlyUpdateRejected(client, {
+      tableName: "chat_messages",
+      query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+      rowId: messageId,
+    });
+    await expectAppendOnlyUpdateRejected(client, {
+      tableName: "chat_thread_events",
+      query: `UPDATE "chat_thread_events" SET "title" = 'mutated' WHERE "id" = $1`,
+      rowId: eventId,
+    });
+
+    console.log("   ✅ chat_messages rejects UPDATE");
+    console.log("   ✅ chat_thread_events rejects UPDATE\n");
+  } finally {
+    if (eventId) {
+      await client.query(`DELETE FROM "chat_thread_events" WHERE "id" = $1`, [
+        eventId,
+      ]);
+    }
+    if (agentComposeId) {
+      await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+        agentComposeId,
+      ]);
+    }
+    await client.end();
+  }
+}
+
 async function runNormalizedComparison(
   dbUrl1: string,
   dbUrl2: string,
@@ -685,6 +821,8 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Migrations applied successfully\n");
 
+    await validateChatEventSourcesAreAppendOnly(dbUrl1);
+
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
     await backupMigrations();
@@ -709,6 +847,7 @@ async function main(): Promise<void> {
       console.log("   ✅ Snapshot chain is intact (id/prevId references)");
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
+      console.log("   ✅ Chat event source tables reject UPDATE");
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");
 

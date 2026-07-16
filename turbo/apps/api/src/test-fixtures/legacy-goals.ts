@@ -9,16 +9,22 @@ import { db } from "../lib/db";
 export async function seedInvalidLegacyGoalMessages(
   threadId: string,
 ): Promise<void> {
-  const updated = await db().execute(sql`
-    UPDATE chat_messages
-    SET
-      goal_event = '{"type":"state","status":"active","objectiveBrief":123}'::jsonb,
-      goal_snapshot = '{"objectiveBrief":{"bad":true}}'::jsonb
-    WHERE chat_thread_id = ${threadId}
-      AND goal_event IS NOT NULL
+  const insertedInvalidActiveMarker = await db().execute(sql`
+    INSERT INTO chat_messages (
+      chat_thread_id,
+      role,
+      goal_event,
+      goal_snapshot
+    )
+    VALUES (
+      ${threadId},
+      'assistant',
+      '{"type":"state","status":"active","objectiveBrief":123}'::jsonb,
+      '{"objectiveBrief":{"bad":true}}'::jsonb
+    )
   `);
-  if (updated.rowCount !== 1) {
-    throw new Error("Expected one current goal marker fixture");
+  if (insertedInvalidActiveMarker.rowCount !== 1) {
+    throw new Error("Expected one invalid active goal marker fixture");
   }
 
   const inserted = await db().execute(sql`
