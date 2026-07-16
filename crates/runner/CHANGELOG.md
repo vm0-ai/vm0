@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.145.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.3...runner-rs-v0.145.4) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** block managed credentials on trace requests ([#21809](https://github.com/vm0-ai/vm0/issues/21809)) ([a566343](https://github.com/vm0-ai/vm0/commit/a566343639a826255c224bfaa7fbbda64145b76e))
+* support dynamic vm0 model routing ([#21693](https://github.com/vm0-ai/vm0/issues/21693)) ([80d0dca](https://github.com/vm0-ai/vm0/commit/80d0dca1f3e198f7c83ed28783da740d2215675f))
+
 ## [0.145.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.2...runner-rs-v0.145.3) (2026-07-16)
 
 
