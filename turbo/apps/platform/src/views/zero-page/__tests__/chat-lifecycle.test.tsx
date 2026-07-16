@@ -6088,6 +6088,79 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("reconciles stale locally-queued messages claimed before realtime subscription is ready", async () => {
+    const claimedQueued: Extract<PagedChatMessage, { role: "user" }> = {
+      id: "00000000-0000-4000-8000-000000004101",
+      role: "user",
+      content: "First queued send",
+      runId: undefined,
+      createdAt: "2026-06-09T10:02:00Z",
+    };
+    const stillQueued: Extract<PagedChatMessage, { role: "user" }> = {
+      id: "00000000-0000-4000-8000-000000004102",
+      role: "user",
+      content: "Second queued send",
+      runId: undefined,
+      createdAt: "2026-06-09T10:03:00Z",
+    };
+    const fetchedMessageIds: string[] = [];
+    let claimedAfterInitialList = false;
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Queued reconciliation",
+      chatMessages: [
+        {
+          id: "msg-reconcile-user",
+          role: "user",
+          content: "Original prompt",
+          runId: "run-reconcile-done",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-reconcile-assistant",
+          role: "assistant",
+          content: "Original reply.",
+          runId: "run-reconcile-done",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        claimedQueued,
+        stillQueued,
+      ],
+      afterInitialMessagesList: () => {
+        if (claimedAfterInitialList) {
+          return;
+        }
+        claimedAfterInitialList = true;
+        // Simulate the server claiming the queued row in place while the
+        // dedicated chatThreadMessageUpdated event is lost: only a targeted
+        // refetch of the row can observe the new runId.
+        claimedQueued.runId = "run-reconcile-claimed";
+      },
+      onMessageGet: (messageId) => {
+        fetchedMessageIds.push(messageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      // The claimed row is not the latest message, so only the queued-row
+      // reconciliation pass can have refetched it.
+      expect(fetchedMessageIds).toContain(claimedQueued.id);
+      // Healed row is now associated with an in-flight run, so the thread
+      // shows the running indicator instead of a queued-only transcript.
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
+      expect(screen.getByText("First queued send")).toBeInTheDocument();
+      expect(screen.getByText("Second queued send")).toBeInTheDocument();
+    });
+  });
+
   it("keeps stale recommended follow-ups hidden after the user advances the thread", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
