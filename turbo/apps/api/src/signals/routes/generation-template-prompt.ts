@@ -256,7 +256,10 @@ function buildIllustrationGenerationTemplatePrompt(
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
-  const styleSource = `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`;
+  const styleSource =
+    imageStyle.source.repo && imageStyle.source.ref
+      ? `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`
+      : imageStyle.source.path;
 
   return {
     status: "resolved",

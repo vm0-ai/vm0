@@ -1,12 +1,12 @@
 import {
   type GenerationOutputKind,
-  type ImageStyleRegistryEntry,
+  type RegistryEntry,
 } from "./resource-registry";
 
 interface StyledImageCompilationOptions {
   readonly prompt: string;
   readonly details: readonly string[];
-  readonly style: ImageStyleRegistryEntry;
+  readonly style: RegistryEntry;
 }
 
 interface StyledImageCompilationPacket {
@@ -34,14 +34,15 @@ interface StyledImageCompilationPacket {
   readonly instructions: string;
 }
 
-function formatStyleSource(
-  source: ImageStyleRegistryEntry["source"],
-): readonly string[] {
-  return [
-    `- Repository: \`${source.repo}@${source.ref}\``,
-    `- Path: \`${source.path}\``,
-    `- SKILL.md: \`https://raw.githubusercontent.com/${source.repo}/${source.ref}/${source.path}/SKILL.md\``,
-  ];
+function formatStyleSource(source: RegistryEntry["source"]): readonly string[] {
+  if (source.repo && source.ref) {
+    return [
+      `- Repository: \`${source.repo}@${source.ref}\``,
+      `- Path: \`${source.path}\``,
+      `- SKILL.md: \`https://raw.githubusercontent.com/${source.repo}/${source.ref}/${source.path}/SKILL.md\``,
+    ];
+  }
+  return [`- Path: \`${source.path}\``];
 }
 
 const outputDir = "./generated/images";

@@ -49,10 +49,12 @@ interface ResourceSourceRef {
   };
 }
 
-interface RegistryEntryBase {
+export interface RegistryEntry {
   readonly id: string;
+  readonly kind: ResourceKind;
   readonly name: string;
   readonly description: string;
+  readonly desc?: string;
   readonly source: ResourceSourceRef;
   /**
    * Generation targets this entry applies to. Mandatory for `kind: "template"`
@@ -63,25 +65,11 @@ interface RegistryEntryBase {
   readonly targets?: readonly GenerationTarget[];
 }
 
-interface StandardRegistryEntry extends RegistryEntryBase {
-  readonly kind: Exclude<ResourceKind, "image-style">;
-  readonly desc?: string;
-}
-
-export interface ImageStyleRegistryEntry extends RegistryEntryBase {
-  readonly kind: "image-style";
-  readonly desc: string;
-  readonly source: ResourceSourceRef & {
-    readonly repo: string;
-    readonly ref: string;
-  };
-}
-
-export type RegistryEntry = StandardRegistryEntry | ImageStyleRegistryEntry;
-
-export interface VideoTemplateRegistryEntry extends RegistryEntryBase {
+export interface VideoTemplateRegistryEntry extends Omit<
+  RegistryEntry,
+  "kind" | "source"
+> {
   readonly kind: "video-template";
-  readonly desc?: string;
   readonly source: ResourceSourceRef & {
     readonly repo: string;
     readonly ref: string;
@@ -109,7 +97,7 @@ export interface ResourceCandidateSlice {
     readonly skills: readonly RegistryEntry[];
     readonly templates: readonly RegistryEntry[];
     readonly designSystems: readonly RegistryEntry[];
-    readonly imageStyles: readonly ImageStyleRegistryEntry[];
+    readonly imageStyles: readonly RegistryEntry[];
     readonly audioStyles: readonly RegistryEntry[];
     readonly videoTemplates: readonly VideoTemplateRegistryEntry[];
     readonly bundleTemplates: readonly RegistryEntry[];
@@ -3803,10 +3791,8 @@ function filterByKind(kind: ResourceKind): readonly RegistryEntry[] {
   });
 }
 
-export function listImageStyles(): readonly ImageStyleRegistryEntry[] {
-  return RESOURCE_REGISTRY.filter((entry) => {
-    return entry.kind === "image-style";
-  });
+export function listImageStyles(): readonly RegistryEntry[] {
+  return filterByKind("image-style");
 }
 
 export function listSkills(): readonly RegistryEntry[] {
@@ -3829,9 +3815,7 @@ export function findTool(id: string): RegistryEntry | undefined {
   });
 }
 
-export function findImageStyle(
-  id: string,
-): ImageStyleRegistryEntry | undefined {
+export function findImageStyle(id: string): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
     return entry.id === id;
   });
@@ -3963,7 +3947,7 @@ export function selectResourceCandidates(
       skills: listSkills(),
       templates: listTemplates(target),
       designSystems: filterByKind("design-system"),
-      imageStyles: listImageStyles(),
+      imageStyles: filterByKind("image-style"),
       audioStyles: filterByKind("audio-style"),
       videoTemplates: listVideoTemplates(),
       bundleTemplates: filterByKind("bundle-template"),

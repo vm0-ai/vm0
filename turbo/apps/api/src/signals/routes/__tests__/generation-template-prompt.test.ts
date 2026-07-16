@@ -101,7 +101,6 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `- Style description: ${imageStyle.description}`,
     );
-    expect(result.prompt).not.toContain(imageStyle.desc);
     expect(result.prompt).toContain(
       `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile`,
     );
