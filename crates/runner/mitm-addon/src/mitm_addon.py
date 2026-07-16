@@ -48,7 +48,7 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import http_network_log
 import matching
-import model_usage_receipt
+import model_usage_pricing
 import network_log_sanitization
 import platform_api
 import registry
@@ -1064,7 +1064,7 @@ def _is_valid_websocket_key(value: str) -> bool:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
-    model_usage_receipt.apply_signed_usage_receipt(flow)
+    model_usage_pricing.apply_signed_usage_pricing(flow)
     if connector_diagnostics.install_response_stream_if_needed(flow):
         return
     response_streaming.configure_response_stream(flow)

@@ -46,6 +46,7 @@ from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
+ModelUsagePricing = tuple[int, dict[str, int]]
 _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
     (
         MODEL_USAGE_CATEGORY_INPUT,
@@ -102,7 +103,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
         flow,
         run_id,
         USAGE_EVENT_NAMESPACE_MODEL,
-        billing_sku=flow_metadata.model_usage_billing_sku(flow.metadata),
+        billing_pricing=_model_usage_pricing(flow),
     )
     if not events:
         return False
@@ -140,7 +141,7 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
         flow,
         run_id,
         USAGE_OBSERVATION_NAMESPACE_MODEL,
-        billing_sku=None,
+        billing_pricing=None,
     )
     if not events:
         return False
@@ -179,7 +180,7 @@ def report_model_provider_usage_source(
             provider,
             source_usage,
             USAGE_EVENT_NAMESPACE_MODEL,
-            billing_sku=flow_metadata.model_usage_billing_sku(flow.metadata),
+            billing_pricing=_model_usage_pricing(flow),
         )
     if can_report_observation:
         observation_events = _build_usage_events(
@@ -188,7 +189,7 @@ def report_model_provider_usage_source(
             provider,
             source_usage,
             USAGE_OBSERVATION_NAMESPACE_MODEL,
-            billing_sku=None,
+            billing_pricing=None,
         )
 
     if not usage_events and not observation_events:
@@ -373,7 +374,7 @@ def _build_model_provider_usage_events(
     run_id: str,
     namespace: uuid.UUID,
     *,
-    billing_sku: str | None,
+    billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for source_id, usage in _iter_model_provider_usage_sources(flow):
@@ -385,7 +386,7 @@ def _build_model_provider_usage_events(
                 provider,
                 usage,
                 namespace,
-                billing_sku=billing_sku,
+                billing_pricing=billing_pricing,
             )
         )
     return events
@@ -414,7 +415,7 @@ def _build_usage_events(
     usage: dict,
     namespace: uuid.UUID,
     *,
-    billing_sku: str | None,
+    billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
@@ -431,10 +432,19 @@ def _build_usage_events(
             "category": category,
             "quantity": quantity,
         }
-        if billing_sku is not None:
-            event["billingSku"] = billing_sku
+        if billing_pricing is not None:
+            unit_price = billing_pricing[1].get(category)
+            if unit_price is not None:
+                event["billingUnitPrice"] = unit_price
+                event["billingUnitSize"] = billing_pricing[0]
         events.append(event)
     return events
+
+
+def _model_usage_pricing(
+    flow: http.HTTPFlow,
+) -> ModelUsagePricing | None:
+    return flow_metadata.model_usage_pricing(flow.metadata)
 
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:
