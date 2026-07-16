@@ -155,9 +155,8 @@ export async function deleteUserByEmail(email: string): Promise<void> {
         { retryTransientFailures: true },
       );
       if (!deleteResponse.ok && deleteResponse.status !== 404) {
-        const responseBody = await deleteResponse.text();
         throw new Error(
-          `delete Clerk test user failed with ${formatClerkResponseSummary(deleteResponse, responseBody)}`,
+          `delete Clerk test user failed with ${formatClerkResponseSummary(deleteResponse)}`,
         );
       }
       return;
@@ -204,7 +203,7 @@ async function readClerkJson(
   const responseBody = await response.text();
   if (!response.ok) {
     throw new Error(
-      `${operation} failed with ${formatClerkResponseSummary(response, responseBody)}`,
+      `${operation} failed with ${formatClerkResponseSummary(response)}`,
     );
   }
 
@@ -212,7 +211,7 @@ async function readClerkJson(
     return JSON.parse(responseBody) as unknown;
   } catch (cause) {
     throw new Error(
-      `${operation} returned invalid JSON: ${formatClerkResponseSummary(response, responseBody)}`,
+      `${operation} returned invalid JSON: ${formatClerkResponseSummary(response)}`,
       {
         cause,
       },
@@ -260,11 +259,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function formatClerkResponseSummary(
+function formatClerkResponseSummary(response: Response): string {
+  return `HTTP ${response.status} (${classifyClerkResponse(response)})`;
+}
+
+function classifyClerkResponse(
   response: Response,
-  responseBody: string,
-): string {
-  const contentType = response.headers.get("content-type") ?? "unknown";
-  const bodySummary = responseBody.replace(/\s+/g, " ").trim().slice(0, 300);
-  return `HTTP ${response.status} (${contentType}): ${bodySummary || "<empty response>"}`;
+): "json" | "html" | "other" | "unknown" {
+  const contentType = response.headers.get("content-type");
+  if (!contentType) {
+    return "unknown";
+  }
+
+  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  if (mediaType === "application/json" || mediaType?.endsWith("+json")) {
+    return "json";
+  }
+  if (mediaType === "text/html" || mediaType === "application/xhtml+xml") {
+    return "html";
+  }
+  return "other";
 }
