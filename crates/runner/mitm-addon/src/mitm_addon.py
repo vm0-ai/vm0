@@ -281,7 +281,7 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
         if upstream_admission.api_hostname_matches(
             api_url,
             trusted_authority.host,
-        ) and not flow.request.path.startswith("/api/test/"):
+        ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
             classification = _classify_request_for_flow(
                 flow,
                 defer_unresolved_public_destination=True,
