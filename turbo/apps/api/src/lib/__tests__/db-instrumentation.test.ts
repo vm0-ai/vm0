@@ -388,14 +388,15 @@ describe("instrumentPgPool", () => {
     expect(span.attributes[CONNECTION_ATTEMPT_COUNT_ATTRIBUTE]).toBe(1);
   });
 
-  it("allows only one unresolved secondary lookup across connections", async () => {
+  it("bounds and releases secondary lookup capacity across connections", async () => {
     const controlledLookup = createControlledLookup(testAbortController.signal);
-    const pool = createPool({ max: 2 }, () => {
+    const stream: PgStreamFactory = () => {
       return createInstrumentedPgStream({
         lookup: controlledLookup.lookup,
         lookupHedgeDelayMs: 0,
       });
-    });
+    };
+    const pool = createPool({ max: 2 }, stream);
     let connectedClientCount = 0;
     pool.on("connect", () => {
       connectedClientCount += 1;
@@ -427,6 +428,22 @@ describe("instrumentPgPool", () => {
     expect(
       findSpan(statementB).attributes[CONNECTION_LOOKUP_HEDGED_ATTRIBUTE],
     ).toBeUndefined();
+
+    const laterPool = createPool({}, stream);
+    const laterStatement = "SELECT 117 AS hedge_after_release";
+    const laterQuery = laterPool.query(laterStatement);
+    const laterPrimary = await controlledLookup.next();
+    const laterSecondary = await controlledLookup.next();
+    await laterSecondary.complete();
+    const laterResult = await laterQuery;
+    await laterPrimary.complete();
+
+    expect(laterResult.rowCount).toBe(1);
+    expect(controlledLookup.callCount).toBe(5);
+    expect(laterPool.totalCount).toBe(1);
+    expect(
+      findSpan(laterStatement).attributes[CONNECTION_LOOKUP_SOURCE_ATTRIBUTE],
+    ).toBe("secondary");
   });
 
   it("keeps primary errors authoritative after a secondary starts", async () => {
