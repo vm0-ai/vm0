@@ -261,7 +261,8 @@ function ManualGrantForm({
   const setFormValue = useSet(setManualGrantFormValue$);
   const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
-  const fieldValues = useGet(manualGrantFormValuesFor$(type));
+  const manualGrantFormValuesFor = useGet(manualGrantFormValuesFor$);
+  const fieldValues = manualGrantFormValuesFor(type);
 
   const allFilled = method.manualFields.every((field) => {
     return !field.required || hasTokenInputValue(fieldValues[field.id]);
@@ -606,11 +607,12 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   );
   const startOptions =
     props.method.grantKind === "device-auth" ? props.method.startOptions : [];
-  const startOptionValues = useGet(
-    connectorOAuthDeviceAuthStartOptionValuesFor$(
-      props.item.type,
-      props.authMethod,
-    ),
+  const connectorOAuthDeviceAuthStartOptionValuesFor = useGet(
+    connectorOAuthDeviceAuthStartOptionValuesFor$,
+  );
+  const startOptionValues = connectorOAuthDeviceAuthStartOptionValuesFor(
+    props.item.type,
+    props.authMethod,
   );
   const effectiveStartOptionValues = {
     ...defaultDeviceAuthStartOptionValues(startOptions),

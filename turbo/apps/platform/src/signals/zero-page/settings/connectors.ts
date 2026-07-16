@@ -816,18 +816,14 @@ function connectorOAuthDeviceAuthStartOptionsKey(
   return `${type}:${authMethod}`;
 }
 
-export const connectorOAuthDeviceAuthStartOptionValuesFor$ = (
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-) => {
-  return computed((get) => {
+export const connectorOAuthDeviceAuthStartOptionValuesFor$ = computed((get) => {
+  const values = get(connectorOAuthDeviceAuthStartOptionValues$);
+  return (type: ConnectorType, authMethod: ConnectorAuthMethodId) => {
     return (
-      get(connectorOAuthDeviceAuthStartOptionValues$)[
-        connectorOAuthDeviceAuthStartOptionsKey(type, authMethod)
-      ] ?? {}
+      values[connectorOAuthDeviceAuthStartOptionsKey(type, authMethod)] ?? {}
     );
-  });
-};
+  };
+});
 
 export const setConnectorOAuthDeviceAuthStartOptionValue$ = command(
   (
@@ -909,11 +905,12 @@ export const clearManualGrantForm$ = command(({ get, set }, type: string) => {
   set(manualGrantFormValues$, updated);
 });
 
-export const manualGrantFormValuesFor$ = (type: string) => {
-  return computed((get) => {
-    return get(manualGrantFormValues$)[type] ?? {};
-  });
-};
+export const manualGrantFormValuesFor$ = computed((get) => {
+  const values = get(manualGrantFormValues$);
+  return (type: string) => {
+    return values[type] ?? {};
+  };
+});
 
 export const setManualGrantFormSubmitting$ = command(
   ({ set }, value: string | null) => {
