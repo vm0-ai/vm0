@@ -715,6 +715,14 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-cancel.sh
 
+      - name: Test supervised process containment
+        id: process_containment
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-process-containment.sh
+
       - name: Test runner exec
         id: exec
         timeout-minutes: 5
@@ -727,6 +735,7 @@ jobs:
         env:
           DRAIN_RESUME_RESULT: ${{ steps.drain_resume.outcome }}
           CANCEL_RESULT: ${{ steps.cancel.outcome }}
+          PROCESS_CONTAINMENT_RESULT: ${{ steps.process_containment.outcome }}
           EXEC_RESULT: ${{ steps.exec.outcome }}
         run: |
           FAILED=0
@@ -744,6 +753,7 @@ jobs:
           echo "::group::Runner Behavior Lane B Results"
           check_result "drain-resume" "$DRAIN_RESUME_RESULT"
           check_result "cancel" "$CANCEL_RESULT"
+          check_result "process-containment" "$PROCESS_CONTAINMENT_RESULT"
           check_result "exec" "$EXEC_RESULT"
           echo "::endgroup::"
 
