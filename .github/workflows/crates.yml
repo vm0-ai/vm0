@@ -855,6 +855,14 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-keep-alive.sh
 
+      - name: Test workspace cache promotion across runner restart
+        id: workspace_cache_promotion
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-workspace-cache-promotion.sh
+
       - name: Run upgrade test
         id: upgrade_local
         timeout-minutes: 5
@@ -868,6 +876,7 @@ jobs:
           BENCHMARK_RESULT: ${{ steps.benchmark.outcome }}
           LOCAL_CLAUDE_ACTIVE_INPUT_SMOKE_RESULT: ${{ steps.local_claude_active_input_smoke.outcome }}
           KEEP_ALIVE_RESULT: ${{ steps.keep_alive.outcome }}
+          WORKSPACE_CACHE_PROMOTION_RESULT: ${{ steps.workspace_cache_promotion.outcome }}
           UPGRADE_LOCAL_RESULT: ${{ steps.upgrade_local.outcome }}
         run: |
           FAILED=0
@@ -886,6 +895,7 @@ jobs:
           check_result "benchmark" "$BENCHMARK_RESULT"
           check_result "local-claude-active-input-smoke" "$LOCAL_CLAUDE_ACTIVE_INPUT_SMOKE_RESULT"
           check_result "keep-alive" "$KEEP_ALIVE_RESULT"
+          check_result "workspace-cache-promotion" "$WORKSPACE_CACHE_PROMOTION_RESULT"
           check_result "upgrade-local" "$UPGRADE_LOCAL_RESULT"
           echo "::endgroup::"
 
