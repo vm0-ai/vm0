@@ -6,22 +6,73 @@ use tracing::warn;
 
 use crate::error::{RunnerError, RunnerResult};
 
-/// Like `next_entry()`, but logs a warning and returns `None` on I/O error
-/// instead of propagating — suitable for best-effort scans like GC.
-///
-/// Returning `None` terminates a `while let Some(entry)` loop, so an error
-/// stops iteration for the current directory (remaining entries are skipped).
+fn warn_next_entry_error(label: &str, dir: &Path, error: &std::io::Error) {
+    warn!("{label}: read entry in {}: {error}", dir.display());
+}
+
+/// Like `next_entry()`, but logs an I/O error before returning it.
 pub(super) async fn next_entry_warn(
     entries: &mut tokio::fs::ReadDir,
     label: &str,
     dir: &Path,
-) -> Option<tokio::fs::DirEntry> {
+) -> std::io::Result<Option<tokio::fs::DirEntry>> {
     match entries.next_entry().await {
-        Ok(entry) => entry,
-        Err(e) => {
-            warn!("{label}: read entry in {}: {e}", dir.display());
-            None
+        Ok(entry) => Ok(entry),
+        Err(error) => {
+            warn_next_entry_error(label, dir, &error);
+            Err(error)
         }
+    }
+}
+
+/// Stop a best-effort directory scan after logging an I/O error.
+pub(super) async fn next_entry_warn_or_stop(
+    entries: &mut tokio::fs::ReadDir,
+    label: &str,
+    dir: &Path,
+) -> Option<tokio::fs::DirEntry> {
+    next_entry_warn(entries, label, dir).await.ok().flatten()
+}
+
+/// Stateful directory reader for GC scans whose completeness authorizes deletion.
+pub(super) struct GcDirEntryReader {
+    #[cfg(test)]
+    entries_before_error: Option<usize>,
+}
+
+impl GcDirEntryReader {
+    pub(super) const fn new() -> Self {
+        Self {
+            #[cfg(test)]
+            entries_before_error: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) const fn failing_after(successful_entries: usize) -> Self {
+        Self {
+            entries_before_error: Some(successful_entries),
+        }
+    }
+
+    pub(super) async fn next_entry_warn(
+        &mut self,
+        entries: &mut tokio::fs::ReadDir,
+        label: &str,
+        dir: &Path,
+    ) -> std::io::Result<Option<tokio::fs::DirEntry>> {
+        #[cfg(test)]
+        if let Some(remaining) = &mut self.entries_before_error {
+            if *remaining == 0 {
+                self.entries_before_error = None;
+                let error = std::io::Error::other("injected directory iteration failure");
+                warn_next_entry_error(label, dir, &error);
+                return Err(error);
+            }
+            *remaining -= 1;
+        }
+
+        next_entry_warn(entries, label, dir).await
     }
 }
 
@@ -93,7 +144,7 @@ pub(super) async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
                 continue;
             }
         };
-        while let Some(entry) = next_entry_warn(&mut entries, "dir_stats", &current).await {
+        while let Some(entry) = next_entry_warn_or_stop(&mut entries, "dir_stats", &current).await {
             let path = entry.path();
             let Ok(meta) = tokio::fs::symlink_metadata(&path).await else {
                 tracing::debug!("dir_stats: cannot stat {}", entry.path().display());

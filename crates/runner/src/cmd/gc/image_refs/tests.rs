@@ -4,7 +4,7 @@ use super::*;
 use crate::cmd::gc::GC_MIN_AGE;
 use crate::cmd::gc::images::gc_nested_images_with_protected_refs;
 use crate::cmd::gc::test_support::{old_gc_time, set_mtime, test_home};
-use crate::cmd::gc::versions::analyze_version_gc;
+use crate::cmd::gc::versions::{analyze_version_gc, analyze_version_gc_with_injected_scan_error};
 
 fn age_version_past_gc_min_age(home: &HomePaths, name: &str) {
     let old_time = SystemTime::now() - Duration::from_secs(GC_MIN_AGE.as_secs() + 60);
@@ -312,4 +312,56 @@ fn runner_service_unit_from_file_name_accepts_only_runner_services() {
     assert!(runner_service_unit_from_file_name("other-v1.0.0.service").is_none());
     assert!(runner_service_unit_from_file_name("vm0-runner-v1.0.0.timer").is_none());
     assert!(runner_service_unit_from_file_name("vm0-runner-.service").is_none());
+}
+
+#[tokio::test]
+async fn enabled_service_directory_scan_reports_iteration_error() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("unrelated-a.service"), "").unwrap();
+    std::fs::write(dir.path().join("unrelated-b.service"), "").unwrap();
+    let mut entry_reader = GcDirEntryReader::failing_after(1);
+
+    let scan = enabled_runner_service_config_paths_with_reader(dir.path(), &mut entry_reader).await;
+
+    assert!(!scan.directory_scan_complete);
+    assert!(scan.paths.is_empty());
+}
+
+#[tokio::test]
+async fn incomplete_version_scan_makes_protection_inventory_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    for version in ["v1.0.0", "v2.0.0"] {
+        std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
+    }
+    let analysis = analyze_version_gc_with_injected_scan_error(&home, None, None, 1)
+        .await
+        .unwrap();
+
+    let refs = protected_image_refs_for_gc(&home, &analysis).await;
+
+    assert!(!refs.is_complete());
+}
+
+#[tokio::test]
+async fn incomplete_protection_inventory_skips_image_gc() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let rootfs_hash = test_hash('a');
+    let snapshot_hash = test_hash('b');
+    let snapshot_dir = create_old_test_snapshot(&home, &rootfs_hash, &snapshot_hash);
+
+    let report = gc_nested_images_with_protected_refs(
+        &home,
+        Some(0),
+        false,
+        &ProtectedImageRefs::incomplete(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.freed_bytes, 0);
+    assert_eq!(report.activity_count, 0);
+    assert!(snapshot_dir.exists());
+    assert!(home.images_dir().join(rootfs_hash).exists());
 }
