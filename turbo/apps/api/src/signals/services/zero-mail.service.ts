@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -229,26 +230,23 @@ async function persistMailDraft(args: {
   readonly userId: string;
 }): Promise<ZeroMailDraftMutationResult> {
   const created = await args.db.transaction(async (tx) => {
-    const [mailDraft] = await tx
-      .insert(mailDrafts)
-      .values({ draft: args.mailDraft })
-      .returning({ id: mailDrafts.id });
-    if (!mailDraft) {
-      throw new Error("Mail draft insert did not return an id");
-    }
+    const mailDraftId = randomUUID();
     const [message] = await tx
       .insert(chatMessages)
       .values({
         chatThreadId: args.threadId,
         role: "assistant",
         content: null,
-        mailDraftId: mailDraft.id,
+        mailDraftId,
       })
       .returning({ id: chatMessages.id });
     if (!message) {
       throw new Error("Mail draft message insert did not return an id");
     }
-    return { mailDraftId: mailDraft.id, messageId: message.id };
+    await tx
+      .insert(mailDrafts)
+      .values({ id: mailDraftId, draft: args.mailDraft });
+    return { mailDraftId, messageId: message.id };
   });
   await tapError(
     publishUserSignal(

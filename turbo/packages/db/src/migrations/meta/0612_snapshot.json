@@ -1,5 +1,5 @@
 {
-  "id": "7ea55324-482d-42de-aad6-d328c83b8b15",
+  "id": "8fd01967-e6d6-4d13-ac04-0bd78d1736d1",
   "prevId": "f7c8dc1d-f894-4dbf-9bdf-a959bf5464b0",
   "version": "7",
   "dialect": "postgresql",
@@ -2951,21 +2951,6 @@
           "method": "btree",
           "with": {}
         },
-        "chat_messages_mail_draft_id_unique": {
-          "name": "chat_messages_mail_draft_id_unique",
-          "columns": [
-            {
-              "expression": "mail_draft_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_chat_messages_run_group_id": {
           "name": "idx_chat_messages_run_group_id",
           "columns": [
@@ -3088,23 +3073,18 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
-        },
-        "chat_messages_mail_draft_id_mail_drafts_id_fk": {
-          "name": "chat_messages_mail_draft_id_mail_drafts_id_fk",
-          "tableFrom": "chat_messages",
-          "tableTo": "mail_drafts",
-          "columnsFrom": [
-            "mail_draft_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "chat_messages_mail_draft_id_unique": {
+          "name": "chat_messages_mail_draft_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "mail_draft_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -9083,8 +9063,7 @@
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "notNull": true
         },
         "draft": {
           "name": "draft",
@@ -9094,7 +9073,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "mail_drafts_id_chat_messages_mail_draft_id_fk": {
+          "name": "mail_drafts_id_chat_messages_mail_draft_id_fk",
+          "tableFrom": "mail_drafts",
+          "tableTo": "chat_messages",
+          "columnsFrom": [
+            "id"
+          ],
+          "columnsTo": [
+            "mail_draft_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
