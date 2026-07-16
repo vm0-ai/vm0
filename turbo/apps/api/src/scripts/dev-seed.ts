@@ -3,6 +3,7 @@
 import { pathToFileURL } from "node:url";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { escapeLiteral } from "pg";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveSkillRef } from "@vm0/core/github-url";
 import {
@@ -10,11 +11,15 @@ import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
-import { getSeedSkillNames } from "@vm0/core/zero-seed-skills";
+import {
+  getSeedSkillNames,
+  GOAL_SKILL_NAME,
+  SEED_SKILLS,
+} from "@vm0/core/zero-seed-skills";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { storages } from "@vm0/db/schema/storage";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
@@ -75,6 +80,27 @@ interface DevSeedSkillVolume {
 const DEV_SEED_SKILL_VOLUMES: readonly DevSeedSkillVolume[] =
   rawDevSeedSkillVolumes;
 
+const PREVIEW_E2E_VOLUME_SKILL_NAMES: readonly string[] = [
+  ...SEED_SKILLS,
+  GOAL_SKILL_NAME,
+  "github",
+  "slack",
+  "discord-webhook",
+  "zendesk",
+  "serpapi",
+  "replicate",
+];
+
+function getDevSeedSkillVolumes(): readonly DevSeedSkillVolume[] {
+  if (optionalEnv("ENV") !== "preview") {
+    return DEV_SEED_SKILL_VOLUMES;
+  }
+  const previewSkillNames = new Set(PREVIEW_E2E_VOLUME_SKILL_NAMES);
+  return DEV_SEED_SKILL_VOLUMES.filter((volume) => {
+    return previewSkillNames.has(volume.name);
+  });
+}
+
 function usageGroup(
   kind: string,
   provider: string,
@@ -118,113 +144,169 @@ function buildSeedSkillValues(
   });
 }
 
+function buildStorageSeedSql(
+  systemOrgId: string,
+  volumeOrgUserId: string,
+): string {
+  return `
+  INSERT INTO storages (
+    id, org_id, user_id, name, type, s3_prefix, size, file_count, updated_at
+  )
+  SELECT
+    "storageId", ${systemOrgId}, ${volumeOrgUserId}, "storageName", 'volume',
+    "s3Prefix", "storageSize", "storageFileCount", seeded_at
+  FROM dev_seed_skill_volumes
+  ON CONFLICT (org_id, user_id, name, type) DO UPDATE SET
+    s3_prefix = excluded.s3_prefix,
+    size = excluded.size,
+    file_count = excluded.file_count,
+    updated_at = seeded_at
+  WHERE (storages.s3_prefix, storages.size, storages.file_count)
+    IS DISTINCT FROM
+    (excluded.s3_prefix, excluded.size, excluded.file_count);
+
+  INSERT INTO storage_versions (
+    id, storage_id, s3_key, size, file_count, message, created_by
+  )
+  SELECT
+    volume."versionHash", storage.id, volume."s3Key", volume."versionSize",
+    volume."versionFileCount", volume.message, 'system'
+  FROM dev_seed_skill_volumes AS volume
+  JOIN storages AS storage
+    ON storage.org_id = ${systemOrgId}
+    AND storage.user_id = ${volumeOrgUserId}
+    AND storage.name = volume."storageName"
+    AND storage.type = 'volume'
+  ON CONFLICT (id) DO UPDATE SET
+    storage_id = excluded.storage_id,
+    s3_key = excluded.s3_key,
+    size = excluded.size,
+    file_count = excluded.file_count,
+    message = excluded.message,
+    created_by = excluded.created_by
+  WHERE (
+    storage_versions.storage_id,
+    storage_versions.s3_key,
+    storage_versions.size,
+    storage_versions.file_count,
+    storage_versions.message,
+    storage_versions.created_by
+  ) IS DISTINCT FROM (
+    excluded.storage_id,
+    excluded.s3_key,
+    excluded.size,
+    excluded.file_count,
+    excluded.message,
+    excluded.created_by
+  );
+
+  UPDATE storages AS storage SET
+    head_version_id = volume."versionHash",
+    updated_at = seeded_at
+  FROM dev_seed_skill_volumes AS volume
+  WHERE storage.org_id = ${systemOrgId}
+    AND storage.user_id = ${volumeOrgUserId}
+    AND storage.name = volume."storageName"
+    AND storage.type = 'volume'
+    AND storage.head_version_id IS DISTINCT FROM volume."versionHash";
+`;
+}
+
+function buildSkillSeedSql(
+  systemOrgId: string,
+  volumeOrgUserId: string,
+): string {
+  return `
+  INSERT INTO skills (
+    url, name, full_path, storage_id, version_hash, commit_sha, frontmatter,
+    s3_key, size, file_count, synced_at, updated_at
+  )
+  SELECT
+    volume.url, volume.name, volume."fullPath", storage.id,
+    volume."versionHash", volume."commitSha", volume.frontmatter,
+    volume."s3Key", volume."skillSize", volume."skillFileCount", seeded_at,
+    seeded_at
+  FROM dev_seed_skill_volumes AS volume
+  JOIN storages AS storage
+    ON storage.org_id = ${systemOrgId}
+    AND storage.user_id = ${volumeOrgUserId}
+    AND storage.name = volume."storageName"
+    AND storage.type = 'volume'
+  ON CONFLICT (url) DO UPDATE SET
+    name = excluded.name,
+    full_path = excluded.full_path,
+    storage_id = excluded.storage_id,
+    version_hash = excluded.version_hash,
+    commit_sha = excluded.commit_sha,
+    frontmatter = excluded.frontmatter,
+    s3_key = excluded.s3_key,
+    size = excluded.size,
+    file_count = excluded.file_count,
+    synced_at = excluded.synced_at,
+    updated_at = seeded_at
+  WHERE (
+    skills.name,
+    skills.full_path,
+    skills.storage_id,
+    skills.version_hash,
+    skills.commit_sha,
+    skills.frontmatter,
+    skills.s3_key,
+    skills.size,
+    skills.file_count
+  ) IS DISTINCT FROM (
+    excluded.name,
+    excluded.full_path,
+    excluded.storage_id,
+    excluded.version_hash,
+    excluded.commit_sha,
+    excluded.frontmatter,
+    excluded.s3_key,
+    excluded.size,
+    excluded.file_count
+  );
+`;
+}
+
 async function seedOfficialSkillVolumes(
   database: ReturnType<typeof db>,
+  seedSkillVolumes: readonly DevSeedSkillVolume[],
 ): Promise<number> {
-  const timestamp = nowDate();
+  const seedVolumes = escapeLiteral(JSON.stringify(seedSkillVolumes));
+  const systemOrgId = escapeLiteral(SYSTEM_ORG_ID);
+  const volumeOrgUserId = escapeLiteral(VOLUME_ORG_USER_ID);
+  const body = `
+DECLARE
+  seeded_at timestamp := CURRENT_TIMESTAMP;
+  seed_volumes jsonb := ${seedVolumes}::jsonb;
+BEGIN
+  CREATE TEMP TABLE dev_seed_skill_volumes ON COMMIT DROP AS
+  SELECT *
+  FROM jsonb_to_recordset(seed_volumes) AS volume(
+    url text,
+    name text,
+    "s3Key" text,
+    message text,
+    "fullPath" text,
+    "s3Prefix" text,
+    "commitSha" varchar(40),
+    "skillSize" bigint,
+    "storageId" uuid,
+    frontmatter jsonb,
+    "storageName" varchar(256),
+    "storageSize" bigint,
+    "versionHash" varchar(64),
+    "versionSize" bigint,
+    "skillFileCount" integer,
+    "storageFileCount" integer,
+    "versionFileCount" integer
+  );
+${buildStorageSeedSql(systemOrgId, volumeOrgUserId)}
+${buildSkillSeedSql(systemOrgId, volumeOrgUserId)}
+END`;
+  await database.execute(sql.raw(`DO ${escapeLiteral(body)}`));
 
-  await database.transaction(async (tx) => {
-    for (const volume of DEV_SEED_SKILL_VOLUMES) {
-      const [storage] = await tx
-        .insert(storages)
-        .values({
-          id: volume.storageId,
-          orgId: SYSTEM_ORG_ID,
-          userId: VOLUME_ORG_USER_ID,
-          name: volume.storageName,
-          type: "volume",
-          s3Prefix: volume.s3Prefix,
-          size: volume.storageSize,
-          fileCount: volume.storageFileCount,
-        })
-        .onConflictDoUpdate({
-          target: [
-            storages.orgId,
-            storages.userId,
-            storages.name,
-            storages.type,
-          ],
-          set: {
-            s3Prefix: volume.s3Prefix,
-            size: volume.storageSize,
-            fileCount: volume.storageFileCount,
-            updatedAt: timestamp,
-          },
-        })
-        .returning({ id: storages.id });
-      if (!storage) {
-        throw new Error(`Failed to seed skill storage for ${volume.name}`);
-      }
-
-      await tx
-        .insert(storageVersions)
-        .values({
-          id: volume.versionHash,
-          storageId: storage.id,
-          s3Key: volume.s3Key,
-          size: volume.versionSize,
-          fileCount: volume.versionFileCount,
-          message: volume.message,
-          createdBy: "system",
-        })
-        .onConflictDoUpdate({
-          target: storageVersions.id,
-          set: {
-            storageId: storage.id,
-            s3Key: volume.s3Key,
-            size: volume.versionSize,
-            fileCount: volume.versionFileCount,
-            message: volume.message,
-            createdBy: "system",
-          },
-        });
-
-      await tx
-        .update(storages)
-        .set({
-          headVersionId: volume.versionHash,
-          s3Prefix: volume.s3Prefix,
-          size: volume.storageSize,
-          fileCount: volume.storageFileCount,
-          updatedAt: timestamp,
-        })
-        .where(eq(storages.id, storage.id));
-
-      await tx
-        .insert(skills)
-        .values({
-          url: volume.url,
-          name: volume.name,
-          fullPath: volume.fullPath,
-          storageId: storage.id,
-          versionHash: volume.versionHash,
-          commitSha: volume.commitSha,
-          frontmatter: volume.frontmatter,
-          s3Key: volume.s3Key,
-          size: volume.skillSize,
-          fileCount: volume.skillFileCount,
-          syncedAt: timestamp,
-        })
-        .onConflictDoUpdate({
-          target: skills.url,
-          set: {
-            name: volume.name,
-            fullPath: volume.fullPath,
-            storageId: storage.id,
-            versionHash: volume.versionHash,
-            commitSha: volume.commitSha,
-            frontmatter: volume.frontmatter,
-            s3Key: volume.s3Key,
-            size: volume.skillSize,
-            fileCount: volume.skillFileCount,
-            syncedAt: timestamp,
-            updatedAt: timestamp,
-          },
-        });
-    }
-  });
-
-  return DEV_SEED_SKILL_VOLUMES.length;
+  return seedSkillVolumes.length;
 }
 
 const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
@@ -560,26 +642,17 @@ async function devSeed() {
 
   // --- usage_pricing (batch upsert) ---
   writeLine("Seeding usage_pricing");
-  for (const p of USAGE_PRICING) {
-    await database
-      .insert(usagePricing)
-      .values(p)
-      .onConflictDoUpdate({
-        target: [
-          usagePricing.kind,
-          usagePricing.provider,
-          usagePricing.category,
-        ],
-        set: {
-          unitPrice: sql`excluded.unit_price`,
-          unitSize: sql`excluded.unit_size`,
-          updatedAt: nowDate(),
-        },
-      });
-    writeLine(
-      `Seeded usage pricing entry: ${p.kind}/${p.provider}/${p.category}`,
-    );
-  }
+  await database
+    .insert(usagePricing)
+    .values([...USAGE_PRICING])
+    .onConflictDoUpdate({
+      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
+      set: {
+        unitPrice: sql`excluded.unit_price`,
+        unitSize: sql`excluded.unit_size`,
+        updatedAt: nowDate(),
+      },
+    });
   writeLine(`Seeded ${USAGE_PRICING.length} usage pricing entries`);
 
   // --- vm0_api_keys (transactional replace) ---
@@ -597,12 +670,16 @@ async function devSeed() {
   writeLine(`Seeded ${apiKeys.length} vm0 API key entries`);
 
   // --- skills (seed skills + common connectors, including system volumes) ---
+  const seedSkillVolumes = getDevSeedSkillVolumes();
   writeLine("Seeding official skill volumes");
-  const seededVolumeCount = await seedOfficialSkillVolumes(database);
+  const seededVolumeCount = await seedOfficialSkillVolumes(
+    database,
+    seedSkillVolumes,
+  );
   writeLine(`Seeded ${seededVolumeCount} official skill volume entries`);
 
   const seededVolumeStorageNames = new Set(
-    DEV_SEED_SKILL_VOLUMES.map((volume) => {
+    seedSkillVolumes.map((volume) => {
       return volume.storageName;
     }),
   );
@@ -619,31 +696,27 @@ async function devSeed() {
     });
     let insertedCount = 0;
     await database.transaction(async (tx) => {
-      for (const skill of fallbackSkillValues) {
-        const [inserted] = await tx
-          .insert(skills)
-          .values(skill)
-          .onConflictDoUpdate({
-            target: skills.url,
-            set: {
-              name: skill.name,
-              fullPath: skill.fullPath,
-              storageId: null,
-              versionHash: null,
-              commitSha: null,
-              frontmatter: skill.frontmatter,
-              s3Key: null,
-              size: 0,
-              fileCount: 0,
-              syncedAt: null,
-              updatedAt: timestamp,
-            },
-          })
-          .returning({ id: skills.id });
-        if (inserted) {
-          insertedCount++;
-        }
-      }
+      const inserted = await tx
+        .insert(skills)
+        .values(fallbackSkillValues)
+        .onConflictDoUpdate({
+          target: skills.url,
+          set: {
+            name: sql`excluded.name`,
+            fullPath: sql`excluded.full_path`,
+            storageId: null,
+            versionHash: null,
+            commitSha: null,
+            frontmatter: sql`excluded.frontmatter`,
+            s3Key: null,
+            size: 0,
+            fileCount: 0,
+            syncedAt: null,
+            updatedAt: timestamp,
+          },
+        })
+        .returning({ id: skills.id });
+      insertedCount = inserted.length;
 
       await tx
         .delete(storages)
