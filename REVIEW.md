@@ -1,307 +1,232 @@
-# Review Instructions
+# PR Review Instructions
 
-## Review Verdict
+You are a PR review specialist for the vm0 project. Your role is to review pull requests and post findings as a GitHub review by default so that the review is anchored to the HEAD commit SHA. When a caller explicitly asks for pr-auto marker-comment mode, post the full review result as a normal PR comment instead, using the caller-provided marker lines.
 
-**Reject** the PR if it contains any Important finding. **Approve** only when there are zero Important findings. Nits do not block approval.
+## Workflow
 
-## Severity Definitions
+### Step 1: Determine PR Number
 
-- **Important** — Must fix before merge. Bugs that break behavior, leak data, block rollback, or violate zero-tolerance rules (see below).
-- **Nit** — Minor issues worth fixing but not merge-blocking.
-- **Pre-existing** — Bugs in the codebase not introduced by this PR. Do not count toward the verdict.
+**CRITICAL — do this FIRST before anything else.**
 
-## Cap the Nits
+Your args are: `$ARGUMENTS`
 
-Report at most 5 nits per review. If more are found, say "plus N similar items" in the summary.
+Extract the PR number from the args above using these rules:
+1. **Args is a URL** containing `/pull/<number>` → extract `<number>` (e.g., `https://github.com/vm0-ai/vm0/pull/4128` → `4128`)
+2. **Args is a plain number** → use it directly (e.g., `4128`)
+3. **Args is empty** → detect from current branch: `gh pr list -R vm0-ai/vm0 --head "$(git branch --show-current)" --json number --jq '.[0].number'`
+
+Once you have the PR number, **hardcode it as a literal** in all subsequent bash commands. Never use shell variables for the PR number derived from args.
+
+### Step 2: Get PR Information
+
+```bash
+gh pr view <PR_NUMBER> -R vm0-ai/vm0 --json title,body,author,url,headRefOid,headRefName
+```
+
+Record:
+- `title`, `author.login`, `url`
+- `headRefOid` — the full HEAD commit SHA (needed to anchor the review)
+- `headRefName` — branch name
+
+### Step 3: Get the PR Diff
+
+```bash
+gh pr diff <PR_NUMBER> -R vm0-ai/vm0
+```
+
+Read the full diff carefully. Note:
+- Which files are new vs modified
+- What logic changed
+- Whether this is a feature (`feat:`), fix (`fix:`), refactor, docs, or chore commit
+
+### Step 4: Fetch Project Practice Documentation
+
+Use `docs/docs.md` as the project's documentation index and read every indexed
+practice document relevant to the changed surface. If the PR's base commit does
+not contain the index yet, continue with the explicit documents below rather
+than stopping the review.
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/docs.md --jq '.content' | base64 -d
+```
+
+Fetch the project's testing standards from the repo to use as your review reference:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/testing.md --jq '.content' | base64 -d
+```
+
+Fetch the ccstate practice document when the PR touches `turbo/apps/api` or `turbo/apps/platform`:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/.claude/skills/ccstate/SKILL.md --jq '.content' | base64 -d
+```
+
+Use the testing docs as the authoritative source for testing conventions. Key standards to enforce:
+
+| Rule | Severity |
+|------|----------|
+| Integration tests only — no unit tests for internal functions | P1 |
+| Mock at boundary only — `vi.mock()` paths must NOT start with `../` or `../../` | P0 |
+| Use MSW for HTTP — no direct `fetch` mocking (`vi.stubGlobal("fetch", ...)`) | P0 |
+| Real database — no mocking of `globalThis.services.db` | P0 |
+| No fake timers — no `vi.useFakeTimers()` / `vi.advanceTimersByTime()` | P1 |
+| Test behavior not mocks — no `expect(mock).toHaveBeenCalled()` as sole assertion | P1 |
+| Mock cleanup — `vi.clearAllMocks()` in `beforeEach` when mocks are used | P1 |
+| New user-facing features must be gated behind a `FeatureSwitchKey` | P1 |
+
+### Step 5: Code Review Analysis
+
+Review the diff for:
+
+**Correctness & Logic**
+- Race conditions, off-by-one errors, incorrect conditionals
+- Unhandled edge cases or null/undefined paths
+- API misuse or wrong assumptions
+
+**Security**
+- SQL injection, XSS, command injection (OWASP Top 10)
+- Secrets or credentials hardcoded
+- Missing auth checks on new endpoints
+
+**Type Safety**
+- `any` casts without justification
+- Missing or overly broad types
+
+**Style & Maintainability**
+- Functions over ~100 lines (flag for extraction)
+- Duplicated logic that should be shared
+- Comments that explain WHAT instead of WHY (unnecessary)
+
+**Testing Coverage**
+- `feat:` commits → must have integration tests (missing = **P0**)
+- `fix:` commits → must have a regression test (missing = **P0**)
+- `refactor:` commits → existing tests must still cover the code
+- Check all test files in the diff against the conventions table above
+- Changes under `turbo/apps/api` or `turbo/apps/platform` must strictly follow the ccstate practice document
+
+**DB/JSONB Review Gate**
+- Check persisted DB contract changes, especially `turbo/packages/db/src/schema/**`,
+  `turbo/packages/api-contracts/src/contracts/**`, Zod response schemas, and
+  `jsonb(...).$type<...>()`.
+- For JSONB shape changes that old rows could violate, require a migration or
+  backfill, a read-time normalizer or compatibility parser, or a clear
+  no-migration-needed rationale.
+- Missing coverage for response-validated JSONB changes means
+  `Changes Requested`.
+
+**Feature Regression Guard**
+- For every feature PR, check whether the new feature changes, replaces,
+  removes, or reroutes any existing UI, API, behavior, or user flow.
+- Request changes if an existing behavior is changed or replaced without
+  explicit regression coverage for that affected path.
+- Request changes if the change should be scoped but lacks a feature switch,
+  capability flag, config or permission gate, or equivalent containment.
+- Request changes if tests only cover the new feature happy path and do not
+  cover the existing flow most likely to regress.
+- Updating an existing test from the old behavior to the new behavior is not
+  enough unless the PR also proves the replacement is intentional, scoped
+  correctly, and covered by tests.
+
+To check if test files exist for changed source files:
+```bash
+gh pr diff <PR_NUMBER> -R vm0-ai/vm0 --name-only | grep -v '.test.' | grep -v '__tests__'
+```
+
+### Step 6: Generate and Post Review
+
+Structure the review body:
+
+```
+LGTM
+
+### Summary
+<1-3 sentence summary of what the PR does>
+
+### Findings
+
+#### Critical (P0)
+- <file path and line if applicable>: <issue description>
+
+#### High Priority (P1)
+- <file path>: <issue description>
+
+### Testing
+- Coverage: <Adequate / Insufficient - missing tests for: ...>
+- Conventions: <Compliant / Violations: ...>
+```
+
+Or if there are P0/P1 blockers:
+
+```
+Changes Requested
+
+### Summary
+<summary>
+
+### Findings
+
+#### Critical (P0) - must fix before merge
+- <issue>
+
+#### High Priority (P1) - should fix before merge
+- <issue>
+
+### Testing
+...
+```
+
+**Verdict rules:**
+- Start with `LGTM` if there are no P0 issues and no missing tests on `feat:`/`fix:` commits
+- Start with `Changes Requested` if there are any P0 issues OR missing required tests
+
+If the caller asks for pr-auto marker-comment mode:
+- Post the full review body as a normal PR comment, not as a separate minimal
+  tracking comment.
+- The first line must be the state marker: `LGTM` or `Changes Requested`.
+- Include the caller-provided pr-auto marker lines near the top of the same
+  comment.
+- Keep the rest of the body as the detailed pr-review result, including Summary,
+  Findings, and Testing.
+
+```bash
+gh pr comment <PR_NUMBER> --repo vm0-ai/vm0 --body-file "<REVIEW_BODY_FILE>"
+```
+
+Otherwise, use the default GitHub Review path below.
+
+Post the review using the `gh pr review` CLI (this creates a proper GitHub PR review anchored to HEAD, visible in the Reviews API):
+
+```bash
+# If changes needed:
+gh pr review <PR_NUMBER> --repo vm0-ai/vm0 --request-changes --body "<REVIEW_BODY>"
+
+# If looks good:
+gh pr review <PR_NUMBER> --repo vm0-ai/vm0 --approve --body "<REVIEW_BODY>"
+```
+
+The review body must start with either `Changes Requested` or `LGTM` as the very first line.
+
+### Step 7: Output
+
+```
+PR Review Complete
+
+PR:     #<number> - <title>
+Author: <author>
+URL:    <url>
+Commit: <short-sha>
+
+Verdict: LGTM / Changes Requested
+
+Review posted: https://github.com/vm0-ai/vm0/pull/<number>#pullrequestreview-<review-id>
+```
 
 ---
 
-## Zero-Tolerance Rules (Always Important)
-
-### ZT-1: No `any` type
-
-Flag all `any` type usage. Use `unknown` with type narrowing or define proper interfaces instead.
-
-```typescript
-// BAD
-const data: any = fetchData();
-
-// GOOD
-const data: unknown = fetchData();
-if (isValidData(data)) { /* use data with proper type */ }
-```
-
-### ZT-2: No lint/type suppressions
-
-Flag all suppression comments. Always fix the root cause.
-
-Prohibited comments:
-- `eslint-disable`, `oxlint-disable`
-- `@ts-ignore`, `@ts-nocheck`, `@ts-expect-error`
-- `prettier-ignore`
-
-Prohibited plugins: `eslint-plugin-only-warn`
-
-### ZT-3: No dynamic imports in production code
-
-Flag `await import()` and `import().then()`. Use static imports at file top.
-
-```typescript
-// BAD
-async function generateToken() {
-  const crypto = await import("crypto");
-  return crypto.randomBytes(32).toString("base64url");
-}
-
-// GOOD
-import { randomBytes } from "crypto";
-function generateToken() {
-  return randomBytes(32).toString("base64url");
-}
-```
-
-Rare exceptions: truly optional dev-only dependencies, Next.js route-based code splitting (handled by framework).
-
----
-
-## Architectural Principles
-
-### ARCH-1: Fail fast, no defensive programming
-
-Only catch exceptions when there is **meaningful recovery logic** (rollback, cleanup, retry, per-item error handling in loops, security-critical code).
-
-Flag these bad patterns:
-
-**Pattern A — Log + return generic error:**
-```typescript
-// BAD
-try { /* logic */ } catch (error) {
-  log.error("...", error);
-  return { status: 500, body: { error: { message: "Internal server error" } } };
-}
-```
-
-**Pattern B — Silent failure:**
-```typescript
-// BAD
-try { /* logic */ } catch (error) {
-  console.error("...", error);
-  return null;
-}
-```
-
-**Pattern C — Log and re-throw without recovery:**
-```typescript
-// BAD
-try { /* logic */ } catch (error) {
-  log.error("...", error);
-  throw error;
-}
-```
-
-### ARCH-2: No fallback patterns
-
-Flag fallback/recovery logic that hides configuration problems. Errors should fail immediately and visibly.
-
-```typescript
-// BAD — fallback hides misconfiguration
-const jwtSecret = process.env.JWT_SECRET || process.env.SOME_OTHER_SECRET || "default-secret";
-
-// GOOD — fail fast with clear error
-const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret) throw new Error("JWT_SECRET not configured");
-```
-
-### ARCH-3: No hardcoded URLs or configuration
-
-- Flag hardcoded URLs and environment-specific values
-- Verify usage of `env()` configuration function
-- Server-side code should not use `NEXT_PUBLIC_` environment variables
-- Never use hardcoded fallback URLs like `"https://vm7.ai"`
-
-```typescript
-// BAD
-const apiUrl = process.env.API_URL || "https://api.vm7.ai";
-
-// GOOD
-const apiUrl = env().API_URL;
-```
-
-### ARCH-4: YAGNI (You Aren't Gonna Need It)
-
-- Flag premature abstractions and over-engineering
-- Flag "just in case" parameters or options
-- Flag utility functions for single use cases
-- Flag code that adds functionality not yet needed
-
----
-
-## Testing Anti-Patterns (Always Flag)
-
-This project follows **"Write tests. Not too many. Mostly integration."** Integration tests are the primary test type. Unit tests are not written (with narrow exceptions for security-critical, algorithmically complex, or state-machine transition code).
-
-### AP-1: Testing mock calls instead of behavior
-
-```typescript
-// BAD — proves nothing
-it("should call getUser", async () => {
-  await someFunction();
-  expect(mockGetUser).toHaveBeenCalled();
-});
-
-// GOOD — verifies behavior
-it("should retrieve and display user data", async () => {
-  const result = await someFunction();
-  expect(result.userName).toBe("expected-name");
-});
-```
-
-If you see `toHaveBeenCalled()` without behavior assertions, flag it.
-
-### AP-2: Direct fetch mocking
-
-```typescript
-// BAD — brittle and unrealistic
-vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response()));
-
-// GOOD — use MSW
-server.use(
-  http.get("https://api.example.com/users", () => {
-    return HttpResponse.json({ users: [{ id: 1, name: "Test" }] });
-  }),
-);
-```
-
-MSW intercepts at the network level and tests actual request construction (URL building, headers, body formatting).
-
-### AP-3: Filesystem mocking
-
-```typescript
-// BAD
-vi.mock("fs");
-vi.mock("fs/promises");
-
-// GOOD — use real filesystem with temp directories
-let tempDir: string;
-beforeEach(() => { tempDir = mkdtempSync(join(tmpdir(), "test-")); });
-afterEach(() => { rmSync(tempDir, { recursive: true, force: true }); });
-```
-
-Real filesystem catches permission issues, race conditions, and encoding problems that mocks hide.
-
-### AP-4: Mocking internal code (highest priority)
-
-**The Relative Path Rule**: If the path in `vi.mock()` starts with `../` or `../../`, it's wrong.
-
-```typescript
-// BAD — internal code
-vi.mock("../../services/user-service");
-vi.mock("../../lib/something");
-
-// GOOD — only external third-party packages
-vi.mock("@clerk/nextjs");
-vi.mock("@aws-sdk/client-s3");
-```
-
-Also flag:
-- Mocking `globalThis.services.db` — always use real database
-- Partial mocks with `vi.importActual()` — use real implementation
-
-**Mock hierarchy:**
-| Category | Example | Mock? |
-|---|---|---|
-| Third-party SaaS | `@clerk/nextjs`, `@aws-sdk/client-s3` | Yes |
-| Node.js built-ins | `child_process` | Sometimes |
-| Database | `globalThis.services.db` | Never |
-| Internal services | `../../lib/*` | Never |
-| Internal utilities | `../../utils/*` | Never |
-
-### AP-5: Fake timers
-
-```typescript
-// BAD — masks race conditions
-vi.useFakeTimers();
-vi.advanceTimersByTime(1000);
-
-// GOOD — mock only what you need
-vi.spyOn(Date, "now").mockReturnValue(fixedTimestamp);
-```
-
-### AP-6: Partial internal mocks
-
-Flag `vi.importActual()` combined with selective function replacement. Use real implementations.
-
-### AP-7: Testing implementation details
-
-Flag tests that verify:
-- Internal function calls instead of outcomes
-- CSS classes or DOM structure
-- Internal component state
-- Keyboard handler specifics
-
-Test what users see instead.
-
-### AP-8: Over-testing
-
-Flag tests for:
-- Every HTTP error status code (401, 403, 404, 400, 500...)
-- Schema validation (trust Zod)
-- Loading spinners and trivial UI states
-- Exact UI text content
-
-Focus on business logic and integration points.
-
-### AP-9: Console mocking without assertions
-
-If `console.log` or `console.error` is mocked but never asserted on, flag it — it just suppresses useful debugging output.
-
-### AP-10: Direct component rendering (platform app)
-
-```typescript
-// BAD — doesn't match production
-render(<StoreProvider value={store}><MyPage /></StoreProvider>);
-
-// GOOD — use production initialization flow
-await setupPage({ context, path: "/my-page" });
-```
-
-`setupPage()` mirrors `main.ts` bootstrap and catches initialization bugs.
-
-### AP-11: Testing service functions when a route exists
-
-When an API route wraps a service function, test through the route, not the service directly.
-
-```typescript
-// BAD — bypasses auth, validation, request handling
-const result = await upsertOrgModelProvider(orgId, "anthropic-api-key", "sk-test");
-
-// GOOD — test through route handler
-const request = createTestRequest(url, {
-  method: "POST",
-  body: JSON.stringify({ type: "anthropic-api-key", secret: "sk-test" }),
-});
-const response = await POST(request);
-```
-
-### AP-12: Unit tests for internal functions
-
-Flag test files that directly import and test internal/private functions. Tests should only exercise public entry points (API routes, CLI commands, exported module interfaces). Internal logic is covered through integration tests.
-
-Narrow exceptions: security-critical code, algorithmically complex code with non-obvious invariants, state-machine transition matrices.
-
----
-
-## Do Not Report
-
-- Generated files under `src/gen/` and any `*.lock` file
-- Anything CI already enforces (lint, formatting, type errors)
-- Style preferences already handled by Prettier/ESLint
-
-## Always Check
-
-- New API routes have integration tests
-- Log lines don't include email addresses or user IDs (PII)
-- Database queries are scoped to the caller's tenant
-- Mock cleanup with `vi.clearAllMocks()` in `beforeEach` hooks
-- Breaking changes to public interfaces are documented
-- Test initialization mirrors production flow
+## Reference Links
+
+- Documentation index: https://github.com/vm0-ai/vm0/blob/main/docs/docs.md
+- Testing standards: https://github.com/vm0-ai/vm0/blob/main/docs/testing.md
+- ccstate practices: https://github.com/vm0-ai/vm0/blob/main/.claude/skills/ccstate/SKILL.md
+- Feature switches: https://github.com/vm0-ai/vm0/blob/main/turbo/packages/core/src/feature-switch-key.ts
