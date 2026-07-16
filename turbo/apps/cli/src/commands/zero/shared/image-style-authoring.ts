@@ -50,7 +50,7 @@ const outputDir = "./generated/images";
 const artifactRules = [
   "Resolve the selected style source before compiling or generating.",
   "Use explicit requirements in the user prompt first, locked style requirements second, and CLI fallback values last.",
-  "Keep visual style requirements in the compiled prompt instead of mapping similarly named prose to CLI flags.",
+  "Keep visual style requirements in the compiled prompt; map only compatible execution settings to CLI flags (`--background` accepts only `auto`, `opaque`, or `transparent`).",
   "Generate with `--compiled-prompt`, without `--style`, and pass only required reference inputs.",
 ] as const;
 
@@ -89,9 +89,19 @@ export function createStyledImageCompilationPacket(
     "## Style Source",
     ...formatStyleSource(options.style.source),
     "",
+    "## Requested Parameters",
+    ...options.details.map((detail) => {
+      return `- ${detail}`;
+    }),
+    "",
+    "## Image Authoring Rules",
+    ...artifactRules.map((rule) => {
+      return `- ${rule}`;
+    }),
+    "",
     "## Required Workflow",
     "1. Read the style `SKILL.md` and required referenced files. If unavailable, stop without generating.",
-    "2. Compile one final prompt that preserves user intent and locked visual constraints. Explicit user requirements override conflicts; compatible locked settings override CLI defaults. Keep visual descriptions in the prompt, and map only compatible execution settings to flags (`--background` accepts only `auto`, `opaque`, or `transparent`).",
+    "2. Compile one final prompt that preserves user intent and follows the Image Authoring Rules.",
     "3. Generate with `--compiled-prompt` and without `--style`. Pass only reference images marked as required model inputs.",
     "",
     "## Artifact Output Model",

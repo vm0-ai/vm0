@@ -311,11 +311,12 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("## Required Workflow");
     expect(stdout).toContain("If unavailable, stop without generating");
     expect(stdout).toContain("required model inputs");
-    expect(stdout).not.toContain("## Requested Parameters");
-    expect(stdout).not.toContain("Requested size: 1024x1024");
-    expect(stdout).not.toContain("Source image URLs: none");
+    expect(stdout).toContain("## Requested Parameters");
+    expect(stdout).toContain("Requested size: 1024x1024");
+    expect(stdout).toContain("Source image URLs: none");
+    expect(stdout).toContain("## Image Authoring Rules");
     expect(stdout).not.toContain("## Parameter Precedence");
-    expect(stdout).toContain("Explicit user requirements override conflicts");
+    expect(stdout).toContain("CLI fallback values last");
     expect(stdout).toContain(
       "`--background` accepts only `auto`, `opaque`, or `transparent`",
     );
