@@ -483,6 +483,68 @@ class TestDecodeRequestBodyForNetworkLogCapture:
 class TestDecompressJsonUsageBody:
     """Direct tests for strict JSON usage decompression."""
 
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_exact_limit_accepts_empty_trailing_members(self, headers, encoding):
+        body = b"A" * 32
+        compressed = (
+            _compress_one_shot_body(encoding, body)
+            + _compress_one_shot_body(encoding, b"")
+            + _compress_one_shot_body(encoding, b"")
+        )
+        hdrs = headers(("Content-Encoding", encoding))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=len(body))
+
+        assert decoded == body
+        assert error is None
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_exact_limit_rejects_nonempty_trailing_member(self, headers, encoding):
+        body = b"A" * 32
+        compressed = (
+            _compress_one_shot_body(encoding, body)
+            + _compress_one_shot_body(encoding, b"")
+            + _compress_one_shot_body(encoding, b"B")
+        )
+        hdrs = headers(("Content-Encoding", encoding))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=len(body))
+
+        assert decoded == body
+        assert error == "decoded body limit exceeded"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_exact_limit_classifies_invalid_trailing_data(self, headers, encoding):
+        body = b"A" * 32
+        compressed = _compress_one_shot_body(encoding, body) + b"not compressed"
+        hdrs = headers(("Content-Encoding", encoding))
+
+        _decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=len(body))
+
+        assert error == "invalid compressed body"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_exact_limit_classifies_incomplete_trailing_member(self, headers, encoding):
+        body = b"A" * 32
+        trailing_member = _compress_one_shot_body(encoding, b"")
+        compressed = _compress_one_shot_body(encoding, body) + trailing_member[:-1]
+        hdrs = headers(("Content-Encoding", encoding))
+
+        _decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=len(body))
+
+        assert error == "incomplete compressed body"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_single_member_exceeding_limit_returns_error(self, headers, encoding):
+        body = b"A" * 33
+        compressed = _compress_one_shot_body(encoding, body)
+        hdrs = headers(("Content-Encoding", encoding))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=32)
+
+        assert decoded == body[:32]
+        assert error == "decoded body limit exceeded"
+
     def test_zstd_valid_single_frame_returns_decoded_body(self, headers):
         body = b'{"usage":{"input_tokens":1}}'
         compressed = zstandard.ZstdCompressor().compress(body)
