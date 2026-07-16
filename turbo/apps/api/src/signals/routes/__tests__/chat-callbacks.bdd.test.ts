@@ -2761,16 +2761,12 @@ describe("CHAT-02: failed chat callbacks", () => {
       threadId = run.threadId;
       runIds.push(run.runId);
       const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-      await expect
-        .poll(() => {
-          return context.mocks.ably.publish.mock.calls.some((call) => {
-            return (
-              call[0] === `chatThreadRunCreated:${run.threadId}` &&
-              call[1] === null
-            );
-          });
-        })
-        .toBe(true);
+      // Isolate failed-callback notifications from send-side background work.
+      await flushWaitUntilForTest();
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `chatThreadRunCreated:${run.threadId}`,
+        null,
+      );
       context.mocks.ably.publish.mockClear();
       await failChatRun(run.runId, sandboxHeaders, round.error);
       // The complete webhook acknowledges before terminal callback work
@@ -2828,11 +2824,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       })?.content,
     ).toBe(usageLimitError);
 
-    await expect
-      .poll(() => {
-        return context.mocks.webpush.sendNotification.mock.calls.length;
-      })
-      .toBe(4);
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(4);
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[1]),
     ).toMatchObject({
