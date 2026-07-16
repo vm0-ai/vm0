@@ -682,7 +682,8 @@ function logShadowComparison(args: {
     compatibilityFilteredMethodCount:
       args.diagnostics.compatibilityFilteredMethodCount,
     compatibilityReasonCounts: args.diagnostics.compatibilityReasonCounts,
-    defaultHiddenMethodCount: args.diagnostics.defaultHiddenMethodCount,
+    visibilityFilteredMethodCount:
+      args.diagnostics.visibilityFilteredMethodCount,
     rolloutFilteredMethodCount: args.diagnostics.rolloutFilteredMethodCount,
     surfacePolicyFilteredMethodCount:
       args.diagnostics.surfacePolicyFilteredMethodCount,

@@ -143,7 +143,7 @@ const publicAuthMethodSchema = z
     id: connectorAuthMethodIdSchema,
     label: z.string().min(1),
     description: z.string().min(1).nullable(),
-    defaultVisible: z.boolean(),
+    visible: z.boolean(),
     featureSwitch: connectorFeatureSwitchKeySchema.nullable(),
     grantKind: z.enum([
       "manual",

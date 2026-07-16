@@ -79,7 +79,7 @@ interface PreparedExternalCatalogCache {
 }
 
 interface RequestFilteringCounts {
-  readonly defaultHiddenMethodCount: number;
+  readonly visibilityFilteredMethodCount: number;
   readonly rolloutFilteredMethodCount: number;
   readonly surfacePolicyFilteredMethodCount: number;
   readonly removedConnectorCount: number;
@@ -392,7 +392,7 @@ function effectiveConnectors(args: {
   readonly connectors: readonly EffectiveConnector[];
   readonly counts: RequestFilteringCounts;
 } {
-  let defaultHiddenMethodCount = 0;
+  let visibilityFilteredMethodCount = 0;
   let rolloutFilteredMethodCount = 0;
   let removedConnectorCount = 0;
   const connectors = args.catalog.publicArtifact.connectors.flatMap(
@@ -405,8 +405,8 @@ function effectiveConnectors(args: {
         ) {
           return false;
         }
-        if (!method.defaultVisible) {
-          defaultHiddenMethodCount += 1;
+        if (!method.visible) {
+          visibilityFilteredMethodCount += 1;
           return false;
         }
         if (!featureSwitchEnabled(method, args.featureStates)) {
@@ -425,7 +425,7 @@ function effectiveConnectors(args: {
   return {
     connectors,
     counts: {
-      defaultHiddenMethodCount,
+      visibilityFilteredMethodCount,
       rolloutFilteredMethodCount,
       // Artifact schema v1 contains no managed grant, so current public
       // surfaces have no additional method policy to apply here.

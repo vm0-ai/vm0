@@ -172,7 +172,7 @@ function buildPublicConnector(args: {
         id: "api-token",
         label: "API Token",
         description: null,
-        defaultVisible: true,
+        visible: true,
         featureSwitch: null,
         grantKind: "manual",
         manualFields: [
@@ -238,7 +238,7 @@ function publicAuthMethod(args: {
     id: args.id,
     label: `${args.id} auth`,
     description: null,
-    defaultVisible: true,
+    visible: true,
     featureSwitch: null,
     grantKind: args.grantKind,
     manualFields: args.manual
@@ -1051,7 +1051,7 @@ describe("connector catalog valid lifecycle", () => {
     );
   });
 
-  it("applies compatibility, default visibility, and request rollout filters", async () => {
+  it("applies compatibility, authored visibility, and request rollout filters", async () => {
     configureSource();
     const gated = publicAuthMethod({
       id: "api-token",
@@ -1069,7 +1069,7 @@ describe("connector catalog valid lifecycle", () => {
       grantKind: "manual",
       manual: true,
     });
-    hidden.defaultVisible = false;
+    hidden.visible = false;
     const release = buildRelease({
       version: "2026-07-15.external-request-filters",
       mutatePublic: (artifact) => {
@@ -1167,7 +1167,7 @@ describe("connector catalog valid lifecycle", () => {
           firstRecord(artifact.connectors, "connectors").authMethods,
           "authMethods",
         );
-        method.defaultVisible = false;
+        method.visible = false;
       },
     });
     serveObjects(catalogObjects([release], release));
@@ -2136,6 +2136,23 @@ describe("connector catalog rejection and latest-valid retention", () => {
           version: "invalid-artifact",
           mutatePublic: (artifact) => {
             artifact.extra = true;
+          },
+        });
+      },
+    },
+    {
+      name: "legacy auth-method visibility field",
+      expected: "invalid-artifact",
+      release: () => {
+        return buildRelease({
+          version: "legacy-auth-method-visibility",
+          mutatePublic: (artifact) => {
+            const method = firstRecord(
+              firstRecord(artifact.connectors, "connectors").authMethods,
+              "authMethods",
+            );
+            method.defaultVisible = method.visible;
+            delete method.visible;
           },
         });
       },
