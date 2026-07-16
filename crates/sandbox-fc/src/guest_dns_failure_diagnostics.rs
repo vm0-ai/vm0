@@ -197,7 +197,7 @@ fn filtered_command_output(result: Result<String, CommandError>, needle: &str) -
         Ok(output) => {
             let filtered = output
                 .lines()
-                .filter(|line| line.contains(needle))
+                .filter(|line| line_has_exact_comment(line, needle))
                 .collect::<Vec<_>>()
                 .join("\n");
             if filtered.is_empty() {
@@ -208,6 +208,18 @@ fn filtered_command_output(result: Result<String, CommandError>, needle: &str) -
         }
         Err(error) => bounded_output(format!("command_error={error}")),
     }
+}
+
+fn line_has_exact_comment(line: &str, expected: &str) -> bool {
+    let mut tokens = line.split_whitespace();
+    while let Some(token) = tokens.next() {
+        if token == "--comment" {
+            return tokens
+                .next()
+                .is_some_and(|comment| comment.trim_matches('"') == expected);
+        }
+    }
+    false
 }
 
 fn bounded_output(output: String) -> String {
@@ -261,6 +273,7 @@ mod tests {
         let output = [
             "-A PREROUTING -m comment --comment vm0-ns-0c-1f -j DROP",
             "-A PREROUTING -m comment --comment vm0-ns-0c-20 -j DROP",
+            "-A PREROUTING -m comment --comment vm0-ns-0c-200 -j DROP",
             "-A PREROUTING -m comment --comment vm0-ns-0c-21 -j DROP",
         ]
         .join("\n");
