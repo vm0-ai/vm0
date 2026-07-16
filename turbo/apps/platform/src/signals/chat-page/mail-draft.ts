@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import {
   zeroMailContract,
   type ZeroMailDraft,
@@ -6,6 +6,7 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { pageSignal$ } from "../page-signal.ts";
 
 export interface MailDraftFields {
   readonly to: readonly string[];
@@ -14,8 +15,7 @@ export interface MailDraftFields {
 }
 
 interface MailDraftCommandArgs {
-  readonly threadId: string;
-  readonly messageId: string;
+  readonly mailDraftId: string;
 }
 
 interface SaveMailDraftCommandArgs extends MailDraftCommandArgs {
@@ -28,6 +28,34 @@ export const mailDraftOverrides$ = computed((get) => {
   return get(internalMailDraftOverrides$);
 });
 
+export interface MailDraftLoaderSignals {
+  readonly byId: (mailDraftId: string) => Computed<Promise<ZeroMailDraft>>;
+}
+
+export function createMailDraftLoaderSignals(): MailDraftLoaderSignals {
+  const cache = new Map<string, Computed<Promise<ZeroMailDraft>>>();
+  return {
+    byId: (mailDraftId) => {
+      const existing = cache.get(mailDraftId);
+      if (existing) {
+        return existing;
+      }
+      const mailDraft$ = computed(async (get) => {
+        const response = await accept(
+          get(zeroClient$)(zeroMailContract).getDraft({
+            params: { mailDraftId },
+            fetchOptions: { signal: get(pageSignal$) },
+          }),
+          [200],
+        );
+        return response.body.mailDraft;
+      });
+      cache.set(mailDraftId, mailDraft$);
+      return mailDraft$;
+    },
+  };
+}
+
 export const updateMailDraft$ = command(
   async (
     { get, set },
@@ -38,8 +66,7 @@ export const updateMailDraft$ = command(
     const response = await accept(
       client.updateDraft({
         params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
+          mailDraftId: args.mailDraftId,
         },
         body: {
           to: [...args.fields.to],
@@ -52,7 +79,7 @@ export const updateMailDraft$ = command(
     );
     signal.throwIfAborted();
     set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
+      return { ...current, [args.mailDraftId]: response.body.mailDraft };
     });
     return response.body.mailDraft;
   },
@@ -68,8 +95,7 @@ export const cancelMailDraft$ = command(
     const response = await accept(
       client.cancelDraft({
         params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
+          mailDraftId: args.mailDraftId,
         },
         fetchOptions: { signal },
       }),
@@ -77,7 +103,7 @@ export const cancelMailDraft$ = command(
     );
     signal.throwIfAborted();
     set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
+      return { ...current, [args.mailDraftId]: response.body.mailDraft };
     });
     return response.body.mailDraft;
   },
@@ -93,8 +119,7 @@ export const sendMailDraft$ = command(
     const response = await accept(
       client.sendDraft({
         params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
+          mailDraftId: args.mailDraftId,
         },
         body: {
           to: [...args.fields.to],
@@ -107,7 +132,7 @@ export const sendMailDraft$ = command(
     );
     signal.throwIfAborted();
     set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
+      return { ...current, [args.mailDraftId]: response.body.mailDraft };
     });
     return response.body.mailDraft;
   },

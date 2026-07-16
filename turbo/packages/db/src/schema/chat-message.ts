@@ -18,10 +18,10 @@ import type {
   ChatMessageGenerationTemplate,
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
-  ChatMessageMailDraft,
   ChatMessageRecommendedFollowups,
   ChatMessageUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-message";
+import { mailDrafts } from "./mail-draft";
 export type {
   ChatMessageAttachFileMetadata,
   ChatMessageAttachFileMetadataList,
@@ -30,7 +30,6 @@ export type {
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
   ChatMessageIllustrationGenerationTemplate,
-  ChatMessageMailDraft,
   ChatMessagePresentationGenerationTemplate,
   ChatMessageRecommendedFollowup,
   ChatMessageRecommendedFollowupGenerationType,
@@ -119,7 +118,9 @@ export const chatMessages = pgTable(
     generationTemplate: jsonb(
       "generation_template",
     ).$type<ChatMessageGenerationTemplate>(),
-    mailDraft: jsonb("mail_draft").$type<ChatMessageMailDraft>(),
+    mailDraftId: uuid("mail_draft_id").references(() => {
+      return mailDrafts.id;
+    }),
     recommendedFollowups: jsonb(
       "recommended_followups",
     ).$type<ChatMessageRecommendedFollowups>(),
@@ -144,6 +145,7 @@ export const chatMessages = pgTable(
       uniqueIndex("chat_messages_interrupts_run_id_unique").on(
         table.interruptsRunId,
       ),
+      uniqueIndex("chat_messages_mail_draft_id_unique").on(table.mailDraftId),
       index("idx_chat_messages_run_group_id")
         .on(table.runGroupId)
         .where(sql`${table.runGroupId} IS NOT NULL`),

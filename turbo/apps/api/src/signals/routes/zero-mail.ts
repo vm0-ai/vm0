@@ -13,6 +13,7 @@ import { loadUserFeatureSwitchContext } from "../services/feature-switches.servi
 import {
   cancelZeroMailDraft$,
   createZeroMailDraft$,
+  getZeroMailDraft$,
   sendZeroMailDraft$,
   updateZeroMailDraft$,
   type ZeroMailDraftMutationResult,
@@ -44,7 +45,7 @@ function mutationResponse(result: ZeroMailDraftMutationResult) {
       return {
         status: 200 as const,
         body: {
-          messageId: result.messageId,
+          mailDraftId: result.mailDraftId,
           mailDraft: result.mailDraft,
         },
       };
@@ -85,10 +86,25 @@ const createDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return {
     status: 201 as const,
     body: {
-      messageId: result.messageId,
+      mailDraftId: result.mailDraftId,
       mailDraft: result.mailDraft,
     },
   };
+});
+
+const getDraftParams$ = pathParamsOf(zeroMailContract.getDraft);
+const getDraftInner$ = command(async ({ get, set }) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await set(zeroMailEnabled$))) {
+    return zeroMailDisabled;
+  }
+  return mutationResponse(
+    await set(getZeroMailDraft$, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      ...get(getDraftParams$),
+    }),
+  );
 });
 
 const updateDraftBody$ = bodyResultOf(zeroMailContract.updateDraft);
@@ -170,6 +186,10 @@ export const zeroMailRoutes: readonly RouteEntry[] = [
   {
     route: zeroMailContract.createDraft,
     handler: authRoute(mailDraftCreateAuth, createDraftInner$),
+  },
+  {
+    route: zeroMailContract.getDraft,
+    handler: authRoute(mailDraftHumanAuth, getDraftInner$),
   },
   {
     route: zeroMailContract.updateDraft,

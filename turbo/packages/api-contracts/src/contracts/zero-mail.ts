@@ -44,13 +44,12 @@ const zeroMailDraftFieldsSchema = z.object({
 });
 
 const zeroMailDraftResponseSchema = z.object({
-  messageId: z.string().uuid(),
+  mailDraftId: z.string().uuid(),
   mailDraft: zeroMailDraftSchema,
 });
 
 const zeroMailDraftPathParamsSchema = z.object({
-  threadId: z.string().uuid(),
-  messageId: z.string().uuid(),
+  mailDraftId: z.string().uuid(),
 });
 
 export const zeroMailContract = c.router({
@@ -73,9 +72,22 @@ export const zeroMailContract = c.router({
     },
     summary: "Create a persistent email draft card in a web chat thread",
   },
+  getDraft: {
+    method: "GET",
+    path: "/api/zero/mail/drafts/:mailDraftId",
+    headers: authHeadersSchema,
+    pathParams: zeroMailDraftPathParamsSchema,
+    responses: {
+      200: zeroMailDraftResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get an email draft by ID",
+  },
   updateDraft: {
     method: "PATCH",
-    path: "/api/zero/mail/drafts/:threadId/:messageId",
+    path: "/api/zero/mail/drafts/:mailDraftId",
     headers: authHeadersSchema,
     pathParams: zeroMailDraftPathParamsSchema,
     body: zeroMailDraftFieldsSchema,
@@ -91,7 +103,7 @@ export const zeroMailContract = c.router({
   },
   cancelDraft: {
     method: "POST",
-    path: "/api/zero/mail/drafts/:threadId/:messageId/cancel",
+    path: "/api/zero/mail/drafts/:mailDraftId/cancel",
     headers: authHeadersSchema,
     pathParams: zeroMailDraftPathParamsSchema,
     body: c.noBody(),
@@ -106,7 +118,7 @@ export const zeroMailContract = c.router({
   },
   sendDraft: {
     method: "POST",
-    path: "/api/zero/mail/drafts/:threadId/:messageId/send",
+    path: "/api/zero/mail/drafts/:mailDraftId/send",
     headers: authHeadersSchema,
     pathParams: zeroMailDraftPathParamsSchema,
     body: zeroMailDraftFieldsSchema,

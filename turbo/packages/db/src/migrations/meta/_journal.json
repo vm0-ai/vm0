@@ -4278,6 +4278,20 @@
       "when": 1784200108803,
       "tag": "0610_cheerful_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 611,
+      "version": "7",
+      "when": 1784222545951,
+      "tag": "0611_curved_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 612,
+      "version": "7",
+      "when": 1784222569566,
+      "tag": "0612_chilly_malice",
+      "breakpoints": true
     }
   ]
 }

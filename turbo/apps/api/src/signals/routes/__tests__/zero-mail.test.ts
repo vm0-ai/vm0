@@ -111,8 +111,7 @@ describe("POST /api/zero/mail/drafts", () => {
       client().updateDraft({
         headers: authHeaders(),
         params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
+          mailDraftId: created.body.mailDraftId,
         },
         body: {
           to: ["final@example.com"],
@@ -133,8 +132,7 @@ describe("POST /api/zero/mail/drafts", () => {
       client().sendDraft({
         headers: authHeaders(),
         params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
+          mailDraftId: created.body.mailDraftId,
         },
         body: {
           to: ["final@example.com"],
@@ -157,8 +155,7 @@ describe("POST /api/zero/mail/drafts", () => {
       client().sendDraft({
         headers: authHeaders(),
         params: {
-          threadId: fixture.thread.id,
-          messageId: created.body.messageId,
+          mailDraftId: created.body.mailDraftId,
         },
         body: {
           to: ["final@example.com"],
@@ -176,9 +173,20 @@ describe("POST /api/zero/mail/drafts", () => {
       fixture.thread.id,
     );
     const persisted = page.messages.find((message) => {
-      return message.id === created.body.messageId;
+      return message.mailDraftId === created.body.mailDraftId;
     });
-    expect(persisted?.mailDraft).toMatchObject({
+    expect(persisted).toMatchObject({
+      mailDraftId: created.body.mailDraftId,
+    });
+
+    const loaded = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: created.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(loaded.body.mailDraft).toMatchObject({
       to: ["final@example.com"],
       subject: "Updated subject",
       body: "Updated body",
