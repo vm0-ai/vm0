@@ -26,6 +26,8 @@ SUBMIT_PID=""
 DNS_ISOLATION_NS=""
 DNS_ISOLATION_HOST_IF=""
 DNS_ISOLATION_LOCK_FD=""
+SPOOF_NS=""
+SPOOF_IP=""
 
 fail() { echo "FAIL: $1"; exit 1; }
 
@@ -36,8 +38,68 @@ cleanup_submit_pid() {
   wait "$pid" 2>/dev/null || true
 }
 
+cleanup_spoof_address() {
+  if [ -n "$SPOOF_NS" ] && [ -n "$SPOOF_IP" ]; then
+    sudo ip -n "$SPOOF_NS" address delete "${SPOOF_IP}/32" \
+      dev veth0 2>/dev/null || true
+  fi
+  SPOOF_NS=""
+  SPOOF_IP=""
+}
+
+rule_values() {
+  local option=$1
+  awk -v option="$option" '
+    {
+      for (i = 1; i < NF; i++) {
+        if ($i == option) {
+          value = $(i + 1)
+          gsub(/^"|"$/, "", value)
+          print value
+        }
+      }
+    }
+  '
+}
+
+rule_value() {
+  local rule=$1 option=$2
+  printf '%s\n' "$rule" | rule_values "$option" | head -n 1
+}
+
+rule_packet_count() {
+  local rule=$1
+  printf '%s\n' "$rule" | awk '
+    $1 ~ /^\[[0-9]+:[0-9]+\]$/ {
+      gsub(/^\[/, "", $1)
+      split($1, counter, ":")
+      print counter[1]
+      exit
+    }
+  '
+}
+
+send_udp_dns_query() {
+  local namespace=$1 source_ip=$2
+  sudo ip netns exec "$namespace" python3 - "$source_ip" <<'PY'
+import socket
+import sys
+
+query = bytes.fromhex(
+    "123401000001000000000000"
+    "0c736f757263652d6775617264"
+    "07696e76616c69640000010001"
+)
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind((sys.argv[1], 0))
+sock.sendto(query, ("192.0.2.1", 53))
+sock.close()
+PY
+}
+
 cleanup() {
   echo "--- Cleanup ---"
+  cleanup_spoof_address
   sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
   cleanup_submit_pid "$SUBMIT_PID"
   if [ -n "$DNS_ISOLATION_NS" ]; then
@@ -349,6 +411,7 @@ fi
 
 NAT_RULES=$(sudo iptables-save -t nat) || fail "failed to read nat rules"
 FILTER_RULES=$(sudo iptables-save -t filter) || fail "failed to read filter rules"
+RAW_RULES=$(sudo iptables-save -t raw) || fail "failed to read raw rules"
 
 PROXY_RULES=$(printf '%s\n' "$NAT_RULES" \
   | grep -E -- "--to-ports? ${PROXY_PORT}([[:space:]]|$)" || true)
@@ -370,6 +433,179 @@ printf '%s\n' "$FILTER_RULES" \
 printf '%s\n' "$FILTER_RULES" \
   | grep -E -- "-A FORWARD .* -p tcp .*--dport 853 .* -j DROP" >/dev/null \
   || fail "TCP/853 FORWARD drop rule not found"
+
+# Verify that source IP is an identity only after the packet arrives on its
+# owning host veth. Then inject one namespace's peer IP through another veth
+# and prove the raw guard rejects it before the victim DNS rule can attribute it.
+mapfile -t RUNNER_NAMESPACES < <(
+  printf '%s\n' "$PROXY_RULES" \
+    | rule_values --comment \
+    | sort -u
+)
+RUNNER_NAMESPACE_COUNT=${#RUNNER_NAMESPACES[@]}
+[ "$RUNNER_NAMESPACE_COUNT" -ge 2 ] \
+  || fail "expected at least two runner namespaces, found $RUNNER_NAMESPACE_COUNT"
+
+ATTACKER_NS=${RUNNER_NAMESPACES[0]}
+VICTIM_NS=${RUNNER_NAMESPACES[1]}
+ATTACKER_IF=${ATTACKER_NS/vm0-ns-/vm0-ve-}
+VICTIM_IF=${VICTIM_NS/vm0-ns-/vm0-ve-}
+
+ATTACKER_PROXY_RULE=$(printf '%s\n' "$PROXY_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | head -n 1 || true)
+VICTIM_PROXY_RULE=$(printf '%s\n' "$PROXY_RULES" \
+  | grep -F -- "$VICTIM_NS" \
+  | head -n 1 || true)
+[ -n "$ATTACKER_PROXY_RULE" ] || fail "attacker proxy rule not found"
+[ -n "$VICTIM_PROXY_RULE" ] || fail "victim proxy rule not found"
+
+ATTACKER_CIDR=$(rule_value "$ATTACKER_PROXY_RULE" -s)
+VICTIM_CIDR=$(rule_value "$VICTIM_PROXY_RULE" -s)
+[ "${ATTACKER_CIDR#*/}" = 32 ] \
+  || fail "attacker proxy source is not an exact /32: $ATTACKER_CIDR"
+[ "${VICTIM_CIDR#*/}" = 32 ] \
+  || fail "victim proxy source is not an exact /32: $VICTIM_CIDR"
+[ "$(rule_value "$ATTACKER_PROXY_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "attacker proxy rule is not bound to $ATTACKER_IF"
+[ "$(rule_value "$VICTIM_PROXY_RULE" -i)" = "$VICTIM_IF" ] \
+  || fail "victim proxy rule is not bound to $VICTIM_IF"
+ATTACKER_PEER=${ATTACKER_CIDR%/32}
+VICTIM_PEER=${VICTIM_CIDR%/32}
+
+ATTACKER_GUARD_RULE=$(printf '%s\n' "$RAW_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+VICTIM_GUARD_RULE=$(printf '%s\n' "$RAW_RULES" \
+  | grep -F -- "$VICTIM_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+[ -n "$ATTACKER_GUARD_RULE" ] || fail "attacker source guard not found"
+[ -n "$VICTIM_GUARD_RULE" ] || fail "victim source guard not found"
+[ "$(rule_value "$ATTACKER_GUARD_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "attacker source guard is not bound to $ATTACKER_IF"
+[ "$(rule_value "$VICTIM_GUARD_RULE" -i)" = "$VICTIM_IF" ] \
+  || fail "victim source guard is not bound to $VICTIM_IF"
+printf '%s\n' "$ATTACKER_GUARD_RULE" \
+  | grep -F -- "! -s ${ATTACKER_CIDR}" >/dev/null \
+  || fail "attacker source guard does not reject non-peer sources"
+printf '%s\n' "$VICTIM_GUARD_RULE" \
+  | grep -F -- "! -s ${VICTIM_CIDR}" >/dev/null \
+  || fail "victim source guard does not reject non-peer sources"
+
+ATTACKER_MASQUERADE_RULE=$(printf '%s\n' "$NAT_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A POSTROUTING" \
+  | grep -F -- "-j MASQUERADE" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_MASQUERADE_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "host masquerade rule does not use the exact attacker peer"
+
+ATTACKER_OUTBOUND_RULE=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A FORWARD" \
+  | grep -F -- "-i ${ATTACKER_IF}" \
+  | grep -F -- "-j ACCEPT" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_OUTBOUND_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "outbound forwarding rule does not use the exact attacker peer"
+
+ATTACKER_RETURN_RULE=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A FORWARD" \
+  | grep -F -- "-o ${ATTACKER_IF}" \
+  | grep -F -- "-j ACCEPT" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_RETURN_RULE" -d)" = "$ATTACKER_CIDR" ] \
+  || fail "return forwarding rule does not use the exact attacker peer"
+
+ATTACKER_LOG_RULE=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "VM0:${ATTACKER_PEER}:" \
+  | grep -F -- "-j LOG" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_LOG_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "non-TCP log rule is not bound to $ATTACKER_IF"
+[ "$(rule_value "$ATTACKER_LOG_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "non-TCP log rule does not use the exact attacker peer"
+
+ATTACKER_DNS_DROP_RULE=$(printf '%s\n' "$FILTER_RULES" \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+[ "$(rule_value "$ATTACKER_DNS_DROP_RULE" -i)" = "$ATTACKER_IF" ] \
+  || fail "DNS drop rule is not bound to $ATTACKER_IF"
+[ "$(rule_value "$ATTACKER_DNS_DROP_RULE" -s)" = "$ATTACKER_CIDR" ] \
+  || fail "DNS drop rule does not use the exact attacker peer"
+
+VICTIM_DNS_RULE=$(printf '%s\n' "$NAT_RULES" \
+  | grep -F -- "$VICTIM_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+[ "$(rule_value "$VICTIM_DNS_RULE" -i)" = "$VICTIM_IF" ] \
+  || fail "victim DNS redirect is not bound to $VICTIM_IF"
+[ "$(rule_value "$VICTIM_DNS_RULE" -s)" = "$VICTIM_CIDR" ] \
+  || fail "victim DNS redirect does not use the exact peer"
+
+ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+ATTACKER_GUARD_BEFORE=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+[ -n "$ATTACKER_GUARD_BEFORE" ] || fail "source guard counter missing"
+send_udp_dns_query "$ATTACKER_NS" "$ATTACKER_PEER"
+ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+ATTACKER_GUARD_AFTER_CONTROL=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+[ "$ATTACKER_GUARD_AFTER_CONTROL" -eq "$ATTACKER_GUARD_BEFORE" ] \
+  || fail "source guard rejected the namespace's assigned peer"
+
+VICTIM_DNS_COUNTED=$(sudo iptables-save -c -t nat \
+  | grep -F -- "$VICTIM_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+VICTIM_DNS_BEFORE=$(rule_packet_count "$VICTIM_DNS_COUNTED")
+[ -n "$VICTIM_DNS_BEFORE" ] || fail "victim DNS redirect counter missing"
+
+SPOOF_NS=$ATTACKER_NS
+SPOOF_IP=$VICTIM_PEER
+sudo ip -n "$SPOOF_NS" address add "${SPOOF_IP}/32" dev veth0 \
+  || fail "failed to add forged victim source to attacker namespace"
+send_udp_dns_query "$SPOOF_NS" "$SPOOF_IP"
+
+ATTACKER_GUARD_COUNTED=$(sudo iptables-save -c -t raw \
+  | grep -F -- "$ATTACKER_NS" \
+  | grep -F -- "-A PREROUTING" \
+  | grep -F -- "-j DROP" \
+  | head -n 1 || true)
+ATTACKER_GUARD_AFTER_SPOOF=$(rule_packet_count "$ATTACKER_GUARD_COUNTED")
+VICTIM_DNS_COUNTED=$(sudo iptables-save -c -t nat \
+  | grep -F -- "$VICTIM_NS" \
+  | grep -F -- "-p udp" \
+  | grep -F -- "--dport 53" \
+  | grep -E -- "--to-ports? ${DNS_PORT}([[:space:]]|$)" \
+  | head -n 1 || true)
+VICTIM_DNS_AFTER=$(rule_packet_count "$VICTIM_DNS_COUNTED")
+cleanup_spoof_address
+
+[ "$ATTACKER_GUARD_AFTER_SPOOF" -gt "$ATTACKER_GUARD_AFTER_CONTROL" ] \
+  || fail "source guard did not reject the forged victim source"
+[ "$VICTIM_DNS_AFTER" -eq "$VICTIM_DNS_BEFORE" ] \
+  || fail "forged source reached the victim DNS attribution rule"
+echo "  source identity: forged $VICTIM_PEER rejected on $ATTACKER_IF"
 
 DNS_FILTER_COMMENT=$(printf '%s\n' "$FILTER_RULES" \
   | grep -E -- "-A INPUT .*--dport ${DNS_PORT} .*--comment vm0-ns-[0-9a-f]{2}-dns.*-j REJECT" \
@@ -486,6 +722,12 @@ if sudo ip6tables-save -t filter \
   | grep -F -- "--comment ${DNS_FILTER_COMMENT}" >/dev/null; then
   fail "IPv6 DNS INPUT filter leaked after runner stop"
 fi
+for namespace in "${RUNNER_NAMESPACES[@]}"; do
+  if sudo iptables-save -t raw \
+    | grep -F -- "$namespace" >/dev/null; then
+    fail "IPv4 source guard leaked after runner stop: $namespace"
+  fi
+done
 cleanup_submit_pid "$SUBMIT_PID"
 SUBMIT_PID=""
 trap - EXIT
