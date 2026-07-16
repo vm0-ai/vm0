@@ -4317,15 +4317,22 @@
     {
       "idx": 616,
       "version": "7",
-      "when": 1784234795005,
-      "tag": "0616_preserve_chat_message_run_references",
+      "when": 1784233890680,
+      "tag": "0616_white_stature",
       "breakpoints": true
     },
     {
       "idx": 617,
       "version": "7",
-      "when": 1784234806520,
-      "tag": "0617_protect_chat_event_rows_from_update",
+      "when": 1784235403657,
+      "tag": "0617_preserve_chat_message_run_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1784235417148,
+      "tag": "0618_protect_chat_event_rows_from_update",
       "breakpoints": true
     }
   ]

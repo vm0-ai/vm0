@@ -35,7 +35,6 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   workflowUserAutomationThreads,
-  zeroWorkflowAutomationMemoryEmbeddings,
   zeroWorkflowAutomations,
   zeroWorkflowWebhookAutomations,
   zeroWorkflows,
@@ -2017,16 +2016,6 @@ export const updateWorkflowAutomation$ = command(
         .returning();
       if (!updated) {
         throw new Error("Failed to update workflow automation");
-      }
-      if (cols.scheduleType === "once") {
-        await tx
-          .delete(zeroWorkflowAutomationMemoryEmbeddings)
-          .where(
-            eq(
-              zeroWorkflowAutomationMemoryEmbeddings.workflowAutomationId,
-              automation.id,
-            ),
-          );
       }
       return updated;
     });

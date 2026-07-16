@@ -337,20 +337,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.RelationshipMemory]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Inject compact relationship memory profile and prompt-relevant memories into Zero run system prompts.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
     maintainer: "bingjie@vm0.ai",
     description:
