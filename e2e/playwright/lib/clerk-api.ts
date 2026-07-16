@@ -202,13 +202,14 @@ async function readClerkJson(
   response: Response,
   operation: string,
 ): Promise<unknown> {
-  const responseBody = await response.text();
   if (!response.ok) {
+    await response.body?.cancel();
     throw new Error(
       `${operation} failed with ${formatClerkResponseSummary(response)}`,
     );
   }
 
+  const responseBody = await response.text();
   try {
     return JSON.parse(responseBody) as unknown;
   } catch (cause) {
