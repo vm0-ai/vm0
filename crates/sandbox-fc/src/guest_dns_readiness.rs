@@ -62,10 +62,7 @@ impl GuestDnsReadinessFailure {
     fn retryable(self) -> bool {
         matches!(
             self,
-            Self::TimedOut
-                | Self::Transport(io::ErrorKind::TimedOut)
-                | Self::ExitNonZero(2)
-                | Self::UnexpectedAnswer
+            Self::TimedOut | Self::ExitNonZero(2) | Self::UnexpectedAnswer
         )
     }
 }
@@ -424,6 +421,15 @@ mod tests {
             error.last_failure,
             GuestDnsReadinessFailure::UnexpectedAnswer
         );
+    }
+
+    #[test]
+    fn guest_dns_readiness_retries_only_proven_guest_terminal_failures() {
+        assert!(GuestDnsReadinessFailure::TimedOut.retryable());
+        assert!(GuestDnsReadinessFailure::ExitNonZero(2).retryable());
+        assert!(GuestDnsReadinessFailure::UnexpectedAnswer.retryable());
+        assert!(!GuestDnsReadinessFailure::Deadline.retryable());
+        assert!(!GuestDnsReadinessFailure::Transport(io::ErrorKind::TimedOut).retryable());
     }
 
     #[tokio::test]
