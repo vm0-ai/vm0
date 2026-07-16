@@ -1,4 +1,4 @@
-use crate::download::{DownloadTask, classify_download_task_kind};
+use crate::download::{ArchiveKind, DownloadTask, classify_download_task_kind};
 use crate::instructions::{InstructionCleanup, InstructionNormalization};
 use crate::manifest::{ArtifactEntry, Manifest, StorageEntry};
 use std::path::Path;
@@ -65,10 +65,10 @@ impl ManifestEntryKind {
         }
     }
 
-    fn op_name(self) -> &'static str {
+    fn archive_kind(self) -> ArchiveKind {
         match self {
-            Self::Storage => "storage_download",
-            Self::Artifact => "artifact_download",
+            Self::Storage => ArchiveKind::Storage,
+            Self::Artifact => ArchiveKind::Artifact,
         }
     }
 
@@ -191,7 +191,7 @@ fn append_storage_download_tasks(tasks: &mut Vec<DownloadTask>, entries: &[Stora
                 idx + 1,
                 EntryLabel::storage(entry, url),
             ),
-            ManifestEntryKind::Storage.op_name(),
+            ManifestEntryKind::Storage.archive_kind(),
             url.clone(),
             download_mount_path.to_string(),
             task_kind,
@@ -217,7 +217,7 @@ fn append_artifact_download_tasks(tasks: &mut Vec<DownloadTask>, entries: &[Arti
                 idx + 1,
                 EntryLabel::artifact(entry, url),
             ),
-            ManifestEntryKind::Artifact.op_name(),
+            ManifestEntryKind::Artifact.archive_kind(),
             url.clone(),
             entry.mount_path.clone(),
             task_kind,
@@ -332,7 +332,7 @@ mod tests {
             plan.download_tasks[0],
             DownloadTask::new(
                 "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false".into(),
-                "storage_download",
+                ArchiveKind::Storage,
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),
             )
@@ -341,7 +341,7 @@ mod tests {
             plan.download_tasks[1],
             DownloadTask::new(
                 "artifact 1 mountPath=/workspace/a vasStorageName=workspace-a vasVersionId=artifact-v1 urlScheme=https cached=false missingRootPolicy=preserveParentVersion".into(),
-                "artifact_download",
+                ArchiveKind::Artifact,
                 "https://s3/a.tar.gz".into(),
                 "/workspace/a".into(),
             )
@@ -350,7 +350,7 @@ mod tests {
             plan.download_tasks[2],
             DownloadTask::new(
                 "artifact 2 mountPath=/workspace/b vasStorageName=workspace-b vasVersionId=artifact-v2 urlScheme=file cached=false missingRootPolicy=fail".into(),
-                "artifact_download",
+                ArchiveKind::Artifact,
                 "file:///tmp/vm0-storage-cache/b.tar.gz".into(),
                 "/workspace/b".into(),
             )
@@ -405,7 +405,7 @@ mod tests {
             plan.download_tasks,
             [DownloadTask::new(
                 "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false".into(),
-                "storage_download",
+                ArchiveKind::Storage,
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),
             )]
@@ -474,7 +474,7 @@ mod tests {
             plan.download_tasks[0],
             DownloadTask::new_with_kind(
                 "storage 1 mountPath=/home/user/.codex vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false".into(),
-                "storage_download",
+                ArchiveKind::Storage,
                 "https://s3/instructions.tar.gz".into(),
                 "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0".into(),
                 crate::download::DownloadTaskKind::FrameworkHomeInstructions,
@@ -501,7 +501,7 @@ mod tests {
             plan.download_tasks[0],
             DownloadTask::new_with_kind(
                 "storage 1 mountPath=/data vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false".into(),
-                "storage_download",
+                ArchiveKind::Storage,
                 "https://s3/data.tar.gz".into(),
                 "/data".into(),
                 crate::download::DownloadTaskKind::Other,
@@ -527,7 +527,7 @@ mod tests {
             plan.download_tasks[0],
             DownloadTask::new_with_kind(
                 "artifact 1 mountPath=/workspace vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false missingRootPolicy=fail".into(),
-                "artifact_download",
+                ArchiveKind::Artifact,
                 "https://s3/workspace.tar.gz".into(),
                 "/workspace".into(),
                 crate::download::DownloadTaskKind::Other,
@@ -668,7 +668,7 @@ mod tests {
                 format!(
                     "storage 1 mountPath={mount_path} vasStorageName=storage vasVersionId=storage-v1 urlScheme=https cached=true"
                 ),
-                "storage_download",
+                ArchiveKind::Storage,
                 "https://s3/storage.tar.gz".into(),
                 mount_path,
             )],
@@ -708,7 +708,7 @@ mod tests {
                 format!(
                     "artifact 1 mountPath={mount_path} vasStorageName=artifact vasVersionId=artifact-v1 urlScheme=https cached=true missingRootPolicy=fail"
                 ),
-                "artifact_download",
+                ArchiveKind::Artifact,
                 "https://s3/artifact.tar.gz".into(),
                 mount_path,
             )],
