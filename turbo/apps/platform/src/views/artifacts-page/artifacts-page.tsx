@@ -728,10 +728,10 @@ function ArtifactCardActions({
       {showFavoriteAction && (
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           size="icon"
           className={cn(
-            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-muted active:bg-gray-100",
+            "h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted",
             favorited && "text-amber-500 hover:text-amber-500",
           )}
           aria-label={
@@ -750,9 +750,9 @@ function ArtifactCardActions({
           }}
         >
           {favorited ? (
-            <IconCarambolaFilled size={14} aria-hidden />
+            <IconCarambolaFilled size={16} aria-hidden />
           ) : (
-            <IconCarambola size={14} stroke={1.7} aria-hidden />
+            <IconCarambola size={16} stroke={1.5} aria-hidden />
           )}
         </Button>
       )}
@@ -760,13 +760,13 @@ function ArtifactCardActions({
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="secondary"
+            variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-muted active:bg-gray-100 data-[state=open]:bg-gray-100"
+            className="h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground"
             aria-label={`More actions for ${item.filename}`}
             title={`More actions for ${item.filename}`}
           >
-            <IconDots size={14} stroke={1.7} aria-hidden />
+            <IconDots size={16} stroke={1.5} aria-hidden />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
