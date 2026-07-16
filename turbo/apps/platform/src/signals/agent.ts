@@ -31,29 +31,16 @@ export const defaultAgentId$ = computed(async (get) => {
 
 const internalAgentByIdReload$ = state(0);
 
-function createAgentByIdFactory(): (
-  id: string,
-) => Computed<Promise<ZeroAgentResponse>> {
-  const cache = new Map<string, Computed<Promise<ZeroAgentResponse>>>();
-  return (id: string) => {
-    const existing = cache.get(id);
-    if (existing) {
-      return existing;
-    }
-    const atom$ = computed(async (get) => {
-      get(internalAgentByIdReload$);
-      const client = get(zeroClient$)(zeroAgentsByIdContract);
-      const result = await retryTransientLoad(() => {
-        return accept(client.get({ params: { id } }), [200]);
-      });
-      return result.body;
+export function agentById(id: string): Computed<Promise<ZeroAgentResponse>> {
+  return computed(async (get) => {
+    get(internalAgentByIdReload$);
+    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const result = await retryTransientLoad(() => {
+      return accept(client.get({ params: { id } }), [200]);
     });
-    cache.set(id, atom$);
-    return atom$;
-  };
+    return result.body;
+  });
 }
-
-export const agentById = createAgentByIdFactory();
 
 export const reloadAgentById$ = command(({ set }) => {
   set(internalAgentByIdReload$, (prev) => {

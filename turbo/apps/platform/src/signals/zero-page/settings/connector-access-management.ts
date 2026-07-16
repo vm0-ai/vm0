@@ -1,4 +1,4 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -12,6 +12,7 @@ import {
   reloadAgentConnectorAuthorizations$,
 } from "../agent-connector-authorizations.ts";
 import { settle, withCleanup } from "../../utils.ts";
+import { firewallPermissionMetadataByConnector } from "../../firewall-permission-metadata.ts";
 
 export interface ConnectorAgentAccessRow {
   readonly agent: TeamComposeItem;
@@ -22,10 +23,6 @@ export interface ConnectorAgentAccessRow {
 interface ConnectorAgentAuthorizationRow {
   readonly agent: TeamComposeItem;
   readonly enabledTypes: readonly ConnectorType[];
-}
-
-interface ConnectorAgentAccessRowsParams {
-  readonly connectorType: ConnectorType;
 }
 
 interface SetConnectorAgentAuthorizationParams {
@@ -116,93 +113,78 @@ export const connectorAgentAuthorizations$ = computed(
   },
 );
 
-function createConnectorAuthorizedAgentsFactory(): (
-  params: ConnectorAgentAccessRowsParams,
-) => Computed<Promise<readonly TeamComposeItem[]>> {
-  const cache = new Map<
-    string,
-    Computed<Promise<readonly TeamComposeItem[]>>
-  >();
-  return (params) => {
-    const existing = cache.get(params.connectorType);
-    if (existing) {
-      return existing;
+export const connectorAuthorizedAgentsByType$ = computed(
+  async (
+    get,
+  ): Promise<ReadonlyMap<ConnectorType, readonly TeamComposeItem[]>> => {
+    const authorizations = await get(connectorAgentAuthorizations$);
+    const agentsByType = new Map<ConnectorType, TeamComposeItem[]>();
+    for (const row of authorizations) {
+      for (const connectorType of row.enabledTypes) {
+        const agents = agentsByType.get(connectorType) ?? [];
+        agents.push(row.agent);
+        agentsByType.set(connectorType, agents);
+      }
     }
-    const atom$ = computed(async (get): Promise<readonly TeamComposeItem[]> => {
-      const authorizations = await get(connectorAgentAuthorizations$);
-      return authorizations
-        .filter((row) => {
-          return row.enabledTypes.includes(params.connectorType);
-        })
-        .map((row) => {
-          return row.agent;
-        });
-    });
-    cache.set(params.connectorType, atom$);
-    return atom$;
-  };
-}
+    return agentsByType;
+  },
+);
 
-function createConnectorAgentAccessRowsFactory(): (
-  params: ConnectorAgentAccessRowsParams,
-) => Computed<Promise<readonly ConnectorAgentAccessRow[]>> {
-  const cache = new Map<
-    string,
-    Computed<Promise<readonly ConnectorAgentAccessRow[]>>
-  >();
-  return (params) => {
-    const existing = cache.get(params.connectorType);
-    if (existing) {
-      return existing;
+export const managedConnectorAgentAccessRows$ = computed(
+  async (get): Promise<readonly ConnectorAgentAccessRow[]> => {
+    const connectorType = get(managedConnectorAccessType$);
+    if (!connectorType) {
+      return [];
     }
-    const atom$ = computed(
-      async (get): Promise<readonly ConnectorAgentAccessRow[]> => {
-        const authorizations = await get(connectorAgentAuthorizations$);
-        const rows = await Promise.all(
-          authorizations.map(
-            async ({
-              agent,
-              enabledTypes,
-            }): Promise<ConnectorAgentAccessRow | null> => {
-              const authorized = enabledTypes.includes(params.connectorType);
-              let grants: readonly UserPermissionGrantResponse[] = [];
-              if (authorized) {
-                const grantsResult = await settle(
-                  get(userPermissionGrantsByAgent({ agentId: agent.id })),
-                );
-                if (!grantsResult.ok) {
-                  if (
-                    grantsResult.error instanceof ApiError &&
-                    grantsResult.error.status === 404
-                  ) {
-                    return null;
-                  }
-                  throw grantsResult.error;
-                }
-                grants = grantsResult.value;
+    const authorizations = await get(connectorAgentAuthorizations$);
+    const rows = await Promise.all(
+      authorizations.map(
+        async ({
+          agent,
+          enabledTypes,
+        }): Promise<ConnectorAgentAccessRow | null> => {
+          const authorized = enabledTypes.includes(connectorType);
+          let grants: readonly UserPermissionGrantResponse[] = [];
+          if (authorized) {
+            const grantsResult = await settle(
+              get(userPermissionGrantsByAgent({ agentId: agent.id })),
+            );
+            if (!grantsResult.ok) {
+              if (
+                grantsResult.error instanceof ApiError &&
+                grantsResult.error.status === 404
+              ) {
+                return null;
               }
-              return {
-                agent,
-                authorized,
-                grants,
-              };
-            },
-          ),
-        );
-        return rows.filter((row): row is ConnectorAgentAccessRow => {
-          return row !== null;
-        });
-      },
+              throw grantsResult.error;
+            }
+            grants = grantsResult.value;
+          }
+          return {
+            agent,
+            authorized,
+            grants,
+          };
+        },
+      ),
     );
-    cache.set(params.connectorType, atom$);
-    return atom$;
-  };
-}
+    return rows.filter((row): row is ConnectorAgentAccessRow => {
+      return row !== null;
+    });
+  },
+);
 
-export const connectorAuthorizedAgents =
-  createConnectorAuthorizedAgentsFactory();
-
-export const connectorAgentAccessRows = createConnectorAgentAccessRowsFactory();
+export const managedConnectorFirewallPermissionMetadata$ = computed(
+  async (get) => {
+    const connectorType = get(managedConnectorAccessType$);
+    if (!connectorType) {
+      return null;
+    }
+    return await get(
+      firewallPermissionMetadataByConnector({ connectorRef: connectorType }),
+    );
+  },
+);
 
 export const setConnectorAgentAuthorization$ = command(
   async (
