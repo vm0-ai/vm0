@@ -4,7 +4,7 @@ export { expect };
 
 export const test = base.extend({
   context: async ({ context }, use) => {
-    const apiUrl = process.env.VM0_API_URL;
+    const apiUrl = process.env.VM0_API_BACKEND_URL;
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     if (apiUrl && bypassSecret) {
       const apiOrigin = new URL(apiUrl).origin;

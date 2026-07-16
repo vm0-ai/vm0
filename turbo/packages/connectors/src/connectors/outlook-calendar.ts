@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connector-config";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const outlookCalendar = {
   "outlook-calendar": {
@@ -9,7 +8,6 @@ export const outlookCalendar = {
       "Connect your Microsoft account to access and manage Outlook calendar events",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.OutlookCalendarConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Microsoft to grant Outlook Calendar access.",
         client: {

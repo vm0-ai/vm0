@@ -7,14 +7,22 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
-  zeroConnectorsSearchContract,
-  type ConnectorSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogListResponse,
+  type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
+  zeroConnectorCheckContract,
+  type ConnectorCheckDiagnosticResult,
+  type ConnectorCheckRequest,
+} from "@vm0/api-contracts/contracts/zero-connector-check";
+import {
+  zeroConnectorPermissionDenyContract,
+  type ConnectorPermissionDenyDiagnosticResult,
+} from "@vm0/api-contracts/contracts/zero-connector-permission-deny";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
@@ -42,28 +50,6 @@ export async function listZeroConnectors(): Promise<ConnectorListResponse> {
   handleError(result, "Failed to list connectors");
 }
 
-/**
- * Search available connector definitions for the authenticated user.
- * Omitting the keyword returns the server-side visible connector catalog.
- */
-export async function searchZeroConnectors(
-  keyword?: string,
-): Promise<ConnectorSearchResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroConnectorsSearchContract, config);
-
-  const result = await client.search({
-    headers: {},
-    query: keyword ? { keyword } : {},
-  });
-
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  handleError(result, "Failed to search connectors");
-}
-
 export async function listZeroConnectorCatalog(): Promise<PublicConnectorCatalogListResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorCatalogContract, config);
@@ -88,6 +74,79 @@ export async function listZeroConnectorCatalogStatus(): Promise<PublicConnectorC
   }
 
   handleError(result, "Failed to list connector catalog status");
+}
+
+export async function getZeroConnectorCatalogPermissions(
+  connectorRef: string,
+): Promise<PublicConnectorCatalogPermissionDetail | null> {
+  const config = await getClientConfig();
+  const client = initClient(zeroConnectorCatalogContract, config);
+
+  const result = await client.permissions({
+    params: { connectorRef },
+  });
+
+  if (result.status === 200) {
+    if (result.body.permissions.connectorRef !== connectorRef) {
+      throw new Error(
+        `Permission metadata connectorRef mismatch: expected ${connectorRef}, got ${result.body.permissions.connectorRef}`,
+      );
+    }
+    return result.body.permissions;
+  }
+
+  if (result.status === 404) {
+    return null;
+  }
+
+  handleError(
+    result,
+    `Failed to get connector permission metadata for "${connectorRef}"`,
+  );
+}
+
+export async function diagnoseZeroConnectorCheck(
+  request: ConnectorCheckRequest,
+): Promise<ConnectorCheckDiagnosticResult> {
+  const config = await getClientConfig();
+  const client = initClient(zeroConnectorCheckContract, {
+    ...config,
+    validateResponse: true,
+  });
+
+  const result = await client.check({ body: request });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to diagnose connector");
+}
+
+export async function diagnoseZeroConnectorPermissionDeny(
+  connectorRef: string,
+  method: string,
+  url: string,
+): Promise<ConnectorPermissionDenyDiagnosticResult> {
+  const config = await getClientConfig();
+  const client = initClient(zeroConnectorPermissionDenyContract, {
+    ...config,
+    validateResponse: true,
+  });
+
+  const result = await client.diagnose({
+    params: { connectorRef },
+    body: { method, url },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(
+    result,
+    `Failed to diagnose permission denial for "${connectorRef}"`,
+  );
 }
 
 /**

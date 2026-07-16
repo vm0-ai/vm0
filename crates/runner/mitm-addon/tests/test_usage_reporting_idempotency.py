@@ -59,7 +59,9 @@ class TestUsageReportingIdempotency:
             usage.flush_usage_events(trigger="test")
 
         events = webhook.usage_events()
-        assert [event["category"] for event in events] == ["tokens.output"]
+        assert [(event["category"], event["quantity"]) for event in events] == [
+            ("tokens.output", 20)
+        ]
         proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
         if jsonl_exists_after_flush(proxy_log):
             entries = read_jsonl_entries_after_flush(proxy_log)

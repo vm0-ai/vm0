@@ -1,5 +1,127 @@
 # Changelog
 
+## [0.53.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.1...guest-agent-v0.53.2) (2026-07-16)
+
+
+### Documentation
+
+* **guest-agent:** clarify backend exit code semantics ([#21799](https://github.com/vm0-ai/vm0/issues/21799)) ([2592598](https://github.com/vm0-ai/vm0/commit/25925984aa59135335a3e187c19e560fe8821ce7))
+
+## [0.53.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.0...guest-agent-v0.53.1) (2026-07-16)
+
+
+### Documentation
+
+* **guest-agent:** correct heartbeat failure threshold wording ([#21718](https://github.com/vm0-ai/vm0/issues/21718)) ([e940472](https://github.com/vm0-ai/vm0/commit/e940472337856cd0b24f0e406750e466afa0acee))
+
+## [0.53.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.52.0...guest-agent-v0.53.0) (2026-07-16)
+
+
+### Features
+
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.52.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.7...guest-agent-v0.52.0) (2026-07-15)
+
+
+### Features
+
+* default new organizations to luna with ultra reasoning ([#21323](https://github.com/vm0-ai/vm0/issues/21323)) ([d42f4c3](https://github.com/vm0-ai/vm0/commit/d42f4c30743bcb6aa087fd2c077b348b519175ca))
+* run gpt-5.6 sol with ultra reasoning by default ([#20869](https://github.com/vm0-ai/vm0/issues/20869)) ([6f0a851](https://github.com/vm0-ai/vm0/commit/6f0a85112091fe2dc6c6ff24b252396f59b0af24))
+
+
+### Bug Fixes
+
+* **guest-agent:** pass codex prompts through stdin ([#21548](https://github.com/vm0-ai/vm0/issues/21548)) ([3c5e277](https://github.com/vm0-ai/vm0/commit/3c5e2779872cf7e93de88f6b10be646e2ad06ba6))
+* **guest-agent:** prevent stale app-server group signaling ([#21233](https://github.com/vm0-ai/vm0/issues/21233)) ([b0f59a4](https://github.com/vm0-ai/vm0/commit/b0f59a4a2fd97493117f66f1c40e8fd29ab9ed16))
+* **guest-agent:** redact secrets from event object keys ([#21626](https://github.com/vm0-ai/vm0/issues/21626)) ([e42aa15](https://github.com/vm0-ai/vm0/commit/e42aa15170c108c2abba983420326ec942dd9d19))
+* **guest-agent:** reduce gpt-5.6 sol reasoning effort to xhigh ([#20887](https://github.com/vm0-ai/vm0/issues/20887)) ([005812d](https://github.com/vm0-ai/vm0/commit/005812dff55e96145cf46d43e46a2af572d832bd))
+* **guest-agent:** set terra reasoning effort to low ([#21020](https://github.com/vm0-ai/vm0/issues/21020)) ([79283c9](https://github.com/vm0-ai/vm0/commit/79283c9c40735662efcd330c52d70dd16a5daa52))
+* **runner:** qualify guest rootfs before idle reuse ([#21563](https://github.com/vm0-ai/vm0/issues/21563)) ([b9230c3](https://github.com/vm0-ai/vm0/commit/b9230c3bd213fb95777e0b5f84b17bbbbc3dd2e8))
+
+
+### Documentation
+
+* **guest-agent:** document active-input payload schema ([#21661](https://github.com/vm0-ai/vm0/issues/21661)) ([9154d84](https://github.com/vm0-ai/vm0/commit/9154d8490fd09856152df1ec0313d7b02885e145))
+* **rust:** fix stale session metadata integration-test path ([#21118](https://github.com/vm0-ai/vm0/issues/21118)) ([02786e0](https://github.com/vm0-ai/vm0/commit/02786e039826beee978efe8ca3a7c4f885057568))
+
+
+### Refactoring
+
+* **guest-agent:** clarify runtime bootstrap contract ([#20927](https://github.com/vm0-ai/vm0/issues/20927)) ([e4121b6](https://github.com/vm0-ai/vm0/commit/e4121b6a5ea0b4002abb0f5fad0a48add7d646d9))
+* **guest-agent:** name http retry budget as attempts ([#21543](https://github.com/vm0-ai/vm0/issues/21543)) ([3e114ba](https://github.com/vm0-ai/vm0/commit/3e114baaad5ed42cce2c4bfd91c4031763e4dd99))
+* **guest-agent:** share event sender worker ([#21430](https://github.com/vm0-ai/vm0/issues/21430)) ([ba504b6](https://github.com/vm0-ai/vm0/commit/ba504b63ffcedefc3c89c8ab119c0e60b8b7f7d6))
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
+
+### Performance Improvements
+
+* **guest-agent:** avoid directory probes for artifact files ([#21275](https://github.com/vm0-ai/vm0/issues/21275)) ([85db30c](https://github.com/vm0-ai/vm0/commit/85db30ce599dd9f0e4ac391649e43db1b23c08ce))
+* **guest-agent:** export sidecars from one history snapshot ([#21236](https://github.com/vm0-ai/vm0/issues/21236)) ([497d8c1](https://github.com/vm0-ai/vm0/commit/497d8c1c4363909f1982b3e98dd7172eb24a7b07))
+* **guest-agent:** move parsed app-server payloads ([#21198](https://github.com/vm0-ai/vm0/issues/21198)) ([d89b5ec](https://github.com/vm0-ai/vm0/commit/d89b5ec872f58efd31c99ae6c9986b3b1662ee21))
+
+## [0.51.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.6...guest-agent-v0.51.7) (2026-07-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** redact secrets from event object keys ([#21626](https://github.com/vm0-ai/vm0/issues/21626)) ([e42aa15](https://github.com/vm0-ai/vm0/commit/e42aa15170c108c2abba983420326ec942dd9d19))
+
+## [0.51.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.5...guest-agent-v0.51.6) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** qualify guest rootfs before idle reuse ([#21563](https://github.com/vm0-ai/vm0/issues/21563)) ([b9230c3](https://github.com/vm0-ai/vm0/commit/b9230c3bd213fb95777e0b5f84b17bbbbc3dd2e8))
+
+## [0.51.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.4...guest-agent-v0.51.5) (2026-07-15)
+
+## [0.51.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.3...guest-agent-v0.51.4) (2026-07-15)
+
+
+### Refactoring
+
+* **guest-agent:** name http retry budget as attempts ([#21543](https://github.com/vm0-ai/vm0/issues/21543)) ([3e114ba](https://github.com/vm0-ai/vm0/commit/3e114baaad5ed42cce2c4bfd91c4031763e4dd99))
+
+## [0.51.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.2...guest-agent-v0.51.3) (2026-07-14)
+
+## [0.51.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.1...guest-agent-v0.51.2) (2026-07-14)
+
+
+### Refactoring
+
+* **guest-agent:** share event sender worker ([#21430](https://github.com/vm0-ai/vm0/issues/21430)) ([ba504b6](https://github.com/vm0-ai/vm0/commit/ba504b63ffcedefc3c89c8ab119c0e60b8b7f7d6))
+
+## [0.51.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.0...guest-agent-v0.51.1) (2026-07-14)
+
+## [0.51.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.7...guest-agent-v0.51.0) (2026-07-14)
+
+
+### Features
+
+* default new organizations to luna with ultra reasoning ([#21323](https://github.com/vm0-ai/vm0/issues/21323)) ([d42f4c3](https://github.com/vm0-ai/vm0/commit/d42f4c30743bcb6aa087fd2c077b348b519175ca))
+
+## [0.50.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.6...guest-agent-v0.50.7) (2026-07-13)
+
+
+### Performance Improvements
+
+* **guest-agent:** avoid directory probes for artifact files ([#21275](https://github.com/vm0-ai/vm0/issues/21275)) ([85db30c](https://github.com/vm0-ai/vm0/commit/85db30ce599dd9f0e4ac391649e43db1b23c08ce))
+
+## [0.50.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.5...guest-agent-v0.50.6) (2026-07-13)
+
+
+### Refactoring
+
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
+## [0.50.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.4...guest-agent-v0.50.5) (2026-07-13)
+
 ## [0.50.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.3...guest-agent-v0.50.4) (2026-07-12)
 
 

@@ -127,7 +127,7 @@ function configureSlackDispatchMocks(): void {
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   mockEnv("VM0_WEB_URL", "https://www.vm0.test");
   mockEnv("APP_URL", "https://app.vm0.test");
-  mockEnv("VM0_API_URL", "https://api.vm0.test");
+  mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
   context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
     ok: true,
   });
@@ -312,7 +312,7 @@ async function dispatchTelegramMessage(args: {
 }): Promise<void> {
   context.mocks.s3.send.mockResolvedValue({});
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  mockOptionalEnv("VM0_API_URL", "http://localhost:3000");
+  mockOptionalEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
   mockEnv("APP_URL", "http://localhost:3002");
   mockTelegramTyping();

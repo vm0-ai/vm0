@@ -19,7 +19,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   embedZeroMemoryText,
   type LoadedMemoryEmbedding,
@@ -812,18 +812,18 @@ async function embedQuery(args: {
   readonly query: string;
   readonly loader?: MemoryEmbeddingLoader;
 }): Promise<LoadedMemoryEmbedding> {
-  const result = await settle(
-    args.loader
-      ? args.loader(args.query)
-      : (async (): Promise<LoadedMemoryEmbedding> => {
-          return { embedding: await embedZeroMemoryText(args.query) };
-        })(),
+  return (
+    (await tapError(
+      args.loader
+        ? args.loader(args.query)
+        : (async (): Promise<LoadedMemoryEmbedding> => {
+            return { embedding: await embedZeroMemoryText(args.query) };
+          })(),
+      (error) => {
+        log.warn("Failed to embed zero memory query", { error });
+      },
+    )) ?? { embedding: null }
   );
-  if (result.ok) {
-    return result.value;
-  }
-  log.warn("Failed to embed zero memory query", { error: result.error });
-  return { embedding: null };
 }
 
 async function loadSemanticQueryEmbedding(
@@ -1003,21 +1003,16 @@ async function loadExpansionCandidates(
   return [...candidates.values()];
 }
 
-async function rankCandidates(
-  db: ReadonlyDb,
-  args: SearchParams & {
-    readonly normalizedQuery: string;
-    readonly candidates: readonly CandidateScore[];
-  },
-): Promise<readonly MemoryProfileRow[]> {
-  const candidateIds = args.candidates.map((candidate) => {
-    return candidate.id;
-  });
-  const rowsById = await loadRowsByIds(db, args, candidateIds);
+function rankCandidates(args: {
+  readonly normalizedQuery: string;
+  readonly candidates: readonly CandidateScore[];
+  readonly rowsById: ReadonlyMap<string, MemoryProfileRow>;
+  readonly limit: number;
+}): readonly MemoryProfileRow[] {
   const queryTokens = tokenize(args.normalizedQuery);
   const ranked = args.candidates
     .map((candidate) => {
-      const row = rowsById.get(candidate.id);
+      const row = args.rowsById.get(candidate.id);
       if (!row) {
         return null;
       }
@@ -1113,15 +1108,27 @@ async function loadSearchResults(
     }
   }
 
+  const initialCandidates = [...candidates.values()];
+  const rowsById = new Map<string, MemoryProfileRow>();
   const seedRows = await measureMemoryList(
     args.timing,
     "profile_search_seed_rank",
     "memory_profile_seed_ranked_count_bucket",
     async () => {
-      return await rankCandidates(db, {
-        ...args,
+      const initialRowsById = await loadRowsByIds(
+        db,
+        args,
+        initialCandidates.map((candidate) => {
+          return candidate.id;
+        }),
+      );
+      for (const [id, row] of initialRowsById) {
+        rowsById.set(id, row);
+      }
+      return rankCandidates({
         normalizedQuery,
-        candidates: [...candidates.values()],
+        candidates: initialCandidates,
+        rowsById,
         limit: Math.max(args.limit, Math.min(args.limit * 2, 20)),
       });
     },
@@ -1140,16 +1147,32 @@ async function loadSearchResults(
   for (const candidate of expansionCandidates) {
     mergeCandidate(candidates, candidate);
   }
+  const unseenExpansionIds = expansionCandidates
+    .filter((candidate) => {
+      return !rowsById.has(candidate.id);
+    })
+    .map((candidate) => {
+      return candidate.id;
+    });
 
   const rankedRows = await measureMemoryList(
     args.timing,
     "profile_search_final_rank",
     "memory_profile_final_ranked_count_bucket",
     async () => {
-      return await rankCandidates(db, {
-        ...args,
+      const expansionRowsById = await loadRowsByIds(
+        db,
+        args,
+        unseenExpansionIds,
+      );
+      for (const [id, row] of expansionRowsById) {
+        rowsById.set(id, row);
+      }
+      return rankCandidates({
         normalizedQuery,
         candidates: [...candidates.values()],
+        rowsById,
+        limit: args.limit,
       });
     },
   );

@@ -11,7 +11,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { db$ } from "../external/db";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 type DayInsightData = Partial<Omit<DayInsight, "date">>;
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
@@ -24,35 +24,12 @@ interface StoredTeamUsageEntry {
   readonly agentCredits?: Record<string, number>;
 }
 
-// Historical day blobs persist automation rows under the legacy `schedules`
-// key with schedule* entry keys; nothing writes the key anymore. The wire
-// schema uses the automation* spelling, so reads translate on the way out.
-interface StoredDayAutomationEntry {
-  readonly scheduleId: string;
-  readonly scheduleName: string;
-  readonly scheduleDescription: string | null;
-  readonly credits: number;
-  readonly tokens: number;
-}
-
-type StoredDayInsightData = Omit<DayInsightData, "automations"> & {
+type StoredDayInsightData = Omit<
+  DayInsightData,
+  "automations" | "teamUsage"
+> & {
   readonly teamUsage?: readonly StoredTeamUsageEntry[];
-  readonly schedules?: readonly StoredDayAutomationEntry[];
 };
-
-function toDayAutomations(
-  entries: readonly StoredDayAutomationEntry[],
-): DayInsight["automations"] {
-  return entries.map((entry) => {
-    return {
-      automationId: entry.scheduleId,
-      automationName: entry.scheduleName,
-      automationDescription: entry.scheduleDescription,
-      credits: entry.credits,
-      tokens: entry.tokens,
-    };
-  });
-}
 
 interface ClerkOrganizationMembership {
   readonly publicUserData?: {
@@ -98,25 +75,25 @@ async function queryCurrentOrgMemberUserIds(
 ): Promise<Set<string> | null> {
   const userIds = new Set<string>();
   for (let offset = 0; ; offset += ORG_MEMBERSHIP_PAGE_SIZE) {
-    const result = await settle(
+    const page = await tapError(
       organizations.getOrganizationMembershipList({
         organizationId: orgId,
         limit: ORG_MEMBERSHIP_PAGE_SIZE,
         offset,
       }),
     );
-    if (!result.ok) {
+    if (!page) {
       return null;
     }
 
-    for (const membership of result.value.data) {
+    for (const membership of page.data) {
       const userId = membership.publicUserData?.userId;
       if (userId) {
         userIds.add(userId);
       }
     }
 
-    if (result.value.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
+    if (page.data.length < ORG_MEMBERSHIP_PAGE_SIZE) {
       return userIds;
     }
   }
@@ -181,7 +158,7 @@ export function zeroInsights(args: {
         topTask: data.topTask ?? null,
         services: data.services ?? [],
         permissions: data.permissions ?? [],
-        automations: toDayAutomations(data.schedules ?? []),
+        automations: [],
         chats: data.chats ?? [],
       };
     });

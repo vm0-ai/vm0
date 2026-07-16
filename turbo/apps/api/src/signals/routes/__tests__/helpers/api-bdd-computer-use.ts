@@ -968,7 +968,7 @@ export function createComputerUseBddApi(context: TestContext) {
     },
 
     // Kept out of any shared safe-cron helper for the same shared-database
-    // reason as reconcileBillingCron in api-bdd-runs-automations.ts: the
+    // reason as reconcileBillingCron in api-bdd-runs.ts: the
     // screenshot-cleanup sweep is global (no org filter) and tombstones every
     // screenshot row older than the 30-day retention window. Only
     // computer-use.bdd.test.ts may invoke this cron, and only that file may

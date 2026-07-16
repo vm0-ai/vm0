@@ -204,10 +204,13 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   airtable: "https://airtable.com/oauth2/v1/authorize",
   asana: "https://app.asana.com/-/oauth_authorize",
   box: "https://account.box.com/api/oauth2/authorize",
+  "cal-com": "https://app.cal.com/auth/oauth2/authorize",
   canva: "https://www.canva.com/api/oauth/authorize",
   close: "https://app.close.com/oauth2/authorize/",
+  copper: "https://app.copper.com/oauth/authorize",
   cloudflare: "https://dash.cloudflare.com/oauth2/auth",
   deel: "https://app.deel.com/oauth2/authorize",
+  datadog: "https://app.datadoghq.com/oauth2/v1/authorize",
   docusign: "https://account-d.docusign.com/oauth/auth",
   dropbox: "https://www.dropbox.com/oauth2/authorize",
   figma: "https://www.figma.com/oauth",
@@ -218,8 +221,10 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   "google-analytics": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-calendar": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-cloud": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-contacts": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-docs": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-drive": "https://accounts.google.com/o/oauth2/v2/auth",
+  "google-forms": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-maps": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-meet": "https://accounts.google.com/o/oauth2/v2/auth",
   "google-search-console": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -1237,11 +1242,11 @@ describe("connector selected auth method capability checks", () => {
 
   it("builds the expected authorization URL base for every OAuth provider", async () => {
     const previousEnv = {
-      VM0_API_URL: process.env.VM0_API_URL,
+      VM0_API_BACKEND_URL: process.env.VM0_API_BACKEND_URL,
       VERCEL_INTEGRATION_SLUG: process.env.VERCEL_INTEGRATION_SLUG,
     };
 
-    process.env.VM0_API_URL = "https://api.test";
+    process.env.VM0_API_BACKEND_URL = "https://api.test";
     process.env.VERCEL_INTEGRATION_SLUG = "test-integration";
 
     try {
@@ -2408,14 +2413,15 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ]);
   });
 
-  it("exposes Microsoft 365 OAuth only when its switch is enabled", () => {
+  it("exposes Microsoft OAuth connectors", () => {
     expect(
       getAvailableConnectorAuthMethodIds("microsoft-365", {}),
-    ).toStrictEqual([]);
+    ).toStrictEqual(["oauth"]);
     expect(
-      getAvailableConnectorAuthMethodIds("microsoft-365", {
-        [FeatureSwitchKey.Microsoft365Connector]: true,
-      }),
+      getAvailableConnectorAuthMethodIds("outlook-mail", {}),
+    ).toStrictEqual(["oauth"]);
+    expect(
+      getAvailableConnectorAuthMethodIds("outlook-calendar", {}),
     ).toStrictEqual(["oauth"]);
   });
 
@@ -3987,8 +3993,10 @@ describe("getRuntimeAvailableConnectorTypes", () => {
         "gmail",
         "google-analytics",
         "google-calendar",
+        "google-contacts",
         "google-docs",
         "google-drive",
+        "google-forms",
         "google-maps",
         "google-meet",
         "google-search-console",

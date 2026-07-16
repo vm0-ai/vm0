@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
@@ -11,6 +12,7 @@ import {
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -21,8 +23,8 @@ import {
   eq,
   inArray,
   isNotNull,
+  isNull,
   lte,
-  ne,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -36,6 +38,7 @@ import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
+  publishChatThreadMessageUpdated,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -59,9 +62,11 @@ import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
+  deleteUserMessageQueueItem,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
@@ -77,13 +82,13 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import { shouldStartNewChatSession } from "./chat-session-continuity.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
-const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 
 type ChatCallbackPreCreateTimingSpanKind = "top_level" | "nested";
 
@@ -106,7 +111,7 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context"
+  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments"
@@ -123,7 +128,7 @@ interface ChatCallbackPreCreateTimingRecord {
   readonly timestamp: string;
 }
 
-class ChatCallbackPreCreateTimingCollector {
+export class ChatCallbackPreCreateTimingCollector {
   private readonly records: ChatCallbackPreCreateTimingRecord[] = [];
   private flushed = false;
 
@@ -301,30 +306,6 @@ interface CompletedChatOutputLoad {
   readonly skipExistingAssistantLookup: boolean;
 }
 
-interface IncompleteRoundRow {
-  readonly runId: string;
-  readonly runStatus: "cancelled" | "failed" | "timeout";
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly error: string | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
-}
-
-interface IncompleteRound {
-  readonly runId: string;
-  readonly status: "cancelled" | "failed" | "timeout";
-  readonly messages: IncompleteRoundMessage[];
-}
-
-interface IncompleteRoundMessage {
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly error: string | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
-}
-
 interface PriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
@@ -367,6 +348,15 @@ type CreatedQueuedRun = {
   readonly status: "queued" | "pending" | "running";
 };
 
+interface QueuedUserMessageClaim {
+  readonly messageId: string;
+}
+
+interface CreatedAutoSentQueuedRun {
+  readonly run: CreatedQueuedRun;
+  readonly claim: QueuedUserMessageClaim;
+}
+
 type CreateQueuedRun = (
   input: CreateQueuedChatRunInput,
   apiStartTime: number,
@@ -399,6 +389,11 @@ interface ChatCallbackDependencies {
   ) => Promise<string>;
   readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly createQueuedRun?: CreateQueuedRun;
+  readonly drainThreadQueue?: (
+    chatThreadId: string,
+    signal: AbortSignal,
+    timing?: ChatCallbackPreCreateTimingCollector,
+  ) => Promise<void>;
 }
 
 interface ChatThreadForRunRow {
@@ -422,6 +417,10 @@ interface CreateQueuedChatRunInput {
   readonly appendSystemPrompt: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly computerUseHostGrant: {
+    readonly hostId: string;
+    readonly displayName: string;
+  } | null;
   readonly beforeDispatch?: (args: {
     readonly runId: string;
     readonly status: "queued" | "pending";
@@ -441,11 +440,11 @@ type FailedChatCallbackResult =
   | { readonly inserted: false };
 
 interface TerminalChatCallbackWork {
-  readonly shouldAutoSendQueuedMessage: boolean;
+  readonly shouldDrainThreadQueue: boolean;
   readonly deferredSideEffects?: () => Promise<void>;
 }
 
-type AutoSendOutcome =
+type DrainOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: unknown };
 
@@ -482,6 +481,7 @@ function buildQueuedCreateZeroRunArgs(
     },
     apiStartTime,
     chatThreadId: input.threadId,
+    computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.queuedMessage.modelProviderId ?? undefined,
     modelProviderCredentialScope:
       input.queuedMessage.modelProviderCredentialScope ?? undefined,
@@ -493,6 +493,7 @@ function buildQueuedCreateZeroRunArgs(
         payload: {
           threadId: input.threadId,
           agentId: input.agentId,
+          queuedMessageId: input.queuedMessage.id,
         },
       },
     ],
@@ -947,21 +948,20 @@ async function loadRecommendedFollowupContextForCompletedRun(args: {
   readonly threadId: string;
   readonly signal: AbortSignal;
 }): Promise<readonly ChatCompletionContextMessage[]> {
-  const result = await settle(
-    loadChatThreadRecommendedFollowupContext({
-      db: args.db,
-      threadId: args.threadId,
-    }),
-    args.signal,
+  return (
+    (await tapError(
+      loadChatThreadRecommendedFollowupContext({
+        db: args.db,
+        threadId: args.threadId,
+      }),
+      (err) => {
+        log.warn("Recommended follow-up context load failed", {
+          threadId: args.threadId,
+          err,
+        });
+      },
+    )) ?? []
   );
-  if (!result.ok) {
-    log.warn("Recommended follow-up context load failed", {
-      threadId: args.threadId,
-      err: result.error,
-    });
-    return [];
-  }
-  return result.value;
 }
 
 async function handleCompletedChatCallback(args: {
@@ -1136,17 +1136,16 @@ async function runCompletedChatCallbackSideEffects(args: {
 
     let summary: string | null = null;
     if (args.lastResultText) {
-      const generated = await settle(
-        generateChatNotificationSummary(args.run.prompt, args.lastResultText),
-      );
-      if (generated.ok) {
-        summary = generated.value;
-      } else {
-        log.warn("Failed to generate notification summary", {
-          runId: args.runId,
-          error: generated.error,
-        });
-      }
+      summary =
+        (await tapError(
+          generateChatNotificationSummary(args.run.prompt, args.lastResultText),
+          (error) => {
+            log.warn("Failed to generate notification summary", {
+              runId: args.runId,
+              error,
+            });
+          },
+        )) ?? null;
     }
 
     await sendUserPushNotifications({
@@ -1258,17 +1257,30 @@ function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
   generationTemplatePrompt: string,
+  computerUseHostDisplayName: string | null,
 ): string {
   return [
     buildWebChatPrompt(),
     priorContext,
     incompleteContext,
     generationTemplatePrompt,
+    computerUseHostDisplayName
+      ? buildComputerUseSystemPrompt(computerUseHostDisplayName)
+      : "",
   ]
     .filter((part) => {
       return part.length > 0;
     })
     .join("\n\n");
+}
+
+function buildComputerUseSystemPrompt(displayName: string): string {
+  return [
+    "# Computer Use",
+    `Computer Use is enabled for this run on ${displayName}.`,
+    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
+    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
+  ].join("\n");
 }
 
 function formatAttachFileIds(
@@ -1289,13 +1301,6 @@ function truncatePrior(value: string): string {
     return value;
   }
   return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
-}
-
-function truncateIncomplete(value: string): string {
-  if (value.length <= INCOMPLETE_MESSAGE_CHAR_CAP) {
-    return value;
-  }
-  return `${value.slice(0, INCOMPLETE_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
 function formatPriorRunMessage(message: PriorRunMessage): string {
@@ -1336,181 +1341,6 @@ function buildWebChatPriorRunsContext(runs: readonly PriorRun[]): string {
     "",
     ...sections,
   ].join("\n");
-}
-
-function formatIncompleteMessage(message: IncompleteRoundMessage): string {
-  const attach = formatAttachFileIds(message.attachFiles);
-  if (message.role === "user") {
-    const body =
-      message.content !== null && message.content !== ""
-        ? truncateIncomplete(message.content)
-        : "[empty message]";
-    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
-  }
-  if (message.content !== null && message.content !== "") {
-    return `Assistant (partial): ${truncateIncomplete(message.content)}`;
-  }
-  return "Assistant: [no response before run ended]";
-}
-
-function buildWebChatIncompleteContext(
-  rounds: readonly IncompleteRound[],
-): string {
-  if (rounds.length === 0) {
-    return "";
-  }
-  const total = rounds.length;
-  const blocks = rounds.map((round, index) => {
-    const relativeIndex = index - total + 1;
-    const rendered = round.messages.map(formatIncompleteMessage);
-    const hasAssistant = round.messages.some((message) => {
-      return message.role === "assistant";
-    });
-    if (!hasAssistant) {
-      rendered.push("Assistant: [no response before run ended]");
-    }
-    return [
-      "---",
-      "",
-      `- RELATIVE_INDEX: ${relativeIndex}`,
-      `- RUN_STATUS: ${round.status}`,
-      "",
-      ...rendered,
-    ].join("\n");
-  });
-  return [
-    "# Incomplete Rounds Context",
-    "",
-    "The rounds below were sent in this thread but their runs did not complete",
-    "(cancelled, failed, or timed out), so the CLI session history does not",
-    "contain them. Treat them as part of the conversation you are having with",
-    "the user. RELATIVE_INDEX 0 is the most recent incomplete round.",
-    "",
-    blocks.join("\n\n"),
-    "",
-    "---",
-  ].join("\n");
-}
-
-function isIncompleteRunStatus(
-  value: string | null,
-): value is "cancelled" | "failed" | "timeout" {
-  return value === "cancelled" || value === "failed" || value === "timeout";
-}
-
-function groupIncompleteRoundsByRunId(
-  rows: readonly IncompleteRoundRow[],
-): readonly IncompleteRound[] {
-  const byRunId = new Map<string, IncompleteRound>();
-  const order: string[] = [];
-  for (const row of rows) {
-    let round = byRunId.get(row.runId);
-    if (!round) {
-      round = {
-        runId: row.runId,
-        status: row.runStatus,
-        messages: [],
-      };
-      byRunId.set(row.runId, round);
-      order.push(row.runId);
-    }
-    round.messages.push({
-      role: row.role,
-      content: row.content,
-      error: row.error,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-    });
-  }
-  return order.map((runId) => {
-    const round = byRunId.get(runId);
-    if (!round) {
-      throw new Error("Incomplete round grouping lost run id");
-    }
-    return round;
-  });
-}
-
-async function getIncompleteRoundsSinceLastSuccess(
-  db: Db,
-  threadId: string,
-  maxRounds = 20,
-): Promise<readonly IncompleteRoundRow[]> {
-  const rows = await db
-    .select({
-      runId: chatMessages.runId,
-      role: chatMessages.role,
-      content: chatMessages.content,
-      error: chatMessages.error,
-      attachFiles: chatMessages.attachFiles,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
-      runStatus: agentRuns.status,
-      generationTemplate: chatMessages.generationTemplate,
-    })
-    .from(chatMessages)
-    .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        visibleChatMessageCondition(),
-        inArray(agentRuns.status, ["cancelled", "failed", "timeout"]),
-        inArray(chatMessages.role, ["user", "assistant"]),
-        sql`${chatMessages.createdAt} > COALESCE(
-          (
-            SELECT MAX(cm2.created_at)
-            FROM chat_messages cm2
-            INNER JOIN agent_runs ar2 ON ar2.id = cm2.run_id
-            WHERE cm2.chat_thread_id = ${threadId}
-              AND NOT EXISTS (
-                SELECT 1
-                FROM chat_messages revoker2
-                WHERE revoker2.revokes_message_id = cm2.id
-              )
-              AND ar2.result ? 'agentSessionId'
-              AND jsonb_typeof(ar2.result->'agentSessionId') = 'string'
-          ),
-          '-infinity'::timestamptz
-        )`,
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
-
-  const candidates: IncompleteRoundRow[] = [];
-  for (const row of rows) {
-    if (row.runId === null || !isIncompleteRunStatus(row.runStatus)) {
-      continue;
-    }
-    if (row.role !== "user" && row.role !== "assistant") {
-      continue;
-    }
-    candidates.push({
-      runId: row.runId,
-      runStatus: row.runStatus,
-      role: row.role,
-      content: row.content,
-      error: row.error,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-    });
-  }
-
-  const orderedRunIds: string[] = [];
-  const seen = new Set<string>();
-  for (const row of candidates) {
-    if (!seen.has(row.runId)) {
-      seen.add(row.runId);
-      orderedRunIds.push(row.runId);
-    }
-  }
-  if (orderedRunIds.length <= maxRounds) {
-    return candidates;
-  }
-
-  const keep = new Set(orderedRunIds.slice(orderedRunIds.length - maxRounds));
-  return candidates.filter((row) => {
-    return keep.has(row.runId);
-  });
 }
 
 async function getLatestRunsByThreadId(
@@ -1710,12 +1540,10 @@ function shouldStartNewSessionForQueuedMessage(params: {
   readonly latestSession: LatestThreadSession | null;
   readonly queuedMessage: QueuedUserMessage;
 }): boolean {
-  return (
-    params.latestSession?.selectedModel !== undefined &&
-    params.latestSession.selectedModel !== null &&
-    params.queuedMessage.selectedModel !== null &&
-    params.latestSession.selectedModel !== params.queuedMessage.selectedModel
-  );
+  return shouldStartNewChatSession({
+    latestModel: params.latestSession?.selectedModel,
+    nextModel: params.queuedMessage.selectedModel,
+  });
 }
 
 async function loadAgentForAutoSend(
@@ -1730,27 +1558,66 @@ async function loadAgentForAutoSend(
   return agent ?? null;
 }
 
+async function loadComputerUseHostGrantForAutoSend(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<{
+  readonly hostId: string;
+  readonly displayName: string;
+} | null> {
+  const [host] = await args.db
+    .select({
+      hostId: computerUseHosts.id,
+      displayName: computerUseHosts.displayName,
+    })
+    .from(chatThreads)
+    .innerJoin(
+      computerUseHosts,
+      eq(chatThreads.computerUseHostId, computerUseHosts.id),
+    )
+    .where(
+      and(
+        eq(chatThreads.id, args.threadId),
+        eq(chatThreads.userId, args.userId),
+        eq(computerUseHosts.orgId, args.orgId),
+        eq(computerUseHosts.userId, args.userId),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+  return host ?? null;
+}
+
 async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
-  options?: { readonly excludeRunId?: string },
 ): Promise<boolean> {
-  const filters = [
-    eq(zeroRuns.chatThreadId, threadId),
-    inArray(agentRuns.status, ["queued", "pending", "running"]),
-  ];
-  const excludeRunId = options?.excludeRunId;
-  if (excludeRunId !== undefined) {
-    filters.push(ne(zeroRuns.id, excludeRunId));
-  }
-
-  const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(and(...filters))
-    .limit(1);
-  return run !== undefined;
+  const runs = await db.execute<{ readonly id: string }>(sql`
+    SELECT ${zeroRuns.id} AS "id"
+    FROM ${zeroRuns}
+    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+    WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      AND (
+        NOT EXISTS (
+          SELECT 1
+          FROM ${agentRunCallbacks}
+          WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+            AND ${agentRunCallbacks.internalKind} = 'chat'
+            AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM ${chatMessages}
+          WHERE ${chatMessages.runId} = ${zeroRuns.id}
+            AND ${chatMessages.role} = 'user'
+        )
+      )
+    LIMIT 1
+  `);
+  return runs.rows[0] !== undefined;
 }
 
 async function chatThreadExists(db: Db, threadId: string): Promise<boolean> {
@@ -1866,7 +1733,7 @@ async function buildCreateQueuedChatRunInput(args: {
     },
   );
 
-  const [latestSession, incompleteRows] =
+  const [latestSession, loadedIncompleteContext] =
     await measureChatCallbackPreCreateTiming(
       args.timing,
       "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
@@ -1874,7 +1741,7 @@ async function buildCreateQueuedChatRunInput(args: {
       () => {
         return Promise.all([
           latestSessionForThreadFromDb(args.db, args.threadId),
-          getIncompleteRoundsSinceLastSuccess(args.db, args.threadId),
+          loadWebChatIncompleteContext(args.db, args.threadId),
         ]);
       },
     );
@@ -1882,11 +1749,7 @@ async function buildCreateQueuedChatRunInput(args: {
     latestSession,
     queuedMessage: resolvedQueuedMessage,
   });
-  const incompleteContext = startNewSession
-    ? ""
-    : buildWebChatIncompleteContext(
-        groupIncompleteRoundsByRunId(incompleteRows),
-      );
+  const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context",
@@ -1907,6 +1770,19 @@ async function buildCreateQueuedChatRunInput(args: {
     () => {
       return resolveThreadGenerationTemplatePrompt({
         explicit: resolvedQueuedMessage.generationTemplate,
+      });
+    },
+  );
+  const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
+    "nested",
+    () => {
+      return loadComputerUseHostGrantForAutoSend({
+        db: args.db,
+        threadId: args.threadId,
+        orgId: args.agent.orgId,
+        userId: args.userId,
       });
     },
   );
@@ -1934,9 +1810,11 @@ async function buildCreateQueuedChatRunInput(args: {
       incompleteContext,
       priorContext,
       generationTemplatePrompt,
+      computerUseHostGrant?.displayName ?? null,
     ),
     threadId: args.threadId,
     queuedMessage: resolvedQueuedMessage,
+    computerUseHostGrant,
   };
 }
 
@@ -1945,7 +1823,7 @@ async function claimQueuedUserMessageForDispatch(args: {
   readonly queuedMessage: QueuedUserMessage;
   readonly runId: string;
   readonly threadId: string;
-}): Promise<boolean> {
+}): Promise<QueuedUserMessageClaim | null> {
   const claimed = await args.db.transaction(async (tx) => {
     // Serialize auto-send dispatch decisions per thread. Otherwise two terminal
     // callbacks can insert candidate runs, each see the other as active, and
@@ -1957,7 +1835,7 @@ async function claimQueuedUserMessageForDispatch(args: {
       FOR UPDATE
     `);
     if (!threadRows.rows[0]) {
-      return [];
+      return null;
     }
 
     const rows = await tx.execute<{
@@ -1978,47 +1856,61 @@ async function claimQueuedUserMessageForDispatch(args: {
       run.chatThreadId !== args.threadId ||
       (run.status !== "queued" && run.status !== "pending")
     ) {
-      return [];
+      return null;
     }
 
-    const [competingRun] = await tx
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    // Auto-send candidates do not own the thread until one binds a user
+    // message. Concurrent drains may insert more than one candidate before
+    // reaching this serialized gate; ignoring those unclaimed candidates lets
+    // one claim win while the others cancel before dispatch.
+    const competingRuns = await tx.execute<{ readonly id: string }>(sql`
+      SELECT ${zeroRuns.id} AS "id"
+      FROM ${zeroRuns}
+      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+      WHERE ${zeroRuns.chatThreadId} = ${args.threadId}
+        AND ${zeroRuns.id} <> ${args.runId}
+        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM ${agentRunCallbacks}
+            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+              AND ${agentRunCallbacks.internalKind} = 'chat'
+              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              AND ${chatMessages.role} = 'user'
+          )
+        )
+      LIMIT 1
+    `);
+    if (competingRuns.rows[0]) {
+      return null;
+    }
+
+    // Claim both current queue items and persisted pre-convergence rows in
+    // place. Deleting a missing queue pointer is a safe no-op for legacy rows.
+    const [updated] = await tx
+      .update(chatMessages)
+      .set({ runId: args.runId })
       .where(
         and(
-          eq(zeroRuns.chatThreadId, args.threadId),
-          ne(zeroRuns.id, args.runId),
-          inArray(agentRuns.status, ["queued", "pending", "running"]),
+          eq(chatMessages.id, args.queuedMessage.id),
+          eq(chatMessages.chatThreadId, args.threadId),
+          isNull(chatMessages.runId),
         ),
       )
-      .limit(1);
-    if (competingRun) {
-      return [];
-    }
-
-    const [message] = await tx
-      .insert(chatMessages)
-      .values({
-        chatThreadId: args.threadId,
-        role: "user",
-        content: args.queuedMessage.content,
-        runId: args.runId,
-        attachFiles: args.queuedMessage.attachFiles
-          ? [...args.queuedMessage.attachFiles]
-          : null,
-        attachFileMetadata: args.queuedMessage.attachFileMetadata
-          ? [...args.queuedMessage.attachFileMetadata]
-          : null,
-        generationTemplate: args.queuedMessage.generationTemplate,
-        revokesMessageId: args.queuedMessage.id,
-      })
-      .onConflictDoNothing({ target: chatMessages.revokesMessageId })
       .returning({ id: chatMessages.id });
-    return message ? [message] : [];
+    if (updated) {
+      await deleteUserMessageQueueItem(tx, args.queuedMessage.id);
+    }
+    return updated ? { messageId: updated.id } : null;
   });
 
-  return claimed.length > 0;
+  return claimed;
 }
 
 async function appendAutoSentQueuedRunMarker(args: {
@@ -2046,7 +1938,7 @@ async function appendAutoSentQueuedRunMarker(args: {
           eq(chatMessages.chatThreadId, args.threadId),
           eq(chatMessages.runId, args.runId),
           eq(chatMessages.role, "user"),
-          eq(chatMessages.revokesMessageId, args.queuedMessageId),
+          eq(chatMessages.id, args.queuedMessageId),
         ),
       )
       .limit(1);
@@ -2071,8 +1963,9 @@ async function createAutoSentQueuedRun(args: {
   readonly queuedMessage: QueuedUserMessage;
   readonly threadId: string;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-}): Promise<CreatedQueuedRun | null> {
-  return await measureChatCallbackPreCreateTiming(
+}): Promise<CreatedAutoSentQueuedRun | null> {
+  let claim: QueuedUserMessageClaim | null = null;
+  const run = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
     "top_level",
@@ -2080,7 +1973,7 @@ async function createAutoSentQueuedRun(args: {
       return args.createRun({
         ...args.runInput,
         beforeDispatch: async ({ runId }) => {
-          const claimed = await measureChatCallbackPreCreateTiming(
+          claim = await measureChatCallbackPreCreateTiming(
             args.timing,
             "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
             "nested",
@@ -2093,7 +1986,7 @@ async function createAutoSentQueuedRun(args: {
               });
             },
           );
-          if (!claimed) {
+          if (!claim) {
             log.warn(
               "Auto-send could not claim queued message before dispatch",
               {
@@ -2103,11 +1996,12 @@ async function createAutoSentQueuedRun(args: {
               },
             );
           }
-          return claimed;
+          return claim !== null;
         },
       });
     },
   );
+  return run && claim ? { run, claim } : null;
 }
 
 async function appendAutoSentQueuedRunMarkerIfQueued(args: {
@@ -2138,6 +2032,8 @@ async function appendAutoSentQueuedRunMarkerIfQueued(args: {
 async function publishAutoSentQueuedRunSignals(args: {
   readonly threadId: string;
   readonly userId: string;
+  readonly claim: QueuedUserMessageClaim;
+  readonly runStatus: CreatedQueuedRun["status"];
   readonly timing: ChatCallbackPreCreateTimingCollector;
 }): Promise<void> {
   await measureChatCallbackPreCreateTiming(
@@ -2145,10 +2041,17 @@ async function publishAutoSentQueuedRunSignals(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
-      await publishUserSignal(
-        [args.userId],
-        `chatThreadMessageCreated:${args.threadId}`,
+      await publishChatThreadMessageUpdated(
+        args.userId,
+        args.threadId,
+        args.claim.messageId,
       );
+      if (args.runStatus === "queued") {
+        await publishUserSignal(
+          [args.userId],
+          `chatThreadMessageCreated:${args.threadId}`,
+        );
+      }
       await publishUserSignal(
         [args.userId],
         `chatThreadRunCreated:${args.threadId}`,
@@ -2158,28 +2061,24 @@ async function publishAutoSentQueuedRunSignals(args: {
   );
 }
 
-async function autoSendQueuedMessageOnRunComplete(args: {
+/**
+ * User-message half of the per-thread scheduler: when the thread has no
+ * in-flight run, dispatch the oldest queued user message — whoever sent it.
+ * The shared thread scheduler calls this before attempting the workflow-event
+ * half, preserving user-message priority.
+ */
+async function autoSendQueuedMessageForThread(args: {
   readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | null>;
   readonly db: Db;
-  readonly runId: string;
+  readonly chatThreadId: string;
+  readonly userId: string;
   readonly agentId: string;
   readonly timing: ChatCallbackPreCreateTimingCollector;
 }): Promise<void> {
-  const chatThread = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
-    "nested",
-    () => {
-      return chatThreadForRunFromDb(args.db, args.runId);
-    },
-  );
-  if (!chatThread) {
-    return;
-  }
-  const { chatThreadId: threadId, userId } = chatThread;
+  const { chatThreadId: threadId, userId } = args;
 
   const queuedMessage = await measureChatCallbackPreCreateTiming(
     args.timing,
@@ -2240,7 +2139,7 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   let createdRunId: string | null = null;
   const run = await onRejection(
     (async () => {
-      const createdRun = await createAutoSentQueuedRun({
+      const created = await createAutoSentQueuedRun({
         createRun: args.createRun,
         db: args.db,
         runInput,
@@ -2248,9 +2147,10 @@ async function autoSendQueuedMessageOnRunComplete(args: {
         threadId,
         timing: args.timing,
       });
-      if (!createdRun) {
+      if (!created) {
         return null;
       }
+      const { run: createdRun, claim } = created;
       createdRunId = createdRun.runId;
       await appendAutoSentQueuedRunMarkerIfQueued({
         db: args.db,
@@ -2262,6 +2162,8 @@ async function autoSendQueuedMessageOnRunComplete(args: {
       await publishAutoSentQueuedRunSignals({
         threadId,
         userId,
+        claim,
+        runStatus: createdRun.status,
         timing: args.timing,
       });
       return createdRun;
@@ -2354,39 +2256,6 @@ async function loadTerminalChatCallback(args: {
   return { run, chatThread };
 }
 
-async function autoSendQueuedMessageForTerminalCallback(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly agentId: string;
-  readonly apiStartTime: number;
-  readonly dependencies: ChatCallbackDependencies;
-  readonly timing: ChatCallbackPreCreateTimingCollector;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const createQueuedRun = args.dependencies.createQueuedRun;
-  if (!createQueuedRun) {
-    return;
-  }
-
-  await autoSendQueuedMessageOnRunComplete({
-    db: args.db,
-    runId: args.runId,
-    agentId: args.agentId,
-    timing: args.timing,
-    getResolvedAttachFiles: args.dependencies.getResolvedAttachFiles,
-    createRun: (input) => {
-      return createQueuedChatRun({
-        db: args.db,
-        input,
-        signal: args.signal,
-        createRun: (runInput) => {
-          return createQueuedRun(runInput, args.apiStartTime, args.signal);
-        },
-      });
-    },
-  });
-}
-
 async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly db: Db;
   readonly runId: string;
@@ -2424,11 +2293,11 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
     },
   );
   if (!completed.inserted) {
-    return { shouldAutoSendQueuedMessage: false };
+    return { shouldDrainThreadQueue: false };
   }
 
   return {
-    shouldAutoSendQueuedMessage: true,
+    shouldDrainThreadQueue: true,
     deferredSideEffects: () => {
       return runCompletedChatCallbackSideEffects({
         db: args.db,
@@ -2486,11 +2355,11 @@ async function prepareFailedTerminalChatCallbackWork(args: {
     },
   );
   if (!failed.inserted) {
-    return { shouldAutoSendQueuedMessage: false };
+    return { shouldDrainThreadQueue: false };
   }
 
   return {
-    shouldAutoSendQueuedMessage: true,
+    shouldDrainThreadQueue: true,
     deferredSideEffects: () => {
       return runFailedChatCallbackSideEffects({
         db: args.db,
@@ -2502,37 +2371,29 @@ async function prepareFailedTerminalChatCallbackWork(args: {
   };
 }
 
-async function maybeAutoSendQueuedMessageForTerminalCallback(args: {
+async function maybeDrainThreadQueueForTerminalCallback(args: {
   readonly enabled: boolean;
-  readonly db: Db;
-  readonly runId: string;
-  readonly agentId: string;
-  readonly apiStartTime: number;
+  readonly chatThreadId: string;
   readonly dependencies: ChatCallbackDependencies;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
-}): Promise<AutoSendOutcome> {
-  if (!args.enabled) {
+}): Promise<DrainOutcome> {
+  if (!args.enabled || !args.dependencies.drainThreadQueue) {
     return { ok: true };
   }
 
   const result = await settle(
-    autoSendQueuedMessageForTerminalCallback({
-      db: args.db,
-      runId: args.runId,
-      agentId: args.agentId,
-      apiStartTime: args.apiStartTime,
-      dependencies: args.dependencies,
-      timing: args.timing,
-      signal: args.signal,
-    }),
+    args.dependencies.drainThreadQueue(
+      args.chatThreadId,
+      args.signal,
+      args.timing,
+    ),
     args.signal,
   );
   return result.ok ? { ok: true } : { ok: false, error: result.error };
 }
 
 async function processTerminalChatCallback(args: {
-  readonly apiStartTime: number;
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
   readonly payload: ChatCallbackPayload;
@@ -2566,9 +2427,9 @@ async function processTerminalChatCallback(args: {
   const { run, chatThread } = loaded;
   const isGoalRun = args.payload.isGoalRun ?? false;
 
-  const work =
+  const prepared = await settle(
     callbackStatus === "completed"
-      ? await prepareCompletedTerminalChatCallbackWork({
+      ? prepareCompletedTerminalChatCallbackWork({
           db: args.db,
           runId,
           run,
@@ -2578,7 +2439,7 @@ async function processTerminalChatCallback(args: {
           timing,
           signal: args.signal,
         })
-      : await prepareFailedTerminalChatCallbackWork({
+      : prepareFailedTerminalChatCallbackWork({
           db: args.db,
           runId,
           run,
@@ -2590,14 +2451,31 @@ async function processTerminalChatCallback(args: {
           dependencies: args.dependencies,
           timing,
           signal: args.signal,
-        });
+        }),
+    args.signal,
+  );
 
-  const autoSendResult = await maybeAutoSendQueuedMessageForTerminalCallback({
-    enabled: work.shouldAutoSendQueuedMessage,
-    db: args.db,
-    runId,
-    agentId: args.payload.agentId,
-    apiStartTime: args.apiStartTime,
+  if (!prepared.ok) {
+    const fallbackDrain = await maybeDrainThreadQueueForTerminalCallback({
+      enabled: true,
+      chatThreadId: chatThread.chatThreadId,
+      dependencies: args.dependencies,
+      timing,
+      signal: args.signal,
+    });
+    if (!fallbackDrain.ok) {
+      log.error("Failed to drain thread queue after terminal callback error", {
+        runId,
+        error: fallbackDrain.error,
+      });
+    }
+    throw prepared.error;
+  }
+  const work = prepared.value;
+
+  const drainResult = await maybeDrainThreadQueueForTerminalCallback({
+    enabled: work.shouldDrainThreadQueue,
+    chatThreadId: chatThread.chatThreadId,
     dependencies: args.dependencies,
     timing,
     signal: args.signal,
@@ -2611,8 +2489,8 @@ async function processTerminalChatCallback(args: {
     });
   }
 
-  if (!autoSendResult.ok) {
-    throw autoSendResult.error;
+  if (!drainResult.ok) {
+    throw drainResult.error;
   }
 }
 
@@ -2624,6 +2502,7 @@ function withoutQueuedRunDependency(
     saveRunSummary: dependencies.saveRunSummary,
     formatRunError: dependencies.formatRunError,
     getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
+    drainThreadQueue: dependencies.drainThreadQueue,
   };
 }
 
@@ -2646,7 +2525,6 @@ async function claimedUserMessageExistsForRun(
 }
 
 function buildQueuedChatDispatchFailedCallbacks(args: {
-  readonly apiStartTime: number;
   readonly dependencies: ChatCallbackDependencies;
   readonly runInput: CreateQueuedChatRunInput;
   readonly signal: AbortSignal;
@@ -2660,7 +2538,6 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       agentId: args.runInput.agentId,
     };
     await processTerminalChatCallback({
-      apiStartTime: args.apiStartTime,
       db,
       callback: {
         runId,
@@ -2683,7 +2560,6 @@ function handleChatInternalCallback(args: {
 }):
   | { readonly success: true }
   | { readonly success: false; readonly error: string } {
-  const apiStartTime = now();
   const payload = chatCallbackPayloadSchema.safeParse(args.callback.payload);
   if (!payload.success) {
     return {
@@ -2708,7 +2584,6 @@ function handleChatInternalCallback(args: {
   waitUntil(
     tapError(
       processTerminalChatCallback({
-        apiStartTime,
         db: args.db,
         callback: args.callback,
         payload: payload.data,
@@ -2766,16 +2641,15 @@ export async function handleChatInternalCallbackWithoutCcstate(
   });
 }
 
-export const handleChatInternalCallback$ = command(
-  async (
+const buildChatCallbackDependencies$ = command(
+  (
     { get, set },
-    callback: InternalRunCallbackEnvelope,
-    signal: AbortSignal,
-  ): Promise<
-    | { readonly success: true }
-    | { readonly success: false; readonly error: string }
-  > => {
-    const db = set(writeDb$);
+    input: {
+      readonly db: Db;
+      readonly drainThreadQueue?: ChatCallbackDependencies["drainThreadQueue"];
+    },
+  ): ChatCallbackDependencies => {
+    const { db } = input;
     const baseDependencies: ChatCallbackDependencies = {
       insertAssistantItems: async (args, inputSignal) => {
         await set(insertAssistantEventMessages$, args, inputSignal);
@@ -2798,6 +2672,7 @@ export const handleChatInternalCallback$ = command(
       getResolvedAttachFiles: (userId, fileIds) => {
         return get(resolveAttachFileUrls(userId, fileIds));
       },
+      drainThreadQueue: input.drainThreadQueue,
     };
     const dependencies: ChatCallbackDependencies = {
       ...baseDependencies,
@@ -2806,7 +2681,6 @@ export const handleChatInternalCallback$ = command(
           runInput,
           apiStartTime,
           buildQueuedChatDispatchFailedCallbacks({
-            apiStartTime,
             dependencies: baseDependencies,
             runInput,
             signal: inputSignal,
@@ -2852,9 +2726,91 @@ export const handleChatInternalCallback$ = command(
         };
       },
     };
+    return dependencies;
+  },
+);
+
+/**
+ * User-message drain used by the shared per-thread scheduler. Compatibility
+ * reads remain here until the follow-up cleanup removes the old queue paths.
+ */
+export const drainQueuedUserMessagesForThread$ = command(
+  async (
+    { set },
+    args: {
+      readonly chatThreadId: string;
+      readonly timing?: ChatCallbackPreCreateTimingCollector;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    const [thread] = await measureChatCallbackPreCreateTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
+      "nested",
+      () => {
+        return db
+          .select({
+            userId: chatThreads.userId,
+            agentId: chatThreads.agentComposeId,
+          })
+          .from(chatThreads)
+          .where(eq(chatThreads.id, args.chatThreadId))
+          .limit(1);
+      },
+    );
+    signal.throwIfAborted();
+    if (!thread) {
+      return;
+    }
+    const dependencies = set(buildChatCallbackDependencies$, { db });
+    const createQueuedRun = dependencies.createQueuedRun;
+    if (!createQueuedRun) {
+      return;
+    }
+    const apiStartTime = now();
+    await autoSendQueuedMessageForThread({
+      db,
+      chatThreadId: args.chatThreadId,
+      userId: thread.userId,
+      agentId: thread.agentId,
+      timing: args.timing ?? new ChatCallbackPreCreateTimingCollector(),
+      getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
+      createRun: (input) => {
+        return createQueuedChatRun({
+          db,
+          input,
+          signal,
+          createRun: (runInput) => {
+            return createQueuedRun(runInput, apiStartTime, signal);
+          },
+        });
+      },
+    });
+    signal.throwIfAborted();
+  },
+);
+
+export const handleChatInternalCallback$ = command(
+  async (
+    { set },
+    input: {
+      readonly callback: InternalRunCallbackEnvelope;
+      readonly drainThreadQueue?: ChatCallbackDependencies["drainThreadQueue"];
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | { readonly success: true }
+    | { readonly success: false; readonly error: string }
+  > => {
+    const db = set(writeDb$);
+    const dependencies = set(buildChatCallbackDependencies$, {
+      db,
+      drainThreadQueue: input.drainThreadQueue,
+    });
     return await handleChatInternalCallback({
       db,
-      callback,
+      callback: input.callback,
       signal,
       dependencies,
     });

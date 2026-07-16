@@ -8,10 +8,11 @@ import {
   cronAggregateUsageContract,
   cronCompactChatThreadSnapshotsContract,
   cronCleanupSandboxesContract,
+  cronConnectorCatalogContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
   cronDrainRelationshipMemoryContract,
-  cronExecuteWorkflowTriggersContract,
+  cronExecuteWorkflowAutomationsContract,
   cronProcessUsageEventsContract,
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGmailWatchesContract,
@@ -48,7 +49,7 @@ const expectedVercelCrons = [
     schedule: "* * * * *",
   },
   {
-    path: cronExecuteWorkflowTriggersContract.execute.path,
+    path: cronExecuteWorkflowAutomationsContract.execute.path,
     schedule: "* * * * *",
   },
   {
@@ -93,6 +94,10 @@ const expectedVercelCrons = [
   },
   {
     path: cronSyncSkillsContract.sync.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronConnectorCatalogContract.sync.path,
     schedule: "* * * * *",
   },
   {

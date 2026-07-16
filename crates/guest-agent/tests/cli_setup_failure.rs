@@ -33,7 +33,7 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;
-        std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
+        std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("USE_MOCK_CLAUDE", "true");

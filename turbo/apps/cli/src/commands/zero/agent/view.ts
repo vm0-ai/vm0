@@ -8,7 +8,7 @@ import {
   listZeroConnectors,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { policyIcon } from "../../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";

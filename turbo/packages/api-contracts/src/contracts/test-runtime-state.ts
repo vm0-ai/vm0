@@ -1,0 +1,86 @@
+import { z } from "zod";
+import { initContract } from "./base";
+
+const c = initContract();
+
+// Test-only support actions for infrastructure fixtures used by API suites.
+export const testRuntimeStateErrorSchema = z.object({
+  error: z.string(),
+});
+
+export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("seed-vm0-managed-default-model-key"),
+  }),
+  z.object({
+    action: z.literal("seed-vm0-managed-model-key"),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("delete-vm0-managed-default-model-key"),
+  }),
+  z.object({
+    action: z.literal("enable-fake-kms"),
+  }),
+  z.object({
+    action: z.literal("reset-fake-kms"),
+  }),
+  z.object({
+    action: z.literal("read-fake-kms-state"),
+  }),
+  z.object({
+    action: z.literal("mutate-runner-job-secret-value-environment-keys"),
+    run_id: z.uuid(),
+    mode: z.enum(["remove", "invalid"]),
+  }),
+  z.object({
+    action: z.literal("replace-custom-connector-prefixes"),
+    connector_id: z.uuid(),
+    prefixes: z.array(z.string()).min(1),
+  }),
+  z.object({
+    action: z.literal("hold-org-admission-lock"),
+    org_id: z.string(),
+  }),
+  z.object({
+    action: z.literal("read-org-admission-lock-state"),
+  }),
+  z.object({
+    action: z.literal("release-org-admission-lock"),
+  }),
+  z.object({
+    action: z.literal("read-run-uploaded-file-sources"),
+    run_id: z.uuid(),
+  }),
+]);
+
+export const testRuntimeStateActionResponseSchema = z.object({
+  ok: z.literal(true),
+  selected_model: z.string().optional(),
+  decrypt_call_count: z.number().optional(),
+  admission_lock_held: z.boolean().optional(),
+  admission_lock_waiting: z.boolean().optional(),
+  uploaded_file_sources: z.array(z.string()).optional(),
+});
+
+export const testRuntimeStateContract = c.router({
+  action: {
+    method: "POST",
+    path: "/api/test/runtime-state/action",
+    body: testRuntimeStateActionBodySchema,
+    responses: {
+      200: testRuntimeStateActionResponseSchema,
+      400: testRuntimeStateErrorSchema,
+      404: z.string(),
+    },
+    summary: "Mutate API test support state",
+  },
+});
+
+export type TestRuntimeStateContract = typeof testRuntimeStateContract;
+export type TestRuntimeStateActionBody = z.infer<
+  typeof testRuntimeStateActionBodySchema
+>;
+export type TestRuntimeStateActionResponse = z.infer<
+  typeof testRuntimeStateActionResponseSchema
+>;

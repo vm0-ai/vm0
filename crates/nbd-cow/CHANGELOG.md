@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.4.66](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.65...nbd-cow-v0.4.66) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.4.65](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.64...nbd-cow-v0.4.65) (2026-07-15)
+
+
+### Documentation
+
+* **nbd-cow:** clarify destroy retry boundary ([#21660](https://github.com/vm0-ai/vm0/issues/21660)) ([609bfba](https://github.com/vm0-ai/vm0/commit/609bfba27dc30fc4c0bb9c211c9008b2d17a9ef6))
+
+## [0.4.64](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.63...nbd-cow-v0.4.64) (2026-07-15)
+
+
+### Documentation
+
+* **nbd-cow:** document detailed destroy runtime contract ([#21652](https://github.com/vm0-ai/vm0/issues/21652)) ([4b58ead](https://github.com/vm0-ai/vm0/commit/4b58ead42b3ff9f168db65dac94205f452ef5554))
+
+## [0.4.63](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.62...nbd-cow-v0.4.63) (2026-07-15)
+
+
+### Documentation
+
+* **nbd-cow:** clarify device pool cleanup contract ([#21624](https://github.com/vm0-ai/vm0/issues/21624)) ([0fa15ae](https://github.com/vm0-ai/vm0/commit/0fa15aeebdead8a594abe67b3a5545c431a65821))
+
+## [0.4.62](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.61...nbd-cow-v0.4.62) (2026-07-15)
+
+
+### Documentation
+
+* **rust:** define create observer semantics ([#21590](https://github.com/vm0-ai/vm0/issues/21590)) ([14199e1](https://github.com/vm0-ai/vm0/commit/14199e11ee1e8241fd832d1a0214949628cf1f3a))
+
+## [0.4.61](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.60...nbd-cow-v0.4.61) (2026-07-13)
+
+
+### Performance Improvements
+
+* **nbd-cow:** reduce default connection count ([#21232](https://github.com/vm0-ai/vm0/issues/21232)) ([ecadce2](https://github.com/vm0-ai/vm0/commit/ecadce247ec1997c8df6c95bb18c0a25bf720d9c))
+
 ## [0.4.60](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.59...nbd-cow-v0.4.60) (2026-07-12)
 
 

@@ -448,7 +448,11 @@ The same optimized sample still executed `ChatThreadContent` and
 composer primitives, so collection equality alone cannot eliminate their work.
 Continue by attributing each execution to a specific primitive transition.
 
-## Current Chat Send Attribution (2026-07-12)
+## Chat Send Attribution History
+
+The dated samples below are historical baselines. Their counts describe the
+recorded code revision, capture window, visible data, and backend event
+sequence; they are not current performance guarantees.
 
 The initial sample below measured an existing chat thread in a local
 development build before removing the React-driven thinking typewriter. The
@@ -585,6 +589,11 @@ one stable fallback phrase, while the done phrase is derived from messages and
 subscribed only by the finished row. In the final trace, all React work ended by
 1.461 seconds and no timer-driven `ThinkingIndicator` update remained.
 
+A later follow-up restored the thinking text typewriter at a 100 ms interval,
+along with the CSS shimmer, block-pop, and entrance animations. The fallback
+phrase remains stable rather than rotating. The measurements in this section
+therefore document the fully static baseline, not the current animation policy.
+
 The phrase "first-second commits" is only a time bucket, not a causal phase. In
 the traced run, all initial local work finished within 301 ms, followed by no
 labelled scheduler update until 1.194 seconds. In another run, a remote thinking
@@ -667,8 +676,8 @@ trigger and its primitive model subscriptions remain mounted, so opening and
 changing the model retain their normal behavior. Uncontrolled picker callers
 keep the previous mounting behavior.
 
-The final five-second browser sample recorded 23 root commits and about 192 ms
-of cumulative development-mode `actualDuration`. All commits ended within
+The 2026-07-12 leaf-subscription sample recorded 23 root commits and about 192
+ms of cumulative development-mode `actualDuration`. All commits ended within
 1.631 seconds of the first send-triggered commit. Its 18 labelled scheduler
 initiators were:
 
@@ -690,18 +699,216 @@ send and run lifecycle; message-list updates no longer cause additional
 composer executions. The message pane and thinking leaf still update when their
 different semantic projections change, which is expected.
 
+### Result after isolating the closed dialog and sidebar window (2026-07-13)
+
+The next pass stopped mounting the signal-consuming `AgentListDialog` body
+while the dialog is closed. The main chat list also stopped subscribing to the
+complete thread collection in React. Its layout reads a primitive item count,
+and the row container subscribes only to the current virtual window.
+
+The local development trace used an established thread with five rendered
+sidebar rows and a closed agent dialog. The prompt was entered before resetting
+the counters. Profiling stopped only after the run reached `completed`, the
+expected assistant text was visible, and the composer was idle.
+
+The immediate pre-isolation and post-isolation traced sends had the same
+backend shape: four runner telemetry events (`last_event_sequence = 3`), six
+persisted message projections including usage, and two `sort_touched` thread
+events. The post-isolation repeat also had four telemetry events and two sort
+events, but no usage projection arrived. Message history was longer in the
+post-isolation samples, so component span duration and total descendant work
+are not direct cost comparisons.
+
+| Field                                   |                                   Before sidebar isolation |                                   After sidebar isolation | Root-counter repeat |
+| --------------------------------------- | ---------------------------------------------------------: | --------------------------------------------------------: | ------------------: |
+| Local trace artifact                    | `tmp/react-commit/chat-send-semantic-leaves-20260713.json` | `tmp/react-commit/chat-send-sidebar-window-20260713.json` |        Not recorded |
+| Attribution window                      |                                                    5.700 s |                                                   5.053 s |        Not recorded |
+| Root commits                            |                                                         46 |                                                        35 |                  40 |
+| Cumulative development `actualDuration` |                                               Not recorded |                                                  370.1 ms |            373.7 ms |
+| Scheduler `Update` / `Cascading Update` |                                                     26 / 8 |                                                    17 / 4 |        Not recorded |
+| Runner telemetry events                 |                                                          4 |                                                         4 |                   4 |
+| Persisted message projection rows       |                                                          6 |                                                         6 |                   5 |
+| `sort_touched` thread events            |                                                          2 |                                                         2 |                   2 |
+
+The root count fell from 46 to 35 in the matched traced send. The repeat
+recorded 40, so the current observation is a 35-40 range rather than a fixed
+benchmark. The two post-isolation samples had nearly identical cumulative
+`actualDuration` despite the five-commit difference, which is another reason
+not to use commit count alone as a cost metric.
+
+The scheduler attribution changed as follows:
+
+| Direct update source or region                                                   | Before |  After |
+| -------------------------------------------------------------------------------- | -----: | -----: |
+| Closed `AgentListDialog`                                                         |     14 |      0 |
+| `ChatThreadsContent`, `ExpandedChatThreadsContent`, and `VirtualizedChatThreads` |      0 |      0 |
+| `ChatThreadItem`                                                                 |      2 |      4 |
+| `PinnedAgentListSection`                                                         |      0 |      4 |
+| Other sidebar leaves                                                             |      1 |      2 |
+| Message and thinking leaves                                                      |     10 |      6 |
+| Composer leaves                                                                  |      6 |      5 |
+| Shared overlay state                                                             |      1 |      0 |
+| **Total labelled initiators**                                                    | **34** | **21** |
+
+These are scheduler attribution events, not root commits. The closed dialog
+result is nevertheless exact: its fourteen direct initiators and four
+component spans both fell to zero because the body was no longer mounted.
+`ChatThreadsContent` and both virtual-list containers remained absent from the
+update sources.
+
+The visible row boundary still needs work. `ChatThreadItemLink` executed 25
+times in both traces. Only two executions reflected a real
+`indicatorState: null -> running -> null` transition; the other 23 received a
+referentially new but deeply equal state object. Stable keys preserved row
+identity, but each visible row still subscribes to the complete draft, unread,
+and active thread-ID sets. A real membership change therefore wakes all five
+rows even though only one row changes visually. Collection equality suppresses
+equivalent replacement sets; it cannot isolate a real set transition to the
+affected row. Per-thread boolean computed values are the appropriate next
+subscription boundary.
+
+This five-row sample also cannot demonstrate the offscreen benefit of the
+virtual-window projection because the complete local list fit in the rendered
+window. A follow-up with more threads than the visible window should verify
+that an offscreen-only metadata change produces no React work and that a
+one-row scroll boundary updates the window once.
+
+One independent sidebar source remained: `PinnedAgentListSection` scheduled
+four external-store updates but had no same-name component span. Its
+`unreadAgentIds$` subscription currently has no set equality, making it the
+leading candidate when thread-list events recreate an equivalent set.
+Attribute that signal directly before changing the component because the
+section also observes route, agent, feature-switch, and pinned-agent data.
+
+The message projection remains the largest descendant fan-out:
+
+| Component                   | Before executions | After executions |
+| --------------------------- | ----------------: | ---------------: |
+| `ChatThreadMessageGroups`   |                 7 |                7 |
+| `PagedGroupRow`             |                68 |               68 |
+| `PagedUserMessage`          |                34 |               34 |
+| `PagedAssistantMessageItem` |                61 |              122 |
+| `TiptapWorkflowComposer`    |                 4 |                4 |
+| `ComposerModelPickerSlot`   |                 4 |                4 |
+| Closed-picker `SelectItem`  |                 0 |                0 |
+
+Total component executions rose from 3,502 to 3,817 while the inclusive span
+workload index fell from 3,986.6 ms to 2,932.7 ms. Neither number is wall time:
+the extra executions came mainly from the longer assistant history and its
+usage-popover descendants, not from the isolated sidebar containers.
+
+All seven message-group executions rebuilt the complete group projection and
+propagated new arrays into old rows. The doubled assistant-row count reflects
+the longer message history, not a controlled regression, but it makes the cost
+of missing structural sharing more visible. The composer stayed isolated at
+four executions, and the closed model picker continued to create no
+`SelectItem` components.
+
+### Result after membership-specific sidebar equality (2026-07-13)
+
+The three row subscriptions already used `equalSets`, but that comparison was
+too broad. It correctly suppressed a new Set with identical contents, while a
+real membership change for any thread still notified every visible row. Each
+row only renders `.has(threadId)`, so the equality functions now compare that
+single membership instead. `PinnedAgentListSection` also now applies
+`equalSets` to `unreadAgentIds$`, which refetches into a new Set after each
+unread-state invalidation.
+
+The follow-up trace used the same established thread and five rendered rows.
+It reached `completed` with four runner telemetry events, five persisted
+message projections without usage, and two `sort_touched` events. The root hook
+recorded 35 commits and 300.3 ms of cumulative development `actualDuration`.
+Those totals are descriptive because remote event timing still varied.
+
+The sidebar result is more direct:
+
+| Attribution                                       | Before membership equality | After membership equality |
+| ------------------------------------------------- | -------------------------: | ------------------------: |
+| `ChatThreadItemLink` executions                   |                         25 |                         5 |
+| Deeply equal row-state executions                 |                         23 |                         3 |
+| Semantic `null -> running -> null` executions     |                          2 |                         2 |
+| `PinnedAgentListSection` scheduler initiators     |                          4 |                         0 |
+| Closed `AgentListDialog` initiators               |                          0 |                         0 |
+| Chat-list and virtual-window container initiators |                          0 |                         0 |
+
+The row-level collection subscriptions are now hidden behind
+`useThreadDraft`, `useThreadUnread`, and `useThreadActiveRun`. Each hook keeps
+the shared ccstate Set but compares only membership for its own thread ID, so
+callers cannot accidentally consume the unstable full collection. Running
+state now has one source: `sidebarActiveThreadIds$`. The legacy
+`ChatThreadListItem.running` projection, its adapter computed, and its schema
+were removed; the virtual window exposes only the row fields React renders.
+
+The remaining five row executions all belonged to the current row rather than
+five rows executing as a batch. Three still produced the same final state,
+most likely because separate draft, unread, active, or pane transitions can
+change while the final indicator precedence stays unchanged. A single
+primitive `indicatorState` projection is the next boundary only if those three
+executions remain material.
+
+### Composer fan-in after the sidebar fixes (2026-07-13)
+
+The same trace showed that the editor itself is not the composer bottleneck.
+`TiptapWorkflowComposer` executed five times and consumed 2.8 ms of inclusive
+component span time. The larger issue is that `ChatThreadComposer` calls
+`useZeroChatComposer` in the same Fiber, so send, queue, model, connector,
+attachment, dialog, and editor subscriptions all share one render boundary.
+
+Five full composer batches executed 662 components inside the `Card` subtree:
+
+| Batch                          | Semantic result            | Component executions | `Card` inclusive span |
+| ------------------------------ | -------------------------- | -------------------: | --------------------: |
+| Send starts                    | `sending: false -> true`   |                  134 |               18.2 ms |
+| Run projection starts          | `sending` remains `true`   |                  131 |               10.4 ms |
+| Send command resolves          | `sending` remains `true`   |                  134 |               10.3 ms |
+| Run finishes                   | `sending: true -> false`   |                  131 |                7.9 ms |
+| Later subscribed value settles | No visible composer change |                  132 |                7.3 ms |
+
+Only the first and fourth batches changed the semantic sending state. The other
+three accounted for 397 component executions and 28.0 ms of `Card` span time.
+This matches the React-side aggregation
+`sending = !allFinished || sendLoading`: the two inputs transition separately
+even when the resulting boolean does not change.
+
+Every batch also recreated closure or object props throughout the subtree.
+Notable repeated leaves were `ConnectorsPopoverButton` (five executions,
+12.6 ms), `ComposerModelPickerSlot` (five, 9.1 ms), and
+`TiptapWorkflowComposer` (five, 2.8 ms). Stabilizing callbacks alone would not
+stop these executions without memoization; the useful change is to move each
+subscription into the leaf that consumes it and expose primitive semantic
+signals such as composer sending state.
+
+There are two narrower follow-ups:
+
+- `TiptapWorkflowComposer` uses an inline hidden-element ref to write workflow
+  names and event handlers after every render. `setWorkflowNames$` dispatches a
+  ProseMirror transaction whenever the editor is initialized, without checking
+  whether the names changed. Move runtime configuration out of the render/ref
+  path; at minimum, equal workflow names must not dispatch a transaction.
+- A direct `ModelFirstModelPicker` store update executed 21 closed trigger-tree
+  components without a semantic prop change. Its policy and billing loadables
+  should expose the primitive state actually rendered by the closed picker.
+
 ### Prioritized follow-up
 
 1. Preserve enriched message and block identity for unchanged raw message
    objects. Use structural sharing at the transcript projection boundary
    instead of a recursive deep-equality check in React.
-2. Stabilize the remaining composer callbacks only if a controlled trace shows
-   that their cost is material after the subscription split.
-3. Remove object-level subscriptions from `MobileTopBar` and other leaves that
-   render primitive fields. Split `AgentListDialog` into an always-mounted
-   open-state shell and a body that subscribes to thread-list data only while
-   the dialog is open.
-4. Repeat the measurement with a fixed mocked event sequence that reaches a
+2. Split composer subscriptions into signal-connected leaves and expose one
+   primitive semantic sending state. Do not treat `useCallback` or deep prop
+   equality as a substitute for the subscription boundary.
+3. Remove the Tiptap render/ref-driven runtime configuration and prevent equal
+   workflow names from dispatching a ProseMirror transaction.
+4. Narrow the closed model picker's policy and billing subscriptions to the
+   primitive state rendered by its trigger.
+5. If the remaining three sidebar row executions are material, derive one
+   primitive indicator state per stable row signal instead of creating a
+   computed inside React.
+6. Verify virtual-window isolation with more threads than fit in the rendered
+   window, including offscreen metadata changes and a one-row scroll boundary.
+7. Remove object-level subscriptions from `MobileTopBar` and other leaves that
+   render primitive fields.
+8. Repeat the measurement with a fixed mocked event sequence that reaches a
    terminal state. Compare commits per event and retain separate counts for the
    initial send transition, stream events, and settlement.
 

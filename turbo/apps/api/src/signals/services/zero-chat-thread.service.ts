@@ -31,9 +31,9 @@ import {
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageAutomationSnapshot,
   type ChatMessageGoalEvent,
   type ChatMessageGoalSnapshot,
+  type ChatMessageMailDraft,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -41,7 +41,8 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { alias } from "drizzle-orm/pg-core";
 import {
   and,
   asc,
@@ -73,18 +74,27 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
-import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
+import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 
 export { insertAssistantEventMessages$ };
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
 const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
+const matchedChatMessage = alias(chatMessages, "matched_chat_message");
 
 function chatMessageOrderSequenceSql() {
   return sql<number>`CASE
     WHEN ${chatMessages.runLifecycleEvent} IS NOT NULL THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
     ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
   END`;
+}
+
+function matchedMessageCreatedAtSql(messageId: string) {
+  return sql<Date>`(
+    SELECT ${matchedChatMessage.createdAt}
+    FROM ${chatMessages} AS matched_chat_message
+    WHERE ${matchedChatMessage.id} = ${messageId}
+  )`;
 }
 
 type ChatMessageRow = {
@@ -100,6 +110,7 @@ type ChatMessageRow = {
   readonly runEventId: string | null;
   readonly goalEvent: ChatMessageGoalEvent | null;
   readonly goalSnapshot: ChatMessageGoalSnapshot | null;
+  readonly mailDraft: ChatMessageMailDraft | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
   readonly sequenceNumber: number | null;
@@ -108,25 +119,22 @@ type ChatMessageRow = {
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
-  readonly automationSnapshot: ChatMessageAutomationSnapshot | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
-  readonly automationId: string | null;
-  readonly automationTitle: string | null;
   readonly workflowName: string | null;
   readonly workflowDisplayName: string | null;
   readonly workflowDescription: string | null;
   readonly workflowId: string | null;
   readonly workflowAgentId: string | null;
-  readonly workflowTriggerId: string | null;
-  readonly workflowTriggerBrief: string | null;
-  readonly workflowTriggerKind: string | null;
-  readonly workflowTriggerScheduleType: string | null;
-  readonly workflowTriggerCronExpression: string | null;
-  readonly workflowTriggerIntervalSeconds: number | null;
-  readonly workflowTriggerAtTime: Date | null;
-  readonly workflowTriggerTimezone: string | null;
-  readonly workflowTriggerUserTimezone: string | null;
+  readonly workflowAutomationId: string | null;
+  readonly workflowAutomationBrief: string | null;
+  readonly workflowAutomationKind: string | null;
+  readonly workflowAutomationScheduleType: string | null;
+  readonly workflowAutomationCronExpression: string | null;
+  readonly workflowAutomationIntervalSeconds: number | null;
+  readonly workflowAutomationAtTime: Date | null;
+  readonly workflowAutomationTimezone: string | null;
+  readonly workflowAutomationUserTimezone: string | null;
 };
 
 type ArtifactListSqlRow = Record<string, unknown> & {
@@ -212,6 +220,7 @@ const messageColumns = {
   runEventId: chatMessages.runEventId,
   goalEvent: chatMessages.goalEvent,
   goalSnapshot: chatMessages.goalSnapshot,
+  mailDraft: chatMessages.mailDraft,
   error: chatMessages.error,
   runLifecycleEvent: chatMessages.runLifecycleEvent,
   sequenceNumber: chatMessages.sequenceNumber,
@@ -220,156 +229,153 @@ const messageColumns = {
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
-  automationSnapshot: chatMessages.automationSnapshot,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  automationId: chatMessages.automationId,
-  automationTitle: chatMessages.automationTitle,
   workflowId: sql<string | null>`(
     SELECT "zero_workflows"."id"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowAgentId: sql<string | null>`(
     SELECT "zero_workflows"."agent_id"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowName: sql<string | null>`(
     SELECT "zero_workflows"."name"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowDisplayName: sql<string | null>`(
     SELECT "zero_workflows"."display_name"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowDescription: sql<string | null>`(
     SELECT "zero_workflows"."description"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerId: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."id"
+  workflowAutomationId: sql<string | null>`(
+    SELECT "zero_workflow_automations"."id"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerBrief: sql<string | null>`(
+  workflowAutomationBrief: sql<string | null>`(
     SELECT COALESCE(
       "zero_runs"."trigger_brief",
       CASE
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'gmail-label-applied'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'gmail-label-applied'
           THEN 'Gmail label applied'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'gmail-new-message'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'gmail-new-message'
           THEN 'Gmail new message'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'google-calendar-event-created'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-created'
           THEN 'Google Calendar event created'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'google-calendar-event-updated'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-updated'
           THEN 'Google Calendar event updated'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'google-calendar-event-cancelled'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-cancelled'
           THEN 'Google Calendar event cancelled'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'webhook-received'
-          THEN 'Webhook trigger'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'webhook-received'
+          THEN 'Webhook received'
         ELSE NULL
       END
     )
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerKind: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."kind"
+  workflowAutomationKind: sql<string | null>`(
+    SELECT "zero_workflow_automations"."kind"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerScheduleType: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."schedule_type"
+  workflowAutomationScheduleType: sql<string | null>`(
+    SELECT "zero_workflow_automations"."schedule_type"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerCronExpression: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."cron_expression"
+  workflowAutomationCronExpression: sql<string | null>`(
+    SELECT "zero_workflow_automations"."cron_expression"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerIntervalSeconds: sql<number | null>`(
-    SELECT "zero_workflow_triggers"."interval_seconds"
+  workflowAutomationIntervalSeconds: sql<number | null>`(
+    SELECT "zero_workflow_automations"."interval_seconds"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerAtTime: sql<Date | null>`(
-    SELECT "zero_workflow_triggers"."at_time"
+  workflowAutomationAtTime: sql<Date | null>`(
+    SELECT "zero_workflow_automations"."at_time"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`.mapWith(zeroWorkflowTriggers.atTime),
-  workflowTriggerTimezone: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."timezone"
+  )`.mapWith(zeroWorkflowAutomations.atTime),
+  workflowAutomationTimezone: sql<string | null>`(
+    SELECT "zero_workflow_automations"."timezone"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerUserTimezone: sql<string | null>`(
+  workflowAutomationUserTimezone: sql<string | null>`(
     SELECT "org_members_metadata"."timezone"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     LEFT JOIN "org_members_metadata"
-      ON "org_members_metadata"."org_id" = "zero_workflow_triggers"."org_id"
-      AND "org_members_metadata"."user_id" = "zero_workflow_triggers"."owner_user_id"
+      ON "org_members_metadata"."org_id" = "zero_workflow_automations"."org_id"
+      AND "org_members_metadata"."user_id" = "zero_workflow_automations"."owner_user_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
@@ -545,18 +551,18 @@ function normalizeUsagePayload(
   };
 }
 
-function workflowScheduleTriggerBrief(row: ChatMessageRow): string | null {
-  if (row.workflowTriggerKind !== "schedule") {
+function workflowScheduleAutomationBrief(row: ChatMessageRow): string | null {
+  if (row.workflowAutomationKind !== "schedule") {
     return null;
   }
-  return buildWorkflowScheduleTriggerBrief({
+  return buildWorkflowScheduleAutomationBrief({
     createdAt: row.createdAt,
-    scheduleType: row.workflowTriggerScheduleType,
-    cronExpression: row.workflowTriggerCronExpression,
-    intervalSeconds: row.workflowTriggerIntervalSeconds,
-    atTime: row.workflowTriggerAtTime,
-    triggerTimezone: row.workflowTriggerTimezone,
-    userTimezone: row.workflowTriggerUserTimezone,
+    scheduleType: row.workflowAutomationScheduleType,
+    cronExpression: row.workflowAutomationCronExpression,
+    intervalSeconds: row.workflowAutomationIntervalSeconds,
+    atTime: row.workflowAutomationAtTime,
+    automationTimezone: row.workflowAutomationTimezone,
+    userTimezone: row.workflowAutomationUserTimezone,
   });
 }
 
@@ -572,8 +578,10 @@ function workflowSnapshotFromRow(
     name: row.workflowName,
     displayName: row.workflowDisplayName,
     description: row.workflowDescription,
-    triggerId: row.workflowTriggerId ?? undefined,
-    triggerBrief: row.workflowTriggerBrief ?? workflowScheduleTriggerBrief(row),
+    automationId: row.workflowAutomationId ?? undefined,
+    triggerId: row.workflowAutomationId ?? undefined,
+    triggerBrief:
+      row.workflowAutomationBrief ?? workflowScheduleAutomationBrief(row),
   };
 }
 
@@ -644,6 +652,7 @@ function toPagedMessage(
       runEventId: row.runEventId ?? undefined,
       goalEvent: goalEventFromRow(row.goalEvent),
       goalSnapshot: goalSnapshotFromRow(row.goalSnapshot),
+      mailDraft: row.mailDraft ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: row.error ?? undefined,
@@ -657,9 +666,6 @@ function toPagedMessage(
       return {
         ...message,
         role: "user" as const,
-        automationId: row.automationId ?? undefined,
-        automationTitle: row.automationTitle ?? undefined,
-        automationSnapshot: row.automationSnapshot ?? undefined,
       };
     }
     const recommendedFollowups = normalizeRecommendedFollowups(
@@ -1006,14 +1012,7 @@ export function zeroChatThreadArtifacts(args: {
   );
 }
 
-function generatedArtifactCondition(): SQL {
-  return sql<boolean>`(
-    jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'
-    OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
-  )`;
-}
-
-function generatedArtifactVisibilityConditions(args: {
+function artifactVisibilityConditions(args: {
   readonly userId: string;
   readonly orgId: string;
 }): SQL[] {
@@ -1022,7 +1021,6 @@ function generatedArtifactVisibilityConditions(args: {
     sql`${chatThreads.userId} = ${args.userId}`,
     sql`${agentComposes.orgId} = ${args.orgId}`,
     sql`${runUploadedFiles.url} IS NOT NULL`,
-    generatedArtifactCondition(),
     sql`(
       NOT EXISTS (
         SELECT 1
@@ -1128,7 +1126,7 @@ export const zeroArtifacts$ = command(
     const keysetClause = cursor
       ? sql`WHERE (deduped_artifacts.created_at, deduped_artifacts.row_id) < (${cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${cursor.rowId}::uuid)`
       : sql``;
-    const conditions = generatedArtifactVisibilityConditions(args);
+    const conditions = artifactVisibilityConditions(args);
 
     const rows = await db.execute<ArtifactListSqlRow>(sql`
       WITH scoped_artifacts AS (
@@ -1213,12 +1211,12 @@ export const zeroArtifacts$ = command(
   },
 );
 
-async function generatedArtifactUrlIsVisible(
+async function artifactUrlIsVisible(
   db: Db,
   args: ArtifactFavoriteArgs,
 ): Promise<boolean> {
   const conditions = [
-    ...generatedArtifactVisibilityConditions(args),
+    ...artifactVisibilityConditions(args),
     sql`${runUploadedFiles.url} = ${args.artifactUrl}`,
   ];
   const result = await db.execute<{ readonly visible: boolean }>(sql`
@@ -1256,7 +1254,7 @@ export const favoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const db = set(writeDb$);
-    const visible = await generatedArtifactUrlIsVisible(db, args);
+    const visible = await artifactUrlIsVisible(db, args);
     signal.throwIfAborted();
     if (!visible) {
       return false;
@@ -1375,6 +1373,9 @@ export function zeroChatSearch(args: {
 
     const results = await Promise.all(
       truncated.map(async (match): Promise<ChatSearchResult> => {
+        // Keep the comparison inside Postgres so timestamp microseconds are
+        // not lost when the match is round-tripped through JavaScript Date.
+        const matchedCreatedAt = matchedMessageCreatedAtSql(match.messageId);
         const [contextBeforeRows, contextAfterRows] = await Promise.all([
           args.before > 0
             ? db
@@ -1383,7 +1384,7 @@ export function zeroChatSearch(args: {
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, match.chatThreadId),
-                    lt(chatMessages.createdAt, match.createdAt),
+                    lt(chatMessages.createdAt, matchedCreatedAt),
                     isNotNull(chatMessages.content),
                     visibleChatMessageCondition(),
                     excludeGoalMarkerCondition(),
@@ -1399,7 +1400,7 @@ export function zeroChatSearch(args: {
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, match.chatThreadId),
-                    gt(chatMessages.createdAt, match.createdAt),
+                    gt(chatMessages.createdAt, matchedCreatedAt),
                     isNotNull(chatMessages.content),
                     visibleChatMessageCondition(),
                     excludeGoalMarkerCondition(),

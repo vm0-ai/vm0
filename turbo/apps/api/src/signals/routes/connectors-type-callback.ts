@@ -33,12 +33,13 @@ import {
   getConnectorOAuthStateStatus,
   type StoredOAuthState,
 } from "../services/connector-oauth-state.service";
+import { authorizeConnectedConnector$ } from "../services/connected-connector-authorization.service";
 import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
 import {
   linkGithubVm0User,
   loadActiveGithubInstallationForOrg,
 } from "../services/github-oauth.service";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 import {
   getConnectorOAuthCanonicalRedirectUrl,
@@ -84,6 +85,8 @@ type CompleteOAuthCallbackInput = AuthCodeCallbackMethodRef & {
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
   readonly identity: CallbackIdentity;
+  readonly agentId: string | null;
+  readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly type: string;
 };
@@ -93,6 +96,8 @@ type CompleteOpenIdCallbackInput = OpenIdCallbackMethodRef & {
   readonly expectedReturnTo: string;
   readonly expectedRealm: string;
   readonly identity: CallbackIdentity;
+  readonly agentId: string | null;
+  readonly authorizeAgent: boolean;
   readonly origin: string;
   readonly type: string;
 };
@@ -115,6 +120,8 @@ type ResolvedCallbackState =
   | ({
       readonly ok: true;
       readonly identity: CallbackIdentity;
+      readonly agentId: string | null;
+      readonly authorizeAgent: boolean;
       readonly codeVerifier: string | undefined;
       readonly oauthContext: string | undefined;
       readonly redirectUri: string;
@@ -128,6 +135,8 @@ type ResolvedOpenIdCallbackState =
   | ({
       readonly ok: true;
       readonly identity: CallbackIdentity;
+      readonly agentId: string | null;
+      readonly authorizeAgent: boolean;
       readonly expectedReturnTo: string;
       readonly expectedRealm: string;
     } & OpenIdCallbackMethodRef)
@@ -538,13 +547,15 @@ function successRedirectResponse(args: {
 function callbackOAuthContext(args: {
   readonly storedContext: string | undefined;
   readonly realmId: string | undefined;
+  readonly domain: string | undefined;
 }): string | undefined {
-  if (!args.realmId) {
+  if (!args.realmId && !args.domain) {
     return args.storedContext;
   }
   return JSON.stringify({
     ...(args.storedContext ? { storedContext: args.storedContext } : {}),
-    realmId: args.realmId,
+    ...(args.realmId ? { realmId: args.realmId } : {}),
+    ...(args.domain ? { domain: args.domain } : {}),
   });
 }
 
@@ -584,6 +595,27 @@ const completeOAuthCallback$ = command(
       signal,
     );
     signal.throwIfAborted();
+
+    if (args.authorizeAgent) {
+      const authorization = await set(
+        authorizeConnectedConnector$,
+        {
+          orgId: args.identity.orgId,
+          userId: args.identity.userId,
+          agentId: args.agentId,
+          connectorType: args.connectorType,
+        },
+        signal,
+      );
+      if (authorization.status === "agentNotFound") {
+        return redirectWithError(
+          args.origin,
+          args.type,
+          authorization.message,
+          true,
+        );
+      }
+    }
 
     await linkGithubIntegrationAfterConnectorConnect({
       db: set(writeDb$),
@@ -635,6 +667,27 @@ const completeOpenIdCallback$ = command(
     );
     signal.throwIfAborted();
 
+    if (args.authorizeAgent) {
+      const authorization = await set(
+        authorizeConnectedConnector$,
+        {
+          orgId: args.identity.orgId,
+          userId: args.identity.userId,
+          agentId: args.agentId,
+          connectorType: args.connectorType,
+        },
+        signal,
+      );
+      if (authorization.status === "agentNotFound") {
+        return redirectWithError(
+          args.origin,
+          args.type,
+          authorization.message,
+          true,
+        );
+      }
+    }
+
     return successRedirectResponse({
       origin: args.origin,
       type: args.type,
@@ -664,6 +717,8 @@ function resolveCallbackState(
       userId: args.storedState.userId,
       orgId: args.storedState.orgId,
     },
+    agentId: args.storedState.agentId,
+    authorizeAgent: args.storedState.authorizeAgent,
     connectorType: authMethodResult.connectorType,
     authMethod: authMethodResult.authMethod,
     codeVerifier: args.storedState.codeVerifier ?? undefined,
@@ -711,6 +766,8 @@ function resolveOpenIdCallbackState(
       userId: args.storedState.userId,
       orgId: args.storedState.orgId,
     },
+    agentId: args.storedState.agentId,
+    authorizeAgent: args.storedState.authorizeAgent,
     connectorType: authMethodResult.connectorType,
     authMethod: authMethodResult.authMethod,
     expectedReturnTo: args.storedState.redirectUri,
@@ -788,7 +845,7 @@ const handleOpenIdConnectorCallback$ = command(
       return resolvedState.response;
     }
 
-    const callbackResult = await settle(
+    const callbackResponse = await tapError(
       set(
         completeOpenIdCallback$,
         {
@@ -798,6 +855,8 @@ const handleOpenIdConnectorCallback$ = command(
           expectedReturnTo: resolvedState.expectedReturnTo,
           expectedRealm: resolvedState.expectedRealm,
           identity: resolvedState.identity,
+          agentId: resolvedState.agentId,
+          authorizeAgent: resolvedState.authorizeAgent,
           origin: args.origin,
           type: args.type,
         },
@@ -806,8 +865,8 @@ const handleOpenIdConnectorCallback$ = command(
     );
     signal.throwIfAborted();
 
-    if (callbackResult.ok) {
-      return callbackResult.value;
+    if (callbackResponse) {
+      return callbackResponse;
     }
 
     return redirectWithError(
@@ -918,7 +977,7 @@ const handleAuthCodeConnectorCallback$ = command(
       return resolvedState.response;
     }
 
-    const callbackResult = await settle(
+    const callbackResponse = await tapError(
       set(
         completeOAuthCallback$,
         {
@@ -931,8 +990,11 @@ const handleAuthCodeConnectorCallback$ = command(
           oauthContext: callbackOAuthContext({
             storedContext: resolvedState.oauthContext,
             realmId: args.query.realmId,
+            domain: args.query.domain,
           }),
           identity: resolvedState.identity,
+          agentId: resolvedState.agentId,
+          authorizeAgent: resolvedState.authorizeAgent,
           origin: args.origin,
           type: args.type,
         },
@@ -941,8 +1003,8 @@ const handleAuthCodeConnectorCallback$ = command(
     );
     signal.throwIfAborted();
 
-    if (callbackResult.ok) {
-      return callbackResult.value;
+    if (callbackResponse) {
+      return callbackResponse;
     }
 
     return redirectWithError(

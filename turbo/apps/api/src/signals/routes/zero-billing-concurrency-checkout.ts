@@ -7,10 +7,12 @@ import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import {
   activeConcurrencyPriceId,
   createConcurrencyCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -39,6 +41,15 @@ const concurrencyCheckoutAuthed$ = command(
       return bodyResult.response;
     }
     const { quantity, successUrl, cancelUrl } = bodyResult.data;
+
+    const db = get(db$);
+    const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
+    signal.throwIfAborted();
+    if (capabilities?.canBuyConcurrency !== true) {
+      return badRequestMessage(
+        "Additional concurrency is only available for Team or Custom workspaces",
+      );
+    }
 
     if (
       !billingRedirectAllowed(successUrl) ||

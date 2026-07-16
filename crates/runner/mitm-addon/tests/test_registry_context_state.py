@@ -228,8 +228,6 @@ class TestRegistryContextState:
             [0],
             [{"kind": "inline"}],
             [{"kind": "builtin", "name": ""}],
-            [{"kind": "builtin", "name": "zendesk", "baseUrlVars": []}],
-            [{"kind": "builtin", "name": "zendesk", "baseUrlVars": {"ZENDESK_SUBDOMAIN": 1}}],
             [{"name": "github", "apis": []}],
             [{"kind": "unknown", "name": "github"}],
             [{"kind": "unknown", "name": "github", "apis": []}],

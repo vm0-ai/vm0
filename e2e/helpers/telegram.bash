@@ -22,7 +22,7 @@ telegram_fetch_state() {
     local -a bypass=()
     _telegram_bypass_args bypass
     curl -sS "${bypass[@]}" \
-        "$VM0_API_URL/api/test/telegram-state?bot_id=$bot_id"
+        "$VM0_API_BACKEND_URL/api/test/telegram-state?bot_id=$bot_id"
 }
 
 telegram_seed_state() {
@@ -53,7 +53,7 @@ telegram_seed_state() {
         -H "Content-Type: application/json" \
         "${bypass[@]}" \
         --data "$body" \
-        "$VM0_API_URL/api/test/telegram-state"
+        "$VM0_API_BACKEND_URL/api/test/telegram-state"
 }
 
 telegram_reset_state() {
@@ -61,7 +61,7 @@ telegram_reset_state() {
     local -a bypass=()
     _telegram_bypass_args bypass
     curl -sS -X DELETE "${bypass[@]}" \
-        "$VM0_API_URL/api/test/telegram-state?bot_id=$bot_id" >/dev/null
+        "$VM0_API_BACKEND_URL/api/test/telegram-state?bot_id=$bot_id" >/dev/null
 }
 
 telegram_post_webhook() {
@@ -73,7 +73,7 @@ telegram_post_webhook() {
         -H "x-telegram-bot-api-secret-token: $TELEGRAM_FIXTURE_WEBHOOK_SECRET" \
         "${bypass[@]}" \
         --data "$body" \
-        "$VM0_API_URL/api/telegram/webhook/$bot_id"
+        "$VM0_API_BACKEND_URL/api/telegram/webhook/$bot_id"
 }
 
 telegram_dispatch_probe() {
@@ -92,7 +92,7 @@ telegram_dispatch_probe() {
         -H "Content-Type: application/json" \
         "${bypass[@]}" \
         --data "$body" \
-        "$VM0_API_URL/api/test/telegram-dispatch-probe"
+        "$VM0_API_BACKEND_URL/api/test/telegram-dispatch-probe"
 }
 
 wait_for_telegram_run_completion() {

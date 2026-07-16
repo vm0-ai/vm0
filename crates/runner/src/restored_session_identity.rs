@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
 use std::fmt;
 
+use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
@@ -32,7 +34,7 @@ pub(crate) enum RestoredSessionIdentityMismatchReason {
     RestoreFormatVersion,
     SessionIdentity,
     HistoryRefKind,
-    HistoryHash,
+    HistoryHash(RestoredSessionHistoryHashSizeRelationship),
     HistorySize,
     MissingRequestedIdentity,
 }
@@ -46,11 +48,43 @@ impl RestoredSessionIdentityMismatchReason {
             }
             Self::SessionIdentity => "session_history_identity_mismatch_session_identity",
             Self::HistoryRefKind => "session_history_identity_mismatch_history_ref_kind",
-            Self::HistoryHash => "session_history_identity_mismatch_history_hash",
+            Self::HistoryHash(_) => "session_history_identity_mismatch_history_hash",
             Self::HistorySize => "session_history_identity_mismatch_history_size",
             Self::MissingRequestedIdentity => {
                 "session_history_identity_mismatch_missing_requested_identity"
             }
+        }
+    }
+
+    pub(crate) const fn history_hash_size_relationship_action_type(self) -> Option<&'static str> {
+        match self {
+            Self::HistoryHash(relationship) => Some(relationship.action_type()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RestoredSessionHistoryHashSizeRelationship {
+    RequestedSmaller,
+    RequestedEqual,
+    RequestedLarger,
+    SizeUnknown,
+}
+
+impl RestoredSessionHistoryHashSizeRelationship {
+    const fn action_type(self) -> &'static str {
+        match self {
+            Self::RequestedSmaller => {
+                "session_history_identity_mismatch_history_hash_requested_smaller"
+            }
+            Self::RequestedEqual => {
+                "session_history_identity_mismatch_history_hash_requested_equal"
+            }
+            Self::RequestedLarger => {
+                "session_history_identity_mismatch_history_hash_requested_larger"
+            }
+            Self::SizeUnknown => "session_history_identity_mismatch_history_hash_size_unknown",
         }
     }
 }
@@ -90,6 +124,12 @@ pub(crate) struct RestoredSessionIdentityFields<'a> {
     pub(crate) history_ref_kind: FinalSessionHistoryRefKind,
     pub(crate) history_hash: &'a str,
     pub(crate) history_size_bytes: u64,
+}
+
+#[derive(Clone)]
+pub(crate) struct RestoredSessionHistoryPrefixAttribution {
+    history_hash: String,
+    history_size_bytes: u64,
 }
 
 impl RestoredSessionIdentity {
@@ -208,6 +248,28 @@ impl RestoredSessionIdentity {
         self.final_metadata_verification().is_some()
     }
 
+    pub(crate) fn mismatch_reason_and_prefix_attribution(
+        &self,
+        requested: &Self,
+    ) -> (
+        Option<RestoredSessionIdentityMismatchReason>,
+        Option<RestoredSessionHistoryPrefixAttribution>,
+    ) {
+        let reason = self.mismatch_reason_for_request(requested);
+        let prefix_attribution = match reason {
+            Some(RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
+            )) => self.final_metadata_verification().map(|verification| {
+                RestoredSessionHistoryPrefixAttribution {
+                    history_hash: verification.history_hash.to_owned(),
+                    history_size_bytes: verification.history_size_bytes,
+                }
+            }),
+            _ => None,
+        };
+        (reason, prefix_attribution)
+    }
+
     pub(crate) fn is_verified_match_for_request(&self, requested: &Self) -> bool {
         self == requested
             && self.has_final_metadata_verification()
@@ -233,7 +295,9 @@ impl RestoredSessionIdentity {
             return Some(RestoredSessionIdentityMismatchReason::HistoryRefKind);
         }
         if self.history_hash != requested.history_hash {
-            return Some(RestoredSessionIdentityMismatchReason::HistoryHash);
+            return Some(RestoredSessionIdentityMismatchReason::HistoryHash(
+                self.history_hash_size_relationship_for_request(requested),
+            ));
         }
         if let Some(requested_size) = requested.history_size_bytes
             && self.history_size_bytes != Some(requested_size)
@@ -241,6 +305,44 @@ impl RestoredSessionIdentity {
             return Some(RestoredSessionIdentityMismatchReason::HistorySize);
         }
         None
+    }
+
+    fn history_hash_size_relationship_for_request(
+        &self,
+        requested: &Self,
+    ) -> RestoredSessionHistoryHashSizeRelationship {
+        let Some(restored_size) = self
+            .final_metadata_verification()
+            .map(|verification| verification.history_size_bytes)
+        else {
+            return RestoredSessionHistoryHashSizeRelationship::SizeUnknown;
+        };
+        let Some(requested_size) = requested
+            .history_size_bytes
+            .filter(|size| (1..=RESUME_SESSION_HISTORY_MAX_BYTES).contains(size))
+        else {
+            return RestoredSessionHistoryHashSizeRelationship::SizeUnknown;
+        };
+
+        match requested_size.cmp(&restored_size) {
+            Ordering::Less => RestoredSessionHistoryHashSizeRelationship::RequestedSmaller,
+            Ordering::Equal => RestoredSessionHistoryHashSizeRelationship::RequestedEqual,
+            Ordering::Greater => RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
+        }
+    }
+}
+
+impl RestoredSessionHistoryPrefixAttribution {
+    #[cfg(test)]
+    pub(crate) fn for_test(history_hash: String, history_size_bytes: u64) -> Self {
+        Self {
+            history_hash,
+            history_size_bytes,
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (String, u64) {
+        (self.history_hash, self.history_size_bytes)
     }
 }
 

@@ -14,7 +14,6 @@ import {
   materializePermissionDraftForLegacySave,
   permissionDraftInitialPolicyKey,
   resolvePermissionDraftExpiration,
-  resolvePermissionDraftGroupExpiration,
   resolvePermissionDraftUnknownPolicy,
   restorePermissionDraftPermission,
   restorePermissionDraftUnknown,
@@ -181,14 +180,6 @@ describe("permission draft intent materialization", () => {
         permissionName: "bookmarks:read",
       }),
     ).toBeUndefined();
-    expect(
-      resolvePermissionDraftGroupExpiration({
-        context,
-        draft,
-        category: "Read",
-        permissions: READ_PERMISSIONS,
-      }),
-    ).toBeUndefined();
 
     const materialized = materializePermissionDraftForLegacySave({
       context,
@@ -268,15 +259,6 @@ describe("permission draft intent row duration overrides", () => {
       draft,
       permissionName: "bookmarks:read",
     });
-
-    expect(
-      resolvePermissionDraftGroupExpiration({
-        context,
-        draft,
-        category: "Read",
-        permissions: READ_PERMISSIONS,
-      }),
-    ).toBeUndefined();
 
     const materialized = materializePermissionDraftForLegacySave({
       context,
@@ -393,14 +375,6 @@ describe("permission draft intent group duration", () => {
         context,
         draft,
         permissionName: "bookmarks:read",
-      }),
-    ).toBe("7d");
-    expect(
-      resolvePermissionDraftGroupExpiration({
-        context,
-        draft,
-        category: "Read",
-        permissions: READ_PERMISSIONS,
       }),
     ).toBe("7d");
   });
@@ -561,14 +535,6 @@ describe("permission draft intent allow always selection", () => {
         context,
         draft,
         permissionName: "channels:read",
-      }),
-    ).toBeUndefined();
-    expect(
-      resolvePermissionDraftGroupExpiration({
-        context,
-        draft,
-        category: "Read",
-        permissions: READ_PERMISSIONS,
       }),
     ).toBeUndefined();
     expect(

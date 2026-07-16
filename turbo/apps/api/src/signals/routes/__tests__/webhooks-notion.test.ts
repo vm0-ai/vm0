@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
@@ -12,7 +12,7 @@ import { mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { resetNotionWebhookVerification } from "../../../test-fixtures/workflow-notion";
 import type { ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   createWorkflowsBddApi,
   mockNotionConnectorOAuth,
@@ -23,9 +23,9 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
-const CRON_EXECUTE_WORKFLOW_TRIGGERS_PATH =
-  "/api/cron/execute-workflow-triggers";
+const runsApi = createRunsApi(context);
+const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_PATH =
+  "/api/cron/execute-workflow-automations";
 
 const WORKFLOW_NAME = "notion-webhook-workflow";
 const CRON_SECRET = "test-cron-secret";
@@ -41,7 +41,7 @@ interface WorkflowsFixture {
 }
 
 /**
- * Per-test Notion entity ids. The webhook fans out to every trigger in the
+ * Per-test Notion entity ids. The webhook fans out to every automation in the
  * database watching the same Notion page, so ids must be unique per test to
  * stay isolated on the shared persistent database.
  */
@@ -80,19 +80,19 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 function memoryClient() {
   return setupApp({ context })(zeroMemoryContract);
 }
 
-async function enableNotionWorkflowTriggers(
+async function enableNotionWorkflowAutomations(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.NotionWorkflowTriggers]: true,
+    [FeatureSwitchKey.NotionWorkflowAutomations]: true,
   });
 }
 
@@ -366,12 +366,12 @@ async function verifyNotionWebhook(): Promise<void> {
   });
 }
 
-async function executeDueWorkflowTriggers(): Promise<{
+async function executeDueWorkflowAutomations(): Promise<{
   readonly status: number;
   readonly body: unknown;
 }> {
   const response = await createApp({ signal: context.signal }).request(
-    CRON_EXECUTE_WORKFLOW_TRIGGERS_PATH,
+    CRON_EXECUTE_WORKFLOW_AUTOMATIONS_PATH,
     { headers: { authorization: `Bearer ${CRON_SECRET}` } },
   );
   return { status: response.status, body: await response.json() };
@@ -510,12 +510,12 @@ describe("POST /api/webhooks/notion", () => {
   it("verifies, signs, de-duplicates, and refreshes pending child page events", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionParentPageMock(entities);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -534,7 +534,7 @@ describe("POST /api/webhooks/notion", () => {
       created.body.kind !== "event" ||
       created.body.eventType !== "notion-child-page-created"
     ) {
-      throw new Error("Expected a Notion child page trigger");
+      throw new Error("Expected a Notion child page automation");
     }
 
     await verifyNotionWebhook();
@@ -608,12 +608,12 @@ describe("POST /api/webhooks/notion", () => {
   it("enqueues and refreshes pending database item events", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -632,14 +632,14 @@ describe("POST /api/webhooks/notion", () => {
       created.body.kind !== "event" ||
       created.body.eventType !== "notion-database-item-created"
     ) {
-      throw new Error("Expected a Notion database item trigger");
+      throw new Error("Expected a Notion database item automation");
     }
 
     await verifyNotionWebhook();
 
     // Notion also delivers data-source children with a database parent id
     // plus a data_source_id field (no parent type) — both shapes must match
-    // the data-source trigger.
+    // the data-source automation.
     const createdEvent = notionPageEvent({
       entities,
       type: "page.created",
@@ -689,12 +689,12 @@ describe("POST /api/webhooks/notion", () => {
   it("enqueues and debounces page content updated events for a page scope", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionChildPageMock(entities);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -713,7 +713,7 @@ describe("POST /api/webhooks/notion", () => {
       created.body.kind !== "event" ||
       created.body.eventType !== "notion-page-content-updated"
     ) {
-      throw new Error("Expected a Notion page content updated trigger");
+      throw new Error("Expected a Notion page content updated automation");
     }
 
     await verifyNotionWebhook();
@@ -788,12 +788,12 @@ describe("POST /api/webhooks/notion", () => {
     mockEnv("CRON_SECRET", CRON_SECRET);
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionChildPageMock(entities);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -812,11 +812,11 @@ describe("POST /api/webhooks/notion", () => {
       created.body.kind !== "event" ||
       created.body.eventType !== "notion-page-content-updated"
     ) {
-      throw new Error("Expected a Notion page content updated trigger");
+      throw new Error("Expected a Notion page content updated automation");
     }
     const threadId = created.body.chatThreadId;
     if (!threadId) {
-      throw new Error("Expected the Notion trigger to bind a chat thread");
+      throw new Error("Expected the Notion automation to bind a chat thread");
     }
 
     await verifyNotionWebhook();
@@ -856,13 +856,13 @@ describe("POST /api/webhooks/notion", () => {
 
     // The sweep is global on the shared database, so only assert that this
     // tick executed at least our due pending event.
-    const executed = await executeDueWorkflowTriggers();
+    const executed = await executeDueWorkflowAutomations();
     expect(executed.status).toBe(200);
     const executedBody = record(executed.body, "cron response");
     expect(executedBody.success).toBeTruthy();
     expect(executedBody.executed).toBeGreaterThanOrEqual(1);
 
-    // The run landed in the trigger's bound chat thread with the friendly
+    // The run landed in the automation's bound chat thread with the friendly
     // Notion brief, linked to the created run.
     const messages = await wf.readThreadMessages(threadId);
     const workflowMessage = messages.find((message) => {
@@ -914,14 +914,14 @@ describe("POST /api/webhooks/notion", () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.NotionWorkflowTriggers]: true,
+      [FeatureSwitchKey.NotionWorkflowAutomations]: true,
       [FeatureSwitchKey.RelationshipMemory]: true,
     });
     await connectNotion(scenario);
     configureNotionChildPageMock(entities);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -940,7 +940,7 @@ describe("POST /api/webhooks/notion", () => {
       created.body.kind !== "event" ||
       created.body.eventType !== "notion-page-content-updated"
     ) {
-      throw new Error("Expected a Notion page content updated trigger");
+      throw new Error("Expected a Notion page content updated automation");
     }
 
     await verifyNotionWebhook();
@@ -971,7 +971,7 @@ describe("POST /api/webhooks/notion", () => {
     });
     mockNow(new Date("2026-07-06T12:20:00.000Z"));
 
-    const executed = await executeDueWorkflowTriggers();
+    const executed = await executeDueWorkflowAutomations();
     expect(executed.status).toBe(200);
     expect(record(executed.body, "cron response").success).toBeTruthy();
 
@@ -1023,12 +1023,12 @@ describe("POST /api/webhooks/notion", () => {
   it("enqueues page content updated events for a database scope", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1047,7 +1047,7 @@ describe("POST /api/webhooks/notion", () => {
       created.body.kind !== "event" ||
       created.body.eventType !== "notion-page-content-updated"
     ) {
-      throw new Error("Expected a Notion page content updated trigger");
+      throw new Error("Expected a Notion page content updated automation");
     }
 
     await verifyNotionWebhook();
@@ -1077,12 +1077,12 @@ describe("POST /api/webhooks/notion", () => {
   it("suppresses content updated events while child page creation is pending", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionParentAndChildPageMock(entities);
 
-    const childTrigger = await accept(
-      triggersClient().create({
+    const childAutomation = await accept(
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1097,8 +1097,8 @@ describe("POST /api/webhooks/notion", () => {
       }),
       [201],
     );
-    const contentTrigger = await accept(
-      triggersClient().create({
+    const contentAutomation = await accept(
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1113,7 +1113,7 @@ describe("POST /api/webhooks/notion", () => {
       }),
       [201],
     );
-    expect(childTrigger.body.id).not.toBe(contentTrigger.body.id);
+    expect(childAutomation.body.id).not.toBe(contentAutomation.body.id);
 
     await verifyNotionWebhook();
 
@@ -1137,7 +1137,7 @@ describe("POST /api/webhooks/notion", () => {
       },
     });
 
-    // The content update only refreshes the child-page trigger's pending event.
+    // The content update only refreshes the child-page automation's pending event.
     const contentEvent = notionPageEvent({
       entities,
       type: "page.content_updated",
@@ -1162,12 +1162,12 @@ describe("POST /api/webhooks/notion", () => {
   it("suppresses content updated events while database item creation is pending", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
     await connectNotion(scenario);
     configureNotionDatabaseMock(entities);
 
-    const databaseTrigger = await accept(
-      triggersClient().create({
+    const databaseAutomation = await accept(
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1182,8 +1182,8 @@ describe("POST /api/webhooks/notion", () => {
       }),
       [201],
     );
-    const contentTrigger = await accept(
-      triggersClient().create({
+    const contentAutomation = await accept(
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -1198,7 +1198,7 @@ describe("POST /api/webhooks/notion", () => {
       }),
       [201],
     );
-    expect(databaseTrigger.body.id).not.toBe(contentTrigger.body.id);
+    expect(databaseAutomation.body.id).not.toBe(contentAutomation.body.id);
 
     await verifyNotionWebhook();
 

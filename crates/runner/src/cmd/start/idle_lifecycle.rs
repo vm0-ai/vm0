@@ -213,6 +213,7 @@ mod tests {
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult,
     };
+    use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
     use crate::resource_budget::ResourceBudget;
     use crate::storage_fingerprints::StorageFingerprints;
     use crate::workspace_promotion::test_support::{TEST_COMPLETED_AT, WorkspacePromotionFixture};
@@ -225,7 +226,10 @@ mod tests {
     #[tokio::test]
     async fn destroy_idle_jobs_and_wait_reports_workspace_cache_promotion() {
         let fixture = WorkspacePromotionFixture::new("sess-idle-destroy-cache").await;
-        let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(MockSandboxFactory::new()));
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        add_healthy_reuse_preparation_matcher(&overrides);
+        let factory: Arc<Box<dyn SandboxFactory>> =
+            Arc::new(Box::new(MockSandboxFactory::with_overrides(overrides)));
         let sandbox = factory
             .create(SandboxConfig {
                 id: fixture.sandbox_id,
@@ -241,6 +245,7 @@ mod tests {
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         let request = IdleParkRequest::new(IdleParkRequestParts {
+            run_id: crate::ids::RunId::new_v4(),
             sandbox,
             factory,
             cli_agent_session_id: fixture.session_id.clone(),
@@ -251,6 +256,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
             restored_session_identity: None,
+            history_generation_run_id: None,
             workspace_image_size_bytes: b"workspace image".len() as u64,
             workspace_promotion: Some(fixture.promotion),
         });

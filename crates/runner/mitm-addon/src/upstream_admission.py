@@ -24,6 +24,11 @@ TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
+_PLATFORM_FIREWALL_PATH_PREFIXES: Final = (
+    "/api/test/",
+    "/api/internal/vm0-model/v1/",
+)
+_VM0_MODEL_PROXY_PATH_PREFIX: Final = "/api/internal/vm0-model/v1/"
 _UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS: Final = 60.0
 _TRUSTED_HOST_ADDRESS_NEGATIVE_CACHE_TTL_SECONDS: Final = 5.0
@@ -236,7 +241,13 @@ def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
     return flow.request.headers.get(_TEST_ENDPOINT_BYPASS_HEADER) == expected_bypass
 
 
+def request_path_uses_platform_firewall(path: str) -> bool:
+    return path.startswith(_PLATFORM_FIREWALL_PATH_PREFIXES)
+
+
 def _request_allows_platform_connector_auth(flow: http.HTTPFlow) -> bool:
+    if flow.request.path.startswith(_VM0_MODEL_PROXY_PATH_PREFIX):
+        return True
     # Synthetic test providers live on the platform API preview host but
     # intentionally exercise connector auth injection instead of API auto-allow.
     # Keep this path limited to test endpoints gated by the same internal
@@ -355,7 +366,11 @@ async def _bind_api_upstream_destination_from_original_address(
             break
     if original_address is None or original_address_source is None:
         return False
-    if bool(getattr(server, "connected", False)) or getattr(server, "error", None):
+    if (
+        bool(getattr(server, "connected", False))
+        or getattr(server, "error", None)
+        or getattr(client, "timestamp_end", None) is not None
+    ):
         return False
     if connection_endpoints.server_address(server) != starting_server_address:
         return False
@@ -396,10 +411,9 @@ def _server_connect_binding_kinds(
     hostname: str,
     port: int,
     compiled_firewalls: matching.CompiledFirewallSet | None,
-    api_url: str,
+    is_api_host: bool,
 ) -> frozenset[upstream_destination_binding.BindingKind]:
     kinds: set[upstream_destination_binding.BindingKind] = set()
-    is_api_host = api_hostname_matches(api_url, hostname)
     if is_api_host:
         kinds.add("api_allow")
     if (
@@ -446,12 +460,24 @@ def _bind_privileged_upstream_destination(
     if address is None:
         return
     _original_host, port = address
+    is_api_host = api_hostname_matches(api_url, hostname)
+    reusable_kind: upstream_destination_binding.BindingKind = (
+        "api_allow" if is_api_host else "connector_auth"
+    )
+    if upstream_destination_binding.reuse_server_binding_kind_if_matching(
+        server,
+        client=client,
+        host=hostname,
+        port=port,
+        kind=reusable_kind,
+    ):
+        return
 
     kinds = _server_connect_binding_kinds(
         hostname=hostname,
         port=port,
         compiled_firewalls=registry_state.compiled_firewalls.get(client_ip),
-        api_url=api_url,
+        is_api_host=is_api_host,
     )
     if not kinds:
         return

@@ -39,6 +39,7 @@ __all__ = (
     "record_server_binding",
     "refresh_server_binding_connected_address_if_matching",
     "reset_for_tests",
+    "reuse_server_binding_kind_if_matching",
     "server_binding_original_address",
 )
 
@@ -143,6 +144,45 @@ def record_server_binding(
     _associate_server_with_client(server_id, client)
 
 
+def _matching_server_binding(
+    server: object,
+    *,
+    host: str,
+    port: int,
+) -> tuple[str, UpstreamDestinationBinding] | None:
+    server_id = _connection_id(server)
+    if server_id is None:
+        return None
+    binding = _bindings_by_server_id.get(server_id)
+    if binding is None:
+        return None
+    normalized_host = normalize_trusted_hostname(host)
+    if binding.host != normalized_host or binding.port != port:
+        return None
+    if not _server_binding_matches_current_destination(server, binding):
+        return None
+    return server_id, binding
+
+
+def reuse_server_binding_kind_if_matching(
+    server: object,
+    *,
+    client: object | None = None,
+    host: str,
+    port: int,
+    kind: BindingKind,
+) -> bool:
+    """Reuse an existing binding kind without authorizing a missing kind."""
+    matched = _matching_server_binding(server, host=host, port=port)
+    if matched is None:
+        return False
+    server_id, binding = matched
+    if kind not in binding.kinds:
+        return False
+    _associate_server_with_client(server_id, client)
+    return True
+
+
 def add_server_binding_kind_if_matching(
     server: object,
     *,
@@ -152,17 +192,10 @@ def add_server_binding_kind_if_matching(
     kind: BindingKind,
 ) -> bool:
     """Add a binding kind only if the current server destination still matches."""
-    server_id = _connection_id(server)
-    if server_id is None:
+    matched = _matching_server_binding(server, host=host, port=port)
+    if matched is None:
         return False
-    binding = _bindings_by_server_id.get(server_id)
-    if binding is None:
-        return False
-    normalized_host = normalize_trusted_hostname(host)
-    if binding.host != normalized_host or binding.port != port:
-        return False
-    if not _server_binding_matches_current_destination(server, binding):
-        return False
+    server_id, binding = matched
     if kind not in binding.kinds:
         _bindings_by_server_id[server_id] = UpstreamDestinationBinding(
             host=binding.host,

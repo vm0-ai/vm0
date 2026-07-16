@@ -22,13 +22,15 @@ function featureSwitchResponseBody(params: {
   readonly userId: string;
   readonly switches: Record<string, boolean>;
 }) {
+  const effectiveSwitches = getAllFeatureStates({
+    orgId: params.orgId,
+    userId: params.userId,
+    overrides: params.switches,
+  });
+
   return {
     switches: params.switches,
-    effectiveSwitches: getAllFeatureStates({
-      orgId: params.orgId,
-      userId: params.userId,
-      overrides: params.switches,
-    }),
+    effectiveSwitches,
   };
 }
 

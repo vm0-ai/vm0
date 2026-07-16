@@ -30,7 +30,7 @@ import {
   isRunBuiltInAdmissionError,
   startRunBuiltInAdmission$,
 } from "../services/zero-run-built-in-admission.service";
-import { settle } from "../utils";
+import { onRejection } from "../utils";
 
 const L = logger("ZeroVoiceIoSpeech");
 const speechBody$ = bodyResultOf(zeroVoiceIoSpeechContract.post);
@@ -184,7 +184,7 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return admission;
   }
 
-  const result = await settle(
+  const result = await onRejection(
     set(
       generateSpeechResponse$,
       {
@@ -198,24 +198,22 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       },
       signal,
     ),
+    async () => {
+      await set(completeRunBuiltInAdmission$, {
+        admission,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+    },
   );
   signal.throwIfAborted();
 
-  if (!result.ok) {
-    await set(completeRunBuiltInAdmission$, {
-      admission,
-      status: "failed",
-    });
-    signal.throwIfAborted();
-    throw result.error;
-  }
-
   await set(completeRunBuiltInAdmission$, {
     admission,
-    status: result.value.admissionStatus,
+    status: result.admissionStatus,
   });
   signal.throwIfAborted();
-  return result.value.response;
+  return result.response;
 });
 
 export const zeroVoiceIoSpeechRoutes: readonly RouteEntry[] = [

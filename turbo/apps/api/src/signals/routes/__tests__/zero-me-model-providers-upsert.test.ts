@@ -6,6 +6,7 @@ import {
   zeroPersonalModelProvidersByTypeContract,
   zeroPersonalModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -135,6 +136,20 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       },
       created: true,
     });
+
+    const secretClient = setupApp({ context })(zeroSecretsContract);
+    const secretList = await accept(
+      secretClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      secretList.body.secrets.find((secret) => {
+        return secret.type === "model-provider";
+      }),
+    ).toMatchObject({ connectorDisplay: null });
+    expect(JSON.stringify(secretList.body)).not.toContain("sk-ant-test");
   });
 
   it("updates an existing personal provider with 200", async () => {

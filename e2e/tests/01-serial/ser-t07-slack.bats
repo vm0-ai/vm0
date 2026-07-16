@@ -3,7 +3,7 @@
 # End-to-end Slack integration tests against a deployed Vercel preview.
 #
 # Required env:
-#   VM0_API_URL                        — preview deployment URL
+#   VM0_API_BACKEND_URL                        — preview deployment URL
 #   SLACK_SIGNING_SECRET               — shared with the preview so HMAC matches
 #   VERCEL_AUTOMATION_BYPASS_SECRET    — preview protection bypass
 #
@@ -33,8 +33,8 @@ CHANNEL_ID="${SLACK_FIXTURE_CHANNEL_ID:-C_E2E_MOCK}_${GITHUB_RUN_ID:-local}"
 SLACK_USER_ID="${SLACK_FIXTURE_USER_USER_ID:-U_E2E_USER}"
 
 setup_file() {
-    if [[ -z "${VM0_API_URL:-}" ]]; then
-        skip "VM0_API_URL not set"
+    if [[ -z "${VM0_API_BACKEND_URL:-}" ]]; then
+        skip "VM0_API_BACKEND_URL not set"
     fi
     if [[ -z "${SLACK_SIGNING_SECRET:-}" ]]; then
         skip "SLACK_SIGNING_SECRET not set"
@@ -78,7 +78,7 @@ setup_file() {
             -H "Content-Type: application/json" \
             "${bypass[@]}" \
             --data '{}' \
-            "$VM0_API_URL/api/test/slack-mock/$mock")
+            "$VM0_API_BACKEND_URL/api/test/slack-mock/$mock")
         if [[ "$code" != "200" ]]; then
             echo "# mock endpoint /api/test/slack-mock/$mock returned HTTP $code" >&2
             return 1

@@ -148,7 +148,7 @@ async function seedFixture(): Promise<TelegramProbeFixture> {
   const fixture = await trackFixture(seedTelegramProbeFixture());
   context.mocks.s3.send.mockResolvedValue({});
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  mockOptionalEnv("VM0_API_URL", "http://localhost:3000");
+  mockOptionalEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
   mockEnv("APP_URL", "http://localhost:3002");
   return fixture;
@@ -361,6 +361,12 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
           op_type: "api_dispatch_pre_create_zero_build_create_run_args",
           span_kind: "nested",
           trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_prepare_context_feature_switches",
+          span_kind: "nested",
+          trigger_source: "telegram",
+          feature_switch_context_source: "preloaded",
         }),
       ]),
     );

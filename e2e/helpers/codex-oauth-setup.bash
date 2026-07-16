@@ -61,7 +61,7 @@ seed_codex_oauth() {
     curl_args+=(-d "$body")
 
     local resp http_code resp_body
-    resp=$(curl "${curl_args[@]}" "${VM0_API_URL}/api/cli/auth/test-codex-oauth?email=${encoded_email}")
+    resp=$(curl "${curl_args[@]}" "${VM0_API_BACKEND_URL}/api/cli/auth/test-codex-oauth?email=${encoded_email}")
     http_code=$(echo "$resp" | tail -n1)
     resp_body=$(echo "$resp" | head -n-1)
 
@@ -120,7 +120,7 @@ _set_codex_oauth_provider() {
     if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
         curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
-    curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/feature-switches" >/dev/null
+    curl "${curl_args[@]}" "${VM0_API_BACKEND_URL}/api/zero/feature-switches" >/dev/null
 }
 
 # Enable the codexOauthProvider feature switch for the current test user.
@@ -164,7 +164,7 @@ _post_test_codex_oauth() {
     fi
     curl_args+=(-d "$body")
 
-    curl "${curl_args[@]}" "${VM0_API_URL}/api/cli/auth/test-codex-oauth?email=${encoded_email}"
+    curl "${curl_args[@]}" "${VM0_API_BACKEND_URL}/api/cli/auth/test-codex-oauth?email=${encoded_email}"
 }
 
 # Seed a codex-oauth-token model provider via the auth_json paste path.
@@ -229,7 +229,7 @@ codex_oauth_stale_supported() {
     fi
 
     local resp
-    resp=$(curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/model-providers" 2>/dev/null)
+    resp=$(curl "${curl_args[@]}" "${VM0_API_BACKEND_URL}/api/zero/model-providers" 2>/dev/null)
 
     # Probe for needsReconnect field on any provider in the response. Schema-
     # level signal is more robust than UI-shape probes.

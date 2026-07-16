@@ -1,5 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  PagedChatMessage,
   ChatThreadArtifactRun,
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -9,15 +10,39 @@ import type { ChatThread } from "../agent-chat.ts";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
-import type {
-  EnrichedChatMessage,
-  GroupedChatMessageGroup,
-} from "./chat-message.ts";
+import type { BodyRenderBlock } from "./parse-body-blocks.ts";
+import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 
-/** The thread's current active goal, folded from its message stream. */
-export interface ActiveGoalState {
-  readonly objective: string;
+type RecommendedFollowup = NonNullable<
+  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+>[number];
+
+export interface RecommendedFollowupSource {
+  readonly messageId: string;
+  readonly followups: readonly RecommendedFollowup[];
+}
+
+export interface QueuedChatMessageItem {
+  readonly id: string;
+  readonly text: string;
+}
+
+export type ThinkingIndicatorMode =
+  | "waiting"
+  | "waiting-queued"
+  | "running"
+  | "running-queued"
+  | "finished"
+  | null;
+
+export type ComposerSendButtonStatus = "idle" | "sending";
+
+export interface MessageImageGroupProjection {
+  readonly messages: readonly {
+    readonly attachFiles?: PagedChatMessage["attachFiles"];
+    readonly blocks: readonly BodyRenderBlock[];
+  }[];
 }
 
 export interface SendMessageOptions {
@@ -41,6 +66,9 @@ export interface ChatThreadSignals {
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
   selectedModel$: Computed<Promise<string | null>>;
+  codexFastModeActive$: Computed<Promise<boolean>>;
+  selectedModelOauthAvailable$: Computed<Promise<boolean>>;
+  configureSelectedModel$: Command<Promise<void>, [AbortSignal]>;
   setModelSelection$: Command<
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
@@ -50,19 +78,15 @@ export interface ChatThreadSignals {
   setComputerUseHostId$: Command<Promise<void>, [string | null, AbortSignal]>;
   clearComputerUseHostIdOverride$: Command<void, []>;
   sendMessage$: Command<
-    Promise<void>,
-    [
-      string,
-      ModelProviderSelection | null,
-      SendMessageOptions | undefined,
-      AbortSignal,
-    ]
+    Promise<boolean>,
+    [string, SendMessageOptions | undefined, AbortSignal]
   >;
+  composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
-    Promise<void>,
+    Promise<boolean>,
     [string, string | null | undefined, AbortSignal]
   >;
-  recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
+  recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -102,19 +126,20 @@ export interface ChatThreadSignals {
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
-  renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
-  hasChatGroups$: Computed<Promise<boolean>>;
-  hasQueuedUserMessages$: Computed<Promise<boolean>>;
-  queuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
-  emptyQueuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
-  lastAssistantCancelled$: Computed<Promise<boolean>>;
-  messageRunIndicatorState$: Computed<Promise<"running" | "queued" | null>>;
-  latestRunStatus$: Computed<Promise<string | null>>;
-  // The thread's active goal, folded from goal-state marker messages. Null when
-  // there is no active goal. Drives the goal row above the composer.
-  activeGoal$: Computed<Promise<ActiveGoalState | null>>;
-  allFinished$: Computed<Promise<boolean>>;
+  visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
+  messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;
+  hasMessages$: Computed<Promise<boolean>>;
+  hasQueuedMessages$: Computed<Promise<boolean>>;
+  queuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
+  emptyQueuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
+  thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
+  thinkingMessageId$: Computed<Promise<string | null>>;
+  thinkingText$: Computed<Promise<string | null>>;
+  recommendedFollowupSource$: Computed<
+    Promise<RecommendedFollowupSource | null>
+  >;
+  activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
@@ -122,11 +147,12 @@ export interface ChatThreadSignals {
   blockColors$: Computed<[string, string, string]>;
   thinkingPhrase$: Computed<string>;
   donePhrase$: Computed<Promise<string>>;
-  // -- Artifacts ------------------------------------------------------------
-  artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
-  reloadArtifacts$: Command<void, []>;
-  setArtifactsRealtimeRef$: Command<
+  displayedThinkingText$: Computed<Promise<string>>;
+  setThinkingIndicatorTextRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
   >;
+  // -- Artifacts ------------------------------------------------------------
+  artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
+  reloadArtifacts$: Command<void, []>;
 }

@@ -9,7 +9,13 @@ import { ApiError, accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
-import { onRef, resetSignal, settle } from "../../utils.ts";
+import {
+  bestEffort,
+  onRef,
+  resetSignal,
+  settle,
+  tapError,
+} from "../../utils.ts";
 import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
 
 type ClaudeCodeDeviceAuthDialogMode = "connect" | "reconnect";
@@ -184,16 +190,15 @@ function createClaudeCodeRunFlow$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       const requestId = createRequestId(ctx.scope);
       set(ctx.internalFlowState$, { status: "starting", requestId });
 
-      const started = await settle(
+      const started = await tapError(
         set(startClaudeCodeDeviceAuth$, ctx.scope, signal),
-        signal,
       );
       signal.throwIfAborted();
 
       if (!isCurrentStarting(get(ctx.internalFlowState$), requestId)) {
         return false;
       }
-      if (!started.ok) {
+      if (!started) {
         set(ctx.internalFlowState$, {
           status: "error",
           message: "Claude Code connection failed. Start again to retry.",
@@ -204,9 +209,9 @@ function createClaudeCodeRunFlow$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       set(ctx.internalFlowState$, {
         status: "pending",
         requestId,
-        sessionToken: started.value.sessionToken,
-        browserUrl: started.value.browserUrl,
-        expiresAtMs: now() + secondsToMilliseconds(started.value.expiresIn),
+        sessionToken: started.sessionToken,
+        browserUrl: started.browserUrl,
+        expiresAtMs: now() + secondsToMilliseconds(started.expiresIn),
         authorizationCode: "",
         approvalOpened: false,
         errorMessage: null,
@@ -348,7 +353,7 @@ function createClaudeCodeClose$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       return;
     }
 
-    await settle(
+    await bestEffort(
       set(cancelClaudeCodeDeviceAuth$, sessionToken, signal),
       signal,
     );

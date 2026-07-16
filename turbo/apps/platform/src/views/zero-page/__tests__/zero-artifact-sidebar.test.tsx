@@ -3,15 +3,18 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
+import { Browser } from "happy-dom";
 import JSZip from "jszip";
 import { HttpResponse } from "msw";
 
 import {
+  artifactsContract,
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadMessagesContract,
   chatThreadsContract,
   type ChatThreadArtifactFile,
+  type ImageArtifactEditSnapshotState,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -220,6 +223,57 @@ function presentationHtml(): string {
 </html>`;
 }
 
+function selectionOverlayPresentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Selection overlay</title>
+  </head>
+  <body>
+    <section data-vm0-slide data-slide-id="slide-intro">
+      <figure style="opacity: 0.15; filter: saturate(0.5); transform: rotate(-15deg)">
+        <svg viewBox="0 0 100 100" aria-label="Decoration">
+          <path d="M10 10h80v80H10z" />
+        </svg>
+      </figure>
+      <article style="border: 2px solid #ff7a59">
+        <h1>Header group</h1>
+      </article>
+    </section>
+  </body>
+</html>`;
+}
+
+function clampedPresentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Clamped presentation</title>
+  </head>
+  <body>
+    <section data-vm0-slide data-slide-id="slide-intro">
+      <h1
+        data-vm0-editable="text"
+        data-vm0-edit-id="title"
+        data-vm0-element-id="clamped-title"
+        data-vm0-offset-x="0.5"
+        data-vm0-offset-y="0"
+      >Clamped title</h1>
+      <p
+        data-vm0-element-id="authored-translate"
+        data-vm0-offset-x="0.2"
+        data-vm0-offset-y="0.1"
+        style="translate: 20px 10px"
+      >Authored translation</p>
+      <div
+        id="vm0-presentation-element-offset-runtime"
+        data-vm0-static
+      >Authored ID collision</div>
+    </section>
+  </body>
+</html>`;
+}
+
 function presentationHtmlWithDeckBackground(): string {
   return `<!doctype html>
 <html>
@@ -265,6 +319,52 @@ function presentationHtmlWithDeckBackground(): string {
         <h1>狗狗的世界</h1>
       </section>
     </div>
+  </body>
+</html>`;
+}
+
+function responsivePresentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Responsive layouts</title>
+    <style>
+      .slide {
+        display: none;
+      }
+      .slide.active[data-layout="flex"] {
+        display: flex;
+      }
+      .slide.active[data-layout="grid"] {
+        display: grid;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="slide active" data-layout="flex">
+      <div data-vm0-slide>
+        <div
+          data-vm0-element-id="flex-card"
+          data-vm0-offset-x="0.1"
+          data-vm0-offset-y="0.1"
+        >Flex card</div>
+      </div>
+    </section>
+    <section
+      class="slide"
+      data-layout="grid"
+      hidden
+      inert
+      aria-hidden="true"
+    >
+      <div data-vm0-slide>
+        <div
+          data-vm0-element-id="grid-card"
+          data-vm0-offset-x="0.25"
+          data-vm0-offset-y="0.25"
+        >Grid card</div>
+      </div>
+    </section>
   </body>
 </html>`;
 }
@@ -422,6 +522,102 @@ function completePresentationPptxExport(
       source: frame.contentWindow,
     }),
   );
+}
+
+async function executePresentationExportLayout(
+  frame: HTMLIFrameElement,
+): Promise<string> {
+  const exportDocument = new DOMParser().parseFromString(
+    frame.srcdoc,
+    "text/html",
+  );
+  const bootstrapScript = Array.from(exportDocument.scripts).at(-1);
+  if (!bootstrapScript) {
+    throw new Error("Presentation export bootstrap not found");
+  }
+
+  const converterBoundary = exportDocument.createElement("script");
+  converterBoundary.textContent = `
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    const rect = (left, top, width, height) => ({
+      bottom: top + height,
+      height,
+      left,
+      right: left + width,
+      top,
+      width,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    });
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute("data-vm0-slide")) {
+        return this.parentElement?.dataset.layout === "grid"
+          ? rect(0, 0, 800, 400)
+          : rect(0, 0, 1000, 500);
+      }
+      if (this.dataset.vm0ElementId === "flex-card") {
+        return rect(100, 100, 200, 100);
+      }
+      if (this.dataset.vm0ElementId === "grid-card") {
+        return rect(600, 250, 200, 150);
+      }
+      return originalRect.call(this);
+    };
+
+    window.domToPptx = {
+      exportToPptx: async (nodes) => {
+        const report = document.createElement("output");
+        report.id = "presentation-export-layout";
+        report.textContent = nodes.map((node) => {
+          const wrapper = node.parentElement;
+          if (!(wrapper instanceof HTMLElement)) {
+            return "missing-wrapper";
+          }
+          const moved = node.querySelector("[data-vm0-element-id]");
+          if (!(moved instanceof HTMLElement)) {
+            return "missing-moved-element";
+          }
+          return [
+            wrapper.dataset.layout,
+            window.getComputedStyle(wrapper).display,
+            wrapper.style.getPropertyValue("display") || "authored",
+            wrapper.classList.contains("active"),
+            wrapper.hasAttribute("hidden"),
+            wrapper.getAttribute("aria-hidden"),
+            moved.style.translate,
+            moved.hasAttribute("data-vm0-offset-runtime-applied"),
+          ].join(",");
+        }).join("|");
+        document.body.append(report);
+        return new Blob(["test-pptx"]);
+      },
+    };
+  `;
+  bootstrapScript.before(converterBoundary);
+
+  const browser = new Browser({
+    settings: {
+      disableJavaScriptFileLoading: true,
+      enableJavaScriptEvaluation: true,
+      handleDisabledFileLoadingAsSuccess: true,
+      suppressInsecureJavaScriptEnvironmentWarning: true,
+    },
+  });
+  const page = browser.newPage();
+  try {
+    page.content = `<!doctype html>\n${exportDocument.documentElement.outerHTML}`;
+    await page.waitUntilComplete();
+    const report = page.mainFrame.document.getElementById(
+      "presentation-export-layout",
+    );
+    if (!report) {
+      throw new Error("Presentation export converter did not run");
+    }
+    return report.textContent ?? "";
+  } finally {
+    await browser.close();
+  }
 }
 
 function setupPresentationArtifactThread(
@@ -692,7 +888,12 @@ function mockIntersectionObserver(): { triggerAll: () => void } {
 
 function mockElementBox(
   element: HTMLElement,
-  { height, width }: { height: number; width: number },
+  {
+    height,
+    left = 0,
+    top = 0,
+    width,
+  }: { height: number; left?: number; top?: number; width: number },
 ) {
   Object.defineProperties(element, {
     clientHeight: {
@@ -716,20 +917,209 @@ function mockElementBox(
     configurable: true,
     value: () => {
       return {
-        bottom: height,
+        bottom: top + height,
         height,
-        left: 0,
-        right: width,
+        left,
+        right: left + width,
         toJSON: () => {
           return {};
         },
-        top: 0,
+        top,
         width,
-        x: 0,
-        y: 0,
+        x: left,
+        y: top,
       };
     },
   });
+}
+
+function installPresentationPreviewDocumentFromHtml(
+  frame: HTMLIFrameElement,
+  html: string,
+): Document {
+  const generatedDocument = new DOMParser().parseFromString(html, "text/html");
+  const previewDocument = document.implementation.createHTMLDocument(
+    "presentation preview",
+  );
+  Object.defineProperty(previewDocument, "defaultView", {
+    configurable: true,
+    value: window,
+  });
+  Object.defineProperty(frame, "contentDocument", {
+    configurable: true,
+    value: previewDocument,
+  });
+  previewDocument.head.replaceChildren(
+    ...Array.from(generatedDocument.head.childNodes, (node) => {
+      return previewDocument.importNode(node, true);
+    }),
+  );
+  previewDocument.body.replaceChildren(
+    ...Array.from(generatedDocument.body.childNodes, (node) => {
+      return previewDocument.importNode(node, true);
+    }),
+  );
+  return previewDocument;
+}
+
+function generatedPresentationPreviewHtml(
+  frame: HTMLIFrameElement,
+  blobForUrl: (url: string) => Blob | null,
+): Promise<string> {
+  const previewBlob = blobForUrl(frame.src);
+  if (!previewBlob) {
+    throw new Error("Generated presentation preview blob not found");
+  }
+  return previewBlob.text();
+}
+
+async function installGeneratedPresentationPreviewDocument(
+  frame: HTMLIFrameElement,
+  blobForUrl: (url: string) => Blob | null,
+): Promise<Document> {
+  return installPresentationPreviewDocumentFromHtml(
+    frame,
+    await generatedPresentationPreviewHtml(frame, blobForUrl),
+  );
+}
+
+interface ExecutedOffsetRuntimePreview {
+  readonly authoredRuntimeApplied: boolean;
+  readonly authoredTranslate: string;
+  readonly document: Document;
+  readonly initialTranslate: string;
+  readonly resizedTranslate: string;
+}
+
+async function installExecutedOffsetRuntimePreview(
+  frame: HTMLIFrameElement,
+  blobForUrl: (url: string) => Blob | null,
+): Promise<ExecutedOffsetRuntimePreview> {
+  const generatedDocument = new DOMParser().parseFromString(
+    await generatedPresentationPreviewHtml(frame, blobForUrl),
+    "text/html",
+  );
+  const runtimeScript = Array.from(generatedDocument.scripts).at(-1);
+  if (!runtimeScript) {
+    throw new Error("Generated presentation offset runtime not found");
+  }
+  const geometryBoundary = generatedDocument.createElement("script");
+  geometryBoundary.textContent = `
+    window.__vm0TestLayoutWidth = 1000;
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    const originalComputedStyle = window.getComputedStyle.bind(window);
+    const rect = (left, top, width, height) => ({
+      bottom: top + height,
+      height,
+      left,
+      right: left + width,
+      top,
+      width,
+      x: left,
+      y: top,
+      toJSON: () => ({}),
+    });
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this.matches('[data-slide-id="slide-intro"]')) {
+        return rect(0, 0, window.__vm0TestLayoutWidth, 600);
+      }
+      if (this.matches('[data-vm0-element-id="clamped-title"]')) {
+        return rect(800, 100, 200, 80);
+      }
+      if (this.matches('[data-vm0-element-id="authored-translate"]')) {
+        return rect(100, 240, 200, 60);
+      }
+      return originalRect.call(this);
+    };
+    window.getComputedStyle = function (element, pseudoElement) {
+      const computed = originalComputedStyle(element, pseudoElement);
+      if (element.matches('[data-vm0-element-id="authored-translate"]')) {
+        return new Proxy(computed, {
+          get(target, property) {
+            if (property === "translate") {
+              return element.style.getPropertyValue("translate");
+            }
+            const value = Reflect.get(target, property, target);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        });
+      }
+      return computed;
+    };
+  `;
+  runtimeScript.before(geometryBoundary);
+
+  const browser = new Browser({
+    settings: {
+      enableJavaScriptEvaluation: true,
+      suppressInsecureJavaScriptEnvironmentWarning: true,
+    },
+  });
+  const page = browser.newPage();
+  try {
+    page.content = `<!doctype html>\n${generatedDocument.documentElement.outerHTML}`;
+    await page.waitUntilComplete();
+    const title = page.mainFrame.document.querySelector("h1");
+    const authored = page.mainFrame.document.querySelector("p");
+    if (!title || !authored) {
+      throw new Error("Executed presentation offset objects not found");
+    }
+    page.evaluate(`
+      (() => {
+        const title = document.querySelector('[data-vm0-element-id="clamped-title"]');
+        const authored = document.querySelector('[data-vm0-element-id="authored-translate"]');
+        title.setAttribute("data-vm0-test-translate", title.style.translate);
+        authored.setAttribute(
+          "data-vm0-test-translate",
+          authored.style.getPropertyValue("translate"),
+        );
+      })();
+    `);
+    const initialTranslate = title.dataset.vm0TestTranslate ?? "";
+    const authoredTranslate = authored.dataset.vm0TestTranslate ?? "";
+    const authoredRuntimeApplied = Object.hasOwn(
+      authored.dataset,
+      "vm0OffsetRuntimeApplied",
+    );
+
+    page.evaluate(`
+      window.__vm0TestLayoutWidth = 2000;
+      window.dispatchEvent(new Event("resize"));
+    `);
+    await page.waitUntilComplete();
+    page.evaluate(`
+      (() => {
+        const title = document.querySelector('[data-vm0-element-id="clamped-title"]');
+        title.setAttribute("data-vm0-test-translate", title.style.translate);
+      })();
+    `);
+    const resizedTranslate = title.dataset.vm0TestTranslate ?? "";
+
+    page.evaluate(`
+      window.__vm0TestLayoutWidth = 1000;
+      window.dispatchEvent(new Event("resize"));
+    `);
+    await page.waitUntilComplete();
+    page.evaluate(`
+      (() => {
+        const title = document.querySelector('[data-vm0-element-id="clamped-title"]');
+        const authored = document.querySelector('[data-vm0-element-id="authored-translate"]');
+        title.style.setProperty("translate", title.style.translate);
+        title.removeAttribute("data-vm0-test-translate");
+        authored.removeAttribute("data-vm0-test-translate");
+      })();
+    `);
+
+    return {
+      authoredRuntimeApplied,
+      authoredTranslate,
+      document: installPresentationPreviewDocumentFromHtml(frame, page.content),
+      initialTranslate,
+      resizedTranslate,
+    };
+  } finally {
+    await browser.close();
+  }
 }
 
 describe("zero artifact sidebar", () => {
@@ -1517,9 +1907,6 @@ describe("zero artifact sidebar", () => {
         },
       ],
       content: "Image artifacts are ready.",
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
     });
 
@@ -1570,6 +1957,193 @@ describe("zero artifact sidebar", () => {
         "alt",
         "first.png",
       );
+    });
+  });
+
+  it("persists and restores image edit canvases during arrow-key navigation", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/image-edit-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/image-edit-navigation/second.png";
+    const snapshots = new Map<string, ImageArtifactEditSnapshotState>([
+      [
+        firstImageUrl,
+        {
+          items: [{ url: firstImageUrl, x: 250, y: 180, zIndex: 1 }],
+          version: 1,
+        },
+      ],
+      [
+        secondImageUrl,
+        {
+          items: [{ url: secondImageUrl, x: 250, y: 180, zIndex: 1 }],
+          version: 1,
+        },
+      ],
+    ]);
+    const firstImageSnapshotSaveStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const firstImageSnapshotSaveReady = createDeferredPromise<void>(
+      context.signal,
+    );
+    let firstImageSnapshotLoads = 0;
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    context.mocks.api(
+      artifactsContract.getImageEditSnapshot,
+      ({ query, respond }) => {
+        if (query.url === firstImageUrl) {
+          firstImageSnapshotLoads += 1;
+        }
+        const snapshot = snapshots.get(query.url) ?? null;
+        return respond(200, {
+          snapshot: snapshot
+            ? {
+                artifactUrl: query.url,
+                snapshot,
+                updatedAt: "2026-03-10T00:00:03.000Z",
+              }
+            : null,
+        });
+      },
+    );
+    context.mocks.api(
+      artifactsContract.upsertImageEditSnapshot,
+      async ({ body, respond }) => {
+        if (body.url === firstImageUrl) {
+          firstImageSnapshotSaveStarted.resolve();
+          await firstImageSnapshotSaveReady.promise;
+        }
+        snapshots.set(body.url, body.snapshot);
+        savedSnapshots.push(body);
+        return respond(200, {
+          artifactUrl: body.url,
+          snapshot: body.snapshot,
+          updatedAt: "2026-03-10T00:00:03.000Z",
+        });
+      },
+    );
+    context.mocks.api(
+      artifactsContract.deleteImageEditSnapshot,
+      ({ query, respond }) => {
+        snapshots.delete(query.url);
+        return respond(204);
+      },
+    );
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(firstImageUrl, {
+          id: "artifact-edit-navigation-first",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+        artifactFile(secondImageUrl, {
+          id: "artifact-edit-navigation-second",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+      ],
+      attachFiles: [
+        {
+          id: "artifact-edit-navigation-first",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+          url: firstImageUrl,
+        },
+        {
+          id: "artifact-edit-navigation-second",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 128,
+          url: secondImageUrl,
+        },
+      ],
+      content: "Image artifacts are ready.",
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "src",
+        firstImageUrl,
+      );
+    });
+    await user.click(screen.getByTestId("artifact-sidebar-edit-image"));
+    await screen.findByTestId("artifact-sidebar-image-edit-canvas");
+
+    const firstImage = screen.getByTestId("artifact-sidebar-body-image");
+    await waitFor(() => {
+      expect(firstImage).toHaveStyle({ left: "250px", top: "180px" });
+    });
+    fireEvent.pointerDown(firstImage, {
+      button: 0,
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 140 });
+    fireEvent.pointerUp(window);
+    expect(firstImage).toHaveStyle({ left: "280px", top: "220px" });
+
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "src",
+        secondImageUrl,
+      );
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveStyle({
+        left: "250px",
+        top: "180px",
+      });
+    });
+    await firstImageSnapshotSaveStarted.promise;
+
+    const secondImage = screen.getByTestId("artifact-sidebar-body-image");
+    fireEvent.pointerDown(secondImage, {
+      button: 0,
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 130 });
+    fireEvent.pointerUp(window);
+    expect(secondImage).toHaveStyle({ left: "270px", top: "210px" });
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(firstImageSnapshotLoads).toBeGreaterThanOrEqual(2);
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "src",
+        firstImageUrl,
+      );
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveStyle({
+        left: "280px",
+        top: "220px",
+      });
+    });
+
+    firstImageSnapshotSaveReady.resolve();
+    await waitFor(() => {
+      expect(savedSnapshots).toContainEqual({
+        snapshot: {
+          items: [{ url: firstImageUrl, x: 280, y: 220, zIndex: 1 }],
+          version: 1,
+        },
+        url: firstImageUrl,
+      });
+      expect(savedSnapshots).toContainEqual({
+        snapshot: {
+          items: [{ url: secondImageUrl, x: 270, y: 210, zIndex: 1 }],
+          version: 1,
+        },
+        url: secondImageUrl,
+      });
     });
   });
 
@@ -1657,9 +2231,6 @@ describe("zero artifact sidebar", () => {
         },
       ],
       content: "Image artifacts are ready.",
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
     });
 
@@ -1727,9 +2298,6 @@ describe("zero artifact sidebar", () => {
         },
       ],
       content: "Image artifacts are ready.",
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
     });
 
@@ -1885,7 +2453,11 @@ describe("zero artifact sidebar", () => {
       zeroConnectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
         expect(params.type).toBe("google-drive");
-        expect(body.authMethod).toBe(authMethod);
+        expect(body).toStrictEqual({
+          authMethod,
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
         return respond(200, { authorizationUrl });
       },
     );
@@ -2061,6 +2633,9 @@ describe("zero artifact sidebar", () => {
     let enabledTypes: string[] = [];
     let agentAuthorized = false;
     let artifactSynced = false;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes });
+    });
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {
@@ -2334,6 +2909,11 @@ describe("zero artifact sidebar", () => {
       });
     });
     let agentAuthorized = false;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: agentAuthorized ? ["google-drive"] : [],
+      });
+    });
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {
@@ -2433,6 +3013,46 @@ describe("zero artifact sidebar", () => {
 
     await waitFor(() => {
       expect(downloads).toContain("dog-world.pptx");
+      expect(
+        document.querySelector('iframe[title="Presentation PPTX export"]'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("preserves responsive flex and grid layouts for PPTX export", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/responsive-layouts.html";
+    const downloads = captureDownloads(context.signal);
+    setupPresentationArtifactThread(
+      presentationUrl,
+      responsivePresentationHtml(),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Download (.pptx)")).toBeInTheDocument();
+    });
+    click(menuItemByText("Download (.pptx)"));
+
+    const exportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+
+    await expect(executePresentationExportLayout(exportFrame)).resolves.toBe(
+      "flex,flex,authored,true,false,false,100px 50px,true|grid,grid,authored,true,false,false,0px 0px,true",
+    );
+
+    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+    await waitFor(() => {
+      expect(downloads).toContain("responsive-layouts.pptx");
       expect(
         document.querySelector('iframe[title="Presentation PPTX export"]'),
       ).not.toBeInTheDocument();
@@ -2570,6 +3190,147 @@ ${openFencedHostedSiteUrl}`,
     });
   });
 
+  it("resolves relative presentation assets from the hosted deck while editing", async () => {
+    const thumbnailObserver = mockIntersectionObserver();
+    const presentationUrl = "https://relative-assets.sites.vm7.io/index.html";
+    const expectedImageUrl =
+      "https://relative-assets.sites.vm7.io/assets/user-upload.png";
+    const browser = context.mocks.browser.blobDownload();
+    const html = `<!doctype html>
+<html>
+  <head><title>Relative assets</title></head>
+  <body>
+    <section data-vm0-slide data-slide-id="slide-intro">
+      <h1 data-vm0-editable="text" data-vm0-edit-id="intro">Intro</h1>
+    </section>
+    <section data-vm0-slide data-slide-id="slide-workflows">
+      <h2 data-vm0-editable="text" data-vm0-edit-id="workflows">Workflows</h2>
+      <img src="./assets/user-upload.png" alt="User upload" />
+    </section>
+  </body>
+</html>`;
+    setupPresentationArtifactThread(presentationUrl, html);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open slide 2")).toBeInTheDocument();
+    });
+    thumbnailObserver.triggerAll();
+
+    const thumbnailFrame = document.querySelector(
+      'iframe[data-slide-thumbnail-frame="slide-workflows"]',
+    );
+    if (!(thumbnailFrame instanceof HTMLIFrameElement)) {
+      throw new Error("Presentation thumbnail frame not found");
+    }
+    const resolvedImageUrl = async (frame: HTMLIFrameElement) => {
+      const previewHtml = await generatedPresentationPreviewHtml(
+        frame,
+        browser.blobForUrl,
+      );
+      const previewDocument = new DOMParser().parseFromString(
+        previewHtml,
+        "text/html",
+      );
+      const baseHref = previewDocument
+        .querySelector("base[href]")
+        ?.getAttribute("href");
+      const imageSrc = previewDocument
+        .querySelector('img[alt="User upload"]')
+        ?.getAttribute("src");
+      if (!baseHref || !imageSrc) {
+        throw new Error("Relative presentation asset base not found");
+      }
+      return new URL(imageSrc, baseHref).href;
+    };
+    await expect(resolvedImageUrl(thumbnailFrame)).resolves.toBe(
+      expectedImageUrl,
+    );
+
+    click(screen.getByLabelText("Open slide 2"));
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    await expect(resolvedImageUrl(previewFrame)).resolves.toBe(
+      expectedImageUrl,
+    );
+
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    fireEvent.load(previewFrame);
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="workflows"]',
+    );
+    if (!(title instanceof HTMLElement)) {
+      throw new Error("Presentation workflow title not found");
+    }
+    const initialThumbnailUrl = thumbnailFrame.src;
+    title.textContent = "Reusable workflows";
+    fireEvent.input(title);
+    fireEvent.blur(title);
+
+    await waitFor(() => {
+      expect(thumbnailFrame.src).not.toBe(initialThumbnailUrl);
+    });
+    await expect(resolvedImageUrl(thumbnailFrame)).resolves.toBe(
+      expectedImageUrl,
+    );
+  });
+
+  it("preserves the authored presentation background while editing", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/authored-background.html";
+    const browser = context.mocks.browser.blobDownload();
+    const html = `<!doctype html>
+<html>
+  <head>
+    <style>
+      :root { --paper: #f6f5f1; }
+      html, body { margin: 0; min-height: 100%; background: var(--paper); }
+      .slide { min-height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <section class="slide" data-vm0-slide data-slide-id="slide-cover">
+      <h1>Cover</h1>
+    </section>
+  </body>
+</html>`;
+    setupPresentationArtifactThread(presentationUrl, html);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+
+    expect(
+      previewDocument.defaultView?.getComputedStyle(previewDocument.body)
+        .backgroundColor,
+    ).toBe("#f6f5f1");
+  });
+
   it("downloads an asset-backed presentation without speaker notes", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/asset-backed-deck.html";
     const assetUrl = "https://assets.test/roadmap-cover.png";
@@ -2608,6 +3369,720 @@ ${openFencedHostedSiteUrl}`,
         document.querySelector('iframe[title="Presentation PPTX export"]'),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("keeps legacy text editing and does not write movement geometry when dragging is disabled", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/non-draggable-quarterly-roadmap.html";
+    const browser = context.mocks.browser.blobDownload();
+    let redeployedHtml: string | null = null;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ body, respond }) => {
+        redeployedHtml = body.html;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "non-draggable-quarterly-roadmap",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="title"]',
+    );
+    if (!(title instanceof HTMLElement)) {
+      throw new Error("Presentation preview title not found");
+    }
+    expect(
+      previewDocument.querySelector("[data-vm0-editor-move-id]"),
+    ).toBeNull();
+    fireEvent.load(previewFrame);
+
+    expect(title.getAttribute("contenteditable")).toBe("true");
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 6,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 6,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 6,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("");
+    expect(title.dataset.vm0EditorSelected).toBeUndefined();
+    expect(
+      previewDocument.querySelector("[data-vm0-editor-selection-overlay]"),
+    ).toBeNull();
+
+    title.textContent = "Updated without movement";
+    fireEvent.input(title);
+    fireEvent.blur(title);
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+    const redeployedDocument = new DOMParser().parseFromString(
+      redeployedHtml ?? "",
+      "text/html",
+    );
+    expect(
+      redeployedDocument.querySelector('[data-vm0-edit-id="title"]')
+        ?.textContent,
+    ).toBe("Updated without movement");
+    expect(
+      redeployedDocument.querySelector("[data-vm0-element-id]"),
+    ).toBeNull();
+    expect(redeployedDocument.querySelector("[data-vm0-offset-x]")).toBeNull();
+    expect(redeployedDocument.querySelector("[data-vm0-offset-y]")).toBeNull();
+    expect(
+      redeployedDocument.querySelector(
+        'script[id="vm0-presentation-element-offset-runtime"]',
+      ),
+    ).toBeNull();
+    expect(
+      JSON.parse(
+        redeployedDocument.getElementById("vm0-deck-metadata")?.textContent ??
+          "{}",
+      ),
+    ).toMatchObject({ editProtocolVersion: 1 });
+    toast.dismiss();
+  });
+
+  it("selects, text-edits, drags, and redeploys presentation objects", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/draggable-quarterly-roadmap.html";
+    const html = presentationHtml();
+    const browser = context.mocks.browser.blobDownload();
+    let redeployedHtml: string | null = null;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ body, respond }) => {
+        redeployedHtml = body.html;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "draggable-quarterly-roadmap",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, html, {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const slide = previewDocument.querySelector(
+      '[data-vm0-editor-stage] > [data-slide-id="slide-intro"]',
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="title"]',
+    );
+    const summary = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="summary"]',
+    );
+    if (
+      !(slide instanceof HTMLElement) ||
+      !(title instanceof HTMLElement) ||
+      !(summary instanceof HTMLElement)
+    ) {
+      throw new Error("Presentation preview objects not found");
+    }
+    mockElementBox(slide, { height: 600, width: 1000 });
+    mockElementBox(title, {
+      height: 80,
+      left: 100,
+      top: 100,
+      width: 200,
+    });
+    mockElementBox(summary, {
+      height: 60,
+      left: 100,
+      top: 220,
+      width: 400,
+    });
+    fireEvent.load(previewFrame);
+
+    expect(title.getAttribute("contenteditable")).toBe("false");
+    fireEvent.click(title);
+    expect(title.dataset.vm0EditorSelected).toBe("true");
+    expect(title.getAttribute("contenteditable")).toBe("false");
+
+    fireEvent.doubleClick(title);
+    expect(title.getAttribute("contenteditable")).toBe("true");
+    title.textContent = "Updated quarterly roadmap";
+    fireEvent.input(title);
+    fireEvent.doubleClick(summary);
+    expect(title.getAttribute("contenteditable")).toBe("false");
+    expect(summary.getAttribute("contenteditable")).toBe("true");
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 13,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 13,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 13,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("");
+
+    fireEvent.blur(summary);
+    expect(summary.getAttribute("contenteditable")).toBe("false");
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 7,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 7,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 7,
+    });
+
+    expect(title.style.getPropertyValue("translate")).toBe("100px 60px");
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+    const redeployedDocument = new DOMParser().parseFromString(
+      redeployedHtml ?? "",
+      "text/html",
+    );
+    const movedTitle = redeployedDocument.querySelector<HTMLElement>(
+      '[data-slide-id="slide-intro"] > h1',
+    );
+    expect(movedTitle?.textContent).toBe("Updated quarterly roadmap");
+    expect(movedTitle?.dataset.vm0ElementId).toMatch(/^vm0-generated:/u);
+    expect(Number(movedTitle?.dataset.vm0OffsetX)).toBeCloseTo(0.1);
+    expect(Number(movedTitle?.dataset.vm0OffsetY)).toBeCloseTo(0.1);
+    expect(
+      redeployedDocument.querySelectorAll(
+        'script[id="vm0-presentation-element-offset-runtime"]',
+      ),
+    ).toHaveLength(1);
+    expect(
+      JSON.parse(
+        redeployedDocument.getElementById("vm0-deck-metadata")?.textContent ??
+          "{}",
+      ),
+    ).toMatchObject({ editProtocolVersion: 2 });
+    toast.dismiss();
+  });
+
+  it("applies responsive offsets in the generated presentation preview", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/clamped-presentation-preview.html";
+    const browser = context.mocks.browser.blobDownload();
+    setupPresentationArtifactThread(presentationUrl, clampedPresentationHtml());
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const executedPreview = await installExecutedOffsetRuntimePreview(
+      previewFrame,
+      browser.blobForUrl,
+    );
+
+    expect(executedPreview.initialTranslate).toBe("0px 0px");
+    expect(executedPreview.resizedTranslate).toBe("1000px 0px");
+    expect(executedPreview.authoredTranslate).toBe("20px 10px");
+    expect(executedPreview.authoredRuntimeApplied).toBeFalsy();
+    expect(
+      executedPreview.document.querySelector(
+        "div#vm0-presentation-element-offset-runtime",
+      )?.textContent,
+    ).toContain("Authored ID collision");
+    expect(
+      executedPreview.document.querySelectorAll(
+        "script#vm0-presentation-element-offset-runtime",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("continues dragging from a runtime-clamped visual position", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/clamped-presentation-drag.html";
+    const browser = context.mocks.browser.blobDownload();
+    let redeployedHtml: string | null = null;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ body, respond }) => {
+        redeployedHtml = body.html;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "clamped-presentation-drag",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(
+      presentationUrl,
+      clampedPresentationHtml(),
+      {
+        featureSwitches: {
+          [FeatureSwitchKey.PresentationElementDragging]: true,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const executedPreview = await installExecutedOffsetRuntimePreview(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    expect(executedPreview.initialTranslate).toBe("0px 0px");
+    expect(executedPreview.resizedTranslate).toBe("1000px 0px");
+    expect(executedPreview.authoredTranslate).toBe("20px 10px");
+    expect(executedPreview.authoredRuntimeApplied).toBeFalsy();
+    const previewDocument = executedPreview.document;
+    const slide = previewDocument.querySelector(
+      '[data-vm0-editor-stage] > [data-slide-id="slide-intro"]',
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-element-id="clamped-title"]',
+    );
+    if (!(slide instanceof HTMLElement) || !(title instanceof HTMLElement)) {
+      throw new Error("Clamped presentation preview objects not found");
+    }
+    mockElementBox(slide, { height: 600, width: 1000 });
+    mockElementBox(title, {
+      height: 80,
+      left: 800,
+      top: 100,
+      width: 200,
+    });
+    fireEvent.load(previewFrame);
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 900,
+      clientY: 140,
+      pointerId: 11,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 800,
+      clientY: 140,
+      pointerId: 11,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("-100px 0px");
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 800,
+      clientY: 140,
+      pointerId: 11,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+
+    const redeployedDocument = new DOMParser().parseFromString(
+      redeployedHtml ?? "",
+      "text/html",
+    );
+    const movedTitle = redeployedDocument.querySelector<HTMLElement>(
+      '[data-vm0-element-id="clamped-title"]',
+    );
+    expect(Number(movedTitle?.dataset.vm0OffsetX)).toBeCloseTo(-0.1);
+    expect(Number(movedTitle?.dataset.vm0OffsetY)).toBe(0);
+    expect(
+      redeployedDocument.querySelector(
+        "div#vm0-presentation-element-offset-runtime",
+      )?.textContent,
+    ).toContain("Authored ID collision");
+    expect(
+      redeployedDocument.querySelectorAll(
+        "script#vm0-presentation-element-offset-runtime",
+      ),
+    ).toHaveLength(1);
+    toast.dismiss();
+  });
+
+  it("renders consistent selection bounds outside styled presentation objects", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/selection-overlay-presentation.html";
+    const html = selectionOverlayPresentationHtml();
+    const browser = context.mocks.browser.blobDownload();
+    setupPresentationArtifactThread(presentationUrl, html, {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const slide = previewDocument.querySelector(
+      '[data-vm0-editor-stage] > [data-slide-id="slide-intro"]',
+    );
+    const decoration = previewDocument.querySelector<HTMLElement>("figure");
+    const group = previewDocument.querySelector<HTMLElement>("article");
+    const decorationContent = decoration?.querySelector("path");
+    const groupContent = group?.querySelector("h1");
+    if (
+      !(slide instanceof HTMLElement) ||
+      !decoration ||
+      !group ||
+      !decorationContent ||
+      !groupContent
+    ) {
+      throw new Error("Presentation selection objects not found");
+    }
+    mockElementBox(slide, { height: 1080, width: 1920 });
+    mockElementBox(decoration, {
+      height: 280,
+      left: 80,
+      top: 60,
+      width: 300,
+    });
+    mockElementBox(group, {
+      height: 240,
+      left: 100,
+      top: 100,
+      width: 1600,
+    });
+    fireEvent.load(previewFrame);
+
+    fireEvent.click(decorationContent);
+    const overlay = previewDocument.querySelector<HTMLElement>(
+      "[data-vm0-editor-selection-overlay]",
+    );
+    if (!overlay) {
+      throw new Error("Presentation selection overlay not found");
+    }
+    expect(decoration.dataset.vm0EditorSelected).toBe("true");
+    expect(overlay.parentElement).toBe(previewDocument.body);
+    expect(overlay.hidden).toBeFalsy();
+    expect(overlay.style.getPropertyValue("left")).toBe("76px");
+    expect(overlay.style.getPropertyValue("top")).toBe("56px");
+    expect(overlay.style.getPropertyValue("width")).toBe("308px");
+    expect(overlay.style.getPropertyValue("height")).toBe("288px");
+    expect(decoration.style.opacity).toBe("0.15");
+    expect(decoration.style.filter).toBe("saturate(0.5)");
+    expect(decoration.style.transform).toBe("rotate(-15deg)");
+
+    fireEvent.pointerDown(decorationContent, {
+      button: 0,
+      buttons: 1,
+      clientX: 100,
+      clientY: 100,
+      pointerId: 12,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 120,
+      clientY: 110,
+      pointerId: 12,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 120,
+      clientY: 110,
+      pointerId: 12,
+    });
+    expect(decoration.style.getPropertyValue("translate")).toBe("20px 10px");
+
+    fireEvent.click(groupContent);
+    expect(decoration.dataset.vm0EditorSelected).toBeUndefined();
+    expect(group.dataset.vm0EditorSelected).toBe("true");
+    expect(
+      previewDocument.querySelector("[data-vm0-editor-selection-overlay]"),
+    ).toBe(overlay);
+    expect(overlay.style.getPropertyValue("left")).toBe("96px");
+    expect(overlay.style.getPropertyValue("top")).toBe("96px");
+    expect(overlay.style.getPropertyValue("width")).toBe("1608px");
+    expect(overlay.style.getPropertyValue("height")).toBe("248px");
+    expect(group.style.border).toBe("2px solid #ff7a59");
+    expect(
+      previewDocument.querySelectorAll("[data-vm0-editor-selection-overlay]"),
+    ).toHaveLength(1);
+
+    mockElementBox(group, {
+      height: 300,
+      left: 140,
+      top: 180,
+      width: 1500,
+    });
+    group.classList.add("reflowed");
+    await waitFor(() => {
+      expect(overlay.style.getPropertyValue("left")).toBe("136px");
+      expect(overlay.style.getPropertyValue("top")).toBe("176px");
+      expect(overlay.style.getPropertyValue("width")).toBe("1508px");
+      expect(overlay.style.getPropertyValue("height")).toBe("308px");
+    });
+
+    mockElementBox(group, {
+      height: 280,
+      left: 120,
+      top: 160,
+      width: 1520,
+    });
+    fireEvent.resize(window);
+    await waitFor(() => {
+      expect(overlay.style.getPropertyValue("left")).toBe("116px");
+      expect(overlay.style.getPropertyValue("top")).toBe("156px");
+      expect(overlay.style.getPropertyValue("width")).toBe("1528px");
+      expect(overlay.style.getPropertyValue("height")).toBe("288px");
+    });
+
+    fireEvent.click(slide);
+    expect(group.dataset.vm0EditorSelected).toBeUndefined();
+    expect(overlay.hidden).toBeTruthy();
+  });
+
+  it("does not dirty presentation geometry for no-op or cancelled drags", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/cancelled-presentation-drag.html";
+    const html = presentationHtml();
+    const browser = context.mocks.browser.blobDownload();
+    let redeployCalled = false;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ respond }) => {
+        redeployCalled = true;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "cancelled-presentation-drag",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, html, {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const slide = previewDocument.querySelector(
+      '[data-vm0-editor-stage] > [data-slide-id="slide-intro"]',
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="title"]',
+    );
+    if (!(slide instanceof HTMLElement) || !(title instanceof HTMLElement)) {
+      throw new Error("Presentation preview objects not found");
+    }
+    mockElementBox(slide, { height: 600, width: 1000 });
+    mockElementBox(title, {
+      height: 80,
+      left: 100,
+      top: 100,
+      width: 200,
+    });
+    fireEvent.load(previewFrame);
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 9,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 9,
+    });
+    expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 10,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 10,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("100px 60px");
+    fireEvent.pointerCancel(previewDocument, {
+      pointerId: 10,
+    });
+
+    expect(title.style.getPropertyValue("translate")).toBe("");
+    expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+    });
+    expect(redeployCalled).toBeFalsy();
   });
 
   it("edits a fallback presentation deck without embedded metadata", async () => {
@@ -2667,6 +4142,17 @@ ${openFencedHostedSiteUrl}`,
     click(screen.getByLabelText("Close presentation editor"));
 
     await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(redeployedHtml).toBeNull();
+
+    click(screen.getByText("Save"));
+
+    await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
       expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
     });
@@ -2682,10 +4168,81 @@ ${openFencedHostedSiteUrl}`,
     });
   });
 
+  it("exits the presentation editor without publishing draft changes", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/exit-without-saving.html";
+    let redeployCount = 0;
+
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ respond }) => {
+        redeployCount += 1;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "exit-without-saving",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
+        "Open with launch metrics.",
+      );
+    });
+    await fill(
+      screen.getByLabelText("Speaker notes"),
+      "Discard this local draft.",
+    );
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(redeployCount).toBe(0);
+
+    click(screen.getByText("Discard"));
+    await waitFor(() => {
+      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+    });
+    expect(redeployCount).toBe(0);
+
+    click(screen.getByLabelText("Edit presentation"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
+        "Open with launch metrics.",
+      );
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("Do you want to save your changes?", {
+        selector: "h2",
+      }),
+    ).not.toBeInTheDocument();
+    expect(redeployCount).toBe(0);
+  });
+
   it("edits and downloads a presentation artifact from the editor", async () => {
     const thumbnailObserver = mockIntersectionObserver();
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     const downloads = captureDownloads(context.signal);
+    const speakerNotesResponse = Promise.withResolvers<void>();
     let generatedSlides: { slideId: string; speakerNotes: string }[] = [
       {
         slideId: "slide-plan",
@@ -2706,7 +4263,8 @@ ${openFencedHostedSiteUrl}`,
     );
     context.mocks.api(
       zeroHostContract.generatePresentationSpeakerNotes,
-      ({ respond }) => {
+      async ({ respond }) => {
+        await speakerNotesResponse.promise;
         return respond(200, {
           kind: "presentation-speaker-notes-patch",
           version: 1,
@@ -2792,7 +4350,16 @@ ${openFencedHostedSiteUrl}`,
     });
 
     await fill(screen.getByLabelText("Speaker notes"), " ");
-    click(screen.getByLabelText("Generate PPT script"));
+    click(screen.getByLabelText("Generate speaker notes"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Generating speaker notes")).toHaveAttribute(
+        "data-generating",
+        "true",
+      );
+      expect(screen.getByText("Generating")).toBeInTheDocument();
+    });
+    speakerNotesResponse.resolve();
 
     await waitFor(() => {
       expect(
@@ -2809,7 +4376,7 @@ ${openFencedHostedSiteUrl}`,
       ).not.toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Generate PPT script"));
+    click(screen.getByLabelText("Generate speaker notes"));
 
     await waitFor(() => {
       expect(
@@ -2830,7 +4397,7 @@ ${openFencedHostedSiteUrl}`,
       },
     ];
     await fill(screen.getByLabelText("Speaker notes"), " ");
-    click(screen.getByLabelText("Generate PPT script"));
+    click(screen.getByLabelText("Generate speaker notes"));
 
     await waitFor(() => {
       expect(
@@ -2923,6 +4490,15 @@ ${openFencedHostedSiteUrl}`,
     click(screen.getByLabelText("Close presentation editor"));
 
     await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+
+    await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
       expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
     });
@@ -2931,6 +4507,75 @@ ${openFencedHostedSiteUrl}`,
       expect(
         screen.queryByText("Presentation updated"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("refreshes artifact metadata while another artifact preview is open", async () => {
+    const user = userEvent.setup({ delay: null });
+    const existingUrl =
+      "https://cdn.vm7.io/artifacts/test/realtime-preview/existing-notes.md";
+    const presentationUrl =
+      "https://cdn.vm7.io/artifacts/test/realtime-preview/later-presentation.html";
+    const existingArtifact = artifactFile(existingUrl, {
+      id: "artifact-existing-notes",
+      filename: "existing-notes.md",
+    });
+    const laterPresentation = artifactFile(presentationUrl, {
+      id: "artifact-later-presentation",
+      filename: "later-presentation.html",
+      contentType: "text/html",
+      artifactKind: "presentation-html",
+    });
+    let artifactRuns = [
+      { runId: "run-existing-artifact", files: [existingArtifact] },
+    ];
+    context.mocks.http.get(existingUrl, () => {
+      return new Response("# Existing notes\n\nThe first artifact is ready.", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(presentationUrl, () => {
+      return new Response(presentationHtml(), {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: artifactRuns });
+    });
+    setupChatThread({
+      content: `[Existing notes](${existingUrl})
+
+[Later presentation](${presentationUrl})`,
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    await waitFor(() => {
+      expect(screen.getByText("existing-notes.md")).toBeInTheDocument();
+    });
+
+    const topic = `chatThreadArtifactsChanged:${THREAD_ID}`;
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    await openArtifactFromInbox("existing-notes.md");
+    await waitFor(() => {
+      expect(
+        screen.getByText("The first artifact is ready."),
+      ).toBeInTheDocument();
+    });
+
+    artifactRuns = [
+      ...artifactRuns,
+      { runId: "run-later-artifact", files: [laterPresentation] },
+    ];
+    context.mocks.ably.trigger(topic);
+
+    await user.click(
+      screen.getByLabelText("Open html preview for Later presentation"),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
     });
   });
 

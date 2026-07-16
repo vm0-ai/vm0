@@ -96,11 +96,11 @@ test.describe("codex-oauth paste flow", () => {
     page,
     request,
   }) => {
-    const apiUrl = process.env.VM0_API_URL;
+    const apiUrl = process.env.VM0_API_BACKEND_URL;
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     const email = process.env.E2E_CLERK_USER_EMAIL;
     if (!apiUrl || !email) {
-      test.skip(true, "VM0_API_URL or E2E_CLERK_USER_EMAIL not set");
+      test.skip(true, "VM0_API_BACKEND_URL or E2E_CLERK_USER_EMAIL not set");
       return;
     }
     if (!(await pasteFlowSupported(request, apiUrl, email, bypassSecret))) {
@@ -140,11 +140,11 @@ test.describe("codex-oauth paste flow", () => {
   });
 
   test("rejects malformed JSON inline", async ({ page, request }) => {
-    const apiUrl = process.env.VM0_API_URL;
+    const apiUrl = process.env.VM0_API_BACKEND_URL;
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     const email = process.env.E2E_CLERK_USER_EMAIL;
     if (!apiUrl || !email) {
-      test.skip(true, "VM0_API_URL or E2E_CLERK_USER_EMAIL not set");
+      test.skip(true, "VM0_API_BACKEND_URL or E2E_CLERK_USER_EMAIL not set");
       return;
     }
     if (!(await pasteFlowSupported(request, apiUrl, email, bypassSecret))) {
@@ -174,11 +174,11 @@ test.describe("codex-oauth paste flow", () => {
   });
 
   test("rejects free plan inline", async ({ page, request }) => {
-    const apiUrl = process.env.VM0_API_URL;
+    const apiUrl = process.env.VM0_API_BACKEND_URL;
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     const email = process.env.E2E_CLERK_USER_EMAIL;
     if (!apiUrl || !email) {
-      test.skip(true, "VM0_API_URL or E2E_CLERK_USER_EMAIL not set");
+      test.skip(true, "VM0_API_BACKEND_URL or E2E_CLERK_USER_EMAIL not set");
       return;
     }
     if (!(await pasteFlowSupported(request, apiUrl, email, bypassSecret))) {

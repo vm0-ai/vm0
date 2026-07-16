@@ -8,6 +8,33 @@ import jsonl_writer
 from tests.thread_helpers import ThreadUnderTest
 
 
+def test_worker_start_failure_does_not_publish_or_consume_retry_capacity(tmp_path, mitm_ctx):
+    log_path = tmp_path / "proxy.jsonl"
+    line = b'{"message":"retry"}\n'
+
+    with (
+        patch.object(jsonl_writer, "MAX_PENDING_JSONL_WRITES", 1),
+        patch.object(jsonl_writer, "MAX_PENDING_JSONL_BYTES", len(line)),
+        mitm_ctx() as log,
+    ):
+        with patch.object(
+            jsonl_writer.threading.Thread,
+            "start",
+            side_effect=RuntimeError("can't start new thread"),
+        ):
+            jsonl_writer.write_jsonl_line(str(log_path), line, "proxy")
+
+        assert jsonl_writer.flush_log_path(str(log_path), timeout=0)
+        assert jsonl_writer._worker is None
+        assert not log_path.exists()
+
+        jsonl_writer.write_jsonl_line(str(log_path), line, "proxy")
+        assert jsonl_writer.flush_log_path(str(log_path), timeout=1)
+
+        log.warn.assert_called_once_with("Failed to start JSONL writer for proxy log")
+        assert log_path.read_bytes() == line
+
+
 def test_writer_publishes_backlog_completion_once_per_batch(tmp_path):
     class ObservedCondition:
         def __init__(self) -> None:

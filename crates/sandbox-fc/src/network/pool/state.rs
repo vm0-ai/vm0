@@ -3,7 +3,9 @@ use std::fs::File;
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
+use futures_util::future::join_all;
 use nix::fcntl::Flock;
 #[cfg(test)]
 use nix::fcntl::FlockArg;
@@ -14,17 +16,39 @@ use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
 #[cfg(test)]
+use super::super::readiness::DnsReadinessError;
+use super::super::readiness::{
+    DNS_READINESS_OPERATION_TIMEOUT, DnsReadinessProbe, production_dns_readiness_probe,
+    run_dns_readiness_probe,
+};
+#[cfg(test)]
 use super::host::ConntrackFlushOutcome;
 use super::host::{
     NamespaceDeleteOutcome, NetnsLifecycleOps, acquire_pool_lock, create_single_namespace,
-    enable_host_ip_forwarding, get_default_interface, reconcile_orphan_namespaces,
+    delete_pool_firewall_rules_by_comment, enable_host_ip_forwarding, get_default_interface,
+    reconcile_orphan_namespaces, setup_dns_input_filter,
 };
-use super::naming::{MAX_NAMESPACES, format_hex_index};
+use super::naming::{MAX_NAMESPACES, format_hex_index, make_host_device_dnsmasq_pattern};
 use super::types::{
     CheckedNetnsPoolConfig, NetnsInfo, NetnsLease, NetnsPoolConfig, NetnsReleaseOutcome,
 };
 
 const BUFFER_SIZE: usize = 4;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DnsReadinessState {
+    NotRequired,
+    Pending,
+    Activating,
+    Ready,
+}
+
+struct DnsActivationPlan {
+    candidates: Vec<NetnsInfo>,
+    probe: DnsReadinessProbe,
+    timeout: Duration,
+    ops: NetnsLifecycleOps,
+}
 
 /// Monotonic in-process identity for [`NetnsPool`] instances.
 static NEXT_NETNS_POOL_INSTANCE_ID: AtomicU64 = AtomicU64::new(1);
@@ -103,8 +127,10 @@ struct NetnsPoolInner {
 ///
 /// The active queue is intentionally a bounded high-water cache, not a strict
 /// idle cap. Namespaces returned via [`release`](Self::release) are recycled
-/// back into that queue, and completed background creation can also add ready
-/// entries after a burst. The queue may therefore exceed `BUFFER_SIZE` until
+/// only when they remain safe to reuse; otherwise release attempts to delete
+/// them. A successful release therefore does not necessarily restore warm
+/// capacity. Safe recycling and completed background creation can both add
+/// ready entries after a burst, so the queue may exceed `BUFFER_SIZE` until
 /// pool cleanup/shutdown or until the entries are acquired again.
 /// `MAX_NAMESPACES` remains the hard per-pool allocation bound; namespace
 /// indexes are allocated monotonically and are not returned to a reusable pool.
@@ -134,6 +160,7 @@ struct CleanupPlan {
     namespaces: Vec<NetnsInfo>,
     ops: NetnsLifecycleOps,
     wait_for_pending: Option<watch::Receiver<u64>>,
+    dns_input_filter_comment: Option<String>,
     done: bool,
 }
 
@@ -164,6 +191,15 @@ struct NetnsPoolState {
     pool_index: u32,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
+    dns_readiness_state: DnsReadinessState,
+    dns_readiness_probe: DnsReadinessProbe,
+    dns_readiness_timeout: Duration,
+    /// Comment shared by the pool-wide IPv4/IPv6 DNS INPUT rules.
+    ///
+    /// Cleanup keeps this ownership marker until the bounded firewall delete
+    /// completes so cancellation cannot silently orphan the rules.
+    dns_input_filter_comment: Option<String>,
+    creation_failure: Option<NetworkError>,
     default_iface: String,
     ops: NetnsLifecycleOps,
     #[cfg(test)]
@@ -218,6 +254,11 @@ impl NetnsPoolState {
             pool_index: 0,
             proxy_port: None,
             dns_port: None,
+            dns_readiness_state: DnsReadinessState::NotRequired,
+            dns_readiness_probe: production_dns_readiness_probe(),
+            dns_readiness_timeout: DNS_READINESS_OPERATION_TIMEOUT,
+            dns_input_filter_comment: None,
+            creation_failure: None,
             default_iface: "test0".into(),
             ops: NetnsLifecycleOps::trusted_for_test(),
             acquire_waiting_notify: None,
@@ -255,6 +296,10 @@ impl NetnsPoolState {
         reconcile_orphan_namespaces(&lock_paths, index, &lock).await;
 
         let default_iface = get_default_interface().await?;
+        let dns_input_filter_comment = match config.dns_port {
+            Some(dns_port) => Some(setup_dns_input_filter(index, dns_port).await?),
+            None => None,
+        };
         let (completion_tx, completion_rx, completion_generation, completion_wake_tx) =
             Self::completion_state();
 
@@ -280,6 +325,15 @@ impl NetnsPoolState {
             pool_index: index,
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
+            dns_readiness_state: if config.dns_port.is_some() && config.proxy_port.is_some() {
+                DnsReadinessState::Pending
+            } else {
+                DnsReadinessState::NotRequired
+            },
+            dns_readiness_probe: production_dns_readiness_probe(),
+            dns_readiness_timeout: DNS_READINESS_OPERATION_TIMEOUT,
+            dns_input_filter_comment,
+            creation_failure: None,
             default_iface,
             ops: NetnsLifecycleOps::default(),
             #[cfg(test)]
@@ -322,7 +376,7 @@ impl NetnsPoolState {
 
     fn host_device_pattern(&self) -> String {
         let pool_idx = format_hex_index(self.pool_index);
-        format!("vm0-ve-{pool_idx}-*")
+        make_host_device_dnsmasq_pattern(&pool_idx)
     }
 
     fn creation_notifier(&self) -> CreationNotifier {
@@ -404,6 +458,49 @@ impl NetnsPoolState {
         }
     }
 
+    fn prepare_dns_activation(&mut self) -> Result<Option<DnsActivationPlan>> {
+        if !self.active {
+            return Err(NetworkError::PoolNotActive);
+        }
+        match self.dns_readiness_state {
+            DnsReadinessState::NotRequired | DnsReadinessState::Ready => Ok(None),
+            DnsReadinessState::Activating => Err(NetworkError::PoolDnsNotReady),
+            DnsReadinessState::Pending => {
+                self.dns_readiness_state = DnsReadinessState::Activating;
+                Ok(Some(DnsActivationPlan {
+                    candidates: self.proxy_queue.iter().cloned().collect(),
+                    probe: Arc::clone(&self.dns_readiness_probe),
+                    timeout: self.dns_readiness_timeout,
+                    ops: self.ops.clone(),
+                }))
+            }
+        }
+    }
+
+    fn commit_dns_activation(
+        &mut self,
+        failed_names: &HashSet<String>,
+        successful: usize,
+    ) -> Result<()> {
+        if !self.active {
+            return Err(NetworkError::PoolNotActive);
+        }
+        if !matches!(self.dns_readiness_state, DnsReadinessState::Activating) {
+            return Err(NetworkError::PoolDnsNotReady);
+        }
+
+        self.remove_queued_namespaces(failed_names);
+        if successful == 0 {
+            self.dns_readiness_state = DnsReadinessState::Pending;
+            return Err(NetworkError::NoDnsReadyNamespaces);
+        }
+
+        self.dns_readiness_state = DnsReadinessState::Ready;
+        self.creation_failure = None;
+        self.maybe_replenish_kind(NetnsKind::Proxy);
+        Ok(())
+    }
+
     fn spawn_creation(&mut self, kind: NetnsKind) -> Result<()> {
         let ns_index = self.reserve_ns_index()?;
         let pool_index = self.pool_index;
@@ -421,11 +518,26 @@ impl NetnsPoolState {
         };
         let id = self.reserve_pending_id();
         self.pending_set_mut(kind).insert(id);
+        let readiness = if matches!(kind, NetnsKind::Proxy)
+            && matches!(self.dns_readiness_state, DnsReadinessState::Ready)
+        {
+            Some((
+                Arc::clone(&self.dns_readiness_probe),
+                self.dns_readiness_timeout,
+            ))
+        } else {
+            None
+        };
+        let ops = self.ops.clone();
         spawn_creation_worker(
             id,
             kind,
             self.creation_notifier(),
-            create_single_namespace(pool_index, ns_index, default_iface, proxy_port, dns_port),
+            create_namespace_with_readiness(
+                create_single_namespace(pool_index, ns_index, default_iface, proxy_port, dns_port),
+                readiness,
+                ops,
+            ),
         );
         Ok(())
     }
@@ -438,6 +550,29 @@ impl NetnsPoolState {
         let id = self.reserve_pending_id();
         self.pending_plain.insert(id);
         spawn_creation_worker(id, NetnsKind::Plain, self.creation_notifier(), future);
+    }
+
+    #[cfg(test)]
+    fn spawn_proxy_creation_for_test<F>(&mut self, future: F)
+    where
+        F: Future<Output = Result<NetnsInfo>> + Send + 'static,
+    {
+        let id = self.reserve_pending_id();
+        self.pending_proxy.insert(id);
+        let readiness = if matches!(self.dns_readiness_state, DnsReadinessState::Ready) {
+            Some((
+                Arc::clone(&self.dns_readiness_probe),
+                self.dns_readiness_timeout,
+            ))
+        } else {
+            None
+        };
+        spawn_creation_worker(
+            id,
+            NetnsKind::Proxy,
+            self.creation_notifier(),
+            create_namespace_with_readiness(future, readiness, self.ops.clone()),
+        );
     }
 
     #[cfg(test)]
@@ -511,6 +646,11 @@ impl NetnsPoolState {
                     error = %e,
                     "background namespace creation failed"
                 );
+                if !queue_when_inactive
+                    && matches!(self.dns_readiness_state, DnsReadinessState::Ready)
+                {
+                    self.creation_failure = Some(e);
+                }
             }
         }
     }
@@ -520,12 +660,21 @@ impl NetnsPoolState {
             if !self.active {
                 return Err(NetworkError::PoolNotActive);
             }
+            if matches!(
+                self.dns_readiness_state,
+                DnsReadinessState::Pending | DnsReadinessState::Activating
+            ) {
+                return Err(NetworkError::PoolDnsNotReady);
+            }
             let delete = self.drain_completed(false);
             if !delete.is_empty() {
                 return Ok(AcquirePlan::Delete(delete, self.ops.clone()));
             }
             if let Some(lease) = self.try_checkout_ready()? {
                 return Ok(AcquirePlan::Ready(lease));
+            }
+            if let Some(error) = self.creation_failure.take() {
+                return Err(error);
             }
 
             let kind = self.active_kind();
@@ -546,6 +695,9 @@ impl NetnsPoolState {
             }
             if let Some(lease) = self.try_checkout_ready()? {
                 return Ok(AcquirePlan::Ready(lease));
+            }
+            if let Some(error) = self.creation_failure.take() {
+                return Err(error);
             }
             if self.pending_set(kind).is_empty() {
                 continue;
@@ -761,6 +913,7 @@ impl NetnsPoolState {
 
     fn prepare_cleanup(&mut self) -> CleanupPlan {
         self.active = false;
+        self.creation_failure = None;
         if !self.in_flight.is_empty() {
             warn!(
                 in_flight = self.in_flight.len(),
@@ -786,11 +939,25 @@ impl NetnsPoolState {
                 .chain(self.proxy_queue.iter())
                 .cloned(),
         );
+        let dns_input_filter_comment = if namespaces.is_empty() && wait_for_pending.is_none() {
+            self.dns_input_filter_comment.clone()
+        } else {
+            None
+        };
         CleanupPlan {
-            done: namespaces.is_empty() && wait_for_pending.is_none(),
+            done: namespaces.is_empty()
+                && wait_for_pending.is_none()
+                && dns_input_filter_comment.is_none(),
             namespaces,
             ops: self.ops.clone(),
             wait_for_pending,
+            dns_input_filter_comment,
+        }
+    }
+
+    fn commit_dns_input_filter_cleanup(&mut self, comment: &str) {
+        if self.dns_input_filter_comment.as_deref() == Some(comment) {
+            self.dns_input_filter_comment = None;
         }
     }
 
@@ -816,12 +983,18 @@ impl Drop for NetnsPoolState {
     fn drop(&mut self) {
         let queued = self.plain_queue.len() + self.proxy_queue.len();
         let pending = self.pending_plain.len() + self.pending_proxy.len();
-        if self.active || queued != 0 || pending != 0 || !self.in_flight.is_empty() {
+        if self.active
+            || queued != 0
+            || pending != 0
+            || !self.in_flight.is_empty()
+            || self.dns_input_filter_comment.is_some()
+        {
             warn!(
                 active = self.active,
                 queued,
                 pending,
                 in_flight = self.in_flight.len(),
+                dns_input_filter = self.dns_input_filter_comment.is_some(),
                 "NetnsPool dropped without calling cleanup()"
             );
         }
@@ -855,6 +1028,46 @@ impl NetnsPoolInner {
                 }
             }
         }
+    }
+
+    async fn activate_dns_readiness(&self) -> Result<()> {
+        let Some(plan) = ({
+            let mut state = self.state.lock().await;
+            state.prepare_dns_activation()?
+        }) else {
+            return Ok(());
+        };
+
+        let results = join_all(plan.candidates.iter().cloned().map(|namespace| {
+            let probe = Arc::clone(&plan.probe);
+            async move {
+                let result =
+                    run_dns_readiness_probe(namespace.name.clone(), probe, plan.timeout).await;
+                (namespace, result)
+            }
+        }))
+        .await;
+
+        let mut failed = Vec::new();
+        let mut successful = 0;
+        for (namespace, result) in results {
+            if result.is_ok() {
+                successful += 1;
+            } else {
+                failed.push(namespace);
+            }
+        }
+
+        let failed_names = cleanup_namespace_names(&failed);
+        delete_namespaces_with_ops(plan.ops, failed).await;
+        let mut state = self.state.lock().await;
+        state.commit_dns_activation(&failed_names, successful)?;
+        info!(
+            successful,
+            failed = failed_names.len(),
+            "namespace DNS readiness activated"
+        );
+        Ok(())
     }
 
     async fn release_outcome(&self, lease: &mut Option<NetnsLease>) -> NetnsReleaseOutcome {
@@ -910,6 +1123,18 @@ impl NetnsPoolInner {
                 state.remove_queued_namespaces(&names);
             }
 
+            if let Some(comment) = plan.dns_input_filter_comment {
+                let outcome = delete_pool_firewall_rules_by_comment(&comment).await;
+                if matches!(outcome, NamespaceDeleteOutcome::Abandoned) {
+                    warn!(
+                        comment,
+                        "DNS input filter cleanup did not complete cleanly; startup orphan reconciliation will retry"
+                    );
+                }
+                let mut state = self.state.lock().await;
+                state.commit_dns_input_filter_cleanup(&comment);
+            }
+
             if let Some(mut waiter) = plan.wait_for_pending
                 && waiter.changed().await.is_err()
             {
@@ -942,12 +1167,16 @@ impl NetnsPool {
     /// startup. Without a proxy port, this is the plain queue; with a proxy
     /// port, this is the proxy queue. After each [`acquire`](Self::acquire),
     /// the pool replenishes the same active queue toward that target.
-    /// Namespaces returned via [`release`](Self::release) are recycled back
-    /// into that queue, so `BUFFER_SIZE` is not a strict idle cap.
+    /// Namespaces that [`release`](Self::release) determines are safe to reuse
+    /// return to that queue, so `BUFFER_SIZE` is not a strict idle cap.
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and reconciles orphaned resources from any idle
     /// pool index before creating new namespaces.
+    ///
+    /// A pool configured with both proxy and DNS ports remains non-acquirable
+    /// until [`Self::activate_dns_readiness`] succeeds after the DNS service
+    /// starts listening.
     pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
         let config = config
             .into_checked()
@@ -966,12 +1195,37 @@ impl NetnsPool {
         self.inner.acquire().await
     }
 
-    /// Return a namespace to the pool, or delete it if the pool is inactive.
+    /// Validate and admit namespaces that redirect DNS to runner-managed DNS.
+    ///
+    /// Call this after the DNS service is listening and before the first
+    /// [`Self::acquire`] when both proxy and DNS ports are configured. Pools
+    /// without DNS redirect return immediately.
+    pub async fn activate_dns_readiness(&self) -> Result<()> {
+        self.inner.activate_dns_readiness().await
+    }
+
+    /// Release a checked-out namespace.
+    ///
+    /// Release requeues the namespace only when the pool is active, the lease
+    /// has not been made non-reusable by an earlier cancelled release, and the
+    /// conntrack flush is trusted. It attempts to delete the namespace when
+    /// the pool is inactive, cleanup wins a race before commit, the conntrack
+    /// flush is untrusted, or an earlier release was cancelled after cleanup
+    /// began. A deletion that cannot complete is left for startup orphan
+    /// reconciliation.
+    ///
+    /// `Ok(())` means the lease was accepted and consumed. The namespace may
+    /// have been requeued, deleted, or left for orphan reconciliation after an
+    /// abandoned deletion; success does not guarantee restored warm capacity
+    /// or immediate deletion. An invalid lease returns an error without being
+    /// consumed.
     ///
     /// The caller keeps the lease in `Some` while this future awaits. Release
     /// only takes and disarms the lease at the final no-await commit point, so
     /// cancelling this future before success leaves cleanup ownership with the
-    /// caller.
+    /// caller. Once cleanup has begun, cancellation also makes the lease
+    /// non-reusable, so a later release attempt deletes it instead of risking
+    /// reuse.
     pub async fn release(&mut self, lease: &mut Option<NetnsLease>) -> Result<()> {
         match self.inner.release_outcome(lease).await {
             NetnsReleaseOutcome::Released
@@ -1041,6 +1295,10 @@ impl NetnsPoolHandle {
         self.inner.acquire().await
     }
 
+    pub(crate) async fn activate_dns_readiness(&self) -> Result<()> {
+        self.inner.activate_dns_readiness().await
+    }
+
     pub(crate) async fn release(&self, lease: &mut Option<NetnsLease>) -> NetnsReleaseOutcome {
         self.inner.release_outcome(lease).await
     }
@@ -1052,6 +1310,26 @@ impl NetnsPoolHandle {
     pub(crate) async fn host_device_pattern(&self) -> String {
         self.inner.host_device_pattern().await
     }
+}
+
+async fn create_namespace_with_readiness<F>(
+    create: F,
+    readiness: Option<(DnsReadinessProbe, Duration)>,
+    ops: NetnsLifecycleOps,
+) -> Result<NetnsInfo>
+where
+    F: Future<Output = Result<NetnsInfo>>,
+{
+    let namespace = create.await?;
+    let Some((probe, timeout)) = readiness else {
+        return Ok(namespace);
+    };
+
+    if let Err(error) = run_dns_readiness_probe(namespace.name.clone(), probe, timeout).await {
+        delete_namespaces_with_ops(ops, vec![namespace]).await;
+        return Err(NetworkError::DnsReadiness(error));
+    }
+    Ok(namespace)
 }
 
 fn spawn_creation_worker<F>(id: PendingId, kind: NetnsKind, notifier: CreationNotifier, future: F)
@@ -1116,6 +1394,26 @@ mod tests {
 
     fn test_info(name: &str) -> NetnsInfo {
         NetnsInfo::new(name.into(), "test-ve".into(), "10.200.0.2".into())
+    }
+
+    fn probe_for_test<F, Fut>(probe: F) -> DnsReadinessProbe
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = std::result::Result<u16, DnsReadinessError>> + Send + 'static,
+    {
+        Arc::new(move |namespace| Box::pin(probe(namespace)))
+    }
+
+    fn dns_pending_state(names: &[&str], ops: NetnsLifecycleOps) -> NetnsPoolState {
+        let mut state = NetnsPoolState::inactive_for_test();
+        state.active = true;
+        state.proxy_port = Some(8080);
+        state.dns_port = Some(5353);
+        state.dns_readiness_state = DnsReadinessState::Pending;
+        state.next_ns_index = MAX_NAMESPACES;
+        state.ops = ops;
+        state.proxy_queue = names.iter().map(|name| test_info(name)).collect();
+        state
     }
 
     struct CountedLifecycle {
@@ -1369,6 +1667,213 @@ mod tests {
             flush_count,
             delete_count,
         }
+    }
+
+    #[tokio::test]
+    async fn dns_pending_pool_rejects_acquire_without_removing_ready_entry() {
+        let state = dns_pending_state(&["vm0-ns-test-00"], NetnsLifecycleOps::trusted_for_test());
+        let mut pool = NetnsPool::from_state_for_test(state);
+
+        let error = pool.acquire().await.unwrap_err();
+
+        assert!(matches!(error, NetworkError::PoolDnsNotReady));
+        assert_eq!(
+            pool.inner
+                .with_state_for_test(|state| state.proxy_queue.len()),
+            1
+        );
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn dns_activation_admits_successfully_probed_initial_namespaces() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_probe = Arc::clone(&calls);
+        let mut state = dns_pending_state(
+            &[
+                "vm0-ns-test-00",
+                "vm0-ns-test-01",
+                "vm0-ns-test-02",
+                "vm0-ns-test-03",
+            ],
+            NetnsLifecycleOps::trusted_for_test(),
+        );
+        state.dns_readiness_probe = probe_for_test(move |_| {
+            let calls = Arc::clone(&calls_for_probe);
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(1)
+            }
+        });
+        let mut pool = NetnsPool::from_state_for_test(state);
+
+        pool.activate_dns_readiness().await.unwrap();
+
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+        assert!(pool.inner.with_state_for_test(|state| matches!(
+            state.dns_readiness_state,
+            DnsReadinessState::Ready
+        )));
+        let mut lease = Some(pool.acquire().await.unwrap());
+        pool.release(&mut lease).await.unwrap();
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn dns_activation_deletes_only_failed_initial_namespaces() {
+        let lifecycle = counted_deleted_lifecycle();
+        let mut state = dns_pending_state(
+            &[
+                "vm0-ns-test-00",
+                "vm0-ns-test-01",
+                "vm0-ns-test-02",
+                "vm0-ns-test-03",
+            ],
+            lifecycle.ops,
+        );
+        state.dns_readiness_probe = probe_for_test(|namespace| async move {
+            if namespace.ends_with("-02") {
+                Err(DnsReadinessError::timeout())
+            } else {
+                Ok(1)
+            }
+        });
+        let mut pool = NetnsPool::from_state_for_test(state);
+
+        pool.activate_dns_readiness().await.unwrap();
+
+        assert_eq!(lifecycle.delete_count.load(Ordering::SeqCst), 1);
+        let names = pool.inner.with_state_for_test(|state| {
+            state
+                .proxy_queue
+                .iter()
+                .map(|namespace| namespace.name.clone())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(names.len(), 3);
+        assert!(!names.iter().any(|name| name.ends_with("-02")));
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn dns_activation_fails_when_every_initial_probe_times_out() {
+        let lifecycle = counted_deleted_lifecycle();
+        let mut state = dns_pending_state(&["vm0-ns-test-00", "vm0-ns-test-01"], lifecycle.ops);
+        state.dns_readiness_timeout = Duration::from_millis(10);
+        state.dns_readiness_probe = probe_for_test(|_| async {
+            std::future::pending::<std::result::Result<u16, DnsReadinessError>>().await
+        });
+        let mut pool = NetnsPool::from_state_for_test(state);
+
+        let error = pool.activate_dns_readiness().await.unwrap_err();
+
+        assert!(matches!(error, NetworkError::NoDnsReadyNamespaces));
+        assert_eq!(lifecycle.delete_count.load(Ordering::SeqCst), 2);
+        assert!(pool.inner.with_state_for_test(|state| {
+            state.proxy_queue.is_empty()
+                && matches!(state.dns_readiness_state, DnsReadinessState::Pending)
+        }));
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancelled_dns_activation_leaves_initial_entries_owned_by_pool() {
+        let lifecycle = counted_deleted_lifecycle();
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let entered_for_probe = Arc::clone(&entered);
+        let release_for_probe = Arc::clone(&release);
+        let mut state = dns_pending_state(&["vm0-ns-test-00"], lifecycle.ops);
+        state.dns_readiness_probe = probe_for_test(move |_| {
+            let entered = Arc::clone(&entered_for_probe);
+            let release = Arc::clone(&release_for_probe);
+            async move {
+                entered.notify_one();
+                release.notified().await;
+                Ok(1)
+            }
+        });
+        let mut pool = NetnsPool::from_state_for_test(state);
+        let inner = pool.inner.clone();
+        let activation = tokio::spawn(async move { inner.activate_dns_readiness().await });
+        entered.notified().await;
+
+        activation.abort();
+        assert!(activation.await.unwrap_err().is_cancelled());
+        assert!(pool.inner.with_state_for_test(|state| {
+            state.proxy_queue.len() == 1
+                && matches!(state.dns_readiness_state, DnsReadinessState::Activating)
+        }));
+        pool.cleanup().await.unwrap();
+        assert_eq!(lifecycle.delete_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn post_activation_creation_is_probed_before_acquire() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_probe = Arc::clone(&calls);
+        let mut state = dns_pending_state(&[], NetnsLifecycleOps::trusted_for_test());
+        state.dns_readiness_state = DnsReadinessState::Ready;
+        state.dns_readiness_probe = probe_for_test(move |_| {
+            let calls = Arc::clone(&calls_for_probe);
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(1)
+            }
+        });
+        state.spawn_proxy_creation_for_test(async { Ok(test_info("vm0-ns-test-04")) });
+        let mut pool = NetnsPool::from_state_for_test(state);
+
+        let mut lease = Some(pool.acquire().await.unwrap());
+
+        assert_eq!(lease.as_ref().unwrap().name(), "vm0-ns-test-04");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        pool.release(&mut lease).await.unwrap();
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_post_activation_probe_is_deleted_and_returned_to_acquire() {
+        let lifecycle = counted_deleted_lifecycle();
+        let mut state = dns_pending_state(&[], lifecycle.ops);
+        state.next_ns_index = 7;
+        state.dns_readiness_state = DnsReadinessState::Ready;
+        state.dns_readiness_probe = probe_for_test(|_| async { Err(DnsReadinessError::timeout()) });
+        state.spawn_proxy_creation_for_test(async { Ok(test_info("vm0-ns-test-04")) });
+        let mut pool = NetnsPool::from_state_for_test(state);
+
+        let error = pool.acquire().await.unwrap_err();
+
+        assert!(matches!(error, NetworkError::DnsReadiness(_)));
+        assert_eq!(lifecycle.delete_count.load(Ordering::SeqCst), 1);
+        assert!(pool.inner.with_state_for_test(|state| {
+            state.proxy_queue.is_empty()
+                && state.pending_proxy.is_empty()
+                && state.next_ns_index == 7
+        }));
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn healthy_entry_wins_over_parallel_readiness_failure() {
+        let lifecycle = counted_deleted_lifecycle();
+        let mut state = dns_pending_state(&["vm0-ns-test-good"], lifecycle.ops);
+        state.dns_readiness_state = DnsReadinessState::Ready;
+        state.dns_readiness_probe = probe_for_test(|_| async { Err(DnsReadinessError::timeout()) });
+        let mut completion = state.completion_wake_tx.subscribe();
+        state.spawn_proxy_creation_for_test(async { Ok(test_info("vm0-ns-test-bad")) });
+        let mut pool = NetnsPool::from_state_for_test(state);
+        completion.changed().await.unwrap();
+
+        let mut lease = Some(pool.acquire().await.unwrap());
+
+        assert_eq!(lease.as_ref().unwrap().name(), "vm0-ns-test-good");
+        assert!(pool.inner.with_state_for_test(|state| {
+            state.creation_failure.is_some() && state.proxy_queue.is_empty()
+        }));
+        assert_eq!(lifecycle.delete_count.load(Ordering::SeqCst), 1);
+        pool.release(&mut lease).await.unwrap();
+        pool.cleanup().await.unwrap();
     }
 
     #[tokio::test]

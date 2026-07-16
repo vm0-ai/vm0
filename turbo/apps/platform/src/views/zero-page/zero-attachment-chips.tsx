@@ -88,6 +88,7 @@ import {
 } from "./zero-artifact-display.ts";
 import {
   currentMessageImageArtifactNavigation,
+  equalMessageImageGroups,
   type ImageArtifactNavigationItem,
   shouldIgnoreImageArtifactNavigationKey,
 } from "./zero-artifact-image-navigation.ts";
@@ -956,11 +957,9 @@ function ArtifactPreviewDialogThreadResolver({
 }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useLastResolved(thread.agentId$);
-  const messageGroups = useLastResolved(thread.groupedChatMessages$);
-  const features = useGet(featureSwitch$);
-  const imageNavigationEnabled = Boolean(
-    features?.[FeatureSwitchKey.ImageArtifactKeyboardNavigation],
-  );
+  const messageGroups = useLastResolved(thread.messageImageGroups$, {
+    equalityFn: equalMessageImageGroups,
+  });
   const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
@@ -968,9 +967,7 @@ function ArtifactPreviewDialogThreadResolver({
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
       : undefined;
   const imageNavigation =
-    imageNavigationEnabled &&
-    preview.kind === "image" &&
-    loadable.state === "hasData"
+    preview.kind === "image" && loadable.state === "hasData"
       ? currentMessageImageArtifactNavigation(
           loadable.data,
           messageGroups ?? [],

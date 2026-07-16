@@ -17,12 +17,26 @@ pub(in crate::executor) fn should_collect_agent_abnormal_exit_diagnostics(
     failure_diagnostic: Option<&FailureDiagnostic>,
     guest_error: Option<&str>,
 ) -> bool {
-    !wait_cancelled
-        && process_failed(exit)
-        && exit.diagnostic.is_empty()
+    let unexplained_failure = exit.diagnostic.is_empty()
         && stderr.is_empty()
         && failure_diagnostic.is_none()
-        && guest_error.is_none()
+        && guest_error.is_none();
+    let explicit_enospc = explicit_enospc_evidence([
+        stderr,
+        exit.diagnostic.as_str(),
+        guest_error.unwrap_or_default(),
+    ]);
+
+    !wait_cancelled && process_failed(exit) && (unexplained_failure || explicit_enospc)
+}
+
+pub(in crate::executor) fn explicit_enospc_evidence<'a>(
+    values: impl IntoIterator<Item = &'a str>,
+) -> bool {
+    values.into_iter().any(|value| {
+        let value = value.to_ascii_lowercase();
+        value.contains("no space left on device") || value.contains("os error 28")
+    })
 }
 
 pub(in crate::executor) fn should_collect_unattributed_sigkill_resource_diagnostics(

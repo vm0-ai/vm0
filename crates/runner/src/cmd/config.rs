@@ -42,10 +42,10 @@ pub struct ConfigArgs {
     concurrency_factor: f64,
 
     /// vm0 API URL
-    #[arg(long, env = "VM0_API_URL")]
+    #[arg(long, env = "VM0_API_BACKEND_URL")]
     api_url: String,
     /// Runner authentication token
-    #[arg(long, env = "VM0_RUNNER_TOKEN")]
+    #[arg(long, env = "VM0_RUNNER_TOKEN", hide_env_values = true)]
     token: String,
 }
 

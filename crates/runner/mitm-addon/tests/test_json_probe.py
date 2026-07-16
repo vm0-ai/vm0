@@ -1,6 +1,25 @@
 """Tests for bounded JSON prefix probing helpers."""
 
+from typing import SupportsIndex
+
+import pytest
+
 from usage.json_probe import probe_top_level_string_field
+
+
+class _SliceTrackingBytes(bytes):
+    slice_lengths: list[int]
+
+    def __new__(cls, value: bytes) -> "_SliceTrackingBytes":
+        instance = super().__new__(cls, value)
+        instance.slice_lengths = []
+        return instance
+
+    def __getitem__(self, key: SupportsIndex | slice, /) -> int | bytes:
+        result = super().__getitem__(key)
+        if isinstance(result, bytes):
+            self.slice_lengths.append(len(result))
+        return result
 
 
 def test_probe_finds_top_level_string_field_without_scanning_rest():
@@ -11,6 +30,155 @@ def test_probe_finds_top_level_string_field_without_scanning_rest():
     assert result.status == "found"
     assert result.value == "response.completed"
     assert result.field_seen
+
+
+@pytest.mark.parametrize(
+    "number",
+    [
+        pytest.param(b"0.0", id="zero-fraction"),
+        pytest.param(b"1.25", id="positive-fraction"),
+        pytest.param(b"-2.5e+3", id="negative-fraction-positive-exponent"),
+        pytest.param(b"1e3", id="exponent-without-sign"),
+        pytest.param(b"1E-3", id="uppercase-negative-exponent"),
+    ],
+)
+def test_probe_skips_fractional_and_exponent_numbers_before_field(number: bytes):
+    result = probe_top_level_string_field(b'{"score":' + number + b',"type":"response.completed"}')
+
+    assert result.status == "found"
+    assert result.value == "response.completed"
+    assert result.field_seen
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(
+            b'{"score":1.,"type":"response.completed"}',
+            id="fraction-missing-digit",
+        ),
+        pytest.param(
+            b'{"score":1e,"type":"response.completed"}',
+            id="exponent-missing-digit",
+        ),
+        pytest.param(
+            b'{"score":1e+,"type":"response.completed"}',
+            id="signed-exponent-missing-digit",
+        ),
+        pytest.param(
+            b'{"score":00.5,"type":"response.completed"}',
+            id="leading-zero-fraction",
+        ),
+    ],
+)
+def test_probe_rejects_malformed_fractional_and_exponent_numbers_before_field(body: bytes):
+    result = probe_top_level_string_field(body)
+
+    assert result.status == "invalid"
+    assert result.value is None
+    assert not result.field_seen
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(b'{"score":1.', id="fraction-missing-digit"),
+        pytest.param(b'{"score":1e', id="exponent-missing-digit"),
+        pytest.param(b'{"score":1e+', id="signed-exponent-missing-digit"),
+    ],
+)
+def test_probe_reports_incomplete_fractional_and_exponent_prefixes_before_field(body: bytes):
+    result = probe_top_level_string_field(body)
+
+    assert result.status == "incomplete"
+    assert result.value is None
+    assert not result.field_seen
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        pytest.param(b"true", id="true"),
+        pytest.param(b"false", id="false"),
+        pytest.param(b"null", id="null"),
+    ],
+)
+def test_probe_skips_complete_literal_before_field(literal: bytes):
+    result = probe_top_level_string_field(
+        b'{"padding":' + literal + b',"type":"response.completed"}'
+    )
+
+    assert result.status == "found"
+    assert result.value == "response.completed"
+    assert result.field_seen
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        pytest.param(b"t", id="true-1"),
+        pytest.param(b"tr", id="true-2"),
+        pytest.param(b"tru", id="true-3"),
+        pytest.param(b"true", id="true-complete"),
+        pytest.param(b"f", id="false-1"),
+        pytest.param(b"fa", id="false-2"),
+        pytest.param(b"fal", id="false-3"),
+        pytest.param(b"fals", id="false-4"),
+        pytest.param(b"false", id="false-complete"),
+        pytest.param(b"n", id="null-1"),
+        pytest.param(b"nu", id="null-2"),
+        pytest.param(b"nul", id="null-3"),
+        pytest.param(b"null", id="null-complete"),
+    ],
+)
+def test_probe_reports_incomplete_literal_at_end_of_prefix(prefix: bytes):
+    result = probe_top_level_string_field(b'{"padding":' + prefix)
+
+    assert result.status == "incomplete"
+    assert result.value is None
+    assert not result.field_seen
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        pytest.param(b"trux", id="true"),
+        pytest.param(b"falsx", id="false"),
+        pytest.param(b"nulx", id="null"),
+    ],
+)
+def test_probe_rejects_invalid_literal_prefix(prefix: bytes):
+    result = probe_top_level_string_field(b'{"padding":' + prefix)
+
+    assert result.status == "invalid"
+    assert result.value is None
+    assert not result.field_seen
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        pytest.param(b"false", id="false"),
+        pytest.param(b"null", id="null"),
+    ],
+)
+def test_probe_repeated_literals_do_not_copy_growing_body_suffixes(literal: bytes):
+    maximum_slice_lengths: list[int] = []
+    for repeat_count in (128, 256):
+        body = _SliceTrackingBytes(
+            b'{"padding":['
+            + b",".join([literal] * repeat_count)
+            + b'],"type":"response.completed"}'
+        )
+
+        result = probe_top_level_string_field(body)
+
+        assert result.status == "found"
+        assert result.value == "response.completed"
+        assert result.field_seen
+        maximum_slice_lengths.append(max(body.slice_lengths, default=0))
+
+    assert maximum_slice_lengths[1] <= maximum_slice_lengths[0]
 
 
 def test_probe_ignores_nested_fields_with_same_name():

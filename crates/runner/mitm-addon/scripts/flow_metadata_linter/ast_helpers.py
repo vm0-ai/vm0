@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from typing import TypeGuard
 
 
@@ -359,31 +360,100 @@ def _pattern_is_exhaustive(pattern: ast.pattern) -> bool:
     return False
 
 
-def _body_can_fall_through(body: list[ast.stmt]) -> bool:
-    return all(_statement_can_fall_through(statement) for statement in body)
+@dataclass(frozen=True)
+class _FlowSummary:
+    """Syntactic exits used by reachability; ``raises`` covers explicit ``raise`` only."""
+
+    falls_through: bool
+    raises: bool
+
+
+def _body_flow(body: list[ast.stmt]) -> _FlowSummary:
+    falls_through = True
+    raises = False
+    for statement in body:
+        if not falls_through:
+            break
+        statement_flow = _statement_flow(statement)
+        falls_through = statement_flow.falls_through
+        raises = raises or statement_flow.raises
+    return _FlowSummary(falls_through=falls_through, raises=raises)
 
 
 def _is_try_statement(statement: ast.stmt) -> TypeGuard[ast.Try]:
     return isinstance(statement, ast.Try) or statement.__class__.__name__ == "TryStar"
 
 
-def _statement_can_fall_through(statement: ast.stmt) -> bool:
-    if isinstance(statement, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
-        return False
+def _try_statement_flow(statement: ast.Try) -> _FlowSummary:
+    body_flow = _body_flow(statement.body)
+    normal_path_falls_through = body_flow.falls_through
+    raises = body_flow.raises and not any(handler.type is None for handler in statement.handlers)
+    if normal_path_falls_through and statement.orelse:
+        orelse_flow = _body_flow(statement.orelse)
+        normal_path_falls_through = orelse_flow.falls_through
+        raises = raises or orelse_flow.raises
+    handler_flows = [_body_flow(handler.body) for handler in statement.handlers]
+    falls_through = normal_path_falls_through or any(flow.falls_through for flow in handler_flows)
+    raises = raises or any(flow.raises for flow in handler_flows)
+    if not statement.finalbody:
+        return _FlowSummary(falls_through=falls_through, raises=raises)
+    finalbody_flow = _body_flow(statement.finalbody)
+    return _FlowSummary(
+        falls_through=falls_through and finalbody_flow.falls_through,
+        raises=finalbody_flow.raises or (raises and finalbody_flow.falls_through),
+    )
+
+
+def _statement_flow(statement: ast.stmt) -> _FlowSummary:
+    if isinstance(statement, ast.Raise):
+        return _FlowSummary(falls_through=False, raises=True)
+    if isinstance(statement, (ast.Return, ast.Break, ast.Continue)):
+        return _FlowSummary(falls_through=False, raises=False)
     if isinstance(statement, ast.If):
-        if not statement.orelse:
-            return True
-        return _body_can_fall_through(statement.body) or _body_can_fall_through(statement.orelse)
-    if isinstance(statement, (ast.With, ast.AsyncWith)):
-        return _body_can_fall_through(statement.body)
-    if _is_try_statement(statement):
-        if statement.finalbody and not _body_can_fall_through(statement.finalbody):
-            return False
-        normal_path_falls_through = _body_can_fall_through(statement.body)
-        if normal_path_falls_through and statement.orelse:
-            normal_path_falls_through = _body_can_fall_through(statement.orelse)
-        handler_path_falls_through = any(
-            _body_can_fall_through(handler.body) for handler in statement.handlers
+        body_flow = _body_flow(statement.body)
+        orelse_flow = (
+            _body_flow(statement.orelse)
+            if statement.orelse
+            else _FlowSummary(falls_through=True, raises=False)
         )
-        return normal_path_falls_through or handler_path_falls_through
-    return True
+        return _FlowSummary(
+            falls_through=body_flow.falls_through or orelse_flow.falls_through,
+            raises=body_flow.raises or orelse_flow.raises,
+        )
+    if isinstance(statement, (ast.With, ast.AsyncWith)):
+        body_flow = _body_flow(statement.body)
+        return _FlowSummary(
+            falls_through=body_flow.falls_through or body_flow.raises,
+            raises=body_flow.raises,
+        )
+    if _is_try_statement(statement):
+        return _try_statement_flow(statement)
+    if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+        body_flow = _body_flow(statement.body)
+        orelse_flow = _body_flow(statement.orelse)
+        return _FlowSummary(
+            falls_through=True,
+            raises=body_flow.raises or orelse_flow.raises,
+        )
+    if isinstance(statement, ast.Match):
+        case_falls_through = False
+        has_unmatched_path = True
+        raises = False
+        for case in statement.cases:
+            case_flow = _body_flow(case.body)
+            case_falls_through = case_falls_through or case_flow.falls_through
+            raises = raises or case_flow.raises
+            if case.guard is None and _pattern_is_exhaustive(case.pattern):
+                has_unmatched_path = False
+                break
+        return _FlowSummary(
+            falls_through=has_unmatched_path or case_falls_through,
+            raises=raises,
+        )
+    if isinstance(statement, ast.ClassDef):
+        return _body_flow(statement.body)
+    return _FlowSummary(falls_through=True, raises=False)
+
+
+def _statement_can_fall_through(statement: ast.stmt) -> bool:
+    return _statement_flow(statement).falls_through

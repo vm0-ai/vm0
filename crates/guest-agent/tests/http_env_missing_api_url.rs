@@ -28,7 +28,7 @@ fn for_config_requires_api_url_when_api_token_is_set() {
         panic!("missing API URL should fail fast");
     };
     assert!(
-        err.to_string().contains("VM0_API_URL"),
-        "error should identify VM0_API_URL, got: {err}"
+        err.to_string().contains("VM0_API_BACKEND_URL"),
+        "error should identify VM0_API_BACKEND_URL, got: {err}"
     );
 }

@@ -6,8 +6,8 @@ export const internalRunCallbackKinds = [
   "slack:org",
   "teams:org",
   "telegram",
-  "workflow-trigger:cron",
-  "workflow-trigger:loop",
+  "workflow-automation:cron",
+  "workflow-automation:loop",
 ] as const;
 
 export type InternalRunCallbackKind = (typeof internalRunCallbackKinds)[number];
@@ -42,8 +42,8 @@ function isInternalRunCallbackKind(
     case "slack:org":
     case "teams:org":
     case "telegram":
-    case "workflow-trigger:cron":
-    case "workflow-trigger:loop": {
+    case "workflow-automation:cron":
+    case "workflow-automation:loop": {
       return true;
     }
     default: {
@@ -55,8 +55,7 @@ function isInternalRunCallbackKind(
 export function internalRunCallbackKindForRecord(
   callback: InternalRunCallbackRecord,
 ): InternalRunCallbackKind | null {
-  if (isInternalRunCallbackKind(callback.internalKind)) {
-    return callback.internalKind;
-  }
-  return null;
+  return isInternalRunCallbackKind(callback.internalKind)
+    ? callback.internalKind
+    : null;
 }

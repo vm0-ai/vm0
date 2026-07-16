@@ -42,7 +42,7 @@ import {
   mockGoogleDriveFilesList,
   mockGoogleDriveSlidesUpload,
 } from "./helpers/api-bdd-connectors";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -62,7 +62,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -969,10 +969,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toContain("id");
 
-    // Main thread with a claimed (running) run. The linked-automation cascade
-    // leg was removed with the automation -> workflow cutover (#19959): the
-    // frozen legacy API can no longer create automations, and the
-    // chat-thread FK cascade on the frozen rows is schema-enforced.
+    // Main thread with a claimed (running) run.
     const main = await sendChatRun(actor, {
       agentId,
       prompt: "delete cascade anchor",
@@ -2714,19 +2711,23 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.revokesMessageId === queued.body.messageId &&
-            message.runId !== undefined
+            message.id === queued.body.messageId && message.runId !== undefined
           );
         });
       },
     );
     const promoted = userMessages(afterQueue.messages).find((message) => {
-      return message.revokesMessageId === queued.body.messageId;
+      return message.id === queued.body.messageId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued v1 message to auto-send into a run");
     }
     expect(promoted.content).toBe("queued from v1");
+    expect(
+      afterQueue.messages.some((message) => {
+        return message.revokesMessageId === queued.body.messageId;
+      }),
+    ).toBeFalsy();
     await expectZeroPreCreateSource(promoted.runId, "chat_callback_auto_send");
     await flushWaitUntilForTest();
     const afterAutoSendSideEffects = await chat.listThreadMessages(

@@ -8,7 +8,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
 import type { RouteEntry } from "../route-entry";
-import { settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
@@ -127,12 +127,11 @@ async function atomRedeemErrorMessage(
 ): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("json")) {
-    const bodyResult = await settle(
-      response.json() as Promise<unknown>,
-      signal,
-    );
-    if (bodyResult.ok) {
-      const code = atomRedeemErrorCode(bodyResult.value);
+    const responseText = await tapError(response.text());
+    signal.throwIfAborted();
+    const body = safeJsonParse(responseText ?? "");
+    if (body !== undefined) {
+      const code = atomRedeemErrorCode(body);
       if (code) {
         const message =
           ATOM_REDEEM_CODE_ERROR_MESSAGES[normalizeAtomErrorCode(code)];
@@ -186,41 +185,35 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const clerk = get(clerk$);
-  const emailResult = await settle(
-    primaryEmailForUser(clerk, auth.userId, signal),
-    signal,
-  );
+  const email = await tapError(primaryEmailForUser(clerk, auth.userId, signal));
   signal.throwIfAborted();
-  if (!emailResult.ok || !emailResult.value) {
+  if (!email) {
     return providerUnavailable("Redeem service user unavailable");
   }
-  const email = emailResult.value;
 
   const machineSecretKey = optionalEnv("VM0_MACHINE_SECRET_KEY");
   if (!machineSecretKey) {
     return providerUnavailable("Redeem service not configured");
   }
 
-  const m2mTokenResult = await settle(
+  const m2mToken = await tapError(
     clerk.m2m.createToken({
       machineSecretKey,
       secondsUntilExpiration: ATOM_M2M_TOKEN_TTL_SECONDS,
       minRemainingTtlSeconds: ATOM_M2M_TOKEN_MIN_REMAINING_TTL_SECONDS,
     }),
-    signal,
   );
   signal.throwIfAborted();
-  if (!m2mTokenResult.ok) {
+  if (!m2mToken) {
     return providerUnavailable("Redeem service authentication unavailable");
   }
-  const m2mToken = m2mTokenResult.value;
   if (!m2mToken.token) {
     return providerUnavailable("Redeem service authentication unavailable");
   }
 
   const url = new URL("/api/redeem-codes/consume", atomUrl);
 
-  const responseResult = await settle(
+  const response = await tapError(
     fetch(url, {
       method: "POST",
       headers: {
@@ -234,13 +227,11 @@ const redeemCodeAuthed$ = command(async ({ get }, signal: AbortSignal) => {
       }),
       signal,
     }),
-    signal,
   );
   signal.throwIfAborted();
-  if (!responseResult.ok) {
+  if (!response) {
     return providerUnavailable("Redeem service unavailable");
   }
-  const response = responseResult.value;
   if (!response.ok) {
     if (response.status >= 400 && response.status < 500) {
       return badRequestMessage(await atomRedeemErrorMessage(response, signal));

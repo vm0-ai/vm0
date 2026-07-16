@@ -25,7 +25,11 @@ import {
   CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
   isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
-import { disableIneligibleWorkflowWebhookTriggersForOrg } from "./workflow-webhook-trigger-entitlement.service";
+import {
+  upsertOrgPlanEntitlement,
+  writeOrgMetadataWithPlanEntitlements,
+} from "./org-plan-entitlements.service";
+import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 
 const L = logger("CronBillingEntitlements");
 const PAID_TIERS = ["pro", "team", "custom"] as const;
@@ -49,6 +53,7 @@ const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
 interface SubscriptionInput {
   readonly id: string;
   readonly status: string;
+  readonly metadata?: Record<string, string> | null;
   readonly cancel_at?: number | null;
   readonly cancel_at_period_end: boolean;
   readonly items: {
@@ -63,6 +68,11 @@ interface SubscriptionInput {
 interface BillingCandidate {
   readonly orgId: string;
   readonly stripeSubscriptionId: string | null;
+}
+
+interface StripeBillingCandidate {
+  readonly orgId: string;
+  readonly stripeSubscriptionId: string;
 }
 
 interface AtomGrantCandidate {
@@ -116,6 +126,8 @@ interface ReconcileBillingContext {
   readonly staleBefore: Date;
   readonly signal: AbortSignal;
 }
+
+type ReconcileTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
@@ -207,6 +219,51 @@ function subscriptionIsTerminalUsageAllowance(
   );
 }
 
+function knownOrgTier(value: string): OrgTier {
+  switch (value) {
+    case "free":
+    case "limited-free-1":
+    case "pro-suspend":
+    case "pro":
+    case "team":
+    case "custom": {
+      return value;
+    }
+    default: {
+      throw new Error(`Unknown org tier: ${value}`);
+    }
+  }
+}
+
+async function upsertStripeSubscriptionPlanSnapshot(
+  tx: ReconcileTx,
+  args: {
+    readonly orgId: string;
+    readonly tier: OrgTier;
+    readonly subscription: SubscriptionInput;
+    readonly stripeSubscriptionId: string | null;
+    readonly stripePriceId?: string | null;
+    readonly status?: string;
+  },
+): Promise<void> {
+  const scheduledEnd = subscriptionScheduledEnd(args.subscription);
+  const cancelAt = subscriptionWillCancel(args.subscription)
+    ? scheduledEnd
+    : null;
+  await upsertOrgPlanEntitlement(tx, {
+    orgId: args.orgId,
+    tier: args.tier,
+    source: "stripe_subscription",
+    status: args.status,
+    stripeSubscriptionId: args.stripeSubscriptionId,
+    stripePriceId: args.stripePriceId ?? null,
+    currentPeriodEnd: scheduledEnd,
+    cancelAt,
+    expiresAt: cancelAt,
+    sourceMetadata: args.subscription.metadata ?? {},
+  });
+}
+
 function currentUsageAllowanceCandidateWhere(
   candidate: UsageAllowanceCandidate,
 ) {
@@ -271,32 +328,15 @@ function tierFromPriceId(priceId: string): OrgTier {
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }
 
-async function reconcileBillingCandidate(
-  context: ReconcileBillingContext,
-  candidate: BillingCandidate,
-): Promise<DowngradedSubscription[]> {
-  const { db, stripe, now, staleBefore, signal } = context;
-  if (!candidate.stripeSubscriptionId) {
-    return [];
-  }
+interface SyncedBillingFields {
+  readonly subscriptionStatus: string;
+  readonly cancelAtPeriodEnd: boolean;
+  readonly updatedAt: Date;
+  readonly currentPeriodEnd?: Date;
+}
 
-  const subscription = (await stripe.subscriptions.retrieve(
-    candidate.stripeSubscriptionId,
-  )) as SubscriptionInput;
-  signal.throwIfAborted();
-
-  const stripePeriodEnd = subscriptionPeriodEnd(subscription);
-  const scheduledEnd = subscriptionScheduledEnd(subscription);
-  const canRefreshPaidThrough = subscriptionCanRefreshPaidThrough(subscription);
-  const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
-  const syncedFields = {
-    subscriptionStatus: subscription.status,
-    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
-    updatedAt: now,
-    ...(scheduledEnd ? { currentPeriodEnd: scheduledEnd } : {}),
-  };
-
-  const currentCandidate = and(
+function currentBillingCandidateWhere(candidate: StripeBillingCandidate) {
+  return and(
     eq(orgMetadata.orgId, candidate.orgId),
     eq(orgMetadata.stripeSubscriptionId, candidate.stripeSubscriptionId),
     inArray(orgMetadata.tier, ["pro", "team"]),
@@ -304,54 +344,218 @@ async function reconcileBillingCandidate(
       ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
     ]),
   );
+}
+
+async function reconcileCanceledBillingCandidate(
+  context: ReconcileBillingContext,
+  candidate: StripeBillingCandidate,
+  subscription: SubscriptionInput,
+): Promise<DowngradedSubscription[]> {
+  const { db, now, signal } = context;
+  const rows = await db.transaction(async (tx) => {
+    return await writeOrgMetadataWithPlanEntitlements(tx, {
+      writeOrgMetadata: async (writeTx) => {
+        return await writeTx
+          .update(orgMetadata)
+          .set({
+            tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
+            subscriptionStatus: "canceled",
+            stripeSubscriptionId: null,
+            cancelAtPeriodEnd: false,
+            currentPeriodEnd: null,
+            updatedAt: now,
+          })
+          .where(currentBillingCandidateWhere(candidate))
+          .returning({
+            orgId: orgMetadata.orgId,
+            status: orgMetadata.subscriptionStatus,
+          });
+      },
+      writePlanEntitlement: async (writeTx, row) => {
+        await upsertOrgPlanEntitlement(writeTx, {
+          orgId: row.orgId,
+          tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
+          source: "stripe_subscription",
+          sourceMetadata: subscription.metadata ?? {},
+        });
+      },
+    });
+  });
+  signal.throwIfAborted();
+
+  return rows.map((row) => {
+    return { ...row, subscriptionId: candidate.stripeSubscriptionId };
+  });
+}
+
+async function refreshRecoveredBillingCandidate(
+  context: ReconcileBillingContext,
+  candidate: StripeBillingCandidate,
+  subscription: SubscriptionInput,
+  syncedFields: SyncedBillingFields,
+): Promise<void> {
+  const { db, signal } = context;
+  const priceId = subscription.items.data[0]?.price.id;
+  const tier = priceId ? tierFromPriceId(priceId) : undefined;
+
+  await db.transaction(async (tx) => {
+    await writeOrgMetadataWithPlanEntitlements(tx, {
+      writeOrgMetadata: async (writeTx) => {
+        return await writeTx
+          .update(orgMetadata)
+          .set({
+            ...syncedFields,
+            ...(tier ? { tier } : {}),
+          })
+          .where(currentBillingCandidateWhere(candidate))
+          .returning({
+            orgId: orgMetadata.orgId,
+          });
+      },
+      writePlanEntitlement: async (writeTx, row) => {
+        if (!tier) {
+          return;
+        }
+        await upsertStripeSubscriptionPlanSnapshot(writeTx, {
+          orgId: row.orgId,
+          tier,
+          subscription,
+          stripeSubscriptionId: candidate.stripeSubscriptionId,
+          stripePriceId: priceId,
+          status: subscription.status,
+        });
+      },
+    });
+  });
+  signal.throwIfAborted();
+}
+
+async function refreshPaymentFailedPaidThroughCandidate(
+  context: ReconcileBillingContext,
+  candidate: StripeBillingCandidate,
+  subscription: SubscriptionInput,
+  syncedFields: SyncedBillingFields,
+): Promise<void> {
+  const { db, signal } = context;
+  await db.transaction(async (tx) => {
+    await writeOrgMetadataWithPlanEntitlements(tx, {
+      writeOrgMetadata: async (writeTx) => {
+        return await writeTx
+          .update(orgMetadata)
+          .set(syncedFields)
+          .where(currentBillingCandidateWhere(candidate))
+          .returning({
+            orgId: orgMetadata.orgId,
+            tier: orgMetadata.tier,
+          });
+      },
+      writePlanEntitlement: async (writeTx, row) => {
+        await upsertStripeSubscriptionPlanSnapshot(writeTx, {
+          orgId: row.orgId,
+          tier: knownOrgTier(row.tier),
+          subscription,
+          stripeSubscriptionId: candidate.stripeSubscriptionId,
+          stripePriceId: subscription.items.data[0]?.price.id ?? null,
+          status: subscription.status,
+        });
+      },
+    });
+  });
+  signal.throwIfAborted();
+}
+
+async function downgradePaymentFailedBillingCandidate(
+  context: ReconcileBillingContext,
+  candidate: StripeBillingCandidate,
+  subscription: SubscriptionInput,
+  syncedFields: SyncedBillingFields,
+): Promise<DowngradedSubscription[]> {
+  const { db, signal } = context;
+  const rows = await db.transaction(async (tx) => {
+    return await writeOrgMetadataWithPlanEntitlements(tx, {
+      writeOrgMetadata: async (writeTx) => {
+        return await writeTx
+          .update(orgMetadata)
+          .set({
+            tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
+            ...syncedFields,
+          })
+          .where(currentBillingCandidateWhere(candidate))
+          .returning({
+            orgId: orgMetadata.orgId,
+            subscriptionId: orgMetadata.stripeSubscriptionId,
+            status: orgMetadata.subscriptionStatus,
+          });
+      },
+      writePlanEntitlement: async (writeTx, row) => {
+        await upsertStripeSubscriptionPlanSnapshot(writeTx, {
+          orgId: row.orgId,
+          tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
+          subscription,
+          stripeSubscriptionId: row.subscriptionId,
+          stripePriceId: subscription.items.data[0]?.price.id ?? null,
+        });
+      },
+    });
+  });
+  signal.throwIfAborted();
+  return rows;
+}
+
+async function reconcileBillingCandidate(
+  context: ReconcileBillingContext,
+  candidate: BillingCandidate,
+): Promise<DowngradedSubscription[]> {
+  const { stripe, now, staleBefore, signal } = context;
+  if (!candidate.stripeSubscriptionId) {
+    return [];
+  }
+  const stripeCandidate: StripeBillingCandidate = {
+    orgId: candidate.orgId,
+    stripeSubscriptionId: candidate.stripeSubscriptionId,
+  };
+
+  const subscription = (await stripe.subscriptions.retrieve(
+    stripeCandidate.stripeSubscriptionId,
+  )) as SubscriptionInput;
+  signal.throwIfAborted();
+
+  const stripePeriodEnd = subscriptionPeriodEnd(subscription);
+  const scheduledEnd = subscriptionScheduledEnd(subscription);
+  const syncedFields = {
+    subscriptionStatus: subscription.status,
+    cancelAtPeriodEnd: subscriptionWillCancel(subscription),
+    updatedAt: now,
+    ...(scheduledEnd ? { currentPeriodEnd: scheduledEnd } : {}),
+  };
 
   if (subscription.status === "canceled") {
-    const rows = await db
-      .update(orgMetadata)
-      .set({
-        tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
-        subscriptionStatus: "canceled",
-        stripeSubscriptionId: null,
-        cancelAtPeriodEnd: false,
-        currentPeriodEnd: null,
-        updatedAt: now,
-      })
-      .where(currentCandidate)
-      .returning({
-        orgId: orgMetadata.orgId,
-        status: orgMetadata.subscriptionStatus,
-      });
-    signal.throwIfAborted();
-
-    return rows.map((row) => {
-      return { ...row, subscriptionId: candidate.stripeSubscriptionId };
-    });
+    return await reconcileCanceledBillingCandidate(
+      context,
+      stripeCandidate,
+      subscription,
+    );
   }
 
-  if (!isPaymentFailed) {
-    if (!canRefreshPaidThrough) {
+  if (!subscriptionIsPaymentFailed(subscription)) {
+    if (!subscriptionCanRefreshPaidThrough(subscription)) {
       L.warn(
         "payment-failed local subscription has unexpected Stripe status; skipping downgrade",
         {
           orgId: candidate.orgId,
-          subscriptionId: candidate.stripeSubscriptionId,
+          subscriptionId: stripeCandidate.stripeSubscriptionId,
           status: subscription.status,
         },
       );
       return [];
     }
 
-    const priceId = subscription.items.data[0]?.price.id;
-    const tier = priceId ? tierFromPriceId(priceId) : undefined;
-
-    await db
-      .update(orgMetadata)
-      .set({
-        ...syncedFields,
-        ...(tier ? { tier } : {}),
-      })
-      .where(currentCandidate);
-    signal.throwIfAborted();
+    await refreshRecoveredBillingCandidate(
+      context,
+      stripeCandidate,
+      subscription,
+      syncedFields,
+    );
     return [];
   }
 
@@ -360,30 +564,26 @@ async function reconcileBillingCandidate(
       "payment-failed subscription missing paid-through in Stripe; downgrading",
       {
         orgId: candidate.orgId,
-        subscriptionId: candidate.stripeSubscriptionId,
+        subscriptionId: stripeCandidate.stripeSubscriptionId,
         status: subscription.status,
       },
     );
   } else if (stripePeriodEnd > staleBefore) {
-    await db.update(orgMetadata).set(syncedFields).where(currentCandidate);
-    signal.throwIfAborted();
+    await refreshPaymentFailedPaidThroughCandidate(
+      context,
+      stripeCandidate,
+      subscription,
+      syncedFields,
+    );
     return [];
   }
 
-  const rows = await db
-    .update(orgMetadata)
-    .set({
-      tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
-      ...syncedFields,
-    })
-    .where(currentCandidate)
-    .returning({
-      orgId: orgMetadata.orgId,
-      subscriptionId: orgMetadata.stripeSubscriptionId,
-      status: orgMetadata.subscriptionStatus,
-    });
-  signal.throwIfAborted();
-  return rows;
+  return await downgradePaymentFailedBillingCandidate(
+    context,
+    stripeCandidate,
+    subscription,
+    syncedFields,
+  );
 }
 
 async function expireOrgCredits(
@@ -441,33 +641,49 @@ async function reconcileAtomGrantCandidate(
   await expireOrgCredits(db, candidate.orgId, now);
   signal.throwIfAborted();
 
-  const rows = await db
-    .update(orgMetadata)
-    .set({
-      tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
-      subscriptionStatus: "expired",
-      cancelAtPeriodEnd: false,
-      currentPeriodEnd: null,
-      pendingSubscriptionScheduleId: null,
-      pendingSubscriptionTargetTier: null,
-      pendingSubscriptionChangeAt: null,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(orgMetadata.orgId, candidate.orgId),
-        inArray(orgMetadata.tier, PAID_TIERS),
-        isNull(orgMetadata.stripeSubscriptionId),
-        eq(orgMetadata.subscriptionStatus, ATOM_GRANT_SUBSCRIPTION_STATUS),
-        isNotNull(orgMetadata.currentPeriodEnd),
-        lte(orgMetadata.currentPeriodEnd, now),
-      ),
-    )
-    .returning({
-      orgId: orgMetadata.orgId,
-      subscriptionId: orgMetadata.stripeSubscriptionId,
-      status: orgMetadata.subscriptionStatus,
+  const rows = await db.transaction(async (tx) => {
+    return await writeOrgMetadataWithPlanEntitlements(tx, {
+      writeOrgMetadata: async (writeTx) => {
+        return await writeTx
+          .update(orgMetadata)
+          .set({
+            tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
+            subscriptionStatus: "expired",
+            cancelAtPeriodEnd: false,
+            currentPeriodEnd: null,
+            pendingSubscriptionScheduleId: null,
+            pendingSubscriptionTargetTier: null,
+            pendingSubscriptionChangeAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(orgMetadata.orgId, candidate.orgId),
+              inArray(orgMetadata.tier, PAID_TIERS),
+              isNull(orgMetadata.stripeSubscriptionId),
+              eq(
+                orgMetadata.subscriptionStatus,
+                ATOM_GRANT_SUBSCRIPTION_STATUS,
+              ),
+              isNotNull(orgMetadata.currentPeriodEnd),
+              lte(orgMetadata.currentPeriodEnd, now),
+            ),
+          )
+          .returning({
+            orgId: orgMetadata.orgId,
+            subscriptionId: orgMetadata.stripeSubscriptionId,
+            status: orgMetadata.subscriptionStatus,
+          });
+      },
+      writePlanEntitlement: async (writeTx, row) => {
+        await upsertOrgPlanEntitlement(writeTx, {
+          orgId: row.orgId,
+          tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
+          source: "stripe_atom_grant",
+        });
+      },
     });
+  });
   signal.throwIfAborted();
   return rows;
 }
@@ -809,7 +1025,7 @@ export const reconcileBillingEntitlements$ = command(
         return subscription.orgId;
       }),
     )) {
-      await disableIneligibleWorkflowWebhookTriggersForOrg(db, {
+      await disableIneligibleWorkflowWebhookAutomationsForOrg(db, {
         orgId,
         signal,
       });

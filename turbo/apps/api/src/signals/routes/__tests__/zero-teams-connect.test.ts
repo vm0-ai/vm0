@@ -25,8 +25,7 @@ const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
-const MICROSOFT_TOKEN_URL =
-  "https://login.microsoftonline.com/:tenantId/oauth2/v2.0/token";
+const BOT_FRAMEWORK_TOKEN_URL = `https://login.microsoftonline.com/${TEAMS_APP_TENANT_ID}/oauth2/v2.0/token`;
 
 interface TeamsWelcomeRequest {
   readonly kind: "conversation" | "activity";
@@ -45,11 +44,14 @@ function teamsInstallUrl(tenantId?: string): string {
   return url.toString();
 }
 
-function teamsOauthConnectUrl(fixture: {
-  readonly orgId: string;
-  readonly userId: string;
-}): string {
-  const url = new URL("https://app.vm0.test/api/zero/teams/oauth/connect");
+function teamsOauthConnectUrl(
+  fixture: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  origin = "https://api.vm0.test",
+): string {
+  const url = new URL("/api/zero/teams/oauth/connect", origin);
   url.searchParams.set("orgId", fixture.orgId);
   url.searchParams.set("vm0UserId", fixture.userId);
   return url.toString();
@@ -83,7 +85,7 @@ function teamsWelcomeHandlers(
   const serviceBaseUrl = teamsServiceBaseUrl(fixture.serviceUrl);
 
   server.use(
-    http.post(MICROSOFT_TOKEN_URL, async ({ request }) => {
+    http.post(BOT_FRAMEWORK_TOKEN_URL, async ({ request }) => {
       const form = new URLSearchParams(await request.text());
       expect(form.get("client_id")).toBe(BOT_APP_ID);
       expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
@@ -170,6 +172,34 @@ describe("GET /api/zero/integrations/teams/connect", () => {
         orgId: "org_empty",
         userId: "user_empty",
       }),
+    });
+  });
+
+  it("falls back to the web origin when the API backend URL is unset", async () => {
+    mockEnv("VM0_API_BACKEND_URL", undefined);
+    mocks.clerk.session("user_empty", "org_empty", "org:admin");
+
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      isInstalled: false,
+      isConnected: false,
+      isAdmin: true,
+      installUrl: teamsInstallUrl(),
+      connectUrl: teamsOauthConnectUrl(
+        {
+          orgId: "org_empty",
+          userId: "user_empty",
+        },
+        "https://app.vm0.test",
+      ),
     });
   });
 
@@ -494,7 +524,7 @@ describe("POST /api/zero/integrations/teams/connect", () => {
               body: [
                 {
                   type: "TextBlock",
-                  text: "You're connected! 🎉\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
+                  text: "You're connected! 🎉\nMention `@Okou` in any channel or send a DM to start chatting with your agent.",
                   wrap: true,
                 },
               ],

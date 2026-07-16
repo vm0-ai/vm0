@@ -3,7 +3,7 @@ import { expect, test } from "../fixtures";
 import { authHeadersForToken } from "../lib/onboarding";
 import { deriveAppUrl } from "../playwright.config";
 
-const apiUrl = process.env.VM0_API_URL!;
+const apiUrl = process.env.VM0_API_BACKEND_URL!;
 const appUrl = deriveAppUrl(apiUrl);
 
 async function openBillingSettings(page: Page): Promise<void> {

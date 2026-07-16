@@ -10,7 +10,7 @@ import { env } from "../../lib/env";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 
 const UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos";
 const UNSPLASH_HOME_URL = "https://unsplash.com/";
@@ -212,7 +212,7 @@ async function trackUnsplashDownload(
     return false;
   }
 
-  const responseResult = await settle(
+  const response = await tapError(
     fetch(downloadLocation, {
       headers: {
         Authorization: `Client-ID ${accessKey}`,
@@ -221,13 +221,13 @@ async function trackUnsplashDownload(
       },
       signal,
     }),
-    signal,
   );
-  if (!responseResult.ok) {
+  signal.throwIfAborted();
+  if (!response) {
     return false;
   }
 
-  return responseResult.value.ok;
+  return response.ok;
 }
 
 async function searchUnsplash(
@@ -244,7 +244,7 @@ async function searchUnsplash(
     url.searchParams.set("orientation", item.orientation);
   }
 
-  const responseResult = await settle(
+  const response = await tapError(
     fetch(url, {
       headers: {
         Authorization: `Client-ID ${accessKey}`,
@@ -253,27 +253,24 @@ async function searchUnsplash(
       },
       signal,
     }),
-    signal,
   );
-  if (!responseResult.ok) {
+  signal.throwIfAborted();
+  if (!response) {
     return providerError(`Unsplash search failed for "${item.query}"`);
   }
-
-  const response = responseResult.value;
   if (!response.ok) {
     return providerError(
       `Unsplash search failed with ${response.status} ${response.statusText}`,
     );
   }
 
-  const bodyResult = await settle(response.text(), signal);
-  if (!bodyResult.ok) {
+  const body = await tapError(response.text());
+  signal.throwIfAborted();
+  if (body === undefined) {
     return providerError("Unsplash search returned an unreadable response");
   }
 
-  const parsed = unsplashSearchResponseSchema.safeParse(
-    safeJsonParse(bodyResult.value),
-  );
+  const parsed = unsplashSearchResponseSchema.safeParse(safeJsonParse(body));
   if (!parsed.success) {
     return providerError("Unsplash search returned an unexpected response");
   }
@@ -356,7 +353,7 @@ async function searchPexels(
     url.searchParams.set("orientation", orientation);
   }
 
-  const responseResult = await settle(
+  const response = await tapError(
     fetch(url, {
       headers: {
         Authorization: apiKey,
@@ -364,27 +361,24 @@ async function searchPexels(
       },
       signal,
     }),
-    signal,
   );
-  if (!responseResult.ok) {
+  signal.throwIfAborted();
+  if (!response) {
     return providerError(`Pexels search failed for "${item.query}"`);
   }
-
-  const response = responseResult.value;
   if (!response.ok) {
     return providerError(
       `Pexels search failed with ${response.status} ${response.statusText}`,
     );
   }
 
-  const bodyResult = await settle(response.text(), signal);
-  if (!bodyResult.ok) {
+  const body = await tapError(response.text());
+  signal.throwIfAborted();
+  if (body === undefined) {
     return providerError("Pexels search returned an unreadable response");
   }
 
-  const parsed = pexelsSearchResponseSchema.safeParse(
-    safeJsonParse(bodyResult.value),
-  );
+  const parsed = pexelsSearchResponseSchema.safeParse(safeJsonParse(body));
   if (!parsed.success) {
     return providerError("Pexels search returned an unexpected response");
   }

@@ -11,7 +11,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
-import { safeJsonParse, safeSync, settle } from "../utils";
+import { safeJsonParse, safeSync, tapError } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import {
@@ -1300,13 +1300,13 @@ function bytePlusVideoInput(
 async function readBytePlusErrorBodyForLog(
   response: Response,
 ): Promise<string | undefined> {
-  const result = await settle(response.text());
-  if (!result.ok || !result.value) {
+  const body = await tapError(response.text());
+  if (!body) {
     return undefined;
   }
-  return result.value.length > BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH
-    ? `${result.value.slice(0, BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH)}...`
-    : result.value;
+  return body.length > BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH
+    ? `${body.slice(0, BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH)}...`
+    : body;
 }
 
 export async function submitBytePlusVideoGeneration(

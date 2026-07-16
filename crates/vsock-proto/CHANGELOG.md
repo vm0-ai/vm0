@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.22](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.21...vsock-proto-v0.18.22) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.18.21](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.20...vsock-proto-v0.18.21) (2026-06-30)
 
 

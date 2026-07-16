@@ -9,7 +9,7 @@ import { createAuthedContractClient } from "../api-client-base.ts";
 import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
-export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
+export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v2";
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
@@ -31,15 +31,24 @@ const apiFeatureSwitchClient$ = computed((get) => {
 function applySwitches(
   result: Record<FeatureSwitchKey, boolean>,
   overrides: Partial<Record<string, boolean>> | undefined,
+  effectiveSwitches: Partial<Record<string, boolean>> | undefined,
 ) {
-  if (!overrides) {
-    return;
-  }
-  for (const key of Object.values(FeatureSwitchKey)) {
-    const value = overrides[key];
-    if (value !== undefined) {
-      result[key] = Boolean(value);
+  if (overrides) {
+    for (const key of Object.values(FeatureSwitchKey)) {
+      const value = overrides[key];
+      if (value !== undefined) {
+        result[key] = Boolean(value);
+      }
     }
+  }
+
+  const notionWorkflowAutomations =
+    overrides?.[FeatureSwitchKey.NotionWorkflowAutomations] ??
+    effectiveSwitches?.[FeatureSwitchKey.NotionWorkflowAutomations];
+  if (notionWorkflowAutomations !== undefined) {
+    result[FeatureSwitchKey.NotionWorkflowAutomations] = Boolean(
+      notionWorkflowAutomations,
+    );
   }
 }
 
@@ -51,6 +60,14 @@ export const featureSwitch$ = computed((get) => {
     return getAllFeatureStates({});
   }
   return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
+});
+
+export const codexFastModeEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+});
+
+export const composerUploadPopoverEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 });
 
 export const reloadFeatureSwitch$ = command(
@@ -70,7 +87,11 @@ export const reloadFeatureSwitch$ = command(
       email: identity.email,
       orgId: identity.orgId,
     });
-    applySwitches(combined, result.body.switches);
+    applySwitches(
+      combined,
+      result.body.switches,
+      result.body.effectiveSwitches,
+    );
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },

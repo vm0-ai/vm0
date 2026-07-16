@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.9.148](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.147...vsock-test-v0.9.148) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.9.147](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.146...vsock-test-v0.9.147) (2026-07-15)
+
+## [0.9.146](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.145...vsock-test-v0.9.146) (2026-07-15)
+
+## [0.9.145](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.144...vsock-test-v0.9.145) (2026-07-15)
+
+
+### Bug Fixes
+
+* keep guest responsive during file writes ([#21556](https://github.com/vm0-ai/vm0/issues/21556)) ([28de816](https://github.com/vm0-ai/vm0/commit/28de81622ea55b1b67317dff3f6bd1e5c542962c))
+
+## [0.9.144](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.143...vsock-test-v0.9.144) (2026-07-15)
+
+## [0.9.143](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.142...vsock-test-v0.9.143) (2026-07-14)
+
+## [0.9.142](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.141...vsock-test-v0.9.142) (2026-07-14)
+
+## [0.9.141](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.140...vsock-test-v0.9.141) (2026-07-13)
+
+## [0.9.140](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.139...vsock-test-v0.9.140) (2026-07-13)
+
 ## [0.9.139](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.138...vsock-test-v0.9.139) (2026-07-10)
 
 ## [0.9.138](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.137...vsock-test-v0.9.138) (2026-07-09)

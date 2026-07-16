@@ -6,7 +6,7 @@
 # without waiting for the device flow authentication.
 #
 # Prerequisites:
-#   - VM0_API_URL environment variable must be set
+#   - VM0_API_BACKEND_URL environment variable must be set
 #   - VERCEL_AUTOMATION_BYPASS_SECRET for Vercel bypass
 #   - USE_MOCK_CLAUDE must be "true" on the server
 #
@@ -28,12 +28,12 @@ INITIAL_DELAY=2
 echo "=== Generating Test CLI Token (email: ${EMAIL}) ==="
 
 # Validate environment
-if [[ -z "${VM0_API_URL:-}" ]]; then
-  echo "Error: VM0_API_URL environment variable is required"
+if [[ -z "${VM0_API_BACKEND_URL:-}" ]]; then
+  echo "Error: VM0_API_BACKEND_URL environment variable is required"
   exit 1
 fi
 
-echo "API URL: ${VM0_API_URL}"
+echo "API URL: ${VM0_API_BACKEND_URL}"
 
 # Build curl headers
 CURL_HEADERS=(-H "Content-Type: application/json")
@@ -84,7 +84,7 @@ call_test_token_endpoint() {
     response=$(curl -s -w "\n%{http_code}" \
       "${CURL_HEADERS[@]}" \
       -X POST \
-      "${VM0_API_URL}/api/cli/auth/test-token?email=${ENCODED_EMAIL}${BYPASS_QUERY}" 2>&1) || true
+      "${VM0_API_BACKEND_URL}/api/cli/auth/test-token?email=${ENCODED_EMAIL}${BYPASS_QUERY}" 2>&1) || true
 
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | head -n-1)
@@ -144,7 +144,7 @@ mkdir -p "$CONFIG_DIR"
 cat > "$CONFIG_FILE" << EOF
 {
   "token": "$TOKEN",
-  "apiUrl": "$VM0_API_URL"
+  "apiUrl": "$VM0_API_BACKEND_URL"
 }
 EOF
 

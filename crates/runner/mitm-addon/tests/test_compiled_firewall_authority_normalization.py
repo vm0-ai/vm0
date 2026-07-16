@@ -257,9 +257,13 @@ def test_compiled_matches_parameterized_host_nonstandard_port_rejection():
     [
         ("https://api.github.com", "api.github.com", 443),
         ("https://api.github.com:8443", "api.github.com", 8443),
+        ("https://api.github.com/v1", "api.github.com", 443),
+        ("https://api.github.com/repos/{owner}", "api.github.com", 443),
         ("https://{sub}.github.com", "api.github.com", 443),
         ("https://{deployment+}.bentoml.ai", "team.prod.bentoml.ai", 443),
         ("https://api.github.com.", "api.github.com", 443),
+        ("https://例子.测试", "xn--fsqu00a.xn--0zwm56d", 443),
+        ("https://[2001:0db8::1]", "[2001:db8::1]", 443),
     ],
 )
 def test_compiled_matches_ordinary_credential_authority(base, host, port):
@@ -277,6 +281,33 @@ def test_compiled_matches_ordinary_credential_authority(base, host, port):
     )
 
     assert compile_firewalls_or_fail(fws).matches_ordinary_credential_authority(host, port)
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [
+        {"headers": {"Authorization": "Bearer token"}},
+        {"query": {"api_key": "token"}},
+        {"awsSigv4": {"accessKeyId": "key", "secretAccessKey": "secret"}},
+    ],
+    ids=["headers", "query", "aws-sigv4"],
+)
+def test_compiled_matches_ordinary_credential_authority_auth_kinds(auth):
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.github.com",
+                "auth": auth,
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            }
+        ],
+        name="example",
+    )
+
+    assert compile_firewalls_or_fail(fws).matches_ordinary_credential_authority(
+        "api.github.com",
+        443,
+    )
 
 
 @pytest.mark.parametrize(
@@ -302,8 +333,25 @@ def test_compiled_matches_ordinary_credential_authority(base, host, port):
             "auth": {"headers": None},
             "permissions": [{"name": "read", "rules": ["GET /items"]}],
         },
+        {
+            "base": "https://api.github.com?source=malformed",
+            "auth": {"headers": {"Authorization": "Bearer token"}},
+            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+        },
+        {
+            "base": "https://api.github.com",
+            "auth": {"awsSigv4": {"accessKeyId": "key"}},
+            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+        },
     ],
-    ids=["http", "auth-base-only", "empty-headers", "malformed-auth"],
+    ids=[
+        "http",
+        "auth-base-only",
+        "empty-headers",
+        "malformed-auth",
+        "malformed-base",
+        "malformed-aws-sigv4",
+    ],
 )
 def test_compiled_skips_non_ordinary_credential_authority_candidates(api_entry):
     fws = wrap_firewalls([api_entry], name="example")
@@ -329,3 +377,88 @@ def test_compiled_ordinary_credential_authority_respects_nondefault_port():
 
     assert compiled.matches_ordinary_credential_authority("api.github.com", 8443)
     assert not compiled.matches_ordinary_credential_authority("api.github.com", 443)
+
+
+def test_compiled_skips_malformed_firewall_name_ordinary_credential_authority():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            }
+        ],
+        name="",
+    )
+
+    assert not compile_firewalls_or_fail(fws).matches_ordinary_credential_authority(
+        "api.github.com",
+        443,
+    )
+
+
+def test_compiled_ordinary_credential_authority_index_skips_static_candidates(monkeypatch):
+    apis = [
+        {
+            "base": f"https://api-{index}.example.com/items",
+            "auth": {"headers": {"Authorization": "Bearer token"}},
+            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+        }
+        for index in range(500)
+    ]
+    apis.extend(
+        [
+            {
+                "base": "https://path.example.com/items/{item_id}",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            },
+            {
+                "base": "https://{subdomain}.parameterized.example.com/items",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            },
+            {
+                "base": "http://{subdomain}.insecure.example.com/items",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            },
+            {
+                "base": "https://{subdomain}.auth-base.example.com/items",
+                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            },
+        ]
+    )
+    raw_auth_check_count = 0
+    original_auth_check = matching.auth_config_injects_ordinary_upstream_credentials
+
+    def counting_auth_check(auth_config):
+        nonlocal raw_auth_check_count
+        raw_auth_check_count += 1
+        return original_auth_check(auth_config)
+
+    monkeypatch.setattr(
+        matching,
+        "auth_config_injects_ordinary_upstream_credentials",
+        counting_auth_check,
+    )
+    compiled = compile_firewalls_or_fail(wrap_firewalls(apis, name="example"))
+    compiled_auth_check_count = raw_auth_check_count
+    parameterized_match_count = 0
+    original_authority_match = matching._match_compiled_base_authority
+
+    def counting_authority_match(url_parts, base):
+        nonlocal parameterized_match_count
+        parameterized_match_count += 1
+        return original_authority_match(url_parts, base)
+
+    monkeypatch.setattr(
+        matching,
+        "_match_compiled_base_authority",
+        counting_authority_match,
+    )
+
+    assert not compiled.matches_ordinary_credential_authority("unrelated.example.net", 443)
+    assert raw_auth_check_count == compiled_auth_check_count
+    assert parameterized_match_count == 1

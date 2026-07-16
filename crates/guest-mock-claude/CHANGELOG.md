@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.18](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.17...guest-mock-claude-v0.21.18) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.21.17](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.16...guest-mock-claude-v0.21.17) (2026-07-08)
 
 ## [0.21.16](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.15...guest-mock-claude-v0.21.16) (2026-07-08)

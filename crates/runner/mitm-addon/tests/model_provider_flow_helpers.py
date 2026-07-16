@@ -14,6 +14,46 @@ _WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
 _WEBSOCKET_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 
 
+def _openai_responses_websocket_request_headers() -> http.Headers:
+    return http.Headers(
+        [
+            (b"Host", b"api.openai.com"),
+            (b"Connection", b"keep-alive, Upgrade"),
+            (b"Upgrade", b"websocket"),
+            (b"Sec-WebSocket-Key", _WEBSOCKET_KEY.encode()),
+            (b"Sec-WebSocket-Version", b"13"),
+        ]
+    )
+
+
+def make_openai_responses_websocket_request_flow(
+    real_flow: RealFlowFactory,
+) -> http.HTTPFlow:
+    return real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.openai.com",
+        path="/v1/responses",
+        method="GET",
+        request_headers=_openai_responses_websocket_request_headers(),
+    )
+
+
+def make_openai_responses_websocket_response_headers(
+    *,
+    connection: str | None = "Upgrade",
+    upgrade: str = "websocket",
+    accept: str = _WEBSOCKET_ACCEPT,
+) -> http.Headers:
+    pairs = [
+        (b"Upgrade", upgrade.encode()),
+        (b"Sec-WebSocket-Accept", accept.encode()),
+    ]
+    if connection is not None:
+        pairs.insert(0, (b"Connection", connection.encode()))
+    return http.Headers(pairs)
+
+
 def make_model_provider_flow(
     real_flow: RealFlowFactory,
     tmp_path: Path,
@@ -67,20 +107,11 @@ def make_openai_responses_websocket_flow(
         cli_agent_type="codex",
         model_usage_provider="gpt-5.5",
     )
-    flow.request.headers["Connection"] = "keep-alive, Upgrade"
-    flow.request.headers["Upgrade"] = "websocket"
-    flow.request.headers["Sec-WebSocket-Key"] = _WEBSOCKET_KEY
-    flow.request.headers["Sec-WebSocket-Version"] = "13"
+    flow.request.headers = _openai_responses_websocket_request_headers()
     flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
     flow.response = tutils.tresp(
         status_code=101,
-        headers=http.Headers(
-            [
-                (b"Connection", b"Upgrade"),
-                (b"Upgrade", b"websocket"),
-                (b"Sec-WebSocket-Accept", _WEBSOCKET_ACCEPT.encode()),
-            ]
-        ),
+        headers=make_openai_responses_websocket_response_headers(),
     )
     return flow
 

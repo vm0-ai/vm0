@@ -3,26 +3,30 @@ import { isLimitedFree1RestrictedRunModel } from "@vm0/api-contracts/contracts/m
 
 import { insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
+import {
+  loadOrgPlanCapabilities,
+  type OrgPlanCapabilities,
+} from "./org-plan-entitlement-read.service";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 
-type CreditDb = Pick<Db, "execute">;
+type CreditDb = Pick<Db, "execute" | "select">;
 
 interface CreditCheckRow extends Record<string, unknown> {
-  readonly tier: string | null;
   readonly credits: string | null;
   readonly unsettled_expired: string | null;
 }
 
 interface OrgCreditAvailability {
-  readonly tier: string;
+  readonly status: OrgPlanCapabilities["status"];
+  readonly supportByok: boolean;
+  readonly restrictedVm0Models: boolean;
   readonly spendableCredits: number;
 }
 
-function allowsLimitedFree1ModelProvider(
-  modelProviderType: string | null | undefined,
-): boolean {
-  return modelProviderType === "vm0";
-}
+type OrgModelAdmissionCapabilities = Pick<
+  OrgPlanCapabilities,
+  "supportByok" | "restrictedVm0Models"
+>;
 
 export async function resolveOrgCreditAvailability(params: {
   readonly db: CreditDb;
@@ -30,7 +34,7 @@ export async function resolveOrgCreditAvailability(params: {
 }): Promise<OrgCreditAvailability | null> {
   const { rows } = await params.db.execute<CreditCheckRow>(sql`
     WITH org AS (
-      SELECT tier, credits FROM org_metadata
+      SELECT credits FROM org_metadata
       WHERE org_id = ${params.orgId}
       LIMIT 1
     ),
@@ -42,7 +46,6 @@ export async function resolveOrgCreditAvailability(params: {
         AND remaining > 0
     )
     SELECT
-      (SELECT tier FROM org) AS tier,
       (SELECT credits FROM org) AS credits,
       (SELECT total FROM expired) AS unsettled_expired
   `);
@@ -55,8 +58,14 @@ export async function resolveOrgCreditAvailability(params: {
   const credits = Number(row.credits);
   const unsettledExpired = Number(row.unsettled_expired ?? 0);
   const spendableCredits = credits - unsettledExpired;
+  const capabilities = await loadOrgPlanCapabilities(params.db, params.orgId);
+  if (!capabilities) {
+    return null;
+  }
   return {
-    tier: row.tier ?? "pro-suspend",
+    status: capabilities.status,
+    supportByok: capabilities.supportByok,
+    restrictedVm0Models: capabilities.restrictedVm0Models,
     spendableCredits,
   };
 }
@@ -68,17 +77,32 @@ export async function checkOrgCreditsForRunAdmission(params: {
   readonly selectedModel?: string | null;
 }): Promise<ReturnType<typeof insufficientCredits> | undefined> {
   const availability = await resolveOrgCreditAvailability(params);
+  return await checkResolvedOrgCreditsForRunAdmission({
+    ...params,
+    availability,
+  });
+}
+
+export async function checkResolvedOrgCreditsForRunAdmission(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly modelProviderType: string | null | undefined;
+  readonly selectedModel?: string | null;
+  readonly availability: OrgCreditAvailability | null;
+}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+  const { availability } = params;
   if (!availability) {
     return insufficientCredits();
   }
-  if (
-    availability.tier === "limited-free-1" &&
-    (!allowsLimitedFree1ModelProvider(params.modelProviderType) ||
-      isLimitedFree1RestrictedRunModel(params.selectedModel))
-  ) {
-    return insufficientCredits();
+  const modelAdmission = checkOrgModelRunAdmission({
+    capabilities: availability,
+    modelProviderType: params.modelProviderType,
+    selectedModel: params.selectedModel,
+  });
+  if (modelAdmission) {
+    return modelAdmission;
   }
-  if (availability.tier === "pro-suspend") {
+  if (availability.status !== "active") {
     return insufficientCredits();
   }
 
@@ -99,20 +123,18 @@ export async function checkOrgCreditsForRunAdmission(params: {
     : insufficientCredits();
 }
 
-export async function checkLimitedFreeRunModelAdmission(params: {
-  readonly db: Db;
-  readonly orgId: string;
+export function checkOrgModelRunAdmission(params: {
+  readonly capabilities: OrgModelAdmissionCapabilities | null;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
-}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
-  if (
-    allowsLimitedFree1ModelProvider(params.modelProviderType) &&
-    !isLimitedFree1RestrictedRunModel(params.selectedModel)
-  ) {
+}): ReturnType<typeof insufficientCredits> | undefined {
+  const { capabilities } = params;
+  if (!capabilities) {
     return undefined;
   }
-  const availability = await resolveOrgCreditAvailability(params);
-  return availability?.tier === "limited-free-1"
+  return (!capabilities.supportByok && params.modelProviderType !== "vm0") ||
+    (capabilities.restrictedVm0Models &&
+      isLimitedFree1RestrictedRunModel(params.selectedModel))
     ? insufficientCredits()
     : undefined;
 }

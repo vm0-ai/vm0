@@ -14,6 +14,7 @@ import {
   type OpenIdAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
+  type ConnectorAuthMethodConfig,
   type ConnectorRefreshInputValues,
   type ConnectorRevokeInputValues,
   type RefreshTokenAccessConnectorType,
@@ -22,6 +23,7 @@ import {
 import {
   connectorAuthClientIdentityForMethod,
   connectorAuthMethodRefHasRevokeKind,
+  getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodOpenIdAuthGrantConfig,
@@ -63,10 +65,13 @@ import { asanaProvider } from "./connectors/asana/provider";
 import { awsProvider } from "./connectors/aws/provider";
 import { base44Provider } from "./connectors/base44/provider";
 import { boxProvider } from "./connectors/box/provider";
+import { calComProvider } from "./connectors/cal-com/provider";
 import { canvaProvider } from "./connectors/canva/provider";
 import { closeProvider } from "./connectors/close/provider";
+import { copperProvider } from "./connectors/copper/provider";
 import { cloudflareProvider } from "./connectors/cloudflare/provider";
 import { deelProvider } from "./connectors/deel/provider";
+import { datadogProvider } from "./connectors/datadog/provider";
 import { docusignProvider } from "./connectors/docusign/provider";
 import { dropboxProvider } from "./connectors/dropbox/provider";
 import { figmaProvider } from "./connectors/figma/provider";
@@ -79,8 +84,10 @@ import { googleAdsProvider } from "./connectors/google-ads/provider";
 import { googleAnalyticsProvider } from "./connectors/google-analytics/provider";
 import { googleCalendarProvider } from "./connectors/google-calendar/provider";
 import { googleCloudProvider } from "./connectors/google-cloud/provider";
+import { googleContactsProvider } from "./connectors/google-contacts/provider";
 import { googleDocsProvider } from "./connectors/google-docs/provider";
 import { googleDriveProvider } from "./connectors/google-drive/provider";
+import { googleFormsProvider } from "./connectors/google-forms/provider";
 import { googleMapsProvider } from "./connectors/google-maps/provider";
 import { googleMeetProvider } from "./connectors/google-meet/provider";
 import { googleSearchConsoleProvider } from "./connectors/google-search-console/provider";
@@ -95,6 +102,7 @@ import { neonProvider } from "./connectors/neon/provider";
 import { nintendoSwitchParentalControlsProvider } from "./connectors/nintendo-switch-parental-controls/provider";
 import { nintendoStoreProvider } from "./connectors/nintendo-store/provider";
 import { notionProvider } from "./connectors/notion/provider";
+import { netsuiteProvider } from "./connectors/netsuite/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
 import { outlookMailProvider } from "./connectors/outlook-mail/provider";
 import { redditProvider } from "./connectors/reddit/provider";
@@ -113,7 +121,9 @@ import { webflowProvider } from "./connectors/webflow/provider";
 import { supabaseProvider } from "./connectors/supabase/provider";
 import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
+import { paypalProvider } from "./connectors/paypal/provider";
 import { quickbooksProvider } from "./connectors/quickbooks/provider";
+import { rampProvider } from "./connectors/ramp/provider";
 import { playstationProvider } from "./connectors/playstation/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
 import { steamProvider } from "./connectors/steam/provider";
@@ -122,6 +132,7 @@ import { xProvider } from "./connectors/x/provider";
 import { xeroProvider } from "./connectors/xero/provider";
 import { youtubeProvider } from "./connectors/youtube/provider";
 import { zoomProvider } from "./connectors/zoom/provider";
+import { workdayProvider } from "./connectors/workday/provider";
 import {
   testOauthApiTokenProvider,
   testOauthApiProvider,
@@ -306,6 +317,163 @@ export type ConnectorAuthProviderRegistryCapabilities = Readonly<
     >
   >
 >;
+
+export const CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS = {
+  manualGrant: 1,
+  staticAccess: 1,
+  noneRevoke: 1,
+} as const;
+
+export type ConnectorAuthProviderClientContract =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "static-confidential-env";
+      readonly clientIdEnv: string;
+      readonly clientSecretEnv: string;
+    }
+  | { readonly kind: "static-confidential-literal" }
+  | {
+      readonly kind: "static-public-env";
+      readonly clientIdEnv: string;
+    }
+  | { readonly kind: "static-public-literal" }
+  | { readonly kind: "dynamic-public" };
+
+export interface ConnectorAuthProviderMethodContract {
+  readonly client: ConnectorAuthProviderClientContract;
+  readonly grant: {
+    readonly kind: ConnectorAuthMethodConfig["grant"]["kind"];
+    readonly callbackOrigin: "web" | "api" | null;
+    readonly outputNames: readonly string[];
+    readonly startOptionNames: readonly string[];
+  };
+  readonly access: {
+    readonly kind: ConnectorAuthMethodConfig["access"]["kind"];
+    readonly inputNames: readonly string[];
+    readonly outputNames: readonly string[];
+    readonly platformSecrets: readonly string[];
+  };
+  readonly revoke: {
+    readonly kind: ConnectorAuthMethodConfig["revoke"]["kind"];
+    readonly inputNames: readonly string[];
+  };
+}
+
+export interface ConnectorAuthProviderRegistrationCapability {
+  readonly connectorRef: string;
+  readonly authMethodId: string;
+  readonly handlers: ConnectorAuthProviderRegistryCapability;
+  readonly contract: ConnectorAuthProviderMethodContract;
+  readonly requiredConfigurationNames: readonly string[];
+}
+
+function compareCapabilityStrings(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function connectorAuthProviderClientContract(
+  method: ConnectorAuthMethodConfig,
+): ConnectorAuthProviderClientContract {
+  const client = method.client;
+  if (client === undefined) {
+    return { kind: "none" };
+  }
+  if (client.clientRegistration === "dynamic") {
+    return { kind: "dynamic-public" };
+  }
+  if (client.clientType === "confidential") {
+    return "clientIdEnv" in client
+      ? {
+          kind: "static-confidential-env",
+          clientIdEnv: client.clientIdEnv,
+          clientSecretEnv: client.clientSecretEnv,
+        }
+      : { kind: "static-confidential-literal" };
+  }
+  return "clientIdEnv" in client
+    ? { kind: "static-public-env", clientIdEnv: client.clientIdEnv }
+    : { kind: "static-public-literal" };
+}
+
+function connectorAuthProviderMethodContract(
+  method: ConnectorAuthMethodConfig,
+): ConnectorAuthProviderMethodContract {
+  const callbackOrigin =
+    method.grant.kind === "auth-code"
+      ? (method.grant.callbackOrigin ?? "web")
+      : method.grant.kind === "openid-auth"
+        ? (method.grant.callbackOrigin ?? "api")
+        : null;
+  const grantOutputNames =
+    method.grant.kind === "auth-code" ||
+    method.grant.kind === "openid-auth" ||
+    method.grant.kind === "external-code" ||
+    method.grant.kind === "device-auth"
+      ? Object.keys(method.grant.outputs).sort(compareCapabilityStrings)
+      : [];
+  const startOptionNames =
+    method.grant.kind === "device-auth"
+      ? Object.keys(method.grant.startOptions ?? {}).sort(
+          compareCapabilityStrings,
+        )
+      : [];
+  const accessInputNames =
+    method.access.kind === "refresh-token"
+      ? Object.keys(method.access.inputs).sort(compareCapabilityStrings)
+      : [];
+  const accessOutputNames =
+    method.access.kind === "refresh-token"
+      ? Object.keys(method.access.outputs).sort(compareCapabilityStrings)
+      : [];
+  const revokeInputNames =
+    method.revoke.kind === "token-revoke"
+      ? Object.keys(method.revoke.inputs).sort(compareCapabilityStrings)
+      : [];
+
+  return {
+    client: connectorAuthProviderClientContract(method),
+    grant: {
+      kind: method.grant.kind,
+      callbackOrigin,
+      outputNames: grantOutputNames,
+      startOptionNames,
+    },
+    access: {
+      kind: method.access.kind,
+      inputNames: accessInputNames,
+      outputNames: accessOutputNames,
+      platformSecrets:
+        method.access.kind === "none"
+          ? []
+          : [...(method.access.platformSecrets ?? [])].sort(
+              compareCapabilityStrings,
+            ),
+    },
+    revoke: {
+      kind: method.revoke.kind,
+      inputNames: revokeInputNames,
+    },
+  };
+}
+
+function connectorAuthProviderRequiredConfigurationNames(
+  method: ConnectorAuthMethodConfig,
+): readonly string[] {
+  const names = new Set<string>();
+  const client = method.client;
+  if (client?.clientRegistration === "static" && "clientIdEnv" in client) {
+    names.add(client.clientIdEnv);
+    if (client.clientType === "confidential") {
+      names.add(client.clientSecretEnv);
+    }
+  }
+  if (method.access.kind !== "none") {
+    for (const name of method.access.platformSecrets ?? []) {
+      names.add(name);
+    }
+  }
+  return [...names].sort(compareCapabilityStrings);
+}
 
 type MutableConnectorAuthProviderRegistryCapabilities = Partial<
   Record<
@@ -657,14 +825,17 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   externalCodeRefreshProviderEntry("aws", "cli", awsProvider),
   deviceAuthRefreshProviderEntry("base44", "oauth", base44Provider),
   authCodeRefreshProviderEntry("box", "oauth", boxProvider),
+  authCodeRefreshProviderEntry("cal-com", "oauth", calComProvider),
   authCodeRefreshProviderEntry("canva", "oauth", canvaProvider),
   authCodeRefreshProviderEntry("close", "oauth", closeProvider),
+  authCodeProviderEntry("copper", "oauth", copperProvider),
   authCodeRefreshTokenRevokeProviderEntry(
     "cloudflare",
     "oauth",
     cloudflareProvider,
   ),
   authCodeRefreshProviderEntry("deel", "oauth", deelProvider),
+  authCodeRefreshProviderEntry("datadog", "oauth", datadogProvider),
   authCodeRefreshProviderEntry("docusign", "oauth", docusignProvider),
   authCodeRefreshProviderEntry("dropbox", "oauth", dropboxProvider),
   authCodeRefreshProviderEntry("figma", "oauth", figmaProvider),
@@ -687,8 +858,14 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     googleCalendarProvider,
   ),
   authCodeRefreshProviderEntry("google-cloud", "oauth", googleCloudProvider),
+  authCodeRefreshProviderEntry(
+    "google-contacts",
+    "oauth",
+    googleContactsProvider,
+  ),
   authCodeRefreshProviderEntry("google-docs", "oauth", googleDocsProvider),
   authCodeRefreshProviderEntry("google-drive", "oauth", googleDriveProvider),
+  authCodeRefreshProviderEntry("google-forms", "oauth", googleFormsProvider),
   authCodeRefreshProviderEntry("google-maps", "oauth", googleMapsProvider),
   authCodeRefreshProviderEntry("google-meet", "oauth", googleMeetProvider),
   authCodeRefreshProviderEntry(
@@ -707,6 +884,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   authCodeRefreshProviderEntry("microsoft-365", "oauth", microsoft365Provider),
   authCodeRefreshProviderEntry("monday", "oauth", mondayProvider),
   authCodeRefreshProviderEntry("neon", "oauth", neonProvider),
+  refreshProviderEntry("netsuite", "api-token", netsuiteProvider),
   externalCodeRefreshProviderEntry(
     "nintendo-store",
     "api",
@@ -725,8 +903,10 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   ),
   authCodeRefreshProviderEntry("outlook-mail", "oauth", outlookMailProvider),
   authCodeRefreshProviderEntry("posthog", "oauth", posthogProvider),
+  refreshProviderEntry("paypal", "api-token", paypalProvider),
   externalCodeRefreshProviderEntry("playstation", "api", playstationProvider),
   authCodeRefreshProviderEntry("quickbooks", "oauth", quickbooksProvider),
+  refreshProviderEntry("ramp", "api-token", rampProvider),
   authCodeRefreshProviderEntry("reddit", "oauth", redditProvider),
   authCodeRefreshProviderEntry("sentry", "oauth", sentryProvider),
   authCodeTokenRevokeProviderEntry("slack", "oauth", slackProvider),
@@ -759,6 +939,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   authCodeRefreshProviderEntry("xero", "oauth", xeroProvider),
   authCodeRefreshTokenRevokeProviderEntry("youtube", "oauth", youtubeProvider),
   authCodeRefreshProviderEntry("zoom", "oauth", zoomProvider),
+  refreshProviderEntry("workday", "api-token", workdayProvider),
 ];
 
 const CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY = buildRuntimeProviderRegistry(
@@ -783,6 +964,43 @@ export function getConnectorAuthProviderRegistryCapabilities(): ConnectorAuthPro
     capabilities[registration.type] = methodCapabilities;
   }
   return capabilities;
+}
+
+export function getConnectorAuthProviderRegistrationCapabilities(): readonly ConnectorAuthProviderRegistrationCapability[] {
+  return CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES.map((registration) => {
+    const method = getConnectorAuthMethod(
+      registration.type,
+      registration.authMethod,
+    );
+    if (method === undefined) {
+      throw new Error(
+        `Missing auth method configuration for ${registration.type}:${registration.authMethod}`,
+      );
+    }
+    return {
+      connectorRef: registration.type,
+      authMethodId: registration.authMethod,
+      handlers: {
+        ...(registration.entry.grant === undefined
+          ? {}
+          : { grant: registration.entry.grant.kind }),
+        ...(registration.entry.access === undefined
+          ? {}
+          : { access: registration.entry.access.kind }),
+        ...(registration.entry.revoke === undefined
+          ? {}
+          : { revoke: registration.entry.revoke.kind }),
+      },
+      contract: connectorAuthProviderMethodContract(method),
+      requiredConfigurationNames:
+        connectorAuthProviderRequiredConfigurationNames(method),
+    };
+  }).sort((left, right) => {
+    return (
+      compareCapabilityStrings(left.connectorRef, right.connectorRef) ||
+      compareCapabilityStrings(left.authMethodId, right.authMethodId)
+    );
+  });
 }
 
 type ConnectorAuthCodeResolvedMethodClient =

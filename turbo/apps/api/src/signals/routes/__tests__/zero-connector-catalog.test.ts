@@ -8,12 +8,14 @@ import {
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
-import { sql } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { db } from "../../../lib/db";
 import { now } from "../../../lib/time";
+import {
+  deleteUnsupportedHistoricalConnectors,
+  seedUnsupportedHistoricalConnectors,
+} from "../../../test-fixtures/historical-connectors";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   deleteOrgMembership$,
@@ -35,7 +37,6 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const store = createStore();
-const REMOVED_CONNECTOR_TYPE = "removed-connector";
 const REMOVED_AUTH_CONNECTOR_TYPE = "github";
 const MISMATCHED_AUTH_CONNECTOR_TYPE = "gitlab";
 
@@ -171,16 +172,7 @@ describe("GET /api/zero/connector-catalog", () => {
     while (historicalConnectorFixtures.length > 0) {
       const fixture = historicalConnectorFixtures.pop();
       if (fixture) {
-        await db().execute(sql`
-          DELETE FROM connectors
-          WHERE org_id = ${fixture.orgId}
-            AND user_id = ${fixture.userId}
-            AND type IN (
-              ${REMOVED_CONNECTOR_TYPE},
-              ${REMOVED_AUTH_CONNECTOR_TYPE},
-              ${MISMATCHED_AUTH_CONNECTOR_TYPE}
-            )
-        `);
+        await deleteUnsupportedHistoricalConnectors(fixture);
       }
     }
   });
@@ -522,25 +514,12 @@ describe("GET /api/zero/connector-catalog", () => {
     });
   });
 
-  it("hides Nintendo Store until its connector switch is enabled", async () => {
+  it("exposes Nintendo Store without a connector switch", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const hidden = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      hidden.body.connectors.some((connector) => {
-        return connector.connectorRef === "nintendo-store";
-      }),
-    ).toBeFalsy();
-
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.NintendoStoreConnector]: true,
-    });
     const visible = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -575,25 +554,12 @@ describe("GET /api/zero/connector-catalog", () => {
     ]);
   });
 
-  it("hides Nintendo Switch Parental Controls until its connector switch is enabled", async () => {
+  it("exposes Nintendo Switch Parental Controls without a connector switch", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const hidden = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      hidden.body.connectors.some((connector) => {
-        return connector.connectorRef === "nintendo-switch-parental-controls";
-      }),
-    ).toBeFalsy();
-
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: true,
-    });
     const visible = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
@@ -674,15 +640,10 @@ describe("GET /api/zero/connector-catalog", () => {
       apiKey: "sk-public-status",
     });
 
-    // These rows model identities accepted by an older registry. The current
-    // production API cannot construct these historical states.
-    await db().execute(sql`
-      INSERT INTO connectors (type, auth_method, user_id, org_id)
-      VALUES
-        (${REMOVED_CONNECTOR_TYPE}, 'api-token', ${actor.userId}, ${actor.orgId}),
-        (${REMOVED_AUTH_CONNECTOR_TYPE}, 'removed-auth-method', ${actor.userId}, ${actor.orgId}),
-        (${MISMATCHED_AUTH_CONNECTOR_TYPE}, 'oauth', ${actor.userId}, ${actor.orgId})
-    `);
+    await seedUnsupportedHistoricalConnectors({
+      orgId: actor.orgId,
+      userId: actor.userId,
+    });
     historicalConnectorFixtures.push({
       orgId: actor.orgId,
       userId: actor.userId,

@@ -12,6 +12,7 @@ from mitmproxy.addonmanager import Loader
 
 import mitm_addon
 import platform_api
+import runner_flush_lifecycle
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
@@ -115,8 +116,8 @@ class TestAddonConfiguration:
         assert "vm0_usage_flush_interval_seconds" in option_names
         assert not pending_path.exists()
         signal_handler.assert_called_once_with(
-            mitm_addon._RUNNER_USAGE_FLUSH_SIGNAL,
-            mitm_addon._handle_runner_usage_flush_signal,
+            runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
+            runner_flush_lifecycle.handle_runner_usage_flush_signal,
         )
 
     def test_configure_writes_pending_state_with_usage_state_id(self, tmp_path):

@@ -1,26 +1,37 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 
-import { pollForceUpgradeRequirement } from "../force-upgrade.ts";
+import {
+  forceUpgradeDialogOpen$,
+  listenForceUpgradeDialog$,
+  reportForceUpgradeRequired,
+  reportForceUpgradeResponse,
+} from "../force-upgrade.ts";
+import { testContext } from "./test-helpers.ts";
 
-describe("force upgrade polling", () => {
-  it("checks through the shared loop until an upgrade is required", async () => {
-    const check = vi
-      .fn<() => Promise<boolean>>()
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true);
-    const onRequired = vi.fn();
+const context = testContext();
 
-    const poll = pollForceUpgradeRequirement({
-      check,
-      onRequired,
-      pollIntervalMs: 0,
-      signal: AbortSignal.any([]),
-    });
+describe("force upgrade signal", () => {
+  it("opens the force upgrade dialog when a response requires it", () => {
+    context.store.set(listenForceUpgradeDialog$, context.signal);
 
-    await poll;
+    expect(context.store.get(forceUpgradeDialogOpen$)).toBeFalsy();
 
-    expect(check).toHaveBeenCalledTimes(3);
-    expect(onRequired).toHaveBeenCalledOnce();
+    expect(
+      reportForceUpgradeResponse({ status: CLIENT_FORCE_UPGRADE_STATUS }),
+    ).toBeTruthy();
+    expect(context.store.get(forceUpgradeDialogOpen$)).toBeTruthy();
+  });
+
+  it("ignores non-force-upgrade responses", () => {
+    expect(reportForceUpgradeResponse({ status: 200 })).toBeFalsy();
+  });
+
+  it("reports force upgrade requirements without polling", () => {
+    context.store.set(listenForceUpgradeDialog$, context.signal);
+
+    reportForceUpgradeRequired();
+
+    expect(context.store.get(forceUpgradeDialogOpen$)).toBeTruthy();
   });
 });

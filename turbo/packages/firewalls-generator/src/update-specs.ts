@@ -445,12 +445,18 @@ const UPDATERS: Updater[] = [
   staticUpdater("google-calendar", [
     "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
   ]),
+  staticUpdater("google-contacts", [
+    "https://people.googleapis.com/$discovery/rest?version=v1",
+  ]),
   staticUpdater("google-docs", [
     "https://docs.googleapis.com/$discovery/rest?version=v1",
   ]),
   staticUpdater("google-drive", [
     "https://www.googleapis.com/discovery/v1/apis/drive/v2/rest",
     "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+  ]),
+  staticUpdater("google-forms", [
+    "https://forms.googleapis.com/$discovery/rest?version=v1",
   ]),
   staticUpdater("google-meet", [
     "https://meet.googleapis.com/$discovery/rest?version=v2",
@@ -468,6 +474,9 @@ const UPDATERS: Updater[] = [
   ]),
   staticUpdater("google-sheets", [
     "https://sheets.googleapis.com/$discovery/rest?version=v4",
+  ]),
+  staticUpdater("google-slides", [
+    "https://slides.googleapis.com/$discovery/rest?version=v1",
   ]),
   staticUpdater("youtube", [
     "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest",

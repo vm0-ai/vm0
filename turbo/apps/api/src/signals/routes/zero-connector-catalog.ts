@@ -5,16 +5,19 @@ import { command } from "ccstate";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
+import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   getPublicConnectorCatalogDetail,
   getPublicConnectorCatalogPermissionDetail,
+  isConnectorCatalogUnavailableError,
   listPublicConnectorCatalog,
   listPublicConnectorCatalogStatus,
 } from "../services/connector-catalog-reader.service";
 import { zeroConnectorList } from "../services/zero-connector-data.service";
-import { notFound } from "../../lib/error";
+import { notFound, providerUnavailable } from "../../lib/error";
+import { settle } from "../utils";
 
 const connectorCatalogAuth = {
   requireOrganization: true,
@@ -24,6 +27,24 @@ const connectorCatalogAuth = {
 
 function connectorCatalogNotFound() {
   return notFound("Connector catalog item not found");
+}
+
+function connectorCatalogUnavailable() {
+  return providerUnavailable("Connector catalog is temporarily unavailable");
+}
+
+async function settleConnectorCatalogRead<T>(
+  read: Promise<T>,
+  signal: AbortSignal,
+): Promise<{ readonly ok: true; readonly value: T } | { readonly ok: false }> {
+  const result = await settle(read, signal);
+  if (result.ok) {
+    return result;
+  }
+  if (isConnectorCatalogUnavailableError(result.error)) {
+    return { ok: false };
+  }
+  throw result.error;
 }
 
 const connectorCatalogRequestContext$ = command(async ({ get }) => {
@@ -37,6 +58,7 @@ const connectorCatalogRequestContext$ = command(async ({ get }) => {
     overrides,
   };
   return {
+    db: get(db$),
     featureStates: getAllFeatureStates(featureSwitchContext),
   };
 });
@@ -46,13 +68,19 @@ const listConnectorCatalogInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
 
-    const catalog = await listPublicConnectorCatalog({
-      featureStates: context.featureStates,
-      apiAuthMethodPolicy: "include",
-    });
-    signal.throwIfAborted();
+    const catalog = await settleConnectorCatalogRead(
+      listPublicConnectorCatalog({
+        db: context.db,
+        featureStates: context.featureStates,
+        apiAuthMethodPolicy: "include",
+      }),
+      signal,
+    );
+    if (!catalog.ok) {
+      return connectorCatalogUnavailable();
+    }
 
-    return { status: 200 as const, body: catalog };
+    return { status: 200 as const, body: catalog.value };
   },
 );
 
@@ -71,14 +99,20 @@ const listConnectorCatalogStatusInner$ = command(
     );
     signal.throwIfAborted();
 
-    const catalog = await listPublicConnectorCatalogStatus({
-      featureStates: context.featureStates,
-      apiAuthMethodPolicy: "include",
-      connectors: connectorState.connectors,
-    });
-    signal.throwIfAborted();
+    const catalog = await settleConnectorCatalogRead(
+      listPublicConnectorCatalogStatus({
+        db: context.db,
+        featureStates: context.featureStates,
+        apiAuthMethodPolicy: "include",
+        connectors: connectorState.connectors,
+      }),
+      signal,
+    );
+    if (!catalog.ok) {
+      return connectorCatalogUnavailable();
+    }
 
-    return { status: 200 as const, body: catalog };
+    return { status: 200 as const, body: catalog.value };
   },
 );
 
@@ -88,17 +122,23 @@ const getConnectorCatalogInner$ = command(
     signal.throwIfAborted();
 
     const params = get(pathParamsOf(zeroConnectorCatalogContract.get));
-    const connector = await getPublicConnectorCatalogDetail({
-      connectorRef: params.connectorRef,
-      featureStates: context.featureStates,
-      apiAuthMethodPolicy: "include",
-    });
-    signal.throwIfAborted();
-    if (!connector) {
+    const connector = await settleConnectorCatalogRead(
+      getPublicConnectorCatalogDetail({
+        db: context.db,
+        connectorRef: params.connectorRef,
+        featureStates: context.featureStates,
+        apiAuthMethodPolicy: "include",
+      }),
+      signal,
+    );
+    if (!connector.ok) {
+      return connectorCatalogUnavailable();
+    }
+    if (!connector.value) {
       return connectorCatalogNotFound();
     }
 
-    return { status: 200 as const, body: { connector } };
+    return { status: 200 as const, body: { connector: connector.value } };
   },
 );
 
@@ -108,17 +148,23 @@ const getConnectorCatalogPermissionsInner$ = command(
     signal.throwIfAborted();
 
     const params = get(pathParamsOf(zeroConnectorCatalogContract.permissions));
-    const permissions = await getPublicConnectorCatalogPermissionDetail({
-      connectorRef: params.connectorRef,
-      featureStates: context.featureStates,
-      apiAuthMethodPolicy: "include",
-    });
-    signal.throwIfAborted();
-    if (!permissions) {
+    const permissions = await settleConnectorCatalogRead(
+      getPublicConnectorCatalogPermissionDetail({
+        db: context.db,
+        connectorRef: params.connectorRef,
+        featureStates: context.featureStates,
+        apiAuthMethodPolicy: "include",
+      }),
+      signal,
+    );
+    if (!permissions.ok) {
+      return connectorCatalogUnavailable();
+    }
+    if (!permissions.value) {
       return connectorCatalogNotFound();
     }
 
-    return { status: 200 as const, body: { permissions } };
+    return { status: 200 as const, body: { permissions: permissions.value } };
   },
 );
 

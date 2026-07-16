@@ -104,6 +104,43 @@ describe("lab page", () => {
     });
   });
 
+  it("writes only the canonical Notion automation switch", async () => {
+    let switches: Record<string, boolean> = {
+      [FeatureSwitchKey.Lab]: true,
+      [FeatureSwitchKey.NotionWorkflowAutomations]: false,
+    };
+    let updateBody: Record<string, boolean> | undefined;
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, { switches, effectiveSwitches: switches });
+    });
+    context.mocks.api(
+      zeroFeatureSwitchesContract.update,
+      ({ body, respond }) => {
+        updateBody = body.switches;
+        switches = { ...switches, ...body.switches };
+        return respond(200, {
+          switches,
+          effectiveSwitches: switches,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/_/lab" });
+
+    await waitFor(() => {
+      expect(
+        featureSwitchControl(FeatureSwitchKey.NotionWorkflowAutomations),
+      ).toHaveAttribute("aria-checked", "false");
+    });
+    click(featureSwitchControl(FeatureSwitchKey.NotionWorkflowAutomations));
+
+    await waitFor(() => {
+      expect(updateBody).toStrictEqual({
+        [FeatureSwitchKey.NotionWorkflowAutomations]: true,
+      });
+    });
+  });
+
   it("shows feature switches in name order without sort controls", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, { switches: {}, effectiveSwitches: {} });
@@ -140,7 +177,7 @@ describe("lab page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(FeatureSwitchKey.WorkflowWebhookTriggers),
+        screen.getByText(FeatureSwitchKey.NotionWorkflowAutomations),
       ).toBeInTheDocument();
       expect(
         screen.queryByText(FeatureSwitchKey.AhrefsConnector),

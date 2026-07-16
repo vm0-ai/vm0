@@ -88,9 +88,16 @@ impl ActiveBudgetLease {
 }
 
 /// Budget ownership after sandbox finalization but before completion is reported.
+///
+/// This distinguishes a lease that completion must release from one already
+/// transferred to an accepted idle-pool entry.
 #[must_use]
 pub(super) enum BudgetOwnership {
+    /// The active job retains the lease through provider completion and active-status
+    /// removal, after which completion releases it.
     Active(ActiveBudgetLease),
+    /// The idle pool accepted the sandbox and its lease, so completion performs no
+    /// release. Reuse transfers the lease; idle destruction drops it.
     IdleOwned,
 }
 
@@ -165,6 +172,11 @@ impl CompletionReady {
 
     pub(super) fn session_affinity_changed(&self) -> bool {
         self.session_affinity_changed
+    }
+
+    #[cfg(test)]
+    pub(super) fn result_for_test(&self) -> (i32, Option<&str>) {
+        (self.payload.exit_code, self.payload.error.as_deref())
     }
 
     pub(super) async fn complete_and_release(

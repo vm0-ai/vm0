@@ -20,7 +20,7 @@ test("paid onboarding completes through the video workflow", async ({
 }) => {
   test.setTimeout(240_000);
 
-  const apiUrl = process.env.VM0_API_URL!;
+  const apiUrl = process.env.VM0_API_BACKEND_URL!;
   const appUrl = deriveAppUrl(apiUrl);
   const onboardingUrl = deriveOnboardingUrl(apiUrl);
   const email = generateTestEmail();

@@ -4,7 +4,7 @@
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
  * - Mock (external): Web API via MSW
- * - Real (internal): All CLI code, formatters, validators, connector display lookups
+ * - Real (internal): All CLI code, formatters, and validators
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -24,7 +24,7 @@ describe("zero secret list command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
@@ -39,11 +39,13 @@ describe("zero secret list command", () => {
                 description: "API key for service",
                 type: "user",
                 updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: null,
               },
               {
                 name: "DB_PASSWORD",
                 type: "user",
                 updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: null,
               },
             ],
           });
@@ -76,7 +78,59 @@ describe("zero secret list command", () => {
   });
 
   describe("connector secrets", () => {
-    it("should display connector secret with derived environment names", async () => {
+    it("should display connector metadata authored by the server", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/secrets", () => {
+          return HttpResponse.json({
+            secrets: [
+              {
+                name: "SERVER_ONLY_ACCESS_TOKEN",
+                type: "connector",
+                updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: {
+                  label: "Server-only Connector",
+                  environmentNames: ["SERVER_ONLY_TOKEN"],
+                },
+              },
+            ],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("SERVER_ONLY_ACCESS_TOKEN");
+      expect(logCalls).toContain("[Server-only Connector connector]");
+      expect(logCalls).toContain("Available as: SERVER_ONLY_TOKEN");
+    });
+
+    it("should not infer connector metadata when the server returns null", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/secrets", () => {
+          return HttpResponse.json({
+            secrets: [
+              {
+                name: "GITHUB_ACCESS_TOKEN",
+                type: "connector",
+                updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: null,
+              },
+            ],
+          });
+        }),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("GITHUB_ACCESS_TOKEN");
+      expect(logCalls).toContain("[connector]");
+      expect(logCalls).not.toContain("GitHub connector");
+      expect(logCalls).not.toContain("Available as:");
+    });
+
+    it("should use generic display when an older server omits metadata", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/secrets", () => {
           return HttpResponse.json({
@@ -94,20 +148,24 @@ describe("zero secret list command", () => {
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("GITHUB_ACCESS_TOKEN");
-      expect(logCalls).toContain("[GitHub connector]");
-      expect(logCalls).toContain("Available as: GH_TOKEN, GITHUB_TOKEN");
+      expect(logCalls).toContain("GITHUB_ACCESS_TOKEN [connector]");
+      expect(logCalls).not.toContain("GitHub connector");
+      expect(logCalls).not.toContain("Available as:");
     });
 
-    it("should display connector secret without derived names when no mapping found", async () => {
+    it("should display connector metadata for a matching user secret", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/secrets", () => {
           return HttpResponse.json({
             secrets: [
               {
-                name: "UNKNOWN_CONNECTOR_SECRET",
-                type: "connector",
+                name: "PRIVATE_CREDENTIAL",
+                type: "user",
                 updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: {
+                  label: "Server-only Connector",
+                  environmentNames: ["SERVER_ONLY_TOKEN"],
+                },
               },
             ],
           });
@@ -117,9 +175,10 @@ describe("zero secret list command", () => {
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("UNKNOWN_CONNECTOR_SECRET");
-      expect(logCalls).toContain("[connector]");
-      expect(logCalls).not.toContain("Available as:");
+      expect(logCalls).toContain(
+        "PRIVATE_CREDENTIAL [Server-only Connector connector]",
+      );
+      expect(logCalls).toContain("Available as: SERVER_ONLY_TOKEN");
     });
 
     it("should display model-provider type indicator", async () => {
@@ -131,6 +190,7 @@ describe("zero secret list command", () => {
                 name: "ANTHROPIC_API_KEY",
                 type: "model-provider",
                 updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: null,
               },
             ],
           });
@@ -154,16 +214,22 @@ describe("zero secret list command", () => {
                 description: "User secret",
                 type: "user",
                 updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: null,
               },
               {
                 name: "ANTHROPIC_API_KEY",
                 type: "model-provider",
                 updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: null,
               },
               {
                 name: "GITHUB_ACCESS_TOKEN",
                 type: "connector",
                 updatedAt: "2025-01-01T00:00:00Z",
+                connectorDisplay: {
+                  label: "GitHub",
+                  environmentNames: ["GH_TOKEN", "GITHUB_TOKEN"],
+                },
               },
             ],
           });

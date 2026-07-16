@@ -26,6 +26,7 @@ import { generate as generateAviationstack } from "./aviationstack";
 import { generate as generateAws } from "./aws";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBase44 } from "./base44";
+import { generate as generateBill } from "./bill";
 import { generate as generateBentoml } from "./bentoml";
 import { generate as generateBfl } from "./bfl";
 import { generate as generateBitrefill } from "./bitrefill";
@@ -51,6 +52,7 @@ import { generate as generateClado } from "./clado";
 import { generate as generateClearbit } from "./clearbit";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
+import { generate as generateCopper } from "./copper";
 import { generate as generateClerk } from "./clerk";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateCoda } from "./coda";
@@ -60,6 +62,7 @@ import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCrustdata } from "./crustdata";
 import { generate as generateCursor } from "./cursor";
 import { generate as generateCustomerIo } from "./customer-io";
+import { generate as generateDatadog } from "./datadog";
 import { generate as generateDaytona } from "./daytona";
 import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDoubao } from "./doubao";
@@ -82,6 +85,7 @@ import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateEtherscan } from "./etherscan";
 import { generate as generateEtsy } from "./etsy";
 import { generate as generateExa } from "./exa";
+import { generate as generateExpensify } from "./expensify";
 import { generate as generateExplorium } from "./explorium";
 import { generate as generateFaire } from "./faire";
 import { generate as generateFal } from "./fal";
@@ -154,6 +158,7 @@ import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNetdata } from "./netdata";
+import { generate as generateNetsuite } from "./netsuite";
 import { generate as generateNintendoStore } from "./nintendo-store";
 import { generate as generateNintendoSwitchParentalControls } from "./nintendo-switch-parental-controls";
 import { generate as generateNotion } from "./notion";
@@ -182,6 +187,7 @@ import { generate as generatePlaystation } from "./playstation";
 import { generate as generatePlausible } from "./plausible";
 import { generate as generatePodchaser } from "./podchaser";
 import { generate as generatePosthog } from "./posthog";
+import { generate as generatePaypal } from "./paypal";
 import { generate as generatePorkbun } from "./porkbun";
 import { generate as generatePrintful } from "./printful";
 import { generate as generateProductlane } from "./productlane";
@@ -191,6 +197,7 @@ import { generate as generatePushinator } from "./pushinator";
 import { generate as generateQdrant } from "./qdrant";
 import { generate as generateQiita } from "./qiita";
 import { generate as generateQuickBooks } from "./quickbooks";
+import { generate as generateRamp } from "./ramp";
 import { generate as generateRailway } from "./railway";
 import { generate as generateRailwayProject } from "./railway-project";
 import { generate as generateReddit } from "./reddit";
@@ -246,6 +253,7 @@ import { generate as generateWeread } from "./weread";
 import { generate as generateWhaleAlert } from "./whale-alert";
 import { generate as generateWix } from "./wix";
 import { generate as generateWorkos } from "./workos";
+import { generate as generateWorkday } from "./workday";
 import { generate as generateWrike } from "./wrike";
 import { generate as generateX } from "./x";
 import { generate as generateXero } from "./xero";
@@ -260,7 +268,9 @@ import { generate as generateZoom } from "./zoom";
 import { generate as generateGoogleAds } from "./google-ads";
 import { generate as generateGoogleAnalytics } from "./google-analytics";
 import { generate as generateGoogleCalendar } from "./google-calendar";
+import { generate as generateGoogleContacts } from "./google-contacts";
 import { generate as generateGoogleDocs } from "./google-docs";
+import { generate as generateGoogleForms } from "./google-forms";
 import { generate as generateGoogleMaps } from "./google-maps";
 import { generate as generateGoogleMeet } from "./google-meet";
 import { generate as generateGoogleSearchConsole } from "./google-search-console";
@@ -313,6 +323,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   aws: generateAws,
   axiom: generateAxiom,
   base44: generateBase44,
+  bill: generateBill,
   bentoml: generateBentoml,
   bfl: generateBfl,
   bitrefill: generateBitrefill,
@@ -337,6 +348,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   clearbit: generateClearbit,
   clickup: generateClickup,
   close: generateClose,
+  copper: generateCopper,
   cloudflare: generateCloudflare,
   coda: generateCoda,
   coingecko: generateCoingecko,
@@ -345,6 +357,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   crustdata: generateCrustdata,
   cursor: generateCursor,
   "customer-io": generateCustomerIo,
+  datadog: generateDatadog,
   daytona: generateDaytona,
   deel: generateDeel,
   defillama: generateDefillama,
@@ -366,6 +379,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   etherscan: generateEtherscan,
   etsy: generateEtsy,
   exa: generateExa,
+  expensify: generateExpensify,
   explorium: generateExplorium,
   faire: generateFaire,
   fal: generateFal,
@@ -435,6 +449,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   n8n: generateN8n,
   neon: generateNeon,
   netdata: generateNetdata,
+  netsuite: generateNetsuite,
   "nintendo-store": generateNintendoStore,
   "nintendo-switch-parental-controls": generateNintendoSwitchParentalControls,
   notion: generateNotion,
@@ -460,6 +475,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   plausible: generatePlausible,
   podchaser: generatePodchaser,
   posthog: generatePosthog,
+  paypal: generatePaypal,
   porkbun: generatePorkbun,
   printful: generatePrintful,
   "prisma-postgres": generatePrismaPostgres,
@@ -469,6 +485,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   qdrant: generateQdrant,
   qiita: generateQiita,
   quickbooks: generateQuickBooks,
+  ramp: generateRamp,
   railway: generateRailway,
   "railway-project": generateRailwayProject,
   reddit: generateReddit,
@@ -523,6 +540,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "whale-alert": generateWhaleAlert,
   wix: generateWix,
   workos: generateWorkos,
+  workday: generateWorkday,
   wrike: generateWrike,
   x: generateX,
   xero: generateXero,
@@ -561,8 +579,10 @@ const GENERATORS: Record<string, () => Promise<void>> = {
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),
   "google-calendar": generateGoogleCalendar,
+  "google-contacts": generateGoogleContacts,
   "google-docs": generateGoogleDocs,
   "google-drive": generateGoogleDrive,
+  "google-forms": generateGoogleForms,
   "google-meet": generateGoogleMeet,
   "google-search-console": generateGoogleSearchConsole,
   "google-sheets": generateGoogleSheets,

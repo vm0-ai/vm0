@@ -12,7 +12,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { publishBuiltInGenerationChanged } from "../external/realtime";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const L = logger("ZeroBuiltInGeneration");
 
@@ -192,15 +192,15 @@ function isStuckBuiltInGenerationJob(
 
 async function publishJobSafely(job: BuiltInGenerationJobRow): Promise<void> {
   const payload = serializeBuiltInGenerationJob(job);
-  const result = await settle(
+  await tapError(
     publishBuiltInGenerationChanged(job.userId, job.id, payload),
+    (error) => {
+      L.warn("Failed to publish built-in generation status", {
+        generationId: job.id,
+        error,
+      });
+    },
   );
-  if (!result.ok) {
-    L.warn("Failed to publish built-in generation status", {
-      generationId: job.id,
-      error: result.error,
-    });
-  }
 }
 
 export const createBuiltInGenerationJob$ = command(

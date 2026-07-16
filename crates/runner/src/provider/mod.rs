@@ -62,6 +62,44 @@ impl PreLocalAdmissionOutcome {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionHistoryGenerationRelationship {
+    Exact,
+    Different,
+    Fresh,
+    UnknownTarget,
+    UnknownReserved,
+}
+
+impl SessionHistoryGenerationRelationship {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Exact => "exact",
+            Self::Different => "different",
+            Self::Fresh => "fresh",
+            Self::UnknownTarget => "unknown_target",
+            Self::UnknownReserved => "unknown_reserved",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionHistoryGenerationLocalAvailability {
+    AfterDiscovery,
+    BeforeDiscoveryLtHeartbeatPeriod,
+    BeforeDiscoveryGeHeartbeatPeriod,
+}
+
+impl SessionHistoryGenerationLocalAvailability {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::AfterDiscovery => "parked_after_discovery",
+            Self::BeforeDiscoveryLtHeartbeatPeriod => "parked_before_discovery_lt_heartbeat_period",
+            Self::BeforeDiscoveryGeHeartbeatPeriod => "parked_before_discovery_ge_heartbeat_period",
+        }
+    }
+}
+
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -82,6 +120,11 @@ pub struct JobCandidate {
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
     cli_agent_session_id: Option<String>,
+    history_generation_run_id: Option<RunId>,
+    session_history_generation_relationship: Option<SessionHistoryGenerationRelationship>,
+    session_history_generation_local_availability:
+        Option<SessionHistoryGenerationLocalAvailability>,
+    history_generation_affinity_protected_until: Option<DateTime<Utc>>,
     affinity_protected_until: Option<DateTime<Utc>>,
 }
 
@@ -113,6 +156,10 @@ impl JobCandidate {
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
             cli_agent_session_id: None,
+            history_generation_run_id: None,
+            session_history_generation_relationship: None,
+            session_history_generation_local_availability: None,
+            history_generation_affinity_protected_until: None,
             affinity_protected_until: None,
         }
     }
@@ -162,6 +209,10 @@ impl JobCandidate {
         self.discovered_at.elapsed()
     }
 
+    pub(crate) fn discovered_at(&self) -> Instant {
+        self.discovered_at
+    }
+
     pub(crate) fn local_admission_elapsed(&self) -> Option<Duration> {
         self.local_admission_started_at
             .map(|started| started.elapsed())
@@ -207,17 +258,40 @@ impl JobCandidate {
         self.cli_agent_session_id.as_deref()
     }
 
+    pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
+        self.history_generation_run_id
+    }
+
+    pub(crate) fn session_history_generation_relationship(
+        &self,
+    ) -> Option<SessionHistoryGenerationRelationship> {
+        self.session_history_generation_relationship
+    }
+
+    pub(crate) fn session_history_generation_local_availability(
+        &self,
+    ) -> Option<SessionHistoryGenerationLocalAvailability> {
+        self.session_history_generation_local_availability
+    }
+
     pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
-        let protected_until = self.affinity_protected_until?;
-        let now = Utc::now();
-        if protected_until <= now {
-            return None;
-        }
-        (protected_until - now).to_std().ok()
+        protection_remaining(self.affinity_protected_until)
     }
 
     pub(crate) fn is_affinity_protected(&self) -> bool {
         self.affinity_protection_remaining()
+            .is_some_and(|remaining| !remaining.is_zero())
+    }
+
+    pub(crate) fn history_generation_affinity_protection_remaining(&self) -> Option<Duration> {
+        let generation_remaining =
+            protection_remaining(self.history_generation_affinity_protected_until)?;
+        let session_remaining = self.affinity_protection_remaining()?;
+        Some(generation_remaining.min(session_remaining))
+    }
+
+    pub(crate) fn is_history_generation_affinity_protected(&self) -> bool {
+        self.history_generation_affinity_protection_remaining()
             .is_some_and(|remaining| !remaining.is_zero())
     }
 
@@ -232,6 +306,38 @@ impl JobCandidate {
             .as_deref()
             .and_then(parse_affinity_protected_until);
         self
+    }
+
+    pub(crate) fn with_history_generation_run_id(
+        mut self,
+        history_generation_run_id: Option<RunId>,
+    ) -> Self {
+        self.history_generation_run_id = history_generation_run_id;
+        self
+    }
+
+    pub(crate) fn with_history_generation_affinity_protected_until(
+        mut self,
+        protected_until: Option<String>,
+    ) -> Self {
+        self.history_generation_affinity_protected_until = protected_until
+            .as_deref()
+            .and_then(parse_affinity_protected_until);
+        self
+    }
+
+    pub(crate) fn set_session_history_generation_relationship(
+        &mut self,
+        relationship: SessionHistoryGenerationRelationship,
+    ) {
+        self.session_history_generation_relationship = Some(relationship);
+    }
+
+    pub(crate) fn set_session_history_generation_local_availability(
+        &mut self,
+        availability: SessionHistoryGenerationLocalAvailability,
+    ) {
+        self.session_history_generation_local_availability = Some(availability);
     }
 
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {
@@ -290,6 +396,15 @@ fn parse_affinity_protected_until(value: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .ok()
         .map(|parsed| parsed.with_timezone(&Utc))
+}
+
+fn protection_remaining(protected_until: Option<DateTime<Utc>>) -> Option<Duration> {
+    let protected_until = protected_until?;
+    let now = Utc::now();
+    if protected_until <= now {
+        return None;
+    }
+    (protected_until - now).to_std().ok()
 }
 
 /// Job claim result with the context and auth required for terminal completion.
@@ -494,8 +609,10 @@ pub trait JobProvider: Send + Sync {
         completion_auth: CompletionAuth,
     );
 
-    /// Report runner state to the server. Fire-and-forget — failures are
-    /// logged but do not affect runner operation.
+    /// Report runner state to the server as a best-effort operation.
+    ///
+    /// Delivery failures do not affect runner operation, but callers retain
+    /// the future to enforce single-flight and lifecycle ordering.
     async fn heartbeat(&self, state: &HeartbeatState);
 
     /// Delay the next API-backed poll until a protected same-session job can
@@ -550,5 +667,24 @@ mod tests {
         assert_eq!(context.run_id, run_id);
         assert!(active_input_source.is_none());
         assert!(completion_auth.matches_sandbox_token_for_test(run_id, "sandbox-token"));
+    }
+
+    #[test]
+    fn history_generation_affinity_never_outlives_session_affinity() {
+        let expired_session = JobCandidate::new(RunId::nil(), "vm0/default".into())
+            .with_affinity_metadata(
+                Some("sess-deadline".into()),
+                Some("2000-01-01T00:00:00Z".into()),
+            )
+            .with_history_generation_affinity_protected_until(Some("2999-01-01T00:00:00Z".into()));
+        assert!(!expired_session.is_history_generation_affinity_protected());
+
+        let active_session = JobCandidate::new(RunId::nil(), "vm0/default".into())
+            .with_affinity_metadata(
+                Some("sess-deadline".into()),
+                Some("2999-01-01T00:00:01Z".into()),
+            )
+            .with_history_generation_affinity_protected_until(Some("2999-01-01T00:00:00Z".into()));
+        assert!(active_session.is_history_generation_affinity_protected());
     }
 }

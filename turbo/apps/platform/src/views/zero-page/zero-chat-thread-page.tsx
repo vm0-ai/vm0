@@ -90,7 +90,7 @@ import type {
   GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
-  ChatThreadWorkflowTrigger,
+  ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
@@ -124,6 +124,7 @@ import {
 } from "./zero-attachment-chips.tsx";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
+import { MailDraftCard } from "./mail-draft-card.tsx";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -196,21 +197,21 @@ import {
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  headerWorkflowTriggersForThread,
-  runHeaderWorkflowTriggerNow$,
+  headerWorkflowAutomationsForThread,
+  runHeaderWorkflowAutomationNow$,
   reloadHeaderAutomationMenu$,
-  updateHeaderWorkflowGmailLabelAppliedTrigger$,
-  updateHeaderWorkflowGmailNewMessageTrigger$,
-  updateHeaderWorkflowScheduleTrigger$,
-  type HeaderWorkflowTriggerEntry,
+  updateHeaderWorkflowGmailLabelAppliedAutomation$,
+  updateHeaderWorkflowGmailNewMessageAutomation$,
+  updateHeaderWorkflowScheduleAutomation$,
+  type HeaderWorkflowAutomationEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
   closeHeaderAutomationSidebar$,
-  currentEditingHeaderWorkflowTriggerId$,
+  currentEditingHeaderWorkflowAutomationId$,
   currentHeaderAutomationThreadId$,
   openHeaderAutomationSidebar$,
-  setEditingHeaderWorkflowTriggerId$,
+  setEditingHeaderWorkflowAutomationId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
 import {
   clearWorkflowQueue$,
@@ -238,13 +239,13 @@ import {
   GMAIL_TEXT_FIELDS,
   getWorkflowIntervalSecondOptions,
   gmailMatcherDefaultValue,
-  gmailTriggerSummary,
-  gmailTriggerTitle,
+  gmailAutomationSummary,
+  gmailAutomationTitle,
 } from "../workflows-page/workflow-shared.tsx";
 import {
-  WorkflowTriggerCard,
-  type WorkflowTriggerCardRow,
-} from "../workflows-page/workflow-trigger-card.tsx";
+  WorkflowAutomationCard,
+  type WorkflowAutomationCardRow,
+} from "../workflows-page/workflow-automation-card.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 
@@ -254,7 +255,12 @@ import {
   type GroupedChatMessageGroup,
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import type {
+  ChatThreadSignals,
+  QueuedChatMessageItem,
+  RecommendedFollowupSource,
+  ThinkingIndicatorMode,
+} from "../../signals/chat-page/chat-thread-signals.ts";
 import {
   applyChatThreadEmoji,
   removeChatThreadEmoji,
@@ -293,11 +299,6 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import { personalModelProvider$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
-import {
-  resolveChatComposerSubmitBlocker,
-  usePersonalOauthConfigurationAction,
-} from "./model-first-oauth-submit-blocker.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import {
@@ -389,20 +390,20 @@ export function AutomationMenuButton({
   const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
-  const workflowTriggers$ = headerWorkflowTriggersForThread(threadId);
-  const workflowTriggersLoadable = useLastLoadable(workflowTriggers$);
-  const lastResolvedTriggers = useLastResolved(workflowTriggers$);
-  const workflowTriggers =
-    workflowTriggersLoadable.state === "hasData"
-      ? workflowTriggersLoadable.data
-      : (lastResolvedTriggers ?? []);
+  const workflowAutomations$ = headerWorkflowAutomationsForThread(threadId);
+  const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
+  const lastResolvedAutomations = useLastResolved(workflowAutomations$);
+  const workflowAutomations =
+    workflowAutomationsLoadable.state === "hasData"
+      ? workflowAutomationsLoadable.data
+      : (lastResolvedAutomations ?? []);
   const queue = useLastResolved(workflowQueueForThread(threadId));
   const pendingCount = queue?.pending.length ?? 0;
   const open = openThreadId === threadId;
 
-  // Show the opener when the thread has a workflow trigger.
+  // Show the opener when the thread has a workflow automation.
   // Goals live in the composer, so a goal-only thread has nothing here.
-  if (workflowTriggers.length === 0) {
+  if (workflowAutomations.length === 0) {
     return null;
   }
 
@@ -1598,7 +1599,6 @@ function ChatArtifactInboxBody({ thread }: { thread: ChatThreadSignals }) {
 
 function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
-  const setArtifactsRealtimeRef = useSet(thread.setArtifactsRealtimeRef$);
   const fullscreen = useGet(artifactFullscreen$);
   const searchOpen = useGet(artifactInboxSearchOpen$);
   const toggleFullscreen = useSet(toggleArtifactFullscreen$);
@@ -1627,10 +1627,7 @@ function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
         onToggleFullscreen={toggleFullscreen}
         onClose={close}
       />
-      <div
-        ref={setArtifactsRealtimeRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <ChatArtifactInboxBody thread={thread} />
       </div>
     </div>
@@ -1677,7 +1674,7 @@ function ChatArtifactInboxSlot({
   return <ChatArtifactInboxList thread={thread} />;
 }
 
-function formatHeaderWorkflowTriggerRun(value: string | null): string {
+function formatHeaderWorkflowAutomationRun(value: string | null): string {
   if (!value) {
     return "No runs yet";
   }
@@ -1691,11 +1688,11 @@ function formatHeaderWorkflowTriggerRun(value: string | null): string {
   });
 }
 
-function formatHeaderWorkflowTriggerNextRun(value: string | null): string {
+function formatHeaderWorkflowAutomationNextRun(value: string | null): string {
   if (!value) {
     return "No upcoming run";
   }
-  return formatHeaderWorkflowTriggerRun(value);
+  return formatHeaderWorkflowAutomationRun(value);
 }
 
 function formatHeaderClockTime(hour: number, minute: number): string {
@@ -1763,12 +1760,12 @@ function headerCronRuleLabel(
   return `Every day at ${time}`;
 }
 
-function headerWorkflowTriggerRule(
-  trigger: HeaderWorkflowTriggerEntry,
+function headerWorkflowAutomationRule(
+  automation: HeaderWorkflowAutomationEntry,
 ): string {
-  const source = trigger.trigger;
+  const source = automation.automation;
   if (source.kind !== "schedule") {
-    return gmailTriggerTitle(source);
+    return gmailAutomationTitle(source);
   }
   const schedule = source.schedule;
   if (schedule.type === "loop") {
@@ -1777,58 +1774,62 @@ function headerWorkflowTriggerRule(
   if (schedule.type === "once") {
     const { date, hour, minute } = atTimeInTimezone(
       schedule.atTime,
-      trigger.timezone,
+      automation.timezone,
     );
     return `Once on ${date} at ${formatHeaderClockTime(hour, minute)}`;
   }
   return headerCronRuleLabel(
     schedule.cronExpression,
     schedule.timezone,
-    trigger.timezone,
+    automation.timezone,
   );
 }
 
-function headerWorkflowTriggerRows(
-  trigger: HeaderWorkflowTriggerEntry,
-): readonly WorkflowTriggerCardRow[] {
-  const rows: WorkflowTriggerCardRow[] = [
+function headerWorkflowAutomationRows(
+  automation: HeaderWorkflowAutomationEntry,
+): readonly WorkflowAutomationCardRow[] {
+  const rows: WorkflowAutomationCardRow[] = [
     {
-      label: trigger.trigger.kind === "schedule" ? "Schedule" : "Automation",
-      value: headerWorkflowTriggerRule(trigger),
+      label:
+        automation.automation.kind === "schedule" ? "Schedule" : "Automation",
+      value: headerWorkflowAutomationRule(automation),
     },
     {
       label: "Last run",
-      value: formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt),
+      value: formatHeaderWorkflowAutomationRun(automation.automation.lastRunAt),
     },
   ];
-  if (trigger.trigger.kind === "schedule") {
+  if (automation.automation.kind === "schedule") {
     rows.push({
       label: "Next run",
-      value: formatHeaderWorkflowTriggerNextRun(trigger.trigger.nextRunAt),
+      value: formatHeaderWorkflowAutomationNextRun(
+        automation.automation.nextRunAt,
+      ),
     });
   }
-  const matchSummary = gmailTriggerSummary(trigger.trigger);
+  const matchSummary = gmailAutomationSummary(automation.automation);
   if (matchSummary) {
     rows.splice(1, 0, { label: "Match", value: matchSummary });
   }
   return rows;
 }
 
-function HeaderWorkflowTriggerCard({
-  trigger,
+function HeaderWorkflowAutomationCard({
+  automation,
 }: {
-  trigger: HeaderWorkflowTriggerEntry;
+  automation: HeaderWorkflowAutomationEntry;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const editingTriggerId = useGet(currentEditingHeaderWorkflowTriggerId$);
-  const setEditingTriggerId = useSet(setEditingHeaderWorkflowTriggerId$);
+  const editingAutomationId = useGet(currentEditingHeaderWorkflowAutomationId$);
+  const setEditingAutomationId = useSet(setEditingHeaderWorkflowAutomationId$);
   const [runningLoadable, runNow] = useLoadableSet(
-    runHeaderWorkflowTriggerNow$,
+    runHeaderWorkflowAutomationNow$,
   );
   const running = runningLoadable.state === "loading";
-  const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
-  const rows = headerWorkflowTriggerRows(trigger);
-  const editing = editingTriggerId === trigger.id;
+  const title =
+    automation.workflowDisplayName?.trim() || automation.workflowName;
+  const rows = headerWorkflowAutomationRows(automation);
+  const editing = editingAutomationId === automation.id;
 
   return (
     <div className="min-w-0">
@@ -1840,7 +1841,7 @@ function HeaderWorkflowTriggerCard({
           pathname={ROUTES.workflowDetailAutomations}
           options={{
             pathParams: {
-              workflowId: trigger.workflowId,
+              workflowId: automation.workflowId,
             },
           }}
           className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
@@ -1849,20 +1850,20 @@ function HeaderWorkflowTriggerCard({
           <IconArrowUpRight size={12} stroke={1.5} />
         </Link>
       </div>
-      <WorkflowTriggerCard
+      <WorkflowAutomationCard
         rows={rows}
-        dimmed={!trigger.enabled}
+        dimmed={!automation.enabled}
         actions={
           <>
-            {trigger.trigger.kind === "schedule" ||
-            (trigger.trigger.kind === "event" &&
-              (trigger.trigger.eventType === "gmail-new-message" ||
-                trigger.trigger.eventType === "gmail-label-applied")) ? (
+            {automation.automation.kind === "schedule" ||
+            (automation.automation.kind === "event" &&
+              (automation.automation.eventType === "gmail-new-message" ||
+                automation.automation.eventType === "gmail-label-applied")) ? (
               <button
                 type="button"
                 className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
                 onClick={() => {
-                  setEditingTriggerId(trigger.id);
+                  setEditingAutomationId(automation.id);
                 }}
               >
                 Edit
@@ -1876,9 +1877,9 @@ function HeaderWorkflowTriggerCard({
               disabled={running}
               onClick={() => {
                 detach(
-                  runNow(trigger.id, pageSignal),
+                  runNow(automation.id, pageSignal),
                   Reason.DomCallback,
-                  "run header workflow trigger now",
+                  "run header workflow automation now",
                 );
               }}
             >
@@ -1892,25 +1893,25 @@ function HeaderWorkflowTriggerCard({
           </>
         }
       />
-      <HeaderWorkflowTriggerEditDialog
-        trigger={trigger.trigger}
-        displayTimezone={trigger.timezone}
+      <HeaderWorkflowAutomationEditDialog
+        automation={automation.automation}
+        displayTimezone={automation.timezone}
         open={editing}
         onOpenChange={(open) => {
-          setEditingTriggerId(open ? trigger.id : null);
+          setEditingAutomationId(open ? automation.id : null);
         }}
       />
     </div>
   );
 }
 
-function HeaderWorkflowTriggerEditDialog({
-  trigger,
+function HeaderWorkflowAutomationEditDialog({
+  automation,
   displayTimezone,
   open,
   onOpenChange,
 }: {
-  readonly trigger: ChatThreadWorkflowTrigger;
+  readonly automation: ChatThreadWorkflowAutomation;
   readonly displayTimezone: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -1919,7 +1920,8 @@ function HeaderWorkflowTriggerEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={
-          trigger.kind === "event" && trigger.eventType === "gmail-new-message"
+          automation.kind === "event" &&
+          automation.eventType === "gmail-new-message"
             ? "max-w-2xl"
             : ""
         }
@@ -1930,28 +1932,28 @@ function HeaderWorkflowTriggerEditDialog({
             Update this workflow automation.
           </DialogDescription>
         </DialogHeader>
-        {trigger.kind === "schedule" ? (
-          <HeaderScheduleTriggerEditForm
-            trigger={trigger}
+        {automation.kind === "schedule" ? (
+          <HeaderScheduleAutomationEditForm
+            automation={automation}
             displayTimezone={displayTimezone}
             onDone={() => {
               onOpenChange(false);
             }}
           />
         ) : null}
-        {trigger.kind === "event" &&
-        trigger.eventType === "gmail-new-message" ? (
-          <HeaderGmailNewMessageTriggerEditForm
-            trigger={trigger}
+        {automation.kind === "event" &&
+        automation.eventType === "gmail-new-message" ? (
+          <HeaderGmailNewMessageAutomationEditForm
+            automation={automation}
             onDone={() => {
               onOpenChange(false);
             }}
           />
         ) : null}
-        {trigger.kind === "event" &&
-        trigger.eventType === "gmail-label-applied" ? (
-          <HeaderGmailLabelTriggerEditForm
-            trigger={trigger}
+        {automation.kind === "event" &&
+        automation.eventType === "gmail-label-applied" ? (
+          <HeaderGmailLabelAutomationEditForm
+            automation={automation}
             onDone={() => {
               onOpenChange(false);
             }}
@@ -1962,7 +1964,7 @@ function HeaderWorkflowTriggerEditDialog({
   );
 }
 
-const HEADER_TRIGGER_FIELD_CLASS =
+const HEADER_AUTOMATION_FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none transition-colors focus:border-primary disabled:opacity-60";
 
 function localDateTimeInputValue(value: string): string {
@@ -1978,11 +1980,11 @@ function localDateTimeInputValue(value: string): string {
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
-function scheduleFromHeaderTriggerForm(
-  trigger: Extract<ChatThreadWorkflowTrigger, { kind: "schedule" }>,
+function scheduleFromHeaderAutomationForm(
+  automation: Extract<ChatThreadWorkflowAutomation, { kind: "schedule" }>,
   form: FormData,
 ): ZeroWorkflowSchedule | null {
-  const schedule = trigger.schedule;
+  const schedule = automation.schedule;
   if (schedule.type === "loop") {
     const intervalSeconds = Number(form.get("intervalSeconds"));
     return Number.isInteger(intervalSeconds) && intervalSeconds > 0
@@ -2013,29 +2015,32 @@ function scheduleFromHeaderTriggerForm(
     : null;
 }
 
-function HeaderScheduleTriggerEditForm({
-  trigger,
+function HeaderScheduleAutomationEditForm({
+  automation,
   displayTimezone,
   onDone,
 }: {
-  readonly trigger: Extract<ChatThreadWorkflowTrigger, { kind: "schedule" }>;
+  readonly automation: Extract<
+    ChatThreadWorkflowAutomation,
+    { kind: "schedule" }
+  >;
   readonly displayTimezone: string;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [updateLoadable, updateTrigger] = useLoadableSet(
-    updateHeaderWorkflowScheduleTrigger$,
+  const [updateLoadable, updateAutomation] = useLoadableSet(
+    updateHeaderWorkflowScheduleAutomation$,
   );
   const saving = updateLoadable.state === "loading";
-  const schedule = trigger.schedule;
+  const schedule = automation.schedule;
 
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        const scheduleValue = scheduleFromHeaderTriggerForm(
-          trigger,
+        const scheduleValue = scheduleFromHeaderAutomationForm(
+          automation,
           new FormData(event.currentTarget),
         );
         if (!scheduleValue) {
@@ -2043,14 +2048,14 @@ function HeaderScheduleTriggerEditForm({
         }
         detach(
           (async () => {
-            await updateTrigger(
-              { triggerId: trigger.id, schedule: scheduleValue },
+            await updateAutomation(
+              { automationId: automation.id, schedule: scheduleValue },
               pageSignal,
             );
             onDone();
           })(),
           Reason.DomCallback,
-          "update header workflow schedule trigger",
+          "update header workflow schedule automation",
         );
       }}
     >
@@ -2069,7 +2074,7 @@ function HeaderScheduleTriggerEditForm({
             type="datetime-local"
             defaultValue={localDateTimeInputValue(schedule.atTime)}
             disabled={saving}
-            className={HEADER_TRIGGER_FIELD_CLASS}
+            className={HEADER_AUTOMATION_FIELD_CLASS}
           />
           <span>Displays in {displayTimezone}</span>
         </label>
@@ -2082,7 +2087,7 @@ function HeaderScheduleTriggerEditForm({
             aria-label="Cron expression"
             defaultValue={schedule.cronExpression}
             disabled={saving}
-            className={HEADER_TRIGGER_FIELD_CLASS}
+            className={HEADER_AUTOMATION_FIELD_CLASS}
           />
           <span>Runs in {schedule.timezone}</span>
         </label>
@@ -2139,19 +2144,19 @@ function HeaderIntervalField({
   );
 }
 
-function HeaderGmailNewMessageTriggerEditForm({
-  trigger,
+function HeaderGmailNewMessageAutomationEditForm({
+  automation,
   onDone,
 }: {
-  readonly trigger: Extract<
-    ChatThreadWorkflowTrigger,
+  readonly automation: Extract<
+    ChatThreadWorkflowAutomation,
     { eventType: "gmail-new-message" }
   >;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [updateLoadable, updateTrigger] = useLoadableSet(
-    updateHeaderWorkflowGmailNewMessageTrigger$,
+  const [updateLoadable, updateAutomation] = useLoadableSet(
+    updateHeaderWorkflowGmailNewMessageAutomation$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -2163,12 +2168,12 @@ function HeaderGmailNewMessageTriggerEditForm({
         const form = new FormData(event.currentTarget);
         detach(
           (async () => {
-            await updateTrigger(
+            await updateAutomation(
               {
-                triggerId: trigger.id,
+                automationId: automation.id,
                 eventConfig: buildGmailNewMessageEventConfig(
                   form,
-                  trigger.eventConfig,
+                  automation.eventConfig,
                 ),
               },
               pageSignal,
@@ -2176,7 +2181,7 @@ function HeaderGmailNewMessageTriggerEditForm({
             onDone();
           })(),
           Reason.DomCallback,
-          "update header workflow Gmail trigger",
+          "update header workflow Gmail automation",
         );
       }}
     >
@@ -2188,25 +2193,25 @@ function HeaderGmailNewMessageTriggerEditForm({
                 name={`${field}Contains`}
                 aria-label={`${label} contains`}
                 defaultValue={gmailMatcherDefaultValue(
-                  trigger.eventConfig,
+                  automation.eventConfig,
                   field,
                   "contains",
                 )}
                 disabled={saving}
                 placeholder={`${label} contains`}
-                className={HEADER_TRIGGER_FIELD_CLASS}
+                className={HEADER_AUTOMATION_FIELD_CLASS}
               />
               <input
                 name={`${field}DoesNotContain`}
                 aria-label={`${label} does not contain`}
                 defaultValue={gmailMatcherDefaultValue(
-                  trigger.eventConfig,
+                  automation.eventConfig,
                   field,
                   "doesNotContain",
                 )}
                 disabled={saving}
                 placeholder={`${label} does not contain`}
-                className={HEADER_TRIGGER_FIELD_CLASS}
+                className={HEADER_AUTOMATION_FIELD_CLASS}
               />
             </div>
           );
@@ -2230,19 +2235,19 @@ function HeaderGmailNewMessageTriggerEditForm({
   );
 }
 
-function HeaderGmailLabelTriggerEditForm({
-  trigger,
+function HeaderGmailLabelAutomationEditForm({
+  automation,
   onDone,
 }: {
-  readonly trigger: Extract<
-    ChatThreadWorkflowTrigger,
+  readonly automation: Extract<
+    ChatThreadWorkflowAutomation,
     { eventType: "gmail-label-applied" }
   >;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [updateLoadable, updateTrigger] = useLoadableSet(
-    updateHeaderWorkflowGmailLabelAppliedTrigger$,
+  const [updateLoadable, updateAutomation] = useLoadableSet(
+    updateHeaderWorkflowGmailLabelAppliedAutomation$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -2259,14 +2264,14 @@ function HeaderGmailLabelTriggerEditForm({
         }
         detach(
           (async () => {
-            await updateTrigger(
-              { triggerId: trigger.id, eventConfig },
+            await updateAutomation(
+              { automationId: automation.id, eventConfig },
               pageSignal,
             );
             onDone();
           })(),
           Reason.DomCallback,
-          "update header workflow Gmail label trigger",
+          "update header workflow Gmail label automation",
         );
       }}
     >
@@ -2276,10 +2281,10 @@ function HeaderGmailLabelTriggerEditForm({
           name="labelName"
           aria-label="Label name"
           required
-          defaultValue={trigger.eventConfig.labelName}
+          defaultValue={automation.eventConfig.labelName}
           disabled={saving}
           placeholder="Support"
-          className={HEADER_TRIGGER_FIELD_CLASS}
+          className={HEADER_AUTOMATION_FIELD_CLASS}
         />
       </label>
       <DialogFooter>
@@ -2372,12 +2377,12 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
           <span className="mt-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-foreground">
-              {queue.running.triggerBrief ?? "Running trigger event"}
+              {queue.running.triggerBrief ?? "Running automation"}
             </div>
             <div className="text-muted-foreground">
               {queue.running.status === "running" ? "Running" : "Starting"}
               {" · "}
-              {formatHeaderWorkflowTriggerRun(queue.running.createdAt)}
+              {formatHeaderWorkflowAutomationRun(queue.running.createdAt)}
             </div>
           </div>
         </div>
@@ -2398,7 +2403,7 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
                   {event.triggerBrief ?? event.triggerSource}
                 </span>
                 <span className="shrink-0 text-muted-foreground">
-                  {formatHeaderWorkflowTriggerRun(event.createdAt)}
+                  {formatHeaderWorkflowAutomationRun(event.createdAt)}
                 </span>
                 <button
                   type="button"
@@ -2420,16 +2425,16 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
 }
 
 function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
-  const workflowTriggers$ = headerWorkflowTriggersForThread(threadId);
-  const workflowTriggersLoadable = useLastLoadable(workflowTriggers$);
-  const lastResolvedTriggers = useLastResolved(workflowTriggers$);
+  const workflowAutomations$ = headerWorkflowAutomationsForThread(threadId);
+  const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
+  const lastResolvedAutomations = useLastResolved(workflowAutomations$);
   const close = useSet(closeHeaderAutomationSidebar$);
-  const workflowTriggers =
-    workflowTriggersLoadable.state === "hasData"
-      ? workflowTriggersLoadable.data
-      : (lastResolvedTriggers ?? []);
-  const isEmpty = workflowTriggers.length === 0;
-  const loading = isEmpty && workflowTriggersLoadable.state === "loading";
+  const workflowAutomations =
+    workflowAutomationsLoadable.state === "hasData"
+      ? workflowAutomationsLoadable.data
+      : (lastResolvedAutomations ?? []);
+  const isEmpty = workflowAutomations.length === 0;
+  const loading = isEmpty && workflowAutomationsLoadable.state === "loading";
 
   return (
     <aside
@@ -2466,13 +2471,13 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
         ) : (
           <div className="grid gap-6">
             <HeaderWorkflowQueueSection threadId={threadId} />
-            {workflowTriggers.length > 0 ? (
+            {workflowAutomations.length > 0 ? (
               <div className="grid gap-3">
-                {workflowTriggers.map((trigger) => {
+                {workflowAutomations.map((automation) => {
                   return (
-                    <HeaderWorkflowTriggerCard
-                      key={trigger.id}
-                      trigger={trigger}
+                    <HeaderWorkflowAutomationCard
+                      key={automation.id}
+                      automation={automation}
                     />
                   );
                 })}
@@ -2753,16 +2758,16 @@ type LoadableValue<T> =
 
 function resolveSessionError(
   threadSettledInServerLoadable: LoadableValue<boolean>,
-  groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
+  renderedGroupsReadyLoadable: LoadableValue<boolean>,
 ): string | null {
   if (threadSettledInServerLoadable.state === "hasError") {
     return threadSettledInServerLoadable.error instanceof Error
       ? threadSettledInServerLoadable.error.message
       : "Failed to load chat";
   }
-  if (groupsLoadable.state === "hasError") {
-    return groupsLoadable.error instanceof Error
-      ? groupsLoadable.error.message
+  if (renderedGroupsReadyLoadable.state === "hasError") {
+    return renderedGroupsReadyLoadable.error instanceof Error
+      ? renderedGroupsReadyLoadable.error.message
       : "Failed to load messages";
   }
   return null;
@@ -2772,19 +2777,15 @@ const CHAT_THREAD_CONTENT_MAIN_CLASS =
   "items-center py-4 pl-4 pr-4 sm:pl-6 sm:pr-6 @container";
 const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
-function ChatThreadMessagesMain({
+function ChatThreadRenderedMessageGroups({
   thread,
-  renderedGroups,
-  sessionError,
-  skeletonVisible,
-  showEmptyState,
 }: {
   thread: ChatThreadSignals;
-  renderedGroups: GroupedChatMessageGroup[];
-  sessionError: string | null;
-  skeletonVisible: boolean;
-  showEmptyState: boolean;
 }) {
+  const renderedGroups =
+    useLastResolved(thread.visibleRenderedChatGroups$, {
+      equalityFn: equalArrays,
+    }) ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedMessagesForThinkingIndicator(renderedGroups);
   const runGroupExpandedKeys = useGet(runGroupExpandedKeys$);
@@ -2802,44 +2803,82 @@ function ChatThreadMessagesMain({
     completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups;
 
   return (
+    <ChatThreadMessageGroups
+      thread={thread}
+      groups={visibleGroups}
+      runGroupFolding={runGroupFolding}
+      runGroupExpandedKeys={runGroupExpandedKeys}
+      onToggleRunGroup={toggleRunGroupExpanded}
+      completedWorkFolding={completedWorkFolding}
+      completedWorkExpandedKeys={completedWorkExpandedKeys}
+      onToggleCompletedWork={toggleCompletedWorkExpanded}
+    />
+  );
+}
+
+function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
+  const renderedGroupsReadyLoadable = useLastLoadable(
+    thread.visibleRenderedChatGroupsReady$,
+  );
+  const threadSettledInServerLoadable = useLastLoadable(
+    thread.threadSettledInServer$,
+  );
+  const sessionError = resolveSessionError(
+    threadSettledInServerLoadable,
+    renderedGroupsReadyLoadable,
+  );
+  if (!sessionError) {
+    return null;
+  }
+  return (
+    <div className="flex-1 flex items-center justify-center py-16">
+      <div className="flex items-center gap-2 text-destructive">
+        <IconAlertCircle size={16} />
+        <p className="text-sm">{sessionError}</p>
+      </div>
+    </div>
+  );
+}
+
+function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
+  const renderedGroupsReady =
+    useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
+  const threadSettledInServer =
+    useLastResolved(thread.threadSettledInServer$) ?? false;
+  const hasMessages = useLastResolved(thread.hasMessages$);
+  if (!renderedGroupsReady || !threadSettledInServer || hasMessages !== false) {
+    return null;
+  }
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center py-16 gap-3">
+      <img
+        src={emptyChatImg}
+        alt=""
+        role="presentation"
+        loading="lazy"
+        className="h-24 w-24 object-contain opacity-80"
+      />
+      <p className="text-sm text-muted-foreground">
+        Send a message to start the conversation
+      </p>
+    </div>
+  );
+}
+
+function ChatThreadMessagesMain({ thread }: { thread: ChatThreadSignals }) {
+  const renderedGroupsReady =
+    useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
+
+  return (
     <main className={CHAT_THREAD_CONTENT_MAIN_CLASS}>
       <div
         data-message-container
         className="w-full max-w-[900px] mx-auto flex flex-col gap-6 pb-4 overflow-visible"
-        style={{ visibility: skeletonVisible ? "hidden" : "visible" }}
+        style={{ visibility: renderedGroupsReady ? "visible" : "hidden" }}
       >
-        {sessionError && (
-          <div className="flex-1 flex items-center justify-center py-16">
-            <div className="flex items-center gap-2 text-destructive">
-              <IconAlertCircle size={16} />
-              <p className="text-sm">{sessionError}</p>
-            </div>
-          </div>
-        )}
-        {showEmptyState && (
-          <div className="flex-1 flex flex-col items-center justify-center py-16 gap-3">
-            <img
-              src={emptyChatImg}
-              alt=""
-              role="presentation"
-              loading="lazy"
-              className="h-24 w-24 object-contain opacity-80"
-            />
-            <p className="text-sm text-muted-foreground">
-              Send a message to start the conversation
-            </p>
-          </div>
-        )}
-        <ChatThreadMessageGroups
-          thread={thread}
-          groups={visibleGroups}
-          runGroupFolding={runGroupFolding}
-          runGroupExpandedKeys={runGroupExpandedKeys}
-          onToggleRunGroup={toggleRunGroupExpanded}
-          completedWorkFolding={completedWorkFolding}
-          completedWorkExpandedKeys={completedWorkExpandedKeys}
-          onToggleCompletedWork={toggleCompletedWorkExpanded}
-        />
+        <ChatThreadSessionError thread={thread} />
+        <ChatThreadEmptyState thread={thread} />
+        <ChatThreadRenderedMessageGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
       </div>
     </main>
@@ -2851,12 +2890,7 @@ function ChatThreadThinkingIndicator({
 }: {
   thread: ChatThreadSignals;
 }) {
-  const groups =
-    useLastResolved(thread.groupedChatMessages$, {
-      equalityFn: equalArrays,
-    }) ?? [];
-  const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
-  return <ThinkingIndicator thread={thread} groups={activeGroups} />;
+  return <ThinkingIndicator thread={thread} />;
 }
 
 function ChatThreadMessageGroups({
@@ -3179,7 +3213,9 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
     message.role === "assistant" &&
-    (Boolean(message.content) || Boolean(message.error))
+    (Boolean(message.content) ||
+      Boolean(message.error) ||
+      Boolean(message.mailDraft))
   );
 }
 
@@ -3191,47 +3227,6 @@ function isThinkingOnlyAssistantMessage(message: EnrichedChatMessage): boolean {
     typeof message.thinking === "string" &&
     message.thinking.trim().length > 0
   );
-}
-
-type ThinkingIndicatorMarkerMessage = EnrichedChatMessage & {
-  readonly role: "assistant";
-  readonly content: null;
-  readonly error?: undefined;
-  readonly runId: string;
-  readonly thinking: string;
-};
-
-function isThinkingIndicatorMarkerMessage(
-  message: EnrichedChatMessage,
-): message is ThinkingIndicatorMarkerMessage {
-  return (
-    message.role === "assistant" &&
-    message.content === null &&
-    message.error === undefined &&
-    typeof message.thinking === "string" &&
-    message.thinking.trim().length > 0 &&
-    message.runId !== undefined
-  );
-}
-
-function lastRunThinkingMessageForIndicator(
-  groups: readonly GroupedChatMessageGroup[],
-): ThinkingIndicatorMarkerMessage | undefined {
-  const messages = groups.flatMap((group) => {
-    return group.messages.filter((message) => {
-      return !message.isQueued;
-    });
-  });
-  const lastMessage = messages[messages.length - 1];
-  if (!lastMessage || !isThinkingIndicatorMarkerMessage(lastMessage)) {
-    return undefined;
-  }
-
-  const runId = lastMessage.runId;
-  const runHasAssistantText = messages.some((message) => {
-    return message.runId === runId && isRenderableAssistantMessage(message);
-  });
-  return runHasAssistantText ? undefined : lastMessage;
 }
 
 function terminatedRunIdsForCompletedWork(
@@ -3605,13 +3600,18 @@ function RunGroupFoldRow({
   );
 }
 
-function ChatThreadSkeletonOverlay({
-  sessionError,
-  skeletonVisible,
-}: {
-  sessionError: string | null;
-  skeletonVisible: boolean;
-}) {
+function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
+  const renderedGroupsReadyLoadable = useLastLoadable(
+    thread.visibleRenderedChatGroupsReady$,
+  );
+  const threadSettledInServerLoadable = useLastLoadable(
+    thread.threadSettledInServer$,
+  );
+  const sessionError = resolveSessionError(
+    threadSettledInServerLoadable,
+    renderedGroupsReadyLoadable,
+  );
+  const skeletonVisible = renderedGroupsReadyLoadable.state === "loading";
   if (!skeletonVisible || sessionError) {
     return null;
   }
@@ -3631,31 +3631,9 @@ function ChatThreadSkeletonOverlay({
 }
 
 function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
-  const renderedGroupsLoadable = useLastLoadable(
-    thread.renderedGroupedChatMessages$,
-    { equalityFn: equalArrays },
-  );
-  const threadSettledInServerLoadable = useLastLoadable(
-    thread.threadSettledInServer$,
-  );
-  const sessionError = resolveSessionError(
-    threadSettledInServerLoadable,
-    renderedGroupsLoadable,
-  );
-  const renderedGroups =
-    renderedGroupsLoadable.state === "hasData"
-      ? renderedGroupsLoadable.data
-      : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
-  const skeletonVisible = renderedGroupsLoadable.state === "loading";
-  const showEmptyState =
-    sessionError === null &&
-    threadSettledInServerLoadable.state === "hasData" &&
-    threadSettledInServerLoadable.data &&
-    renderedGroupsLoadable.state === "hasData" &&
-    renderedGroups.length === 0;
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
     if (
@@ -3675,23 +3653,10 @@ function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
         onScroll={handleScroll}
         className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
-        <ChatThreadMessagesMain
-          thread={thread}
-          renderedGroups={renderedGroups}
-          sessionError={sessionError}
-          skeletonVisible={skeletonVisible}
-          showEmptyState={showEmptyState}
-        />
+        <ChatThreadMessagesMain thread={thread} />
       </div>
-      <ChatThreadSkeletonOverlay
-        sessionError={sessionError}
-        skeletonVisible={skeletonVisible}
-      />
-      <ScrollToBottomButton
-        thread={thread}
-        skeletonVisible={skeletonVisible}
-        sessionError={sessionError}
-      />
+      <ChatThreadSkeletonOverlay thread={thread} />
+      <ScrollToBottomButton thread={thread} />
     </div>
   );
 }
@@ -3713,17 +3678,20 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ScrollToBottomButton({
-  thread,
-  skeletonVisible,
-  sessionError,
-}: {
-  thread: ChatThreadSignals;
-  skeletonVisible: boolean;
-  sessionError: string | null;
-}) {
+function ScrollToBottomButton({ thread }: { thread: ChatThreadSignals }) {
   const awayFromBottom = useGet(thread.awayFromBottom$);
   const scrollToBottom = useSet(thread.scrollToBottom$);
+  const renderedGroupsReadyLoadable = useLastLoadable(
+    thread.visibleRenderedChatGroupsReady$,
+  );
+  const threadSettledInServerLoadable = useLastLoadable(
+    thread.threadSettledInServer$,
+  );
+  const sessionError = resolveSessionError(
+    threadSettledInServerLoadable,
+    renderedGroupsReadyLoadable,
+  );
+  const skeletonVisible = renderedGroupsReadyLoadable.state === "loading";
 
   if (!awayFromBottom || skeletonVisible || sessionError) {
     return null;
@@ -3742,48 +3710,6 @@ function ScrollToBottomButton({
       <IconArrowDown size={18} />
     </button>
   );
-}
-
-interface RecommendedFollowupSource {
-  readonly messageId: string;
-  readonly followups: readonly RecommendedFollowup[];
-}
-
-function latestRecommendedFollowups(
-  groups: readonly GroupedChatMessageGroup[],
-): RecommendedFollowupSource | null {
-  for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex -= 1) {
-    const group = groups[groupIndex];
-    if (!group) {
-      continue;
-    }
-    if (group.role !== "assistant") {
-      return null;
-    }
-
-    for (
-      let messageIndex = group.messages.length - 1;
-      messageIndex >= 0;
-      messageIndex -= 1
-    ) {
-      const message = group.messages[messageIndex];
-      if (!message || message.role !== "assistant") {
-        continue;
-      }
-
-      const content = message.content?.trim();
-      if (content) {
-        return null;
-      }
-
-      const followups = message.recommendedFollowups ?? [];
-      if (followups.length > 0) {
-        return { messageId: message.id, followups };
-      }
-    }
-  }
-
-  return null;
 }
 
 function RecommendedFollowupIcon({
@@ -3849,8 +3775,7 @@ function RecommendedFollowupList({
   thread: ChatThreadSignals;
   source: RecommendedFollowupSource;
 }) {
-  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
-  const selectedModel = useLastResolved(thread.selectedModel$) ?? null;
+  const sendMessage = useSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
@@ -3869,7 +3794,6 @@ function RecommendedFollowupList({
     detach(
       sendMessage(
         followup.prompt,
-        selectedModel ? { selectedModel } : null,
         {
           includeDraftAttachments: false,
         },
@@ -3998,14 +3922,14 @@ function resolveChatComposerModelPicker(params: {
 
 function useChatComposerQueue(
   thread: ChatThreadSignals,
-  queuedUserMessages: readonly EnrichedChatMessage[],
+  queuedMessages: readonly QueuedChatMessageItem[],
 ) {
   const recallMessage = useSet(thread.recallMessage$);
   const focusInput = useSet(thread.focusInput$);
   const pageSignal = useGet(pageSignal$);
 
   const queuedMessagesById = new Map(
-    queuedUserMessages.map((message) => {
+    queuedMessages.map((message) => {
       return [message.id, message] as const;
     }),
   );
@@ -4014,18 +3938,17 @@ function useChatComposerQueue(
   ).map((message) => {
     return {
       id: message.id,
-      text: (message.content ?? "").trim(),
+      text: message.text,
     };
   });
 
   const onRemoveQueuedItem = (id: string) => {
-    const message = queuedMessagesById.get(id);
-    if (!message) {
+    if (!queuedMessagesById.has(id)) {
       return;
     }
     detach(
       (async () => {
-        await recallMessage(message, pageSignal);
+        await recallMessage(id, pageSignal);
         focusInput();
       })(),
       Reason.DomCallback,
@@ -4042,7 +3965,11 @@ function useChatComposerActiveGoal(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
 ) {
-  const activeGoal = useLastResolved(thread.activeGoal$) ?? undefined;
+  const activeGoalObjective =
+    useLastResolved(thread.activeGoalObjective$) ?? undefined;
+  const activeGoal = activeGoalObjective
+    ? { objective: activeGoalObjective }
+    : undefined;
   const pauseChatThreadGoal = useSet(pauseChatThreadGoal$);
   const onCancelActiveGoal = activeGoal
     ? () => {
@@ -4063,20 +3990,22 @@ function useChatComposerModel(
   // useLastResolved so the picker keeps the previous value while realtime
   // callbacks refetch the thread detail for non-selection fields.
   const selectedModelResolved = useLastResolved(thread.selectedModel$);
-  const threadDetail = useLastResolved(thread.remoteThreadDetail$);
+  const codexFastModeActive =
+    useLastResolved(thread.codexFastModeActive$) ?? false;
   const baseModelSelection = selectedModelResolved
     ? { selectedModel: selectedModelResolved }
     : null;
   const modelSelection =
-    baseModelSelection && threadDetail?.codexServiceTier
+    baseModelSelection && codexFastModeActive
       ? {
           ...baseModelSelection,
-          codexServiceTier: threadDetail.codexServiceTier,
+          codexServiceTier: "fast" as const,
         }
       : baseModelSelection;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const personalModelProvider = useLastResolved(personalModelProvider$);
-  const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
+  const selectedModelOauthAvailable =
+    useLastResolved(thread.selectedModelOauthAvailable$) ?? true;
+  const configureSelectedModel = useSet(thread.configureSelectedModel$);
 
   const handleModelSelectionChange = (
     selection: ModelProviderSelection | null,
@@ -4092,35 +4021,36 @@ function useChatComposerModel(
       })
     : undefined;
   const modelPickerLoading = selectedModelResolved === undefined;
-  const submitBlockerProps = modelSelection
-    ? resolveChatComposerSubmitBlocker({
-        personalModelProvider,
-        selectedModel: modelSelection.selectedModel,
-        onAction: openPersonalOauthConfiguration,
-      })
-    : undefined;
+  const submitBlockerProps =
+    modelSelection && !selectedModelOauthAvailable
+      ? {
+          message:
+            "The selected model is not available. Configure it before sending.",
+          actionLabel: "Model Configure",
+          onAction: () => {
+            detach(configureSelectedModel(pageSignal), Reason.DomCallback);
+          },
+        }
+      : undefined;
 
   return {
     modelPicker,
     modelPickerLoading,
     submitBlockerProps,
-    modelSelection,
   };
 }
 
 function useChatThreadComposerSendState({
   thread,
-  modelSelection,
   computerUseHostIdForSend,
   clearComputerUseHostOverride,
 }: {
   thread: ChatThreadSignals;
-  modelSelection: ModelProviderSelection | null;
   computerUseHostIdForSend: string | null | undefined;
   clearComputerUseHostOverride: () => void;
 }) {
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
   const rootSignal = useGet(rootSignal$);
   const generationTemplate = useGet(thread.draft.generationTemplate$);
   const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
@@ -4132,15 +4062,10 @@ function useChatThreadComposerSendState({
           computerUseHostIdForSend === undefined
             ? {}
             : { computerUseHostId: computerUseHostIdForSend };
-        await send(
-          text,
-          modelSelection,
-          {
-            ...computerUsePatch,
-          },
-          rootSignal,
-        );
-        clearComputerUseHostOverride();
+        const sent = await send(text, { ...computerUsePatch }, rootSignal);
+        if (sent) {
+          clearComputerUseHostOverride();
+        }
       })(),
       Reason.DomCallback,
     );
@@ -4150,24 +4075,22 @@ function useChatThreadComposerSendState({
     detach(
       (async () => {
         const computerUseHostId = computerUseHostIdForSend;
-        await queueMessage(text, computerUseHostId, rootSignal);
-        clearComputerUseHostOverride();
+        const queued = await queueMessage(text, computerUseHostId, rootSignal);
+        if (queued) {
+          clearComputerUseHostOverride();
+        }
       })(),
       Reason.DomCallback,
     );
   };
 
-  const handleFeedbackSend = (text: string) => {
-    detach(
-      send(
-        text,
-        modelSelection,
-        {
-          includeDraftAttachments: true,
-        },
-        rootSignal,
-      ),
-      Reason.DomCallback,
+  const handleFeedbackSend = (text: string): Promise<boolean> => {
+    return send(
+      text,
+      {
+        includeDraftAttachments: true,
+      },
+      rootSignal,
     );
   };
 
@@ -4175,7 +4098,8 @@ function useChatThreadComposerSendState({
     handleSend,
     handleQueue,
     handleFeedbackSend,
-    sendLoading: sendLoadable.state === "loading",
+    submissionLoading:
+      sendLoadable.state === "loading" || queueLoadable.state === "loading",
     templatePicker: {
       value: generationTemplate,
       onChange: (value: GenerationTemplateRequest | undefined) => {
@@ -4239,7 +4163,7 @@ function useChatThreadComputerUse(
 // keeps its textarea.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
-  sendFeedback: (prompt: string) => void,
+  sendFeedback: (prompt: string) => Promise<boolean>,
 ): ComposerFeedback | undefined {
   const items = useGet(feedbackItemsValue$);
   const feedbackThreadId = useGet(feedbackThreadIdValue$);
@@ -4268,8 +4192,14 @@ function useChatThreadComposerFeedback(
       if (prompt === null) {
         return;
       }
-      sendFeedback(prompt);
-      dismiss();
+      detach(
+        (async () => {
+          if (await sendFeedback(prompt)) {
+            dismiss();
+          }
+        })(),
+        Reason.DomCallback,
+      );
     },
     onDismiss: () => {
       dismiss();
@@ -4333,28 +4263,36 @@ function useChatThreadComposerWorkflowPrompt({
   };
 }
 
-const EMPTY_QUEUED_USER_MESSAGES: readonly EnrichedChatMessage[] = [];
+const EMPTY_QUEUED_MESSAGE_ITEMS: readonly QueuedChatMessageItem[] = [];
 
-function useQueuedUserMessages(thread: ChatThreadSignals) {
-  const hasQueuedUserMessages =
-    useLastResolved(thread.hasQueuedUserMessages$) ?? false;
-  const queuedUserMessages$ = hasQueuedUserMessages
-    ? thread.queuedUserMessages$
-    : thread.emptyQueuedUserMessages$;
+function equalQueuedMessageItems(
+  previous: readonly QueuedChatMessageItem[],
+  next: readonly QueuedChatMessageItem[],
+): boolean {
+  return equalArrays(previous, next, (left, right) => {
+    return left.id === right.id && left.text === right.text;
+  });
+}
+
+function useQueuedMessageItems(thread: ChatThreadSignals) {
+  const hasQueuedMessages = useLastResolved(thread.hasQueuedMessages$) ?? false;
+  const queuedMessageItems$ = hasQueuedMessages
+    ? thread.queuedMessageItems$
+    : thread.emptyQueuedMessageItems$;
   return (
-    useLastResolved(queuedUserMessages$, { equalityFn: equalArrays }) ??
-    EMPTY_QUEUED_USER_MESSAGES
+    useLastResolved(queuedMessageItems$, {
+      equalityFn: equalQueuedMessageItems,
+    }) ?? EMPTY_QUEUED_MESSAGE_ITEMS
   );
 }
 
 function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
-  const queuedUserMessages = useQueuedUserMessages(thread);
-  const hasMessagesResolved = useLastResolved(thread.hasChatGroups$);
+  const queuedMessageItems = useQueuedMessageItems(thread);
+  const hasMessagesResolved = useLastResolved(thread.hasMessages$);
   const hasMessages = hasMessagesResolved ?? false;
-  const lastAssistantCancelled =
-    useLastResolved(thread.lastAssistantCancelled$) ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const allFinished = useLastResolved(thread.allFinished$)!;
+  const sendButtonStatus =
+    useLastResolved(thread.composerSendButtonStatus$) ?? "sending";
   const cancelRun = useSet(thread.cancelRun$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
   const pageSignal = useGet(pageSignal$);
@@ -4366,33 +4304,27 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
-    queuedUserMessages,
+    queuedMessageItems,
   );
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
     thread,
     pageSignal,
   );
-  const {
-    modelPicker,
-    modelPickerLoading,
-    submitBlockerProps,
-    modelSelection,
-  } = useChatComposerModel(thread, pageSignal);
+  const { modelPicker, modelPickerLoading, submitBlockerProps } =
+    useChatComposerModel(thread, pageSignal);
   const {
     handleSend,
     handleQueue,
     handleFeedbackSend,
-    sendLoading,
+    submissionLoading,
     templatePicker,
   } = useChatThreadComposerSendState({
     thread,
-    modelSelection,
     computerUseHostIdForSend,
     clearComputerUseHostOverride,
   });
-  const sending = !allFinished || sendLoading;
   const skeletonVisible = hasMessagesResolved === undefined;
-  const composerSending = sending && !lastAssistantCancelled;
+  const composerSending = sendButtonStatus === "sending";
   const queueWhileSending = canQueueMessage({ sending: composerSending });
 
   const handleDraftChange = () => {
@@ -4410,12 +4342,12 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     onQueue: handleQueue,
     sending: composerSending,
     queueWhileSending,
-    onCancel:
-      !allFinished || sendLoading
-        ? () => {
-            detach(cancelRun(pageSignal), Reason.DomCallback);
-          }
-        : undefined,
+    submissionLoading,
+    onCancel: composerSending
+      ? () => {
+          detach(cancelRun(pageSignal), Reason.DomCallback);
+        }
+      : undefined,
     displayName,
     className: "w-full min-w-0",
     autoFocus: shouldAutoFocusComposer({
@@ -4505,50 +4437,13 @@ function ChatSkeleton() {
 // Thinking indicator — shown the entire time a run is active
 // ---------------------------------------------------------------------------
 
-function isCancelledAssistantMessage(
-  message: EnrichedChatMessage | undefined,
-): boolean {
-  return (
-    message?.role === "assistant" &&
-    (message.runLifecycleEvent === "cancelled" ||
-      message.error?.trim().toLowerCase() === "run cancelled")
-  );
-}
-
-function shouldRenderThinkingIndicator({
-  lastGroup,
-  lastIsAssistant,
-  running,
-  runStatePending,
-  lastAssistantCancelled,
-  lastAssistantOnlyThinking,
-}: {
-  lastGroup: GroupedChatMessageGroup | undefined;
-  lastIsAssistant: boolean;
-  running: boolean;
-  runStatePending: boolean;
-  lastAssistantCancelled: boolean;
-  lastAssistantOnlyThinking: boolean;
-}): boolean {
-  if (!lastGroup) {
-    return false;
-  }
-  if (runStatePending && lastIsAssistant) {
-    return false;
-  }
-  if (lastAssistantCancelled && !running) {
-    return false;
-  }
-  if (lastAssistantOnlyThinking && !running) {
-    return false;
-  }
-  return lastIsAssistant || running;
-}
-
 interface ServerThinkingLabel {
   readonly displayedText: string;
   readonly fullText: string;
   readonly id: string;
+  readonly setRef: (
+    el: HTMLParagraphElement | null,
+  ) => (() => void) | undefined;
 }
 
 function ThinkingLabel({
@@ -4565,7 +4460,7 @@ function ThinkingLabel({
 
   if (isQueued) {
     return (
-      <p className="text-muted-foreground min-w-0 flex-1 text-[0.8125rem] truncate">
+      <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
         Waiting in{" "}
         <button
           type="button"
@@ -4584,7 +4479,8 @@ function ThinkingLabel({
     return (
       <p
         key={serverThinkingLabel.id}
-        className="text-muted-foreground min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
+        ref={serverThinkingLabel.setRef}
+        className="zero-shimmer-text min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
         aria-label={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
@@ -4593,7 +4489,7 @@ function ThinkingLabel({
   }
 
   return (
-    <p className="text-muted-foreground min-w-0 flex-1 text-[0.8125rem] truncate">
+    <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
       {thinkingLabel}
     </p>
   );
@@ -4669,7 +4565,7 @@ function WaitingForAssistantResponse({
     <div
       data-thinking-indicator
       data-role="assistant"
-      className="flex flex-col gap-1"
+      className="zero-thinking-enter flex flex-col gap-1"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
@@ -4743,136 +4639,74 @@ function AssistantThinkingStatusRow({
   );
 }
 
-interface ThinkingIndicatorState {
-  readonly lastGroup: GroupedChatMessageGroup | undefined;
-  readonly lastIsAssistant: boolean;
-  readonly lastAssistantCancelled: boolean;
-  readonly lastAssistantOnlyThinking: boolean;
-  readonly isQueued: boolean;
-  readonly running: boolean;
-  readonly runStatePending: boolean;
-  readonly lastThinkingMessage: ThinkingIndicatorMarkerMessage | undefined;
+function thinkingIndicatorRunning(mode: ThinkingIndicatorMode): boolean {
+  return mode !== null && mode !== "finished";
 }
 
-function getThinkingIndicatorState(args: {
-  readonly groups: GroupedChatMessageGroup[];
-  readonly messageRunIndicatorState: "running" | "queued" | null | undefined;
-  readonly messageRunIndicatorResolved: boolean;
-  readonly initialThinkingEnabled: boolean;
-}): ThinkingIndicatorState {
-  const lastGroup = args.groups[args.groups.length - 1];
-  const lastIsAssistant = lastGroup?.role === "assistant";
-  const lastAssistantMessage =
-    lastIsAssistant && lastGroup
-      ? lastGroup.messages[lastGroup.messages.length - 1]
-      : undefined;
-  const rawLastThinkingMessage = lastRunThinkingMessageForIndicator(
-    args.groups,
+function thinkingIndicatorQueued(mode: ThinkingIndicatorMode): boolean {
+  return mode === "waiting-queued" || mode === "running-queued";
+}
+
+function thinkingIndicatorUsesStatusRow(mode: ThinkingIndicatorMode): boolean {
+  return mode === "running" || mode === "running-queued" || mode === "finished";
+}
+
+function equalRecommendedFollowupSources(
+  previous: RecommendedFollowupSource | null,
+  next: RecommendedFollowupSource | null,
+): boolean {
+  return (
+    previous === next ||
+    (previous !== null &&
+      next !== null &&
+      previous.messageId === next.messageId &&
+      previous.followups === next.followups)
   );
-  const lastAssistantHasRenderableMessage =
-    lastIsAssistant &&
-    lastGroup !== undefined &&
-    lastGroup.messages.some((message) => {
-      return isRenderableAssistantMessage(message);
-    });
-  const lastAssistantOnlyThinking =
-    lastIsAssistant &&
-    rawLastThinkingMessage !== undefined &&
-    !lastAssistantHasRenderableMessage;
-  const lastAssistantCancelled =
-    isCancelledAssistantMessage(lastAssistantMessage);
-  const isQueued = args.messageRunIndicatorState === "queued";
-  const lastThinkingMessage =
-    args.initialThinkingEnabled && !isQueued
-      ? rawLastThinkingMessage
-      : undefined;
-  const runActive =
-    (args.messageRunIndicatorState === "running" || isQueued) &&
-    !lastAssistantCancelled;
-  const waitingForAssistant =
-    runActive &&
-    lastGroup?.role === "user" &&
-    lastGroup.messages.length > 0 &&
-    lastGroup.messages.some((message) => {
-      return message.isOptimisticRun || message.runId !== undefined;
-    });
-
-  return {
-    lastGroup,
-    lastIsAssistant,
-    lastAssistantCancelled,
-    lastAssistantOnlyThinking,
-    isQueued,
-    running: runActive || waitingForAssistant,
-    runStatePending: !args.messageRunIndicatorResolved,
-    lastThinkingMessage,
-  };
 }
 
-function ThinkingIndicator({
-  thread,
-  groups,
-}: {
-  thread: ChatThreadSignals;
-  groups: GroupedChatMessageGroup[];
-}) {
+function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const [c1, c2, c3] = useGet(thread.blockColors$);
   const blockStyle = {
     "--zb-c1": c1,
     "--zb-c2": c2,
     "--zb-c3": c3,
   } as CSSProperties;
-
-  const messageRunIndicatorStateLoadable = useLastLoadable(
-    thread.messageRunIndicatorState$,
-  );
-  const messageRunIndicatorResolved =
-    messageRunIndicatorStateLoadable.state === "hasData";
-  const messageRunIndicatorState = messageRunIndicatorResolved
-    ? messageRunIndicatorStateLoadable.data
-    : undefined;
-  const indicatorState = getThinkingIndicatorState({
-    groups,
-    messageRunIndicatorState,
-    messageRunIndicatorResolved,
-    initialThinkingEnabled: true,
-  });
+  const mode = useLastResolved(thread.thinkingIndicatorMode$) ?? null;
+  const thinkingText = useLastResolved(thread.thinkingText$);
+  const recommendedFollowupSource =
+    useLastResolved(thread.recommendedFollowupSource$, {
+      equalityFn: equalRecommendedFollowupSources,
+    }) ?? null;
   const thinkingLabel = useGet(thread.thinkingPhrase$);
-  const thinkingText = indicatorState.lastThinkingMessage?.thinking.trim();
+  const running = thinkingIndicatorRunning(mode);
+  const isQueued = thinkingIndicatorQueued(mode);
+  const thinkingMessageId = useLastResolved(thread.thinkingMessageId$);
+  const displayedThinkingText =
+    useLastResolved(thread.displayedThinkingText$) ?? "";
+  const setThinkingIndicatorTextRef = useSet(
+    thread.setThinkingIndicatorTextRef$,
+  );
   const serverThinkingLabel =
-    thinkingText && indicatorState.lastThinkingMessage && indicatorState.running
+    thinkingText && thinkingMessageId && running
       ? {
-          displayedText: thinkingText,
+          displayedText: displayedThinkingText,
           fullText: thinkingText,
-          id: indicatorState.lastThinkingMessage.id,
+          id: thinkingMessageId,
+          setRef: setThinkingIndicatorTextRef,
         }
       : undefined;
-  const recommendedFollowupSource = latestRecommendedFollowups(groups);
 
-  if (
-    !shouldRenderThinkingIndicator({
-      lastGroup: indicatorState.lastGroup,
-      lastIsAssistant: indicatorState.lastIsAssistant,
-      running: indicatorState.running,
-      runStatePending: indicatorState.runStatePending,
-      lastAssistantCancelled: indicatorState.lastAssistantCancelled,
-      lastAssistantOnlyThinking: indicatorState.lastAssistantOnlyThinking,
-    })
-  ) {
+  if (mode === null) {
     return null;
   }
 
   // Shared inline row with fixed h-5 to prevent layout jump on transition
-  if (
-    (indicatorState.lastIsAssistant &&
-      !indicatorState.lastAssistantOnlyThinking) ||
-    !indicatorState.running
-  ) {
+  if (thinkingIndicatorUsesStatusRow(mode)) {
     return (
       <AssistantThinkingStatusRow
-        running={indicatorState.running}
+        running={running}
         blockStyle={blockStyle}
-        isQueued={indicatorState.isQueued}
+        isQueued={isQueued}
         thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
         thread={thread}
@@ -4886,7 +4720,7 @@ function ThinkingIndicator({
     <WaitingForAssistantResponse
       thread={thread}
       blockStyle={blockStyle}
-      isQueued={indicatorState.isQueued}
+      isQueued={isQueued}
       thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
     />
@@ -5731,8 +5565,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
-  const [, complete] = useLoadableSet(completeChatConnectorActionConnect$);
-  const pageSignal = useGet(pageSignal$);
+  const complete = useSet(completeChatConnectorActionConnect$);
 
   if (!active) {
     return null;
@@ -5740,9 +5573,10 @@ function ChatConnectorActionConnectModal() {
 
   return (
     <ConnectModal
+      agentId={active.agentId}
       onClose={close}
       onSuccess={() => {
-        return complete(pageSignal);
+        complete();
       }}
     />
   );
@@ -6131,7 +5965,7 @@ function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
 }
 
 // ---------------------------------------------------------------------------
-// Paged message rendering — renders from groupedChatMessages$ (flat data,
+// Paged message rendering — renders from visibleRenderedChatGroups$ (flat data,
 // no signal-based run loops).
 // ---------------------------------------------------------------------------
 
@@ -6783,6 +6617,7 @@ function PagedAssistantGroup({
       <PagedAssistantMessageItem
         key={message.id}
         message={message}
+        thread={thread}
         compactTop={compactTop}
       />
     );
@@ -6832,15 +6667,34 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({
   message,
+  thread,
   compactTop = false,
 }: {
   message: EnrichedChatMessage;
+  thread: ChatThreadSignals;
   compactTop?: boolean;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
+
+  if (message.mailDraft) {
+    return (
+      <div
+        className={cn(
+          "zero-chat-bubble-assistant px-0 min-w-0",
+          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+        )}
+      >
+        <MailDraftCard
+          threadId={thread.threadId}
+          messageId={message.id}
+          mailDraft={message.mailDraft}
+        />
+      </div>
+    );
+  }
 
   if (message.error) {
     return (

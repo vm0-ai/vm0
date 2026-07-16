@@ -18,7 +18,7 @@ use super::super::error::{NetworkError, Result};
 use super::super::{GUEST_NETWORK, GuestNetwork};
 use super::naming::{
     MAX_NAMESPACES, MAX_POOLS, NS_PREFIX, format_hex_index, generate_veth_ip_pair,
-    make_host_device, make_ns_name, parse_netns_name,
+    make_host_device, make_host_device_iptables_pattern, make_ns_name, parse_netns_name,
 };
 use super::types::NetnsInfo;
 
@@ -102,6 +102,61 @@ async fn exec_ip(args: &[&str]) -> Result<()> {
 async fn exec_iptables(args: &[&str]) -> Result<()> {
     exec_status_with_timeout("iptables", args, NETNS_COMMAND_TIMEOUT).await?;
     Ok(())
+}
+
+/// Restrict the runner-managed DNS port to this pool's VM-facing veths.
+///
+/// dnsmasq's default socket mode avoids per-address listener churn by using
+/// wildcard sockets. These INPUT rules preserve the old kernel-level listener
+/// isolation: public, management, and other runners' interfaces see the port as
+/// unreachable, while REDIRECT traffic arriving on this pool's veths proceeds
+/// to dnsmasq. Both address families are covered because dnsmasq can create
+/// IPv4 and IPv6 wildcard sockets.
+pub(super) async fn setup_dns_input_filter(pool_index: u32, dns_port: u16) -> Result<String> {
+    let pool_idx = format_hex_index(pool_index);
+    let interface = make_host_device_iptables_pattern(&pool_idx);
+    let comment = format!("{NS_PREFIX}{pool_idx}-dns");
+    let port = dns_port.to_string();
+
+    for program in ["iptables", "ip6tables"] {
+        for protocol in ["udp", "tcp"] {
+            let args = [
+                "-I",
+                "INPUT",
+                "1",
+                "!",
+                "-i",
+                &interface,
+                "-p",
+                protocol,
+                "--dport",
+                &port,
+                "-m",
+                "comment",
+                "--comment",
+                &comment,
+                "-j",
+                "REJECT",
+            ];
+            if let Err(error) =
+                exec_status_with_timeout(program, &args, NETNS_COMMAND_TIMEOUT).await
+            {
+                if matches!(
+                    delete_pool_firewall_rules_by_comment(&comment).await,
+                    NamespaceDeleteOutcome::Abandoned
+                ) {
+                    warn!(
+                        comment,
+                        "failed to roll back partial DNS input filter; startup orphan reconciliation will retry"
+                    );
+                }
+                return Err(error.into());
+            }
+        }
+    }
+
+    info!(dns_port, interface, comment, "DNS input filter installed");
+    Ok(comment)
 }
 
 pub(super) async fn enable_host_ip_forwarding() -> Result<()> {
@@ -304,23 +359,26 @@ async fn setup_host_iptables(
     Ok(())
 }
 
-/// Add proxy REDIRECT rule for all outbound TCP traffic in PREROUTING chain.
+/// Add a proxy REDIRECT rule for outbound TCP traffic in PREROUTING.
 ///
-/// This rule redirects all outbound TCP traffic from the namespace's
-/// veth peer IP to the specified proxy port on the host. mitmproxy in
-/// transparent mode handles both HTTP/HTTPS and non-HTTP (raw TCP passthrough).
-async fn add_proxy_redirect_rule(name: &str, peer_ip: &str, proxy_port: u16) -> Result<()> {
+/// This rule redirects outbound TCP traffic from the namespace's veth peer IP
+/// to the specified proxy port on the host. When the DNS proxy is enabled,
+/// standard DNS (53) and DNS-over-TLS (853) are excluded so their dedicated
+/// rules cannot be bypassed by mitmproxy's raw TCP passthrough. Without a DNS
+/// proxy, all TCP traffic keeps the existing mitmproxy behavior.
+async fn add_proxy_redirect_rule(
+    name: &str,
+    peer_ip: &str,
+    proxy_port: u16,
+    dns_proxy_enabled: bool,
+) -> Result<()> {
     let src = format!("{peer_ip}/30");
     let port_str = proxy_port.to_string();
-    exec_iptables(&[
-        "-t",
-        "nat",
-        "-A",
-        "PREROUTING",
-        "-s",
-        &src,
-        "-p",
-        "tcp",
+    let mut args: Vec<&str> = vec!["-t", "nat", "-A", "PREROUTING", "-s", &src, "-p", "tcp"];
+    if dns_proxy_enabled {
+        args.extend(["-m", "multiport", "!", "--dports", "53,853"]);
+    }
+    args.extend([
         "-j",
         "REDIRECT",
         "--to-port",
@@ -329,8 +387,8 @@ async fn add_proxy_redirect_rule(name: &str, peer_ip: &str, proxy_port: u16) -> 
         "comment",
         "--comment",
         name,
-    ])
-    .await?;
+    ]);
+    exec_iptables(&args).await?;
     Ok(())
 }
 
@@ -377,82 +435,68 @@ async fn add_non_tcp_log_rule(name: &str, peer_ip: &str) -> Result<()> {
     Ok(())
 }
 
-/// Redirect all outbound DNS (UDP 53) to the local dnsmasq port.
+/// Redirect standard outbound DNS (UDP/TCP 53) to the local dnsmasq port.
 ///
 /// VM resolv.conf points to an external nameserver as a dummy target.
-/// This PREROUTING REDIRECT intercepts the packet before FORWARD/MASQUERADE,
-/// preserving the original source IP (peer veth) for per-VM log routing.
-async fn add_dns_redirect_rule(name: &str, peer_ip: &str, dns_port: u16) -> Result<()> {
+/// These PREROUTING REDIRECT rules intercept packets before FORWARD/MASQUERADE,
+/// preserving the original source IP (peer veth) for per-VM log routing. TCP
+/// support covers explicit DNS-over-TCP and fallback after truncated UDP
+/// responses.
+async fn add_dns_redirect_rules(name: &str, peer_ip: &str, dns_port: u16) -> Result<()> {
     let src = format!("{peer_ip}/30");
     let port_str = dns_port.to_string();
-    exec_iptables(&[
-        "-t",
-        "nat",
-        "-A",
-        "PREROUTING",
-        "-s",
-        &src,
-        "-p",
-        "udp",
-        "--dport",
-        "53",
-        "-j",
-        "REDIRECT",
-        "--to-port",
-        &port_str,
-        "-m",
-        "comment",
-        "--comment",
-        name,
-    ])
-    .await?;
+    for protocol in ["udp", "tcp"] {
+        exec_iptables(&[
+            "-t",
+            "nat",
+            "-A",
+            "PREROUTING",
+            "-s",
+            &src,
+            "-p",
+            protocol,
+            "--dport",
+            "53",
+            "-j",
+            "REDIRECT",
+            "--to-port",
+            &port_str,
+            "-m",
+            "comment",
+            "--comment",
+            name,
+        ])
+        .await?;
+    }
     Ok(())
 }
 
 /// Drop external DNS traffic that bypasses the REDIRECT rule.
 ///
-/// Blocks UDP 53 and TCP 853 (DNS over TLS) in FORWARD chain.
+/// Blocks UDP/TCP 53 and TCP 853 (DNS over TLS) in FORWARD chain.
 /// DNS over HTTPS (TCP 443) is handled by mitmproxy at HTTP level.
 async fn add_dns_drop_rules(name: &str, peer_ip: &str) -> Result<()> {
     let src = format!("{peer_ip}/30");
-    // Block UDP 53 in FORWARD (catches any traffic not caught by PREROUTING REDIRECT)
-    exec_iptables(&[
-        "-I",
-        "FORWARD",
-        "1",
-        "-s",
-        &src,
-        "-p",
-        "udp",
-        "--dport",
-        "53",
-        "-j",
-        "DROP",
-        "-m",
-        "comment",
-        "--comment",
-        name,
-    ])
-    .await?;
-    // Block DNS over TLS (TCP 853)
-    exec_iptables(&[
-        "-I",
-        "FORWARD",
-        "1",
-        "-s",
-        &src,
-        "-p",
-        "tcp",
-        "--dport",
-        "853",
-        "-j",
-        "DROP",
-        "-m",
-        "comment",
-        "--comment",
-        name,
-    ])
-    .await?;
+    for (protocol, port) in [("udp", "53"), ("tcp", "53"), ("tcp", "853")] {
+        exec_iptables(&[
+            "-I",
+            "FORWARD",
+            "1",
+            "-s",
+            &src,
+            "-p",
+            protocol,
+            "--dport",
+            port,
+            "-j",
+            "DROP",
+            "-m",
+            "comment",
+            "--comment",
+            name,
+        ])
+        .await?;
+    }
     Ok(())
 }
 
@@ -468,11 +512,11 @@ pub(super) async fn get_default_interface() -> Result<String> {
     Ok(iface)
 }
 
-/// Delete iptables rules that contain `comment` in nat and filter tables.
+/// Delete IPv4 iptables rules that contain `comment`.
 async fn delete_iptables_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
     let (nat, filter) = tokio::join!(
-        delete_iptables_from_table("nat", comment),
-        delete_iptables_from_table("filter", comment),
+        delete_firewall_rules_from_table("iptables", "iptables-save", "nat", comment),
+        delete_firewall_rules_from_table("iptables", "iptables-save", "filter", comment),
     );
     if matches!(nat, NamespaceDeleteOutcome::Deleted)
         && matches!(filter, NamespaceDeleteOutcome::Deleted)
@@ -483,15 +527,35 @@ async fn delete_iptables_rules_by_comment(comment: &str) -> NamespaceDeleteOutco
     }
 }
 
-async fn delete_iptables_from_table(table: &str, comment: &str) -> NamespaceDeleteOutcome {
-    let output =
-        match exec_with_timeout("iptables-save", &["-t", table], NETNS_COMMAND_TIMEOUT).await {
-            Ok(output) => output,
-            Err(e) => {
-                warn!(table, error = %e, "failed to read iptables rules, skipping cleanup");
-                return NamespaceDeleteOutcome::Abandoned;
-            }
-        };
+/// Delete pool-scoped IPv4 and IPv6 firewall rules that contain `comment`.
+pub(super) async fn delete_pool_firewall_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
+    let (ipv4, ipv6_filter) = tokio::join!(
+        delete_iptables_rules_by_comment(comment),
+        delete_firewall_rules_from_table("ip6tables", "ip6tables-save", "filter", comment),
+    );
+    if matches!(ipv4, NamespaceDeleteOutcome::Deleted)
+        && matches!(ipv6_filter, NamespaceDeleteOutcome::Deleted)
+    {
+        NamespaceDeleteOutcome::Deleted
+    } else {
+        NamespaceDeleteOutcome::Abandoned
+    }
+}
+
+async fn delete_firewall_rules_from_table(
+    command: &str,
+    save_command: &str,
+    table: &str,
+    comment: &str,
+) -> NamespaceDeleteOutcome {
+    let output = match exec_with_timeout(save_command, &["-t", table], NETNS_COMMAND_TIMEOUT).await
+    {
+        Ok(output) => output,
+        Err(e) => {
+            warn!(save_command, table, error = %e, "failed to read firewall rules, skipping cleanup");
+            return NamespaceDeleteOutcome::Abandoned;
+        }
+    };
     // Sequential: xtables lock serializes writes to the same table anyway.
     // Note: split_whitespace + trim_matches('"') is safe because namespace
     // comment values (e.g. "vm0-ns-00-0a") never contain spaces. If they
@@ -505,8 +569,7 @@ async fn delete_iptables_from_table(table: &str, comment: &str) -> NamespaceDele
         let rule = line.replacen("-A ", "-D ", 1);
         let mut args: Vec<&str> = vec!["-t", table];
         args.extend(rule.split_whitespace().map(|t| t.trim_matches('"')));
-        outcomes
-            .push(exec_ignore_errors_with_timeout("iptables", &args, NETNS_COMMAND_TIMEOUT).await);
+        outcomes.push(exec_ignore_errors_with_timeout(command, &args, NETNS_COMMAND_TIMEOUT).await);
     }
     NamespaceDeleteOutcome::from_best_effort(outcomes)
 }
@@ -684,7 +747,9 @@ pub(super) async fn create_single_namespace(
     match result {
         Ok(()) => {
             if let Some(port) = proxy_port {
-                if let Err(e) = add_proxy_redirect_rule(&ns_name, &peer_ip, port).await {
+                if let Err(e) =
+                    add_proxy_redirect_rule(&ns_name, &peer_ip, port, dns_port.is_some()).await
+                {
                     error!(name = %ns_name, error = %e, "failed to add proxy rules, cleaning up");
                     delete_namespace_resources(&ns_name, &host_device).await;
                     return Err(e);
@@ -696,8 +761,8 @@ pub(super) async fn create_single_namespace(
                 }
             }
             if let Some(port) = dns_port {
-                if let Err(e) = add_dns_redirect_rule(&ns_name, &peer_ip, port).await {
-                    error!(name = %ns_name, error = %e, "failed to add DNS redirect rule, cleaning up");
+                if let Err(e) = add_dns_redirect_rules(&ns_name, &peer_ip, port).await {
+                    error!(name = %ns_name, error = %e, "failed to add DNS redirect rules, cleaning up");
                     delete_namespace_resources(&ns_name, &host_device).await;
                     return Err(e);
                 }
@@ -749,7 +814,7 @@ async fn cleanup_namespaces_by_index(index: u32) {
     //    The Rust-side `contains()` does substring matching, so the prefix matches
     //    all namespaces in this pool. This catches rules left behind even if the
     //    namespace itself was already deleted.
-    let iptables = delete_iptables_rules_by_comment(&prefix).await;
+    let iptables = delete_pool_firewall_rules_by_comment(&prefix).await;
 
     // 2. Discover and delete any remaining namespaces (+ their veth devices).
     let Ok(output) = exec_with_timeout("ip", &["netns", "list"], NETNS_COMMAND_TIMEOUT).await

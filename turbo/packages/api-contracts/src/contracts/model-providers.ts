@@ -15,6 +15,7 @@ import {
 } from "./model-provider-types";
 export {
   getModelProviderFirewall,
+  getVm0ModelProviderConfig,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   shouldInlineModelProviderFirewall,
@@ -149,6 +150,63 @@ const MINIMAX_CODEX_RUNTIME_CONFIG = {
   },
 } as const satisfies ModelProviderCodexRuntimeConfig;
 
+export function getVm0ModelCodexRuntimeConfig(
+  baseUrl: string,
+): ModelProviderCodexRuntimeConfig {
+  return {
+    providerId: "vm0-model",
+    name: "VM0 Model",
+    baseUrl,
+    envKey: "OPENAI_API_KEY",
+    wireApi: "responses",
+    supportsWebsockets: false,
+    modelCatalog: {
+      models: [
+        {
+          slug: "vm0-model",
+          display_name: "VM0 Model",
+          description: "Automatically routes each task to a VM0 model.",
+          default_reasoning_level: null,
+          supported_reasoning_levels: [],
+          shell_type: "shell_command",
+          visibility: "list",
+          supported_in_api: true,
+          priority: 0,
+          additional_speed_tiers: [],
+          service_tiers: [],
+          default_service_tier: null,
+          availability_nux: null,
+          upgrade: null,
+          base_instructions: "",
+          model_messages: null,
+          include_skills_usage_instructions: false,
+          supports_reasoning_summaries: true,
+          default_reasoning_summary: "auto",
+          support_verbosity: true,
+          default_verbosity: null,
+          apply_patch_tool_type: "freeform",
+          web_search_tool_type: "text_and_image",
+          truncation_policy: { mode: "tokens", limit: 10_000 },
+          supports_parallel_tool_calls: true,
+          supports_image_detail_original: true,
+          context_window: 1_000_000,
+          max_context_window: 1_000_000,
+          auto_compact_token_limit: null,
+          comp_hash: null,
+          effective_context_window_percent: 95,
+          experimental_supported_tools: [],
+          input_modalities: ["text", "image"],
+          supports_search_tool: true,
+          use_responses_lite: false,
+          auto_review_model_override: null,
+          tool_mode: null,
+          multi_agent_version: null,
+        },
+      ],
+    },
+  };
+}
+
 const GATED_MODEL_PROVIDER_FEATURE_SWITCHES: Partial<
   Record<ModelProviderType, FeatureSwitchKey>
 > = {};
@@ -223,10 +281,10 @@ export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "gpt-5.6-terra" as const satisfies SupportedRunModel;
+  "gpt-5.6-luna" as const satisfies SupportedRunModel;
 
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
-  "gpt-5.6-terra" as const satisfies SupportedRunModel;
+  "gpt-5.6-luna" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -245,6 +303,7 @@ export interface DefaultOrgModelPolicySeed {
 }
 
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
+  "vm0-model": "VM0 Model",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-opus-4-7": "Claude Opus 4.7",
@@ -274,6 +333,29 @@ export function isSupportedRunModel(
   model: string | null | undefined,
 ): model is SupportedRunModel {
   return typeof model === "string" && SUPPORTED_RUN_MODEL_SET.has(model);
+}
+
+/** Models supported by the ChatGPT Codex Fast service tier. */
+export const CODEX_FAST_MODE_MODELS = [
+  "gpt-5.5",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+] as const satisfies readonly SupportedRunModel[];
+
+const CODEX_FAST_MODE_MODEL_SET: ReadonlySet<string> = new Set(
+  CODEX_FAST_MODE_MODELS,
+);
+
+export function isCodexFastModeModel(
+  model: string | null | undefined,
+): boolean {
+  const bareModel = model?.startsWith("openai/")
+    ? model.slice("openai/".length)
+    : model;
+  return (
+    typeof bareModel === "string" && CODEX_FAST_MODE_MODEL_SET.has(bareModel)
+  );
 }
 
 export function getVm0ModelPriceTier(
@@ -325,6 +407,10 @@ interface Vm0ModelConfig {
 // `MODEL_PROVIDER_TYPES.vm0.models` is derived from it, which in turn drives
 // the order models appear in the Built-in model dropdown.
 export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
+  "vm0-model": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+  },
   "claude-fable-5": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
@@ -423,6 +509,7 @@ const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
+  "vm0-model",
   "claude-sonnet-5",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
@@ -1002,6 +1089,7 @@ export const MODEL_PROVIDER_TYPES = {
 } as const satisfies Record<ModelProviderType, unknown>;
 
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
+  "vm0-model": ["vm0"],
   "claude-fable-5": [
     "vm0",
     "claude-code-oauth-token",

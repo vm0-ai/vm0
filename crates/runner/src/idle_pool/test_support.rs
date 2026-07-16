@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
+use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_fingerprints::StorageFingerprints;
@@ -25,6 +26,7 @@ pub(crate) struct ParkedIdleCandidateBuilder {
     source_ip: String,
     storage_fingerprints: StorageFingerprints,
     restored_session_identity: Option<RestoredSessionIdentity>,
+    history_generation_run_id: Option<RunId>,
     last_completed_at: Option<String>,
     workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
@@ -45,6 +47,7 @@ impl ParkedIdleCandidateBuilder {
             source_ip: DEFAULT_SOURCE_IP.into(),
             storage_fingerprints: StorageFingerprints::default(),
             restored_session_identity: None,
+            history_generation_run_id: None,
             last_completed_at: None,
             workspace_promotion: None,
         }
@@ -93,6 +96,14 @@ impl ParkedIdleCandidateBuilder {
         self
     }
 
+    pub(crate) fn with_history_generation_run_id(
+        mut self,
+        history_generation_run_id: RunId,
+    ) -> Self {
+        self.history_generation_run_id = Some(history_generation_run_id);
+        self
+    }
+
     pub(crate) fn with_workspace_promotion(
         mut self,
         workspace_promotion: WorkspaceImagePromotionContext,
@@ -113,10 +124,11 @@ impl ParkedIdleCandidateBuilder {
             source_ip,
             storage_fingerprints,
             restored_session_identity,
+            history_generation_run_id,
             last_completed_at,
             workspace_promotion,
         } = self;
-        let mut metadata = IdleSandboxMetadata::new(
+        let metadata = IdleSandboxMetadata {
             cli_agent_session_id,
             sandbox_id,
             profile_name,
@@ -124,10 +136,9 @@ impl ParkedIdleCandidateBuilder {
             source_ip,
             storage_fingerprints,
             restored_session_identity,
-        );
-        if let Some(last_completed_at) = last_completed_at {
-            metadata = metadata.with_last_completed_at(last_completed_at);
-        }
+            history_generation_run_id,
+            last_completed_at,
+        };
         ParkedIdleCandidate {
             resources: IdleSandboxResources {
                 sandbox,

@@ -14,6 +14,25 @@ interface SeedAgentRunCallbackOptions {
   readonly status?: "pending" | "delivered" | "failed";
 }
 
+interface AgentRunCallbackSnapshot {
+  readonly id: string;
+  readonly internalKind: string | null;
+  readonly payload: unknown;
+  readonly status: "pending" | "delivered" | "failed";
+}
+
+interface ReadAgentRunCallbacksOptions {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly prompt: string;
+}
+
+interface UpdateAgentRunCallbackOptions {
+  readonly callbackId: string;
+  readonly internalKind: string;
+  readonly payload: Record<string, unknown>;
+}
+
 function requestTelegramState(
   signal: AbortSignal,
   path: string,
@@ -35,6 +54,36 @@ function expectOk(response: Response, operation: string): void {
     return;
   }
   throw new Error(`${operation} failed with ${response.status}`);
+}
+
+function agentRunCallbackSnapshot(
+  value: unknown,
+): AgentRunCallbackSnapshot | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const id = "id" in value && typeof value.id === "string" ? value.id : null;
+  const internalKind =
+    "internalKind" in value &&
+    (typeof value.internalKind === "string" || value.internalKind === null)
+      ? value.internalKind
+      : null;
+  const status =
+    "status" in value &&
+    (value.status === "pending" ||
+      value.status === "delivered" ||
+      value.status === "failed")
+      ? value.status
+      : null;
+  if (!id || !status) {
+    return null;
+  }
+  return {
+    id,
+    internalKind,
+    payload: "payload" in value ? value.payload : undefined,
+    status,
+  };
 }
 
 export const seedAgentRunCallback$ = command(
@@ -71,5 +120,66 @@ export const seedAgentRunCallback$ = command(
       throw new Error("seedAgentRunCallback$: response missing callback_id");
     }
     return { callbackId };
+  },
+);
+
+export const readAgentRunCallbacks$ = command(
+  async (
+    _,
+    options: ReadAgentRunCallbacksOptions,
+    signal: AbortSignal,
+  ): Promise<readonly AgentRunCallbackSnapshot[]> => {
+    const response = await requestTelegramState(
+      signal,
+      TELEGRAM_STATE_ACTION_ROUTE,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "get-post-run-state",
+          org_id: options.orgId,
+          user_id: options.userId,
+          prompt: options.prompt,
+        }),
+      },
+    );
+    signal.throwIfAborted();
+    expectOk(response, "readAgentRunCallbacks$");
+    signal.throwIfAborted();
+    const body = await readJson<Record<string, unknown>>(response);
+    signal.throwIfAborted();
+    if (!Array.isArray(body.callbacks)) {
+      return [];
+    }
+    return body.callbacks.flatMap((value) => {
+      const callback = agentRunCallbackSnapshot(value);
+      return callback ? [callback] : [];
+    });
+  },
+);
+
+export const updateAgentRunCallback$ = command(
+  async (
+    _,
+    options: UpdateAgentRunCallbackOptions,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const response = await requestTelegramState(
+      signal,
+      TELEGRAM_STATE_ACTION_ROUTE,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "update-run-callback",
+          callback_id: options.callbackId,
+          url: null,
+          internal_kind: options.internalKind,
+          payload: options.payload,
+        }),
+      },
+    );
+    signal.throwIfAborted();
+    expectOk(response, "updateAgentRunCallback$");
   },
 );

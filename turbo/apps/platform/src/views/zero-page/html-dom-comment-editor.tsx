@@ -272,7 +272,7 @@ function HtmlDomCommentsList({
                 key={comment.id}
                 role="button"
                 tabIndex={0}
-                className="group/comment relative cursor-pointer rounded-lg border border-transparent bg-muted/35 px-3 py-2.5 pr-10 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/70 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="group/comment relative cursor-pointer rounded-lg border border-transparent bg-muted/35 px-3 py-2.5 pr-10 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/70 focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/30"
                 onClick={focusCurrentComment}
                 onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
                   if (event.key !== "Enter" && event.key !== " ") {
@@ -288,7 +288,7 @@ function HtmlDomCommentsList({
                 <button
                   type="button"
                   aria-label="Delete comment"
-                  className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-background text-blue-600 opacity-0 shadow-sm transition-opacity hover:bg-blue-600 hover:text-white focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 group-hover/comment:opacity-100"
+                  className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-background text-blue-600 opacity-0 shadow-sm transition-opacity hover:bg-blue-600 hover:text-white focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 group-hover/comment:opacity-100"
                   data-testid="html-dom-comments-list-delete"
                   onKeyDown={(event) => {
                     event.stopPropagation();
@@ -579,7 +579,7 @@ function HtmlDomColorControl({
       type="button"
       aria-expanded={active}
       aria-label={`Open ${property === "color" ? "text" : "background"} color panel`}
-      className={`inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-full border px-3 text-left transition focus:outline-none focus:ring-2 focus:ring-blue-500/25 ${
+      className={`inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-full border px-3 text-left transition focus:outline-none focus:ring-2 focus:ring-ring/25 ${
         active
           ? "border-blue-500/45 bg-blue-500/10 text-foreground ring-2 ring-blue-500/15"
           : "border-border/70 bg-background text-foreground hover:bg-muted/45"
@@ -630,7 +630,7 @@ function HtmlDomColorField({
     <button
       type="button"
       aria-label={`Pick ${activeProperty === "backgroundColor" ? "background" : "text"} color saturation and brightness`}
-      className="relative block h-28 w-full cursor-crosshair border-0 p-0 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      className="relative block h-28 w-full cursor-crosshair border-0 p-0 focus:outline-none focus:ring-2 focus:ring-ring"
       data-testid="html-dom-color-field"
       style={{ backgroundColor: hueHex }}
       onPointerDown={(event) => {
@@ -680,7 +680,7 @@ function HtmlDomHueSlider({
     <button
       type="button"
       aria-label="Hue"
-      className="relative h-7 min-w-0 flex-1 cursor-pointer border-0 bg-transparent p-0 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+      className="relative h-7 min-w-0 flex-1 cursor-pointer border-0 bg-transparent p-0 focus:outline-none focus:ring-2 focus:ring-ring/25"
       data-testid="html-dom-color-hue-slider"
       onPointerDown={(event) => {
         event.preventDefault();
@@ -731,7 +731,7 @@ function HtmlDomRgbInputs({
         return (
           <label
             key={channel}
-            className="flex h-8 min-w-0 items-center rounded-lg border border-border/70 bg-muted/45 px-2 focus-within:border-blue-500 focus-within:bg-background focus-within:ring-2 focus-within:ring-blue-500/15"
+            className="flex h-8 min-w-0 items-center rounded-lg border border-border/70 bg-muted/45 px-2 focus-within:border-primary focus-within:bg-background focus-within:ring-2 focus-within:ring-ring/15"
           >
             <span className="w-4 text-[11px] font-semibold text-muted-foreground">
               {label}
@@ -781,7 +781,7 @@ function HtmlDomEyeDropperButton({
       type="button"
       aria-label="Pick color from screen"
       title="Pick color from screen"
-      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/45 text-muted-foreground transition hover:bg-muted/80 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/45 text-muted-foreground transition hover:bg-muted/80 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/25"
       data-testid="html-dom-color-eyedropper"
       onClick={() => {
         detach(pickColor(), Reason.DomCallback, "pickHtmlDomColor");
@@ -1173,7 +1173,7 @@ function HtmlDomImageLinkForm({
 }) {
   return (
     <form
-      className="flex h-9 items-center gap-1 rounded-full border border-border/70 bg-muted/25 px-2 focus-within:border-blue-500 focus-within:bg-background focus-within:ring-2 focus-within:ring-blue-500/15"
+      className="flex h-9 items-center gap-1 rounded-full border border-border/70 bg-muted/25 px-2 focus-within:border-primary focus-within:bg-background focus-within:ring-2 focus-within:ring-ring/15"
       onSubmit={onSubmit}
       data-testid="html-dom-image-link-form"
     >

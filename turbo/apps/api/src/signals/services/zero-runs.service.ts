@@ -45,19 +45,11 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const RECENT_RUNS_FOR_ETA = 10;
 const PROMPT_TRUNCATE_LENGTH = 200;
-const TIER_CONCURRENCY_LIMITS = Object.freeze<Record<OrgTier, number>>({
-  free: 1,
-  "limited-free-1": 1,
-  "pro-suspend": 0,
-  pro: 2,
-  team: 10,
-  custom: 10,
-});
-
 type ReadDb = Pick<Db, "select">;
 type QueueItem = QueueResponse["queue"][number];
 type RunningTaskItem = QueueResponse["runningTasks"][number];
@@ -91,9 +83,12 @@ function truncatePrompt(prompt: string): string {
     : prompt;
 }
 
-function effectiveConcurrencyLimit(tier: OrgTier, paidSlots: number): number {
+function effectiveConcurrencyLimit(
+  baseLimit: number,
+  paidSlots: number,
+): number {
   const limit = totalConcurrencyLimit({
-    baseLimit: cappedBaseConcurrencyLimit(TIER_CONCURRENCY_LIMITS[tier]),
+    baseLimit: cappedBaseConcurrencyLimit(baseLimit),
     paidSlots,
   });
   return Number.isFinite(limit) ? limit : 0;
@@ -449,15 +444,25 @@ export function zeroRunQueueStatus(args: {
 }): Computed<Promise<QueueResponse>> {
   return computed(async (get): Promise<QueueResponse> => {
     const db = get(db$);
-    const [active, queuedRuns, runningRuns, estimatedTime, paidSlots] =
-      await Promise.all([
-        activeRunCount(db, args.orgId),
-        queuedRunRows(db, args.orgId),
-        runningRunRows(db, args.orgId),
-        estimatedTimePerRun(db, args.orgId),
-        activePaidConcurrencySlots(db, args.orgId),
-      ]);
-    const limit = effectiveConcurrencyLimit(args.orgTier, paidSlots);
+    const [
+      active,
+      queuedRuns,
+      runningRuns,
+      estimatedTime,
+      paidSlots,
+      capabilities,
+    ] = await Promise.all([
+      activeRunCount(db, args.orgId),
+      queuedRunRows(db, args.orgId),
+      runningRunRows(db, args.orgId),
+      estimatedTimePerRun(db, args.orgId),
+      activePaidConcurrencySlots(db, args.orgId),
+      loadOrgPlanCapabilities(db, args.orgId),
+    ]);
+    const limit = effectiveConcurrencyLimit(
+      capabilities?.baseConcurrencyLimit ?? 0,
+      paidSlots,
+    );
     const emails = await userEmailMap(db, queuedRuns, runningRuns);
 
     return {

@@ -129,6 +129,73 @@ describe("formatRunErrorForExternalSurface", () => {
     expect(isGenericRunErrorForDisplay(modelCapacity)).toBe(false);
   });
 
+  it("shows friendly Claude overload guidance with the selected model label", () => {
+    const rawRunError =
+      "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment. If it persists, check https://status.claude.com.";
+
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rawRunError,
+        selectedModel: "claude-sonnet-4-6",
+      }),
+    ).toBe(
+      "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+    );
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: rawRunError,
+        selectedModel: "anthropic/claude-sonnet-5",
+      }),
+    ).toBe(
+      "Claude Sonnet 5 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+    );
+  });
+
+  it("shows fallback Claude overload guidance when no selected model is available", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message:
+          'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"The service is overloaded"}}',
+      }),
+    ).toBe(
+      "Claude Model is overloaded. Please wait a few minutes and try again, or switch to another model.",
+    );
+  });
+
+  it("shows friendly Claude overload guidance for repeated 529 errors", () => {
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message:
+          "API Error: Repeated 529 Overloaded errors. The API is at capacity - this is usually temporary.",
+        selectedModel: "claude-opus-4-8",
+      }),
+    ).toBe(
+      "Claude Opus 4.8 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+    );
+  });
+
+  it("keeps unrelated Claude 529 text generic", () => {
+    for (const rawRunError of [
+      "API Error: 529 upstream failed",
+      "API Error: 529 not overloaded",
+      "API Error: 529 overloadedness check failed",
+      'API Error: 529 {"type":"error","error":{"type":"not_overloaded_error"}}',
+      "API Error: 503 Overloaded",
+    ]) {
+      expect(
+        formatRunErrorForExternalSurface({
+          code: "UNKNOWN",
+          message: rawRunError,
+          selectedModel: "claude-sonnet-4-6",
+        }),
+      ).toBe(CHAT_RUN_TRANSIENT_ERROR_MESSAGE);
+    }
+  });
+
   it("shows Codex ChatGPT account model support errors verbatim", () => {
     const unsupportedModel =
       '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-5.6-sol\' model is not supported when using Codex with a ChatGPT account."}}';

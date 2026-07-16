@@ -19,7 +19,9 @@ Request context
   Read by usage webhook reporters.
 - ``ORIGINAL_URL``: absolute URL written by HTTP request classification from
   trusted authority, or from the authority-validation fallback URL on local
-  denial. Read by response/error logging and connector billing.
+  denial. Asterisk-form contributes an empty URL path while its raw ``*``
+  target remains on the request and firewall decision. Read by response/error
+  logging and connector billing.
 - ``NETWORK_LOG_TARGET``: ``dict`` with ``url``, ``host``, and ``port`` from
   trusted authority or authority-validation fallback URL. Read by network-log
   entry construction.
@@ -68,9 +70,10 @@ Firewall and auth context
 - ``FIREWALL_PARAMS``: ``dict`` firewall params from the match. Read by
   network-log firewall metadata when it has the expected shape.
 - ``FIREWALL_BILLABLE``: ``bool`` computed from runner VM billable firewall
-  context for matched auth flows, or forced ``False`` for browser passthrough.
-  Gates connector billing, model-provider billing, and connector response parser
-  setup; model usage observation still checks model-provider-specific gates.
+  context for matched auth flows, or forced ``False`` for browser passthrough
+  and policy-only asterisk-form allows. Gates connector billing, model-provider
+  billing, and connector response parser setup; model usage observation still
+  checks model-provider-specific gates.
 - ``FIREWALL_ACTION``: ``str`` firewall decision such as ``ALLOW``, ``DENY``,
   or ``BLOCK``. Read by response/error network logging.
 - ``FIREWALL_ERROR``: optional ``str`` error code for auth, forwarding, or
@@ -150,14 +153,16 @@ Model-provider usage
   observable model-provider flows already carry ``MODEL_USAGE_PROVIDER``.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry VM
   info. Read by model-provider usage observability and reported-model selection.
+- ``MODEL_USAGE_BILLING_SKU``: optional opaque ``str`` verified from a signed
+  model-provider response receipt. Read only by billable usage-event reporting;
+  observations continue to use ``MODEL_USAGE_PROVIDER``.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
   ran. Read by ``response()`` to skip legacy fallback JSON extraction.
 
 Connector usage and parser state
 --------------------------------
 - ``X_NDJSON_STATE``: ``dict`` owned by the X connector NDJSON parser. Written
-  when a streaming X response parser is registered, read by X billing, and
-  also read by ``error()`` to report partial stream usage.
+  when a streaming X response parser is registered and read by X billing.
 - ``X_JSON_STATE``: ``dict`` owned by the X connector JSON parser. Written by
   connector parser finalization before normal response billing, then read by X
   billing instead of the capped stream-buffer fallback.
@@ -211,6 +216,7 @@ TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
 MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
 MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
+MODEL_USAGE_BILLING_SKU: Final = "model_usage_billing_sku"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 RESPONSE_STREAM_STATE: Final = "response_stream_state"
 STREAM_BUFFER: Final = "stream_buffer"

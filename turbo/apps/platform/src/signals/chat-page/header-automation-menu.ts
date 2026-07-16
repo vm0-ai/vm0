@@ -1,8 +1,8 @@
 import { command, computed, state, type Computed } from "ccstate";
 
 import {
-  zeroWorkflowTriggersContract,
-  type ChatThreadWorkflowTrigger,
+  zeroWorkflowAutomationsContract,
+  type ChatThreadWorkflowAutomation,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type ZeroWorkflowSchedule,
@@ -10,7 +10,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
-import { listThreadWorkflowTriggers } from "../zero-page/workflow-triggers-api.ts";
+import { listThreadWorkflowAutomations } from "../zero-page/workflow-automations-api.ts";
 
 const headerAutomationMenuReload$ = state(0);
 
@@ -19,8 +19,8 @@ export const reloadHeaderAutomationMenu$ = command(({ get, set }) => {
   set(headerAutomationMenuReload$, get(headerAutomationMenuReload$) + 1);
 });
 
-/** A workflow trigger bound to a chat thread, projected for the header automation sidebar. */
-export interface HeaderWorkflowTriggerEntry {
+/** A workflow automation bound to a chat thread, projected for the header automation sidebar. */
+export interface HeaderWorkflowAutomationEntry {
   readonly id: string;
   readonly chatThreadId: string;
   readonly enabled: boolean;
@@ -30,93 +30,98 @@ export interface HeaderWorkflowTriggerEntry {
   readonly workflowDisplayName: string | null;
   readonly summary: string;
   readonly timezone: string;
-  readonly trigger: ChatThreadWorkflowTrigger;
+  readonly automation: ChatThreadWorkflowAutomation;
 }
 
-function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
-  if (trigger.kind === "event") {
-    if (trigger.eventType === "gmail-new-message") {
+function workflowAutomationSummary(
+  automation: ChatThreadWorkflowAutomation,
+): string {
+  if (automation.kind === "event") {
+    if (automation.eventType === "gmail-new-message") {
       return "Gmail new message";
     }
-    if (trigger.eventType === "gmail-label-applied") {
+    if (automation.eventType === "gmail-label-applied") {
       return "Gmail label applied";
     }
-    if (trigger.eventType === "github-label-applied") {
+    if (automation.eventType === "github-label-applied") {
       return "GitHub label applied";
     }
-    if (trigger.eventType === "notion-child-page-created") {
+    if (automation.eventType === "notion-child-page-created") {
       return "New Notion child page";
     }
-    if (trigger.eventType === "notion-database-item-created") {
+    if (automation.eventType === "notion-database-item-created") {
       return "New Notion database item";
     }
     return "Event";
   }
-  return trigger.scheduleSummary ?? "Schedule";
+  return automation.scheduleSummary ?? "Schedule";
 }
 
 /**
- * Workflow triggers bound to a chat thread, for the header automation sidebar.
+ * Workflow automations bound to a chat thread, for the header automation sidebar.
  */
-function createHeaderWorkflowTriggersFactory(): (
+function createHeaderWorkflowAutomationsFactory(): (
   threadId: string,
-) => Computed<Promise<readonly HeaderWorkflowTriggerEntry[]>> {
+) => Computed<Promise<readonly HeaderWorkflowAutomationEntry[]>> {
   const cache = new Map<
     string,
-    Computed<Promise<readonly HeaderWorkflowTriggerEntry[]>>
+    Computed<Promise<readonly HeaderWorkflowAutomationEntry[]>>
   >();
   return (threadId: string) => {
     const cached = cache.get(threadId);
     if (cached) {
       return cached;
     }
-    const triggers$ = computed(
-      async (get): Promise<readonly HeaderWorkflowTriggerEntry[]> => {
+    const automations$ = computed(
+      async (get): Promise<readonly HeaderWorkflowAutomationEntry[]> => {
         get(headerAutomationMenuReload$);
-        const triggers = await listThreadWorkflowTriggers(get(zeroClient$), {
-          threadId,
-        });
+        const automations = await listThreadWorkflowAutomations(
+          get(zeroClient$),
+          {
+            threadId,
+          },
+        );
         const prefs = await get(userPreferences$);
         const displayTz =
           prefs?.timezone ??
           new Intl.DateTimeFormat().resolvedOptions().timeZone;
-        return triggers.map((trigger) => {
+        return automations.map((automation) => {
           return {
-            id: trigger.id,
-            chatThreadId: trigger.chatThreadId,
-            enabled: trigger.enabled,
-            workflowId: trigger.workflow.id,
-            workflowAgentId: trigger.workflow.agentId,
-            workflowName: trigger.workflow.name,
-            workflowDisplayName: trigger.workflow.displayName,
-            summary: workflowTriggerSummary(trigger),
+            id: automation.id,
+            chatThreadId: automation.chatThreadId,
+            enabled: automation.enabled,
+            workflowId: automation.workflow.id,
+            workflowAgentId: automation.workflow.agentId,
+            workflowName: automation.workflow.name,
+            workflowDisplayName: automation.workflow.displayName,
+            summary: workflowAutomationSummary(automation),
             timezone: displayTz,
-            trigger,
+            automation,
           };
         });
       },
     );
-    cache.set(threadId, triggers$);
-    return triggers$;
+    cache.set(threadId, automations$);
+    return automations$;
   };
 }
 
-export const headerWorkflowTriggersForThread =
-  createHeaderWorkflowTriggersFactory();
+export const headerWorkflowAutomationsForThread =
+  createHeaderWorkflowAutomationsFactory();
 
-export const updateHeaderWorkflowScheduleTrigger$ = command(
+export const updateHeaderWorkflowScheduleAutomation$ = command(
   async (
     { get, set },
     params: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly schedule: ZeroWorkflowSchedule;
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: params.triggerId },
+        params: { id: params.automationId },
         body: { schedule: params.schedule },
         fetchOptions: { signal },
       }),
@@ -127,19 +132,19 @@ export const updateHeaderWorkflowScheduleTrigger$ = command(
   },
 );
 
-export const updateHeaderWorkflowGmailNewMessageTrigger$ = command(
+export const updateHeaderWorkflowGmailNewMessageAutomation$ = command(
   async (
     { get, set },
     params: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly eventConfig: GmailNewMessageEventConfig;
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: params.triggerId },
+        params: { id: params.automationId },
         body: { eventConfig: params.eventConfig },
         fetchOptions: { signal },
       }),
@@ -150,12 +155,12 @@ export const updateHeaderWorkflowGmailNewMessageTrigger$ = command(
   },
 );
 
-export const runHeaderWorkflowTriggerNow$ = command(
-  async ({ get, set }, triggerId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+export const runHeaderWorkflowAutomationNow$ = command(
+  async ({ get, set }, automationId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.run({
-        params: { id: triggerId },
+        params: { id: automationId },
         fetchOptions: { signal },
       }),
       [201],
@@ -165,19 +170,19 @@ export const runHeaderWorkflowTriggerNow$ = command(
   },
 );
 
-export const updateHeaderWorkflowGmailLabelAppliedTrigger$ = command(
+export const updateHeaderWorkflowGmailLabelAppliedAutomation$ = command(
   async (
     { get, set },
     params: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly eventConfig: GmailLabelAppliedEventConfig;
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: params.triggerId },
+        params: { id: params.automationId },
         body: { eventConfig: params.eventConfig },
         fetchOptions: { signal },
       }),

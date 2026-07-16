@@ -31,7 +31,7 @@ import {
   storeOutboundAgentPhoneMessage,
   type AgentPhoneChannel,
 } from "./agentphone-shared.service";
-import { settle } from "../utils";
+import { bestEffort, settle } from "../utils";
 
 const log = logger("api:callback:agentphone");
 
@@ -139,15 +139,10 @@ async function refreshTypingIfSupported(args: {
   }
   const conversationId = args.payload.conversationId;
 
-  const result = await settle(
+  await bestEffort(
     sendAgentPhoneTypingIndicator({ conversationId }, args.signal),
+    args.signal,
   );
-  if (!result.ok) {
-    log.debug("Failed to refresh AgentPhone typing indicator", {
-      runId: args.runId,
-      error: result.error,
-    });
-  }
 }
 
 async function loadRunContext(args: {

@@ -79,35 +79,25 @@ async function getIndexes(client: Client): Promise<IndexInfo[]> {
 async function getConstraints(client: Client): Promise<ConstraintInfo[]> {
   const result = await client.query<ConstraintInfo>(`
     SELECT
-      tc.table_name,
-      tc.constraint_name,
-      tc.constraint_type,
-      CASE
-        WHEN tc.constraint_type = 'FOREIGN KEY' THEN
-          'FOREIGN KEY (' || kcu.column_name || ') REFERENCES ' ||
-          ccu.table_name || '(' || ccu.column_name || ')' ||
-          COALESCE(' ON DELETE ' || rc.delete_rule, '') ||
-          COALESCE(' ON UPDATE ' || rc.update_rule, '')
-        WHEN tc.constraint_type = 'UNIQUE' THEN
-          'UNIQUE (' || kcu.column_name || ')'
-        WHEN tc.constraint_type = 'PRIMARY KEY' THEN
-          'PRIMARY KEY (' || kcu.column_name || ')'
-        ELSE
-          ''
-      END as constraint_def
-    FROM information_schema.table_constraints tc
-    LEFT JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_name = kcu.constraint_name
-      AND tc.table_schema = kcu.table_schema
-    LEFT JOIN information_schema.constraint_column_usage ccu
-      ON ccu.constraint_name = tc.constraint_name
-      AND ccu.table_schema = tc.table_schema
-    LEFT JOIN information_schema.referential_constraints rc
-      ON rc.constraint_name = tc.constraint_name
-      AND rc.constraint_schema = tc.table_schema
-    WHERE tc.table_schema = 'public'
-      AND tc.constraint_type != 'CHECK'  -- Ignore CHECK constraints
-    ORDER BY tc.table_name, tc.constraint_type, kcu.column_name
+      relation.relname as table_name,
+      catalog_constraint.conname as constraint_name,
+      CASE catalog_constraint.contype
+        WHEN 'p' THEN 'PRIMARY KEY'
+        WHEN 'f' THEN 'FOREIGN KEY'
+        WHEN 'u' THEN 'UNIQUE'
+        WHEN 'x' THEN 'EXCLUDE'
+        ELSE catalog_constraint.contype::text
+      END as constraint_type,
+      pg_get_constraintdef(catalog_constraint.oid) as constraint_def
+    FROM pg_constraint catalog_constraint
+    JOIN pg_class relation ON relation.oid = catalog_constraint.conrelid
+    JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND catalog_constraint.contype != 'c'  -- Ignore CHECK constraints
+    ORDER BY
+      relation.relname,
+      catalog_constraint.contype,
+      catalog_constraint.conname
   `);
   return result.rows;
 }
@@ -273,12 +263,12 @@ function compareConstraints(
 } {
   const map1 = new Map(
     constraints1.map((c) => {
-      return [c.constraint_name, c];
+      return [`${c.table_name}.${c.constraint_name}`, c];
     }),
   );
   const map2 = new Map(
     constraints2.map((c) => {
-      return [c.constraint_name, c];
+      return [`${c.table_name}.${c.constraint_name}`, c];
     }),
   );
 

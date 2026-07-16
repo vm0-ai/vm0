@@ -117,7 +117,12 @@ function mockConnectorOauthStart(): { readonly authWindow: Window } {
 
   context.mocks.api(
     zeroConnectorOauthStartContract.start,
-    ({ params, respond }) => {
+    ({ body, params, respond }) => {
+      expect(body).toStrictEqual({
+        authMethod: "oauth",
+        agentId: AGENT_ID,
+        authorizeAgent: true,
+      });
       return respond(200, {
         authorizationUrl: `https://oauth.test/${params.type}/authorize`,
       });
@@ -139,7 +144,12 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
 
   context.mocks.api(
     zeroConnectorOpenIdStartContract.start,
-    ({ params, respond }) => {
+    ({ body, params, respond }) => {
+      expect(body).toStrictEqual({
+        authMethod: "openid",
+        agentId: AGENT_ID,
+        authorizeAgent: true,
+      });
       args?.onStart?.();
       return respond(200, {
         authorizationUrl: `https://openid.test/${params.type}/authorize`,
@@ -304,11 +314,20 @@ describe("directed connector authorize page", () => {
       }),
     ]);
     let submittedValues: Record<string, string> | null = null;
+    let authorized = false;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: authorized ? ["axiom"] : [],
+      });
+    });
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         expect(params.type).toBe("axiom");
+        expect(body.agentId).toBe(AGENT_ID);
+        expect(body.authorizeAgent).toBeTruthy();
         submittedValues = body.values;
+        authorized = true;
         return respond(200, {
           id: crypto.randomUUID(),
           type: "axiom",
@@ -411,8 +430,10 @@ describe("directed connector authorize page", () => {
 
   it("connects a single OpenID auth connector directly before authorizing the agent", async () => {
     context.mocks.data.connectors([]);
+    let authorized = false;
     const { authWindow } = mockConnectorOpenIdStart({
       onStart: () => {
+        authorized = true;
         context.mocks.data.connectors([
           {
             id: crypto.randomUUID(),
@@ -431,22 +452,9 @@ describe("directed connector authorize page", () => {
         ]);
       },
     });
-    let updateCalls = 0;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledTypes: authorized ? ["steam"] : [] });
     });
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      ({ body, params, respond }) => {
-        updateCalls += 1;
-        expect(params.id).toBe(AGENT_ID);
-        expect(body).toStrictEqual({
-          enabledTypes: ["steam"],
-          operation: "add",
-        });
-        return respond(200, { enabledTypes: ["steam"] });
-      },
-    );
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "steam",
@@ -481,7 +489,6 @@ describe("directed connector authorize page", () => {
       screen.queryByRole("dialog", { name: "Steam" }),
     ).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(updateCalls).toBe(1);
       expect(screen.getByText("Steam authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
     });
@@ -489,12 +496,18 @@ describe("directed connector authorize page", () => {
 
   it("connects a no-auth connector directly before authorizing the agent", async () => {
     let connectCalls = 0;
+    let authorized = false;
     context.mocks.api(
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
         expect(params.type).toBe("stripe");
-        expect(body).toStrictEqual({ authMethod: "api" });
+        expect(body).toStrictEqual({
+          authMethod: "api",
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
+        authorized = true;
         return respond(200, {
           id: crypto.randomUUID(),
           type: "stripe",
@@ -511,22 +524,9 @@ describe("directed connector authorize page", () => {
         });
       },
     );
-    let updateCalls = 0;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledTypes: authorized ? ["stripe"] : [] });
     });
-    context.mocks.api(
-      zeroUserConnectorsContract.update,
-      ({ body, params, respond }) => {
-        updateCalls += 1;
-        expect(params.id).toBe(AGENT_ID);
-        expect(body).toStrictEqual({
-          enabledTypes: ["stripe"],
-          operation: "add",
-        });
-        return respond(200, { enabledTypes: body.enabledTypes });
-      },
-    );
     mockPublicConnectorStatus([
       publicStatusItem({
         connectorRef: "stripe",
@@ -554,7 +554,6 @@ describe("directed connector authorize page", () => {
 
     await waitFor(() => {
       expect(connectCalls).toBe(1);
-      expect(updateCalls).toBe(1);
       expect(screen.getByText("Public Stripe authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
     });

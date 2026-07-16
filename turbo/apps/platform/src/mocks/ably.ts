@@ -142,12 +142,15 @@ function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
 }
 
 const fakeChannel = {
-  // Mirror real Ably: subscribe is async (server roundtrip) and the server
-  // won't deliver events to this callback until the subscription has been
-  // confirmed. Register the callback only after the returned promise
-  // resolves so tests don't accidentally race with a callback that fires
-  // before the subscribe await in consumer code has returned.
+  // Mirror real Ably: subscribe registers the callback synchronously before
+  // waiting for the channel attach to complete.
   async subscribe(topic: string, callback: Callback): Promise<void> {
+    let cbs = subscriptions.get(topic);
+    if (!cbs) {
+      cbs = new Set();
+      subscriptions.set(topic, cbs);
+    }
+    cbs.add(callback);
     await Promise.resolve();
     if (connectionClosed) {
       throw new Error("Connection closed");
@@ -157,12 +160,6 @@ const fakeChannel = {
       nextSubscribeError = null;
       throw error;
     }
-    let cbs = subscriptions.get(topic);
-    if (!cbs) {
-      cbs = new Set();
-      subscriptions.set(topic, cbs);
-    }
-    cbs.add(callback);
   },
   unsubscribe(topic: string, callback: Callback): void {
     const cbs = subscriptions.get(topic);

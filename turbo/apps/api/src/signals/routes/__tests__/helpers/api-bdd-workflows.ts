@@ -5,8 +5,8 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
-  zeroWorkflowTriggersContract,
-  type ZeroWorkflowTriggerSummary,
+  zeroWorkflowAutomationsContract,
+  type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
 
@@ -19,7 +19,7 @@ import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createConnectorBddApi } from "./api-bdd-connectors";
-import { createRunsAutomationsApi } from "./api-bdd-runs-automations";
+import { createRunsApi } from "./api-bdd-runs";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -106,7 +106,7 @@ export function mockNotionConnectorOAuth(
 
 export function createWorkflowsBddApi(context: TestContext) {
   const bdd = createBddApi(context);
-  const runs = createRunsAutomationsApi(context);
+  const runs = createRunsApi(context);
   const connectors = createConnectorBddApi(context);
   const mocks = createZeroRouteMocks(context);
 
@@ -163,7 +163,7 @@ export function createWorkflowsBddApi(context: TestContext) {
     ): Promise<{ readonly agentId: string }> {
       bdd.acceptAgentStorageWrites();
       const agent = await bdd.createAgent(actor, {
-        displayName: options.displayName ?? "Workflow Trigger Agent",
+        displayName: options.displayName ?? "Workflow Automation Agent",
         ...(options.visibility ? { visibility: options.visibility } : {}),
       });
       return { agentId: agent.agentId };
@@ -192,10 +192,12 @@ export function createWorkflowsBddApi(context: TestContext) {
       return response.body.id;
     },
 
-    async readTrigger(triggerId: string): Promise<ZeroWorkflowTriggerSummary> {
-      const client = setupApp({ context })(zeroWorkflowTriggersContract);
+    async readAutomation(
+      automationId: string,
+    ): Promise<ZeroWorkflowAutomationSummary> {
+      const client = setupApp({ context })(zeroWorkflowAutomationsContract);
       const response = await accept(
-        client.get({ headers: authHeaders(), params: { id: triggerId } }),
+        client.get({ headers: authHeaders(), params: { id: automationId } }),
         [200],
       );
       return response.body;

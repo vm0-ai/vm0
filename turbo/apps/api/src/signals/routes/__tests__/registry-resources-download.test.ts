@@ -4,6 +4,7 @@ import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/r
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { resolvePrivateRegistryResourceArchive } from "../registry-resources-download";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -21,6 +22,44 @@ function client() {
 }
 
 describe("registry resource download", () => {
+  // Deployment compatibility is a small old/new request-state matrix. Keeping
+  // it direct avoids requiring production R2 version hashes in the test DB.
+  it("keeps legacy clients on the default archive and lets new clients opt in", () => {
+    const id = "template:html-ppt-schoolhouse-runbook";
+    const legacySha256 =
+      "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e";
+    const refreshedSha256 =
+      "bb3e49899d1bcd24b1e88ba8566a9ddd09039502fb51becffcd9f35051463e63";
+    const colorSystemFixedSha256 =
+      "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad";
+
+    expect(
+      resolvePrivateRegistryResourceArchive(id, undefined, legacySha256),
+    ).toMatchObject({
+      versionId:
+        "a34ed3483769cc2825656849385b86f23c50e5500d8ab20e7a705019949e49a5",
+      sha256: legacySha256,
+    });
+    expect(
+      resolvePrivateRegistryResourceArchive(id, refreshedSha256, legacySha256),
+    ).toMatchObject({
+      versionId:
+        "d792e4b858ac0ffeb0e0f4073730453d9753c9e654bdc671f7b2e94d6a40bd17",
+      sha256: refreshedSha256,
+    });
+    expect(
+      resolvePrivateRegistryResourceArchive(
+        id,
+        colorSystemFixedSha256,
+        legacySha256,
+      ),
+    ).toMatchObject({
+      versionId:
+        "c063961c29369b15b8ae7a3cb285105bc29dbae84cccc36d458b666a5ca75e06",
+      sha256: colorSystemFixedSha256,
+    });
+  });
+
   it("rejects registry resources that are not in the private archive allowlist", async () => {
     const response = await accept(
       client().download({

@@ -16,6 +16,7 @@ mod host_env;
 mod host_file;
 mod http;
 mod idle_pool;
+mod idle_reuse_preparation;
 mod ids;
 mod image_hash;
 mod io_limits;
@@ -306,7 +307,14 @@ async fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+
+    const HELP_TOKEN_CHILD_SCENARIO_ENV: &str = "VM0_RUNNER_HELP_TOKEN_CHILD_SCENARIO";
+    const HELP_TOKEN_CHILD_TEST: &str = "tests::runner_help_hides_token_environment_values_child";
+    const HELP_TOKEN_SENTINEL: &str = "sentinel-runner-token";
 
     #[test]
     fn sanitize_name_passthrough() {
@@ -338,6 +346,53 @@ mod tests {
         assert_eq!(
             runner_name_from_config(Path::new("/nonexistent.yaml")),
             "default"
+        );
+    }
+
+    #[tokio::test]
+    async fn runner_help_hides_token_environment_values() {
+        for subcommand in ["config", "start"] {
+            run_ignored_child_test(
+                HELP_TOKEN_CHILD_TEST,
+                (HELP_TOKEN_CHILD_SCENARIO_ENV, subcommand),
+                &[("VM0_RUNNER_TOKEN", Some(HELP_TOKEN_SENTINEL))],
+                Duration::from_secs(5),
+            )
+            .await;
+        }
+    }
+
+    #[test]
+    #[ignore = "spawned by runner_help_hides_token_environment_values"]
+    fn runner_help_hides_token_environment_values_child() {
+        let Ok(subcommand) = std::env::var(HELP_TOKEN_CHILD_SCENARIO_ENV) else {
+            return;
+        };
+        if !ignored_child_test_env_guard_enabled((HELP_TOKEN_CHILD_SCENARIO_ENV, &subcommand)) {
+            return;
+        }
+        let subcommand = match subcommand.as_str() {
+            "config" => "config",
+            "start" => "start",
+            unexpected => panic!("unexpected runner help token scenario: {unexpected}"),
+        };
+
+        let error = Cli::try_parse_from(["runner", subcommand, "--help"])
+            .err()
+            .expect("runner subcommand help should exit through clap");
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::DisplayHelp,
+            "{subcommand} --help should produce clap help"
+        );
+        let help = error.to_string();
+        assert!(
+            help.contains("VM0_RUNNER_TOKEN"),
+            "{subcommand} help should identify the token environment variable"
+        );
+        assert!(
+            !help.contains(HELP_TOKEN_SENTINEL),
+            "{subcommand} help should hide the token environment value"
         );
     }
 

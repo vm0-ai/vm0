@@ -1,3 +1,4 @@
+use futures_util::future::join_all;
 use sandbox::{CopyFileOptions, Sandbox};
 use tracing::{info, warn};
 
@@ -49,18 +50,24 @@ pub(in crate::executor) async fn copy_guest_logs(
         }
     };
 
-    for (guest_path, host_path) in &files {
-        if let Err(e) = crate::log_file::validate_copy_destination(host_path) {
-            warn!(
-                run_id = %run_id,
-                error = %e,
-                guest_path = %guest_path,
-                host_path = %host_path.display(),
-                "skipping unsafe guest log destination"
-            );
-            continue;
-        }
+    let files = files
+        .into_iter()
+        .filter(|(guest_path, host_path)| {
+            if let Err(e) = crate::log_file::validate_copy_destination(host_path) {
+                warn!(
+                    run_id = %run_id,
+                    error = %e,
+                    guest_path = %guest_path,
+                    host_path = %host_path.display(),
+                    "skipping unsafe guest log destination"
+                );
+                return false;
+            }
+            true
+        })
+        .collect::<Vec<_>>();
 
+    join_all(files.iter().map(|(guest_path, host_path)| async move {
         if let Err(e) = sandbox
             .copy_file(
                 guest_path,
@@ -82,5 +89,6 @@ pub(in crate::executor) async fn copy_guest_logs(
                 }
             }
         }
-    }
+    }))
+    .await;
 }

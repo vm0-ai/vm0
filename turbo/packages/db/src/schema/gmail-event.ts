@@ -9,7 +9,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
-import { zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations } from "./zero-workflow";
 
 export const gmailWatchStates = pgTable(
   "gmail_watch_states",
@@ -61,11 +61,11 @@ export const gmailProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    triggerId: uuid("trigger_id")
+    automationId: uuid("automation_id")
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -77,9 +77,9 @@ export const gmailProcessedEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_gmail_processed_events_event").on(
+      uniqueIndex("idx_gmail_processed_events_automation_event").on(
         table.watchStateId,
-        table.triggerId,
+        table.automationId,
         table.historyId,
         table.messageId,
       ),

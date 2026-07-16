@@ -11,7 +11,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { safeJsonParse, safeUrlParse, settle } from "../utils";
+import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import { lockConnectorState } from "./auth-state-lock.service";
 import {
   decryptStoredSecretValue,
@@ -220,14 +220,13 @@ async function refreshAndPersistXAccessToken(args: {
     return xShareError("PROVIDER_UNAVAILABLE", "X sharing is not configured");
   }
 
-  const refreshedResult = await settle(
+  const refreshed = await tapError(
     refreshXToken(clientId, clientSecret, args.refreshToken, args.signal),
-    args.signal,
   );
-  if (!refreshedResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     return xShareError("CONFLICT", "Reconnect X to post images");
   }
-  const refreshed = refreshedResult.value;
 
   const nextRefreshToken = refreshed.refreshToken ?? args.refreshToken;
   const tokenExpiresAt = new Date(
@@ -405,15 +404,11 @@ async function fetchShareImage(args: {
     return xShareError("BAD_REQUEST", "Choose an image with a public URL");
   }
 
-  const responseResult = await settle(
-    fetch(parsed, { signal: args.signal }),
-    args.signal,
-  );
-  if (!responseResult.ok) {
+  const response = await tapError(fetch(parsed, { signal: args.signal }));
+  args.signal.throwIfAborted();
+  if (!response) {
     return xShareError("BAD_REQUEST", "Couldn't load the image");
   }
-  const response = responseResult.value;
-  args.signal.throwIfAborted();
 
   if (!response.ok) {
     return xShareError("BAD_REQUEST", "Couldn't load the image");
@@ -471,10 +466,14 @@ async function xApiJson(args: {
   });
   args.signal.throwIfAborted();
 
-  const bodyResult = await settle(response.json() as Promise<unknown>);
-  const body = bodyResult.ok ? bodyResult.value : null;
+  const responseText = await response.text();
   if (!response.ok) {
     throw new Error(`X API returned ${response.status}`);
+  }
+
+  const body = safeJsonParse(responseText);
+  if (body === undefined) {
+    throw new Error("X API returned invalid JSON");
   }
   return body;
 }
@@ -594,7 +593,7 @@ export const shareImageToX$ = command(
       return image;
     }
 
-    const postResult = await settle(
+    const postResult = await tapError(
       (async () => {
         const mediaId = await uploadXImageMedia({
           accessToken: accessTokenResult.accessToken,
@@ -613,9 +612,9 @@ export const shareImageToX$ = command(
           tweetUrl: `https://x.com/i/web/status/${tweetId}`,
         };
       })(),
-      signal,
     );
-    if (!postResult.ok) {
+    signal.throwIfAborted();
+    if (!postResult) {
       return xShareError(
         "PROVIDER_UNAVAILABLE",
         "X couldn't publish the post, try again",
@@ -631,6 +630,6 @@ export const shareImageToX$ = command(
     await set(processOrgUsageEvents$, args.orgId, signal);
     signal.throwIfAborted();
 
-    return postResult.value;
+    return postResult;
   },
 );

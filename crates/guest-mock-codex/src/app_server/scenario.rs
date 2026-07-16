@@ -5,6 +5,7 @@ pub(super) enum Scenario {
     Success,
     DisconnectAfterInitialize,
     ExitOnTurnStart,
+    ExitOnTurnStartWithStderrHolder,
     HangOnTurnStart,
     InterleavedNotification,
     InvalidResponseId,
@@ -44,6 +45,9 @@ impl Scenario {
             Ok(value) => match value.as_str() {
                 "disconnect-after-initialize" => Ok(Self::DisconnectAfterInitialize),
                 "exit-on-turn-start" => Ok(Self::ExitOnTurnStart),
+                "exit-on-turn-start-with-stderr-holder" => {
+                    Ok(Self::ExitOnTurnStartWithStderrHolder)
+                }
                 "hang-on-turn-start" => Ok(Self::HangOnTurnStart),
                 "interleaved-notification" => Ok(Self::InterleavedNotification),
                 "invalid-response-id" => Ok(Self::InvalidResponseId),

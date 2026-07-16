@@ -1,6 +1,6 @@
 import { logger } from "../../lib/log";
 import { generateText } from "../external/openrouter";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   capGoalObjectiveBriefText,
   compactGoalObjectiveBriefText,
@@ -14,7 +14,7 @@ export async function generateGoalObjectiveBrief(
   objective: string,
 ): Promise<string> {
   const fallback = fallbackGoalObjectiveBrief(objective);
-  const generated = await settle(
+  const generated = await tapError(
     generateText(
       OBJECTIVE_BRIEF_MODEL,
       [
@@ -30,23 +30,22 @@ export async function generateGoalObjectiveBrief(
       ],
       80,
     ),
+    (error) => {
+      log.warn("Failed to generate goal objective brief", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
   );
 
-  if (!generated.ok) {
-    log.warn("Failed to generate goal objective brief", {
-      error:
-        generated.error instanceof Error
-          ? generated.error.message
-          : String(generated.error),
-    });
+  if (generated === undefined) {
     return fallback;
   }
-  if (generated.value === null) {
+  if (generated === null) {
     return fallback;
   }
 
   const brief = capGoalObjectiveBriefText(
-    compactGoalObjectiveBriefText(generated.value),
+    compactGoalObjectiveBriefText(generated),
   );
   return brief.length > 0 ? brief : fallback;
 }

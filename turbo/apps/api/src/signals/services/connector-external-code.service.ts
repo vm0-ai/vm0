@@ -39,7 +39,7 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { settle } from "../utils";
+import { onRejection, settle, throwIfAbort } from "../utils";
 import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
@@ -53,6 +53,11 @@ import {
   upsertConnectorTokenConnection$,
   zeroConnectorByType,
 } from "./zero-connector-data.service";
+import {
+  authorizeConnectedConnector$,
+  connectorAgentAuthorizationRequested,
+  validateConnectorAuthorizationTarget$,
+} from "./connected-connector-authorization.service";
 
 const SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES = ["pending"] as const;
 const SUPERSEDED_SESSION_ERROR_CODE = "session_superseded";
@@ -580,6 +585,69 @@ async function completeSessionResponse(args: {
   return { status: 200, body: { status: "complete", connector } };
 }
 
+const authorizeExternalCodeSessionConnector$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly session: ExternalCodeSessionRow;
+      readonly connectorType: ConnectorCatalogRef;
+    },
+    signal: AbortSignal,
+  ) => {
+    if (!args.session.authorizeAgent) {
+      return null;
+    }
+    const authorization = await set(
+      authorizeConnectedConnector$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: args.session.agentId,
+        connectorType: args.connectorType,
+      },
+      signal,
+    );
+    return authorization.status === "agentNotFound"
+      ? badRequestMessage(authorization.message)
+      : null;
+  },
+);
+
+const completedExternalCodeSessionResponse$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly session: ExternalCodeSessionRow;
+      readonly method: ExternalCodeMethodRef;
+    },
+    signal: AbortSignal,
+  ) => {
+    const response = await completeSessionResponse({
+      connectorLoader: () => {
+        return get(
+          zeroConnectorByType({
+            orgId: args.orgId,
+            userId: args.userId,
+            type: args.method.type,
+            includeHiddenStoredConnector: true,
+          }),
+        );
+      },
+      signal,
+    });
+    const error = await set(
+      authorizeExternalCodeSessionConnector$,
+      { ...args, connectorType: args.method.type },
+      signal,
+    );
+    return error ?? response;
+  },
+);
+
 async function completeClaimedExternalCodeSession(
   args: ExternalCodeResolvedMethodClient & {
     readonly writeDb: Db;
@@ -638,24 +706,24 @@ async function completeClaimedExternalCodeSession(
   // The provider code may already be consumed; finish DB commit even if the
   // client disconnects after provider success.
   const commitSignal = new AbortController().signal;
-  const persistedConnector = await settle(
+  const persistedConnector = await onRejection(
     persistClaimedConnector({
       ...args,
       token: providerResult.value,
       signal: commitSignal,
     }),
+    async (error) => {
+      throwIfAbort(error);
+      await markClaimError({
+        writeDb: args.writeDb,
+        session: args.session,
+        claimStartedAt: args.claimStartedAt,
+        errorMessage: errorMessage(error),
+        signal: commitSignal,
+      });
+    },
   );
-  if (!persistedConnector.ok) {
-    await markClaimError({
-      writeDb: args.writeDb,
-      session: args.session,
-      claimStartedAt: args.claimStartedAt,
-      errorMessage: errorMessage(persistedConnector.error),
-      signal: commitSignal,
-    });
-    throw persistedConnector.error;
-  }
-  return persistedConnector.value;
+  return persistedConnector;
 }
 
 function providerBadRequest(error: unknown) {
@@ -696,11 +764,22 @@ export const startConnectorExternalCodeSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
+      readonly agentId: string | undefined;
+      readonly authorizeAgent: true | undefined;
       readonly type: ConnectorCatalogRef;
       readonly authMethod: ConnectorCatalogAuthMethodId;
     },
     signal: AbortSignal,
   ) => {
+    const agentTarget = await set(
+      validateConnectorAuthorizationTarget$,
+      args,
+      signal,
+    );
+    if (!agentTarget.ok) {
+      return badRequestMessage(agentTarget.message);
+    }
+
     const resolver = await get(
       userConnectorActionResolver(args.orgId, args.userId),
     );
@@ -769,6 +848,8 @@ export const startConnectorExternalCodeSession$ = command(
         .values({
           orgId: args.orgId,
           userId: args.userId,
+          agentId: args.agentId,
+          authorizeAgent: connectorAgentAuthorizationRequested(args),
           connectorType: resolvedMethod.type,
           authMethod: resolvedMethod.authMethod,
           status: "pending",
@@ -846,19 +927,11 @@ export const completeConnectorExternalCodeSession$ = command(
     }
 
     if (session.status === "complete") {
-      return await completeSessionResponse({
-        connectorLoader: () => {
-          return get(
-            zeroConnectorByType({
-              orgId: args.orgId,
-              userId: args.userId,
-              type: resolvedMethod.type,
-              includeHiddenStoredConnector: true,
-            }),
-          );
-        },
+      return await set(
+        completedExternalCodeSessionResponse$,
+        { ...args, session, method: resolvedMethod },
         signal,
-      });
+      );
     }
 
     const terminal = terminalErrorResponse(session);
@@ -895,7 +968,7 @@ export const completeConnectorExternalCodeSession$ = command(
       );
     }
 
-    return await completeClaimedExternalCodeSession({
+    const response = await completeClaimedExternalCodeSession({
       ...resolvedClient,
       writeDb,
       orgId: args.orgId,
@@ -923,5 +996,14 @@ export const completeConnectorExternalCodeSession$ = command(
         return connectorResult.connector;
       },
     });
+    if (response.status !== 200) {
+      return response;
+    }
+    const authorizationError = await set(
+      authorizeExternalCodeSessionConnector$,
+      { ...args, session, connectorType: resolvedMethod.type },
+      signal,
+    );
+    return authorizationError ?? response;
   },
 );

@@ -14,13 +14,13 @@ use vsock_proto::{
 use crate::drain::drain_into_vec_cancellable;
 use crate::error::to_io_error;
 use crate::log::log;
-use crate::process::{
-    extract_exit_code, kill_and_reap_child, kill_process_tree, spawn_in_own_process_group,
-};
+use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
 use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
 use crate::user::apply_write_file_identity;
-use crate::wait::{WaitOutcome, await_drain_deadline, wait_with_kill_timeout};
+use crate::wait::{
+    WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
+};
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
@@ -55,6 +55,7 @@ fn handle_write_file(
     use_sudo: bool,
     append: bool,
     private: bool,
+    connection_cancel: &AtomicBool,
 ) -> (bool, String) {
     log(
         "INFO",
@@ -73,10 +74,15 @@ fn handle_write_file(
         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
 
-    wait_write_file_child(child, content, SystemThreadSpawner)
+    wait_write_file_child(child, content, connection_cancel, SystemThreadSpawner)
 }
 
-fn handle_write_files(payload: &[u8], file_count: usize, content_bytes: usize) -> (bool, String) {
+fn handle_write_files(
+    payload: &[u8],
+    file_count: usize,
+    content_bytes: usize,
+    connection_cancel: &AtomicBool,
+) -> (bool, String) {
     log(
         "INFO",
         &format!("write_files: files={file_count} content_bytes={content_bytes}"),
@@ -87,26 +93,31 @@ fn handle_write_files(payload: &[u8], file_count: usize, content_bytes: usize) -
         Err(e) => return (false, format!("Failed to spawn batch write command: {e}")),
     };
 
-    wait_write_file_child(child, payload, SystemThreadSpawner)
+    wait_write_file_child(child, payload, connection_cancel, SystemThreadSpawner)
 }
 
-fn wait_write_file_child<S>(child: Child, content: &[u8], spawner: S) -> (bool, String)
+fn wait_write_file_child<S>(
+    child: Child,
+    content: &[u8],
+    connection_cancel: &AtomicBool,
+    spawner: S,
+) -> (bool, String)
 where
     S: ThreadSpawner,
 {
-    wait_write_file_child_with_timeout(child, content, WRITE_TIMEOUT_MS, spawner)
+    wait_write_file_child_with_timeout(child, content, WRITE_TIMEOUT_MS, connection_cancel, spawner)
 }
 
 fn wait_write_file_child_with_timeout<S>(
     mut child: Child,
     content: &[u8],
     timeout_ms: u32,
+    connection_cancel: &AtomicBool,
     spawner: S,
 ) -> (bool, String)
 where
     S: ThreadSpawner,
 {
-    let child_pid = child.id();
     let stdin_pipe = match child.stdin.take() {
         Some(p) => p,
         None => {
@@ -170,19 +181,17 @@ where
             }
         };
 
-        let outcome = wait_with_kill_timeout(child, timeout_ms);
-        if matches!(outcome, WaitOutcome::Exited(_) | WaitOutcome::WaitFailed(_))
-            && matches!(
-                stdin_done_rx.try_recv(),
-                Err(std::sync::mpsc::TryRecvError::Empty)
-            )
-        {
-            // The direct helper exited, but a descendant may still hold the
-            // stdin pipe open without reading from it. Kill the helper's
-            // process group before joining the writer, otherwise write_all()
-            // can block forever on a full pipe.
-            let _ = unsafe { kill_process_tree(child_pid) };
-        }
+        let outcome = wait_with_kill_timeout_or_connection_cancelled(
+            child,
+            timeout_ms,
+            connection_cancel,
+            || {
+                matches!(
+                    stdin_done_rx.try_recv(),
+                    Err(std::sync::mpsc::TryRecvError::Empty)
+                )
+            },
+        );
         let stdin_result = match stdin_handle.join() {
             Ok(result) => result,
             Err(panic) => std::panic::resume_unwind(panic),
@@ -316,6 +325,7 @@ pub(crate) fn decode_write_files_message(
 pub(crate) fn handle_decoded_write_file_message(
     seq: u32,
     decoded: DecodedWriteFileMessage<'_>,
+    connection_cancel: &AtomicBool,
 ) -> io::Result<Vec<u8>> {
     let (success, error) = handle_write_file(
         decoded.path,
@@ -323,6 +333,7 @@ pub(crate) fn handle_decoded_write_file_message(
         decoded.use_sudo,
         decoded.append,
         decoded.private,
+        connection_cancel,
     );
     let payload = vsock_proto::encode_write_file_result(success, &error);
     vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)
@@ -331,9 +342,14 @@ pub(crate) fn handle_decoded_write_file_message(
 pub(crate) fn handle_decoded_write_files_message(
     seq: u32,
     decoded: DecodedWriteFilesMessage<'_>,
+    connection_cancel: &AtomicBool,
 ) -> io::Result<Vec<u8>> {
-    let (success, error) =
-        handle_write_files(decoded.payload, decoded.file_count, decoded.content_bytes);
+    let (success, error) = handle_write_files(
+        decoded.payload,
+        decoded.file_count,
+        decoded.content_bytes,
+        connection_cancel,
+    );
     let payload = vsock_proto::encode_write_files_result(success, &error);
     vsock_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).map_err(to_io_error)
 }
@@ -377,6 +393,13 @@ fn encode_error_response(seq: u32, message: &str) -> io::Result<MessageOutcome> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use std::io::{BufRead, BufReader};
+    #[cfg(target_os = "linux")]
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    #[cfg(target_os = "linux")]
+    use crate::test_support::{kill_pidfd_and_wait, open_pidfd, wait_for_pidfd_exit};
     use crate::threading::test_support::FailingThreadSpawner;
     use std::sync::Mutex;
 
@@ -409,8 +432,7 @@ mod tests {
         let pid = child.id();
 
         let pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
-        let _ = unsafe { crate::process::kill_process_tree(pid) };
-        let _ = wait_with_kill_timeout(child, 100);
+        kill_and_reap_child(child);
 
         assert_eq!(pgid, pid as libc::pid_t);
     }
@@ -420,10 +442,12 @@ mod tests {
         let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
         let child = spawn_write_file_test_child("sleep 60");
         let pid = child.id();
+        let connection_cancel = AtomicBool::new(false);
 
         let (success, error) = wait_write_file_child(
             child,
             b"",
+            &connection_cancel,
             FailingThreadSpawner::fail_once(THREAD_WRITE_STDERR),
         );
 
@@ -459,27 +483,96 @@ mod tests {
         let child = spawn_write_file_test_child("sleep 60; cat >/dev/null");
         let pid = child.id();
         let content = vec![b'x'; 1024 * 1024];
+        let connection_cancel = AtomicBool::new(false);
 
-        let (success, error) =
-            wait_write_file_child_with_timeout(child, &content, 10, SystemThreadSpawner);
+        let (success, error) = wait_write_file_child_with_timeout(
+            child,
+            &content,
+            10,
+            &connection_cancel,
+            SystemThreadSpawner,
+        );
 
         assert!(!success);
         assert_eq!(error, "write timed out");
         assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn write_file_kills_lingering_process_group_after_parent_exit() {
         let _guard = WRITE_FILE_CHILD_TESTS.lock().unwrap();
-        let child = spawn_write_file_test_child("sleep 60 <&0 >/dev/null 2>/dev/null & exit 0");
+        let fifo_path = std::env::temp_dir().join(format!(
+            "vsock-write-file-stdin-{}-{}.fifo",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(
+                "mkfifo \"$FIFO\"; \
+                 exec 3<&0; \
+                 sleep 60 <&3 >/dev/null 2>/dev/null & \
+                 printf '%s\\n' \"$!\"; \
+                 exec 3<&-; \
+                 read _ < \"$FIFO\"; \
+                 rm -f \"$FIFO\"; \
+                 exit 0",
+            )
+            .env("FIFO", &fifo_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = spawn_in_own_process_group(&mut command).unwrap();
         let pid = child.id();
+        let stdout = child.stdout.take().unwrap();
+        let mut descendant_pid = String::new();
+        BufReader::new(stdout)
+            .read_line(&mut descendant_pid)
+            .unwrap();
+        let descendant_pid = descendant_pid.trim().parse::<libc::pid_t>().unwrap();
+        let descendant_pidfd = open_pidfd(descendant_pid).unwrap();
+        let mut fifo = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&fifo_path)
+            .unwrap();
+        writeln!(fifo, "exit").unwrap();
+        drop(fifo);
         let content = vec![b'x'; 1024 * 1024];
+        let connection_cancel = AtomicBool::new(false);
 
-        let (success, error) =
-            wait_write_file_child_with_timeout(child, &content, 1_000, SystemThreadSpawner);
+        let (success, error) = wait_write_file_child_with_timeout(
+            child,
+            &content,
+            1_000,
+            &connection_cancel,
+            SystemThreadSpawner,
+        );
+        let _ = std::fs::remove_file(&fifo_path);
 
         assert!(!success);
         assert!(error.contains("Failed to write to stdin"), "got: {error}");
         assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
+        match wait_for_pidfd_exit(&descendant_pidfd, Duration::from_secs(2)) {
+            Ok(true) => {}
+            Ok(false) => {
+                kill_pidfd_and_wait(&descendant_pidfd).unwrap_or_else(|cleanup| {
+                    panic!(
+                        "failed to clean up lingering descendant pid {descendant_pid}: {cleanup}"
+                    )
+                });
+                panic!("lingering descendant pid {descendant_pid} should be terminated");
+            }
+            Err(error) => {
+                let cleanup = kill_pidfd_and_wait(&descendant_pidfd);
+                panic!(
+                    "failed to wait for lingering descendant pid {descendant_pid}: {error}; cleanup={cleanup:?}"
+                );
+            }
+        }
     }
 }

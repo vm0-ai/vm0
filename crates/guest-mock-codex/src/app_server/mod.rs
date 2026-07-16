@@ -3,10 +3,10 @@ mod messages;
 mod persistence;
 mod scenario;
 
-use messages::{write_error, write_success};
+use messages::{write_json_line, write_success};
 use persistence::session_artifact_thread_id;
 use scenario::Scenario;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
 use std::process::Command;
@@ -149,7 +149,22 @@ impl AppServerState {
                 self.handle_mock_complete_split_notification(id, output)
             }
             _ => {
-                write_error(output, id, METHOD_NOT_FOUND, "unsupported method")?;
+                write_json_line(
+                    output,
+                    &json!({
+                        "id": id,
+                        "error": {
+                            "code": METHOD_NOT_FOUND,
+                            "message": "unsupported method",
+                            "data": {
+                                "request": {
+                                    "method": method
+                                },
+                                "retryable": false
+                            }
+                        }
+                    }),
+                )?;
                 Ok(ServerAction::Continue)
             }
         }

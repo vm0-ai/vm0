@@ -51,6 +51,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
+  [FeatureSwitchKey.BillConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the BILL Spend & Expense connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.BentomlConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the BentoML model serving connector",
@@ -64,6 +69,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Canva design connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.CalComConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Cal.com scheduling connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.CopperConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Copper CRM connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.DatadogConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Datadog observability connector",
     enabled: false,
   },
   [FeatureSwitchKey.DeelConnector]: {
@@ -86,19 +106,34 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Figma design connector",
     enabled: false,
   },
+  [FeatureSwitchKey.ExpensifyConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Expensify accounting connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleContactsConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Google Contacts connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleFormsConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Google Forms connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",
     enabled: false,
   },
-  [FeatureSwitchKey.Microsoft365Connector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Microsoft 365 connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Neon serverless Postgres connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.NetSuiteConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Oracle NetSuite ERP connector",
     enabled: false,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
@@ -131,16 +166,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Webflow site management connector",
     enabled: false,
   },
-  [FeatureSwitchKey.OutlookMailConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Outlook Mail connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.OutlookCalendarConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the Outlook Calendar connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.TikTokAdsConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the TikTok Ads Manager connector",
@@ -152,21 +177,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.NintendoStoreConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Nintendo Store connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Nintendo Switch Parental Controls connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PayPalConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the PayPal payments connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.RampConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Ramp spend management connector",
     enabled: false,
   },
   [FeatureSwitchKey.MailchimpConnector]: {
@@ -195,6 +218,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.ZeroScrape]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable the managed Firecrawl-backed Zero Scrape API and scrape:read ZERO_TOKEN capability.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ZeroWebSearch]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable the managed Perplexity-backed Zero Web Search API and web-search:read ZERO_TOKEN capability.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -208,17 +245,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.WorkflowWebhookTriggers]: {
+  [FeatureSwitchKey.NotionWorkflowAutomations]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable creation of inbound webhook workflow triggers. Existing webhook triggers remain visible and dispatch under the workflow automation gate.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.NotionWorkflowTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable Notion event workflow triggers, starting with child pages created under a configured parent page.",
+      "Enable Notion event workflow automations, starting with child pages created under a configured parent page.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -250,6 +280,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
     enabled: false,
   },
+  [FeatureSwitchKey.WorkdayConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Workday HCM and finance connector",
+    enabled: false,
+  },
 
   [FeatureSwitchKey.ApiKeys]: {
     maintainer: "ethan@vm0.ai",
@@ -267,9 +302,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable Codex fast mode for ChatGPT subscription GPT 5.5 web chat runs.",
+      "Enable Codex fast mode for ChatGPT subscription GPT 5.5 and GPT 5.6 web chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.Vm0Model]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Show VM0 Model in the workspace Add model selector.",
+    enabled: false,
   },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
@@ -352,10 +392,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: {
-    maintainer: "bingjie@vm0.ai",
+  [FeatureSwitchKey.ComposerChatThreadSuggestions]: {
+    maintainer: "ethan@vm0.ai",
     description:
-      "Enable left/right keyboard and button navigation between image artifacts within the same chat message, in both the lightbox modal and the artifact sidebar.",
+      "Suggest titled chat threads from the current agent when typing @ in the chat composer.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -394,6 +434,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PresentationElementDragging]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable selecting and dragging presentation elements in the HTML presentation editor.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -414,13 +462,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ArtifactVideoPreview]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Extract a static poster frame for video artifacts (via Cloudflare Media Transformations) so the artifacts grid shows an image instead of loading each video.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.WorkflowTemplateCatalog]: {
     maintainer: "ming@vm0.ai",
     description:
@@ -437,9 +478,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.WorkflowQueue]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Queue workflow trigger events per workflow and run them serially instead of firing concurrent runs.",
+      "Queue workflow automation events per workflow and run them serially instead of firing concurrent runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.OrgPlanEntitlementReads]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Read runtime plan capability limits from org_plan_entitlements instead of deriving them from org_metadata.tier.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
@@ -448,6 +497,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
+  },
+  [FeatureSwitchKey.ZeroMail]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
+    enabled: false,
   },
 };
 

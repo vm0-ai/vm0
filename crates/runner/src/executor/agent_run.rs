@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::time::{Duration, Instant};
 
 use guest_contracts::diagnostics::FailureDiagnostic;
@@ -13,8 +14,8 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
 };
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
-    Sandbox, StartProcessRequest,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessHandle, ProcessControlMode,
+    ProcessOutputMode, Sandbox, StartProcessRequest,
 };
 use shell_quote::quote_shell_arg;
 use tokio::io::AsyncReadExt;
@@ -22,11 +23,12 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use super::diagnostics::{
-    AgentBootstrapAbnormalExitLogContext, AgentStdoutStreamDiagnostics, StdoutDrainReport,
-    build_agent_env_diagnostics, build_agent_env_key_diagnostics, check_host_oom,
-    collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom, drain_stdout_to_file,
-    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
-    log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
+    AgentBootstrapAbnormalExitLogContext, AgentEnvDiagnostics, AgentStdoutStreamDiagnostics,
+    StdoutDrainReport, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
+    check_host_oom, collect_agent_abnormal_exit_diagnostics, dmesg_indicates_oom,
+    drain_stdout_to_file, log_agent_abnormal_exit_env_diagnostics,
+    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
+    read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
     should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
@@ -37,12 +39,14 @@ use super::env::{
     write_user_env_file,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
+use super::session_history_cpu::{SessionHistoryCpuJob, SessionHistoryPrefixOutcome};
 use super::session_history_download::{
     SessionHistoryDownloadPhaseTiming, SessionHistoryDownloadTimings,
     SessionHistoryMaterialization, SessionHistoryMaterializer,
-    verify_codex_zstd_session_history_bytes, verify_identity_session_history_bytes,
 };
-use super::session_restore::{MaterializedResumeSession, restore_session};
+use super::session_restore::{
+    MaterializedResumeSession, SessionRestoreDiagnostics, restore_session,
+};
 use super::storage::download_storages;
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
@@ -60,7 +64,9 @@ use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
 use crate::storage_plan::build_storage_plan;
-use crate::telemetry::{JobTelemetry, SessionHistoryTelemetryMetadata};
+use crate::telemetry::{
+    JobTelemetry, SessionHistoryTelemetryMetadata, session_history_prefix_extension_action_type,
+};
 use crate::types::ExecutionContext;
 use crate::workspace_image_cache::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarRepresentation,
@@ -214,6 +220,37 @@ fn record_session_history_identity_mismatch_reason(
     reason: RestoredSessionIdentityMismatchReason,
 ) {
     telemetry.record(reason.action_type(), Duration::ZERO, true, None);
+    if let Some(action_type) = reason.history_hash_size_relationship_action_type() {
+        telemetry.record(action_type, Duration::ZERO, true, None);
+    }
+}
+
+fn record_session_history_prefix_outcome(
+    telemetry: &mut JobTelemetry,
+    outcome: SessionHistoryPrefixOutcome,
+) {
+    match outcome {
+        SessionHistoryPrefixOutcome::Verified { raw_extension_size } => {
+            telemetry.record(
+                "session_history_requested_larger_prefix_verified",
+                Duration::ZERO,
+                true,
+                None,
+            );
+            telemetry.record(
+                session_history_prefix_extension_action_type(raw_extension_size),
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
+        SessionHistoryPrefixOutcome::Divergent => telemetry.record(
+            "session_history_requested_larger_prefix_divergent",
+            Duration::ZERO,
+            true,
+            None,
+        ),
+    }
 }
 
 fn record_session_history_download_timings(
@@ -327,35 +364,81 @@ fn record_session_history_restore_fallback(
 async fn materialize_session_history_sidecar(
     context: &ExecutionContext,
     sidecar: &WorkspaceSessionHistorySidecar,
-) -> RunnerResult<MaterializedResumeSession<'static>> {
+    config: &ExecutorConfig,
+    cancel: &CancellationToken,
+) -> RunnerResult<MaterializedResumeSession> {
     let resume_session = context.resume_session.as_ref().ok_or_else(|| {
         RunnerError::Internal("resume session missing for sidecar restore".into())
     })?;
     let history_ref = resume_session.history_ref().ok_or_else(|| {
         RunnerError::Internal("resume session history ref missing for sidecar restore".into())
     })?;
-    let bytes = read_session_history_sidecar_bytes(sidecar).await?;
-    match sidecar.representation {
-        WorkspaceSessionHistorySidecarRepresentation::Raw => {
-            verify_identity_session_history_bytes(&bytes, history_ref.raw_size, &history_ref.hash)?;
-            Ok(MaterializedResumeSession::new(
-                resume_session.cli_agent_session_id.clone(),
-                bytes,
-            ))
+    let bytes = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => {
+            return Err(RunnerError::Internal(
+                "session history sidecar materialization cancelled".into(),
+            ));
         }
-        WorkspaceSessionHistorySidecarRepresentation::CodexZstd => {
-            let timestamp = verify_codex_zstd_session_history_bytes(
-                &bytes,
-                history_ref.raw_size,
-                &history_ref.hash,
-            )?;
-            Ok(MaterializedResumeSession::new_codex_zstd(
-                resume_session.cli_agent_session_id.clone(),
-                bytes,
-                timestamp,
-            ))
-        }
+        result = read_session_history_sidecar_bytes(sidecar) => result?,
+    };
+    let job = match sidecar.representation {
+        WorkspaceSessionHistorySidecarRepresentation::Raw => SessionHistoryCpuJob::raw(
+            resume_session.cli_agent_session_id.clone(),
+            bytes,
+            history_ref.raw_size,
+            history_ref.hash.clone(),
+            effective_cli_framework(&context.cli_agent_type),
+        ),
+        WorkspaceSessionHistorySidecarRepresentation::CodexZstd => SessionHistoryCpuJob::zstd(
+            resume_session.cli_agent_session_id.clone(),
+            bytes,
+            history_ref.raw_size,
+            history_ref.hash.clone(),
+            super::cli_framework::EffectiveCliFramework::Codex,
+        ),
+    };
+    config
+        .session_history_cpu
+        .materialize(job, cancel)
+        .await?
+        .result
+        .map(|materialization| materialization.session)
+}
+
+async fn materialize_inline_resume_session(
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    cancel: &CancellationToken,
+) -> RunnerResult<Option<MaterializedResumeSession>> {
+    let Some(resume_session) = context.resume_session.as_ref() else {
+        return Ok(None);
+    };
+    let Some(history) = resume_session.shared_session_history() else {
+        return Ok(None);
+    };
+    if effective_cli_framework(&context.cli_agent_type)
+        == super::cli_framework::EffectiveCliFramework::Codex
+    {
+        let outcome = config
+            .session_history_cpu
+            .materialize(
+                SessionHistoryCpuJob::inline_codex(
+                    resume_session.cli_agent_session_id.clone(),
+                    history,
+                ),
+                cancel,
+            )
+            .await?;
+        return outcome
+            .result
+            .map(|materialization| Some(materialization.session));
     }
+    Ok(Some(MaterializedResumeSession::new_shared(
+        resume_session.cli_agent_session_id.clone(),
+        history,
+        None,
+    )))
 }
 
 async fn read_session_history_sidecar_bytes(
@@ -663,7 +746,7 @@ pub(super) struct ProcessCancelTimeouts {
 pub(super) struct AgentExecutionResult {
     pub(super) failure: Option<ExecutionFailure>,
     pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
-    pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
+    pub(super) reusable_session_identity: Option<RestoredSessionIdentity>,
 }
 
 impl AgentExecutionResult {
@@ -671,7 +754,7 @@ impl AgentExecutionResult {
         Self {
             failure: None,
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
-            restored_session_identity: None,
+            reusable_session_identity: None,
         }
     }
 
@@ -683,12 +766,20 @@ impl AgentExecutionResult {
         Self {
             failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
-            restored_session_identity: None,
+            reusable_session_identity: None,
         }
     }
 
     pub(super) fn failure_from_error(error: impl Into<String>) -> Self {
         Self::failure(1, error, None)
+    }
+
+    pub(super) fn cancelled() -> Self {
+        Self {
+            failure: Some(ExecutionFailure::cancelled()),
+            stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
+            reusable_session_identity: None,
+        }
     }
 
     pub(super) fn exit_code(&self) -> i32 {
@@ -703,11 +794,21 @@ impl AgentExecutionResult {
         self
     }
 
-    pub(super) fn with_restored_session_identity(
+    pub(super) fn with_reusable_session_identity(
         mut self,
-        restored_session_identity: Option<RestoredSessionIdentity>,
+        reusable_session_identity: Option<RestoredSessionIdentity>,
     ) -> Self {
-        self.restored_session_identity = restored_session_identity;
+        self.reusable_session_identity = reusable_session_identity;
+        self
+    }
+
+    pub(super) fn with_resource_diagnostics(
+        mut self,
+        resource_diagnostics: Option<ResourceFailureDiagnostics>,
+    ) -> Self {
+        if let Some(failure) = self.failure.take() {
+            self.failure = Some(failure.with_resource_diagnostics(resource_diagnostics));
+        }
         self
     }
 
@@ -855,6 +956,31 @@ impl RunControls {
     }
 }
 
+struct PreparedAgentProcess {
+    handle: GuestProcessHandle,
+    agent_started_at: Instant,
+    deferred_background_fill: Option<crate::storage_cache::DeferredBackgroundFill>,
+    session_restore_diagnostics: Option<SessionRestoreDiagnostics>,
+    pre_run_restored_session_identity: Option<RestoredSessionIdentity>,
+    env_diagnostics: AgentEnvDiagnostics,
+    env_pairs: Vec<(String, String)>,
+}
+
+async fn run_pre_spawn_phase<T>(
+    cancel: &CancellationToken,
+    phase: impl Future<Output = T>,
+) -> Option<T> {
+    if cancel.is_cancelled() {
+        return None;
+    }
+
+    tokio::select! {
+        biased;
+        result = phase => Some(result),
+        () = cancel.cancelled() => None,
+    }
+}
+
 pub(super) async fn run_in_sandbox(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
@@ -891,7 +1017,15 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         session_history_restore_plan,
     } = controls;
     let has_active_input_source = active_input_source.is_some();
-    let mut deferred_background_fill = None;
+    let pre_spawn_started = Instant::now();
+    let pre_spawn_cancel = cancel.clone();
+    let pre_spawn_start = &start;
+    let pre_spawn_telemetry = &mut *telemetry;
+    let prepared_agent = run_pre_spawn_phase(&cancel, async move {
+        let cancel = pre_spawn_cancel;
+        let start = pre_spawn_start;
+        let telemetry = pre_spawn_telemetry;
+        let mut deferred_background_fill = None;
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -1016,7 +1150,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     }
 
     let mut session_restore_diagnostics = None;
-    let mut restored_session_identity = None;
+    let mut pre_run_restored_session_identity = None;
     let mut local_session_history_sidecar = None;
     let mut session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
@@ -1029,7 +1163,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         None,
                     );
                     telemetry.record("session_history_restore_skip", Duration::ZERO, true, None);
-                    restored_session_identity = Some(identity);
+                    pre_run_restored_session_identity = Some(identity);
                     None
                 }
                 Err(reason) => {
@@ -1042,6 +1176,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     record_session_history_identity_reason(telemetry, reason);
                     Some(SessionHistoryMaterializer::start_cancellable(
                         &config.http,
+                        &config.session_history_cpu,
                         context.resume_session.as_ref(),
                         effective_cli_framework(&context.cli_agent_type),
                         cancel.clone(),
@@ -1054,6 +1189,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             record_session_history_restore_fallback(telemetry, fallback);
             Some(SessionHistoryMaterializer::start_cancellable(
                 &config.http,
+                &config.session_history_cpu,
                 context.resume_session.as_ref(),
                 effective_cli_framework(&context.cli_agent_type),
                 cancel.clone(),
@@ -1062,6 +1198,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
         SessionHistoryRestorePlan::Default => Some(SessionHistoryMaterializer::start_cancellable(
             &config.http,
+            &config.session_history_cpu,
             context.resume_session.as_ref(),
             effective_cli_framework(&context.cli_agent_type),
             cancel.clone(),
@@ -1082,7 +1219,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     };
     if let Some(sidecar) = local_session_history_sidecar {
         let restore_started = Instant::now();
-        match materialize_session_history_sidecar(context, &sidecar).await {
+        match materialize_session_history_sidecar(context, &sidecar, config, &cancel).await {
             Ok(session) => match restore_session(sandbox, context, &session).await {
                 Ok(diagnostics) => {
                     telemetry.record(
@@ -1095,6 +1232,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     session_restore_diagnostics = Some(diagnostics);
                 }
                 Err(error) => {
+                    if cancel.is_cancelled() {
+                        return Err(error);
+                    }
                     telemetry.record(
                         "session_history_workspace_cache_restore",
                         restore_started.elapsed(),
@@ -1115,6 +1255,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     session_history_materializer =
                         Some(SessionHistoryMaterializer::start_cancellable(
                             &config.http,
+                            &config.session_history_cpu,
                             context.resume_session.as_ref(),
                             effective_cli_framework(&context.cli_agent_type),
                             cancel.clone(),
@@ -1123,6 +1264,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 }
             },
             Err(error) => {
+                if cancel.is_cancelled() {
+                    return Err(error);
+                }
                 telemetry.record(
                     "session_history_workspace_cache_restore",
                     restore_started.elapsed(),
@@ -1142,6 +1286,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 );
                 session_history_materializer = Some(SessionHistoryMaterializer::start_cancellable(
                     &config.http,
+                    &config.session_history_cpu,
                     context.resume_session.as_ref(),
                     effective_cli_framework(&context.cli_agent_type),
                     cancel.clone(),
@@ -1164,6 +1309,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             SessionHistoryMaterialization::NoDownloadNeeded => None,
             SessionHistoryMaterialization::Downloaded {
                 session,
+                prefix_outcome,
                 elapsed,
                 timings,
             } => {
@@ -1192,6 +1338,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     timings.metadata(),
                 );
                 record_session_history_download_timings(telemetry, &timings);
+                if let Some(prefix_outcome) = prefix_outcome {
+                    record_session_history_prefix_outcome(telemetry, prefix_outcome);
+                }
                 Some(session)
             }
             SessionHistoryMaterialization::Failed {
@@ -1227,18 +1376,13 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 return Err(error);
             }
         };
-        let resume_session = downloaded_resume_session.map(Ok).or_else(|| {
-            context
-                .resume_session
-                .as_ref()
-                .map(MaterializedResumeSession::from_inline_resume_session)
-        });
+        let resume_session = match downloaded_resume_session {
+            Some(session) => Some(session),
+            None => materialize_inline_resume_session(context, config, &cancel).await?,
+        };
         if let Some(session) = resume_session {
             let t = Instant::now();
-            let result = match session {
-                Ok(session) => restore_session(sandbox, context, &session).await,
-                Err(error) => Err(error),
-            };
+            let result = restore_session(sandbox, context, &session).await;
             let err = result.as_ref().err().map(|e| e.to_string());
             telemetry.record(
                 "session_restore",
@@ -1386,7 +1530,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         })
         .await;
 
-    let mut handle = match handle {
+    let handle = match handle {
         Ok(h) => {
             let spawned_at = Instant::now();
             telemetry.record(
@@ -1409,6 +1553,46 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             );
             telemetry.record("agent_execute", t.elapsed(), false, Some(&e.to_string()));
             return Err(e.into());
+        }
+    };
+
+        RunnerResult::Ok(PreparedAgentProcess {
+            handle,
+            agent_started_at: t,
+            deferred_background_fill,
+            session_restore_diagnostics,
+            pre_run_restored_session_identity,
+            env_diagnostics,
+            env_pairs,
+        })
+    })
+    .await;
+    let PreparedAgentProcess {
+        mut handle,
+        agent_started_at: t,
+        deferred_background_fill,
+        session_restore_diagnostics,
+        mut pre_run_restored_session_identity,
+        env_diagnostics,
+        env_pairs,
+    } = match prepared_agent {
+        Some(result) => result?,
+        None => {
+            info!(
+                run_id = %context.run_id,
+                "cancel received before guest process started"
+            );
+            let result = AgentExecutionResult::cancelled();
+            telemetry.record(
+                "agent_execute",
+                pre_spawn_started.elapsed(),
+                false,
+                result
+                    .failure
+                    .as_ref()
+                    .map(|failure| failure.error.as_str()),
+            );
+            return Ok(result);
         }
     };
 
@@ -1565,8 +1749,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
-                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled)
-                    .with_restored_session_identity(restored_session_identity));
+                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -1581,7 +1764,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         None,
                     )),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
-                    restored_session_identity,
+                    reusable_session_identity: None,
                 });
             }
             return Err(e.into());
@@ -1645,8 +1828,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 telemetry.record("agent_execute", t.elapsed(), false, Some(error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::GuestMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
-                    .with_restored_session_identity(restored_session_identity));
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -1760,7 +1942,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
-    if failure.is_none() {
+    // A pre-run identity proves only what was restored. Once the agent starts,
+    // publish an identity only after a successful execution verifies the
+    // current history or confirms that the restored history stayed unchanged.
+    let reusable_session_identity = if failure.is_none() {
         match read_final_session_history_identity(sandbox, context).await {
             Ok(final_identity) => {
                 telemetry.record(
@@ -1769,11 +1954,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     true,
                     None,
                 );
-                restored_session_identity = Some(final_identity);
+                Some(final_identity)
             }
             Err(final_identity_reason) => {
                 record_session_history_identity_reason(telemetry, final_identity_reason);
-                if let Some(restored_identity) = restored_session_identity.take() {
+                if let Some(restored_identity) = pre_run_restored_session_identity.take() {
                     match verify_restored_session_identity_for_reuse(
                         sandbox,
                         context,
@@ -1782,26 +1967,31 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .await
                     {
                         Ok(verified_restored_session_identity) => {
-                            restored_session_identity = Some(verified_restored_session_identity);
+                            Some(verified_restored_session_identity)
                         }
                         Err(reason) => {
                             record_session_history_identity_reason(telemetry, reason);
+                            None
                         }
                     }
+                } else {
+                    None
                 }
             }
         }
-    }
+    } else {
+        None
+    };
 
     let agent_result = match failure {
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
             stdout_stream_diagnostics,
-            restored_session_identity,
+            reusable_session_identity: None,
         },
         None => AgentExecutionResult::success()
             .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
-            .with_restored_session_identity(restored_session_identity),
+            .with_reusable_session_identity(reusable_session_identity),
     };
     telemetry.record(
         "agent_execute",

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.10...guest-contracts-v0.3.11) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.3.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.9...guest-contracts-v0.3.10) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** qualify guest rootfs before idle reuse ([#21563](https://github.com/vm0-ai/vm0/issues/21563)) ([b9230c3](https://github.com/vm0-ai/vm0/commit/b9230c3bd213fb95777e0b5f84b17bbbbc3dd2e8))
+
+## [0.3.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.8...guest-contracts-v0.3.9) (2026-07-13)
+
+
+### Refactoring
+
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
 ## [0.3.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.7...guest-contracts-v0.3.8) (2026-07-10)
 
 

@@ -1,26 +1,41 @@
-/**
- * Tests for zero doctor check-connector command
- *
- * Tests command-level behavior via parseAsync() following CLI testing principles:
- * - Entry point: command.parseAsync()
- * - Mock (external): Web API via MSW
- * - Real (internal): All CLI code, connector metadata from @vm0/connectors
- */
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type {
+  ConnectorCheckDiagnosticResult,
+  ConnectorCheckPolicy,
+  ConnectorCheckRequest,
+} from "@vm0/api-contracts/contracts/zero-connector-check";
+import chalk from "chalk";
+import { HttpResponse, http } from "msw";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { checkConnectorCommand } from "../check-connector";
-import chalk from "chalk";
 
-/** Build a fake ZERO_TOKEN JWT with the given payload fields. */
+const API_BASE_URL = "https://app.vm0.ai";
+const AGENT_ID = "00000000-0000-4000-8000-000000000001";
+
+type ResolvedDiagnostic = Extract<
+  ConnectorCheckDiagnosticResult,
+  { readonly outcome: "resolved" }
+>;
+type ResolvedUrlDiagnostic = Extract<
+  ResolvedDiagnostic,
+  { readonly mode: "url" }
+>;
+type ResolvedEnvironmentDiagnostic = Extract<
+  ResolvedDiagnostic,
+  { readonly mode: "environment" }
+>;
+type ConnectorIdentity = ResolvedDiagnostic["connector"];
+type ConnectorRun = ResolvedDiagnostic["run"];
+
 function buildZeroToken(
   overrides: Partial<{
-    userId: string;
-    runId: string;
-    orgId: string;
-    scope: string;
-    capabilities: string[];
+    readonly userId: string;
+    readonly runId: string;
+    readonly orgId: string;
+    readonly scope: string;
+    readonly capabilities: string[];
   }> = {},
 ): string {
   const payload = {
@@ -28,7 +43,7 @@ function buildZeroToken(
     runId: "run-abc-123",
     orgId: "org-1",
     scope: "zero",
-    capabilities: ["agent-run:read"],
+    capabilities: ["connector:read", "agent-run:read"],
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
     ...overrides,
@@ -40,70 +55,174 @@ function buildZeroToken(
   return `vm0_sandbox_${header}.${body}.test-signature`;
 }
 
-/** Minimal valid connector response for MSW handlers */
-const connectedResponse = {
-  id: "conn-1",
-  type: "github",
-  authMethod: "oauth",
-  externalId: "ext-1",
-  externalUsername: "user",
-  externalEmail: "user@example.com",
-  oauthScopes: ["repo"],
-  connectionStatus: "connected",
-  createdAt: "2026-01-01T00:00:00Z",
-  updatedAt: "2026-01-01T00:00:00Z",
-};
-
-function stubAvailableConnectors(types: string[]) {
-  return http.get("https://app.vm0.ai/api/zero/connectors/search", () => {
-    return HttpResponse.json({
-      connectors: types.map((type) => {
-        return {
-          id: type,
-          label: type,
-          description: type,
-          authMethods: ["oauth"],
-        };
-      }),
-    });
-  });
+function connectorIdentity(
+  overrides: Partial<ConnectorIdentity> = {},
+): ConnectorIdentity {
+  return {
+    connectorRef: "github",
+    label: "GitHub",
+    visibility: "available",
+    credentialResolution: "network-boundary",
+    ...overrides,
+  };
 }
 
-/** Minimal run context response */
-const runContextResponse = {
-  prompt: "test",
-  appendSystemPrompt: null,
-  sessionId: null,
-  secretNames: [],
-  vars: null,
-  environment: {},
-  firewalls: [
-    {
-      name: "github",
-      apis: [
+function resolvedEnvironment(
+  options: {
+    readonly connector?: ConnectorIdentity;
+    readonly environmentName?: string;
+    readonly run?: ConnectorRun;
+    readonly permission?: ConnectorCheckPolicy | null;
+  } = {},
+): ResolvedEnvironmentDiagnostic {
+  return {
+    outcome: "resolved",
+    mode: "environment",
+    connector: options.connector ?? connectorIdentity(),
+    environmentName: options.environmentName ?? "GH_TOKEN",
+    run: options.run ?? {
+      status: "configured",
+      bases: ["https://api.github.com", "https://uploads.github.com"],
+    },
+    permission: options.permission ?? null,
+  };
+}
+
+function resolvedUrl(
+  options: {
+    readonly connector?: ConnectorIdentity;
+    readonly environmentNames?: string[] | null;
+    readonly run?: ConnectorRun;
+    readonly method?: string;
+    readonly base?: string;
+    readonly relativePath?: string;
+    readonly permission?: ResolvedUrlDiagnostic["permission"];
+  } = {},
+): ResolvedUrlDiagnostic {
+  return {
+    outcome: "resolved",
+    mode: "url",
+    connector: options.connector ?? connectorIdentity(),
+    environmentNames:
+      options.environmentNames === undefined
+        ? ["GITHUB_TOKEN"]
+        : options.environmentNames,
+    run: options.run ?? {
+      status: "configured",
+      bases: ["https://api.github.com", "https://uploads.github.com"],
+    },
+    method: options.method ?? "GET",
+    base: options.base ?? "https://api.github.com",
+    relativePath: options.relativePath ?? "/repos/vm0-ai/vm0",
+    permission: options.permission ?? {
+      kind: "matched",
+      permissions: [
         {
-          base: "https://api.github.com",
-          permissions: [],
-        },
-        {
-          base: "https://uploads.github.com",
-          permissions: [],
+          name: "contents:read",
+          policy: { outcome: "allow", basis: "allow-list" },
         },
       ],
     },
-  ],
-  networkPolicies: {
-    github: {
-      allow: ["contents:read"],
-      deny: ["admin"],
-      ask: ["actions:write"],
-      unknownPolicy: "allow" as const,
-    },
-  },
-  volumes: [],
-  artifact: null,
-  featureFlags: null,
-};
+  };
+}
+
+function connectorResponse(
+  connectorRef: string,
+  connectionStatus: ConnectorResponse["connectionStatus"] = "connected",
+): ConnectorResponse {
+  return {
+    id: "00000000-0000-4000-8000-000000000002",
+    type: connectorRef,
+    authMethod: "oauth",
+    externalId: "external-1",
+    externalUsername: "user",
+    externalEmail: "user@example.com",
+    oauthScopes: ["repo"],
+    connectionStatus,
+    reconnectReason:
+      connectionStatus === "reconnect-required"
+        ? "authorization_expired_or_revoked"
+        : null,
+    tokenExpiresAt: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+}
+
+function diagnosticEndpoint(baseUrl = API_BASE_URL): string {
+  return `${baseUrl}/api/zero/connectors/diagnostics/check`;
+}
+
+function stubDiagnostic(
+  result: ConnectorCheckDiagnosticResult,
+  onRequest?: (body: unknown) => void,
+  baseUrl = API_BASE_URL,
+): void {
+  server.use(
+    http.post(diagnosticEndpoint(baseUrl), async ({ request }) => {
+      const body: unknown = await request.json();
+      onRequest?.(body);
+      return HttpResponse.json(result);
+    }),
+  );
+}
+
+function stubConnector(
+  connectorRef: string,
+  response: ConnectorResponse | null = connectorResponse(connectorRef),
+  onRequest?: () => void,
+  baseUrl = API_BASE_URL,
+): void {
+  server.use(
+    http.get(`${baseUrl}/api/zero/connectors/${connectorRef}`, () => {
+      onRequest?.();
+      if (response === null) {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }
+      return HttpResponse.json(response);
+    }),
+  );
+}
+
+function stubAgentConnectors(
+  enabledTypes: string[],
+  onRequest?: () => void,
+  baseUrl = API_BASE_URL,
+): void {
+  server.use(
+    http.get(`${baseUrl}/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
+      onRequest?.();
+      return HttpResponse.json({ enabledTypes });
+    }),
+  );
+}
+
+function stubResolvedDependencies(
+  connectorRef = "github",
+  options: {
+    readonly connector?: ConnectorResponse | null;
+    readonly enabledTypes?: string[];
+    readonly baseUrl?: string;
+  } = {},
+): void {
+  const baseUrl = options.baseUrl ?? API_BASE_URL;
+  stubConnector(
+    connectorRef,
+    options.connector === undefined
+      ? connectorResponse(connectorRef)
+      : options.connector,
+    undefined,
+    baseUrl,
+  );
+  stubAgentConnectors(
+    options.enabledTypes ?? [connectorRef],
+    undefined,
+    baseUrl,
+  );
+}
 
 describe("zero doctor check-connector command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -118,2336 +237,919 @@ describe("zero doctor check-connector command", () => {
     vi.unstubAllEnvs();
     vi.clearAllMocks();
     chalk.level = 0;
+    vi.stubEnv("VM0_API_BACKEND_URL", API_BASE_URL);
+    vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+    vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
     vi.stubEnv("GH_TOKEN", "");
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("GITHUB_TOKEN", "");
   });
 
   function getOutput(): string {
     return mockConsoleLog.mock.calls.flat().join("\n");
   }
 
-  describe("step 1: sandbox environment name check", () => {
-    it("should report environment name present when it exists", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("GH_TOKEN", "ghp_test123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("present");
-      expect(output).toContain(
-        "non-secret connector settings or credential placeholders",
-      );
-    });
-
-    it("should report environment name not present when it is missing", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: [] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("not present");
-    });
-  });
-
-  describe("step 2: connector status", () => {
-    it("should report unavailable connectors without connect or authorize guidance", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors([]),
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: [] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "The GitHub connector is not available for this account.",
-      );
-      expect(output).toContain(
-        "Skipped — the GitHub connector is not available for this account.",
-      );
-      expect(output).not.toContain("[Connect GitHub]");
-      expect(output).not.toContain("[Authorize GitHub]");
-    });
-
-    it("should report connector not connected with a single authorize URL that covers both connect and authorize", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: [] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("not connected");
-      // When agentId is present, the /authorize page performs the OAuth connect
-      // before granting permission — so show only that link (see issue #9589).
-      expect(output).toContain(
-        "[Authorize GitHub](https://app.vm0.ai/connectors/github/authorize?agentId=agent-abc-123)",
-      );
-      expect(output).not.toContain("[Connect GitHub]");
-      expect(output).toContain("needs to be connected and authorized");
-    });
-
-    it("should report connector authorized but not connected with a connect URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("not connected");
-      expect(output).toContain(
-        "The GitHub connector is authorized for this agent, but it is not connected.",
-      );
-      expect(output).toContain(
-        "[Connect GitHub](https://app.vm0.ai/connectors/github/connect?agentId=agent-abc-123)",
-      );
-      expect(output).not.toContain("[Authorize GitHub]");
-    });
-
-    it("should report connector expired with reconnect URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            connectionStatus: "reconnect-required",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("expired");
-      expect(output).toContain("needs to be reconnected");
-      expect(output).toContain(
-        "[Reconnect GitHub](https://app.vm0.ai/connectors)",
-      );
-    });
-
-    it("should report connector not authorized with authorize URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["slack"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("not authorized");
-      expect(output).toContain(
-        "[Authorize GitHub](https://app.vm0.ai/connectors/github/authorize?agentId=agent-abc-123)",
-      );
-    });
-
-    it("should report connector connected and active when healthy", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("connected and active");
-      expect(output).toContain("authorized for this agent");
-    });
-
-    it("should use agent authorization inside workflow-triggered runs", async () => {
-      const workflowId = "11111111-1111-4111-8111-111111111111";
-      const triggerId = "22222222-2222-4222-8222-222222222222";
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_WORKFLOW_ID", workflowId);
-      vi.stubEnv("ZERO_WORKFLOW_TRIGGER_ID", triggerId);
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: [] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [],
-            networkPolicies: null,
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-        "--check-permission",
-        "contents:read",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("Agent authorization");
-      expect(output).toContain(
-        "The GitHub connector is not authorized for this agent (agent-abc-123).",
-      );
-      expect(output).toContain(
-        "/connectors/github/authorize?agentId=agent-abc-123",
-      );
-      expect(output).not.toContain(`/workflows/${workflowId}/permissions?`);
-      expect(output).not.toContain(`triggerId=${triggerId}`);
-      expect(output).toContain("Check the agent authorization settings");
-      expect(output).not.toContain("fully permissive");
-    });
-  });
-
-  describe("step 2c: registered base URLs", () => {
-    it("should list configured domains from run context", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("https://api.github.com");
-      expect(output).toContain("https://uploads.github.com");
-      expect(output).toContain(
-        "configured for this run with the following base URLs:",
-      );
-    });
-
-    it("should report no firewall entry when connector not in run", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({ ...runContextResponse, firewalls: [] });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("No configuration found");
-    });
-  });
-
-  describe("step 3: permission policy check", () => {
-    it("should report permission in allow list", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-        "--check-permission",
-        "contents:read",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("Step 3: Permission policy check");
-      expect(output).toContain('"contents:read" is in the allow list');
-    });
-
-    it("should report permission in deny list", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-        "--check-permission",
-        "admin",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain('"admin" is in the deny list');
-    });
-
-    it("should report permission in ask list", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-        "--check-permission",
-        "actions:write",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("ask list:   [actions:write]");
-      expect(output).toContain('"actions:write" is in the ask list');
-      expect(output).toContain("blocked until approval");
-    });
-
-    it("should report unmatched permission as allowed by permission policy", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-        "--check-permission",
-        "some-unknown-perm",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        '"some-unknown-perm" is not in the deny or ask list',
-      );
-      expect(output).toContain(
-        "the unknown endpoint policy only applies when no named permission matches a request",
-      );
-    });
-  });
-
-  describe("URL transformation", () => {
-    it("should transform www.vm0.ai to app.vm0.ai", async () => {
-      vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-1");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://www.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.get(
-          "https://www.vm0.ai/api/zero/agents/agent-1/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: [] });
-          },
-        ),
-        http.get("https://www.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "https://app.vm0.ai/connectors/github/authorize?agentId=agent-1",
-      );
-    });
-  });
-
-  describe("unknown environment name", () => {
-    it("should exit with error for unrecognized environment name", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--env-name",
-          "UNKNOWN_FOO_TOKEN",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Unknown environment name: UNKNOWN_FOO_TOKEN"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should not accept stored connector secret names as environment names", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--env-name",
-          "GITHUB_ACCESS_TOKEN",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Unknown environment name: GITHUB_ACCESS_TOKEN",
-        ),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-  });
-
-  describe("option validation", () => {
-    it("should require an environment name or URL", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync(["node", "cli"]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Either --env-name or --url is required"),
-      );
-    });
-
-    it("should reject --connector without --url", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--env-name",
-          "GH_TOKEN",
-          "--connector",
-          "github",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--connector can only be used with --url"),
-      );
-    });
-
-    it("should reject an explicitly empty --connector without --url", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--env-name",
-          "GH_TOKEN",
-          "--connector",
-          "",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--connector can only be used with --url"),
-      );
-    });
-
-    it("should reject --check-permission with --url", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.github.com/repos/owner/repo",
-          "--check-permission",
-          "contents:read",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--check-permission cannot be used with --url"),
-      );
-    });
-
-    it("should reject an explicitly empty --check-permission with --url", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.github.com/repos/owner/repo",
-          "--check-permission",
-          "",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--check-permission cannot be used with --url"),
-      );
-    });
-
-    it("should reject an empty --check-permission in environment mode", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--env-name",
-          "GH_TOKEN",
-          "--check-permission",
-          " ",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "--check-permission requires a non-empty permission name",
-        ),
-      );
-    });
-
-    it("should not ignore an explicitly empty --url", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--env-name",
-          "GH_TOKEN",
-          "--url",
-          "",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for provided URL"),
-      );
-      expect(getOutput()).not.toContain("GH_TOKEN is managed by");
-    });
-
-    it("should reject an explicit --method without --url", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--env-name",
-          "GH_TOKEN",
-          "--method",
-          "POST",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("--method can only be used with --url"),
-      );
-    });
-
-    it("should reject unknown connector types without prototype matches", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.github.com/repos/owner/repo",
-          "--connector",
-          "constructor",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Unknown connector type: constructor"),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("zero connector search 'constructor'"),
-      );
-    });
-  });
-
-  describe("re-diagnose hint", () => {
-    it("should include re-diagnose hint with check-connector syntax", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "zero doctor check-connector --env-name 'GH_TOKEN'",
-      );
-    });
-
-    it("should include --check-permission in re-diagnose hint when used", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-        "--check-permission",
-        "contents:read",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "zero doctor check-connector --env-name 'GH_TOKEN' --check-permission 'contents:read'",
-      );
-    });
-  });
-
-  describe("--url mode", () => {
-    function stubConnectedUrlConnector(type: string, authMethod: string): void {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      server.use(
-        stubAvailableConnectors([type]),
-        http.get(`https://app.vm0.ai/api/zero/connectors/${type}`, () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type,
-            authMethod,
-          });
-        }),
-      );
-    }
-
-    it("should report ambiguous generated routes with explicit selection commands", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.accounts.nintendo.com/2.0.0/users/me?code=secret#private",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Multiple connectors match GET https://api.accounts.nintendo.com/2.0.0/users/me",
-        ),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "nintendo-store, nintendo-switch-parental-controls",
-        ),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "--connector 'nintendo-switch-parental-controls'",
-        ),
-      );
-      expect(mockConsoleError).not.toHaveBeenCalledWith(
-        expect.stringContaining("code=secret"),
-      );
-    });
-
-    it.each([
-      {
-        order: ["nintendo-store", "nintendo-switch-parental-controls"],
-        selected: "nintendo-store",
-        environmentName: "NINTENDO_STORE_TOKEN",
-      },
-      {
-        order: ["nintendo-switch-parental-controls", "nintendo-store"],
-        selected: "nintendo-store",
-        environmentName: "NINTENDO_STORE_TOKEN",
-      },
-      {
-        order: ["nintendo-store", "nintendo-switch-parental-controls"],
-        selected: "nintendo-switch-parental-controls",
-        environmentName: "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
-      },
-      {
-        order: ["nintendo-switch-parental-controls", "nintendo-store"],
-        selected: "nintendo-switch-parental-controls",
-        environmentName: "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
-      },
-    ])(
-      "should select $selected from compact run firewalls in either order",
-      async ({ order, selected, environmentName }) => {
-        vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-        vi.stubEnv("VM0_TOKEN", "test-token");
-        vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-        server.use(
-          stubAvailableConnectors([selected]),
-          http.get(`https://app.vm0.ai/api/zero/connectors/${selected}`, () => {
-            return HttpResponse.json({
-              ...connectedResponse,
-              type: selected,
-              authMethod: "api",
-            });
+  function getErrorOutput(): string {
+    return mockConsoleError.mock.calls.flat().join("\n");
+  }
+
+  async function expectCommandFailure(args: string[]): Promise<void> {
+    await expect(
+      checkConnectorCommand.parseAsync(["node", "cli", ...args]),
+    ).rejects.toThrow("process.exit called");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  }
+
+  describe("request construction and local validation", () => {
+    it("sends a sanitized URL request and preserves every selector in the re-diagnosis hint", async () => {
+      let capturedBody: unknown;
+      stubDiagnostic(
+        resolvedUrl({
+          connector: connectorIdentity({
+            connectorRef: "server-only",
+            label: "Server Only",
           }),
-          http.get(
-            "https://app.vm0.ai/api/zero/runs/run-abc-123/context",
-            () => {
-              return HttpResponse.json({
-                ...runContextResponse,
-                firewalls: order.map((name) => {
-                  return { kind: "builtin", name };
-                }),
-                networkPolicies: null,
-              });
-            },
-          ),
-        );
-
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.accounts.nintendo.com/2.0.0/users/me",
-          "--connector",
-          selected,
-        ]);
-
-        const output = getOutput();
-        expect(output).toContain(`type: ${selected}`);
-        expect(output).toContain(`Environment names: [${environmentName}]`);
-      },
-    );
-
-    it("should reject an unsafe shared route before connector diagnosis", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              { kind: "builtin", name: "nintendo-store" },
-              {
-                kind: "builtin",
-                name: "nintendo-switch-parental-controls",
-              },
-            ],
-            networkPolicies: null,
-          });
+          environmentNames: ["SERVER_ONLY_TOKEN"],
+          method: "POST",
+          base: "https://service.example.com/api",
+          relativePath: "/items",
         }),
+        (body) => {
+          capturedBody = body;
+        },
       );
-
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.accounts.nintendo.com/2.0.0/users/%2e%2e/me",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("request path contains unsafe syntax"),
-      );
-      expect(getOutput()).not.toContain("Step 2: Connector configuration");
-    });
-
-    it("should report Railway base-only ownership ambiguity", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://backboard.railway.com/graphql/v2",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("railway, railway-project"),
-      );
-    });
-
-    it.each([
-      ["railway", "RAILWAY_TOKEN"],
-      ["railway-project", "RAILWAY_PROJECT_TOKEN"],
-    ])(
-      "should select the %s base-only owner",
-      async (selected, environmentName) => {
-        stubConnectedUrlConnector(selected, "api-token");
-
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://backboard.railway.com/graphql/v2",
-          "--connector",
-          selected,
-        ]);
-
-        const output = getOutput();
-        expect(output).toContain(`type: ${selected}`);
-        expect(output).toContain(`Environment names: [${environmentName}]`);
-      },
-    );
-
-    it("should select an ambiguous connector and derive its route environment", async () => {
-      stubConnectedUrlConnector("nintendo-switch-parental-controls", "api");
-      vi.stubEnv(
-        "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
-        "placeholder",
-      );
+      stubResolvedDependencies("server-only");
 
       await checkConnectorCommand.parseAsync([
         "node",
         "cli",
         "--url",
-        "https://api.accounts.nintendo.com/2.0.0/users/me",
+        "https://service.example.com/api/items?access_token=secret#private",
         "--connector",
-        "nintendo-switch-parental-controls",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "matches the Nintendo Switch Parental Controls connector",
-      );
-      expect(output).toContain(
-        "Environment names: [NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN]",
-      );
-      expect(output).toContain(
-        "Checking process.env.NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN: present",
-      );
-      expect(output).toContain(
-        "--connector 'nintendo-switch-parental-controls'",
-      );
-    });
-
-    it("should derive every environment name used by a unique API route", async () => {
-      stubConnectedUrlConnector("nintendo-switch-parental-controls", "api");
-      vi.stubEnv("NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE", "en-US");
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://app.lp1.znma.srv.nintendo.net/v3/actions/user/fetchOwnedDevices",
-        "--connector",
-        "nintendo-switch-parental-controls",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "Environment names: [NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE, NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID, NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN]",
-      );
-      expect(output).toContain(
-        "Checking process.env.NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE: present",
-      );
-      expect(output).toContain(
-        "These values may be non-secret connector settings or credential placeholders",
-      );
-      expect(output).toContain(
-        "Matched permissions: [nintendo-switch-parental-controls-device-credentials-read]",
-      );
-    });
-
-    it("should derive environment names from the winning API within one connector", async () => {
-      stubConnectedUrlConnector("cloudflare", "api-token");
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://api.cloudflare.com/client/v4/pages/assets/upload",
-        "--method",
-        "POST",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the Cloudflare connector");
-      expect(output).toContain("Environment names: []");
-      expect(output).toContain(
-        "The matched API route does not use a sandbox environment name.",
-      );
-      expect(output).toContain("Matched permissions: [page.write]");
-      expect(output).not.toContain("diagnostic-api-");
-    });
-
-    it("should not guess inline environment metadata for conflicting same-base APIs", async () => {
-      stubConnectedUrlConnector("cloudflare", "api-token");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "cloudflare",
-                apis: [
-                  {
-                    base: "https://api.cloudflare.com/client",
-                    permissions: [
-                      {
-                        name: "page.write",
-                        rules: ["POST /v4/pages/assets/upload"],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            networkPolicies: {
-              cloudflare: {
-                allow: ["page.write"],
-                deny: [],
-                ask: [],
-                unknownPolicy: "deny" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://api.cloudflare.com/client/v4/pages/assets/upload",
-        "--method",
-        "POST",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("Environment names: unavailable");
-      expect(output).toContain(
-        "Environment metadata is unavailable for this run's sanitized firewall entry",
-      );
-      expect(output).toContain("Matched permissions: [page.write]");
-    });
-
-    it("should reject an explicit connector that does not own a unique route", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://app.lp1.znma.srv.nintendo.net/v3/actions/user/fetchOwnedDevices",
-          "--connector",
-          "nintendo-store",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Connector nintendo-store does not own GET https://app.lp1.znma.srv.nintendo.net/v3/actions/user/fetchOwnedDevices",
-        ),
-      );
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "the matching connector is nintendo-switch-parental-controls",
-        ),
-      );
-    });
-
-    it("should reject a base-only selector when another owner has the winning route", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "slack",
-                apis: [
-                  {
-                    base: "https://api.github.com",
-                    permissions: [],
-                  },
-                ],
-              },
-              {
-                name: "github",
-                apis: [
-                  {
-                    base: "https://api.github.com",
-                    permissions: [
-                      {
-                        name: "repository.read",
-                        rules: ["GET /repos/{owner}/{repo}"],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            networkPolicies: null,
-          });
-        }),
-      );
-
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.github.com/repos/owner/repo",
-          "--connector",
-          "slack",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("the matching connector is github"),
-      );
-    });
-
-    it("should reject a connector-owned environment from a different API route", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.accounts.nintendo.com/2.0.0/users/me",
-          "--connector",
-          "nintendo-switch-parental-controls",
-          "--env-name",
-          "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN is not used by the matched API route",
-        ),
-      );
-    });
-
-    it.each(["UNKNOWN_ROUTE_TOKEN", "SLACK_TOKEN"])(
-      "should reject URL environment selection %s outside the selected connector",
-      async (environmentName) => {
-        await expect(async () => {
-          await checkConnectorCommand.parseAsync([
-            "node",
-            "cli",
-            "--url",
-            "https://api.github.com/repos/owner/repo",
-            "--env-name",
-            environmentName,
-          ]);
-        }).rejects.toThrow("process.exit called");
-
-        expect(mockConsoleError).toHaveBeenCalledWith(
-          expect.stringContaining(
-            `${environmentName} is not an environment name for the GitHub connector`,
-          ),
-        );
-      },
-    );
-
-    it("should not fall back to generated routes when a run context exists", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [{ kind: "builtin", name: "unknown-connector" }],
-            networkPolicies: null,
-          });
-        }),
-      );
-
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://api.github.com/repos/owner/repo",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("no firewall in the current run matches"),
-      );
-    });
-
-    it("should report unavailable environment metadata for an unmatched inline API", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["github"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "github",
-                apis: [
-                  {
-                    base: "https://legacy-github.example.com",
-                    permissions: [
-                      {
-                        name: "repository.read",
-                        rules: ["GET /repos/{owner}/{repo}"],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            networkPolicies: {
-              github: {
-                allow: ["repository.read"],
-                deny: [],
-                ask: [],
-                unknownPolicy: "deny" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://legacy-github.example.com/repos/owner/repo",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("Environment names: unavailable");
-      expect(output).toContain(
-        "Environment metadata is unavailable for this run's sanitized firewall entry",
-      );
-      expect(output).not.toContain("Checking process.env.GH_TOKEN");
-      expect(output).not.toContain("Checking process.env.GITHUB_TOKEN");
-      expect(output).toContain("Matched permissions: [repository.read]");
-    });
-
-    it("should resolve connector from URL and run full diagnostic", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://api.github.com/repos/owner/repo",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the GitHub connector");
-      expect(output).toContain("Matched base URL: https://api.github.com");
-      expect(output).toContain("Relative path:    /repos/owner/repo");
-      expect(output).toContain("Environment names: [GITHUB_TOKEN]");
-      expect(output).toContain("Step 1: Sandbox environment name");
-      expect(output).toContain("Step 2: Connector configuration");
-      expect(output).toContain(
-        "Step 3: Permission policy check (auto-detected from URL)",
-      );
-      expect(output).toContain(
-        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo'",
-      );
-    });
-
-    it("should accept a sibling environment alias for the matched route", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      vi.stubEnv("GH_TOKEN", "placeholder");
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://api.github.com/repos/owner/repo",
+        "server-only",
         "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("Environment names: [GH_TOKEN]");
-      expect(output).toContain("Checking process.env.GH_TOKEN: present");
-      expect(output).toContain("--env-name 'GH_TOKEN'");
-    });
-
-    it("should resolve compact built-in run context firewalls", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [{ kind: "builtin", name: "github" }],
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://api.github.com/repos/owner/repo",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the GitHub connector");
-      expect(output).toContain("Matched base URL: https://api.github.com");
-      expect(output).toContain("Relative path:    /repos/owner/repo");
-      expect(output).toContain(
-        "The GitHub connector is configured for this run with the following base URLs:",
-      );
-      expect(output).toContain("  - https://api.github.com");
-    });
-
-    it("should resolve compact built-in run context firewalls with base URL vars", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      vi.stubEnv("ZENDESK_API_TOKEN", "zk-placeholder");
-      server.use(
-        stubAvailableConnectors(["zendesk"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/zendesk", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "zendesk",
-            authMethod: "api-token",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["zendesk"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                kind: "builtin",
-                name: "zendesk",
-                baseUrlVars: { ZENDESK_SUBDOMAIN: "acme" },
-              },
-            ],
-            networkPolicies: {
-              zendesk: {
-                allow: [],
-                deny: [],
-                ask: [],
-                unknownPolicy: "allow" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://acme.zendesk.com/api/v2/tickets.json",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the Zendesk connector");
-      expect(output).toContain("Matched base URL: https://acme.zendesk.com");
-      expect(output).toContain("Relative path:    /api/v2/tickets.json");
-      expect(output).toContain("  - https://acme.zendesk.com");
-    });
-
-    it("should keep resolved run context bases for connectors without permission routes", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["altium-365"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/altium-365", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "altium-365",
-            authMethod: "api-token",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["altium-365"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                kind: "builtin",
-                name: "altium-365",
-                baseUrlVars: {
-                  ALTIUM365_WORKSPACE_URL: "https://acme.365.altium.com",
-                },
-              },
-            ],
-            networkPolicies: {
-              "altium-365": {
-                allow: [],
-                deny: [],
-                ask: [],
-                unknownPolicy: "deny" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://acme.365.altium.com/api/v1/projects",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the Altium 365 connector");
-      expect(output).toContain("Matched base URL: https://acme.365.altium.com");
-      expect(output).toContain("Relative path:    /api/v1/projects");
-      expect(output).toContain(
-        "No named permission matches GET /api/v1/projects. This request falls through to the unknown-endpoint policy.",
-      );
-      expect(output).toContain(
-        "Result: No permission matched. The unknown endpoint policy applies: deny.",
-      );
-    });
-
-    it("should reject compact built-in run context base URL vars outside host policy", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                kind: "builtin",
-                name: "jira",
-                baseUrlVars: { JIRA_DOMAIN: "attacker.example" },
-              },
-            ],
-            networkPolicies: {
-              jira: {
-                allow: [],
-                deny: [],
-                ask: [],
-                unknownPolicy: "allow" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://attacker.example/rest/api/3/project",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("host policy does not allow resolved host"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should strip query and match permissions only on the resolved API base", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["xero"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/xero", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "xero",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["xero"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                kind: "builtin",
-                name: "xero",
-              },
-            ],
-            networkPolicies: {
-              xero: {
-                allow: ["accounting.settings", "accounting.settings.read"],
-                deny: ["connections"],
-                ask: [],
-                unknownPolicy: "deny" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://API.XERO.COM.:443/api.xro/2.0/Accounts?token=secret-token#ignored",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the Xero connector");
-      expect(output).toContain(
-        "Matched base URL: https://api.xero.com/api.xro/2.0",
-      );
-      expect(output).toContain("Relative path:    /Accounts");
-      expect(output).toContain(
-        "Matched permissions: [accounting.settings.read]",
-      );
-      expect(output).not.toContain("Matched permissions: [connections");
-      expect(output).not.toContain("secret-token");
-      expect(output).not.toContain("token=");
-      expect(output).not.toContain("#ignored");
-    });
-
-    it("should shell-quote sanitized URL in re-diagnose hint", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://api.github.com/repos/owner/repo'$(touch-pwn)?token=secret-token#ignored",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo'\\''$(touch-pwn)'",
-      );
-      expect(output).not.toContain("secret-token");
-      expect(output).not.toContain("token=");
-      expect(output).not.toContain("#ignored");
-    });
-
-    it("should not resolve connector base paths without a segment boundary", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://slack.com/apix/chat.postMessage",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for provided URL"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should resolve parameterized connector base URLs", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "github",
-                apis: [
-                  {
-                    base: "https://raw.githubusercontent.com/{owner}/{repo}",
-                    permissions: [],
-                  },
-                ],
-              },
-            ],
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://raw.githubusercontent.com/owner/repo/main/README.md",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the GitHub connector");
-      expect(output).toContain(
-        "Matched base URL: https://raw.githubusercontent.com/{owner}/{repo}",
-      );
-      expect(output).toContain("Relative path:    /main/README.md");
-    });
-
-    it("should resolve parameterized connector host base URLs", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["alchemy"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/alchemy", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "alchemy",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["alchemy"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "alchemy",
-                apis: [
-                  {
-                    base: "https://{network}.g.alchemy.com",
-                    permissions: [],
-                  },
-                ],
-              },
-            ],
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://ETH.G.ALCHEMY.COM/v2/demo",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the Alchemy connector");
-      expect(output).toContain(
-        "Matched base URL: https://{network}.g.alchemy.com",
-      );
-      expect(output).toContain("Relative path:    /v2/demo");
-    });
-
-    it("should prefer static connector base URLs over wildcard host bases", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["alchemy"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/alchemy", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "alchemy",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["alchemy"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "alchemy",
-                apis: [
-                  {
-                    base: "https://{network}.g.alchemy.com",
-                    permissions: [],
-                  },
-                  {
-                    base: "https://api.g.alchemy.com",
-                    permissions: [],
-                  },
-                ],
-              },
-            ],
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://api.g.alchemy.com/v2/demo",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the Alchemy connector");
-      expect(output).toContain("Matched base URL: https://api.g.alchemy.com");
-      expect(output).toContain("Relative path:    /v2/demo");
-    });
-
-    it("should match permissions after parameterized connector base URLs", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["test-oauth"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "test-oauth",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "test-oauth",
-                apis: [
-                  {
-                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
-                    permissions: [
-                      {
-                        name: "echo",
-                        description:
-                          "Test echo endpoint used to verify token injection",
-                        rules: ["GET /echo"],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            networkPolicies: {
-              "test-oauth": {
-                allow: ["echo"],
-                deny: [],
-                ask: [],
-                unknownPolicy: "deny" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/echo?debug=1#fragment",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("matches the Test OAuth (internal) connector");
-      expect(output).toContain(
-        "Matched base URL: https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
-      );
-      expect(output).toContain("Relative path:    /echo");
-      expect(output).toContain("Matched permissions: [echo]");
-      expect(output).toContain('Result: "echo" is in the allow list');
-    });
-
-    it("should suggest an unknown endpoint permission request for unmatched denied URLs", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["test-oauth"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "test-oauth",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "test-oauth",
-                apis: [
-                  {
-                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
-                    permissions: [
-                      {
-                        name: "echo",
-                        description:
-                          "Test echo endpoint used to verify token injection",
-                        rules: ["GET /echo"],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            networkPolicies: {
-              "test-oauth": {
-                allow: ["echo"],
-                deny: [],
-                ask: [],
-                unknownPolicy: "deny" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/unknown",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "No named permission matches GET /unknown. This request falls through to the unknown-endpoint policy.",
-      );
-      expect(output).toContain(
-        "Result: No permission matched. The unknown endpoint policy applies: deny.",
-      );
-      expect(output).toContain(
-        "zero doctor permission-change test-oauth --permission __unknown__ --enable --duration 1h",
-      );
-    });
-
-    it("should allow matched permissions that are not denied or asked", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["test-oauth"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "test-oauth",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "test-oauth",
-                apis: [
-                  {
-                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
-                    permissions: [
-                      {
-                        name: "echo",
-                        description:
-                          "Test echo endpoint used to verify token injection",
-                        rules: ["GET /echo"],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            networkPolicies: {
-              "test-oauth": {
-                allow: [],
-                deny: [],
-                ask: [],
-                unknownPolicy: "deny" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/echo",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain("Matched permissions: [echo]");
-      expect(output).toContain(
-        'Result: "echo" is not blocked by the deny or ask list',
-      );
-      expect(output).not.toContain("unknown endpoint policy applies: deny");
-    });
-
-    it("should not describe unsafe paths as unknown endpoints", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        stubAvailableConnectors(["test-oauth"]),
-        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
-          return HttpResponse.json({
-            ...connectedResponse,
-            type: "test-oauth",
-          });
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json({
-            ...runContextResponse,
-            firewalls: [
-              {
-                name: "test-oauth",
-                apis: [
-                  {
-                    base: "https://tenant-123.{pr}.vm6.ai/api/test/oauth-provider",
-                    permissions: [
-                      {
-                        name: "full",
-                        rules: ["ANY /{path+}"],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-            networkPolicies: {
-              "test-oauth": {
-                allow: ["full"],
-                deny: [],
-                ask: [],
-                unknownPolicy: "allow" as const,
-              },
-            },
-          });
-        }),
-      );
-
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/users/%2e%2e/admin",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("request path contains unsafe syntax"),
-      );
-      expect(getOutput()).not.toContain("Step 2: Connector configuration");
-    });
-
-    it("should fail for unrecognized URL", async () => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync([
-          "node",
-          "cli",
-          "--url",
-          "https://unknown-service.example.com/path",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for provided URL"),
-      );
-    });
-
-    it.each([
-      ["userinfo", "https://user:pass@api.github.com/repos/owner/repo"],
-      ["raw whitespace", "https://api.github.com/foo bar"],
-      ["authority backslash", "https://api.github.com\\repos/owner/repo"],
-      ["empty host label", "https://.g.alchemy.com/v2"],
-      ["raw host braces", "https://{eth}.g.alchemy.com/v2/demo"],
-      ["raw host comma", "https://eth,mainnet.g.alchemy.com/v2/demo"],
-      [
-        "non-default port without a matching connector base",
-        "https://api.github.com:8443/repos/owner/repo",
-      ],
-      [
-        "invalid authority percent escape",
-        "https://api%zz.github.com/repos/owner/repo",
-      ],
-      [
-        "percent-encoded host comma",
-        "https://eth%2Cmainnet.g.alchemy.com/v2/demo",
-      ],
-      [
-        "percent-encoded host braces",
-        "https://%7Beth%7D.g.alchemy.com/v2/demo",
-      ],
-      [
-        "percent-encoded authority colon",
-        "https://api.github.com%3A443/repos/owner/repo",
-      ],
-      [
-        "percent-encoded authority dot",
-        "https://api%2egithub.com/repos/owner/repo",
-      ],
-      [
-        "multiple trailing host dots",
-        "https://api.github.com../repos/owner/repo",
-      ],
-    ])("should fail for URL with %s", async (_label, url) => {
-      await expect(async () => {
-        await checkConnectorCommand.parseAsync(["node", "cli", "--url", url]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("No connector found for provided URL"),
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should include --method in re-diagnose hint when not GET", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
-          return HttpResponse.json(connectedResponse);
-        }),
-        http.get(
-          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
-        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
-          return HttpResponse.json(runContextResponse);
-        }),
-      );
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://api.github.com/repos/owner/repo",
-        "--method",
-        "POST",
-      ]);
-
-      const output = getOutput();
-      expect(output).toContain(
-        "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo' --method 'POST'",
-      );
-    });
-
-    it("should preserve every URL selector while redacting query and fragment", async () => {
-      stubConnectedUrlConnector("nintendo-switch-parental-controls", "api");
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://app.lp1.znma.srv.nintendo.net/v3/actions/device/updateDeviceLabel?access_token=secret#private",
-        "--connector",
-        "nintendo-switch-parental-controls",
-        "--env-name",
-        "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN",
+        "SERVER_ONLY_TOKEN",
         "--method",
         "post",
       ]);
 
+      expect(capturedBody).toStrictEqual({
+        mode: "url",
+        method: "POST",
+        url: "https://service.example.com/api/items",
+        connectorRef: "server-only",
+        environmentName: "SERVER_ONLY_TOKEN",
+      } satisfies ConnectorCheckRequest);
+      expect(getOutput()).toContain(
+        "URL https://service.example.com/api/items matches the Server Only connector",
+      );
+      expect(getOutput()).toContain(
+        "zero doctor check-connector --url 'https://service.example.com/api/items' --connector 'server-only' --env-name 'SERVER_ONLY_TOKEN' --method 'POST'",
+      );
+      expect(getOutput()).not.toContain("access_token=secret");
+      expect(getOutput()).not.toContain("#private");
+      expect(getErrorOutput()).not.toContain("access_token=secret");
+    });
+
+    it("rejects URL userinfo before transport or output", async () => {
+      let diagnosticRequested = false;
+      server.use(
+        http.post(diagnosticEndpoint(), () => {
+          diagnosticRequested = true;
+          return HttpResponse.json(resolvedUrl());
+        }),
+      );
+
+      await expectCommandFailure([
+        "--url",
+        "https://sensitive-user:sensitive-password@api.github.com/repos/vm0-ai/vm0",
+      ]);
+
+      expect(diagnosticRequested).toBe(false);
+      expect(getErrorOutput()).toContain(
+        "requires --url to be a valid absolute http or https URL",
+      );
+      expect(getOutput()).not.toContain("sensitive-user");
+      expect(getOutput()).not.toContain("sensitive-password");
+      expect(getErrorOutput()).not.toContain("sensitive-user");
+      expect(getErrorOutput()).not.toContain("sensitive-password");
+    });
+
+    it("sends an environment request with the explicit permission", async () => {
+      let capturedBody: unknown;
+      stubDiagnostic(
+        resolvedEnvironment({
+          permission: { outcome: "deny", basis: "deny-list" },
+        }),
+        (body) => {
+          capturedBody = body;
+        },
+      );
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+        "--check-permission",
+        "contents:write",
+      ]);
+
+      expect(capturedBody).toStrictEqual({
+        mode: "environment",
+        environmentName: "GH_TOKEN",
+        permission: "contents:write",
+      } satisfies ConnectorCheckRequest);
+      expect(getOutput()).toContain(
+        'Checking permission: "contents:write" for the GitHub connector.',
+      );
+      expect(getOutput()).toContain(
+        'Result: "contents:write" is in the deny list — denied.',
+      );
+    });
+
+    it.each([
+      {
+        name: "requires one input mode",
+        args: [],
+        expected: "Either --env-name or --url is required",
+      },
+      {
+        name: "rejects connector without URL",
+        args: ["--env-name", "GH_TOKEN", "--connector", "github"],
+        expected: "--connector can only be used with --url",
+      },
+      {
+        name: "rejects permission with URL",
+        args: [
+          "--url",
+          "https://api.github.com/repos/vm0-ai/vm0",
+          "--check-permission",
+          "contents:read",
+        ],
+        expected: "--check-permission cannot be used with --url",
+      },
+      {
+        name: "rejects an empty permission",
+        args: ["--env-name", "GH_TOKEN", "--check-permission", ""],
+        expected: "--check-permission requires a non-empty permission name",
+      },
+      {
+        name: "rejects method without URL",
+        args: ["--env-name", "GH_TOKEN", "--method", "POST"],
+        expected: "--method can only be used with --url",
+      },
+    ])("$name", async ({ args, expected }) => {
+      await expectCommandFailure(args);
+      expect(getErrorOutput()).toContain(expected);
+      expect(getOutput()).not.toContain("Step 1");
+    });
+  });
+
+  describe("resolved identities and local responsibilities", () => {
+    it("uses a server-only connector ref for local presence, connection, and authorization checks", async () => {
+      const serverOnlyIdentity = connectorIdentity({
+        connectorRef: "server-only",
+        label: "Server Only Connector",
+      });
+      let connectorCalls = 0;
+      let authorizationCalls = 0;
+      vi.stubEnv("SERVER_ONLY_TOKEN", "placeholder-not-a-secret");
+      stubDiagnostic(
+        resolvedEnvironment({
+          connector: serverOnlyIdentity,
+          environmentName: "SERVER_ONLY_TOKEN",
+          run: {
+            status: "configured",
+            bases: [
+              "https://one.server-only.example.com",
+              "https://two.server-only.example.com",
+            ],
+          },
+        }),
+      );
+      stubConnector("server-only", connectorResponse("server-only"), () => {
+        connectorCalls += 1;
+      });
+      stubAgentConnectors(["server-only"], () => {
+        authorizationCalls += 1;
+      });
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "SERVER_ONLY_TOKEN",
+      ]);
+
       const output = getOutput();
       expect(output).toContain(
-        "zero doctor check-connector --url 'https://app.lp1.znma.srv.nintendo.net/v3/actions/device/updateDeviceLabel' --connector 'nintendo-switch-parental-controls' --env-name 'NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN' --method 'POST'",
+        "SERVER_ONLY_TOKEN is managed by the Server Only Connector connector (type: server-only).",
       );
-      expect(output).not.toContain("access_token=secret");
-      expect(output).not.toContain("#private");
+      expect(output).toContain(
+        "Checking process.env.SERVER_ONLY_TOKEN: present",
+      );
+      expect(output).toContain(
+        "The Server Only Connector connector is connected and active.",
+      );
+      expect(output).toContain(
+        "The Server Only Connector connector is authorized for this agent.",
+      );
+      expect(output).toContain("  - https://one.server-only.example.com");
+      expect(output).toContain("  - https://two.server-only.example.com");
+      expect(output).toContain(
+        "Credentials are resolved at the network boundary for requests matching these registered base URLs.",
+      );
+      expect(output).not.toContain("Credentials resolved from:");
+      expect(connectorCalls).toBe(1);
+      expect(authorizationCalls).toBe(1);
+    });
+
+    it("reports a missing local environment value without reading a bundled binding", async () => {
+      stubDiagnostic(resolvedEnvironment());
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      expect(getOutput()).toContain(
+        "Checking process.env.GH_TOKEN: not present",
+      );
+      expect(getOutput()).toContain(
+        "No value found for these environment names",
+      );
+    });
+
+    it.each([
+      {
+        name: "unavailable",
+        identity: connectorIdentity({ visibility: "unavailable" }),
+        connector: null,
+        enabledTypes: [] as string[],
+        expected: "not available for this account",
+      },
+      {
+        name: "disconnected but authorized",
+        identity: connectorIdentity(),
+        connector: null,
+        enabledTypes: ["github"],
+        expected: "authorized for this agent, but it is not connected",
+      },
+      {
+        name: "expired",
+        identity: connectorIdentity(),
+        connector: connectorResponse("github", "reconnect-required"),
+        enabledTypes: ["github"],
+        expected: "needs to be reconnected",
+      },
+      {
+        name: "connected but unauthorized",
+        identity: connectorIdentity(),
+        connector: connectorResponse("github"),
+        enabledTypes: [] as string[],
+        expected: "not authorized for this agent",
+      },
+    ])(
+      "renders $name connector state",
+      async ({ identity, connector, enabledTypes, expected }) => {
+        stubDiagnostic(resolvedEnvironment({ connector: identity }));
+        stubResolvedDependencies("github", { connector, enabledTypes });
+
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+        ]);
+
+        expect(getOutput()).toContain(expected);
+      },
+    );
+
+    it.each([
+      {
+        name: "production API",
+        baseUrl: "https://api.vm0.ai",
+        platformOrigin: "https://app.vm0.ai",
+      },
+      {
+        name: "legacy production web",
+        baseUrl: "https://www.vm0.ai",
+        platformOrigin: "https://app.vm0.ai",
+      },
+      {
+        name: "legacy production platform",
+        baseUrl: "https://platform.vm0.ai",
+        platformOrigin: "https://app.vm0.ai",
+      },
+      {
+        name: "canonical production app",
+        baseUrl: "https://app.vm0.ai",
+        platformOrigin: "https://app.vm0.ai",
+      },
+      {
+        name: "preview API",
+        baseUrl: "https://pr-123-api.vm6.ai",
+        platformOrigin: "https://pr-123-app.vm6.ai",
+      },
+      {
+        name: "legacy preview web",
+        baseUrl: "https://pr-123-www.vm6.ai",
+        platformOrigin: "https://pr-123-app.vm6.ai",
+      },
+      {
+        name: "canonical preview app",
+        baseUrl: "https://pr-123-app.vm6.ai",
+        platformOrigin: "https://pr-123-app.vm6.ai",
+      },
+      {
+        name: "tunnel API",
+        baseUrl: "https://tunnel-user-host-api.vm7.ai",
+        platformOrigin: "https://tunnel-user-host-app.vm7.ai",
+      },
+      {
+        name: "localhost with a port",
+        baseUrl: "http://localhost:4310",
+        platformOrigin: "http://localhost:4310",
+      },
+      {
+        name: "custom host",
+        baseUrl: "https://custom.example.com",
+        platformOrigin: "https://app.custom.example.com",
+      },
+    ])(
+      "maps $name links to the platform origin",
+      async ({ baseUrl, platformOrigin }) => {
+        vi.stubEnv("VM0_API_BACKEND_URL", baseUrl);
+        stubDiagnostic(resolvedEnvironment(), undefined, baseUrl);
+        stubResolvedDependencies("github", {
+          connector: null,
+          enabledTypes: [],
+          baseUrl,
+        });
+
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+        ]);
+
+        expect(getOutput()).toContain(
+          `[Authorize GitHub](${platformOrigin}/connectors/github/authorize?agentId=${AGENT_ID})`,
+        );
+      },
+    );
+
+    it.each([
+      {
+        name: "unavailable environment metadata",
+        environmentNames: null,
+        expected: "Environment metadata is unavailable",
+      },
+      {
+        name: "a route without environment names",
+        environmentNames: [] as string[],
+        expected: "does not use a sandbox environment name",
+      },
+    ])("renders $name", async ({ environmentNames, expected }) => {
+      stubDiagnostic(resolvedUrl({ environmentNames }));
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.github.com/repos/vm0-ai/vm0",
+      ]);
+
+      expect(getOutput()).toContain(expected);
+      expect(getOutput()).not.toContain("Checking process.env.GITHUB_TOKEN");
+    });
+  });
+
+  describe("run and credential behavior", () => {
+    it.each([
+      {
+        name: "not configured",
+        run: { status: "not-configured" as const },
+        expected: "No configuration found for the GitHub connector in this run",
+      },
+      {
+        name: "not scoped",
+        run: { status: "not-scoped" as const },
+        expected: "This diagnostic is not scoped to a run",
+      },
+    ])("renders a $name run", async ({ run, expected }) => {
+      stubDiagnostic(resolvedEnvironment({ run }));
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      expect(getOutput()).toContain(expected);
+    });
+
+    it("does not claim credential resolution when the server returns none", async () => {
+      stubDiagnostic(
+        resolvedEnvironment({
+          connector: connectorIdentity({ credentialResolution: "none" }),
+        }),
+      );
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      expect(getOutput()).not.toContain(
+        "Credentials are resolved at the network boundary for requests matching these registered base URLs.",
+      );
+    });
+
+    it("does not use a local dynamic-base value when the server reports it unresolved", async () => {
+      vi.stubEnv("REAP_API_BASE_URL", "https://local-only.example.com/v1");
+      stubDiagnostic({
+        outcome: "unresolved-dynamic-base",
+        connector: connectorIdentity({
+          connectorRef: "reap",
+          label: "Reap",
+        }),
+      });
+
+      await expectCommandFailure([
+        "--url",
+        "https://local-only.example.com/v1/users",
+        "--connector",
+        "reap",
+      ]);
+
+      expect(getErrorOutput()).toContain(
+        "No authoritative Reap base URL is available",
+      );
+      expect(getOutput()).not.toContain("Step 1");
+      expect(getOutput()).not.toContain("configured for this run");
+    });
+  });
+
+  describe("final policy rendering", () => {
+    interface NamedPolicyCase {
+      readonly name: string;
+      readonly policy: ConnectorCheckPolicy;
+      readonly expected: string;
+    }
+
+    const namedPolicyCases = [
+      {
+        name: "allow list",
+        policy: { outcome: "allow", basis: "allow-list" },
+        expected: '"contents:read" is in the allow list — allowed',
+      },
+      {
+        name: "not blocked",
+        policy: { outcome: "allow", basis: "not-blocked" },
+        expected: '"contents:read" is not blocked by the deny or ask list',
+      },
+      {
+        name: "no policy",
+        policy: { outcome: "allow", basis: "no-policy" },
+        expected: "No policy entry exists for this connector",
+      },
+      {
+        name: "unknown policy allow",
+        policy: { outcome: "allow", basis: "unknown-policy" },
+        expected: "server policy allows",
+      },
+      {
+        name: "deny list",
+        policy: { outcome: "deny", basis: "deny-list" },
+        expected: '"contents:read" is in the deny list — denied',
+      },
+      {
+        name: "unknown policy deny",
+        policy: { outcome: "deny", basis: "unknown-policy" },
+        expected: "unknown-endpoint policy denies",
+      },
+      {
+        name: "ask list",
+        policy: { outcome: "ask", basis: "ask-list" },
+        expected: '"contents:read" is in the ask list — blocked until approval',
+      },
+      {
+        name: "unknown policy ask",
+        policy: { outcome: "ask", basis: "unknown-policy" },
+        expected: "unknown-endpoint policy blocks",
+      },
+      {
+        name: "not run scoped",
+        policy: { outcome: "unavailable", basis: "not-run-scoped" },
+        expected: "not scoped to a run",
+      },
+      {
+        name: "policies unavailable",
+        policy: { outcome: "unavailable", basis: "policies-unavailable" },
+        expected: "Network policies are unavailable",
+      },
+      {
+        name: "connector not configured",
+        policy: {
+          outcome: "unavailable",
+          basis: "connector-not-configured",
+        },
+        expected: "connector is not configured for this run",
+      },
+    ] satisfies readonly NamedPolicyCase[];
+
+    it.each(namedPolicyCases)(
+      "renders the $name named-permission result without full policy lists",
+      async ({ policy, expected }) => {
+        stubDiagnostic(
+          resolvedEnvironment({
+            permission: policy,
+          }),
+        );
+        stubResolvedDependencies();
+
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+          "--check-permission",
+          "contents:read",
+        ]);
+
+        expect(getOutput()).toContain(expected);
+        expect(getOutput()).not.toContain("allow list: [");
+        expect(getOutput()).not.toContain("deny list:  [");
+        expect(getOutput()).not.toContain("ask list:   [");
+      },
+    );
+
+    it("renders multiple matched URL permissions from final server outcomes", async () => {
+      stubDiagnostic(
+        resolvedUrl({
+          permission: {
+            kind: "matched",
+            permissions: [
+              {
+                name: "contents:read",
+                policy: { outcome: "allow", basis: "allow-list" },
+              },
+              {
+                name: "metadata:read",
+                policy: { outcome: "ask", basis: "ask-list" },
+              },
+            ],
+          },
+        }),
+      );
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.github.com/repos/vm0-ai/vm0",
+      ]);
+
+      expect(getOutput()).toContain(
+        "Matched permissions: [contents:read, metadata:read]",
+      );
+      expect(getOutput()).toContain('"contents:read" is in the allow list');
+      expect(getOutput()).toContain('"metadata:read" is in the ask list');
+    });
+
+    interface UnknownPolicyCase {
+      readonly name: string;
+      readonly policy: ConnectorCheckPolicy;
+      readonly expected: string;
+      readonly expectsGuidance: boolean;
+    }
+
+    const unknownPolicyCases = [
+      {
+        name: "allow",
+        policy: { outcome: "allow", basis: "unknown-policy" },
+        expected: "unknown endpoint policy allows this request",
+        expectsGuidance: false,
+      },
+      {
+        name: "no policy",
+        policy: { outcome: "allow", basis: "no-policy" },
+        expected: "No policy entry exists for this connector",
+        expectsGuidance: false,
+      },
+      {
+        name: "deny",
+        policy: { outcome: "deny", basis: "unknown-policy" },
+        expected: "unknown endpoint policy denies this request",
+        expectsGuidance: true,
+      },
+      {
+        name: "ask",
+        policy: { outcome: "ask", basis: "unknown-policy" },
+        expected: "unknown endpoint policy requires approval",
+        expectsGuidance: true,
+      },
+      {
+        name: "unavailable",
+        policy: { outcome: "unavailable", basis: "policies-unavailable" },
+        expected: "Network policies are unavailable",
+        expectsGuidance: false,
+      },
+    ] satisfies readonly UnknownPolicyCase[];
+
+    it.each(unknownPolicyCases)(
+      "renders the $name unknown-endpoint result",
+      async ({ policy, expected, expectsGuidance }) => {
+        stubDiagnostic(
+          resolvedUrl({
+            permission: { kind: "unknown-endpoint", policy },
+          }),
+        );
+        stubResolvedDependencies();
+
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.github.com/not-a-known-endpoint",
+        ]);
+
+        expect(getOutput()).toContain("No named permission matches");
+        expect(getOutput()).toContain(expected);
+        if (expectsGuidance) {
+          expect(getOutput()).toContain(
+            "permission-change github --permission __unknown__ --enable --duration 1h",
+          );
+        } else {
+          expect(getOutput()).not.toContain("--permission __unknown__");
+        }
+      },
+    );
+  });
+
+  describe("explicit diagnostic outcomes", () => {
+    interface OutcomeCase {
+      readonly name: string;
+      readonly args: string[];
+      readonly result: ConnectorCheckDiagnosticResult;
+      readonly expected: string;
+    }
+
+    const outcomeCases = [
+      {
+        name: "invalid method",
+        args: [
+          "--url",
+          "https://api.github.com/repos/vm0-ai/vm0",
+          "--method",
+          "TRACE",
+        ],
+        result: { outcome: "unsafe-input", reason: "invalid-method" },
+        expected: "requires --method to be a supported HTTP method",
+      },
+      {
+        name: "invalid URL",
+        args: ["--url", "not-a-url"],
+        result: { outcome: "unsafe-input", reason: "invalid-url" },
+        expected: "requires --url to be a valid absolute http or https URL",
+      },
+      {
+        name: "unsafe path",
+        args: ["--url", "https://api.github.com/%2e%2e/private"],
+        result: { outcome: "unsafe-input", reason: "unsafe-path" },
+        expected: "cannot diagnose unsafe URL paths",
+      },
+      {
+        name: "unknown connector",
+        args: [
+          "--url",
+          "https://service.example.com/path",
+          "--connector",
+          "missing-connector",
+        ],
+        result: { outcome: "unknown-connector" },
+        expected: "Unknown connector type: missing-connector",
+      },
+      {
+        name: "unknown environment",
+        args: ["--env-name", "UNKNOWN_CONNECTOR_VALUE"],
+        result: { outcome: "unknown-environment" },
+        expected: "Unknown environment name: UNKNOWN_CONNECTOR_VALUE",
+      },
+      {
+        name: "catalog no match",
+        args: ["--url", "https://unknown.example.com/path"],
+        result: { outcome: "no-match", scope: "catalog" },
+        expected: "no registered connector base URL matches this URL",
+      },
+      {
+        name: "run no match",
+        args: ["--url", "https://unknown.example.com/path"],
+        result: { outcome: "no-match", scope: "run" },
+        expected:
+          "no connector configured for the current run matches this URL",
+      },
+      {
+        name: "connector mismatch",
+        args: [
+          "--url",
+          "https://api.github.com/repos/vm0-ai/vm0",
+          "--connector",
+          "slack",
+        ],
+        result: {
+          outcome: "connector-mismatch",
+          connector: connectorIdentity(),
+        },
+        expected: "the matching connector is github",
+      },
+      {
+        name: "environment not owned",
+        args: [
+          "--url",
+          "https://api.github.com/repos/vm0-ai/vm0",
+          "--env-name",
+          "SLACK_TOKEN",
+        ],
+        result: {
+          outcome: "environment-not-owned",
+          connector: connectorIdentity(),
+        },
+        expected:
+          "SLACK_TOKEN is not an environment name for the GitHub connector",
+      },
+      {
+        name: "environment not used",
+        args: [
+          "--url",
+          "https://api.github.com/repos/vm0-ai/vm0",
+          "--env-name",
+          "GH_TOKEN",
+        ],
+        result: {
+          outcome: "environment-not-used",
+          connector: connectorIdentity(),
+          environmentNames: ["GITHUB_TOKEN"],
+        },
+        expected: "Expected one of: GITHUB_TOKEN",
+      },
+      {
+        name: "unresolved dynamic base",
+        args: [
+          "--url",
+          "https://tenant.example.com/path",
+          "--connector",
+          "reap",
+        ],
+        result: {
+          outcome: "unresolved-dynamic-base",
+          connector: connectorIdentity({
+            connectorRef: "reap",
+            label: "Reap",
+          }),
+        },
+        expected: "No authoritative Reap base URL is available",
+      },
+      {
+        name: "run context unavailable",
+        args: ["--env-name", "GH_TOKEN"],
+        result: { outcome: "run-context-unavailable" },
+        expected: "current run context is unavailable",
+      },
+    ] satisfies readonly OutcomeCase[];
+
+    it.each(outcomeCases)(
+      "renders the $name outcome without starting resolved checks",
+      async ({ args, result, expected }) => {
+        stubDiagnostic(result);
+
+        await expectCommandFailure(args);
+
+        expect(getErrorOutput()).toContain(expected);
+        expect(getOutput()).not.toContain("Step 1");
+        expect(getOutput()).not.toContain("Step 2");
+      },
+    );
+
+    it("sorts ambiguous candidates and prints sanitized selection commands", async () => {
+      stubDiagnostic({
+        outcome: "ambiguous",
+        candidates: [
+          { connectorRef: "zeta", label: "Zeta" },
+          { connectorRef: "alpha", label: "Alpha" },
+        ],
+      });
+
+      await expectCommandFailure([
+        "--url",
+        "https://shared.example.com/path?secret=value#private",
+        "--method",
+        "post",
+      ]);
+
+      const error = getErrorOutput();
+      expect(error).toContain("alpha, zeta");
+      expect(error).toContain(
+        "--url 'https://shared.example.com/path' --connector 'alpha' --method 'POST'",
+      );
+      expect(error).toContain(
+        "--url 'https://shared.example.com/path' --connector 'zeta' --method 'POST'",
+      );
+      expect(error).not.toContain("secret=value");
+      expect(error).not.toContain("#private");
+    });
+  });
+
+  describe("endpoint and contract failures", () => {
+    it.each([
+      {
+        name: "missing endpoint",
+        status: 404,
+        body: { error: { message: "Route not found", code: "NOT_FOUND" } },
+        expected: "Route not found",
+      },
+      {
+        name: "authentication failure",
+        status: 401,
+        body: { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+        expected: "Authentication failed",
+      },
+      {
+        name: "authorization failure",
+        status: 403,
+        body: { error: { message: "Forbidden", code: "FORBIDDEN" } },
+        expected: "403: Forbidden",
+      },
+      {
+        name: "server failure",
+        status: 500,
+        body: { error: { message: "Server failed", code: "INTERNAL" } },
+        expected: "500: Server failed",
+      },
+    ])(
+      "surfaces $name with no fallback",
+      async ({ status, body, expected }) => {
+        let secondaryCalls = 0;
+        server.use(
+          http.post(diagnosticEndpoint(), () => {
+            return HttpResponse.json(body, { status });
+          }),
+        );
+        stubConnector("github", connectorResponse("github"), () => {
+          secondaryCalls += 1;
+        });
+        stubAgentConnectors(["github"], () => {
+          secondaryCalls += 1;
+        });
+
+        await expectCommandFailure(["--env-name", "GH_TOKEN"]);
+
+        expect(getErrorOutput()).toContain(expected);
+        expect(getOutput()).not.toContain("Step 1");
+        expect(secondaryCalls).toBe(0);
+      },
+    );
+
+    it("surfaces a network failure with no fallback", async () => {
+      server.use(
+        http.post(diagnosticEndpoint(), () => {
+          return HttpResponse.error();
+        }),
+      );
+
+      await expectCommandFailure(["--env-name", "GH_TOKEN"]);
+
+      expect(getErrorOutput()).not.toBe("");
+      expect(getOutput()).not.toContain("Step 1");
+    });
+
+    it("rejects a malformed successful response at runtime", async () => {
+      server.use(
+        http.post(diagnosticEndpoint(), () => {
+          return HttpResponse.json({ outcome: "future-unsupported-outcome" });
+        }),
+      );
+
+      await expectCommandFailure(["--env-name", "GH_TOKEN"]);
+
+      expect(getErrorOutput()).not.toBe("");
+      expect(getOutput()).not.toContain("Step 1");
+      expect(getOutput()).not.toContain("configured for this run");
     });
   });
 });

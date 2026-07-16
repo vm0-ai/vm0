@@ -32,6 +32,31 @@ fn build_args_parse_warm_rootfs_cache_without_guest_binaries() {
 }
 
 #[test]
+fn build_args_reject_dry_run_with_warm_rootfs_cache() {
+    let mut args = build_args();
+    args.extend(["--dry-run".to_string(), "--warm-rootfs-cache".to_string()]);
+
+    let error = <TestBuildCli as clap::Parser>::try_parse_from(args)
+        .err()
+        .expect("combined flags should fail");
+
+    assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+}
+
+#[test]
+fn build_help_describes_dry_run_and_warm_cache_output() {
+    let help = TestBuildCli::command().render_help().to_string();
+    let normalized_help = help.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert!(normalized_help.contains(
+        "Print rootfs_hash and snapshot_hash without building (incompatible with --warm-rootfs-cache)"
+    ));
+    assert!(normalized_help.contains(
+        "Populate only the shared R2 template cache; prints no image hashes (incompatible with --dry-run)"
+    ));
+}
+
+#[test]
 fn guest_cli_flags_match_inventory() {
     let command = TestBuildCli::command();
     let actual: BTreeSet<_> = command

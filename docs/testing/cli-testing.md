@@ -64,7 +64,7 @@ describe("compose command", () => {
     vi.clearAllMocks();
 
     // Setup environment
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     // Setup temp directory
@@ -128,7 +128,7 @@ vi.mock("../../lib/api/config", () => ({
 
 ```typescript
 beforeEach(() => {
-  vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+  vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   vi.stubEnv("VM0_TOKEN", "test-token");
 });
 
@@ -377,7 +377,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  vi.stubEnv("VM0_API_URL", undefined);
+  vi.stubEnv("VM0_API_BACKEND_URL", undefined);
 });
 
 afterEach(() => {

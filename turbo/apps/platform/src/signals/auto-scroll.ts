@@ -6,6 +6,7 @@ const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD = 10;
 const USER_INPUT_WINDOW_MS = 200;
 const KEY_SCROLL_STEP_PX = 72;
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
 
 export type ScrollStepDirection = "up" | "down";
 export type PrependScrollCompensationToken = symbol;
@@ -14,6 +15,10 @@ interface PendingPrependScrollRecord {
   readonly token: PrependScrollCompensationToken;
   scrollHeight: number;
   scrollTop: number;
+}
+
+interface ScrollSignalOptions {
+  observeViewportResizeOnMobile?: boolean;
 }
 
 // Persists a user's last non-bottom scroll position across container
@@ -107,9 +112,19 @@ function observeContainerResize(
   el: HTMLElement,
   onResize: () => void,
   signal: AbortSignal,
+  observeViewportResizeOnMobile: boolean,
 ) {
   const resizeObserver = new ResizeObserver(onResize);
-  resizeObserver.observe(el.firstElementChild ?? el);
+  const content = el.firstElementChild ?? el;
+  resizeObserver.observe(content);
+  const win = el.ownerDocument.defaultView;
+  if (
+    observeViewportResizeOnMobile &&
+    content !== el &&
+    win?.matchMedia(COARSE_POINTER_QUERY).matches === true
+  ) {
+    resizeObserver.observe(el);
+  }
   signal.addEventListener("abort", () => {
     resizeObserver.disconnect();
   });
@@ -386,6 +401,7 @@ interface SetScrollContainerCommandDeps {
   lastKnownScrollTop: { v: number };
   lastUserInputAt: { v: number };
   markUserInput: () => void;
+  observeViewportResizeOnMobile: boolean;
 }
 
 function createSetScrollContainerCommand(deps: SetScrollContainerCommandDeps) {
@@ -451,7 +467,12 @@ function createSetScrollContainerCommand(deps: SetScrollContainerCommandDeps) {
       const onResize = buildResizeHandler(ctx);
 
       attachUserInputListeners(el, deps.markUserInput, onScroll, signal);
-      observeContainerResize(el, onResize, signal);
+      observeContainerResize(
+        el,
+        onResize,
+        signal,
+        deps.observeViewportResizeOnMobile,
+      );
 
       signal.addEventListener("abort", () => {
         L.debug("container unbound (abort)");
@@ -484,7 +505,10 @@ function createSetScrollContainerCommand(deps: SetScrollContainerCommandDeps) {
  * a chance to invoke `scrollToBottom$`. The cache is cleared once the user
  * scrolls back to the bottom.
  */
-export function createScrollSignals(id?: string) {
+export function createScrollSignals(
+  id?: string,
+  options: ScrollSignalOptions = {},
+) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const autoScrollDisabled$ = state(false);
   // Readable "scrolled away from the bottom" flag for UI (the scroll-to-bottom
@@ -516,6 +540,8 @@ export function createScrollSignals(id?: string) {
     lastKnownScrollTop,
     lastUserInputAt,
     markUserInput,
+    observeViewportResizeOnMobile:
+      options.observeViewportResizeOnMobile === true,
   });
 
   const autoScroll$ = command(({ get }) => {

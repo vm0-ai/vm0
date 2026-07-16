@@ -4,7 +4,7 @@ import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contrac
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
-import { settle, tapError } from "../utils";
+import { tapError } from "../utils";
 
 const L = logger("Realtime");
 
@@ -133,6 +133,21 @@ export async function publishChatThreadMessageCreatedSafely(
 }
 
 /**
+ * Notify a chat thread's UI that an existing message row changed in place.
+ * The payload lets clients refetch that exact row instead of relying on the
+ * append-only message cursor, which cannot observe updates to an older row.
+ */
+export async function publishChatThreadMessageUpdated(
+  userId: string,
+  threadId: string,
+  messageId: string,
+): Promise<void> {
+  await publishUserSignal([userId], `chatThreadMessageUpdated:${threadId}`, {
+    messageId,
+  });
+}
+
+/**
  * Notify a chat thread's UI that its linked automation set changed (created,
  * deleted, enabled, or disabled). The chat-thread header automation menu
  * subscribes to this topic and refetches its thread-scoped list.
@@ -149,6 +164,29 @@ export async function publishChatThreadAutomationsChangedSafely(
     publishUserSignal([userId], `chatThreadAutomationsChanged:${threadId}`),
     (error) => {
       L.warn("Failed to publish chat thread automations changed signal", {
+        threadId,
+        error,
+      });
+    },
+  );
+}
+
+/**
+ * Notify a chat thread's UI that its visible workflow set changed. The slash
+ * workflow composer subscribes to this topic and refetches the authoritative
+ * agent-scoped workflow list.
+ *
+ * Best-effort: a failed publish must not fail the workflow mutation that
+ * triggers it.
+ */
+export async function publishChatThreadWorkflowsChangedSafely(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], `chatThreadWorkflowsChanged:${threadId}`),
+    (error) => {
+      L.warn("Failed to publish chat thread workflows changed signal", {
         threadId,
         error,
       });
@@ -235,34 +273,45 @@ export async function publishRunnerJobNotification(
   group: string,
   runId: string,
   profile: string,
-  affinity?: {
+  metadata?: {
     readonly cliAgentSessionId: string | null;
+    readonly historyGenerationAffinityProtectedUntil: string | null;
     readonly affinityProtectedUntil: string | null;
+    readonly historyGenerationRunId: string | undefined;
   },
 ): Promise<boolean> {
-  const result = await settle(
+  const published = await tapError(
     (async () => {
       const channel = ablyClient().channels.get(`runner-group:${group}`);
       await channel.publish("job", {
         runId,
         profile,
-        ...(affinity?.cliAgentSessionId
-          ? { cliAgentSessionId: affinity.cliAgentSessionId }
+        ...(metadata?.cliAgentSessionId
+          ? { cliAgentSessionId: metadata.cliAgentSessionId }
           : {}),
-        ...(affinity?.affinityProtectedUntil
-          ? { affinityProtectedUntil: affinity.affinityProtectedUntil }
+        ...(metadata?.affinityProtectedUntil
+          ? { affinityProtectedUntil: metadata.affinityProtectedUntil }
+          : {}),
+        ...(metadata?.historyGenerationAffinityProtectedUntil
+          ? {
+              historyGenerationAffinityProtectedUntil:
+                metadata.historyGenerationAffinityProtectedUntil,
+            }
+          : {}),
+        ...(metadata?.historyGenerationRunId
+          ? { historyGenerationRunId: metadata.historyGenerationRunId }
           : {}),
       });
       L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);
+      return true;
     })(),
+    (error) => {
+      L.warn("Failed to publish runner job notification", {
+        group,
+        runId,
+        error,
+      });
+    },
   );
-  if (result.ok) {
-    return true;
-  }
-  L.warn("Failed to publish runner job notification", {
-    group,
-    runId,
-    error: result.error,
-  });
-  return false;
+  return published ?? false;
 }

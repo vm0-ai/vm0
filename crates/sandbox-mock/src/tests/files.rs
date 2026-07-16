@@ -215,6 +215,39 @@ async fn sandbox_copy_file_allows_relative_host_path_without_parent() {
 }
 
 #[tokio::test]
+async fn sandbox_copy_file_lifecycle_gate_blocks_until_released() {
+    let sandbox = Arc::new(MockSandbox::new("test-1"));
+    let gate = MockLifecycleGate::new();
+    sandbox.set_copy_file_lifecycle_gate(gate.clone());
+    sandbox.push_copy_file_result(Ok(b"guest log\n".to_vec()));
+    let (_host_dir, path) = temp_host_path("gated.log");
+
+    let task = {
+        let sandbox = Arc::clone(&sandbox);
+        let task_path = path.clone();
+        tokio::spawn(async move {
+            sandbox
+                .copy_file("/tmp/system.log", &task_path, copy_file_options(false))
+                .await
+        })
+    };
+
+    gate.wait_entered(1, test_timeout()).await.unwrap();
+    assert_eq!(sandbox.copy_file_calls().len(), 1);
+    assert!(!path.exists());
+    assert!(!task.is_finished(), "copy_file must wait for gate release");
+
+    gate.release_one();
+    let result = tokio::time::timeout(test_timeout(), task)
+        .await
+        .expect("copy_file must finish after gate release")
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.bytes_copied, 10);
+    assert_eq!(std::fs::read(path).unwrap(), b"guest log\n");
+}
+
+#[tokio::test]
 async fn sandbox_read_file_applies_mock_max_bytes() {
     let sandbox = MockSandbox::new("test-1");
     sandbox.push_read_file_result(Ok(Some(b"too long".to_vec())));
@@ -351,6 +384,57 @@ async fn sandbox_write_file_queued_error() {
 }
 
 #[tokio::test]
+async fn sandbox_write_file_rejects_invalid_paths_before_gate_or_result() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
+    let gate = MockLifecycleGate::new();
+    sandbox.set_write_file_lifecycle_gate(gate.clone());
+    sandbox.push_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "queued write failed".into(),
+    }));
+
+    for (path, expected_message) in [
+        ("", "guest file path must not be empty"),
+        ("/tmp/bad\0path.txt", "guest file path contains NUL bytes"),
+    ] {
+        let error =
+            tokio::time::timeout(test_timeout(), sandbox.write_file(path, b"invalid content"))
+                .await
+                .expect("invalid write_file must not wait on the lifecycle gate")
+                .unwrap_err();
+        assert_operation_error(
+            error,
+            SandboxOperation::WriteFile,
+            SandboxOperationReason::Other,
+            expected_message,
+        );
+    }
+
+    assert_eq!(gate.entered_count(), 0);
+    sandbox.clear_write_file_lifecycle_gate();
+
+    let queued_error = sandbox
+        .write_file("/tmp/valid.txt", b"valid content")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        queued_error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "queued write failed",
+    );
+
+    let calls = sandbox.write_file_calls();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(calls[0].path, "");
+    assert_eq!(calls[1].path, "/tmp/bad\0path.txt");
+    assert_eq!(calls[2].path, "/tmp/valid.txt");
+    assert_eq!(overrides.write_file_calls(), calls);
+}
+
+#[tokio::test]
 async fn sandbox_write_files_records_batch_and_consumes_one_result() {
     let sandbox = MockSandbox::new("test-1");
     sandbox.push_write_file_result(Err(SandboxError::Operation {
@@ -387,6 +471,83 @@ async fn sandbox_write_files_records_batch_and_consumes_one_result() {
 }
 
 #[tokio::test]
+async fn sandbox_write_files_rejects_invalid_paths_and_treats_empty_batch_as_noop() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    let sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
+    let gate = MockLifecycleGate::new();
+    sandbox.set_write_file_lifecycle_gate(gate.clone());
+    sandbox.push_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "queued batch failed".into(),
+    }));
+
+    for (path, expected_message) in [
+        ("", "guest file path must not be empty"),
+        ("/tmp/bad\0path.txt", "guest file path contains NUL bytes"),
+    ] {
+        let files = [
+            WriteFileEntry {
+                path: "/tmp/valid-before-invalid.txt",
+                content: b"valid",
+            },
+            WriteFileEntry {
+                path,
+                content: b"invalid",
+            },
+        ];
+        let error = tokio::time::timeout(test_timeout(), sandbox.write_files(&files))
+            .await
+            .expect("invalid write_files must not wait on the lifecycle gate")
+            .unwrap_err();
+        assert_operation_error(
+            error,
+            SandboxOperation::WriteFile,
+            SandboxOperationReason::Other,
+            expected_message,
+        );
+    }
+
+    tokio::time::timeout(test_timeout(), sandbox.write_files(&[]))
+        .await
+        .expect("empty write_files must not wait on the lifecycle gate")
+        .unwrap();
+    assert_eq!(gate.entered_count(), 0);
+    sandbox.clear_write_file_lifecycle_gate();
+
+    let valid_files = [WriteFileEntry {
+        path: "/tmp/valid.txt",
+        content: b"valid",
+    }];
+    let queued_error = sandbox.write_files(&valid_files).await.unwrap_err();
+    assert_operation_error(
+        queued_error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "queued batch failed",
+    );
+
+    let batch_calls = sandbox.write_files_calls();
+    assert_eq!(batch_calls.len(), 4);
+    assert_eq!(batch_calls[0].files.len(), 2);
+    assert_eq!(
+        batch_calls[0].files[0].path,
+        "/tmp/valid-before-invalid.txt"
+    );
+    assert_eq!(batch_calls[0].files[1].path, "");
+    assert_eq!(batch_calls[1].files.len(), 2);
+    assert_eq!(batch_calls[1].files[1].path, "/tmp/bad\0path.txt");
+    assert!(batch_calls[2].files.is_empty());
+    assert_eq!(batch_calls[3].files.len(), 1);
+    assert_eq!(batch_calls[3].files[0].path, "/tmp/valid.txt");
+    assert_eq!(overrides.write_files_calls(), batch_calls);
+
+    let write_calls = sandbox.write_file_calls();
+    assert_eq!(write_calls.len(), 5);
+    assert_eq!(overrides.write_file_calls(), write_calls);
+}
+
+#[tokio::test]
 async fn sandbox_write_private_file_queued_error_and_records_calls() {
     let sandbox = MockSandbox::new("test-1");
     sandbox.push_private_write_file_result(Err(SandboxError::Operation {
@@ -409,6 +570,71 @@ async fn sandbox_write_private_file_queued_error_and_records_calls() {
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].path, "/tmp/private.env");
     assert_eq!(calls[0].content, b"secret");
+}
+
+#[tokio::test]
+async fn sandbox_write_private_file_rejects_invalid_paths_before_local_or_shared_results() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_private_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "shared private write failed".into(),
+    }));
+    let sandbox = MockSandbox::with_overrides("test-1", Arc::clone(&overrides));
+    sandbox.push_private_write_file_result(Err(SandboxError::Operation {
+        operation: SandboxOperation::WriteFile,
+        reason: SandboxOperationReason::Guest,
+        message: "local private write failed".into(),
+    }));
+
+    for (path, expected_message) in [
+        ("", "guest file path must not be empty"),
+        (
+            "/tmp/bad\0private.env",
+            "guest file path contains NUL bytes",
+        ),
+    ] {
+        let error = sandbox
+            .write_private_file(path, b"invalid private content")
+            .await
+            .unwrap_err();
+        assert_operation_error(
+            error,
+            SandboxOperation::WriteFile,
+            SandboxOperationReason::Other,
+            expected_message,
+        );
+    }
+
+    let local_error = sandbox
+        .write_private_file("/tmp/local-private.env", b"local")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        local_error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "local private write failed",
+    );
+
+    let shared_error = sandbox
+        .write_private_file("/tmp/shared-private.env", b"shared")
+        .await
+        .unwrap_err();
+    assert_operation_error(
+        shared_error,
+        SandboxOperation::WriteFile,
+        SandboxOperationReason::Guest,
+        "shared private write failed",
+    );
+
+    let calls = sandbox.private_write_file_calls();
+    assert_eq!(calls.len(), 4);
+    assert_eq!(calls[0].path, "");
+    assert_eq!(calls[1].path, "/tmp/bad\0private.env");
+    assert_eq!(calls[2].path, "/tmp/local-private.env");
+    assert_eq!(calls[3].path, "/tmp/shared-private.env");
+    assert_eq!(overrides.private_write_file_calls(), calls);
 }
 
 #[tokio::test]

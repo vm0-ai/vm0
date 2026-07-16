@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -10,7 +10,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -19,7 +19,7 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const gh = createGithubBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 
 const WORKFLOW_NAME = "github-webhook-workflow";
 const GITHUB_WEBHOOK_SECRET = "github-webhook-secret";
@@ -28,8 +28,8 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 function memoryClient() {
@@ -130,7 +130,7 @@ async function postGithubWebhook(args: {
   };
 }
 
-describe("POST /api/webhooks/github for workflow triggers", () => {
+describe("POST /api/webhooks/github for workflow automations", () => {
   it("records GitHub issues as memory sources", async () => {
     const { fixture, actor, agentId } = await setupFixture();
     await updateFeatureSwitchesForUser(context, fixture, {
@@ -230,7 +230,7 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -250,7 +250,7 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
       [201],
     );
     const createdSecond = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -297,7 +297,7 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
     await flushWaitUntilForTest();
     await flushWaitUntilForTest();
 
-    // Two deliveries matched two triggers each; the duplicate redelivery was
+    // Two deliveries matched two automations each; the duplicate redelivery was
     // recorded as processed and added nothing. Exactly four distinct
     // workflow-event runs exist: two admitted within the pro concurrency
     // limit (claimable through the runner API) and two queued behind it
@@ -334,11 +334,11 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
         }),
       );
       for (const actionType of [
-        "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
+        "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
         "api_dispatch_pre_create_zero_workflow_event_background_start_gap",
         "api_dispatch_pre_create_zero_workflow_event_load_source_state",
-        "api_dispatch_pre_create_zero_workflow_event_load_triggers",
-        "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+        "api_dispatch_pre_create_zero_workflow_event_load_automations",
+        "api_dispatch_pre_create_zero_workflow_event_match_automations",
         "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
         "api_dispatch_pre_create_zero_workflow_event_build_run_input",
         "api_dispatch_pre_create_zero_workflow_event_handoff_run",
@@ -351,7 +351,7 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
             op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
             workflow_event_source: "github",
             trigger_source: "workflow-event",
-            zero_run_origin: "workflow_trigger",
+            zero_run_origin: "workflow_automation",
             span_kind: "nested",
           }),
         ]),

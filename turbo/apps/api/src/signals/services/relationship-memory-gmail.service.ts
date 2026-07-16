@@ -20,7 +20,7 @@ import { generateText, isLlmConfigured } from "../external/openrouter";
 import { createSlackClient } from "../external/slack-message-client";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import {
   fetchGmailMessageContextById,
   messageIsInbound,
@@ -336,31 +336,25 @@ async function applyRelationshipExtraction(args: {
     entityId: graphEntityId,
     limit: 12,
   });
-  const extractionResult = await settle(
+  const extraction = (await tapError(
     extractRelationshipMemory({
       target: args.target,
       existingSummary: existing.summary,
       evidence: args.evidence,
       existingMemories: graphCandidates,
     }),
-  );
-  const extraction = extractionResult.ok
-    ? extractionResult.value
-    : {
-        summary: null,
-        relationshipType: null,
-        interactionSummary: null,
-        items: [],
-      };
-  if (!extractionResult.ok) {
-    log.warn(args.failureLogMessage, {
-      ...args.logContext,
-      error:
-        extractionResult.error instanceof Error
-          ? extractionResult.error.message
-          : String(extractionResult.error),
-    });
-  }
+    (error) => {
+      log.warn(args.failureLogMessage, {
+        ...args.logContext,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  )) ?? {
+    summary: null,
+    relationshipType: null,
+    interactionSummary: null,
+    items: [],
+  };
 
   const { summary, relationshipType } = relationshipStateText({
     extraction,
@@ -1407,7 +1401,7 @@ export const drainRelationshipSyncJobs$ = command(
         .where(eq(relationshipSyncJobs.id, job.id));
       signal.throwIfAborted();
 
-      const result = await settle(
+      const updated = await tapError(
         job.kind === "gmail_relationship_refresh" ||
           (job.kind === "memory_source_relationship_extract" &&
             job.provider === "gmail")
@@ -1422,40 +1416,39 @@ export const drainRelationshipSyncJobs$ = command(
                   job.provider === "notion"
                 ? processNotionSourceRelationshipExtractionJob(db, job, signal)
                 : Promise.resolve(0),
+        async (error) => {
+          failed += 1;
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const retry = job.attempts + 1 < 3;
+          await db
+            .update(relationshipSyncJobs)
+            .set({
+              status: retry ? "pending" : "failed",
+              lockedAt: null,
+              runAfterAt: retry
+                ? new Date(nowDate().getTime() + RETRY_DELAY_MS)
+                : nowDate(),
+              lastError: message,
+              updatedAt: nowDate(),
+            })
+            .where(eq(relationshipSyncJobs.id, job.id));
+        },
       );
       signal.throwIfAborted();
 
-      if (result.ok) {
-        processed += 1;
-        relationshipsUpdated += result.value;
-        await db
-          .update(relationshipSyncJobs)
-          .set({
-            status: "done",
-            lockedAt: null,
-            lastError: null,
-            updatedAt: nowDate(),
-          })
-          .where(eq(relationshipSyncJobs.id, job.id));
-        signal.throwIfAborted();
+      if (updated === undefined) {
         continue;
       }
 
-      failed += 1;
-      const message =
-        result.error instanceof Error
-          ? result.error.message
-          : String(result.error);
-      const retry = job.attempts + 1 < 3;
+      processed += 1;
+      relationshipsUpdated += updated;
       await db
         .update(relationshipSyncJobs)
         .set({
-          status: retry ? "pending" : "failed",
+          status: "done",
           lockedAt: null,
-          runAfterAt: retry
-            ? new Date(nowDate().getTime() + RETRY_DELAY_MS)
-            : nowDate(),
-          lastError: message,
+          lastError: null,
           updatedAt: nowDate(),
         })
         .where(eq(relationshipSyncJobs.id, job.id));

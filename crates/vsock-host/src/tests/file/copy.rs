@@ -2,6 +2,7 @@ use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::net::UnixStream;
 use tokio::task::JoinHandle;
@@ -452,7 +453,7 @@ async fn copy_file_connection_close_after_request_removes_temp_and_marks_not_par
 }
 
 #[tokio::test]
-async fn copy_file_terminal_result_before_connection_close_keeps_tracker_closed_not_not_parkable() {
+async fn copy_file_terminal_result_before_connection_close_keeps_tracker_closed() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let temp_dir = HostTempDir::new("vsock-host-copy-terminal-close");
@@ -485,13 +486,16 @@ async fn copy_file_terminal_result_before_connection_close_keeps_tracker_closed_
     )
     .await;
     drop(guest);
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
 
     let result = copy_task.await.unwrap().unwrap();
     assert_eq!(result.bytes_copied, 9);
     assert_eq!(std::fs::read(&host_path).unwrap(), b"complete\n");
-    assert_ne!(
+    assert_eq!(
         normal_operation_readiness(&host),
-        NormalOperationReadiness::NotParkable
+        NormalOperationReadiness::Closed
     );
 }
 

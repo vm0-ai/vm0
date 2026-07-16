@@ -1,0 +1,1063 @@
+import { Command } from "commander";
+import chalk from "chalk";
+import type {
+  GithubLabelAppliedSubjectFilter,
+  ZeroWorkflowSchedule,
+} from "@vm0/api-contracts/contracts/zero-workflows";
+import {
+  type ZeroWorkflowAutomationCreateRequest,
+  type ZeroWorkflowAutomationSummary,
+  type ZeroWorkflowAutomationUpdateRequest,
+  createWorkflowAutomation,
+  deleteWorkflowAutomation,
+  disableWorkflowAutomation,
+  enableWorkflowAutomation,
+  getWorkflowAutomation,
+  listWorkflowAutomations,
+  updateWorkflowAutomation,
+} from "../../../../lib/api";
+import { withErrorHandler } from "../../../../lib/command";
+import { parseDurationSeconds } from "../../shared/duration";
+import {
+  resolveWorkflowRef,
+  type WorkflowRefOptions,
+} from "../resolve-workflow-ref";
+import {
+  printWorkflowAutomationDetails,
+  printWorkflowAutomationsTable,
+} from "./display";
+import {
+  buildGmailLabelAppliedEventConfig,
+  buildGmailNewMessageEventConfig,
+  hasGmailLabelOption,
+  hasGmailAutomationOptions,
+  type GmailAutomationOptions,
+} from "./gmail-config";
+
+interface AddOptions extends GmailAutomationOptions {
+  readonly expr?: string;
+  readonly at?: string;
+  readonly every?: string;
+  readonly timezone?: string;
+  readonly agent?: string;
+  readonly subject?: string;
+  readonly actor?: string;
+  readonly calendarId?: string;
+  readonly pageUrl?: string;
+  readonly parentPageUrl?: string;
+  readonly databaseUrl?: string;
+}
+
+interface UpdateOptions extends GmailAutomationOptions {
+  readonly expr?: string;
+  readonly at?: string;
+  readonly every?: string;
+  readonly timezone?: string;
+  readonly subject?: string;
+  readonly actor?: string;
+}
+
+const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
+const EVENT_KINDS = [
+  "gmail-new-message",
+  "gmail-label-applied",
+  "github-label-applied",
+  "google-calendar-event-created",
+  "google-calendar-event-updated",
+  "google-calendar-event-cancelled",
+  "notion-child-page-created",
+  "notion-database-item-created",
+  "notion-page-content-updated",
+  "webhook",
+] as const;
+const AUTOMATION_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
+const EXACTLY_ONE_FLAG_MESSAGE =
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --page-url, --parent-page-url, or --database-url";
+
+function addGmailAutomationOptions(command: Command): Command {
+  return command
+    .option(
+      "--config <path>",
+      "Path to a Gmail new message automation config JSON",
+    )
+    .option("--label <name>", "Label name for label-applied automations")
+    .option("--from-contains <text>", "Require the From header to contain text")
+    .option(
+      "--from-not-contains <text>",
+      "Require the From header not to contain text",
+    )
+    .option(
+      "--subject-contains <text>",
+      "Require the Subject header to contain text",
+    )
+    .option(
+      "--subject-not-contains <text>",
+      "Require the Subject header not to contain text",
+    )
+    .option(
+      "--body-contains <text>",
+      "Require the message body to contain text",
+    )
+    .option(
+      "--body-not-contains <text>",
+      "Require the message body not to contain text",
+    )
+    .option("--to-contains <text>", "Require the To header to contain text")
+    .option(
+      "--to-not-contains <text>",
+      "Require the To header not to contain text",
+    )
+    .option("--cc-contains <text>", "Require the Cc header to contain text")
+    .option(
+      "--cc-not-contains <text>",
+      "Require the Cc header not to contain text",
+    );
+}
+
+function addGithubAutomationOptions(command: Command): Command {
+  return command
+    .option(
+      "--subject <subject>",
+      "GitHub subject filter for github-label-applied: both | issues | pull-requests",
+    )
+    .option(
+      "--actor <actor>",
+      "GitHub actor filter for github-label-applied: me | anyone",
+    );
+}
+
+function timezoneOrUtc(timezone: string | undefined): string {
+  return timezone ?? "UTC";
+}
+
+function assertValidTimezone(timezone: string): void {
+  new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+}
+
+function hasExplicitOffset(value: string): boolean {
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+}
+
+function parseLocalDateTime(value: string): {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+  readonly hour: number;
+  readonly minute: number;
+  readonly second: number;
+  readonly millisecond: number;
+} {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/,
+  );
+  if (!match) {
+    throw new Error(
+      `Invalid at time: "${value}". Use ISO datetime, e.g. 2026-06-10T09:00 or 2026-06-10T09:00:00Z`,
+    );
+  }
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+    second: match[6] ? Number(match[6]) : 0,
+    millisecond: match[7] ? Number(match[7].padEnd(3, "0")) : 0,
+  };
+}
+
+function zonedParts(instant: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const values = new Map<string, string>();
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      values.set(part.type, part.value);
+    }
+  }
+  return {
+    year: Number(values.get("year")),
+    month: Number(values.get("month")),
+    day: Number(values.get("day")),
+    hour: Number(values.get("hour")),
+    minute: Number(values.get("minute")),
+    second: Number(values.get("second")),
+  };
+}
+
+function wallTimeToUtcIso(value: string, timezone: string): string {
+  assertValidTimezone(timezone);
+  if (hasExplicitOffset(value)) {
+    const instant = new Date(value);
+    if (Number.isNaN(instant.getTime())) {
+      throw new Error(`Invalid at time: "${value}"`);
+    }
+    return instant.toISOString();
+  }
+
+  const target = parseLocalDateTime(value);
+  const targetUtc = Date.UTC(
+    target.year,
+    target.month - 1,
+    target.day,
+    target.hour,
+    target.minute,
+    target.second,
+    target.millisecond,
+  );
+  let guess = targetUtc;
+  for (let i = 0; i < 3; i++) {
+    const parts = zonedParts(new Date(guess), timezone);
+    const renderedUtc = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second,
+      target.millisecond,
+    );
+    guess += targetUtc - renderedUtc;
+  }
+
+  const result = new Date(guess);
+  const rendered = zonedParts(result, timezone);
+  if (
+    rendered.year !== target.year ||
+    rendered.month !== target.month ||
+    rendered.day !== target.day ||
+    rendered.hour !== target.hour ||
+    rendered.minute !== target.minute ||
+    rendered.second !== target.second
+  ) {
+    throw new Error(
+      `Invalid at time for ${timezone}: "${value}". The local time does not exist`,
+    );
+  }
+  return result.toISOString();
+}
+
+function buildSchedule(
+  kind: string,
+  options: UpdateOptions,
+): ZeroWorkflowSchedule {
+  switch (kind) {
+    case "cron":
+      if (!options.expr) {
+        throw new Error(
+          'cron automations require --expr (e.g. --expr "0 9 * * *")',
+        );
+      }
+      return {
+        type: "cron",
+        cronExpression: options.expr,
+        timezone: timezoneOrUtc(options.timezone),
+      };
+    case "once": {
+      if (!options.at) {
+        throw new Error(
+          'once automations require --at (e.g. --at "2026-06-10T09:00")',
+        );
+      }
+      const timezone = timezoneOrUtc(options.timezone);
+      return {
+        type: "once",
+        atTime: wallTimeToUtcIso(options.at, timezone),
+        timezone,
+      };
+    }
+    case "loop":
+      if (!options.every) {
+        throw new Error("loop automations require --every (e.g. --every 15m)");
+      }
+      return {
+        type: "loop",
+        intervalSeconds: parseDurationSeconds(options.every),
+      };
+    default:
+      throw new Error(
+        `Unknown automation kind: "${kind}". Use one of: ${AUTOMATION_KINDS.join(", ")}`,
+      );
+  }
+}
+
+function hasScheduleAddOptions(options: AddOptions): boolean {
+  return (
+    options.expr !== undefined ||
+    options.at !== undefined ||
+    options.every !== undefined ||
+    options.timezone !== undefined
+  );
+}
+
+function hasGithubAutomationOptions(
+  options: AddOptions | UpdateOptions,
+): boolean {
+  return options.subject !== undefined || options.actor !== undefined;
+}
+
+function hasCalendarAutomationOptions(options: AddOptions): boolean {
+  return options.calendarId !== undefined;
+}
+
+function hasNotionAutomationOptions(options: AddOptions): boolean {
+  return (
+    options.pageUrl !== undefined ||
+    options.parentPageUrl !== undefined ||
+    options.databaseUrl !== undefined
+  );
+}
+
+function hasEventAddOptions(options: AddOptions): boolean {
+  return (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options) ||
+    hasNotionAutomationOptions(options)
+  );
+}
+
+function assertNoScheduleAddOptions(options: AddOptions): void {
+  if (hasScheduleAddOptions(options)) {
+    throw new Error(
+      "--expr, --at, --every, and --timezone only apply to schedule automations",
+    );
+  }
+}
+
+function assertNoGithubAutomationOptions(
+  options: AddOptions,
+  message = "GitHub automation flags only apply to GitHub event automations",
+): void {
+  if (hasGithubAutomationOptions(options)) {
+    throw new Error(message);
+  }
+}
+
+function assertNoCalendarAutomationOptions(options: AddOptions): void {
+  if (hasCalendarAutomationOptions(options)) {
+    throw new Error(
+      "Google Calendar automation flags only apply to Google Calendar event automations",
+    );
+  }
+}
+
+function assertNoNotionAutomationOptions(options: AddOptions): void {
+  if (hasNotionAutomationOptions(options)) {
+    throw new Error(
+      "Notion automation flags only apply to Notion event automations",
+    );
+  }
+}
+
+function scheduleUpdateFlagCount(options: UpdateOptions): number {
+  return [options.expr, options.at, options.every].filter((value) => {
+    return value !== undefined;
+  }).length;
+}
+
+function hasScheduleUpdateOptions(options: UpdateOptions): boolean {
+  return scheduleUpdateFlagCount(options) > 0 || options.timezone !== undefined;
+}
+
+function parseGithubSubject(
+  value: string | undefined,
+  fallback: GithubLabelAppliedSubjectFilter = "both",
+): GithubLabelAppliedSubjectFilter {
+  if (value === undefined) {
+    return fallback;
+  }
+  switch (value) {
+    case "both":
+    case "issues":
+      return value;
+    case "pull-requests":
+      return "pull_requests";
+    default:
+      throw new Error(
+        `Invalid --subject "${value}". Use one of: both, issues, pull-requests`,
+      );
+  }
+}
+
+function parseGithubActor(
+  value: string | undefined,
+  fallback: "me" | "anyone" = "me",
+): "me" | "anyone" {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value === "me" || value === "anyone") {
+    return value;
+  }
+  throw new Error(`Invalid --actor "${value}". Use one of: me, anyone`);
+}
+
+function buildGithubLabelAppliedEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event"; readonly eventType: "github-label-applied" }
+  >,
+) {
+  const labelName = options.label?.trim() ?? existing?.eventConfig.labelName;
+  if (!labelName) {
+    throw new Error(
+      'github-label-applied automations require --label "Label name"',
+    );
+  }
+
+  return {
+    provider: "github" as const,
+    event: "label_applied" as const,
+    labelName,
+    filters: {
+      subject: parseGithubSubject(
+        options.subject,
+        existing?.eventConfig.filters.subject ?? "both",
+      ),
+      actor: {
+        type: parseGithubActor(
+          options.actor,
+          existing?.eventConfig.filters.actor.type ?? "me",
+        ),
+      },
+    },
+  };
+}
+
+function buildGmailNewMessageCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasGmailLabelOption(options)) {
+    throw new Error("--label only applies to label-applied event automations");
+  }
+  assertNoGithubAutomationOptions(options);
+  assertNoCalendarAutomationOptions(options);
+  assertNoNotionAutomationOptions(options);
+  return {
+    kind: "event",
+    eventType: "gmail-new-message",
+    eventConfig: buildGmailNewMessageEventConfig(options),
+  };
+}
+
+function buildGmailLabelAppliedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasGmailAutomationOptions(options)) {
+    throw new Error(
+      "Gmail match flags and --config only apply to gmail-new-message automations",
+    );
+  }
+  assertNoGithubAutomationOptions(options);
+  assertNoCalendarAutomationOptions(options);
+  assertNoNotionAutomationOptions(options);
+  return {
+    kind: "event",
+    eventType: "gmail-label-applied",
+    eventConfig: buildGmailLabelAppliedEventConfig(options),
+  };
+}
+
+function buildGithubLabelAppliedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasGmailAutomationOptions(options)) {
+    throw new Error(
+      "Gmail match flags and --config only apply to Gmail event automations",
+    );
+  }
+  assertNoCalendarAutomationOptions(options);
+  assertNoNotionAutomationOptions(options);
+  return {
+    kind: "event",
+    eventType: "github-label-applied",
+    eventConfig: buildGithubLabelAppliedEventConfig(options),
+  };
+}
+
+function buildGoogleCalendarEventCreateRequest(
+  eventType:
+    | "google-calendar-event-created"
+    | "google-calendar-event-updated"
+    | "google-calendar-event-cancelled",
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasNotionAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Notion automation flags only apply to their event automations",
+    );
+  }
+  const calendarId = options.calendarId?.trim() || "primary";
+  if (eventType === "google-calendar-event-created") {
+    return {
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId,
+      },
+    };
+  }
+  if (eventType === "google-calendar-event-updated") {
+    return {
+      kind: "event",
+      eventType: "google-calendar-event-updated",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_updated",
+        calendarId,
+      },
+    };
+  }
+  return {
+    kind: "event",
+    eventType: "google-calendar-event-cancelled",
+    eventConfig: {
+      provider: "google-calendar",
+      event: "event_cancelled",
+      calendarId,
+    },
+  };
+}
+
+function buildNotionChildPageCreatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+    );
+  }
+
+  const parentPageUrl = options.parentPageUrl?.trim();
+  if (options.pageUrl !== undefined || options.databaseUrl !== undefined) {
+    throw new Error(
+      "--page-url and --database-url do not apply to notion-child-page-created automations",
+    );
+  }
+  if (!parentPageUrl) {
+    throw new Error(
+      'notion-child-page-created automations require --parent-page-url "https://www.notion.so/..."',
+    );
+  }
+
+  return {
+    kind: "event",
+    eventType: "notion-child-page-created",
+    eventConfig: {
+      provider: "notion",
+      event: "child_page_created",
+      parentPageUrl,
+    },
+  };
+}
+
+function buildNotionDatabaseItemCreatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+    );
+  }
+
+  if (options.pageUrl !== undefined || options.parentPageUrl !== undefined) {
+    throw new Error(
+      "--page-url and --parent-page-url do not apply to notion-database-item-created automations",
+    );
+  }
+  const databaseUrl = options.databaseUrl?.trim();
+  if (!databaseUrl) {
+    throw new Error(
+      'notion-database-item-created automations require --database-url "https://www.notion.so/..."',
+    );
+  }
+
+  return {
+    kind: "event",
+    eventType: "notion-database-item-created",
+    eventConfig: {
+      provider: "notion",
+      event: "database_item_created",
+      databaseUrl,
+    },
+  };
+}
+
+function buildNotionPageContentUpdatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Google Calendar automation flags only apply to their event automations",
+    );
+  }
+
+  if (options.parentPageUrl !== undefined) {
+    throw new Error(
+      "--parent-page-url only applies to notion-child-page-created automations",
+    );
+  }
+  const pageUrl = options.pageUrl?.trim();
+  const databaseUrl = options.databaseUrl?.trim();
+  if (
+    (pageUrl !== undefined && pageUrl.length > 0) ===
+    (databaseUrl !== undefined && databaseUrl.length > 0)
+  ) {
+    throw new Error(
+      'notion-page-content-updated automations require exactly one of --page-url "https://www.notion.so/..." or --database-url "https://www.notion.so/..."',
+    );
+  }
+
+  return {
+    kind: "event",
+    eventType: "notion-page-content-updated",
+    eventConfig:
+      pageUrl !== undefined && pageUrl.length > 0
+        ? {
+            provider: "notion",
+            event: "page_content_updated",
+            pageUrl,
+          }
+        : {
+            provider: "notion",
+            event: "page_content_updated",
+            databaseUrl: databaseUrl ?? "",
+          },
+  };
+}
+
+function buildWebhookCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasEventAddOptions(options)) {
+    throw new Error("Event automation flags only apply to event automations");
+  }
+  return {
+    kind: "event",
+    eventType: "webhook-received",
+    eventConfig: {
+      provider: "webhook",
+      event: "received",
+      auth: { mode: "hmac-sha256" },
+    },
+  };
+}
+
+function buildScheduleCreateRequest(
+  kind: string,
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  if (hasEventAddOptions(options)) {
+    throw new Error("Event automation flags only apply to event automations");
+  }
+  return { schedule: buildSchedule(kind, options) };
+}
+
+function buildCreateRequest(
+  kind: string,
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  switch (kind) {
+    case "gmail-new-message":
+      return buildGmailNewMessageCreateRequest(options);
+    case "gmail-label-applied":
+      return buildGmailLabelAppliedCreateRequest(options);
+    case "github-label-applied":
+      return buildGithubLabelAppliedCreateRequest(options);
+    case "google-calendar-event-created":
+      return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "google-calendar-event-updated":
+      return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "google-calendar-event-cancelled":
+      return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "notion-child-page-created":
+      return buildNotionChildPageCreatedCreateRequest(options);
+    case "notion-database-item-created":
+      return buildNotionDatabaseItemCreatedCreateRequest(options);
+    case "notion-page-content-updated":
+      return buildNotionPageContentUpdatedCreateRequest(options);
+    case "webhook":
+      return buildWebhookCreateRequest(options);
+    default:
+      return buildScheduleCreateRequest(kind, options);
+  }
+}
+
+function buildEventUpdate(
+  options: UpdateOptions,
+  existing: Extract<ZeroWorkflowAutomationSummary, { readonly kind: "event" }>,
+): ZeroWorkflowAutomationUpdateRequest {
+  const hasGmailOptions = hasGmailAutomationOptions(options);
+  const hasLabelOption = hasGmailLabelOption(options);
+  const hasGithubOptions = hasGithubAutomationOptions(options);
+
+  if (
+    existing.eventType === "google-calendar-event-created" ||
+    existing.eventType === "google-calendar-event-updated" ||
+    existing.eventType === "google-calendar-event-cancelled"
+  ) {
+    throw new Error("Google Calendar event automations cannot be updated");
+  }
+
+  if (existing.eventType === "github-label-applied") {
+    if (hasGmailOptions) {
+      throw new Error(
+        "Gmail match flags only apply to Gmail event automations",
+      );
+    }
+    if (!hasLabelOption && !hasGithubOptions) {
+      throw new Error(
+        "Provide --label, --subject, or --actor for github-label-applied automations",
+      );
+    }
+    return {
+      eventConfig: buildGithubLabelAppliedEventConfig(options, existing),
+    };
+  }
+
+  if (hasGithubOptions) {
+    throw new Error(
+      "GitHub automation flags only apply to GitHub event automations",
+    );
+  }
+
+  if (existing.eventType === "gmail-label-applied") {
+    if (!hasLabelOption || hasGmailOptions) {
+      throw new Error("Use --label for gmail-label-applied automations");
+    }
+    return { eventConfig: buildGmailLabelAppliedEventConfig(options) };
+  }
+
+  if (!hasGmailOptions || hasLabelOption) {
+    throw new Error(
+      "Use Gmail match options for gmail-new-message automations",
+    );
+  }
+  return { eventConfig: buildGmailNewMessageEventConfig(options) };
+}
+
+function buildScheduleUpdate(
+  options: UpdateOptions,
+): ZeroWorkflowAutomationUpdateRequest {
+  const hasGmailOptions = hasGmailAutomationOptions(options);
+  const hasLabelOption = hasGmailLabelOption(options);
+  if (hasGmailOptions || hasLabelOption) {
+    throw new Error(
+      "Gmail automation flags only apply to Gmail event automations",
+    );
+  }
+  const flagCount = scheduleUpdateFlagCount(options);
+  if (flagCount !== 1) {
+    throw new Error(EXACTLY_ONE_FLAG_MESSAGE);
+  }
+  if (options.timezone && !options.expr && !options.at) {
+    throw new Error("--timezone only applies to --expr and --at");
+  }
+  if (options.expr) {
+    return { schedule: buildSchedule("cron", options) };
+  }
+  if (options.at) {
+    return { schedule: buildSchedule("once", options) };
+  }
+  return { schedule: buildSchedule("loop", options) };
+}
+
+function buildUpdate(
+  options: UpdateOptions,
+  existing: ZeroWorkflowAutomationSummary,
+): ZeroWorkflowAutomationUpdateRequest {
+  const hasEventOptions =
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options);
+  if (hasScheduleUpdateOptions(options) && hasEventOptions) {
+    throw new Error("Use either schedule flags or event automation options");
+  }
+  if (hasGmailAutomationOptions(options) && hasGmailLabelOption(options)) {
+    throw new Error("Use either Gmail match options or --label");
+  }
+
+  if (existing.kind === "event") {
+    if (hasScheduleUpdateOptions(options)) {
+      throw new Error("Schedule flags only apply to schedule automations");
+    }
+    return buildEventUpdate(options, existing);
+  }
+
+  if (hasGithubAutomationOptions(options)) {
+    throw new Error(
+      "GitHub automation flags only apply to GitHub event automations",
+    );
+  }
+  return buildScheduleUpdate(options);
+}
+
+const addCommand = addGithubAutomationOptions(
+  addGmailAutomationOptions(
+    new Command()
+      .name("add")
+      .description("Add an automation to a workflow")
+      .argument("<workflow>", "Workflow ID or name")
+      .argument("<kind>", `Automation type: ${AUTOMATION_KINDS.join(" | ")}`)
+      .option("--expr <expression>", 'Cron expression for kind "cron"')
+      .option("--at <iso-time>", 'Fire time for kind "once"')
+      .option(
+        "--every <duration>",
+        'Interval for kind "loop" (e.g. 15m, 1h, 90s)',
+      )
+      .option(
+        "-z, --timezone <tz>",
+        "IANA timezone for cron/once (default: UTC)",
+      ),
+  ),
+)
+  .option(
+    "--calendar-id <id>",
+    "Google Calendar ID for Google Calendar event automations (default: primary)",
+  )
+  .option(
+    "--page-url <url>",
+    "Notion page URL for notion-page-content-updated automations",
+  )
+  .option(
+    "--parent-page-url <url>",
+    "Parent Notion page URL for notion-child-page-created automations",
+  )
+  .option(
+    "--database-url <url>",
+    "Notion database URL for notion-database-item-created or notion-page-content-updated automations",
+  )
+  .option("--agent <id>", "Agent ID for resolving a workflow name")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero workflow automation add tell-a-joke --agent <agent-id> cron --expr "0 9 * * *" -z Asia/Shanghai
+  zero workflow automation add tell-a-joke --agent <agent-id> once --at "2026-06-10T09:00" -z Asia/Shanghai
+  zero workflow automation add tell-a-joke --agent <agent-id> loop --every 15m
+  zero workflow automation add triage --agent <agent-id> gmail-new-message --from-contains "@example.com"
+  zero workflow automation add triage --agent <agent-id> gmail-new-message --config ./gmail-automation.json
+  zero workflow automation add triage --agent <agent-id> gmail-label-applied --label "Support"
+  zero workflow automation add triage --agent <agent-id> github-label-applied --label "triage" --subject both --actor me
+  zero workflow automation add triage --agent <agent-id> google-calendar-event-created
+  zero workflow automation add triage --agent <agent-id> google-calendar-event-updated
+  zero workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
+  zero workflow automation add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  zero workflow automation add triage --agent <agent-id> webhook
+
+Notes:
+  - Workflow names resolve under --agent, then ZERO_AGENT_ID
+  - Gmail automations match all inbound messages when no text match rules are provided
+  - GitHub label automations require the GitHub App installation in the workspace
+  - Webhook automations print the signing secret only once after creation
+  - Use the workflow ID when a name is ambiguous`,
+  )
+  .action(
+    withErrorHandler(
+      async (workflowRef: string, kind: string, options: AddOptions) => {
+        if (
+          options.timezone &&
+          kind !== "cron" &&
+          kind !== "once" &&
+          kind !== "gmail-new-message"
+        ) {
+          throw new Error(
+            "--timezone only applies to cron and once automations",
+          );
+        }
+        const workflowId = await resolveWorkflowRef(workflowRef, options);
+        const body = buildCreateRequest(kind, options);
+        const automation = await createWorkflowAutomation(workflowId, body);
+
+        console.log(
+          chalk.green(`✓ Automation added to workflow "${workflowRef}"`),
+        );
+        printWorkflowAutomationDetails(automation, { workflowRef });
+      },
+    ),
+  );
+
+const updateCommand = addGithubAutomationOptions(
+  addGmailAutomationOptions(
+    new Command()
+      .name("update")
+      .description(
+        "Replace a workflow automation's schedule or Gmail match config",
+      )
+      .argument("<automation>", "Workflow automation ID")
+      .option("--expr <expression>", 'New cron schedule (e.g. "0 9 * * *")')
+      .option("--at <iso-time>", 'New one-time fire (e.g. "2026-06-10T09:00")')
+      .option("--every <duration>", "New loop interval (e.g. 15m, 1h, 90s)")
+      .option("-z, --timezone <tz>", "IANA timezone for --expr / --at"),
+  ),
+)
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --expr "0 9 * * *" -z Asia/Shanghai
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --at "2026-06-10T09:00" -z UTC
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --every 10m
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --config ./gmail-automation.json
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --label "Support"
+  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone`,
+  )
+  .action(
+    withErrorHandler(async (id: string, options: UpdateOptions) => {
+      const existing = await getWorkflowAutomation(id);
+      const automation = await updateWorkflowAutomation(
+        id,
+        buildUpdate(options, existing),
+      );
+
+      console.log(chalk.green(`✓ Automation ${automation.id} updated`));
+      printWorkflowAutomationDetails(automation);
+    }),
+  );
+
+const listCommand = new Command()
+  .name("list")
+  .alias("ls")
+  .description("List a workflow's automations")
+  .argument("<workflow>", "Workflow ID or name")
+  .option("--agent <id>", "Agent ID for resolving a workflow name")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero workflow automation list tell-a-joke --agent <agent-id>
+  zero workflow automation list <workflow-id>`,
+  )
+  .action(
+    withErrorHandler(
+      async (workflowRef: string, options: WorkflowRefOptions) => {
+        const workflowId = await resolveWorkflowRef(workflowRef, options);
+        const automations = await listWorkflowAutomations(workflowId);
+
+        if (automations.length === 0) {
+          console.log(chalk.dim("No automations"));
+          console.log(
+            chalk.dim(
+              `  Add one with: zero workflow automation add ${workflowRef} cron --expr "0 9 * * *"`,
+            ),
+          );
+          return;
+        }
+
+        printWorkflowAutomationsTable(automations);
+      },
+    ),
+  );
+
+const showCommand = new Command()
+  .name("show")
+  .description("Show a workflow automation")
+  .argument("<automation>", "Workflow automation ID")
+  .action(
+    withErrorHandler(async (id: string) => {
+      const automation = await getWorkflowAutomation(id);
+      printWorkflowAutomationDetails(automation);
+    }),
+  );
+
+const rmCommand = new Command()
+  .name("rm")
+  .alias("remove")
+  .description("Remove a workflow automation")
+  .argument("<automation>", "Workflow automation ID")
+  .action(
+    withErrorHandler(async (id: string) => {
+      await deleteWorkflowAutomation(id);
+      console.log(chalk.green(`✓ Automation ${id} removed`));
+    }),
+  );
+
+const enableCommand = new Command()
+  .name("enable")
+  .description("Enable a workflow automation")
+  .argument("<automation>", "Workflow automation ID")
+  .action(
+    withErrorHandler(async (id: string) => {
+      const automation = await enableWorkflowAutomation(id);
+      console.log(chalk.green(`✓ Automation ${automation.id} enabled`));
+    }),
+  );
+
+const disableCommand = new Command()
+  .name("disable")
+  .description("Disable a workflow automation")
+  .argument("<automation>", "Workflow automation ID")
+  .action(
+    withErrorHandler(async (id: string) => {
+      const automation = await disableWorkflowAutomation(id);
+      console.log(chalk.green(`✓ Automation ${automation.id} disabled`));
+    }),
+  );
+
+export const automationCommand = new Command()
+  .name("automation")
+  .description("Manage a workflow's automations")
+  .addCommand(addCommand)
+  .addCommand(updateCommand)
+  .addCommand(listCommand)
+  .addCommand(showCommand)
+  .addCommand(rmCommand)
+  .addCommand(enableCommand)
+  .addCommand(disableCommand)
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Add an automation:     zero workflow automation add <workflow-id> cron --expr "0 9 * * *"
+  Add a Notion page:     zero workflow automation add <workflow-id> notion-child-page-created --parent-page-url "https://www.notion.so/..."
+  Add a webhook:         zero workflow automation add <workflow-id> webhook
+  Update a schedule:     zero workflow automation update <automation-id> --every 10m
+  List automations:      zero workflow automation list <workflow-id>
+  Inspect an automation: zero workflow automation show <automation-id>
+  Pause one automation:  zero workflow automation disable <automation-id>`,
+  );

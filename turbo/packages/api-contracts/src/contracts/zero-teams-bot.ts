@@ -53,6 +53,7 @@ export const teamsConversationUpdateActivitySchema =
   teamsActivityBaseSchema.extend({
     kind: z.literal("conversation_update"),
     action: z.enum(["members_added", "members_removed", "unknown"]),
+    sender: teamsActorSchema,
     recipient: teamsActorSchema,
     membersAdded: z.array(teamsActorSchema),
     membersRemoved: z.array(teamsActorSchema),
@@ -69,6 +70,7 @@ export const teamsInstallationUpdateActivitySchema =
   teamsActivityBaseSchema.extend({
     kind: z.literal("installation_update"),
     action: z.enum(["add", "unknown"]),
+    sender: teamsActorSchema,
     recipient: teamsActorSchema.nullable(),
   });
 

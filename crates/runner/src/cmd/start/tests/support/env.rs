@@ -106,7 +106,7 @@ fn build_mock_run_config(
         budget_memory_mb,
         max_concurrent,
         make_provider,
-        Box::new(MockSandboxRuntime::new()),
+        healthy_mock_sandbox_runtime(),
         "http://localhost:0",
     )
 }
@@ -144,9 +144,15 @@ pub(in super::super) fn mock_run_config_with_api_url(
         budget_memory_mb,
         max_concurrent,
         MockJobProvider::new,
-        Box::new(MockSandboxRuntime::new()),
+        healthy_mock_sandbox_runtime(),
         api_url,
     )
+}
+
+fn healthy_mock_sandbox_runtime() -> Box<dyn sandbox::SandboxRuntime> {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
+    Box::new(MockSandboxRuntime::with_overrides(overrides))
 }
 
 fn build_mock_run_config_with_runtime(
@@ -254,6 +260,7 @@ fn build_mock_run_config_with_runtime(
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             mitm_jsonl_flush: None,
             network_policy_refresh: None,
+            session_history_cpu: executor::SessionHistoryCpuPool::with_capacity(1),
             session_history_probe: executor::SessionHistoryProbe::default(),
             home,
             workspace_cache: None,
@@ -338,6 +345,7 @@ pub(in super::super) fn mock_run_config_with_overrides(
     max_concurrent: usize,
     overrides: Arc<sandbox_mock::MockSandboxOverrides>,
 ) -> (RunConfig, MockRunEnv) {
+    crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher(&overrides);
     build_mock_run_config_with_runtime(
         profiles,
         budget_vcpu,

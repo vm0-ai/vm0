@@ -18,8 +18,8 @@ import {
 } from "@vm0/db/schema/google-calendar-event";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
-  workflowUserTriggerThreads,
-  zeroWorkflowTriggers,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 
@@ -28,7 +28,7 @@ import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -39,12 +39,12 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowTriggerCallbacks,
-  runWorkflowTriggerNow$,
-  type TriggerRow,
-} from "./zero-workflow-trigger-run.service";
-import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
-import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
+  buildChatOnlyWorkflowAutomationCallbacks,
+  runWorkflowAutomationNow$,
+  type AutomationRow,
+} from "./zero-workflow-automation-run.service";
+import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:google-calendar-workflow-event");
 
@@ -167,8 +167,8 @@ type GoogleCalendarEventSnapshotRow =
   typeof googleCalendarEventSnapshots.$inferSelect;
 type GoogleCalendarChangeType = "created" | "updated" | "cancelled";
 
-interface GoogleCalendarEventTriggerRow {
-  readonly trigger: TriggerRow;
+interface GoogleCalendarEventAutomationRow {
+  readonly automation: AutomationRow;
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
@@ -211,7 +211,7 @@ interface CalendarEventChange {
 }
 
 type GoogleCalendarRunStarter = (args: {
-  readonly trigger: GoogleCalendarEventTriggerRow;
+  readonly automation: GoogleCalendarEventAutomationRow;
   readonly state: GoogleCalendarWatchStateRow;
   readonly notification: GoogleCalendarWebhookNotification;
   readonly event: CalendarEventContext;
@@ -219,7 +219,7 @@ type GoogleCalendarRunStarter = (args: {
 }) => Promise<"ok" | "error">;
 
 interface GoogleCalendarWorkflowRunStartTestInput {
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly workflowName: string;
   readonly changeType: GoogleCalendarChangeType;
   readonly calendarId: string;
@@ -375,7 +375,7 @@ async function refreshGoogleCalendarAccessToken(args: {
   const refreshToken = await decryptStoredSecretValue(
     args.refreshSecret.encryptedValue,
   );
-  const refreshResult = await settle(
+  const refreshed = await tapError(
     refreshGoogleToken(
       "google-calendar",
       clientId,
@@ -383,9 +383,9 @@ async function refreshGoogleCalendarAccessToken(args: {
       refreshToken,
       args.signal,
     ),
-    args.signal,
   );
-  if (!refreshResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     await markGoogleCalendarConnectorNeedsReconnect({
       db: args.db,
       connectorId: args.connector.id,
@@ -395,20 +395,18 @@ async function refreshGoogleCalendarAccessToken(args: {
     return {
       kind: "bad_request",
       message:
-        "Reconnect Google Calendar before using Google Calendar event triggers",
+        "Reconnect Google Calendar before using Google Calendar event automations",
     };
   }
 
   const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshResult.value.expiresIn,
+    refreshed.expiresIn,
     args.currentTime,
   );
   await args.db
     .update(secretsTable)
     .set({
-      encryptedValue: await encryptStoredSecretValue(
-        refreshResult.value.accessToken,
-      ),
+      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
       updatedAt: args.currentTime,
     })
     .where(
@@ -436,7 +434,7 @@ async function refreshGoogleCalendarAccessToken(args: {
     access: {
       connectorId: args.connector.id,
       emailAddress: args.connector.externalEmail,
-      accessToken: refreshResult.value.accessToken,
+      accessToken: refreshed.accessToken,
     },
   };
 }
@@ -454,14 +452,14 @@ async function resolveGoogleCalendarAccess(args: {
     return {
       kind: "bad_request",
       message:
-        "Connect Google Calendar before adding a Google Calendar event trigger",
+        "Connect Google Calendar before adding a Google Calendar event automation",
     };
   }
   if (connector.needsReconnect) {
     return {
       kind: "bad_request",
       message:
-        "Reconnect Google Calendar before using Google Calendar event triggers",
+        "Reconnect Google Calendar before using Google Calendar event automations",
     };
   }
 
@@ -471,7 +469,7 @@ async function resolveGoogleCalendarAccess(args: {
     return {
       kind: "bad_request",
       message:
-        "Reconnect Google Calendar before using Google Calendar event triggers",
+        "Reconnect Google Calendar before using Google Calendar event automations",
     };
   }
 
@@ -498,7 +496,7 @@ async function resolveGoogleCalendarAccess(args: {
     return {
       kind: "bad_request",
       message:
-        "Reconnect Google Calendar before using Google Calendar event triggers",
+        "Reconnect Google Calendar before using Google Calendar event automations",
     };
   }
 
@@ -522,7 +520,7 @@ function calendarEventsUrl(calendarId: string): string {
 }
 
 function googleCalendarWebhookUrl(): string {
-  const baseUrl = optionalEnv("VM0_API_BACKEND_URL") ?? env("VM0_API_URL");
+  const baseUrl = optionalEnv("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
   return new URL("/api/webhooks/google-calendar", baseUrl).toString();
 }
 
@@ -1002,7 +1000,7 @@ async function baselineCalendarWatchState(args: {
       kind: "bad_request",
       message:
         baseline.kind === "stale_cursor"
-          ? "Failed to establish Google Calendar event trigger baseline"
+          ? "Failed to establish Google Calendar event automation baseline"
           : baseline.message,
     };
   }
@@ -1088,7 +1086,7 @@ async function registerCalendarWatch(args: {
     return {
       kind: "bad_request",
       message:
-        "Failed to register Google Calendar watch for event trigger setup",
+        "Failed to register Google Calendar watch for event automation setup",
     };
   }
 
@@ -1282,66 +1280,69 @@ async function loadCalendarEventSnapshotMap(args: {
   );
 }
 
-function parseGoogleCalendarEventTriggerConfig(
-  trigger: TriggerRow,
+function parseGoogleCalendarEventAutomationConfig(
+  automation: AutomationRow,
 ): { readonly calendarId: string } | null {
-  if (trigger.eventType === "google-calendar-event-created") {
+  if (automation.eventType === "google-calendar-event-created") {
     const config = googleCalendarEventCreatedEventConfigSchema.safeParse(
-      trigger.eventConfig,
+      automation.eventConfig,
     );
     return config.success ? { calendarId: config.data.calendarId } : null;
   }
-  if (trigger.eventType === "google-calendar-event-updated") {
+  if (automation.eventType === "google-calendar-event-updated") {
     const config = googleCalendarEventUpdatedEventConfigSchema.safeParse(
-      trigger.eventConfig,
+      automation.eventConfig,
     );
     return config.success ? { calendarId: config.data.calendarId } : null;
   }
-  if (trigger.eventType === "google-calendar-event-cancelled") {
+  if (automation.eventType === "google-calendar-event-cancelled") {
     const config = googleCalendarEventCancelledEventConfigSchema.safeParse(
-      trigger.eventConfig,
+      automation.eventConfig,
     );
     return config.success ? { calendarId: config.data.calendarId } : null;
   }
   return null;
 }
 
-async function loadGoogleCalendarEventTriggers(args: {
+async function loadGoogleCalendarEventAutomations(args: {
   readonly db: Db;
   readonly state: GoogleCalendarWatchStateRow;
   readonly signal: AbortSignal;
-}): Promise<GoogleCalendarEventTriggerRow[]> {
-  const triggerRows = await args.db
+}): Promise<GoogleCalendarEventAutomationRow[]> {
+  const automationRows = await args.db
     .select({
-      trigger: zeroWorkflowTriggers,
+      automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
-      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+      chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .innerJoin(
       zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
     )
     .leftJoin(
-      workflowUserTriggerThreads,
+      workflowUserAutomationThreads,
       and(
-        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
-        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
         eq(
-          workflowUserTriggerThreads.workflowId,
-          zeroWorkflowTriggers.workflowId,
+          workflowUserAutomationThreads.userId,
+          zeroWorkflowAutomations.ownerUserId,
+        ),
+        eq(
+          workflowUserAutomationThreads.workflowId,
+          zeroWorkflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, args.state.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.state.userId),
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.kind, "event"),
-        inArray(zeroWorkflowTriggers.eventType, [
+        eq(zeroWorkflowAutomations.orgId, args.state.orgId),
+        eq(zeroWorkflowAutomations.ownerUserId, args.state.userId),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.kind, "event"),
+        inArray(zeroWorkflowAutomations.eventType, [
           "google-calendar-event-created",
           "google-calendar-event-updated",
           "google-calendar-event-cancelled",
@@ -1351,14 +1352,14 @@ async function loadGoogleCalendarEventTriggers(args: {
   args.signal.throwIfAborted();
 
   const currentTime = nowDate();
-  const triggers: GoogleCalendarEventTriggerRow[] = [];
-  for (const row of triggerRows) {
-    const config = parseGoogleCalendarEventTriggerConfig(row.trigger);
+  const automations: GoogleCalendarEventAutomationRow[] = [];
+  for (const row of automationRows) {
+    const config = parseGoogleCalendarEventAutomationConfig(row.automation);
     if (!config || config.calendarId !== args.state.calendarId) {
       continue;
     }
-    const canFire = await workflowTriggerCanFire(args.db, {
-      trigger: row.trigger,
+    const canFire = await workflowAutomationCanFire(args.db, {
+      automation: row.automation,
       agentId: row.agentId,
       signal: args.signal,
     });
@@ -1369,39 +1370,39 @@ async function loadGoogleCalendarEventTriggers(args: {
     const chatThreadId =
       row.chatThreadId ??
       (await args.db.transaction(async (tx) => {
-        return await ensureWorkflowUserTriggerThread(tx, {
-          orgId: row.trigger.orgId,
-          userId: row.trigger.ownerUserId,
-          workflowId: row.trigger.workflowId,
+        return await ensureWorkflowUserAutomationThread(tx, {
+          orgId: row.automation.orgId,
+          userId: row.automation.ownerUserId,
+          workflowId: row.automation.workflowId,
           agentId: row.agentId,
           workflowTitle: row.workflowDisplayName ?? row.workflowName,
           currentTime,
         });
       }));
     args.signal.throwIfAborted();
-    triggers.push({
-      trigger: row.trigger,
+    automations.push({
+      automation: row.automation,
       agentId: row.agentId,
       workflowName: row.workflowName,
       chatThreadId,
     });
   }
-  return triggers;
+  return automations;
 }
 
 function buildGoogleCalendarWorkflowEventSystemPrompt(args: {
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly event: CalendarEventContext;
 }): string {
-  const triggerDescription =
+  const automationDescription =
     args.event.changeType === "created"
-      ? "a Google Calendar event-created workflow trigger matched a newly created calendar event."
+      ? "a Google Calendar event-created workflow automation matched a newly created calendar event."
       : args.event.changeType === "updated"
-        ? "a Google Calendar event-updated workflow trigger matched an updated calendar event."
-        : "a Google Calendar event-cancelled workflow trigger matched a cancelled calendar event.";
+        ? "a Google Calendar event-updated workflow automation matched an updated calendar event."
+        : "a Google Calendar event-cancelled workflow automation matched a cancelled calendar event.";
   return [
     "# Current context",
-    `You are running because ${triggerDescription}`,
+    `You are running because ${automationDescription}`,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
     "Use connected Google Calendar tools to inspect the calendar event if the workflow needs more detail.",
@@ -1409,7 +1410,7 @@ function buildGoogleCalendarWorkflowEventSystemPrompt(args: {
     "# Google Calendar event",
     JSON.stringify(
       {
-        triggerId: args.triggerId,
+        automationId: args.automationId,
         changeType: args.event.changeType,
         calendarId: args.event.calendarId,
         eventId: args.event.eventId,
@@ -1438,7 +1439,7 @@ function buildGoogleCalendarWorkflowEventSystemPrompt(args: {
 async function insertGoogleCalendarProcessedEvent(args: {
   readonly db: Db;
   readonly state: GoogleCalendarWatchStateRow;
-  readonly trigger: GoogleCalendarEventTriggerRow;
+  readonly automation: GoogleCalendarEventAutomationRow;
   readonly notification: GoogleCalendarWebhookNotification;
   readonly event: CalendarEventContext;
   readonly eventChangeKey: string;
@@ -1448,7 +1449,7 @@ async function insertGoogleCalendarProcessedEvent(args: {
     .insert(googleCalendarProcessedEvents)
     .values({
       watchStateId: args.state.id,
-      triggerId: args.trigger.trigger.id,
+      automationId: args.automation.automation.id,
       channelId: args.state.channelId,
       resourceState: args.notification.resourceState,
       calendarEventId: args.event.eventId,
@@ -1464,10 +1465,10 @@ async function insertGoogleCalendarProcessedEvent(args: {
   return processed?.id ?? null;
 }
 
-async function dispatchGoogleCalendarTriggerEvent(args: {
+async function dispatchGoogleCalendarAutomationEvent(args: {
   readonly db: Db;
   readonly state: GoogleCalendarWatchStateRow;
-  readonly trigger: GoogleCalendarEventTriggerRow;
+  readonly automation: GoogleCalendarEventAutomationRow;
   readonly notification: GoogleCalendarWebhookNotification;
   readonly event: CalendarEventContext;
   readonly eventChangeKey: string;
@@ -1486,7 +1487,7 @@ async function dispatchGoogleCalendarTriggerEvent(args: {
   }
 
   const result = await args.startRun({
-    trigger: args.trigger,
+    automation: args.automation,
     state: args.state,
     notification: args.notification,
     event: args.event,
@@ -1504,17 +1505,17 @@ async function dispatchGoogleCalendarTriggerEvent(args: {
   return "dispatched";
 }
 
-function googleCalendarTriggerMatchesChange(
-  trigger: GoogleCalendarEventTriggerRow,
+function googleCalendarAutomationMatchesChange(
+  automation: GoogleCalendarEventAutomationRow,
   changeType: GoogleCalendarChangeType,
 ): boolean {
   if (changeType === "created") {
-    return trigger.trigger.eventType === "google-calendar-event-created";
+    return automation.automation.eventType === "google-calendar-event-created";
   }
   if (changeType === "updated") {
-    return trigger.trigger.eventType === "google-calendar-event-updated";
+    return automation.automation.eventType === "google-calendar-event-updated";
   }
-  return trigger.trigger.eventType === "google-calendar-event-cancelled";
+  return automation.automation.eventType === "google-calendar-event-cancelled";
 }
 
 async function dispatchCalendarEventChanges(args: {
@@ -1522,12 +1523,12 @@ async function dispatchCalendarEventChanges(args: {
   readonly state: GoogleCalendarWatchStateRow;
   readonly notification: GoogleCalendarWebhookNotification;
   readonly changes: readonly CalendarEventChange[];
-  readonly triggers: readonly GoogleCalendarEventTriggerRow[];
+  readonly automations: readonly GoogleCalendarEventAutomationRow[];
   readonly sourceTiming: WorkflowEventSourceTiming;
   readonly startRun: GoogleCalendarRunStarter;
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarDispatchStateResult> {
-  if (args.triggers.length === 0 || args.changes.length === 0) {
+  if (args.automations.length === 0 || args.changes.length === 0) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
@@ -1536,21 +1537,24 @@ async function dispatchCalendarEventChanges(args: {
   for (const change of args.changes) {
     const changeTiming = args.sourceTiming.fork();
     const context = eventPromptContext(args.state.calendarId, change);
-    for (const trigger of args.triggers) {
+    for (const automation of args.automations) {
       const runTiming = changeTiming.createRunTiming();
       const matches = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+        "api_dispatch_pre_create_zero_workflow_event_match_automations",
         () => {
-          return googleCalendarTriggerMatchesChange(trigger, change.changeType);
+          return googleCalendarAutomationMatchesChange(
+            automation,
+            change.changeType,
+          );
         },
       );
       if (!matches) {
         continue;
       }
-      const result = await dispatchGoogleCalendarTriggerEvent({
+      const result = await dispatchGoogleCalendarAutomationEvent({
         db: args.db,
         state: args.state,
-        trigger,
+        automation,
         notification: args.notification,
         event: context,
         eventChangeKey: change.eventChangeKey,
@@ -1603,10 +1607,10 @@ async function dispatchGoogleCalendarChanges(args: {
       return change !== null;
     });
 
-  const triggers = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+  const automations = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_automations",
     async () => {
-      return await loadGoogleCalendarEventTriggers({
+      return await loadGoogleCalendarEventAutomations({
         db: args.db,
         state: args.state,
         signal: args.signal,
@@ -1618,7 +1622,7 @@ async function dispatchGoogleCalendarChanges(args: {
     state: args.state,
     notification: args.notification,
     changes: calendarEventChanges,
-    triggers,
+    automations,
     sourceTiming: args.sourceTiming,
     startRun: args.startRun,
     signal: args.signal,
@@ -1795,41 +1799,41 @@ export const dispatchGoogleCalendarWebhook$ = command(
 
     const runStarterOverride = googleCalendarRunStarterOverride.get();
     const startRun: GoogleCalendarRunStarter = runStarterOverride
-      ? async ({ trigger, state, event }) => {
+      ? async ({ automation, state, event }) => {
           return await runStarterOverride({
-            triggerId: trigger.trigger.id,
-            workflowName: trigger.workflowName,
+            automationId: automation.automation.id,
+            workflowName: automation.workflowName,
             changeType: event.changeType,
             calendarId: state.calendarId,
             eventId: event.eventId,
             summary: event.summary,
           });
         }
-      : async ({ trigger, event, timing }) => {
+      : async ({ automation, event, timing }) => {
           const runInput = await timing.measure(
             "api_dispatch_pre_create_zero_workflow_event_build_run_input",
             () => {
               return {
                 appendSystemPrompt:
                   buildGoogleCalendarWorkflowEventSystemPrompt({
-                    triggerId: trigger.trigger.id,
+                    automationId: automation.automation.id,
                     event,
                   }),
-                callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-                  trigger.chatThreadId,
-                  trigger.agentId,
+                callbacks: buildChatOnlyWorkflowAutomationCallbacks(
+                  automation.chatThreadId,
+                  automation.agentId,
                 ),
               };
             },
           );
           const result = await set(
-            runWorkflowTriggerNow$,
+            runWorkflowAutomationNow$,
             {
               due: {
-                trigger: trigger.trigger,
-                agentId: trigger.agentId,
-                workflowName: trigger.workflowName,
-                chatThreadId: trigger.chatThreadId,
+                automation: automation.automation,
+                agentId: automation.agentId,
+                workflowName: automation.workflowName,
+                chatThreadId: automation.chatThreadId,
               },
               apiStartTime: args.apiStartTime,
               triggerSource: "workflow-event",

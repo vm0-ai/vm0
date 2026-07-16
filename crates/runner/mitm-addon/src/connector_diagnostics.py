@@ -110,21 +110,20 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
 
 def record_allow_context(
     flow: http.HTTPFlow,
-    classification: request_classification.RequestClassification,
+    classification: request_classification.Allow,
 ) -> None:
     """Pin diagnostic lookup context for an eligible ordinary allow flow.
 
     Request-header callers use this before carrying a streamed ``allow``
     classification into ``request()``; request callers use it before immediate
-    or deferred diagnostic resolution. A non-allow classification, browser
-    flow, existing diagnostic, or incomplete VM/original-URL context is a
-    no-op.
+    or deferred diagnostic resolution. A browser flow, existing diagnostic, or
+    asterisk-form target, or incomplete original-URL context is a no-op.
 
     On success, the flow records diagnostic eligibility, active firewall names,
     and one classification-compatible catalog snapshot. Response and error
     phases resolve candidates only from that pinned snapshot.
     """
-    if classification.kind != "allow":
+    if classification.is_asterisk_form:
         return
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         return
@@ -133,7 +132,7 @@ def record_allow_context(
 
     vm_info = classification.vm_info
     original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-    if vm_info is None or not isinstance(original_url, str):
+    if not isinstance(original_url, str):
         return
 
     flow.metadata[_CONNECTOR_DIAGNOSTIC_ELIGIBLE] = True
@@ -186,7 +185,7 @@ def maybe_make_local_response(
 
 def maybe_make_firewall_allow_local_response(
     flow: http.HTTPFlow,
-    classification: request_classification.RequestClassification,
+    classification: request_classification.FirewallAllow,
     *,
     commit: bool,
 ) -> bool:
@@ -208,14 +207,12 @@ def maybe_make_firewall_allow_local_response(
     and recording the selected candidate and ownership metadata. The caller
     must stop normal request dispatch on ``True``.
     """
-    if classification.kind != "firewall_allow":
-        return False
     if _is_browser_diagnostic_skip(flow):
         return False
 
     allow = classification.firewall_allow
     vm_info = classification.vm_info
-    if allow is None or vm_info is None or not _firewall_allow_is_unknown_endpoint(allow):
+    if not _firewall_allow_is_unknown_endpoint(allow):
         return False
 
     original_url = flow_metadata.original_url(flow.metadata)
@@ -480,7 +477,9 @@ def _diagnostic_snapshot_from_flow(
 
 def _select_diagnostic_snapshot(
     flow: http.HTTPFlow,
-    classification: request_classification.RequestClassification | None = None,
+    classification: request_classification.Allow
+    | request_classification.FirewallAllow
+    | None = None,
 ) -> builtin_connector_diagnostics.DiagnosticCatalogSnapshot:
     pinned = _diagnostic_snapshot_from_flow(flow)
     if pinned is not None:
@@ -493,7 +492,9 @@ def _select_diagnostic_snapshot(
 
 def _pin_diagnostic_snapshot(
     flow: http.HTTPFlow,
-    classification: request_classification.RequestClassification | None = None,
+    classification: request_classification.Allow
+    | request_classification.FirewallAllow
+    | None = None,
 ) -> builtin_connector_diagnostics.DiagnosticCatalogSnapshot:
     snapshot = _select_diagnostic_snapshot(flow, classification)
     flow.metadata[_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT] = snapshot

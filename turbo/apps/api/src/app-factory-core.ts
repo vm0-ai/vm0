@@ -3,8 +3,10 @@ import { createHash } from "node:crypto";
 import { httpInstrumentationMiddleware } from "@hono/otel";
 import * as Sentry from "@sentry/node";
 import {
+  CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
+  CLIENT_TYPE_APP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
@@ -18,6 +20,7 @@ import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
 import { flushLogs, logger } from "./lib/log";
 import { now } from "./lib/time";
+import { isSupportedWebClientVersion } from "./lib/web-client-compatibility";
 import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
 import {
@@ -442,6 +445,29 @@ function clientHeaderLogFields(context: Context): ClientHeaderLogFields {
   };
 }
 
+async function webClientCompatibilityMiddleware(
+  context: Context,
+  next: Next,
+): Promise<Response | void> {
+  const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
+  const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
+  if (
+    clientType === CLIENT_TYPE_APP &&
+    clientVersion &&
+    !isSupportedWebClientVersion(clientVersion)
+  ) {
+    return context.json(
+      { error: "Client update required" },
+      CLIENT_FORCE_UPGRADE_STATUS,
+      {
+        "Cache-Control": "no-store",
+      },
+    );
+  }
+
+  await next();
+}
+
 function requestPathname(context: Context): string {
   const url = safeUrlParse(context.req.url);
   return url?.pathname ?? context.req.path;
@@ -593,6 +619,8 @@ export function createAppWithRoutes({
     await next();
     waitUntil(flushLogs());
   });
+
+  app.use("*", webClientCompatibilityMiddleware);
 
   for (const path of WEB_AUTH_PATHS) {
     app.get(path, redirectToWeb);

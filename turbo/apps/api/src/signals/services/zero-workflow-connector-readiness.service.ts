@@ -7,13 +7,10 @@ import {
   connectorCatalogRefSchema,
   type ConnectorCatalogRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
-  zeroWorkflowTriggers,
+  zeroWorkflowAutomations,
   type ZeroWorkflowEventType,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
@@ -24,10 +21,7 @@ import { db$, type ReadonlyDb } from "../external/db";
 import { generateText } from "../external/openrouter";
 import { safeJsonParse } from "../utils";
 import { loadAgentConnectorScope } from "./agent-connector-scope.service";
-import {
-  getPublicConnectorCatalogIcon,
-  listPublicConnectorCatalogStatus,
-} from "./connector-catalog-reader.service";
+import { readPublicConnectorCatalogStatus } from "./connector-catalog-reader.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 
 const CONNECTOR_READINESS_MODEL = "google/gemini-3.1-flash-lite-preview";
@@ -62,26 +56,26 @@ type DetectWorkflowConnectorReadinessResult =
       readonly message: string;
     };
 
-interface TriggerConnectorDependency {
+interface AutomationConnectorDependency {
   readonly connectorRef: ConnectorType;
   readonly reason: string;
 }
 
-function triggerConnectorDependency(
+function automationConnectorDependency(
   eventType: ZeroWorkflowEventType,
-): TriggerConnectorDependency | null {
+): AutomationConnectorDependency | null {
   switch (eventType) {
     case "gmail-new-message":
     case "gmail-label-applied": {
       return {
         connectorRef: "gmail",
-        reason: "This workflow has a Gmail event trigger.",
+        reason: "This workflow has a Gmail event automation.",
       };
     }
     case "github-label-applied": {
       return {
         connectorRef: "github",
-        reason: "This workflow has a GitHub event trigger.",
+        reason: "This workflow has a GitHub event automation.",
       };
     }
     case "google-calendar-event-created":
@@ -89,13 +83,13 @@ function triggerConnectorDependency(
     case "google-calendar-event-cancelled": {
       return {
         connectorRef: "google-calendar",
-        reason: "This workflow has a Google Calendar event trigger.",
+        reason: "This workflow has a Google Calendar event automation.",
       };
     }
     case "google-meet-transcript-generated": {
       return {
         connectorRef: "google-meet",
-        reason: "This workflow has a Google Meet event trigger.",
+        reason: "This workflow has a Google Meet event automation.",
       };
     }
     case "notion-child-page-created":
@@ -103,7 +97,7 @@ function triggerConnectorDependency(
     case "notion-page-content-updated": {
       return {
         connectorRef: "notion",
-        reason: "This workflow has a Notion event trigger.",
+        reason: "This workflow has a Notion event automation.",
       };
     }
     default: {
@@ -133,58 +127,36 @@ function workflowInputLength(input: WorkflowConnectorReadinessInput): number {
   );
 }
 
-async function loadTriggerConnectorDependencies(
+async function loadAutomationConnectorDependencies(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly workflowId: string;
   },
-): Promise<ReadonlyMap<ConnectorType, TriggerConnectorDependency>> {
-  const triggers = await db
-    .select({ eventType: zeroWorkflowTriggers.eventType })
-    .from(zeroWorkflowTriggers)
+): Promise<ReadonlyMap<ConnectorType, AutomationConnectorDependency>> {
+  const automations = await db
+    .select({ eventType: zeroWorkflowAutomations.eventType })
+    .from(zeroWorkflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-        eq(zeroWorkflowTriggers.workflowId, args.workflowId),
+        eq(zeroWorkflowAutomations.orgId, args.orgId),
+        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+        eq(zeroWorkflowAutomations.workflowId, args.workflowId),
       ),
     );
 
-  const dependencies = new Map<ConnectorType, TriggerConnectorDependency>();
-  for (const trigger of triggers) {
-    if (!trigger.eventType) {
+  const dependencies = new Map<ConnectorType, AutomationConnectorDependency>();
+  for (const automation of automations) {
+    if (!automation.eventType) {
       continue;
     }
-    const dependency = triggerConnectorDependency(trigger.eventType);
+    const dependency = automationConnectorDependency(automation.eventType);
     if (dependency && !dependencies.has(dependency.connectorRef)) {
       dependencies.set(dependency.connectorRef, dependency);
     }
   }
   return dependencies;
-}
-
-function triggerConnectorFallbackMetadata(
-  dependencies: ReadonlyMap<ConnectorType, TriggerConnectorDependency>,
-): ReadonlyMap<
-  ConnectorCatalogRef,
-  {
-    readonly label: string;
-    readonly icon: ZeroWorkflowConnectorReadinessEntry["icon"];
-  }
-> {
-  return new Map(
-    [...dependencies.values()].map((dependency) => {
-      return [
-        dependency.connectorRef,
-        {
-          label: CONNECTOR_TYPES[dependency.connectorRef].label,
-          icon: getPublicConnectorCatalogIcon(dependency.connectorRef),
-        },
-      ];
-    }),
-  );
 }
 
 interface ModelCatalogEntry {
@@ -298,8 +270,8 @@ export const detectWorkflowConnectorReadiness$ = command(
     }
 
     const db = get(db$);
-    const [connectorState, agentScope, triggerDependencies] = await Promise.all(
-      [
+    const [connectorState, agentScope, automationDependencies] =
+      await Promise.all([
         get(
           zeroConnectorList({
             orgId: args.orgId,
@@ -312,22 +284,29 @@ export const detectWorkflowConnectorReadiness$ = command(
           userId: args.userId,
           agentId: args.agentId,
         }),
-        loadTriggerConnectorDependencies(db, {
+        loadAutomationConnectorDependencies(db, {
           orgId: args.orgId,
           userId: args.userId,
           workflowId: args.workflowId,
         }),
-      ],
-    );
+      ]);
     signal.throwIfAborted();
 
-    const statusCatalog = await listPublicConnectorCatalogStatus({
+    const catalogRead = await readPublicConnectorCatalogStatus({
+      db,
       featureStates: args.featureStates,
       apiAuthMethodPolicy: "include",
       connectors: connectorState.connectors,
+      referenceConnectorRefs: [...automationDependencies.keys()],
     });
     signal.throwIfAborted();
+    const statusCatalog = catalogRead.status;
 
+    const statusByRef = new Map(
+      statusCatalog.connectors.map((connector) => {
+        return [connector.connectorRef, connector];
+      }),
+    );
     const modelCatalog: ModelCatalogEntry[] = statusCatalog.connectors.map(
       (connector) => {
         return {
@@ -343,9 +322,8 @@ export const detectWorkflowConnectorReadiness$ = command(
       signal,
     });
     signal.throwIfAborted();
-
-    const statusByRef = new Map(
-      statusCatalog.connectors.map((connector) => {
+    const automationFallbackMetadata = new Map(
+      catalogRead.referenceMetadata.map((connector) => {
         return [connector.connectorRef, connector];
       }),
     );
@@ -355,17 +333,14 @@ export const detectWorkflowConnectorReadiness$ = command(
     const mergedDependencies = new Map<ConnectorCatalogRef, string>(
       modelDependencies,
     );
-    for (const dependency of triggerDependencies.values()) {
+    for (const dependency of automationDependencies.values()) {
       mergedDependencies.set(dependency.connectorRef, dependency.reason);
     }
-    const triggerFallbackMetadata =
-      triggerConnectorFallbackMetadata(triggerDependencies);
-
     const connectors: ZeroWorkflowConnectorReadinessEntry[] = [];
     for (const [connectorRef, reason] of mergedDependencies) {
       const catalogEntry = statusByRef.get(connectorRef);
       if (!catalogEntry) {
-        const fallbackMetadata = triggerFallbackMetadata.get(connectorRef);
+        const fallbackMetadata = automationFallbackMetadata.get(connectorRef);
         if (!fallbackMetadata) {
           throw new Error(
             `Missing connector catalog metadata: ${connectorRef}`,

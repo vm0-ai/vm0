@@ -7,6 +7,7 @@ import {
   isConnectorIconAssetKey,
   isStaticConnectorIconType,
   parseStaticConnectorIconAssetPath,
+  staticConnectorIconPublicPathUrl,
 } from "../static-connector-icons";
 
 describe("static connector icons", () => {
@@ -34,7 +35,7 @@ describe("static connector icons", () => {
       }
     }
 
-    expect(urls.size).toBe(299);
+    expect(urls.size).toBe(309);
   });
 
   it("preserves aliases and representative appearance behavior", () => {
@@ -69,6 +70,33 @@ describe("static connector icons", () => {
     expect(isConnectorIconAssetKey("slack")).toBe(true);
     expect(isConnectorIconAssetKey("slack-webhook")).toBe(false);
     expect(connectorIconAssetUrl("slack")).toContain("/icons/slack-");
+  });
+
+  it("builds trusted URLs from full published icon paths", () => {
+    expect(
+      staticConnectorIconPublicPathUrl(
+        "platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
+      ),
+    ).toBe(
+      "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
+    );
+    expect(
+      staticConnectorIconPublicPathUrl(
+        "platform/views/zero-page/components/settings/icons/slack-198390069136.svg",
+      ),
+    ).toBe(
+      "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg",
+    );
+    expect(() => {
+      staticConnectorIconPublicPathUrl(
+        "https://example.com/platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
+      );
+    }).toThrow("Invalid static connector icon public path");
+    expect(() => {
+      staticConnectorIconPublicPathUrl(
+        "platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg?v=1",
+      );
+    }).toThrow("Invalid static connector icon public path");
   });
 
   it.each([

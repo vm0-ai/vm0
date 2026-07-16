@@ -19,8 +19,9 @@ import {
   loadWorkflowQueueThread,
   setWorkflowQueuePause,
   type WorkflowQueueThreadRow,
-} from "../services/zero-workflow-queue.service";
-import { drainWorkflowQueueForThread$ } from "../services/zero-workflow-queue-drain.service";
+} from "../services/chat-message-queue.service";
+import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
+import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
 import type { RouteEntry } from "../route-entry";
 
 const workflowReadAuth = {
@@ -213,8 +214,11 @@ const setPauseInner = (paused: boolean) => {
       // Resuming re-drains immediately instead of waiting for the next
       // terminal run or the safety-net cron.
       await set(
-        drainWorkflowQueueForThread$,
-        { chatThreadId: params.threadId },
+        drainChatThreadQueueForThread$,
+        {
+          chatThreadId: params.threadId,
+          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        },
         signal,
       );
       signal.throwIfAborted();

@@ -74,6 +74,18 @@ const runnerPreLocalAdmissionOutcomeSchema = z.enum([
   "local_holder",
   "missing_session_metadata",
 ]);
+export const sessionHistoryGenerationRelationshipSchema = z.enum([
+  "exact",
+  "different",
+  "fresh",
+  "unknown_target",
+  "unknown_reserved",
+]);
+export const sessionHistoryGenerationLocalAvailabilitySchema = z.enum([
+  "parked_after_discovery",
+  "parked_before_discovery_lt_heartbeat_period",
+  "parked_before_discovery_ge_heartbeat_period",
+]);
 
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
@@ -88,6 +100,10 @@ const runnerClaimTelemetrySchema = z.object({
   providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
   mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
   preLocalAdmissionOutcome: runnerPreLocalAdmissionOutcomeSchema.optional(),
+  sessionHistoryGenerationRelationship:
+    sessionHistoryGenerationRelationshipSchema.optional(),
+  sessionHistoryGenerationLocalAvailability:
+    sessionHistoryGenerationLocalAvailabilitySchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
@@ -163,6 +179,12 @@ export const jobSchema = z.object({
   checkpointId: z.uuid().nullable(),
   experimentalProfile: z.string().optional(),
   cliAgentSessionId: z.string().nullable().optional(),
+  historyGenerationRunId: z.uuid().optional(),
+  historyGenerationAffinityProtectedUntil: z
+    .string()
+    .datetime({ offset: true })
+    .nullable()
+    .optional(),
   affinityProtectedUntil: z
     .string()
     .datetime({ offset: true })
@@ -178,6 +200,7 @@ export const heldSessionStateSchema = z.object({
   reusableSandbox: z
     .object({
       profile: z.string(),
+      historyGenerationRunId: z.uuid().optional(),
     })
     .optional(),
 });
@@ -288,6 +311,7 @@ const resumeSessionHistoryEncodedSizeSchema = z
 
 const storedResumeSessionRefSchema = z.object({
   sessionId: z.string(),
+  historyGenerationRunId: z.uuid().optional(),
   historyRef: resumeSessionHistoryBlobRefSchema.extend({
     encoding: sessionHistoryEncodingSchema.optional(),
   }),
@@ -648,6 +672,12 @@ export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type SessionHistoryDownloadSource = z.infer<
   typeof sessionHistoryDownloadSourceSchema
+>;
+export type SessionHistoryGenerationRelationship = z.infer<
+  typeof sessionHistoryGenerationRelationshipSchema
+>;
+export type SessionHistoryGenerationLocalAvailability = z.infer<
+  typeof sessionHistoryGenerationLocalAvailabilitySchema
 >;
 
 export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

@@ -22,13 +22,16 @@ import {
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 
 import { insufficientCredits } from "../../lib/error";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchContext } from "./feature-switches.service";
+import {
+  loadOrgPlanCapabilities,
+  type OrgPlanCapabilities,
+} from "./org-plan-entitlement-read.service";
 
 type OrgModelPolicyRow = typeof orgModelPolicies.$inferSelect;
 
@@ -56,7 +59,7 @@ function bad<T>(message: string): ServiceResult<T> {
   return { ok: false, message };
 }
 
-function limitedFree1Restricted<T>(): ServiceResult<T> {
+function planRestricted<T>(): ServiceResult<T> {
   return { ok: false, response: insufficientCredits() };
 }
 
@@ -92,27 +95,38 @@ function loadRows(db: Db, orgId: string): Promise<OrgModelPolicyRow[]> {
     );
 }
 
-async function orgHasLimitedFree1Restrictions(
+async function orgModelCapabilities(
   db: Db,
   orgId: string,
-): Promise<boolean> {
-  const [org] = await db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return org?.tier === "limited-free-1";
+): Promise<Pick<OrgPlanCapabilities, "restrictedVm0Models" | "supportByok">> {
+  const capabilities = await loadOrgPlanCapabilities(db, orgId);
+  if (capabilities?.status !== "active") {
+    return {
+      restrictedVm0Models: false,
+      supportByok: true,
+    };
+  }
+  return {
+    restrictedVm0Models: capabilities.restrictedVm0Models,
+    supportByok: capabilities.supportByok,
+  };
 }
 
-function modelAllowedForOrgTier(model: string, limitedFree1: boolean): boolean {
-  return !limitedFree1 || !isLimitedFree1RestrictedRunModel(model);
-}
-
-function modelProviderAllowedForOrgTier(
-  providerType: ModelProviderType,
-  limitedFree1: boolean,
+function modelAllowedForOrgPlan(
+  model: string,
+  capabilities: Pick<OrgPlanCapabilities, "restrictedVm0Models">,
 ): boolean {
-  return !limitedFree1 || providerType === "vm0";
+  return (
+    !capabilities.restrictedVm0Models ||
+    !isLimitedFree1RestrictedRunModel(model)
+  );
+}
+
+function modelProviderAllowedForOrgPlan(
+  providerType: ModelProviderType,
+  capabilities: Pick<OrgPlanCapabilities, "supportByok">,
+): boolean {
+  return capabilities.supportByok || providerType === "vm0";
 }
 
 function getSupportedModelRank(model: string): number {
@@ -142,31 +156,38 @@ function isLimitedFreeReplaceableStandardDefaultModel(model: string): boolean {
   );
 }
 
-function getSeedDefaultModelForTier(limitedFree1: boolean): SupportedRunModel {
-  return limitedFree1
+function getSeedDefaultModelForPlan(
+  capabilities: Pick<OrgPlanCapabilities, "restrictedVm0Models">,
+): SupportedRunModel {
+  return capabilities.restrictedVm0Models
     ? LIMITED_FREE1_DEFAULT_RUN_MODEL
     : DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
 }
 
-function shouldReplaceExistingDefaultForTier(
+function shouldReplaceExistingDefaultForPlan(
   existingDefault: OrgModelPolicyRow | undefined,
-  limitedFree1: boolean,
+  capabilities: Pick<
+    OrgPlanCapabilities,
+    "restrictedVm0Models" | "supportByok"
+  >,
 ): boolean {
-  if (!limitedFree1) {
+  if (capabilities.supportByok && !capabilities.restrictedVm0Models) {
     return existingDefault === undefined;
   }
   if (existingDefault === undefined) {
     return true;
   }
   const shouldReplaceModel =
+    capabilities.restrictedVm0Models &&
     existingDefault.model !== LIMITED_FREE1_DEFAULT_RUN_MODEL &&
     (isLimitedFreeReplaceableStandardDefaultModel(existingDefault.model) ||
       isLimitedFree1RestrictedRunModel(existingDefault.model));
   return (
     shouldReplaceModel ||
-    existingDefault.defaultProviderType !== "vm0" ||
-    existingDefault.credentialScope !== "org" ||
-    existingDefault.modelProviderId !== null
+    (!capabilities.supportByok &&
+      (existingDefault.defaultProviderType !== "vm0" ||
+        existingDefault.credentialScope !== "org" ||
+        existingDefault.modelProviderId !== null))
   );
 }
 
@@ -242,20 +263,20 @@ export async function ensureOrgModelPolicies(
   orgId: string,
   userId: string,
 ): Promise<OrgModelPolicyRow[]> {
-  const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
-  const seedDefaultModel = getSeedDefaultModelForTier(limitedFree1);
+  const capabilities = await orgModelCapabilities(db, orgId);
+  const seedDefaultModel = getSeedDefaultModelForPlan(capabilities);
   const existing = await loadRows(db, orgId);
   if (existing.length > 0) {
     const existingDefault = existing.find((policy) => {
       return policy.isDefault;
     });
-    if (!shouldReplaceExistingDefaultForTier(existingDefault, limitedFree1)) {
+    if (!shouldReplaceExistingDefaultForPlan(existingDefault, capabilities)) {
       return sortRowsByCatalog(existing);
     }
 
-    if (limitedFree1) {
+    if (!capabilities.supportByok || capabilities.restrictedVm0Models) {
       await setDefaultModelPolicy(db, orgId, userId, seedDefaultModel, {
-        resetRouteToBuiltIn: true,
+        resetRouteToBuiltIn: !capabilities.supportByok,
       });
       return sortRowsByCatalog(await loadRows(db, orgId));
     }
@@ -403,7 +424,10 @@ async function validateUpdatePolicies(
   db: Db,
   orgId: string,
   policies: UpdateOrgModelPolicy[],
-  limitedFree1: boolean,
+  capabilities: Pick<
+    OrgPlanCapabilities,
+    "restrictedVm0Models" | "supportByok"
+  >,
   featureStates: ModelProviderFeatureStates,
 ): Promise<ServiceResult<UpdateOrgModelPolicy[]>> {
   if (policies.length === 0) {
@@ -417,15 +441,15 @@ async function validateUpdatePolicies(
     if (!parseSupportedModel(policy.model)) {
       return bad(`Unknown model "${policy.model}"`);
     }
-    if (!modelAllowedForOrgTier(policy.model, limitedFree1)) {
-      return limitedFree1Restricted();
+    if (!modelAllowedForOrgPlan(policy.model, capabilities)) {
+      return planRestricted();
     }
     const providerType = parseProviderType(policy.defaultProviderType);
     if (!providerType) {
       return bad(`Unknown model provider type "${policy.defaultProviderType}"`);
     }
-    if (!modelProviderAllowedForOrgTier(providerType, limitedFree1)) {
-      return limitedFree1Restricted();
+    if (!modelProviderAllowedForOrgPlan(providerType, capabilities)) {
+      return planRestricted();
     }
     if (!parseCredentialScope(policy.credentialScope)) {
       return bad(`Unknown credential scope "${policy.credentialScope}"`);
@@ -622,13 +646,13 @@ export const updateOrgModelPolicies$ = command(
     );
     signal.throwIfAborted();
     const featureStates = getAllFeatureStates(featureSwitchContext);
-    const limitedFree1 = await orgHasLimitedFree1Restrictions(db, params.orgId);
+    const capabilities = await orgModelCapabilities(db, params.orgId);
     signal.throwIfAborted();
     const validation = await validateUpdatePolicies(
       db,
       params.orgId,
       params.policies,
-      limitedFree1,
+      capabilities,
       featureStates,
     );
     signal.throwIfAborted();

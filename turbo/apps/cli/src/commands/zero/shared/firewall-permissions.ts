@@ -1,18 +1,16 @@
-import {
-  loadFirewallPermissionMetadata,
-  resolveFirewallMetadataPolicies,
-  type FirewallPermissionDetailMetadata,
-} from "@vm0/connectors/firewall-metadata";
+import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { resolveFirewallMetadataPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import type {
   FirewallPolicies,
   FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
+import { getZeroConnectorCatalogPermissions } from "../../../lib/api";
 
 export interface ConnectorPermissionInfo {
   readonly type: string;
   readonly hasPermissions: boolean;
   readonly hasPolicyEntry: boolean;
-  readonly permissions: readonly FirewallPermissionDetailMetadata["permissions"][number][];
+  readonly permissions: readonly PublicConnectorCatalogPermissionDetail["permissions"][number][];
   readonly policies: Readonly<Record<string, FirewallPolicyValue>> | null;
   readonly unknownPolicy: FirewallPolicyValue;
   readonly allowed: number;
@@ -21,7 +19,7 @@ export interface ConnectorPermissionInfo {
 
 type PermissionMetadataByType = Map<
   string,
-  FirewallPermissionDetailMetadata | null
+  PublicConnectorCatalogPermissionDetail | null
 >;
 
 async function loadPermissionMetadataByType(
@@ -30,7 +28,7 @@ async function loadPermissionMetadataByType(
   const uniqueTypes = [...new Set(types)];
   const entries = await Promise.all(
     uniqueTypes.map(async (type) => {
-      return [type, await loadFirewallPermissionMetadata(type)] as const;
+      return [type, await getZeroConnectorCatalogPermissions(type)] as const;
     }),
   );
   return new Map(entries);
@@ -38,7 +36,7 @@ async function loadPermissionMetadataByType(
 
 function connectorPermissionInfo(args: {
   readonly type: string;
-  readonly metadata: FirewallPermissionDetailMetadata | null;
+  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
   readonly resolvedPolicies: FirewallPolicies | null;
 }): ConnectorPermissionInfo {
   if (!args.metadata) {
@@ -54,7 +52,7 @@ function connectorPermissionInfo(args: {
     };
   }
 
-  const refPolicy = args.resolvedPolicies?.[args.metadata.type];
+  const refPolicy = args.resolvedPolicies?.[args.metadata.connectorRef];
   const policies =
     refPolicy && Object.keys(refPolicy.policies).length > 0
       ? refPolicy.policies

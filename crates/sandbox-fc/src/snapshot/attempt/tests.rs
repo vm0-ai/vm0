@@ -5,6 +5,7 @@ use std::time::Duration;
 use nbd_cow::KeptCow;
 use nbd_cow::pool::DevicePoolHandle;
 
+use crate::api::ApiError;
 use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::snapshot::cow::{snapshot_attempt_cow_file, snapshot_attempt_workspace_image_file};
 use crate::snapshot::publish::SnapshotPublishAttempt;
@@ -440,6 +441,22 @@ fn long_running_child_for_test() -> tokio::process::Child {
         .expect("spawn long-running child")
 }
 
+async fn exited_child_for_test() -> tokio::process::Child {
+    let mut child = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg("exit 1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0)
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn exiting child");
+    let status = child.wait().await.expect("wait for exiting child");
+    assert!(!status.success(), "test child should exit unsuccessfully");
+    child
+}
+
 #[tokio::test]
 async fn snapshot_attempt_drop_handoff_releases_netns_without_unlocked_sock_cleanup() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -464,7 +481,7 @@ async fn snapshot_attempt_drop_handoff_releases_netns_without_unlocked_sock_clea
 }
 
 #[tokio::test]
-async fn snapshot_attempt_drop_handoff_kills_child_before_netns_release() {
+async fn snapshot_attempt_drop_handoff_reaps_child_before_netns_release() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (mut attempt, sock_dir) = snapshot_attempt_for_test(&dir);
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -482,10 +499,53 @@ async fn snapshot_attempt_drop_handoff_kills_child_before_netns_release() {
 
     assert!(report.child_reaped);
     assert!(report.network_released);
+    assert_eq!(
+        report.cleanup_events,
+        vec!["child_reaped", "network_release_started"],
+        "child reaping must finish before network release starts"
+    );
     assert!(
         tokio::fs::try_exists(&sock_dir).await.unwrap(),
         "detached cleanup must not remove the stable snapshot socket directory without the outer snapshot lock"
     );
+}
+
+#[tokio::test]
+async fn snapshot_attempt_cancelled_finish_hands_complete_process_to_finalizer() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+
+    attempt.track_child_for_test(exited_child_for_test().await);
+    attempt.track_stderr_handle_for_test(tokio::spawn(std::future::pending::<()>()));
+
+    {
+        let finish = attempt.finish_runtime_after_workflow(Err(SnapshotError::Api(
+            ApiError::Other("timeout".into()),
+        )));
+        tokio::pin!(finish);
+        assert!(
+            futures_util::poll!(finish.as_mut()).is_pending(),
+            "explicit finish should wait for the stderr forwarder"
+        );
+    }
+
+    let presence = attempt.cleanup_resources.presence();
+    assert!(
+        presence.has_child,
+        "cancelled finish must retain the child owner"
+    );
+    assert!(
+        presence.has_stderr_forwarder,
+        "cancelled finish must retain the stderr forwarder"
+    );
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    attempt.notify_cleanup_complete_for_test(tx);
+    drop(attempt);
+    let report = wait_for_snapshot_cleanup(rx).await;
+
+    assert!(report.child_reaped);
+    assert!(report.stderr_forwarder_finished);
 }
 
 #[tokio::test]

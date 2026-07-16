@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.0.8](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.7...ably-subscriber-v1.0.8) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [1.0.7](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.6...ably-subscriber-v1.0.7) (2026-07-15)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** stop accepting api keys in argv ([#21554](https://github.com/vm0-ai/vm0/issues/21554)) ([09adc87](https://github.com/vm0-ai/vm0/commit/09adc878ac9e5fda49541af26cf06e038f326b6b))
+
+## [1.0.6](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.5...ably-subscriber-v1.0.6) (2026-07-15)
+
+## [1.0.5](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.4...ably-subscriber-v1.0.5) (2026-07-14)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** enforce clean websocket shutdown ([#21399](https://github.com/vm0-ai/vm0/issues/21399)) ([cf8031e](https://github.com/vm0-ai/vm0/commit/cf8031e425122c0fc5eff333c6d717211045ba6b))
+
+## [1.0.4](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.3...ably-subscriber-v1.0.4) (2026-07-13)
+
+
+### Performance Improvements
+
+* **ably-subscriber:** bound drop warning emission ([#21202](https://github.com/vm0-ai/vm0/issues/21202)) ([d0e2e87](https://github.com/vm0-ai/vm0/commit/d0e2e879ec4fa8f78e9a74617f774310164dc3bb))
+
 ## [1.0.3](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.2...ably-subscriber-v1.0.3) (2026-07-11)
 
 

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { delay } from "signal-timers";
 import { WebPushError } from "web-push";
@@ -32,7 +32,7 @@ import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
@@ -46,7 +46,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -214,28 +214,54 @@ async function startChatRun(
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
   },
-): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendMessage(
-    actor,
-    {
-      agentId: body.agentId,
-      prompt: body.prompt,
-      ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
-      ...(body.attachFiles === undefined
-        ? {}
-        : { attachFiles: body.attachFiles }),
-      ...(body.selectedModel === undefined
-        ? body.threadId === undefined
-          ? { model: "claude-sonnet-4-6" }
-          : {}
-        : { model: body.selectedModel }),
-    },
-    [201],
-  );
-  if (sent.status !== 201 || sent.body.runId === null) {
+): Promise<{
+  readonly runId: string;
+  readonly threadId: string;
+  readonly messageId: string;
+}> {
+  const messageId = randomUUID();
+  const requestBody = {
+    agentId: body.agentId,
+    prompt: body.prompt,
+    clientMessageId: messageId,
+    ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
+    ...(body.attachFiles === undefined
+      ? {}
+      : { attachFiles: body.attachFiles }),
+    ...(body.selectedModel === undefined
+      ? body.threadId === undefined
+        ? { model: "claude-sonnet-4-6" }
+        : {}
+      : { model: body.selectedModel }),
+  };
+  let sent = await chat.requestSendMessage(actor, requestBody, [201]);
+  if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
-  return { runId: sent.body.runId, threadId: sent.body.threadId };
+  if (sent.body.runId === null) {
+    const threadId = sent.body.threadId;
+    // Queue-first sends may be claimed by a terminal callback drain between
+    // enqueue and the inline dispatch decision. Replay the idempotent client
+    // message id until that winning run association is visible.
+    await expect
+      .poll(async () => {
+        sent = await chat.requestSendMessage(
+          actor,
+          { ...requestBody, threadId },
+          [201],
+        );
+        return sent.status === 201 ? sent.body.runId : null;
+      })
+      .not.toBeNull();
+  }
+  if (sent.body.runId === null) {
+    throw new Error("Expected the entitled chat send to create a run");
+  }
+  return {
+    runId: sent.body.runId,
+    threadId: sent.body.threadId,
+    messageId,
+  };
 }
 
 async function queueChatMessage(
@@ -1013,10 +1039,11 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected the queued message to be auto-claimed");
     }
     expect(claimed.runId).not.toBe(first.runId);
-    expect(claimed.revokesMessageId).toBe(queued.id);
+    expect(claimed.id).toBe(queued.id);
+    expect(claimed.revokesMessageId).toBeUndefined();
     expect(claimed.generationTemplate).toStrictEqual(generationTemplate);
-    // The paged-messages API returns the revoked original next to the
-    // claiming copy; clients collapse the pair through revokesMessageId.
+    // Queue-first claims bind the follow-up run onto the persisted message in
+    // place instead of writing a shadow/revoke copy.
     expect(
       userMessages(afterAutoSend.messages)
         .filter((message) => {
@@ -1026,13 +1053,17 @@ describe("CHAT-02: completed chat callback", () => {
           return message.id;
         })
         .sort(),
-    ).toStrictEqual([queued.id, claimed.id].sort());
+    ).toStrictEqual([queued.id]);
     // The auto-send publishes happen in background callback processing, so
     // poll until each expected channel has been published before asserting.
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadMessageCreated:${first.threadId}`;
+          return (
+            call[0] === `chatThreadMessageUpdated:${first.threadId}` &&
+            (call[1] as { messageId?: string } | undefined)?.messageId ===
+              queued.id
+          );
         });
       })
       .toBe(true);
@@ -1044,8 +1075,8 @@ describe("CHAT-02: completed chat callback", () => {
       })
       .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
+      `chatThreadMessageUpdated:${first.threadId}`,
+      { messageId: queued.id },
     );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadRunCreated:${first.threadId}`,
@@ -1181,10 +1212,7 @@ describe("CHAT-02: completed chat callback", () => {
       first.threadId,
       (messages) => {
         return userMessages(messages).some((message) => {
-          return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
-          );
+          return message.id === queued.id && message.runId !== undefined;
         });
       },
     );
@@ -1201,7 +1229,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(markerBeforeRelease.recommendedFollowups).toBeUndefined();
 
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+      return message.id === queued.id;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to auto-send");
@@ -2130,15 +2158,12 @@ Continue after the long Unicode prefix.`;
       first.threadId,
       (messages) => {
         return userMessages(messages).some((message) => {
-          return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
-          );
+          return message.id === queued.id && message.runId !== undefined;
         });
       },
     );
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+      return message.id === queued.id;
     });
     expect(
       claimed?.runId,
@@ -2205,10 +2230,7 @@ Continue after the long Unicode prefix.`;
       first.threadId,
       (messages) => {
         const claimed = userMessages(messages).find((message) => {
-          return (
-            message.revokesMessageId === queued.id &&
-            message.runId !== undefined
-          );
+          return message.id === queued.id && message.runId !== undefined;
         });
         return (
           claimed !== undefined &&
@@ -2222,7 +2244,7 @@ Continue after the long Unicode prefix.`;
       },
     );
     const claimed = userMessages(afterAutoSend.messages).find((message) => {
-      return message.revokesMessageId === queued.id;
+      return message.id === queued.id;
     });
     if (!claimed?.runId) {
       throw new Error("Expected the queued message to auto-send");
@@ -2523,8 +2545,9 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
           return (
-            call[0] === `chatThreadMessageCreated:${first.threadId}` &&
-            call[1] === null
+            call[0] === `chatThreadMessageUpdated:${first.threadId}` &&
+            (call[1] as { messageId?: string } | undefined)?.messageId ===
+              first.messageId
           );
         });
       })
@@ -2550,8 +2573,8 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(routeRequests()).toBe(0);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${first.threadId}`,
-      null,
+      `chatThreadMessageUpdated:${first.threadId}`,
+      expect.anything(),
     );
     const progressMessages = await chat.listThreadMessages(
       actor,
@@ -2738,23 +2761,26 @@ describe("CHAT-02: failed chat callbacks", () => {
       threadId = run.threadId;
       runIds.push(run.runId);
       const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-      await expect
-        .poll(() => {
-          return context.mocks.ably.publish.mock.calls.some((call) => {
-            return (
-              call[0] === `chatThreadRunCreated:${run.threadId}` &&
-              call[1] === null
-            );
-          });
-        })
-        .toBe(true);
-      context.mocks.ably.publish.mockClear();
-      await failChatRun(run.runId, sandboxHeaders, round.error);
-      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-        `chatThreadRunCreated:${threadId}`,
+      // Isolate failed-callback notifications from send-side background work.
+      await flushWaitUntilForTest();
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `chatThreadRunCreated:${run.threadId}`,
         null,
       );
-      await waitForChatThreadMessageCreatedPublish(run.threadId);
+      context.mocks.ably.publish.mockClear();
+      await failChatRun(run.runId, sandboxHeaders, round.error);
+      // The complete webhook acknowledges before terminal callback work
+      // finishes. Drain its tracked waitUntil work so both realtime assertions
+      // cover the complete failed-run callback instead of a one-second window.
+      await flushWaitUntilForTest();
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `chatThreadMessageCreated:${run.threadId}`,
+        null,
+      );
+      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+        `chatThreadRunCreated:${run.threadId}`,
+        null,
+      );
     }
     const reportRunId = runIds[2];
     if (!threadId || !reportRunId) {
@@ -2798,11 +2824,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       })?.content,
     ).toBe(usageLimitError);
 
-    await expect
-      .poll(() => {
-        return context.mocks.webpush.sendNotification.mock.calls.length;
-      })
-      .toBe(4);
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(4);
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[1]),
     ).toMatchObject({
@@ -2841,6 +2863,42 @@ describe("CHAT-02: failed chat callbacks", () => {
     const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
     expect(marker?.error).toBe("insufficient_credits");
     expect(marker?.content).toBe("insufficient_credits");
+  }, 90_000);
+
+  it("shows friendly Claude overload guidance while preserving the raw run error", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const rawOverloadError =
+      "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment. If it persists, check https://status.claude.com.";
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "trigger claude overload",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await failChatRun(run.runId, sandboxHeaders, rawOverloadError);
+
+    const page = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (messages) => {
+        return lifecycleMarkers(messages, run.runId, "failed").some(
+          (message) => {
+            return message.error?.includes("Claude Sonnet 4.6") ?? false;
+          },
+        );
+      },
+    );
+    const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
+    expect(marker?.error).toBe(
+      "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+    );
+    expect(marker?.content).toBe(marker?.error);
+    expect(marker?.error).not.toContain("status.claude.com");
+
+    const rawRun = await api.readRun(actor, run.runId);
+    expect(rawRun.error).toBe(rawOverloadError);
   }, 90_000);
 
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
@@ -2961,6 +3019,11 @@ describe("CHAT-02: auto-send after failures", () => {
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstHeaders);
+    // This journey verifies failed-run auto-send context, not overlap with the
+    // successful anchor's detached terminal materialization. Drain the tracked
+    // waitUntil work so later lifecycle/follow-up rows cannot move its boundary
+    // after the failed run starts; callback ordering has dedicated gate coverage.
+    await flushWaitUntilForTest();
 
     const completedFirst = await api.readRun(actor, first.runId);
     expect(completedFirst.result?.agentSessionId).toMatch(/[0-9a-f-]{36}/);
@@ -3159,10 +3222,121 @@ describe("CHAT-02: auto-send after failures", () => {
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
+
+  it("keeps only the newest 20 incomplete rounds for normal and queued callback sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "successful frontier anchor",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorHeaders);
+    await flushWaitUntilForTest();
+
+    const historyPrompts = Array.from({ length: 21 }, (_, index) => {
+      return `incomplete frontier history ${String(index).padStart(2, "0")}`;
+    });
+    for (const prompt of historyPrompts) {
+      const round = await startChatRun(actor, {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+      });
+      await api.requestCancelRun(actor, round.runId, [200]);
+      await waitForRunStatus(actor, round.runId, "cancelled");
+    }
+    await flushWaitUntilForTest();
+
+    const normalPrompt = "normal frontier probe";
+    const normal = await startChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: normalPrompt,
+    });
+    const normalContext = await waitForRunContext(actor, normal.runId);
+    const normalAppended = normalContext.body.appendSystemPrompt ?? "";
+    expect(normalAppended).toContain("# Incomplete Rounds Context");
+    expect(normalAppended.match(/^- RUN_STATUS:/gm) ?? []).toHaveLength(20);
+    expect(normalAppended).not.toContain(historyPrompts[0]);
+    expect(normalAppended).not.toContain("successful frontier anchor");
+    for (const prompt of historyPrompts.slice(1)) {
+      expect(normalAppended).toContain(prompt);
+    }
+    const normalPositions = historyPrompts.slice(1).map((prompt) => {
+      return normalAppended.indexOf(prompt);
+    });
+    expect(normalPositions).toStrictEqual(
+      [...normalPositions].sort((left, right) => {
+        return left - right;
+      }),
+    );
+
+    const normalHeaders = await claimChatRun(runnerGroup, normal.runId);
+    const queuedPrompt = "queued callback frontier probe";
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: queuedPrompt,
+    });
+    await failChatRun(normal.runId, normalHeaders, "frontier probe failed");
+
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === queuedPrompt && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const autoSent = userMessages(messages.messages).find((message) => {
+      return message.content === queuedPrompt && message.runId !== undefined;
+    });
+    if (!autoSent?.runId) {
+      throw new Error("Expected the queued frontier probe to auto-send");
+    }
+
+    const callbackContext = await waitForRunContext(actor, autoSent.runId);
+    const callbackAppended = callbackContext.body.appendSystemPrompt ?? "";
+    expect(callbackAppended).toContain("# Incomplete Rounds Context");
+    expect(callbackAppended.match(/^- RUN_STATUS:/gm) ?? []).toHaveLength(20);
+    expect(
+      callbackAppended.match(/^- RUN_STATUS: cancelled$/gm) ?? [],
+    ).toHaveLength(19);
+    expect(
+      callbackAppended.match(/^- RUN_STATUS: failed$/gm) ?? [],
+    ).toHaveLength(1);
+    expect(callbackAppended).not.toContain(historyPrompts[0]);
+    expect(callbackAppended).not.toContain(historyPrompts[1]);
+    expect(callbackAppended).toContain(normalPrompt);
+    for (const prompt of historyPrompts.slice(2)) {
+      expect(callbackAppended).toContain(prompt);
+    }
+    const callbackPositions = [...historyPrompts.slice(2), normalPrompt].map(
+      (prompt) => {
+        return callbackAppended.indexOf(prompt);
+      },
+    );
+    expect(callbackPositions).toStrictEqual(
+      [...callbackPositions].sort((left, right) => {
+        return left - right;
+      }),
+    );
+
+    await api.requestCancelRun(actor, autoSent.runId, [200]);
+    await waitForRunStatus(actor, autoSent.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
-  it("starts a fresh session with prior web context when the queued model differs, without regenerating an existing title", async () => {
+  it("preserves the CLI session across same-family queued model switches without regenerating an existing title", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -3257,18 +3431,9 @@ describe("CHAT-02: auto-send across a model switch", () => {
 
     const autoContext = await waitForRunContext(actor, claimed.runId);
     const appended = autoContext.body.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
-    expect(appended).toContain(`- RUN_ID: ${second.runId}`);
-    expect(appended).toContain(
-      `- LOG_COMMAND: zero logs ${second.runId} --all`,
-    );
-    expect(appended).toContain("User: And stringify?");
-    expect(appended).toContain("Assistant: Use JSON.stringify(value).");
-    expect(appended).toContain("...[truncated]");
+    expect(appended).not.toContain("# Web Chat Run Context");
     expect(appended).not.toContain("# Incomplete Rounds Context");
-    // Fresh session: the queued model pin differs from the completed run's
-    // model, so the auto-send run resumes no CLI session.
-    expect(autoContext.body.sessionId).toBeNull();
+    expect(autoContext.body.sessionId).toBe(`bdd-cli-${second.runId}`);
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
     );
@@ -3302,6 +3467,90 @@ describe("CHAT-02: auto-send across a model switch", () => {
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
+
+  it("resumes the CLI session by default when the queued model stays within the same family", async () => {
+    const { actor, agentId, runnerGroup, providerId } =
+      await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "start on opus before queueing a Claude family switch",
+      selectedModel: "claude-opus-4-6",
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstHeaders);
+
+    const second = await startChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "keep the opus session active",
+    });
+    const secondHeaders = await claimChatRun(runnerGroup, second.runId);
+    await chat.updateThreadModelSelection(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queue a sonnet follow-up",
+    });
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(second.runId, secondHeaders);
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === "queue a sonnet follow-up" &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const claimed = userMessages(messages.messages).find((message) => {
+      return (
+        message.content === "queue a sonnet follow-up" &&
+        message.runId !== undefined
+      );
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the queued message to be auto-claimed");
+    }
+
+    const autoContext = await waitForRunContext(actor, claimed.runId);
+    expect(autoContext.body.sessionId).toBe(`bdd-cli-${second.runId}`);
+    expect(autoContext.body.appendSystemPrompt ?? "").not.toContain(
+      "# Web Chat Run Context",
+    );
+    expect(autoContext.body.environment.ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
+    );
+
+    await api.requestCancelRun(actor, claimed.runId, [200]);
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
 });
 
 describe("CHAT-02: thread deletion while a run is active", () => {
@@ -3317,7 +3566,11 @@ describe("CHAT-02: thread deletion while a run is active", () => {
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadMessageCreated:${run.threadId}`;
+          return (
+            call[0] === `chatThreadMessageUpdated:${run.threadId}` &&
+            (call[1] as { messageId?: string } | undefined)?.messageId ===
+              run.messageId
+          );
         });
       })
       .toBe(true);
@@ -3335,8 +3588,8 @@ describe("CHAT-02: thread deletion while a run is active", () => {
     await waitForRunStatus(actor, run.runId, "cancelled");
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadMessageCreated:${run.threadId}`,
-      null,
+      `chatThreadMessageUpdated:${run.threadId}`,
+      expect.anything(),
     );
     const deletedRead = await chat.requestReadThread(
       actor,

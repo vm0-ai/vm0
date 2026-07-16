@@ -20,7 +20,7 @@ import {
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -45,7 +45,7 @@ const UTF8_ENCODING = ["utf", "8"].join("-");
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const reads = createRunReadsApi(context);
 
@@ -3740,10 +3740,6 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
     await api.requestCancelRun(actor, cliRun.runId, [200]);
 
-    // The automation-sourced log leg was removed with the automation ->
-    // workflow cutover (#19959): the frozen legacy API can no longer create
-    // or fire automations. Trigger-source provenance for workflow runs is
-    // covered by the workflow trigger suites.
     const memberRun = await api.createRun(member, {
       agentId: memberAgent.agentId,
       prompt: "member run stays invisible",
@@ -3886,13 +3882,9 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         .sort(),
     ).toStrictEqual([webRun.runId, secondAgentRun.runId].sort());
 
-    const automationSourceList = await reads.requestListLogs(
-      actor,
-      { triggerSource: "automation" },
-      [200],
-    );
-    mustOk(automationSourceList, "automation-source log list");
-    expect(automationSourceList.body.data).toStrictEqual([]);
+    const removedAutomationSource =
+      await reads.requestListLogsWithRemovedAutomationSource(actor);
+    expectApiError(removedAutomationSource.body);
 
     const noSourceMatch = await reads.requestListLogs(
       actor,

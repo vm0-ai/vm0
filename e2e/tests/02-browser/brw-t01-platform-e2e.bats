@@ -13,7 +13,7 @@
 #   VM0_AUTH_URL   - Target auth URL (e.g., https://staging-so.vm6.ai)
 #
 # Optional env vars:
-#   VM0_API_URL            - API URL, used as a local fallback for auth URL
+#   VM0_API_BACKEND_URL            - API URL, used as a local fallback for auth URL
 #   VM0_AUTH_DOMAIN        - API domain override for auth callbacks
 #   VM0_AUTH_REDIRECT_URL  - Post-auth app URL to verify Clerk completion
 #   E2E_ACCOUNT            - Test email (auto-generated if empty)
@@ -29,7 +29,7 @@ setup_file() {
   export SIGNUP_PASSWORD
 
   echo "# Clerk UI E2E (sign-up and sign-in)" >&3
-  echo "#   Auth URL: ${VM0_AUTH_URL:-${VM0_API_URL:-}}" >&3
+  echo "#   Auth URL: ${VM0_AUTH_URL:-${VM0_API_BACKEND_URL:-}}" >&3
   echo "#   Auth domain: ${VM0_AUTH_DOMAIN:-<default>}" >&3
   echo "#   Auth redirect URL: ${VM0_AUTH_REDIRECT_URL:-<default>}" >&3
   echo "#   Email: $E2E_ACCOUNT" >&3
@@ -41,7 +41,7 @@ teardown_file() {
 
 auth_url() {
   local path="$1"
-  local base="${VM0_AUTH_URL:-${VM0_API_URL:-}}"
+  local base="${VM0_AUTH_URL:-${VM0_API_BACKEND_URL:-}}"
   local url="${base%/}${path}"
 
   if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" ]]; then
@@ -190,14 +190,23 @@ wait_for_auth_completion() {
   agent-browser find label "Email address" fill "$E2E_ACCOUNT"
   agent-browser wait 500
   click_continue
-  agent-browser wait 5000
-  step_screenshot "after-email-continue"
-
-  local snap
-  snap=$(full_snapshot)
+  agent-browser wait 1000
 
   # Handle password or OTP-based sign-in
-  if contains "$snap" "password"; then
+  local sign_in_state
+  if ! sign_in_state="$(wait_for_sign_in_next_step 45)"; then
+    step_screenshot "sign-in-next-step-not-detected"
+    echo "# Clerk sign-in did not reach password, OTP, or redirect state" >&3
+    return 1
+  fi
+  step_screenshot "after-email-continue"
+
+  if [[ "$sign_in_state" == "complete" ]]; then
+    echo "# Sign-in completed after email submit" >&3
+    return 0
+  fi
+
+  if [[ "$sign_in_state" == "password" ]]; then
     echo "# Password screen detected - looking for email code option" >&3
     if agent-browser find text "Use another method" click 2>/dev/null \
         || agent-browser find text "use another method" click 2>/dev/null; then
@@ -214,8 +223,10 @@ wait_for_auth_completion() {
   fi
 
   # Wait for OTP screen, then enter code
-  if ! wait_for_otp_screen 10; then
+  if ! wait_for_otp_screen 30; then
     step_screenshot "otp-screen-not-detected"
+    echo "# Clerk sign-in did not reach OTP verification" >&3
+    return 1
   fi
 
   enter_otp "$OTP"

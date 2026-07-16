@@ -1,4 +1,4 @@
-"""Shared platform API request helpers for the mitmproxy addon."""
+"""Shared platform API request and redirect-policy helpers for the mitmproxy addon."""
 
 import os
 import urllib.parse
@@ -17,6 +17,26 @@ CLIENT_TYPE_MITM_ADDON = "MitmAddon"
 _CLIENT_HEADERS = ("", "")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Reject redirects from credential-bearing platform API requests."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        return None
+
+
+def build_api_opener() -> urllib.request.OpenerDirector:
+    """Build an opener that returns redirects as HTTP errors."""
+    return urllib.request.build_opener(_NoRedirect)
+
+
 def configure_client_headers(*, client_session_id: str, client_version: str) -> None:
     """Snapshot runner-provided client header values for worker-thread requests."""
     global _CLIENT_HEADERS
@@ -32,7 +52,9 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     """Build a Request with standard platform API headers.
 
     Centralises User-Agent, Authorization, Content-Type, and the optional
-    Vercel bypass header so that callers cannot accidentally omit them.
+    Vercel bypass header so that callers cannot accidentally omit them. The
+    credentials are unredirected as defense in depth; callers must still use
+    :func:`build_api_opener` so redirects fail before contacting another URL.
     """
     parsed_url = urllib.parse.urlsplit(url)
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
@@ -47,7 +69,6 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
         data=data,
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {sandbox_token}",
             "User-Agent": "vm0-mitm-addon/1.0",
             CLIENT_VERSION_HEADER: client_version,
             CLIENT_TYPE_HEADER: CLIENT_TYPE_MITM_ADDON,
@@ -55,6 +76,7 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
             CLIENT_REQUEST_ID_HEADER: str(uuid.uuid4()),
         },
     )
+    req.add_unredirected_header("Authorization", f"Bearer {sandbox_token}")
     if VERCEL_BYPASS:
-        req.add_header("x-vercel-protection-bypass", VERCEL_BYPASS)
+        req.add_unredirected_header("x-vercel-protection-bypass", VERCEL_BYPASS)
     return req

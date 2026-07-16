@@ -9,9 +9,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 TUNNEL_URL_FILE="$REPO_ROOT/turbo/.dev-tunnel-url"
 TUNNEL_SCRIPT="$REPO_ROOT/scripts/tunnel.sh"
 API_PORT=3001
+TUNNEL_PORT=3043
 ENV_LOCAL_FILE="$API_APP_DIR/.env.local"
 STRIPE_PIDFILE="/tmp/stripe-listen-api.pid"
-TUNNEL_PIDFILE="/tmp/cloudflared-${API_PORT}.pid"
+TUNNEL_PIDFILE="/tmp/cloudflared-${TUNNEL_PORT}.pid"
+LEGACY_API_TUNNEL_PIDFILE="/tmp/cloudflared-${API_PORT}.pid"
+LEGACY_MARKETING_TUNNEL_PIDFILE="/tmp/cloudflared-3042.pid"
 
 kill_stale() {
   local pidfile="$1" pattern="$2"
@@ -73,11 +76,14 @@ cleanup() {
   kill_stale "$STRIPE_PIDFILE" ""
   if [[ "${API_KEEP_TUNNEL_ON_EXIT:-}" != "1" ]]; then
     kill_stale "$TUNNEL_PIDFILE" ""
+    kill_stale "$LEGACY_API_TUNNEL_PIDFILE" ""
+    kill_stale "$LEGACY_MARKETING_TUNNEL_PIDFILE" ""
   fi
 }
 trap cleanup EXIT INT TERM
 
-default_api_tunnel_hostname() {
+default_tunnel_hostname() {
+  local service="$1"
   local email domain username machine_hostname
 
   email="$(git -C "$REPO_ROOT" config user.email 2>/dev/null || true)"
@@ -88,7 +94,11 @@ default_api_tunnel_hostname() {
 
   username="${email%%@*}"
   machine_hostname="$(bash "$REPO_ROOT/scripts/cn.sh")"
-  printf "tunnel-%s-%s-www.vm7.ai\n" "$username" "$machine_hostname"
+  printf "tunnel-%s-%s-%s.vm7.ai\n" "$username" "$machine_hostname" "$service"
+}
+
+default_api_tunnel_hostname() {
+  default_tunnel_hostname "www"
 }
 
 start_api_tunnel() {
@@ -105,20 +115,25 @@ start_api_tunnel() {
   fi
 
   if [[ -n "$tunnel_hostname" ]]; then
-    tunnel_url="$(TUNNEL_HOSTNAME="$tunnel_hostname" "$TUNNEL_SCRIPT" "$API_PORT")"
+    tunnel_url="$(TUNNEL_HOSTNAME="$tunnel_hostname" "$TUNNEL_SCRIPT" "$TUNNEL_PORT")"
   else
-    tunnel_url="$("$TUNNEL_SCRIPT" "$API_PORT")"
+    tunnel_url="$("$TUNNEL_SCRIPT" "$TUNNEL_PORT")"
   fi
 
   printf "%s\n" "$tunnel_url" > "$TUNNEL_URL_FILE"
   printf "%s\n" "$tunnel_url"
 }
 
+kill_stale "$LEGACY_API_TUNNEL_PIDFILE" ""
+kill_stale "$LEGACY_MARKETING_TUNNEL_PIDFILE" ""
+
 TUNNEL_URL="$(start_api_tunnel)"
 
-echo "[api:dev] VM0_API_URL=${TUNNEL_URL}"
+echo "[api:dev] Tunnel URL=${TUNNEL_URL}"
+update_env_value "VM0_MODEL_PROXY_HOST" "$TUNNEL_URL"
+echo "[api:dev] VM0_MODEL_PROXY_HOST=${TUNNEL_URL}"
 
 start_stripe_webhook_forwarding
 
 cd "$API_APP_DIR"
-env VM0_API_URL="$TUNNEL_URL" VM0_DEBUG='*' tsx watch --env-file=.env.local src/server.ts
+env VM0_DEBUG='*' tsx watch --env-file=.env.local src/server.ts

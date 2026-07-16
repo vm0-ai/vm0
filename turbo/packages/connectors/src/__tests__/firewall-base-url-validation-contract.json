@@ -1,4 +1,5 @@
 {
+  "hostnamePolicy": "vm0-uts46-16.0-v1",
   "baseUrlValidationCases": [
     {
       "category": "valid",
@@ -58,7 +59,43 @@
       "category": "valid",
       "name": "percent-encoded unicode host is valid",
       "base": "https://%E2%98%83.example.com",
-      "expectedValid": true
+      "expectedValid": true,
+      "expectedCanonicalBase": "https://xn--n3h.example.com"
+    },
+    {
+      "category": "hostname-policy",
+      "name": "raw unicode host has canonical ascii identity",
+      "base": "https://☃.example.com",
+      "expectedValid": true,
+      "expectedCanonicalBase": "https://xn--n3h.example.com"
+    },
+    {
+      "category": "hostname-policy",
+      "name": "canonical a-label keeps the same identity",
+      "base": "https://xn--n3h.example.com",
+      "expectedValid": true,
+      "expectedCanonicalBase": "https://xn--n3h.example.com"
+    },
+    {
+      "category": "hostname-policy",
+      "name": "deviation character has non-transitional identity",
+      "base": "https://faß.example.com",
+      "expectedValid": true,
+      "expectedCanonicalBase": "https://xn--fa-hia.example.com"
+    },
+    {
+      "category": "hostname-policy",
+      "name": "parameterized unicode literal has canonical ascii identity",
+      "base": "https://{sub}.☃.example.com",
+      "expectedValid": true,
+      "expectedCanonicalBase": "https://{sub}.xn--n3h.example.com"
+    },
+    {
+      "category": "hostname-policy",
+      "name": "canonical identity removes trailing host dot",
+      "base": "https://☃.example.com.",
+      "expectedValid": true,
+      "expectedCanonicalBase": "https://xn--n3h.example.com"
     },
     {
       "category": "valid",
@@ -242,6 +279,18 @@
     },
     {
       "category": "authority",
+      "name": "runner-forbidden ascii host character is invalid",
+      "base": "https://a<b.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
+      "name": "percent-encoded runner-forbidden ascii host character is invalid",
+      "base": "https://a%3Cb.example.com",
+      "expectedValid": false
+    },
+    {
+      "category": "authority",
       "name": "percent-encoded authority syntax is invalid",
       "base": "https://api%2eexample.com",
       "expectedValid": false
@@ -310,6 +359,24 @@
       "category": "authority",
       "name": "unsafe idna compatibility mapping is invalid",
       "base": "https://\u212a.example",
+      "expectedValid": false
+    },
+    {
+      "category": "hostname-policy",
+      "name": "unicode 17 assignment is invalid under unicode 16 policy",
+      "base": "https://࢏.example",
+      "expectedValid": false
+    },
+    {
+      "category": "hostname-policy",
+      "name": "unicode 17 assignment a-label is invalid under unicode 16 policy",
+      "base": "https://xn--7xb.example",
+      "expectedValid": false
+    },
+    {
+      "category": "hostname-policy",
+      "name": "ignored variation selector is invalid",
+      "base": "https://a️.example",
       "expectedValid": false
     },
     {

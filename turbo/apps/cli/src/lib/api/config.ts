@@ -66,13 +66,13 @@ export async function getActiveToken(): Promise<string | undefined> {
 
 export async function getApiUrl(): Promise<string> {
   const config = await loadConfig();
-  const apiUrl = process.env.VM0_API_URL;
+  const apiUrl = process.env.VM0_API_BACKEND_URL;
   if (apiUrl) {
     // Add protocol if missing
     return apiUrl.startsWith("http") ? apiUrl : `https://${apiUrl}`;
   }
   // Fallback to production API if no config or env var
-  return config.apiUrl ?? "https://www.vm0.ai";
+  return config.apiUrl ?? "https://api.vm0.ai";
 }
 
 export { decodeZeroTokenPayload };

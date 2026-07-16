@@ -98,7 +98,12 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
         return False
     if not flow_metadata.is_firewall_billable(flow.metadata):
         return False
-    events = _build_model_provider_usage_events(flow, run_id, USAGE_EVENT_NAMESPACE_MODEL)
+    events = _build_model_provider_usage_events(
+        flow,
+        run_id,
+        USAGE_EVENT_NAMESPACE_MODEL,
+        billing_sku=flow_metadata.model_usage_billing_sku(flow.metadata),
+    )
     if not events:
         return False
     return _buffer_model_provider_usage_events(flow, run_id, firewall_name, events)
@@ -131,7 +136,12 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
         return False
     if not is_model_provider_usage_observable(flow):
         return False
-    events = _build_model_provider_usage_events(flow, run_id, USAGE_OBSERVATION_NAMESPACE_MODEL)
+    events = _build_model_provider_usage_events(
+        flow,
+        run_id,
+        USAGE_OBSERVATION_NAMESPACE_MODEL,
+        billing_sku=None,
+    )
     if not events:
         return False
     return _buffer_model_provider_usage_observations(flow, run_id, events)
@@ -169,6 +179,7 @@ def report_model_provider_usage_source(
             provider,
             source_usage,
             USAGE_EVENT_NAMESPACE_MODEL,
+            billing_sku=flow_metadata.model_usage_billing_sku(flow.metadata),
         )
     if can_report_observation:
         observation_events = _build_usage_events(
@@ -177,6 +188,7 @@ def report_model_provider_usage_source(
             provider,
             source_usage,
             USAGE_OBSERVATION_NAMESPACE_MODEL,
+            billing_sku=None,
         )
 
     if not usage_events and not observation_events:
@@ -357,12 +369,25 @@ def _log_model_usage_observation_context_missing(context: UsageReportingContext)
 
 
 def _build_model_provider_usage_events(
-    flow: http.HTTPFlow, run_id: str, namespace: uuid.UUID
+    flow: http.HTTPFlow,
+    run_id: str,
+    namespace: uuid.UUID,
+    *,
+    billing_sku: str | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for source_id, usage in _iter_model_provider_usage_sources(flow):
         provider = _reported_model(flow, usage)
-        events.extend(_build_usage_events(run_id, source_id, provider, usage, namespace))
+        events.extend(
+            _build_usage_events(
+                run_id,
+                source_id,
+                provider,
+                usage,
+                namespace,
+                billing_sku=billing_sku,
+            )
+        )
     return events
 
 
@@ -383,25 +408,32 @@ def _iter_model_provider_usage_sources(flow: http.HTTPFlow) -> Iterator[tuple[st
 
 
 def _build_usage_events(
-    run_id: str, source_id: str, provider: str, usage: dict, namespace: uuid.UUID
+    run_id: str,
+    source_id: str,
+    provider: str,
+    usage: dict,
+    namespace: uuid.UUID,
+    *,
+    billing_sku: str | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
         quantity = usage.get(category)
         if not _is_positive_int(quantity):
             continue
-        events.append(
-            {
-                "idempotencyKey": derive_usage_idempotency_key(
-                    namespace,
-                    (run_id, source_id, category),
-                ),
-                "kind": MODEL_USAGE_KIND,
-                "provider": provider,
-                "category": category,
-                "quantity": quantity,
-            }
-        )
+        event: UsageEvent = {
+            "idempotencyKey": derive_usage_idempotency_key(
+                namespace,
+                (run_id, source_id, category),
+            ),
+            "kind": MODEL_USAGE_KIND,
+            "provider": provider,
+            "category": category,
+            "quantity": quantity,
+        }
+        if billing_sku is not None:
+            event["billingSku"] = billing_sku
+        events.append(event)
     return events
 
 

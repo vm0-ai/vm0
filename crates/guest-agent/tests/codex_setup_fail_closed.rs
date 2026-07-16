@@ -148,7 +148,7 @@ fn run_guest_agent(args: GuestAgentInvocation<'_>) -> Result<Output, std::io::Er
             guest_contracts::env::RUN_PAYLOAD_FILE_ENV,
             args.run_payload_path,
         )
-        .env("VM0_API_URL", "http://127.0.0.1:1")
+        .env("VM0_API_BACKEND_URL", "http://127.0.0.1:1")
         .env("VM0_API_TOKEN", "")
         .env("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc")
         .env("VM0_SANDBOX_REUSE_RESULT", "reused")

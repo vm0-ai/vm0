@@ -20,7 +20,7 @@ describe("zero generate presentation command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     vi.stubEnv("ZERO_TOKEN", "test-zero-token");
   });
@@ -63,6 +63,10 @@ describe("zero generate presentation command", () => {
     expect(stdout).not.toContain("zero host ./generated/mockups");
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
+    expect(stdout).toContain(
+      "all user-visible slide content, with the first slide visible before JavaScript runs",
+    );
+    expect(stdout).toContain("Do not store slide content in JavaScript data");
     expect(stdout).toContain("Produce exactly the requested slide count");
     expect(stdout).toContain("make an internal slide plan");
     expect(stdout).toContain(
@@ -182,6 +186,10 @@ describe("zero generate presentation command", () => {
       "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
     );
     expect(stdout).toContain('"colorSystem": "carnival"');
+    expect(stdout).toContain(
+      "all user-visible slide content, with the first slide visible before JavaScript runs",
+    );
+    expect(stdout).toContain("Do not store slide content in JavaScript data");
     expect(stdout).toContain("User request: create a 15-slide launch deck");
     expect(stdout).not.toContain("Selected design system:");
     expect(stdout).not.toContain("design-system:");

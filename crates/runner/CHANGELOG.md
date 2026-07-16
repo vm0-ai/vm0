@@ -1,5 +1,295 @@
 # Changelog
 
+## [0.145.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.4...runner-rs-v0.145.5) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** bound image gc lock descriptors ([#21811](https://github.com/vm0-ai/vm0/issues/21811)) ([f4fe116](https://github.com/vm0-ai/vm0/commit/f4fe1161f73d0db7a59aec543dd0123d7f8ad729))
+* **runner:** isolate heartbeat requests from reactor ([#21804](https://github.com/vm0-ai/vm0/issues/21804)) ([775dc63](https://github.com/vm0-ai/vm0/commit/775dc631c94f62e9a496591399afdfe9f846cf19))
+
+## [0.145.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.3...runner-rs-v0.145.4) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** block managed credentials on trace requests ([#21809](https://github.com/vm0-ai/vm0/issues/21809)) ([a566343](https://github.com/vm0-ai/vm0/commit/a566343639a826255c224bfaa7fbbda64145b76e))
+* support dynamic vm0 model routing ([#21693](https://github.com/vm0-ai/vm0/issues/21693)) ([80d0dca](https://github.com/vm0-ai/vm0/commit/80d0dca1f3e198f7c83ed28783da740d2215675f))
+
+## [0.145.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.2...runner-rs-v0.145.3) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** fail closed on incomplete image gc scans ([#21749](https://github.com/vm0-ai/vm0/issues/21749)) ([df65c9c](https://github.com/vm0-ai/vm0/commit/df65c9c846856e3ec8956b98bf6229f832841872))
+* **runner:** protect sidecar staging from cache gc ([#21768](https://github.com/vm0-ai/vm0/issues/21768)) ([8cb2c6e](https://github.com/vm0-ai/vm0/commit/8cb2c6edd019ec693de467a2e592fa7820fd0645))
+
+## [0.145.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.1...runner-rs-v0.145.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **mitm-addon:** validate empty zlib tails at decode limit ([#21750](https://github.com/vm0-ai/vm0/issues/21750)) ([8acba08](https://github.com/vm0-ai/vm0/commit/8acba0859c99cb39dec9113317b16ce88326fc22))
+* **runner:** close workspace gc ownership race ([#21754](https://github.com/vm0-ai/vm0/issues/21754)) ([e198e65](https://github.com/vm0-ai/vm0/commit/e198e6590e3fd2814451993b7210f261734bb1fd))
+
+
+### Documentation
+
+* **mitm-addon:** align request hook classification contract ([#21742](https://github.com/vm0-ai/vm0/issues/21742)) ([8c17d00](https://github.com/vm0-ai/vm0/commit/8c17d00b783bc4ed9d24c26942c2b0735ac845ec))
+
+## [0.145.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.0...runner-rs-v0.145.1) (2026-07-16)
+
+
+### Documentation
+
+* **mitm-addon:** clarify force-refresh cooldown start ([#21717](https://github.com/vm0-ai/vm0/issues/21717)) ([3cb10d3](https://github.com/vm0-ai/vm0/commit/3cb10d32285b1171dbcaed15406d48e53f1bd918))
+
+## [0.145.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.26...runner-rs-v0.145.0) (2026-07-16)
+
+
+### Features
+
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+* **runner:** bound r2 template archive extraction ([#21680](https://github.com/vm0-ai/vm0/issues/21680)) ([8860bb8](https://github.com/vm0-ai/vm0/commit/8860bb808995889be734dd115165c272b46f3c52))
+* **runner:** reject invalid parameterized firewall authorities ([#21690](https://github.com/vm0-ai/vm0/issues/21690)) ([419599c](https://github.com/vm0-ai/vm0/commit/419599c7e97dade82464a391a3e00cc9633e1e1d))
+
+
+### CI
+
+* cap runner behavior tests at two concurrent lanes ([#21695](https://github.com/vm0-ai/vm0/issues/21695)) ([696194b](https://github.com/vm0-ai/vm0/commit/696194bf0e1fbb7a3a639b3d965622e09cd7167c))
+
+
+### Documentation
+
+* **python:** clarify usage flush semantics ([#21677](https://github.com/vm0-ai/vm0/issues/21677)) ([d16766c](https://github.com/vm0-ai/vm0/commit/d16766caa81e2e8270d51099180de2f8b1885408))
+
+## [0.144.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.25...runner-rs-v0.144.26) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** reject firewall auth redirects ([#21659](https://github.com/vm0-ai/vm0/issues/21659)) ([9f2423b](https://github.com/vm0-ai/vm0/commit/9f2423bf945f14db27555c89494a7c78aa4b3c1f))
+
+## [0.144.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.24...runner-rs-v0.144.25) (2026-07-15)
+
+
+### Documentation
+
+* **mitm-addon:** correct request capture test comment ([#21650](https://github.com/vm0-ai/vm0/issues/21650)) ([b612869](https://github.com/vm0-ai/vm0/commit/b612869daf6b03d15308d16def1e847f15711dd9))
+
+## [0.144.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.23...runner-rs-v0.144.24) (2026-07-15)
+
+## [0.144.23](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.22...runner-rs-v0.144.23) (2026-07-15)
+
+
+### Bug Fixes
+
+* **mitm-addon:** prevent binding after client disconnect ([#21617](https://github.com/vm0-ai/vm0/issues/21617)) ([07e44af](https://github.com/vm0-ai/vm0/commit/07e44af0967872fd1d2f80879f08728d18432853))
+
+## [0.144.22](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.21...runner-rs-v0.144.22) (2026-07-15)
+
+## [0.144.21](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.20...runner-rs-v0.144.21) (2026-07-15)
+
+
+### Refactoring
+
+* **runner:** split local submit tests by responsibility ([#21592](https://github.com/vm0-ai/vm0/issues/21592)) ([c7e8b5b](https://github.com/vm0-ai/vm0/commit/c7e8b5b2efd739f0c8d6f45ff53ed5c03064a52c))
+
+## [0.144.20](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.19...runner-rs-v0.144.20) (2026-07-15)
+
+
+### Bug Fixes
+
+* **runner:** enforce firewalls for options asterisk requests ([#21572](https://github.com/vm0-ai/vm0/issues/21572)) ([7c98fe1](https://github.com/vm0-ai/vm0/commit/7c98fe1a675d98366f936c974d36cc9a984f329a))
+
+## [0.144.19](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.18...runner-rs-v0.144.19) (2026-07-15)
+
+
+### Refactoring
+
+* **runner:** centralize reused workspace promotion resolution ([#21551](https://github.com/vm0-ai/vm0/issues/21551)) ([b3ff245](https://github.com/vm0-ai/vm0/commit/b3ff2454e7f5a8e9a485548cdbec5f86a48c9516))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid quadratic json literal probing ([#21553](https://github.com/vm0-ai/vm0/issues/21553)) ([e54388b](https://github.com/vm0-ai/vm0/commit/e54388b154cc5baa4f2b970ef249411f2e2cbebd))
+* **runner:** attribute session history generation claims ([#21550](https://github.com/vm0-ai/vm0/issues/21550)) ([2a2a348](https://github.com/vm0-ai/vm0/commit/2a2a348de2359fe1bae15fd0c03273449565dc51))
+
+## [0.144.18](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.17...runner-rs-v0.144.18) (2026-07-15)
+
+
+### Documentation
+
+* **mitm-addon:** document metadata visitor invariants ([#21541](https://github.com/vm0-ai/vm0/issues/21541)) ([8a545c2](https://github.com/vm0-ai/vm0/commit/8a545c2bcbf6ec1c9d017a3891e7addcc7d3d683))
+
+## [0.144.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.16...runner-rs-v0.144.17) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** observe cancellation before process spawn ([#21490](https://github.com/vm0-ai/vm0/issues/21490)) ([8bbabed](https://github.com/vm0-ai/vm0/commit/8bbabed6a5d8631b0bf31b7b125c9c60a8c52ef3))
+* **runner:** prevent dnsmasq stalls during namespace churn ([#21373](https://github.com/vm0-ai/vm0/issues/21373)) ([1fd0fea](https://github.com/vm0-ai/vm0/commit/1fd0fea74884c8a644edbf62aaffc6c8ea5da615))
+
+
+### Refactoring
+
+* **mitm-addon:** extract runner flush lifecycle owner ([#21477](https://github.com/vm0-ai/vm0/issues/21477)) ([2c101ba](https://github.com/vm0-ai/vm0/commit/2c101ba3d08a9443bb401397b5b78aadd3f402c6))
+* **runner:** split gc command into focused modules ([#21492](https://github.com/vm0-ai/vm0/issues/21492)) ([4e3317a](https://github.com/vm0-ai/vm0/commit/4e3317a7dd18e6d3f92ee2e88381fa8136af1d3c))
+
+## [0.144.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.15...runner-rs-v0.144.16) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** make gc summary activity-aware ([#21469](https://github.com/vm0-ai/vm0/issues/21469)) ([8253a09](https://github.com/vm0-ai/vm0/commit/8253a09a7d323611b9938f60b59f534e3e8c6a4c))
+
+## [0.144.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.14...runner-rs-v0.144.15) (2026-07-14)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve original error for invalid utf-8 bodies ([#21441](https://github.com/vm0-ai/vm0/issues/21441)) ([071830a](https://github.com/vm0-ai/vm0/commit/071830ad7eba883ff289fa7d2a92eed0713783f7))
+* **mitm-addon:** stop linting after terminal exhaustive matches ([#21460](https://github.com/vm0-ai/vm0/issues/21460)) ([2a369a2](https://github.com/vm0-ai/vm0/commit/2a369a2546a3e671137c1edcba58d2f2c30f6905))
+* **runner:** avoid signaling reaped rootfs scripts ([#21476](https://github.com/vm0-ai/vm0/issues/21476)) ([2af0c09](https://github.com/vm0-ai/vm0/commit/2af0c09dc1d5087dd8b7e04b8d02faa85a5254cb))
+
+
+### Refactoring
+
+* **runner:** test storage cache through production fill path ([#21468](https://github.com/vm0-ai/vm0/issues/21468)) ([50ae892](https://github.com/vm0-ai/vm0/commit/50ae892cbdd9710655b51ecd787688538fd998d5))
+
+## [0.144.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.13...runner-rs-v0.144.14) (2026-07-14)
+
+
+### Documentation
+
+* **mitm-addon:** document connected endpoint contract ([#21433](https://github.com/vm0-ai/vm0/issues/21433)) ([94fa7ca](https://github.com/vm0-ai/vm0/commit/94fa7ca9ec207abd9af7d77704be583b5b896912))
+
+## [0.144.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.12...runner-rs-v0.144.13) (2026-07-14)
+
+
+### Performance Improvements
+
+* **runner:** copy guest logs concurrently ([#21421](https://github.com/vm0-ai/vm0/issues/21421)) ([db338e5](https://github.com/vm0-ai/vm0/commit/db338e51748e9728d6d947b5deb6c2e8d77d45b9))
+
+## [0.144.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.11...runner-rs-v0.144.12) (2026-07-14)
+
+
+### Documentation
+
+* **mitm-addon:** document registry lookup failure semantics ([#21411](https://github.com/vm0-ai/vm0/issues/21411)) ([37f2792](https://github.com/vm0-ai/vm0/commit/37f2792bfac8e24e2e2d3e99931dee68576f1da2))
+* **runner:** clarify job budget and parking lifecycle ([#21410](https://github.com/vm0-ai/vm0/issues/21410)) ([24da677](https://github.com/vm0-ai/vm0/commit/24da677b275c88c79c44e533b46ae28bac350621))
+* **runner:** document deferred cache fill contract ([#21414](https://github.com/vm0-ai/vm0/issues/21414)) ([e6acc5a](https://github.com/vm0-ai/vm0/commit/e6acc5a4582fcb4a988c463fba39c75f1683e130))
+* **runner:** record active-input forwarding invariants ([#21416](https://github.com/vm0-ai/vm0/issues/21416)) ([c99f3fa](https://github.com/vm0-ai/vm0/commit/c99f3fa50743d428c0ebba2f6b95ab0117ccdfb6))
+
+
+### Performance Improvements
+
+* **runner:** measure session history append lineage ([#21417](https://github.com/vm0-ai/vm0/issues/21417)) ([f653bec](https://github.com/vm0-ai/vm0/commit/f653bec6793e2d3889cc8323e3699502b7eccea1))
+
+## [0.144.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.10...runner-rs-v0.144.11) (2026-07-14)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve with item binding order ([#21331](https://github.com/vm0-ai/vm0/issues/21331)) ([c317751](https://github.com/vm0-ai/vm0/commit/c317751b18f8a5de2279ef2c947251c41d47f10c))
+* **runner:** reject conflicting build modes ([#21327](https://github.com/vm0-ai/vm0/issues/21327)) ([1470ec3](https://github.com/vm0-ai/vm0/commit/1470ec3c82a0154787ff159e68c4bf6cfd88d836))
+
+
+### Documentation
+
+* **mitm-addon:** document anthropic sse extractor lifecycle ([#21402](https://github.com/vm0-ai/vm0/issues/21402)) ([704b14e](https://github.com/vm0-ai/vm0/commit/704b14e8b14386268ede8492a6d6889c1f2ad2fc))
+
+## [0.144.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.9...runner-rs-v0.144.10) (2026-07-14)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve suppressed exception metadata paths ([#21367](https://github.com/vm0-ai/vm0/issues/21367)) ([d349831](https://github.com/vm0-ai/vm0/commit/d349831af7b16ffeab7079e1349f75617e1c9aec))
+
+
+### Performance Improvements
+
+* **mitm-addon:** stop buffering firewall rule matches ([#21372](https://github.com/vm0-ai/vm0/issues/21372)) ([0f1e1fe](https://github.com/vm0-ai/vm0/commit/0f1e1fe52b218504baa536c650ef927814aea400))
+* **python:** index credentialed firewall authorities for tls admission ([#21371](https://github.com/vm0-ai/vm0/issues/21371)) ([7a80716](https://github.com/vm0-ai/vm0/commit/7a8071658178050280487a7d4fb0e0549bf5bada))
+* **runner:** attribute history hash transitions ([#21369](https://github.com/vm0-ai/vm0/issues/21369)) ([2da9192](https://github.com/vm0-ai/vm0/commit/2da9192f6100a4c834298bff559ec758905435bd))
+
+## [0.144.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.8...runner-rs-v0.144.9) (2026-07-14)
+
+## [0.144.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.7...runner-rs-v0.144.8) (2026-07-14)
+
+
+### Performance Improvements
+
+* **runner:** bound network log ready-line drain work ([#21337](https://github.com/vm0-ai/vm0/issues/21337)) ([56f6e5e](https://github.com/vm0-ai/vm0/commit/56f6e5e08587c6a57aeb996e2a0d71ac30970f42))
+
+## [0.144.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.6...runner-rs-v0.144.7) (2026-07-14)
+
+## [0.144.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.5...runner-rs-v0.144.6) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** drop stale sidecar identity after failed reuse ([#21300](https://github.com/vm0-ai/vm0/issues/21300)) ([4222c87](https://github.com/vm0-ai/vm0/commit/4222c87e65bf12337173acb5eac48b1e3b4b3aef))
+
+## [0.144.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.4...runner-rs-v0.144.5) (2026-07-13)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve auth fetch across cancellation ([#21246](https://github.com/vm0-ai/vm0/issues/21246)) ([6eba99b](https://github.com/vm0-ai/vm0/commit/6eba99be0f63cab5664dee37944c400ab1d7ecbe))
+* **mitm-addon:** redact userinfo from malformed log urls ([#21289](https://github.com/vm0-ai/vm0/issues/21289)) ([8dc1850](https://github.com/vm0-ai/vm0/commit/8dc1850853ea87d1044577cd4a6e4268a10253d3))
+* **runner:** bound setup artifact resources ([#21240](https://github.com/vm0-ai/vm0/issues/21240)) ([600acc8](https://github.com/vm0-ai/vm0/commit/600acc8fde24aaa2c2770125b33d0232efdb30b1))
+* **runner:** recover inconsistent proxy ca state ([#21281](https://github.com/vm0-ai/vm0/issues/21281)) ([03b288d](https://github.com/vm0-ai/vm0/commit/03b288dc2b2badd43d80d6d348750ba4c3250990))
+* **sandbox-fc:** route tcp dns through dnsmasq ([#21288](https://github.com/vm0-ai/vm0/issues/21288)) ([a95d872](https://github.com/vm0-ai/vm0/commit/a95d8720fff31fa3be49fabac532eb5543865c82))
+
+
+### Documentation
+
+* **mitm-addon:** document openai extractor contracts ([#21271](https://github.com/vm0-ai/vm0/issues/21271)) ([98f834e](https://github.com/vm0-ai/vm0/commit/98f834e8cc622e78c63b3538bb05842d7e49b68e))
+* **runner:** document private filesystem contract ([#21274](https://github.com/vm0-ai/vm0/issues/21274)) ([10241a1](https://github.com/vm0-ai/vm0/commit/10241a195466eb9e19564aeb7f76fdc4af619ab5))
+
+
+### Refactoring
+
+* **mitm-addon:** make request classifications valid by construction ([#21283](https://github.com/vm0-ai/vm0/issues/21283)) ([114f961](https://github.com/vm0-ai/vm0/commit/114f961443c24bc00a90e3b355e53221e148b92a))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid eager catalog identity checks ([#21247](https://github.com/vm0-ai/vm0/issues/21247)) ([3f6e0bd](https://github.com/vm0-ai/vm0/commit/3f6e0bddfe467b471e05e91fa2a5bbdabb615076))
+* **mitm-addon:** reuse parsed built-in host policies ([#21290](https://github.com/vm0-ai/vm0/issues/21290)) ([1210784](https://github.com/vm0-ai/vm0/commit/1210784d3a49067bcbddc1342ad1ab5c784a412b))
+
+## [0.144.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.3...runner-rs-v0.144.4) (2026-07-13)
+
+
+### Refactoring
+
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
+## [0.144.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.2...runner-rs-v0.144.3) (2026-07-13)
+
+
+### Bug Fixes
+
+* **runner:** verify failed-start service disablement ([#21205](https://github.com/vm0-ai/vm0/issues/21205)) ([a706d21](https://github.com/vm0-ai/vm0/commit/a706d213dde0d9cb2c82942501c94ec82999d538))
+
+
+### Refactoring
+
+* **runner:** centralize failure log fields ([#21208](https://github.com/vm0-ai/vm0/issues/21208)) ([24e24e8](https://github.com/vm0-ai/vm0/commit/24e24e84afd1a5188b19585161930754bfdfadf8))
+
+## [0.144.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.1...runner-rs-v0.144.2) (2026-07-13)
+
+
+### Performance Improvements
+
+* **runner:** defer cold cache fill until agent spawn ([#21190](https://github.com/vm0-ai/vm0/issues/21190)) ([e8f3f95](https://github.com/vm0-ai/vm0/commit/e8f3f950f773c0be73efea3ca9e0fff18e2b7c9f))
+
 ## [0.144.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.0...runner-rs-v0.144.1) (2026-07-13)
 
 

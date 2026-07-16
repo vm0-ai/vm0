@@ -47,7 +47,6 @@ describe("chat message persistence", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-06-09T10:00:00Z",
         updatedAt: "2026-06-09T10:01:00Z",
-        running: false,
       },
       {
         id: SECOND_THREAD_ID,
@@ -55,7 +54,6 @@ describe("chat message persistence", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-06-09T10:00:00Z",
         updatedAt: "2026-06-09T10:00:00Z",
-        running: false,
       },
     ]);
     context.mocks.api(

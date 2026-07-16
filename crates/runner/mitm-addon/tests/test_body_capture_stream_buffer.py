@@ -119,6 +119,35 @@ class TestBodyCaptureStreamBuffer:
         assert entry["request_body_encoding"] == "binary"
         assert entry["request_body_truncated"] is True
 
+    @pytest.mark.parametrize(
+        ("complete", "truncated", "expected_truncated"),
+        [
+            pytest.param(True, True, True, id="truncated-buffer"),
+            pytest.param(False, False, True, id="incomplete-stream"),
+            pytest.param(True, False, False, id="complete-malformed-body"),
+        ],
+    )
+    def test_failed_request_stream_decode_preserves_capture_completeness(
+        self, real_flow, complete, truncated, expected_truncated
+    ):
+        body = gzip.compress(b"streamed request body")[:-1]
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            request_encoding="gzip",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, body, complete=complete, truncated=truncated)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert entry["request_body_encoding"] == "binary"
+        if expected_truncated:
+            assert entry["request_body_truncated"] is True
+        else:
+            assert "request_body_truncated" not in entry
+
     def test_non_empty_request_stream_buffer_requires_state(self, real_flow):
         body = b'{"ok": true}'
         flow = real_flow(

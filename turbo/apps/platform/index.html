@@ -348,7 +348,10 @@
     />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="apple-mobile-web-app-title" content="Zero" />
     <meta
       name="description"
@@ -411,41 +414,6 @@
     <script type="module">
       if (window.__vm0BrowserSupported === true) {
         import("/src/main.ts");
-      }
-    </script>
-    <script>
-      function __initPlausible() {
-        var url = "%VITE_PLAUSIBLE_SCRIPT_URL%";
-        if (url && url.indexOf("plausible") !== -1) {
-          var s = document.createElement("script");
-          s.async = true;
-          s.src = url;
-          document.head.appendChild(s);
-          ((window.plausible =
-            window.plausible ||
-            function () {
-              (plausible.q = plausible.q || []).push(arguments);
-            }),
-            (plausible.init =
-              plausible.init ||
-              function (i) {
-                plausible.o = i || {};
-              }));
-          plausible.init({
-            transformRequest: function (payload) {
-              payload.u = payload.u.replace(
-                /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
-                "/:id",
-              );
-              return payload;
-            },
-          });
-        }
-      }
-      if (typeof requestIdleCallback === "function") {
-        requestIdleCallback(__initPlausible, { timeout: 3000 });
-      } else {
-        setTimeout(__initPlausible, 100);
       }
     </script>
   </head>

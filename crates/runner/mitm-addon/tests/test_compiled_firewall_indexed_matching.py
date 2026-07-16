@@ -1,5 +1,7 @@
 """Indexed compiled firewall matcher compatibility and scan guardrails."""
 
+import pytest
+
 import connector_intent
 import matching
 from tests.firewall_helpers import (
@@ -12,7 +14,15 @@ from tests.firewall_helpers import (
 )
 
 
-def _assert_indexed_matches_linear(url, method, firewalls, network_policies, intent=None):
+def _assert_indexed_matches_linear(
+    url,
+    method,
+    firewalls,
+    network_policies,
+    intent=None,
+    *,
+    is_asterisk_form=False,
+):
     compiled = compile_firewalls_or_fail(firewalls)
 
     indexed = matching.match_compiled_firewall_request(
@@ -21,6 +31,7 @@ def _assert_indexed_matches_linear(url, method, firewalls, network_policies, int
         compiled,
         network_policies,
         intent,
+        is_asterisk_form=is_asterisk_form,
     )
     linear = matching._match_compiled_firewall_request_linear(
         url,
@@ -28,10 +39,70 @@ def _assert_indexed_matches_linear(url, method, firewalls, network_policies, int
         compiled,
         network_policies,
         intent,
+        is_asterisk_form=is_asterisk_form,
     )
 
     assert indexed == linear
     return indexed
+
+
+def test_indexed_matches_linear_for_asterisk_form_unknown_policy():
+    firewalls = [
+        firewall_entry(
+            "example",
+            firewall_api(
+                "https://api.example.com",
+                [firewall_permission("full-access", "ANY /")],
+            ),
+        )
+    ]
+    policies = {
+        "example": network_policy(
+            allow=["full-access"],
+            unknown_policy="deny",
+        )
+    }
+
+    result = _assert_indexed_matches_linear(
+        "https://api.example.com",
+        "OPTIONS",
+        firewalls,
+        policies,
+        is_asterisk_form=True,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.reason == "unknown_endpoint"
+    assert result.path == "*"
+
+
+def test_indexed_matches_linear_for_asterisk_form_owner_ambiguity():
+    firewalls = [
+        firewall_entry(
+            "primary",
+            firewall_api("https://api.example.com", []),
+        ),
+        firewall_entry(
+            "auditor",
+            firewall_api("https://api.example.com", []),
+        ),
+    ]
+    policies = {
+        "primary": network_policy(unknown_policy="allow"),
+        "auditor": network_policy(unknown_policy="allow"),
+    }
+
+    result = _assert_indexed_matches_linear(
+        "https://api.example.com",
+        "OPTIONS",
+        firewalls,
+        policies,
+        is_asterisk_form=True,
+    )
+
+    assert isinstance(result, matching.FirewallAmbiguous)
+    assert result.path == "*"
+    assert result.candidates == ("auditor", "primary")
 
 
 def _long_path(prefix, segment_count=1000):
@@ -338,6 +409,69 @@ def test_indexed_matching_skips_unrelated_literal_rule_path_checks(monkeypatch):
     assert isinstance(result, matching.FirewallAllow)
     assert result.permission == "target"
     assert path_match_count == 1
+
+
+@pytest.mark.parametrize(
+    ("blocked", "expected_capture_count"),
+    [
+        (True, 0),
+        (False, 1),
+    ],
+)
+def test_indexed_matching_bounds_param_capture_for_same_specificity_fallbacks(
+    monkeypatch,
+    blocked,
+    expected_capture_count,
+):
+    nonmatching_rule = "GET /{prefix}-nope/{path+}"
+    repeated_rule = "GET /{prefix}-good/{path+}"
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                "https://api.example.com",
+                [firewall_permission("irrelevant", *([nonmatching_rule] * 128))],
+            ),
+            firewall_api(
+                "https://api.example.com",
+                [firewall_permission("files-read", *([repeated_rule] * 128))],
+            ),
+        ],
+        name="large",
+    )
+    policies = {
+        "large": network_policy(
+            allow=[] if blocked else ["files-read"],
+            deny=["files-read"] if blocked else [],
+        )
+    }
+    compiled = compile_firewalls_or_fail(firewalls)
+    capture_count = 0
+    original_capture_match = matching._match_compiled_path_segments
+
+    # Narrow performance-contract guard: the public decision does not reveal
+    # whether route discovery retained params for every matching fallback.
+    def counting_capture_match(path_segs, pattern_segs):
+        nonlocal capture_count
+        capture_count += 1
+        return original_capture_match(path_segs, pattern_segs)
+
+    monkeypatch.setattr(matching, "_match_compiled_path_segments", counting_capture_match)
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/a-good/b/c",
+        "GET",
+        compiled,
+        policies,
+    )
+
+    if blocked:
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("files-read",)
+    else:
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "files-read"
+        assert result.params == {"prefix": "a", "path": "b/c"}
+    assert capture_count == expected_capture_count
 
 
 def test_indexed_matches_linear_for_root_static_base_with_long_path():

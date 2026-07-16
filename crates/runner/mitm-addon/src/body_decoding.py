@@ -389,22 +389,22 @@ def _decompress_zlib_json_usage_body(
     out = bytearray()
 
     while remaining_data:
-        if len(out) >= max_output:
-            return bytes(out), DECODED_BODY_LIMIT_EXCEEDED
-
+        remaining_output = max_output - len(out)
+        # One probe byte distinguishes exact completion from real overflow.
         obj = zlib.decompressobj(wbits)
         try:
-            decoded = obj.decompress(remaining_data, max_length=max_output - len(out))
+            decoded = obj.decompress(remaining_data, max_length=remaining_output + 1)
         except zlib.error as exc:
             with contextlib.suppress(AttributeError):
                 # ctx.log unavailable outside mitmproxy runtime
                 ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
             return b"", INVALID_COMPRESSED_BODY
 
+        if len(decoded) > remaining_output:
+            out.extend(decoded[:remaining_output])
+            return bytes(out), DECODED_BODY_LIMIT_EXCEEDED
         out.extend(decoded)
         if not obj.eof:
-            if len(out) >= max_output:
-                return bytes(out), DECODED_BODY_LIMIT_EXCEEDED
             return bytes(out), INCOMPLETE_COMPRESSED_BODY
         if not obj.unused_data:
             return bytes(out), None

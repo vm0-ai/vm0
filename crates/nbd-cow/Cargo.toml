@@ -1,6 +1,6 @@
 [package]
 name = "nbd-cow"
-version = "0.4.60"
+version = "0.4.66"
 edition.workspace = true
 
 [[bin]]

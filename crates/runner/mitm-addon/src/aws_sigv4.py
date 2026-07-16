@@ -48,7 +48,8 @@ _SCOPE_DATE_RE = re.compile(r"^\d{8}$")
 _SCOPE_REGION_RE = re.compile(r"^(?:[A-Za-z0-9._-]+|\*)$")
 _SCOPE_SERVICE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _AMZ_DATE_RE = re.compile(r"^\d{8}T\d{6}Z$")
-_PRESIGN_EXPIRES_RE = re.compile(r"^[1-9]\d*$")
+_PRESIGN_EXPIRES_MAX_TEXT = "604800"
+_PRESIGN_EXPIRES_RE = re.compile(r"^[1-9][0-9]*$")
 _ACCESS_KEY_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
 _LOWER_HEX_DIGITS = frozenset("0123456789abcdef")
 _HEX_DIGITS = frozenset("0123456789ABCDEFabcdef")
@@ -237,7 +238,11 @@ def _classify_query_request(
         raise AwsSigV4SigningError("Malformed AWS presigned query")
     source_access_key_id, scope = _parse_credential(credential)
     _validate_amz_date(amz_date, scope)
-    if not _PRESIGN_EXPIRES_RE.fullmatch(expires):
+    if (
+        len(expires) > len(_PRESIGN_EXPIRES_MAX_TEXT)
+        or not _PRESIGN_EXPIRES_RE.fullmatch(expires)
+        or (len(expires) == len(_PRESIGN_EXPIRES_MAX_TEXT) and expires > _PRESIGN_EXPIRES_MAX_TEXT)
+    ):
         raise AwsSigV4SigningError("Malformed AWS presigned query expiry")
     return _SigningContext(
         location=_AuthLocation.QUERY,

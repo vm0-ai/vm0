@@ -48,7 +48,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         serde_json::to_vec(&serde_json::json!({
             "CUSTOM_USER_ENV": "visible-to-cli",
             "BASH_ENV": "/tmp/user-bash-env",
-            "VM0_API_URL": "https://user-env.example.invalid",
+            "VM0_API_BACKEND_URL": "https://user-env.example.invalid",
             "OPENAI_API_KEY": "sk-user",
             "HOME": user_home_str,
             "NODE_EXTRA_CA_CERTS": "/tmp/user-ca.pem",
@@ -65,7 +65,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
 
     unsafe {
         std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
-        std::env::set_var("VM0_API_URL", "https://stale-api.example.invalid");
+        std::env::set_var("VM0_API_BACKEND_URL", "https://stale-api.example.invalid");
         std::env::set_var("HOME", tmp.path().join("stale-home"));
     }
 
@@ -100,7 +100,7 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         Some("sk-user")
     );
     assert_eq!(
-        cli_env.get("VM0_API_URL").map(String::as_str),
+        cli_env.get("VM0_API_BACKEND_URL").map(String::as_str),
         Some("http://127.0.0.1:1")
     );
     assert_eq!(

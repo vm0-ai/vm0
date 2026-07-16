@@ -1,0 +1,45 @@
+def terminal_returns(flow, value):
+    match value:
+        case 1:
+            return
+        case _:
+            return
+    flow.metadata["vm_run_id"] = "dead-return"
+
+def terminal_raise(flow, value):
+    match value:
+        case 1:
+            return
+        case _:
+            raise RuntimeError
+    flow.metadata["vm_run_id"] = "dead-raise"
+
+def unmatched_path(flow, value):
+    match value:
+        case 1:
+            return
+    flow.metadata["vm_run_id"] = "unmatched"
+
+def guarded_wildcard(flow, value, condition):
+    match value:
+        case _ if condition:
+            return
+    flow.metadata["vm_run_id"] = "guarded"
+
+def case_fallthrough(flow, value):
+    match value:
+        case 1:
+            return
+        case _:
+            pass
+    flow.metadata["vm_run_id"] = "case-fallthrough"
+
+def suppressible_raise(flow, value):
+    meta = flow.metadata
+    with context():
+        match value:
+            case 1:
+                return
+            case _:
+                raise RuntimeError
+    meta["vm_run_id"] = "suppressed"

@@ -31,7 +31,7 @@ mod support;
 
 pub use call_records::{
     CopyFileCall, ExecCall, ExecMatcher, ProcessCancelCall, ProcessControlCall, ReadFileCall,
-    StartProcessCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
+    RemoteExecCall, StartProcessCall, WaitProcessCall, WriteFileCall, WriteFilesCall,
 };
 pub use control::MockSandboxControl;
 pub use factory_runtime::{MockRuntimeProvider, MockSandboxFactory, MockSandboxRuntime};

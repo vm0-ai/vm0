@@ -24,8 +24,11 @@
 //! - lifecycle signals are registered before slow startup work;
 //! - discovery is pinned across `select!` ticks so heartbeat and cleanup
 //!   branches do not restart polling;
+//! - heartbeat work is pinned and single-flight so its I/O does not stall the
+//!   main reactor or overlap a newer snapshot;
 //! - the first heartbeat and idle-cleanup ticks are deferred;
-//! - teardown drops discovery before provider shutdown.
+//! - teardown drains heartbeat work and drops discovery before provider
+//!   shutdown.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -47,7 +50,7 @@ use crate::config::{self, ProfileConfig};
 use crate::deps;
 use crate::dns;
 use crate::error::{RunnerError, RunnerResult};
-use crate::executor::{ExecutorConfig, SessionHistoryProbe};
+use crate::executor::{ExecutorConfig, SessionHistoryCpuPool, SessionHistoryProbe};
 use crate::host;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
@@ -83,10 +86,11 @@ mod sandbox_finalization;
 mod signals;
 
 use active_sessions::new_active_cli_agent_sessions;
-use factory_lifecycle::{shutdown_factories, start_factories};
+use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
-    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeldSessionStateSnapshot,
-    collect_heartbeat_state, refresh_workspace_cache_held_session_snapshot, send_heartbeat,
+    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
+    HeldSessionStateSnapshot, collect_heartbeat_state,
+    refresh_workspace_cache_held_session_snapshot,
 };
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
@@ -163,10 +167,10 @@ pub struct StartArgs {
     #[arg(long, short)]
     pub(crate) config: PathBuf,
     /// vm0 API URL (overrides config)
-    #[arg(long, env = "VM0_API_URL")]
+    #[arg(long, env = "VM0_API_BACKEND_URL")]
     api_url: Option<String>,
     /// Runner authentication token (overrides config)
-    #[arg(long, env = "VM0_RUNNER_TOKEN")]
+    #[arg(long, env = "VM0_RUNNER_TOKEN", hide_env_values = true)]
     token: Option<String>,
     /// Use local file queue provider instead of API (for testing)
     #[arg(long)]
@@ -207,12 +211,12 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
         Err(e) => {
             resources.memory_prefetch.cancel();
             resources.provider.shutdown().await;
+            resources.dns_handle.stop().await;
             resources.runtime.shutdown().await;
             if let Err(kill_error) = resources.mitm.kill_now().await {
                 warn!(error = %kill_error, "failed to kill proxy after live runner instance publish failed");
             }
             resources.kmsg_handle.stop().await;
-            resources.dns_handle.stop().await;
             resources.memory_prefetch.drain().await;
             resources.status.set_mode(RunnerMode::Stopped).await;
             Err(e)
@@ -226,6 +230,7 @@ async fn shutdown_startup_resources_after_startup_failure(
 ) {
     resources.memory_prefetch.cancel();
     resources.provider.shutdown().await;
+    resources.dns_handle.stop().await;
     if let Some(runtime) = resources.runtime {
         runtime.shutdown().await;
     }
@@ -233,7 +238,6 @@ async fn shutdown_startup_resources_after_startup_failure(
         warn!(error = %e, context, "failed to kill proxy after startup failed");
     }
     resources.kmsg_handle.stop().await;
-    resources.dns_handle.stop().await;
     resources.memory_prefetch.drain().await;
     resources.status.set_mode(RunnerMode::Stopped).await;
 }
@@ -295,7 +299,7 @@ async fn run_start_with_home(
     // Validate required server fields
     if server.url.is_empty() {
         return Err(RunnerError::Config(
-            "server.url is required (set in config or via --api-url / VM0_API_URL)".into(),
+            "server.url is required (set in config or via --api-url / VM0_API_BACKEND_URL)".into(),
         ));
     }
     server.url = config::normalize_api_base_url(&server.url)?;
@@ -440,6 +444,7 @@ async fn run_start_with_home(
     let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
+        ca_lock_path: home.ca_lock(),
         addon_dir: paths.mitm_addon_dir(),
         registry_path: paths.proxy_registry(),
         registry_lock_path: paths.proxy_registry_lock(),
@@ -568,7 +573,25 @@ async fn run_start_with_home(
         )
         .await
         {
-            Ok(handle) => break (runtime, handle),
+            Ok(handle) => {
+                if let Err(e) = runtime.activate_dns_readiness().await {
+                    memory_prefetch.cancel();
+                    handle.stop().await;
+                    runtime.shutdown().await;
+                    if let Err(kill_error) = mitm.kill_now().await {
+                        warn!(
+                            error = %kill_error,
+                            "failed to kill proxy after namespace DNS readiness failed"
+                        );
+                    }
+                    kmsg_handle.stop().await;
+                    memory_prefetch.drain().await;
+                    return Err(RunnerError::Internal(format!(
+                        "sandbox runtime DNS readiness: {e}"
+                    )));
+                }
+                break (runtime, handle);
+            }
             Err(e)
                 if e.kind() == std::io::ErrorKind::AddrInUse
                     && dns_start_attempt < DNS_START_MAX_ATTEMPTS =>
@@ -654,6 +677,7 @@ async fn run_start_with_home(
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
         network_policy_refresh,
+        session_history_cpu: SessionHistoryCpuPool::for_host_cpus(host_cpus),
         session_history_probe: SessionHistoryProbe::default(),
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(
@@ -1223,7 +1247,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             shutdown_startup_resources_after_startup_failure(
                 StartupFailureResources {
                     provider: provider_state.provider.as_ref(),
-                    runtime: None,
+                    runtime: Some(runtime.as_mut()),
                     mitm: &mut mitm,
                     kmsg_handle,
                     dns_handle,
@@ -1244,8 +1268,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
-    // destroys at shutdown, preventing factory Arc leaks that cause
-    // "factory still referenced" warnings from Arc::try_unwrap.
+    // destroys at shutdown so their factory Arcs are released before the
+    // exclusive ownership preflight.
     let mut destroy_tasks: JoinSet<bool> = JoinSet::new();
 
     if startup_mode == RunnerMode::Running {
@@ -1339,6 +1363,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     )
     .await;
     debug_assert!(held_session_snapshot.workspace_cache_loaded());
+    let mut heartbeat = HeartbeatController::new(hb_ctx);
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -1398,7 +1423,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     if transitioned {
                         // Live observability: fire an immediate "stopping"
                         // heartbeat before teardown removes the runner.
-                        send_heartbeat(&hb_ctx, RunnerMode::Stopping).await;
+                        heartbeat.flush(RunnerMode::Stopping).await?;
                     }
                     continue;
                 }
@@ -1439,6 +1464,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         if matches!(mode, RunnerMode::Running) && !can_discover {
             test_hooks.test_observer.notify_budget_exhausted_reactor();
         }
+        let heartbeat_sending = heartbeat.is_sending();
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
             // The future is pinned outside the loop so heartbeat/cleanup
@@ -1505,8 +1531,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         drained_ready_candidates,
                         "session affinity state triggered immediate heartbeat"
                     );
-                    send_heartbeat(&hb_ctx, live_mode).await;
+                    heartbeat.request(live_mode);
                 }
+            }
+            // The active heartbeat future is pinned in the controller so
+            // network and state-refresh waits yield to every other reactor
+            // branch instead of being awaited by a trigger handler.
+            result = heartbeat.wait_for_send(), if heartbeat_sending => {
+                result?;
+                let live_mode = *mode_rx.borrow();
+                heartbeat.finish_send(live_mode);
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
@@ -1596,7 +1630,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
                 let live_mode = *mode_rx.borrow();
-                send_heartbeat(&hb_ctx, live_mode).await;
+                heartbeat.request(live_mode);
             }
             // Immediate heartbeat after session affinity state changes —
             // eliminates the up-to-10s blind spot for affinity routing.
@@ -1612,7 +1646,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 };
                 if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
                     info!(source, "session affinity state triggered immediate heartbeat");
-                    send_heartbeat(&hb_ctx, live_mode).await;
+                    heartbeat.request(live_mode);
                 }
             }
         }
@@ -1624,6 +1658,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let teardown = TeardownTimer::start();
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");
+
+    let phase = teardown.phase_start("heartbeat_drain");
+    heartbeat.drain().await;
+    drop(heartbeat);
+    teardown.phase_complete("heartbeat_drain", phase);
 
     // Drop the pinned discover future before provider shutdown so any
     // provider-local discovery resources are released first. This also keeps
@@ -1724,8 +1763,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         teardown.phase_complete("orphan_reap_shutdown_final", phase);
     }
     // Wait for any in-flight destroy tasks (from cleanup tick, profile
-    // mismatch eviction, etc.) so their factory Arcs are dropped before
-    // shutdown_factories calls Arc::try_unwrap.
+    // mismatch eviction, etc.) so their factory Arcs are dropped before the
+    // factory shutdown ownership preflight.
     let phase = teardown.phase_start("destroy_tasks_drain");
     while let Some(result) = destroy_tasks.join_next().await {
         match result {
@@ -1745,9 +1784,18 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     info!("shutting down factories");
-    let phase = teardown.phase_start("shutdown_factories");
-    shutdown_factories(&mut factories, runtime.as_mut(), Some(&teardown)).await;
-    teardown.phase_complete("shutdown_factories", phase);
+    let phase = teardown.phase_start("shutdown_factory_instances");
+    shutdown_factory_instances(&mut factories, Some(&teardown)).await?;
+    teardown.phase_complete("shutdown_factory_instances", phase);
+
+    // Keep the pool-scoped INPUT filters installed until dnsmasq is gone.
+    // Runtime shutdown owns those filters, so it must follow DNS shutdown to
+    // avoid exposing the wildcard listener between the two cleanup phases.
+    let phase = teardown.phase_start("dns_stop");
+    dns_handle.stop().await;
+    teardown.phase_complete("dns_stop", phase);
+
+    shutdown_runtime(runtime.as_mut(), Some(&teardown)).await;
 
     // Wait for buffered and pending usage reports before stopping the proxy.
     // The runner writes a shutdown request marker, then the addon replies with
@@ -1805,10 +1853,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let phase = teardown.phase_start("kmsg_stop");
     kmsg_handle.stop().await;
     teardown.phase_complete("kmsg_stop", phase);
-    let phase = teardown.phase_start("dns_stop");
-    dns_handle.stop().await;
-    teardown.phase_complete("dns_stop", phase);
-
     let phase = teardown.phase_start("memory_prefetch_drain");
     memory_prefetch.drain().await;
     teardown.phase_complete("memory_prefetch_drain", phase);

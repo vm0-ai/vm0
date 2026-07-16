@@ -25,7 +25,8 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    PreLocalAdmissionOutcome,
+    PreLocalAdmissionOutcome, SessionHistoryGenerationLocalAvailability,
+    SessionHistoryGenerationRelationship,
 };
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
@@ -62,6 +63,10 @@ struct ClaimRequestTelemetry {
     main_loop_to_local_admission_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pre_local_admission_outcome: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_history_generation_relationship: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_history_generation_local_availability: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_due_to_job_discovered_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -357,6 +362,9 @@ impl JobProvider for ApiProvider {
                     // (backwards compat with pre-profile API).
                     let run_id = job.run_id;
                     let cli_agent_session_id = job.cli_agent_session_id;
+                    let history_generation_run_id = job.history_generation_run_id;
+                    let history_generation_affinity_protected_until =
+                        job.history_generation_affinity_protected_until;
                     let affinity_protected_until = job.affinity_protected_until;
                     let profile = job
                         .experimental_profile
@@ -364,6 +372,10 @@ impl JobProvider for ApiProvider {
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
+                        .with_history_generation_run_id(history_generation_run_id)
+                        .with_history_generation_affinity_protected_until(
+                            history_generation_affinity_protected_until,
+                        )
                         .with_discovery_source(JobDiscoverySource::Poll)
                         .with_poll_reason(poll_reason_value(reason))
                         .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed);
@@ -632,8 +644,8 @@ impl ApiClient {
         })
     }
 
-    /// Send a heartbeat with runner state. Uses a short timeout (3s) to
-    /// avoid blocking the main loop.
+    /// Send a heartbeat with runner state. The short timeout (3s) bounds this
+    /// best-effort request and any lifecycle drain waiting for it.
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
         let resp = send_api(
             self.http
@@ -836,6 +848,12 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             provider_discovery_to_main_loop_ms,
             main_loop_to_local_admission_ms,
             pre_local_admission_outcome,
+            session_history_generation_relationship: candidate
+                .session_history_generation_relationship()
+                .map(SessionHistoryGenerationRelationship::as_str),
+            session_history_generation_local_availability: candidate
+                .session_history_generation_local_availability()
+                .map(SessionHistoryGenerationLocalAvailability::as_str),
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -1165,7 +1183,7 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
     use tokio::task::JoinHandle;
-    use tracing::Level;
+    use tracing::{Level, instrument::WithSubscriber};
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
     use uuid::Uuid;
@@ -1392,10 +1410,7 @@ mod tests {
     {
         let captured = CapturedEvents::default();
         let subscriber = tracing_subscriber::registry().with(captured.clone());
-        let guard = tracing::subscriber::set_default(subscriber);
-        tracing::callsite::rebuild_interest_cache();
-        let output = future.await;
-        drop(guard);
+        let output = future.with_subscriber(subscriber).await;
         (output, captured.entries())
     }
 
@@ -1623,15 +1638,24 @@ mod tests {
     #[test]
     fn claim_request_body_serializes_runner_timing() {
         let now = std::time::Instant::now();
-        let candidate = JobCandidate::new_with_timing_for_test(
+        let target_generation_run_id: RunId =
+            "00000000-0000-0000-0000-000000000099".parse().unwrap();
+        let mut candidate = JobCandidate::new_with_timing_for_test(
             RunId::nil(),
             crate::profile::DEFAULT_PROFILE.to_string(),
             now.checked_sub(Duration::from_millis(25)).unwrap(),
             Some(now.checked_sub(Duration::from_millis(7)).unwrap()),
         )
         .with_discovery_source(JobDiscoverySource::Poll)
+        .with_history_generation_run_id(Some(target_generation_run_id))
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
+        candidate.set_session_history_generation_relationship(
+            SessionHistoryGenerationRelationship::Exact,
+        );
+        candidate.set_session_history_generation_local_availability(
+            SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod,
+        );
 
         let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
 
@@ -1649,6 +1673,19 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
+        assert_eq!(
+            body["telemetry"]["sessionHistoryGenerationRelationship"],
+            "exact"
+        );
+        assert_eq!(
+            body["telemetry"]["sessionHistoryGenerationLocalAvailability"],
+            "parked_before_discovery_ge_heartbeat_period"
+        );
+        assert!(
+            !body
+                .to_string()
+                .contains(&target_generation_run_id.to_string())
+        );
         assert!(body.get("capabilities").is_none());
     }
 
@@ -1687,6 +1724,11 @@ mod tests {
         assert_eq!(
             body["telemetry"]["preLocalAdmissionOutcome"],
             "local_holder"
+        );
+        assert!(
+            body["telemetry"]
+                .get("sessionHistoryGenerationLocalAvailability")
+                .is_none()
         );
     }
 
@@ -1870,6 +1912,8 @@ mod tests {
     async fn discover_returns_http_poll_job_after_wakeup() {
         let server = MockServer::start_async().await;
         let run_id: RunId = "00000000-0000-0000-0000-000000000003".parse().unwrap();
+        let history_generation_run_id: RunId =
+            "00000000-0000-0000-0000-000000000004".parse().unwrap();
         let mock = server
             .mock_async(|when, then| {
                 when.method(POST).path(routes::runners::poll::POLL.path);
@@ -1878,6 +1922,8 @@ mod tests {
                         "runId": run_id,
                         "experimentalProfile": "vm0/default",
                         "cliAgentSessionId": "sess-poll",
+                        "historyGenerationRunId": history_generation_run_id,
+                        "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
                         "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
                     }
                 }));
@@ -1897,7 +1943,12 @@ mod tests {
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/default");
         assert_eq!(discovered.cli_agent_session_id(), Some("sess-poll"));
+        assert_eq!(
+            discovered.history_generation_run_id(),
+            Some(history_generation_run_id)
+        );
         assert!(discovered.is_affinity_protected());
+        assert!(discovered.is_history_generation_affinity_protected());
         assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)

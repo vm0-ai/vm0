@@ -18,7 +18,7 @@ import {
   loadWorkflowVolumeFiles,
   SKILL_FILENAME,
 } from "./zero-workflow-volume.service";
-import { loadWorkflowTriggers } from "./zero-workflow-trigger.service";
+import { loadWorkflowAutomations } from "./zero-workflow-automation.service";
 
 export function zeroWorkflowDetail(args: {
   readonly orgId: string;
@@ -79,7 +79,7 @@ export function zeroWorkflowDetail(args: {
         return { path: file.path, content: file.content };
       }) ?? null;
 
-    const triggers = await loadWorkflowTriggers(db, {
+    const automations = await loadWorkflowAutomations(db, {
       orgId: args.orgId,
       workflowId: workflow.id,
       userId: args.member.userId,
@@ -94,7 +94,7 @@ export function zeroWorkflowDetail(args: {
       instruction: workflow.instruction,
       files,
       fileContents,
-      triggers: [...triggers],
+      automations: [...automations],
     };
   });
 }

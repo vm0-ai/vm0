@@ -402,7 +402,7 @@ describe("POST /api/zero/video-io/generate", () => {
   );
 
   beforeEach(() => {
-    mockEnv("VM0_API_URL", WEB_ORIGIN);
+    mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -514,38 +514,41 @@ describe("POST /api/zero/video-io/generate", () => {
     });
   });
 
-  it("returns 402 with the paid-plan upgrade message for limited-free-1 orgs", async () => {
-    const fixture = await seedVideoFixture({
-      credits: 10_000,
-      tier: "limited-free-1",
-      withPricing: true,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    let calledBytePlus = false;
-    server.use(
-      http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
-        calledBytePlus = true;
-        return HttpResponse.json({});
-      }),
-    );
+  it.each(["limited-free-1", "pro-suspend"] as const)(
+    "returns 402 with the paid-plan upgrade message for %s orgs",
+    async (tier) => {
+      const fixture = await seedVideoFixture({
+        credits: 10_000,
+        tier,
+        withPricing: true,
+      });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      let calledBytePlus = false;
+      server.use(
+        http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
+          calledBytePlus = true;
+          return HttpResponse.json({});
+        }),
+      );
 
-    const app = createVideoIoTestApp();
-    const response = await app.request("/api/zero/video-io/generate", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({ prompt: "a city" }),
-    });
+      const app = createVideoIoTestApp();
+      const response = await app.request("/api/zero/video-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ prompt: "a city" }),
+      });
 
-    expect(response.status).toBe(402);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message:
-          "Built-in video generation requires Pro, Team, or Custom workspace access. Return `pro_required` as the assistant error marker so the app can show the paid plan upgrade card. Do not retry video generation until the workspace upgrades.",
-        code: "PRO_REQUIRED",
-      },
-    });
-    expect(calledBytePlus).toBeFalsy();
-  });
+      expect(response.status).toBe(402);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: {
+          message:
+            "Built-in video generation requires Pro, Team, or Custom workspace access. Return `pro_required` as the assistant error marker so the app can show the paid plan upgrade card. Do not retry video generation until the workspace upgrades.",
+          code: "PRO_REQUIRED",
+        },
+      });
+      expect(calledBytePlus).toBeFalsy();
+    },
+  );
 
   it("allows Team orgs to submit paid video generation", async () => {
     const fixture = await seedVideoFixture({

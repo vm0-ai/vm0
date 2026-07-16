@@ -1,0 +1,475 @@
+import { command, computed } from "ccstate";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
+
+import { organizationAuthContext$ } from "../auth/auth-context";
+import { authRoute } from "../auth/auth-route";
+import { bodyResultOf, pathParamsOf } from "../context/request";
+import { db$ } from "../external/db";
+import {
+  badRequestMessage,
+  conflict,
+  notFound,
+  teamRequired,
+} from "../../lib/error";
+import {
+  loadVisibleWorkflowById,
+  type WorkflowMember,
+} from "../services/zero-workflow-data.service";
+import {
+  createWorkflowAutomation$,
+  deleteWorkflowAutomation$,
+  disableWorkflowAutomation$,
+  enableWorkflowAutomation$,
+  getWorkflowAutomation,
+  listThreadBoundWorkflowAutomations,
+  listWorkspaceWorkflowAutomations,
+  loadWorkflowAutomations,
+  revealWorkflowWebhookSecret,
+  runOwnedWorkflowAutomationNow$,
+  updateWorkflowAutomation$,
+  type AutomationResult,
+} from "../services/zero-workflow-automation.service";
+import type { RouteEntry, SignalRouteHandler } from "../route-entry";
+
+const workflowAutomationReadAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "agent:read",
+} as const;
+
+const workflowWriteAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "agent:write",
+} as const;
+
+function memberFromAuth(auth: {
+  readonly userId: string;
+  readonly orgRole?: string | null;
+}): WorkflowMember {
+  return { userId: auth.userId, role: auth.orgRole ?? "member" };
+}
+
+function forbidden(message: string) {
+  return {
+    status: 403 as const,
+    body: { error: { message, code: "FORBIDDEN" as const } },
+  };
+}
+
+function automationErrorResponse(
+  result: AutomationResult,
+  notFoundMessage = "Workflow automation not found",
+) {
+  switch (result.kind) {
+    case "not-found": {
+      return notFound(notFoundMessage);
+    }
+    case "forbidden": {
+      return forbidden(result.message);
+    }
+    case "conflict": {
+      return conflict(result.message);
+    }
+    case "team-required": {
+      return teamRequired(result.message);
+    }
+    case "bad-request": {
+      return badRequestMessage(result.message);
+    }
+    default: {
+      throw new Error(`Unexpected automation result: ${result.kind}`);
+    }
+  }
+}
+
+const createAutomationBody$ = bodyResultOf(
+  zeroWorkflowAutomationsContract.create,
+);
+const updateAutomationBody$ = bodyResultOf(
+  zeroWorkflowAutomationsContract.update,
+);
+
+const workspaceWorkflowAutomationEntries$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const db = get(db$);
+  return await listWorkspaceWorkflowAutomations(db, {
+    orgId: auth.orgId,
+    member: memberFromAuth(auth),
+  });
+});
+
+const listWorkspaceAutomationsInner$ = computed(async (get) => {
+  const entries = await get(workspaceWorkflowAutomationEntries$);
+  return {
+    status: 200 as const,
+    body: [...entries],
+  };
+});
+
+const listChatThreadAutomationsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(
+    pathParamsOf(zeroWorkflowAutomationsContract.listForChatThread),
+  );
+  const db = get(db$);
+  const automations = await listThreadBoundWorkflowAutomations(db, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    threadId: params.threadId,
+  });
+  return { status: 200 as const, body: [...automations] };
+});
+
+const listAutomationsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroWorkflowAutomationsContract.list));
+  const db = get(db$);
+  const visible = await loadVisibleWorkflowById(db, {
+    orgId: auth.orgId,
+    member: memberFromAuth(auth),
+    workflowId: params.workflowId,
+  });
+  if (!visible) {
+    return notFound(`Workflow not found: ${params.workflowId}`);
+  }
+  const automations = await loadWorkflowAutomations(db, {
+    orgId: auth.orgId,
+    workflowId: visible.workflow.id,
+    userId: auth.userId,
+  });
+  return { status: 200 as const, body: [...automations] };
+});
+
+const createAutomationInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.create));
+    const bodyResult = await get(createAutomationBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const automationInputBase = {
+      orgId: auth.orgId,
+      member: memberFromAuth(auth),
+      workflowId: params.workflowId,
+      enabled: bodyResult.data.enabled ?? true,
+    };
+    const result =
+      "schedule" in bodyResult.data
+        ? await set(
+            createWorkflowAutomation$,
+            {
+              ...automationInputBase,
+              schedule: bodyResult.data.schedule,
+            },
+            signal,
+          )
+        : bodyResult.data.eventType === "webhook-received"
+          ? await set(
+              createWorkflowAutomation$,
+              {
+                ...automationInputBase,
+                eventType: bodyResult.data.eventType,
+                eventConfig: bodyResult.data.eventConfig,
+              },
+              signal,
+            )
+          : bodyResult.data.eventType === "github-label-applied"
+            ? await set(
+                createWorkflowAutomation$,
+                {
+                  ...automationInputBase,
+                  eventType: bodyResult.data.eventType,
+                  eventConfig: bodyResult.data.eventConfig,
+                },
+                signal,
+              )
+            : bodyResult.data.eventType === "google-calendar-event-created" ||
+                bodyResult.data.eventType === "google-calendar-event-updated" ||
+                bodyResult.data.eventType === "google-calendar-event-cancelled"
+              ? await set(
+                  createWorkflowAutomation$,
+                  {
+                    ...automationInputBase,
+                    eventType: bodyResult.data.eventType,
+                    eventConfig: bodyResult.data.eventConfig,
+                  },
+                  signal,
+                )
+              : bodyResult.data.eventType === "google-meet-transcript-generated"
+                ? await set(
+                    createWorkflowAutomation$,
+                    {
+                      ...automationInputBase,
+                      eventType: bodyResult.data.eventType,
+                      eventConfig: bodyResult.data.eventConfig,
+                    },
+                    signal,
+                  )
+                : bodyResult.data.eventType === "notion-child-page-created" ||
+                    bodyResult.data.eventType ===
+                      "notion-database-item-created" ||
+                    bodyResult.data.eventType === "notion-page-content-updated"
+                  ? await set(
+                      createWorkflowAutomation$,
+                      {
+                        ...automationInputBase,
+                        eventType: bodyResult.data.eventType,
+                        eventConfig: bodyResult.data.eventConfig,
+                      },
+                      signal,
+                    )
+                  : await set(
+                      createWorkflowAutomation$,
+                      {
+                        ...automationInputBase,
+                        eventType: bodyResult.data.eventType,
+                        eventConfig: bodyResult.data.eventConfig,
+                      },
+                      signal,
+                    );
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      return { status: 201 as const, body: result.summary };
+    }
+    return automationErrorResponse(
+      result,
+      `Workflow not found: ${params.workflowId}`,
+    );
+  },
+);
+
+const getAutomationInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroWorkflowAutomationsContract.get));
+  const db = get(db$);
+  const automation = await getWorkflowAutomation(db, {
+    orgId: auth.orgId,
+    member: memberFromAuth(auth),
+    automationId: params.id,
+  });
+  if (!automation) {
+    return notFound("Workflow automation not found");
+  }
+  return { status: 200 as const, body: automation };
+});
+
+const revealWebhookSecretInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(
+    pathParamsOf(zeroWorkflowAutomationsContract.revealWebhookSecret),
+  );
+  const db = get(db$);
+  const secret = await revealWorkflowWebhookSecret(db, {
+    orgId: auth.orgId,
+    member: memberFromAuth(auth),
+    automationId: params.id,
+  });
+  if (!secret) {
+    return notFound("Workflow webhook automation not found");
+  }
+  return { status: 200 as const, body: secret };
+});
+
+const updateAutomationInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.update));
+    const bodyResult = await get(updateAutomationBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      updateWorkflowAutomation$,
+      "schedule" in bodyResult.data
+        ? {
+            orgId: auth.orgId,
+            member: memberFromAuth(auth),
+            automationId: params.id,
+            schedule: bodyResult.data.schedule,
+          }
+        : {
+            orgId: auth.orgId,
+            member: memberFromAuth(auth),
+            automationId: params.id,
+            eventConfig: bodyResult.data.eventConfig,
+          },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      return { status: 200 as const, body: result.summary };
+    }
+    return automationErrorResponse(result);
+  },
+);
+
+const deleteAutomationInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.delete));
+    const result = await set(
+      deleteWorkflowAutomation$,
+      {
+        orgId: auth.orgId,
+        member: memberFromAuth(auth),
+        automationId: params.id,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind === "deleted") {
+      return { status: 204 as const, body: undefined };
+    }
+    return automationErrorResponse(result);
+  },
+);
+
+const enableAutomationInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.enable));
+    const result = await set(
+      enableWorkflowAutomation$,
+      {
+        orgId: auth.orgId,
+        member: memberFromAuth(auth),
+        automationId: params.id,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      return { status: 200 as const, body: result.summary };
+    }
+    return automationErrorResponse(result);
+  },
+);
+
+const disableAutomationInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.disable));
+    const result = await set(
+      disableWorkflowAutomation$,
+      {
+        orgId: auth.orgId,
+        member: memberFromAuth(auth),
+        automationId: params.id,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      return { status: 200 as const, body: result.summary };
+    }
+    return automationErrorResponse(result);
+  },
+);
+
+const runAutomationInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.run));
+    const result = await set(
+      runOwnedWorkflowAutomationNow$,
+      {
+        orgId: auth.orgId,
+        member: memberFromAuth(auth),
+        automationId: params.id,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      return {
+        status: 201 as const,
+        body: {
+          runId: result.runId,
+          chatThreadId: result.chatThreadId,
+        },
+      };
+    }
+    if (result.kind === "run_error") {
+      return result.response;
+    }
+    return automationErrorResponse(result);
+  },
+);
+
+const workflowAutomationRouteHandlers: Readonly<
+  Record<
+    keyof typeof zeroWorkflowAutomationsContract,
+    SignalRouteHandler<unknown>
+  >
+> = {
+  listWorkspace: authRoute(
+    workflowAutomationReadAuth,
+    listWorkspaceAutomationsInner$,
+  ),
+  listForChatThread: authRoute(
+    workflowAutomationReadAuth,
+    listChatThreadAutomationsInner$,
+  ),
+  list: authRoute(workflowAutomationReadAuth, listAutomationsInner$),
+  create: authRoute(workflowWriteAuth, createAutomationInner$),
+  get: authRoute(workflowAutomationReadAuth, getAutomationInner$),
+  update: authRoute(workflowWriteAuth, updateAutomationInner$),
+  delete: authRoute(workflowWriteAuth, deleteAutomationInner$),
+  enable: authRoute(workflowWriteAuth, enableAutomationInner$),
+  disable: authRoute(workflowWriteAuth, disableAutomationInner$),
+  run: authRoute(workflowWriteAuth, runAutomationInner$),
+  revealWebhookSecret: authRoute(workflowWriteAuth, revealWebhookSecretInner$),
+};
+
+export const zeroWorkflowAutomationsRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroWorkflowAutomationsContract.listWorkspace,
+    handler: workflowAutomationRouteHandlers.listWorkspace,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.listForChatThread,
+    handler: workflowAutomationRouteHandlers.listForChatThread,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.list,
+    handler: workflowAutomationRouteHandlers.list,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.create,
+    handler: workflowAutomationRouteHandlers.create,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.get,
+    handler: workflowAutomationRouteHandlers.get,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.update,
+    handler: workflowAutomationRouteHandlers.update,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.delete,
+    handler: workflowAutomationRouteHandlers.delete,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.enable,
+    handler: workflowAutomationRouteHandlers.enable,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.disable,
+    handler: workflowAutomationRouteHandlers.disable,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.run,
+    handler: workflowAutomationRouteHandlers.run,
+  },
+  {
+    route: zeroWorkflowAutomationsContract.revealWebhookSecret,
+    handler: workflowAutomationRouteHandlers.revealWebhookSecret,
+  },
+];

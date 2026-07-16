@@ -5,7 +5,7 @@
 # Load from bats tests with: load '../../helpers/browser'
 #
 # Required env vars:
-#   VM0_API_URL  — Target site URL (e.g., https://www.vm7.ai:8443)
+#   VM0_API_BACKEND_URL  — Target API backend URL (e.g., https://api.vm7.ai:8443)
 #
 # Optional env vars:
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
@@ -31,8 +31,8 @@ url_is_on_app() {
 # Call this in setup_file() before any browser interactions.
 # ---------------------------------------------------------------------------
 browser_setup() {
-  if [[ -z "${VM0_API_URL:-}" ]]; then
-    echo "VM0_API_URL is required but not set" >&2
+  if [[ -z "${VM0_API_BACKEND_URL:-}" ]]; then
+    echo "VM0_API_BACKEND_URL is required but not set" >&2
     return 1
   fi
 
@@ -150,6 +150,45 @@ wait_for_otp_screen() {
     if contains "$snap" "verify\|verification code\|enter.*code"; then
       return 0
     fi
+    sleep 1
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# wait_for_sign_in_next_step — Wait for Clerk sign-in to choose a stable branch
+# Emits one of:
+#   complete — auth redirected away from sign-in
+#   password — password challenge is visible
+#   otp      — email verification code challenge is visible
+# ---------------------------------------------------------------------------
+wait_for_sign_in_next_step() {
+  local timeout_secs="${1:-30}"
+  for _i in $(seq 1 "$timeout_secs"); do
+    local current_url snap
+    current_url=$(agent-browser get url 2>/dev/null || true)
+    if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" \
+      && "$current_url" == "${VM0_AUTH_REDIRECT_URL}"* ]]; then
+      echo "complete"
+      return 0
+    fi
+    if [[ -z "${VM0_AUTH_REDIRECT_URL:-}" \
+      && -n "$current_url" \
+      && ! "$current_url" =~ sign-in ]]; then
+      echo "complete"
+      return 0
+    fi
+
+    snap=$(full_snapshot)
+    if contains "$snap" "verify\|verification code\|enter.*code"; then
+      echo "otp"
+      return 0
+    fi
+    if contains "$snap" "enter your password\|forgot password\|password"; then
+      echo "password"
+      return 0
+    fi
+
     sleep 1
   done
   return 1
@@ -275,22 +314,32 @@ delete_e2e_account_if_exists() {
 }
 
 # ---------------------------------------------------------------------------
-# derive_app_url — Derive platform app URL from VM0_API_URL
-# Local:  https://www.vm7.ai:8443  → https://app.vm7.ai:8443
-# CI:     https://pr-123-www.vm0-dev.com → https://pr-123-app.vm0-dev.com
+# derive_app_url — Derive platform app URL from VM0_API_BACKEND_URL
+# Local:  https://api.vm7.ai:8443  → https://app.vm7.ai:8443
+# CI:     https://pr-123-api.vm0-dev.com → https://pr-123-app.vm0-dev.com
 # ---------------------------------------------------------------------------
 derive_app_url() {
-  echo "${VM0_API_URL/www./app.}"
+  if [[ -n "${APP_URL:-}" ]]; then
+    printf '%s' "$APP_URL"
+    return
+  fi
+
+  local source="${VM0_API_BACKEND_URL}"
+  source="${source/\/\/api./\/\/app.}"
+  source="${source/-api./-app.}"
+  source="${source/\/\/www./\/\/app.}"
+  source="${source/-www./-app.}"
+  printf '%s' "$source"
 }
 
 # ---------------------------------------------------------------------------
 # sign_in_via_token — Sign in via Clerk token and wait for redirect
 # Requires SIGN_IN_TOKEN to be set (call create_clerk_sign_in_token first).
 # Usage: sign_in_via_token [base_url]
-#   base_url — URL to sign in on (default: APP_URL, fallback: VM0_API_URL)
+#   base_url — URL to sign in on (default: APP_URL, fallback: derived app URL)
 # ---------------------------------------------------------------------------
 sign_in_via_token() {
-  local base_url="${1:-${APP_URL:-$VM0_API_URL}}"
+  local base_url="${1:-$(derive_app_url)}"
   agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
   agent-browser wait 5000
 

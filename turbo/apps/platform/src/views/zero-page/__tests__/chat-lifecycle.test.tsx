@@ -35,18 +35,19 @@ import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-que
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   zeroWorkflowsCollectionContract,
-  zeroWorkflowTriggersContract,
-  type ChatThreadWorkflowTrigger,
-  type ZeroWorkflowTriggerUpdateRequest,
+  zeroWorkflowAutomationsContract,
+  type ChatThreadWorkflowAutomation,
+  type ZeroWorkflowAutomationUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  createMockWorkflowTrigger,
-  setMockWorkflowTriggers,
-} from "../../../mocks/handlers/workflow-triggers-store.ts";
+  createMockWorkflowAutomation,
+  setMockWorkflowAutomations,
+} from "../../../mocks/handlers/workflow-automations-store.ts";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
+import { pathname$ } from "../../../signals/route.ts";
 import {
   click,
   detachedSetupPage as baseDetachedSetupPage,
@@ -370,7 +371,6 @@ function mockKeyboardNavigationThreads({
       agent: { id: AGENT_ID, avatarUrl: null },
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: `2026-06-01T00:0${sortMinute}:00Z`,
-      running: false,
       pinnedAt: null,
     };
   });
@@ -445,17 +445,20 @@ function mockAutomationThread(): void {
   });
 }
 
-function mockWorkflowTriggerUpdate(
-  onUpdate: (triggerId: string, body: ZeroWorkflowTriggerUpdateRequest) => void,
+function mockWorkflowAutomationUpdate(
+  onUpdate: (
+    automationId: string,
+    body: ZeroWorkflowAutomationUpdateRequest,
+  ) => void,
 ): void {
   context.mocks.api(
-    zeroWorkflowTriggersContract.update,
+    zeroWorkflowAutomationsContract.update,
     ({ body, params, respond }) => {
       onUpdate(params.id, body);
       if ("schedule" in body) {
         return respond(
           200,
-          createMockWorkflowTrigger({
+          createMockWorkflowAutomation({
             id: params.id,
             chatThreadId: AUTOMATION_THREAD_ID,
             kind: "schedule",
@@ -465,7 +468,7 @@ function mockWorkflowTriggerUpdate(
       }
       return respond(
         200,
-        createMockWorkflowTrigger({
+        createMockWorkflowAutomation({
           id: params.id,
           chatThreadId: AUTOMATION_THREAD_ID,
           kind: "event",
@@ -554,7 +557,6 @@ function mockServerQueuedThreadStories(): void {
       agent: { id: AGENT_ID, avatarUrl: null },
       createdAt: "2026-06-09T10:00:00Z",
       updatedAt: `2026-06-09T10:0${index}:00Z`,
-      running: thread.activeRunIds.length > 0,
       pinnedAt: null,
     };
   });
@@ -648,11 +650,11 @@ function selectOptionByLabel(
   click(screen.getByRole("option", { name: option }));
 }
 
-async function openAutomationSidebarWithWorkflowTrigger(
-  trigger: ReturnType<typeof createMockWorkflowTrigger>,
+async function openAutomationSidebarWithWorkflowAutomation(
+  automation: ReturnType<typeof createMockWorkflowAutomation>,
 ): Promise<HTMLElement> {
   mockAutomationThread();
-  setMockWorkflowTriggers([trigger]);
+  setMockWorkflowAutomations([automation]);
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, { runs: [] });
   });
@@ -757,7 +759,130 @@ function setScrollMetrics(
   });
 }
 
-function mockResizeObserver(): { triggerAll: () => void } {
+function mockThinkingTypewriterLayout({
+  text,
+  labelWidth,
+  parentWidth,
+  graphemeWidth,
+  measureTextWidth = (value) => {
+    return Array.from(value).length * graphemeWidth;
+  },
+}: {
+  readonly text: string;
+  readonly labelWidth: number;
+  readonly parentWidth: number;
+  readonly graphemeWidth: number;
+  readonly measureTextWidth?: (value: string) => number;
+}): void {
+  const getContextDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLCanvasElement.prototype,
+    "getContext",
+  );
+  const getBoundingClientRectDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "getBoundingClientRect",
+  );
+  const clientWidthDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+
+  const rectForWidth = (width: number): DOMRect => {
+    return {
+      bottom: 20,
+      height: 20,
+      left: 0,
+      right: width,
+      toJSON: () => {
+        return {};
+      },
+      top: 0,
+      width,
+      x: 0,
+      y: 0,
+    } as DOMRect;
+  };
+  const elementWidth = (el: HTMLElement): number => {
+    if (el.getAttribute("aria-label") === text) {
+      return labelWidth;
+    }
+    if (
+      Array.from(el.children).some((child) => {
+        return child.getAttribute("aria-label") === text;
+      })
+    ) {
+      return parentWidth;
+    }
+    return 0;
+  };
+
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+    configurable: true,
+    value: (contextId: string) => {
+      if (contextId !== "2d") {
+        return null;
+      }
+      return {
+        measureText: (value: string) => {
+          return {
+            width: measureTextWidth(value),
+          } as TextMetrics;
+        },
+      } as CanvasRenderingContext2D;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value(this: HTMLElement) {
+      return rectForWidth(elementWidth(this));
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return elementWidth(this);
+    },
+  });
+
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (getContextDescriptor) {
+        Object.defineProperty(
+          HTMLCanvasElement.prototype,
+          "getContext",
+          getContextDescriptor,
+        );
+      }
+      if (!getContextDescriptor) {
+        Reflect.deleteProperty(HTMLCanvasElement.prototype, "getContext");
+      }
+      if (getBoundingClientRectDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "getBoundingClientRect",
+          getBoundingClientRectDescriptor,
+        );
+      }
+      if (!getBoundingClientRectDescriptor) {
+        Reflect.deleteProperty(HTMLElement.prototype, "getBoundingClientRect");
+      }
+      if (clientWidthDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "clientWidth",
+          clientWidthDescriptor,
+        );
+      }
+      if (!clientWidthDescriptor) {
+        Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
+      }
+    },
+    { once: true },
+  );
+}
+
+function mockResizeObserver(): { automationAll: () => void } {
   const originalDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
     "ResizeObserver",
@@ -785,7 +910,7 @@ function mockResizeObserver(): { triggerAll: () => void } {
       this.observedTarget = null;
     }
 
-    trigger(): void {
+    automation(): void {
       if (!this.observedTarget) {
         return;
       }
@@ -821,9 +946,9 @@ function mockResizeObserver(): { triggerAll: () => void } {
   );
 
   return {
-    triggerAll: () => {
+    automationAll: () => {
       for (const observer of observers) {
-        observer.trigger();
+        observer.automation();
       }
     },
   };
@@ -861,6 +986,44 @@ function mockFailedAssistantThread({
 }
 
 describe("chat lifecycle", () => {
+  it("keeps an existing thread composer in its footer while idle and working", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000990";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "message-pwa-keyboard-layout",
+          role: "assistant",
+          runId: "run-pwa-keyboard-layout",
+          content: "Existing thread",
+          createdAt: "2026-07-15T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const composer = await waitFor(() => {
+      return chatComposerTextarea();
+    });
+    const composerCard = composer.closest(".zero-composer");
+    expect(composerCard).not.toBeNull();
+    expect(composerCard?.closest("[data-chat-composer]")).not.toBeNull();
+
+    await sendMessageInUI(user, composer, "Continue working");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      const workingComposer = chatComposerTextarea();
+      const workingComposerCard = workingComposer.closest(".zero-composer");
+      expect(workingComposerCard).not.toBeNull();
+      expect(
+        workingComposerCard?.closest("[data-chat-composer]"),
+      ).not.toBeNull();
+    });
+  });
+
   it("subscribes the browser for push notifications after a visible chat send", async () => {
     const user = userEvent.setup({ delay: null });
     const pushBrowser = mockPushBrowserSupport();
@@ -907,6 +1070,21 @@ describe("chat lifecycle", () => {
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
     });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000719",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
     mockChatLifecycle(context);
     context.mocks.upload.success({
       id: "upload-visual-brief",
@@ -955,6 +1133,21 @@ describe("chat lifecycle", () => {
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
     });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000720",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
     mockChatLifecycle(context, {
       sendGate: sendGate.promise,
       onThreadCreate: (body) => {
@@ -1040,7 +1233,6 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
-        running: false,
       },
       {
         id: otherThreadId,
@@ -1048,7 +1240,6 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ]);
 
@@ -1065,6 +1256,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     await user.click(linkByText("Other thread"));
@@ -1533,6 +1725,53 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(
         screen.getByText("This older run has already finished."),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("keeps completion when the loaded window does not include either run start", async () => {
+    const threadId = "thread-run-starts-outside-loaded-window";
+    mockChatLifecycle(context, {
+      threadId,
+      activeRunIds: ["run-window-older-active"],
+      chatMessages: [
+        {
+          id: "msg-window-completed-activity",
+          role: "assistant",
+          content: "The visible completed run activity.",
+          runId: "run-window-completed",
+          runEventId: "event-window-completed-activity",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-window-older-active-activity",
+          role: "assistant",
+          content: "The visible older run activity.",
+          runId: "run-window-older-active",
+          runEventId: "event-window-older-active-activity",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-window-completed-marker",
+          role: "assistant",
+          content: null,
+          runId: "run-window-completed",
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The visible completed run activity."),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
       expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
@@ -3369,6 +3608,9 @@ describe("chat lifecycle", () => {
         screen.getByText("Previous thread launch note"),
       ).toBeInTheDocument();
     });
+    expect(context.store.get(pathname$)).toBe(
+      `/chats/${KEYBOARD_PREV_THREAD_ID}`,
+    );
 
     const previousThreadRegion = screen.getByLabelText("Chat thread");
     previousThreadRegion.focus();
@@ -3383,13 +3625,16 @@ describe("chat lifecycle", () => {
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
     });
+    expect(context.store.get(pathname$)).toBe(
+      `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
+    );
 
     const restoredScrollContainer = chatScrollContainer();
     setScrollMetrics(restoredScrollContainer, {
       scrollHeight: 1200,
       clientHeight: 300,
     });
-    resizeObserver.triggerAll();
+    resizeObserver.automationAll();
     expect(restoredScrollContainer.scrollTop).toBe(480);
     expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
 
@@ -3663,7 +3908,6 @@ describe("chat lifecycle", () => {
       agent: { id: AGENT_ID, avatarUrl: null },
       createdAt: "2026-06-01T00:00:00.000Z",
       updatedAt: "2026-06-01T00:00:00.000Z",
-      running: false,
       pinnedAt: null,
     };
     const lifecycle = mockChatLifecycle(context, {
@@ -4482,8 +4726,8 @@ describe("chat lifecycle", () => {
 
   it("lists workflow automations in the sidebar", async () => {
     mockAutomationThread();
-    setMockWorkflowTriggers([
-      createMockWorkflowTrigger({
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
         id: "e0000001-0000-4000-a000-000000000002",
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "schedule",
@@ -4549,7 +4793,7 @@ describe("chat lifecycle", () => {
   });
 
   it("shows webhook automations in the sidebar without edit controls", async () => {
-    const trigger: ChatThreadWorkflowTrigger = {
+    const automation: ChatThreadWorkflowAutomation = {
       id: "e0000001-0000-4000-a000-000000000006",
       ownerUserId: "test-user-123",
       enabled: true,
@@ -4577,7 +4821,8 @@ describe("chat lifecycle", () => {
       lastReceivedAt: null,
     };
 
-    const sidebar = await openAutomationSidebarWithWorkflowTrigger(trigger);
+    const sidebar =
+      await openAutomationSidebarWithWorkflowAutomation(automation);
 
     expect(within(sidebar).getByText("Webhook sync")).toBeInTheDocument();
     expect(within(sidebar).getByText("Webhook automation")).toBeInTheDocument();
@@ -4588,11 +4833,11 @@ describe("chat lifecycle", () => {
 
   it("updates a schedule workflow automation from the sidebar", async () => {
     const updateBodies: {
-      readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly automationId: string;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
-    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
-      createMockWorkflowTrigger({
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
         id: "e0000001-0000-4000-a000-000000000003",
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "schedule",
@@ -4600,8 +4845,8 @@ describe("chat lifecycle", () => {
         scheduleSummary: "Every 3600s",
       }),
     );
-    mockWorkflowTriggerUpdate((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockWorkflowAutomationUpdate((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
@@ -4614,7 +4859,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: "e0000001-0000-4000-a000-000000000003",
+        automationId: "e0000001-0000-4000-a000-000000000003",
         body: {
           schedule: {
             type: "loop",
@@ -4627,11 +4872,11 @@ describe("chat lifecycle", () => {
 
   it("updates a Gmail workflow automation match from the sidebar", async () => {
     const updateBodies: {
-      readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly automationId: string;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
-    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
-      createMockWorkflowTrigger({
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
         id: "e0000001-0000-4000-a000-000000000004",
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "event",
@@ -4645,11 +4890,11 @@ describe("chat lifecycle", () => {
         },
       }),
     );
-    // Event triggers must not show a "Next run" row — only schedule triggers do.
+    // Event automations must not show a "Next run" row — only schedule automations do.
     expect(within(sidebar).queryByText("Next run")).not.toBeInTheDocument();
     expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
-    mockWorkflowTriggerUpdate((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockWorkflowAutomationUpdate((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
@@ -4663,7 +4908,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: "e0000001-0000-4000-a000-000000000004",
+        automationId: "e0000001-0000-4000-a000-000000000004",
         body: {
           eventConfig: {
             provider: "gmail",
@@ -4681,11 +4926,11 @@ describe("chat lifecycle", () => {
 
   it("updates a Gmail label workflow automation from the sidebar", async () => {
     const updateBodies: {
-      readonly triggerId: string;
-      readonly body: ZeroWorkflowTriggerUpdateRequest;
+      readonly automationId: string;
+      readonly body: ZeroWorkflowAutomationUpdateRequest;
     }[] = [];
-    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
-      createMockWorkflowTrigger({
+    const sidebar = await openAutomationSidebarWithWorkflowAutomation(
+      createMockWorkflowAutomation({
         id: "e0000001-0000-4000-a000-000000000005",
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "event",
@@ -4697,8 +4942,8 @@ describe("chat lifecycle", () => {
         },
       }),
     );
-    mockWorkflowTriggerUpdate((triggerId, body) => {
-      updateBodies.push({ triggerId, body });
+    mockWorkflowAutomationUpdate((automationId, body) => {
+      updateBodies.push({ automationId, body });
     });
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
@@ -4711,7 +4956,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
-        triggerId: "e0000001-0000-4000-a000-000000000005",
+        automationId: "e0000001-0000-4000-a000-000000000005",
         body: {
           eventConfig: {
             provider: "gmail",
@@ -5171,7 +5416,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("renders workflow trigger user messages with the workflow title and brief", async () => {
+  it("renders workflow automation user messages with the workflow title and brief", async () => {
     const threadId = "thread-workflow-user-message-marker";
     const workflowPrompt = "/daily-workflow";
 
@@ -5527,6 +5772,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   it("sends a recommended follow-up from the latest assistant reply", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
+    const sendGate = context.mocks.deferred<void>();
     const sentMessages: {
       prompt?: string;
       revokesMessageId?: string;
@@ -5535,6 +5781,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
       threadTitle: "Launch package",
+      sendGate: sendGate.promise,
       chatMessages: [
         {
           id: "msg-followup-user",
@@ -5617,7 +5864,14 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(screen.getByText(followupPrompt)).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
-    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages).toHaveLength(0);
+
+    sendGate.resolve();
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
     expect(sentMessages[0]).toMatchObject({ prompt: followupPrompt });
     expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
   });
@@ -5687,6 +5941,87 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(fetchedMessageIds).toContain(completedMarker.id);
       expect(buttonByText(followupPrompt)).toBeInTheDocument();
       expect(document.querySelector("[data-thinking-indicator]")).toBeNull();
+    });
+  });
+
+  it("shows a later in-place claimed run after the previous run completes", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000731";
+    const messageId = "00000000-0000-4000-8000-000000004031";
+    const previousRunId = "run-before-queue-first-claim";
+    const runId = "run-queue-first-claimed";
+    const prompt = "Run this message immediately";
+    const queuedMessage: {
+      id: string;
+      role: "user";
+      content: string;
+      runId: string | undefined;
+      createdAt: string;
+    } = {
+      id: messageId,
+      role: "user",
+      content: prompt,
+      runId: undefined,
+      createdAt: "2026-06-09T10:00:00Z",
+    };
+    const fetchedMessageIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-before-queue-first-user",
+          role: "user",
+          content: "Finish the current task first",
+          runId: previousRunId,
+          createdAt: "2026-06-09T09:59:00Z",
+        },
+        queuedMessage,
+        {
+          id: "msg-before-queue-first-assistant",
+          role: "assistant",
+          content: "The current task is complete.",
+          runId: previousRunId,
+          runEventId: "event-before-queue-first-assistant",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-before-queue-first-completed",
+          role: "assistant",
+          content: null,
+          runId: previousRunId,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      activeRunIds: [runId],
+      onMessageGet: (fetchedMessageId) => {
+        fetchedMessageIds.push(fetchedMessageId);
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("1 message waiting to send")).toBeInTheDocument();
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(prompt);
+    });
+
+    queuedMessage.runId = runId;
+    context.mocks.ably.trigger(`chatThreadMessageUpdated:${threadId}`, {
+      messageId,
+    });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(messageId);
+      expect(
+        screen.queryByText("1 message waiting to send"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      expect(screen.getByText(prompt)).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-thinking-indicator]"),
+      ).not.toBeNull();
     });
   });
 
@@ -5917,7 +6252,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -6237,7 +6571,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -6318,7 +6651,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -7262,7 +7594,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: true,
       },
       {
         id: COMPLETED_THREAD_ID,
@@ -7270,7 +7601,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:01:00Z",
         updatedAt: "2026-03-10T00:01:00Z",
-        running: false,
       },
     ];
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -7474,21 +7804,53 @@ describe("initial thinking indicator", () => {
     threadGate.resolve();
   });
 
-  it("renders the full thinking text without incremental animation", async () => {
-    const threadId = "thread-initial-thinking-full-text";
-    const thinking = "Reviewing the complete request";
+  it("restarts on every follow-up line instead of sliding a short tail", async () => {
+    const threadId = "thread-initial-thinking-rollover";
+    const thinking = "ABCDEFG";
+    mockThinkingTypewriterLayout({
+      text: thinking,
+      labelWidth: 38,
+      parentWidth: 160,
+      graphemeWidth: 10,
+      measureTextWidth: (value) => {
+        return (
+          Array.from(value).filter((grapheme) => {
+            return grapheme !== ".";
+          }).length * 10
+        );
+      },
+    });
+    const displayedLabels = new Set<string>();
+    const labelObserver = new MutationObserver(() => {
+      const label = document.querySelector(`[aria-label="${thinking}"]`);
+      if (label?.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+    });
+    labelObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        labelObserver.disconnect();
+      },
+      { once: true },
+    );
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-thinking-full-text-user",
+          id: "msg-thinking-rollover-user",
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-thinking-full-text-marker",
+          id: "msg-thinking-rollover-marker",
           role: "assistant",
           content: null,
           thinking,
@@ -7505,7 +7867,22 @@ describe("initial thinking indicator", () => {
     });
 
     const label = await screen.findByLabelText(thinking);
-    expect(label).toHaveTextContent(thinking);
+    const sawFollowUpLine = () => {
+      if (label.textContent) {
+        displayedLabels.add(label.textContent);
+      }
+      return Array.from(displayedLabels).some((value) => {
+        return value === "D" || value === "DE" || value === "DEF";
+      });
+    };
+    await waitFor(() => {
+      expect(sawFollowUpLine()).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(label).toHaveTextContent(/^G$/);
+    });
+    expect(displayedLabels.has("...EFG")).toBeFalsy();
+    expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 

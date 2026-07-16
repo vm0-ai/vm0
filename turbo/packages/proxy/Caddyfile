@@ -6,6 +6,18 @@
 	}
 }
 
+# Public dev tunnel ingress. Keep VM0 Model on the same www authority as the
+# API while routing only its internal proxy path to vm0-marketing.
+:3043 {
+	handle /api/internal/vm0-model/v1/* {
+		reverse_proxy localhost:3042
+	}
+
+	handle {
+		reverse_proxy localhost:3001
+	}
+}
+
 # Main domain redirect to www
 vm7.ai:8443 {
 	tls {
@@ -18,9 +30,6 @@ vm7.ai:8443 {
 www.vm7.ai:8443 {
 	tls {
 		dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
-	}
-	handle /api/* {
-		reverse_proxy localhost:3001
 	}
 	reverse_proxy localhost:3042
 }

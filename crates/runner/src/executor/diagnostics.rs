@@ -32,11 +32,13 @@ mod oom;
 mod resource;
 mod stdout_stream;
 
-pub(super) use environment::{build_agent_env_diagnostics, build_agent_env_key_diagnostics};
+pub(super) use environment::{
+    AgentEnvDiagnostics, build_agent_env_diagnostics, build_agent_env_key_diagnostics,
+};
 pub(super) use exit::{
-    AgentBootstrapAbnormalExitLogContext, log_agent_abnormal_exit_env_diagnostics,
-    log_agent_bootstrap_abnormal_exit_diagnostics, log_agent_process_exit_summary,
-    should_collect_agent_abnormal_exit_diagnostics,
+    AgentBootstrapAbnormalExitLogContext, explicit_enospc_evidence,
+    log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
+    log_agent_process_exit_summary, should_collect_agent_abnormal_exit_diagnostics,
     should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };

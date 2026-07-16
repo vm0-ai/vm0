@@ -33,11 +33,11 @@ import {
 } from "@vm0/ui";
 
 import { nowDate } from "../../lib/time.ts";
-import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
+import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-automation-dialog.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
-  allWorkflowTriggerEntries$,
+  allWorkflowAutomationEntries$,
   setWorkflowAgentFilter$,
   setWorkflowFilter$,
   setWorkflowSortMode$,
@@ -47,7 +47,7 @@ import {
   WORKFLOW_ALL_AGENTS,
   type WorkflowFilter,
   type WorkflowSortMode,
-  type WorkflowTriggerAutomationEntry,
+  type WorkflowAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
@@ -55,23 +55,23 @@ import { Link } from "../router/link.tsx";
 import { emptyWorkflowImg } from "../zero-page/platform-assets.ts";
 import {
   CreateWorkflowAutomationDialog,
-  humanReadableTriggerRuleLabel,
-  TriggerListIcon,
-  triggerTypeLabel,
-  WorkflowTriggerEnabledSwitch,
-} from "../zero-page/workflow-trigger-automations-page.tsx";
+  humanReadableAutomationRuleLabel,
+  AutomationListIcon,
+  automationTypeLabel,
+  WorkflowAutomationEnabledSwitch,
+} from "../zero-page/workflow-automations-page.tsx";
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
-export type WorkflowTriggerEntryMap = ReadonlyMap<
+export type WorkflowAutomationEntryMap = ReadonlyMap<
   string,
-  readonly WorkflowTriggerAutomationEntry[]
+  readonly WorkflowAutomationEntry[]
 >;
 
-export function workflowTriggerEntryMap(
-  entries: readonly WorkflowTriggerAutomationEntry[],
-): WorkflowTriggerEntryMap {
-  const grouped = new Map<string, WorkflowTriggerAutomationEntry[]>();
+export function workflowAutomationEntryMap(
+  entries: readonly WorkflowAutomationEntry[],
+): WorkflowAutomationEntryMap {
+  const grouped = new Map<string, WorkflowAutomationEntry[]>();
   for (const entry of entries) {
     const workflowEntries = grouped.get(entry.workflow.id) ?? [];
     workflowEntries.push(entry);
@@ -92,23 +92,21 @@ function initials(label: string): string {
   return (words[0]?.slice(0, 2) || "??").toUpperCase();
 }
 
-function triggerDotClass(entry: WorkflowTriggerAutomationEntry): string {
-  const trigger = entry.trigger;
-  if (trigger.kind === "schedule") {
+function automationDotClass(entry: WorkflowAutomationEntry): string {
+  const automation = entry.automation;
+  if (automation.kind === "schedule") {
     return "bg-blue-500";
   }
-  return trigger.eventType === "webhook-received"
+  return automation.eventType === "webhook-received"
     ? "bg-amber-500"
     : "bg-emerald-500";
 }
 
-function connectorNames(
-  entries: readonly WorkflowTriggerAutomationEntry[],
-): string {
+function connectorNames(entries: readonly WorkflowAutomationEntry[]): string {
   return entries
     .slice(0, 2)
     .map((entry) => {
-      return triggerTypeLabel(entry.trigger);
+      return automationTypeLabel(entry.automation);
     })
     .join(", ");
 }
@@ -197,7 +195,7 @@ function ConnectorPopoverList({
   entries,
   displayTimezone,
 }: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly entries: readonly WorkflowAutomationEntry[];
   readonly displayTimezone: string;
 }) {
   return (
@@ -209,18 +207,18 @@ function ConnectorPopoverList({
         </span>
       </div>
       {entries.map((entry) => {
-        const ruleLabel = humanReadableTriggerRuleLabel(
-          entry.trigger,
+        const ruleLabel = humanReadableAutomationRuleLabel(
+          entry.automation,
           displayTimezone,
         );
         return (
           <div
-            key={entry.trigger.id}
+            key={entry.automation.id}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50"
           >
             <span className={connectorPillClassName({})}>
-              <ConnectorPillMarker dotClassName={triggerDotClass(entry)} />
-              {triggerTypeLabel(entry.trigger)}
+              <ConnectorPillMarker dotClassName={automationDotClass(entry)} />
+              {automationTypeLabel(entry.automation)}
             </span>
             <span
               title={ruleLabel}
@@ -228,7 +226,7 @@ function ConnectorPopoverList({
             >
               {ruleLabel}
             </span>
-            <WorkflowTriggerEnabledSwitch entry={entry} size="sm" />
+            <WorkflowAutomationEnabledSwitch entry={entry} size="sm" />
           </div>
         );
       })}
@@ -240,7 +238,7 @@ function ConnectorCell({
   entries,
   displayTimezone,
 }: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly entries: readonly WorkflowAutomationEntry[];
   readonly displayTimezone: string;
 }) {
   if (entries.length === 0) {
@@ -265,7 +263,9 @@ function ConnectorCell({
                 className={connectorPillClassName({ interactive: true })}
               >
                 {lead ? (
-                  <ConnectorPillMarker dotClassName={triggerDotClass(lead)} />
+                  <ConnectorPillMarker
+                    dotClassName={automationDotClass(lead)}
+                  />
                 ) : null}
                 <span>{connectorNames(entries)}</span>
                 {remaining > 0 ? (
@@ -327,11 +327,11 @@ export function WorkflowHoverContent({
 function WorkflowRowIcon({
   entries,
 }: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly entries: readonly WorkflowAutomationEntry[];
 }) {
   const [lead] = entries;
   if (lead) {
-    return <TriggerListIcon trigger={lead.trigger} size="sm" />;
+    return <AutomationListIcon automation={lead.automation} size="sm" />;
   }
   return (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-muted-foreground">
@@ -347,7 +347,7 @@ function WorkflowRow({
   showAgentColumn,
 }: {
   readonly workflow: ZeroWorkflowSummary;
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly entries: readonly WorkflowAutomationEntry[];
   readonly displayTimezone: string;
   readonly showAgentColumn: boolean;
 }) {
@@ -394,20 +394,20 @@ function WorkflowRow({
   );
 }
 
-function hasTriggers(
+function hasAutomations(
   workflowId: string,
-  entriesByWorkflowId: WorkflowTriggerEntryMap,
+  entriesByWorkflowId: WorkflowAutomationEntryMap,
 ): boolean {
   return (entriesByWorkflowId.get(workflowId)?.length ?? 0) > 0;
 }
 
 function applyWorkflowFilters(
   workflows: readonly ZeroWorkflowSummary[],
-  entriesByWorkflowId: WorkflowTriggerEntryMap,
+  entriesByWorkflowId: WorkflowAutomationEntryMap,
   filter: WorkflowFilter,
 ): readonly ZeroWorkflowSummary[] {
   return workflows.filter((workflow) => {
-    const automated = hasTriggers(workflow.id, entriesByWorkflowId);
+    const automated = hasAutomations(workflow.id, entriesByWorkflowId);
     switch (filter) {
       case "automated": {
         return automated;
@@ -470,7 +470,7 @@ function emptyDescriptionForFilter(filter: WorkflowFilter): string {
       return "Every workflow here runs on a schedule or event.";
     }
     case "automated": {
-      return "Add a schedule or trigger to a workflow and it shows up here.";
+      return "Add an automation to a workflow and it shows up here.";
     }
     case "private": {
       return "No private workflows yet.";
@@ -507,7 +507,7 @@ function dayKey(date: Date, timezone: string): string {
 }
 
 function workflowNextRunBucket(
-  entries: readonly WorkflowTriggerAutomationEntry[],
+  entries: readonly WorkflowAutomationEntry[],
   now: Date,
   timezone: string,
 ): NextRunBucket {
@@ -517,13 +517,13 @@ function workflowNextRunBucket(
   const upcoming = entries
     .filter((entry) => {
       return (
-        entry.trigger.kind === "schedule" &&
-        entry.trigger.enabled &&
-        entry.trigger.nextRunAt !== null
+        entry.automation.kind === "schedule" &&
+        entry.automation.enabled &&
+        entry.automation.nextRunAt !== null
       );
     })
     .map((entry) => {
-      return new Date(entry.trigger.nextRunAt as string);
+      return new Date(entry.automation.nextRunAt as string);
     });
   if (upcoming.length === 0) {
     return "event";
@@ -560,7 +560,7 @@ function WorkflowRowList({
   showAgentColumn,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
-  readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
+  readonly entriesByWorkflowId: WorkflowAutomationEntryMap;
   readonly displayTimezone: string;
   readonly framed?: boolean;
   readonly showAgentColumn: boolean;
@@ -595,7 +595,7 @@ function WorkflowNextRunGroups({
   showAgentColumn,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
-  readonly entriesByWorkflowId: WorkflowTriggerEntryMap;
+  readonly entriesByWorkflowId: WorkflowAutomationEntryMap;
   readonly displayTimezone: string;
   readonly showAgentColumn: boolean;
 }) {
@@ -642,7 +642,7 @@ export function WorkflowListPanel({
   loading,
   emptyDescription,
   sortMode = "next-run",
-  triggerEntriesByWorkflowId,
+  automationEntriesByWorkflowId,
   displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
   showAgentColumn = true,
 }: {
@@ -651,12 +651,12 @@ export function WorkflowListPanel({
   readonly showAgentColumn?: boolean;
   readonly emptyDescription: string;
   readonly sortMode?: WorkflowSortMode;
-  readonly triggerEntriesByWorkflowId?: WorkflowTriggerEntryMap;
+  readonly automationEntriesByWorkflowId?: WorkflowAutomationEntryMap;
   readonly displayTimezone?: string;
 }) {
   const entriesByWorkflowId =
-    triggerEntriesByWorkflowId ??
-    new Map<string, readonly WorkflowTriggerAutomationEntry[]>();
+    automationEntriesByWorkflowId ??
+    new Map<string, readonly WorkflowAutomationEntry[]>();
 
   return (
     <section className="min-h-[520px]">
@@ -930,19 +930,22 @@ export function WorkflowsPage() {
   const sortMode = useGet(workflowSortMode$);
   const agentFilter = useGet(workflowAgentFilter$);
   const workflowsLoadable = useLastLoadable(allVisibleWorkflows$);
-  const triggerEntriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
+  const automationEntriesLoadable = useLastLoadable(
+    allWorkflowAutomationEntries$,
+  );
   const preferences = useLastResolved(userPreferences$);
   const openCreateWorkflowDialog = useSet(openCreateWorkflowDialog$);
   const loading =
     workflowsLoadable.state === "loading" ||
-    triggerEntriesLoadable.state === "loading";
+    automationEntriesLoadable.state === "loading";
   const workflows =
     workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
-  const triggerEntries =
-    triggerEntriesLoadable.state === "hasData"
-      ? triggerEntriesLoadable.data
+  const automationEntries =
+    automationEntriesLoadable.state === "hasData"
+      ? automationEntriesLoadable.data
       : [];
-  const triggerEntriesByWorkflowId = workflowTriggerEntryMap(triggerEntries);
+  const automationEntriesByWorkflowId =
+    workflowAutomationEntryMap(automationEntries);
   const displayTimezone =
     preferences?.timezone ??
     new Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -950,7 +953,11 @@ export function WorkflowsPage() {
   const filteredWorkflows = workflows
     ? sortWorkflows(
         applyAgentFilter(
-          applyWorkflowFilters(workflows, triggerEntriesByWorkflowId, filter),
+          applyWorkflowFilters(
+            workflows,
+            automationEntriesByWorkflowId,
+            filter,
+          ),
           agentFilter,
         ),
         sortMode,
@@ -1002,7 +1009,7 @@ export function WorkflowsPage() {
                 ? emptyDescriptionForFilter(filter)
                 : "No workflows run as this agent yet."
             }
-            triggerEntriesByWorkflowId={triggerEntriesByWorkflowId}
+            automationEntriesByWorkflowId={automationEntriesByWorkflowId}
             displayTimezone={displayTimezone}
           />
         </div>

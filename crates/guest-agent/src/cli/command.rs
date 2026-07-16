@@ -40,7 +40,6 @@ pub(super) fn build_cli_command_for_runtime(
                     fast_mode: runtime.codex_fast_mode,
                     resume_id: runtime.resume_session_id.as_ref(),
                     append_system_prompt: runtime.append_system_prompt.as_ref(),
-                    prompt: runtime.prompt.as_ref(),
                 },
             ))
         }
@@ -148,9 +147,11 @@ fn build_claude_command_with_config(
 
 /// Build the codex argument list (testable).
 ///
-/// Resume is a positional sub-subcommand (`codex exec resume <id> <prompt>`),
-/// not a `--resume <id>` flag. Use `--` before the prompt so user text that
-/// starts with `-` is not parsed as another codex option.
+/// Resume is a positional sub-subcommand (`codex exec resume <id> -`), not a
+/// `--resume <id>` flag. The `-` positional selects Codex's native stdin prompt
+/// path; `--` keeps that sentinel separate from Codex options.
+const CODEX_STDIN_PROMPT_SENTINEL: &str = "-";
+
 fn build_codex_developer_instructions_config(append_system_prompt: &str) -> String {
     let value = codex_runtime_config::quote_toml_basic_string(append_system_prompt);
     format!("developer_instructions={value}")
@@ -185,6 +186,7 @@ pub(super) fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'
     match bare {
         "gpt-5.6-sol" => Some("xhigh"),
         "gpt-5.6-terra" => Some("low"),
+        "gpt-5.6-luna" => Some("xhigh"),
         "gpt-5.5" => Some("xhigh"),
         _ => None,
     }
@@ -197,7 +199,6 @@ struct CodexArgsConfig<'a> {
     fast_mode: bool,
     resume_id: &'a str,
     append_system_prompt: &'a str,
-    prompt: &'a str,
 }
 
 fn build_codex_args(
@@ -207,7 +208,6 @@ fn build_codex_args(
     fast_mode: bool,
     resume_id: &str,
     append_system_prompt: &str,
-    prompt: &str,
 ) -> Vec<String> {
     let mut args = vec![
         "exec".to_string(),
@@ -254,11 +254,11 @@ fn build_codex_args(
         args.push("resume".to_string());
         args.push(resume_id.to_string());
         args.push("--".to_string());
-        args.push(prompt.to_string());
+        args.push(CODEX_STDIN_PROMPT_SENTINEL.to_string());
     } else {
         log_info!(LOG_TAG, "Starting new codex session");
         args.push("--".to_string());
-        args.push(prompt.to_string());
+        args.push(CODEX_STDIN_PROMPT_SENTINEL.to_string());
     }
 
     args
@@ -284,7 +284,6 @@ fn build_codex_command_with_config(
         config.fast_mode,
         config.resume_id,
         config.append_system_prompt,
-        config.prompt,
     ));
     cmd
 }
@@ -472,13 +471,17 @@ mod tests {
     fn build_codex_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, "", &[], false, resume_id, "", prompt)
+        let args = build_codex_args(model, "", &[], false, resume_id, "");
+        assert!(!args.iter().any(|arg| arg == prompt));
+        args
     }
 
     fn build_codex_fast_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, "", &[], true, resume_id, "", prompt)
+        let args = build_codex_args(model, "", &[], true, resume_id, "");
+        assert!(!args.iter().any(|arg| arg == prompt));
+        args
     }
 
     fn build_codex_args_with_base_url_for_test(
@@ -489,7 +492,9 @@ mod tests {
     ) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, openai_base_url, &[], false, resume_id, "", prompt)
+        let args = build_codex_args(model, openai_base_url, &[], false, resume_id, "");
+        assert!(!args.iter().any(|arg| arg == prompt));
+        args
     }
 
     fn build_codex_args_with_startup_config_for_test(
@@ -499,7 +504,9 @@ mod tests {
     ) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, "", startup_config_overrides, false, "", "", prompt)
+        let args = build_codex_args(model, "", startup_config_overrides, false, "", "");
+        assert!(!args.iter().any(|arg| arg == prompt));
+        args
     }
 
     fn build_codex_args_with_append_for_test(
@@ -510,15 +517,9 @@ mod tests {
     ) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(
-            model,
-            "",
-            &[],
-            false,
-            resume_id,
-            append_system_prompt,
-            prompt,
-        )
+        let args = build_codex_args(model, "", &[], false, resume_id, append_system_prompt);
+        assert!(!args.iter().any(|arg| arg == prompt));
+        args
     }
 
     fn codex_args_have_config(args: &[String], config: &str) -> bool {
@@ -543,7 +544,6 @@ mod tests {
                 fast_mode: false,
                 resume_id: "",
                 append_system_prompt: "",
-                prompt: "",
             },
         )
     }
@@ -555,7 +555,7 @@ mod tests {
         let system_log_path = tmp.path().join("system.log");
         guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
 
-        let args = build_codex_args("", "", &[], false, "thread-secret-123", "", "prompt");
+        let args = build_codex_args("", "", &[], false, "thread-secret-123", "");
         guest_common::log::clear_system_log_file();
         let system_log = std::fs::read_to_string(system_log_path).unwrap();
 
@@ -577,7 +577,7 @@ mod tests {
         assert_eq!(args[c_idx + 1], paths::CANONICAL_WORKING_DIR);
         assert!(codex_args_have_config(&args, "features.memories=true"));
         assert_eq!(args[args.len() - 2], "--");
-        assert_eq!(args.last().unwrap(), "hello");
+        assert_eq!(args.last().unwrap(), CODEX_STDIN_PROMPT_SENTINEL);
     }
 
     #[test]
@@ -640,7 +640,6 @@ mod tests {
             false,
             "",
             "",
-            "p",
         );
 
         assert!(codex_args_have_config(&args, r#"model_provider="minimax""#));
@@ -685,14 +684,19 @@ mod tests {
     }
 
     #[test]
+    fn build_codex_args_gpt_5_6_luna_defaults_reasoning_effort_xhigh() {
+        for model in ["gpt-5.6-luna", "openai/gpt-5.6-luna"] {
+            let args = build_codex_args_for_test(model, "", "p");
+            assert!(codex_args_have_config(
+                &args,
+                "model_reasoning_effort=xhigh"
+            ));
+        }
+    }
+
+    #[test]
     fn build_codex_args_models_without_overrides_omit_reasoning_effort() {
-        for model in [
-            "gpt-5.6-luna",
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "openai/gpt-5.4",
-            "",
-        ] {
+        for model in ["gpt-5.4", "gpt-5.4-mini", "openai/gpt-5.4", ""] {
             let args = build_codex_args_for_test(model, "", "p");
             assert!(
                 !args
@@ -709,52 +713,52 @@ mod tests {
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args[r_idx + 1], "thread-abc");
         assert_eq!(args[r_idx + 2], "--");
-        assert_eq!(args[r_idx + 3], "follow up");
+        assert_eq!(args[r_idx + 3], CODEX_STDIN_PROMPT_SENTINEL);
         // resume is a positional sub-subcommand, NOT a --resume flag
         assert!(!args.contains(&"--resume".to_string()));
     }
 
     #[test]
-    fn build_codex_args_resume_layout_is_resume_id_prompt() {
+    fn build_codex_args_resume_layout_is_resume_id_stdin_sentinel() {
         let args = build_codex_args_for_test("", "id1", "p1");
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args.len(), r_idx + 4);
         assert_eq!(args[r_idx + 1], "id1");
         assert_eq!(args[r_idx + 2], "--");
-        assert_eq!(args[r_idx + 3], "p1");
+        assert_eq!(args[r_idx + 3], CODEX_STDIN_PROMPT_SENTINEL);
     }
 
     #[test]
-    fn build_codex_args_separates_prompt_from_options() {
+    fn build_codex_args_separates_stdin_sentinel_from_options() {
         let args = build_codex_args_for_test("gpt-5", "id", "hello");
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args[r_idx + 2], "--");
-        assert_eq!(args[r_idx + 3], "hello");
+        assert_eq!(args[r_idx + 3], CODEX_STDIN_PROMPT_SENTINEL);
     }
 
     #[test]
-    fn build_codex_args_prompt_last_in_no_resume_path() {
+    fn build_codex_args_stdin_sentinel_last_in_no_resume_path() {
         let args = build_codex_args_for_test("gpt-5", "", "the prompt");
         assert_eq!(args[args.len() - 2], "--");
-        assert_eq!(args.last().unwrap(), "the prompt");
+        assert_eq!(args.last().unwrap(), CODEX_STDIN_PROMPT_SENTINEL);
     }
 
     #[test]
-    fn build_codex_args_keeps_dash_prefixed_prompt_as_prompt() {
+    fn build_codex_args_omits_dash_prefixed_prompt() {
         let prompt = "--input-format stream-json 是说从一个文件里读取 input 吗？";
         let args = build_codex_args_for_test("gpt-5", "", prompt);
         assert_eq!(args[args.len() - 2], "--");
-        assert_eq!(args.last().unwrap(), prompt);
+        assert_eq!(args.last().unwrap(), CODEX_STDIN_PROMPT_SENTINEL);
     }
 
     #[test]
-    fn build_codex_args_resume_keeps_dash_prefixed_prompt_as_prompt() {
+    fn build_codex_args_resume_omits_dash_prefixed_prompt() {
         let prompt = "--input-format stream-json 是说从一个文件里读取 input 吗？";
         let args = build_codex_args_for_test("gpt-5", "id1", prompt);
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args[r_idx + 1], "id1");
         assert_eq!(args[r_idx + 2], "--");
-        assert_eq!(args[r_idx + 3], prompt);
+        assert_eq!(args[r_idx + 3], CODEX_STDIN_PROMPT_SENTINEL);
     }
 
     #[test]
@@ -767,7 +771,7 @@ mod tests {
             r#"developer_instructions="Your name is Aria.""#
         ));
         assert_eq!(args[args.len() - 2], "--");
-        assert_eq!(args.last().unwrap(), "analyze this");
+        assert_eq!(args.last().unwrap(), CODEX_STDIN_PROMPT_SENTINEL);
     }
 
     #[test]
@@ -794,7 +798,7 @@ mod tests {
         assert_eq!(args[c_idx], r#"developer_instructions="Be concise.""#);
         assert_eq!(args[r_idx + 1], "thread-abc");
         assert_eq!(args[r_idx + 2], "--");
-        assert_eq!(args[r_idx + 3], "next");
+        assert_eq!(args[r_idx + 3], CODEX_STDIN_PROMPT_SENTINEL);
         assert_eq!(args.len(), r_idx + 4);
     }
 

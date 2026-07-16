@@ -10,7 +10,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -121,7 +121,7 @@ function mockSessionHistoryBlob(hash: string, history: string): void {
 
 async function seedReportActor(): Promise<ReportSeed> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Report fixtures require an org-scoped actor");
@@ -148,7 +148,7 @@ async function createReportRun(
   seed: ReportSeed,
   options: { readonly prompt?: string; readonly sessionId?: string } = {},
 ): Promise<ReportRun> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const run = await api.createRun(seed.actor, {
     agentId: seed.agentId,
     ...(options.sessionId === undefined
@@ -161,7 +161,7 @@ async function createReportRun(
 }
 
 async function failRun(seed: ReportSeed, runId: string): Promise<void> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const webhooks = createWebhookCallbackApi(context);
   await webhooks.requestAgentComplete(
     { runId, exitCode: 1, error: "report precondition failure" },
@@ -181,7 +181,7 @@ async function completeRunWithSession(
   seed: ReportSeed,
   run: ReportRun,
 ): Promise<void> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const webhooks = createWebhookCallbackApi(context);
   const sandboxHeaders = {
     authorization: `Bearer ${api.sandboxTokenForRun(seed.actor, run.runId)}`,

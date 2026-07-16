@@ -447,7 +447,7 @@ function TeamsPermissionWarning({
 function teamsConnectedDetail(
   teamsData: TeamsConnectStatus | null,
 ): string | null | undefined {
-  return teamsData?.teamName ?? teamsData?.tenantName ?? teamsData?.tenantId;
+  return teamsData?.teamName ?? teamsData?.tenantName;
 }
 
 function teamsCardDescription(args: {
@@ -457,6 +457,9 @@ function teamsCardDescription(args: {
 }): string {
   if (!args.isInstalled && !args.isAdmin) {
     return "Ask your admin to install the Microsoft Teams integration";
+  }
+  if (!args.isInstalled && args.isAdmin) {
+    return "Connect your Microsoft account, then install the Teams app";
   }
   if (args.isInstalled && !args.isConnected) {
     return "Connect your Microsoft account to finish setup";

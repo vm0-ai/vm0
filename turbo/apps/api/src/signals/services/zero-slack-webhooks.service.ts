@@ -96,7 +96,7 @@ import {
 import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { safeJsonParse, settle, tapError } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import type { SlackOrgCallbackPayload } from "./slack-org-callback-payload";
 
 const L = logger("ZeroSlackWebhooks");
@@ -982,7 +982,7 @@ const commandSwitchResponse$ = command(
         }),
       ),
     );
-    const result = await settle(
+    const result = await tapError(
       openView(
         client,
         payload.trigger_id,
@@ -994,9 +994,11 @@ const commandSwitchResponse$ = command(
           privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
         }),
       ),
+      (error) => {
+        L.warn("Failed to open agent picker modal", { error });
+      },
     );
-    if (!result.ok) {
-      L.warn("Failed to open agent picker modal", { error: result.error });
+    if (!result) {
       return ephemeral(
         buildErrorMessage(
           "Couldn't open the agent picker \u2014 please try again.",
@@ -1049,7 +1051,7 @@ const commandModelResponse$ = command(
         }),
       ),
     );
-    const result = await settle(
+    const result = await tapError(
       openView(
         client,
         args.payload.trigger_id,
@@ -1061,9 +1063,11 @@ const commandModelResponse$ = command(
           }),
         }),
       ),
+      (error) => {
+        L.warn("Failed to open model picker modal", { error });
+      },
     );
-    if (!result.ok) {
-      L.warn("Failed to open model picker modal", { error: result.error });
+    if (!result) {
       return ephemeral(
         buildErrorMessage(
           "Couldn't open the model picker \u2014 please try again.",
@@ -2539,16 +2543,16 @@ async function postEphemeralMessage(args: {
   readonly slackUserId: string;
   readonly text: string;
 }): Promise<void> {
-  const result = await settle(
+  await tapError(
     createSlackClient(args.botToken).chat.postEphemeral({
       channel: args.channel,
       user: args.slackUserId,
       text: args.text,
     }),
+    (error) => {
+      L.warn("Failed to post ephemeral message", { error });
+    },
   );
-  if (!result.ok) {
-    L.warn("Failed to post ephemeral message", { error: result.error });
-  }
 }
 
 const handleAgentPickerSubmit$ = command(
@@ -2763,7 +2767,7 @@ const handleHomeSwitchAgent$ = command(
       ctx.connection.vm0UserId,
       ctx.orgId,
     );
-    const result = await settle(
+    await tapError(
       openView(
         createSlackClient(
           await get(
@@ -2781,12 +2785,10 @@ const handleHomeSwitchAgent$ = command(
           orgDefaultName,
         }),
       ),
+      (error) => {
+        L.warn("Failed to open switch modal from App Home", { error });
+      },
     );
-    if (!result.ok) {
-      L.warn("Failed to open switch modal from App Home", {
-        error: result.error,
-      });
-    }
   },
 );
 

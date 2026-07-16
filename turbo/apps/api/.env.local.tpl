@@ -6,7 +6,7 @@ CLERK_SECRET_KEY=op://Development/clerk/CLERK_SECRET_KEY
 CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 
 # Required: API, web, and app URLs
-VM0_API_URL=https://api.vm7.ai:8443
+VM0_API_BACKEND_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
 ONBOARDING_URL=https://www.vm7.ai:8443
@@ -38,6 +38,7 @@ R2_ACCOUNT_ID=op://Development/cloudflare/R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID=op://Development/cloudflare/R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_SECRET_ACCESS_KEY
 R2_USER_STORAGES_BUCKET_NAME=op://Development/cloudflare/R2_USER_STORAGES_BUCKET_NAME
+CONNECTOR_CATALOG_SOURCE_MODE=static
 R2_USER_ARTIFACTS_BUCKET_NAME=user-artifact-dev
 R2_USER_ARTIFACTS_ACCESS_KEY_ID=op://Development/cloudflare/R2_USER_ARTIFACTS_ACCESS_KEY_ID
 R2_USER_ARTIFACTS_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_USER_ARTIFACTS_SECRET_ACCESS_KEY
@@ -82,6 +83,10 @@ CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3
 
 # Required: OpenAI (voice-chat ephemeral token minting, STT, TTS)
 OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
+
+# Optional: VM0 Model proxy authentication (required to run vm0-model)
+VM0_MODEL_PROXY_TOKEN=op://Development/vm0/VM0_MODEL_PROXY_TOKEN
+VM0_MODEL_PROXY_HOST=
 
 # Optional: OpenRouter lightweight model calls
 OPENROUTER_API_KEY=op://Development/openrouter/Section_ak7dvythmldarvk4dodjs4ecyq/OPENROUTER_API_KEY
@@ -130,6 +135,12 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_I
 
 # Optional: Google Maps API
 ZERO_MAPS_GOOGLE_MAPS_TOKEN=op://Development/google/ZERO_MAPS_GOOGLE_MAPS_TOKEN
+
+# Optional: Zero Scrape provider (Firecrawl)
+ZERO_SCRAPE_FIRECRAWL_TOKEN=op://Development/Firecrawl/FIRECRAWL_API_TOKEN
+
+# Optional: Zero Web Search provider (Perplexity)
+ZERO_WEB_SEARCH_PERPLEXITY_TOKEN=op://Development/Perplexity/PERPLEXITY_API_TOKEN
 
 # Optional: Steam Web API
 STEAM_WEB_API_KEY=op://Development/steam/STEAM_WEB_API_KEY

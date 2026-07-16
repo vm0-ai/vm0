@@ -18,6 +18,8 @@ import {
   getProviderRuntimeModel,
   getSecretNameForType,
   getSecretsForAuthMethod,
+  getVm0ModelCodexRuntimeConfig,
+  getVm0ModelProviderConfig,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
@@ -50,8 +52,8 @@ import {
   type FirewallPermissionIndex,
 } from "@vm0/connectors/firewall-metadata/server";
 import {
+  canonicalizeFirewallBaseUrlVarsForExecution,
   extractSecretNamesFromApis,
-  resolveFirewallBaseUrlVars,
   type ExecutionFirewallEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
@@ -103,7 +105,6 @@ import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
@@ -140,6 +141,7 @@ import {
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
 import {
+  CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorPrefixTemplateVariableKeys,
   customConnectorSecretKey,
@@ -179,9 +181,12 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
-  checkLimitedFreeRunModelAdmission,
+  checkOrgModelRunAdmission,
   checkOrgCreditsForRunAdmission,
+  checkResolvedOrgCreditsForRunAdmission,
+  resolveOrgCreditAvailability,
 } from "./zero-run-admission.service";
 import { activateUsageAllowanceWindowsForRun } from "./usage-allowance.service";
 import {
@@ -208,20 +213,12 @@ type ArtifactMissingRootPolicy = NonNullable<
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
 
-const TIER_LIMITS = Object.freeze({
-  free: 1,
-  "limited-free-1": 1,
-  pro: 2,
-  team: 10,
-  custom: 10,
-});
-
 function getEffectiveConcurrencyLimit(
-  tier: keyof typeof TIER_LIMITS,
+  baseLimit: number,
   paidSlots: number,
 ): number {
   const limit = totalConcurrencyLimit({
-    baseLimit: cappedBaseConcurrencyLimit(TIER_LIMITS[tier]),
+    baseLimit: cappedBaseConcurrencyLimit(baseLimit),
     paidSlots,
   });
   return Number.isFinite(limit) ? limit : 0;
@@ -245,7 +242,6 @@ const COUNT_BUCKET_DIMENSIONS = [
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
-type RunAdmissionDb = Pick<Db, "select">;
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
@@ -327,8 +323,8 @@ interface PreparedAdditionalVolumes {
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  // Run provenance for workflow schedule triggers.
-  readonly workflowTriggerId?: string;
+  // Run provenance for workflow schedule automations.
+  readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   // Stable chat run-group key for automation/workflow/goal-triggered runs.
   readonly runGroupId?: string;
@@ -1780,6 +1776,34 @@ async function vm0ModelProviderEnvironment(
   const secretName = getSecretNameForType(concreteType);
   if (!apiKey || !secretName) {
     return null;
+  }
+
+  if (selectedModel === "vm0-model") {
+    const proxyToken = optionalEnv("VM0_MODEL_PROXY_TOKEN")?.trim();
+    const proxyHost = optionalEnv("VM0_MODEL_PROXY_HOST")?.trim();
+    if (!proxyToken || !proxyHost) {
+      return null;
+    }
+    const vm0ModelConfig = getVm0ModelProviderConfig(proxyHost);
+    return {
+      id: null,
+      type: "vm0",
+      concreteType,
+      framework: "codex",
+      environment: {
+        OPENAI_API_KEY: `\${{ secrets.OPENAI_API_KEY }}`,
+        OPENAI_BASE_URL: vm0ModelConfig.baseUrl,
+        OPENAI_MODEL: selectedModel,
+      },
+      secrets: {
+        OPENAI_API_KEY: proxyToken,
+        VM0_MODEL_UPSTREAM_API_KEY: apiKey,
+      },
+      selectedModel,
+      codexRuntimeConfig: getVm0ModelCodexRuntimeConfig(vm0ModelConfig.baseUrl),
+      firewall: vm0ModelConfig.firewall,
+      inlineFirewall: true,
+    };
   }
 
   return {
@@ -3362,6 +3386,7 @@ async function buildCustomConnectorRuntimeContext(args: {
       const renderedPrefix = renderCustomConnectorRuntimePrefix({
         template: prefixTemplate,
         values: decryptedValues,
+        connectorName: row.connector.displayName,
       });
       if (!renderedPrefix) {
         stats.recordInvalidPrefix();
@@ -3538,17 +3563,10 @@ function builtinFirewallEntry(
     return { kind: "builtin", name: firewall.name };
   }
 
-  const baseUrlVars: Record<string, string> = {};
-  for (const name of names) {
-    const value = vars?.[name];
-    if (!value) {
-      throw new FirewallBaseUrlResolutionError(
-        `Firewall "${firewall.name}" base URL requires variable "${name}" but it was not provided`,
-      );
-    }
-    baseUrlVars[name] = value;
-  }
-  resolveFirewallBaseUrlVars([runtimeFirewall(firewall)], vars);
+  const baseUrlVars = canonicalizeFirewallBaseUrlVarsForExecution(
+    [runtimeFirewall(firewall)],
+    vars,
+  );
   return { kind: "builtin", name: firewall.name, baseUrlVars };
 }
 
@@ -3572,32 +3590,21 @@ function builtinFirewallEntryForMetadata(
     return { kind: "builtin", name: metadata.type };
   }
 
-  const baseUrlVars: Record<string, string> = {};
-  for (const name of metadata.baseUrlVarNames) {
-    const value = vars?.[name];
-    if (!value) {
-      throw new FirewallBaseUrlResolutionError(
-        `Firewall "${metadata.type}" base URL requires variable "${name}" but it was not provided`,
-      );
-    }
-    baseUrlVars[name] = value;
-  }
-  resolveFirewallBaseUrlVars(
-    [
-      {
-        name: metadata.type,
-        apis: metadata.baseUrlTemplates.map((template) => {
-          return {
-            base: template.base,
-            ...(template.hostPolicy !== undefined
-              ? { hostPolicy: template.hostPolicy }
-              : {}),
-            auth: baseUrlValidationAuth(template.credentialed),
-            permissions: [],
-          };
-        }),
-      },
-    ],
+  const validationFirewall: Firewall = {
+    name: metadata.type,
+    apis: metadata.baseUrlTemplates.map((template) => {
+      return {
+        base: template.base,
+        ...(template.hostPolicy !== undefined
+          ? { hostPolicy: template.hostPolicy }
+          : {}),
+        auth: baseUrlValidationAuth(template.credentialed),
+        permissions: [],
+      };
+    }),
+  };
+  const baseUrlVars = canonicalizeFirewallBaseUrlVarsForExecution(
+    [validationFirewall],
     vars,
   );
   return { kind: "builtin", name: metadata.type, baseUrlVars };
@@ -3797,13 +3804,9 @@ async function buildPermissionManifest(args: {
     "api_dispatch_prepare_context_apply_custom_permission_policies",
     "nested",
     () => {
-      const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
-        (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
-        args.vars,
-      );
       return Promise.resolve(
         applyConnectorPolicies(
-          resolvedCustomConnectorFirewalls,
+          args.customConnectorFirewalls ?? [],
           args.permissionPolicies,
           inlineFirewallEntry,
           (_firewall, permissionNames) => {
@@ -3925,31 +3928,18 @@ function parseAdditionalVolumesSnapshot(
   return parsed.length > 0 ? parsed : undefined;
 }
 
-async function orgTier(
-  db: RunAdmissionDb,
-  orgId: string,
-): Promise<keyof typeof TIER_LIMITS> {
-  const [row] = await db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  if (row?.tier === "pro" || row?.tier === "team" || row?.tier === "custom") {
-    return row.tier;
-  }
-  return "free";
-}
-
 async function checkRunConcurrencyLimit(
   tx: DbTransaction,
   orgId: string,
 ): Promise<CreateRunErrorResult | null> {
-  const [tier, paidSlots] = await Promise.all([
-    orgTier(tx, orgId),
+  const [capabilities, paidSlots] = await Promise.all([
+    loadOrgPlanCapabilities(tx, orgId),
     activePaidConcurrencySlots(tx, orgId),
   ]);
-  const limit = getEffectiveConcurrencyLimit(tier, paidSlots);
+  const limit = getEffectiveConcurrencyLimit(
+    capabilities?.baseConcurrencyLimit ?? 0,
+    paidSlots,
+  );
   if (limit === 0) {
     return null;
   }
@@ -3974,34 +3964,60 @@ async function checkRunConcurrencyLimit(
   return activeCount >= limit ? concurrentRunLimit() : null;
 }
 
-async function checkVm0Credits(
+async function checkFinalRunAdmission(
   db: Db,
-  args: { readonly orgId: string; readonly selectedModel?: string | null },
+  args: {
+    readonly orgId: string;
+    readonly modelProviderType: string | null | undefined;
+    readonly selectedModel: string | null | undefined;
+    readonly enforceVm0Credits: boolean;
+    readonly signal: AbortSignal;
+    readonly timing: ApiDispatchTimingCollector;
+  },
 ): Promise<CreateRunErrorResult | null> {
+  if (args.enforceVm0Credits) {
+    return await args.timing.measure(
+      "api_dispatch_check_vm0_credits",
+      "nested",
+      async () => {
+        const availability = await resolveOrgCreditAvailability({
+          db,
+          orgId: args.orgId,
+        });
+        args.signal.throwIfAborted();
+        return (
+          (await checkResolvedOrgCreditsForRunAdmission({
+            db,
+            orgId: args.orgId,
+            modelProviderType: args.modelProviderType,
+            selectedModel: args.selectedModel,
+            availability,
+          })) ?? null
+        );
+      },
+    );
+  }
+
+  const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
+  args.signal.throwIfAborted();
   return (
-    (await checkOrgCreditsForRunAdmission({
-      db,
-      orgId: args.orgId,
-      modelProviderType: "vm0",
+    checkOrgModelRunAdmission({
+      capabilities,
+      modelProviderType: args.modelProviderType,
       selectedModel: args.selectedModel,
-    })) ?? null
+    }) ?? null
   );
 }
 
-async function checkOrgRunTier(
+async function checkOrgRunPlanStatus(
   db: Db,
   args: { readonly orgId: string },
 ): Promise<CreateRunErrorResult | null> {
-  const [row] = await db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, args.orgId))
-    .limit(1);
-
-  if (!row) {
+  const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
+  if (!capabilities) {
     return insufficientCredits();
   }
-  return row.tier === "pro-suspend" ? insufficientCredits() : null;
+  return capabilities.status === "active" ? null : insufficientCredits();
 }
 
 async function lookupComposeByVersion(
@@ -4272,6 +4288,7 @@ function loadResumeSession(
     async (): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
       const [conversation] = await db
         .select({
+          runId: conversations.runId,
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
@@ -4308,6 +4325,7 @@ function loadResumeSession(
           if (hash) {
             return Promise.resolve({
               sessionId: cliAgentSessionId,
+              historyGenerationRunId: conversation.runId,
               historyRef: {
                 kind: "blob",
                 hash,
@@ -4570,7 +4588,7 @@ async function insertZeroRunRecord(
   await tx.insert(zeroRuns).values({
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
-    workflowTriggerId: metadata.workflowTriggerId ?? null,
+    workflowAutomationId: metadata.workflowAutomationId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.runGroupId ?? null,
     goalId: metadata.goalId ?? null,
@@ -5527,6 +5545,7 @@ function dispatchRun(
         runId: args.run.id,
         profile: payload.profile,
         cliAgentSessionId: payload.cliAgentSessionId,
+        historyGenerationRunId: payload.historyGenerationRunId,
         createdAt: persisted.runnerJobCreatedAt,
       });
       args.timing.flush({
@@ -6070,10 +6089,13 @@ async function resolveRunModelProvider(
   }
 
   if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
-    const creditGate = await checkVm0Credits(db, {
-      orgId: args.orgId,
-      selectedModel: args.selectedModelOverride,
-    });
+    const creditGate =
+      (await checkOrgCreditsForRunAdmission({
+        db,
+        orgId: args.orgId,
+        modelProviderType: "vm0",
+        selectedModel: args.selectedModelOverride,
+      })) ?? null;
     options.signal.throwIfAborted();
     if (creditGate) {
       return creditGate;
@@ -6390,6 +6412,7 @@ async function prepareRunBodyContext(args: {
   readonly get: PrepareRunContextGet;
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly preloadedFeatureSwitchContext: FeatureSwitchContext | undefined;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly initialBody: CreateRunBody;
@@ -6398,9 +6421,19 @@ async function prepareRunBodyContext(args: {
     "api_dispatch_prepare_context_feature_switches",
     "nested",
     async () => {
+      if (args.preloadedFeatureSwitchContext !== undefined) {
+        args.signal.throwIfAborted();
+        return args.preloadedFeatureSwitchContext;
+      }
       return await args.get(
         loadRunFeatureSwitchContext(args.createArgs, args.signal),
       );
+    },
+    {
+      feature_switch_context_source:
+        args.preloadedFeatureSwitchContext === undefined
+          ? "database"
+          : "preloaded",
     },
   );
   const resolved = await args.timing.measure(
@@ -6497,6 +6530,45 @@ async function prepareRunBodyContext(args: {
   };
 }
 
+async function prepareRunConnectorContexts(args: {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<
+  Awaited<ReturnType<typeof loadRunConnectorContexts>> | CreateRunErrorResult
+> {
+  const result = await settle(
+    args.timing.measure(
+      "api_dispatch_prepare_context_load_connector_contexts",
+      "nested",
+      async () => {
+        return await loadRunConnectorContexts(
+          args.db,
+          {
+            orgId: args.createArgs.orgId,
+            userId: args.createArgs.userId,
+            connectorScope: args.connectorScope,
+          },
+          args.featureSwitchContext,
+          args.timing,
+        );
+      },
+      storedConnectorTimingDimensions({
+        scopeSource: args.connectorScope.source,
+      }),
+    ),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (result.error instanceof CustomConnectorRuntimePrefixError) {
+    return badRequestMessage(result.error.message);
+  }
+  throw result.error;
+}
+
 async function prepareRunRuntimeContext(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
@@ -6525,29 +6597,21 @@ async function prepareRunRuntimeContext(args: {
   const framework = modelProvider
     ? modelProviderFramework(modelProvider)
     : requestedFramework;
+  const connectorContexts = await prepareRunConnectorContexts({
+    db: args.db,
+    createArgs: args.createArgs,
+    connectorScope: args.connectorScope,
+    featureSwitchContext,
+    timing: args.timing,
+  });
+  if (isRouteError(connectorContexts)) {
+    return connectorContexts;
+  }
   const {
     storedConnectorSnapshot,
     storedConnectorMetadataContext,
     customConnectorContext,
-  } = await args.timing.measure(
-    "api_dispatch_prepare_context_load_connector_contexts",
-    "nested",
-    async () => {
-      return await loadRunConnectorContexts(
-        args.db,
-        {
-          orgId: args.createArgs.orgId,
-          userId: args.createArgs.userId,
-          connectorScope: args.connectorScope,
-        },
-        featureSwitchContext,
-        args.timing,
-      );
-    },
-    storedConnectorTimingDimensions({
-      scopeSource: args.connectorScope.source,
-    }),
-  );
+  } = connectorContexts;
   args.signal.throwIfAborted();
 
   const storedConnectorTiming = storedConnectorTimingDimensions({
@@ -6664,6 +6728,7 @@ function prepareRunContext(
   args: CreateAgentRunArgs,
   timing: ApiDispatchTimingCollector,
   signal: AbortSignal,
+  preloadedFeatureSwitchContext: FeatureSwitchContext | undefined,
 ): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
   return computed(
     async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
@@ -6682,6 +6747,7 @@ function prepareRunContext(
         get,
         db,
         createArgs: args,
+        preloadedFeatureSwitchContext,
         timing,
         signal,
         initialBody,
@@ -6701,11 +6767,7 @@ function prepareRunContext(
       if (isRouteError(runtimeContext)) {
         return runtimeContext;
       }
-      const body = withFinalFrameworkAppendSystemPrompt(
-        bodyContext.body,
-        runtimeContext.framework,
-        args.chatThreadId,
-      );
+      const body = bodyContext.body;
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -7142,6 +7204,8 @@ async function committedAtomicLaunchResponse(args: {
     runId: args.committed.run.id,
     profile: args.committed.runnerJobPayload.profile,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
+    historyGenerationRunId:
+      args.committed.runnerJobPayload.historyGenerationRunId,
     createdAt: args.committed.runnerJobCreatedAt,
   });
   args.timing.flush({
@@ -7293,24 +7357,53 @@ function createAtomicLaunchRun(input: {
   });
 }
 
-export const createAgentRun$ = command(
+interface PreparedAgentRun {
+  readonly args: CreateAgentRunArgs;
+  readonly context: PreparedRunContext;
+  readonly timing: ApiDispatchTimingCollector;
+}
+
+interface PrepareAgentRunArgs {
+  readonly args: CreateAgentRunArgs;
+  readonly timing: ApiDispatchTimingCollector;
+  readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
+}
+
+interface CompleteAgentRunArgs {
+  readonly prepared: PreparedAgentRun;
+  readonly finalAppendSystemPrompt: CreateRunBody["appendSystemPrompt"];
+}
+
+function finalizePreparedRunContext(
+  prepared: PreparedAgentRun,
+  finalAppendSystemPrompt: CreateRunBody["appendSystemPrompt"],
+): PreparedRunContext {
+  return {
+    ...prepared.context,
+    body: withFinalFrameworkAppendSystemPrompt(
+      {
+        ...prepared.context.body,
+        appendSystemPrompt: finalAppendSystemPrompt,
+      },
+      prepared.context.framework,
+      prepared.args.chatThreadId,
+    ),
+  };
+}
+
+export const prepareAgentRun$ = command(
   async (
     { get, set },
-    args: CreateAgentRunArgs,
+    input: PrepareAgentRunArgs,
     signal: AbortSignal,
-  ): Promise<CreateRunRouteResult> => {
+  ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
+    const { args, timing } = input;
     const db = set(writeDb$);
-    const timing = args.timing ?? new ApiDispatchTimingCollector();
-    timing.recordElapsed(
-      "api_dispatch_pre_create_agent_run",
-      "top_level",
-      args.apiStartTime,
-    );
     const tierGate = await timing.measure(
       "api_dispatch_check_org_tier",
       "top_level",
       async () => {
-        return await checkOrgRunTier(db, { orgId: args.orgId });
+        return await checkOrgRunPlanStatus(db, { orgId: args.orgId });
       },
     );
     signal.throwIfAborted();
@@ -7322,7 +7415,15 @@ export const createAgentRun$ = command(
       "api_dispatch_prepare_run_context",
       "top_level",
       async () => {
-        return await get(prepareRunContext(db, args, timing, signal));
+        return await get(
+          prepareRunContext(
+            db,
+            args,
+            timing,
+            signal,
+            input.preloadedFeatureSwitchContext,
+          ),
+        );
       },
     );
     signal.throwIfAborted();
@@ -7330,35 +7431,47 @@ export const createAgentRun$ = command(
       return context;
     }
 
-    const modelTierGate = await checkLimitedFreeRunModelAdmission({
-      db,
-      orgId: args.orgId,
-      modelProviderType: context.modelProvider?.type ?? args.modelProviderType,
-      selectedModel:
-        context.modelProvider?.selectedModel ?? args.selectedModelOverride,
-    });
-    signal.throwIfAborted();
-    if (modelTierGate) {
-      return modelTierGate;
-    }
+    return { args, context, timing };
+  },
+);
 
-    if (args.enforceVm0Credits && context.modelProvider?.type === "vm0") {
-      const creditGate = await timing.measure(
-        "api_dispatch_check_vm0_credits",
-        "top_level",
-        async () => {
-          return await checkVm0Credits(db, {
-            orgId: args.orgId,
-            selectedModel:
-              context.modelProvider?.selectedModel ??
-              args.selectedModelOverride,
-          });
-        },
-      );
-      signal.throwIfAborted();
-      if (creditGate) {
-        return creditGate;
-      }
+export const completeAgentRun$ = command(
+  async (
+    { get, set },
+    input: CompleteAgentRunArgs,
+    signal: AbortSignal,
+  ): Promise<CreateRunRouteResult> => {
+    const db = set(writeDb$);
+    const { args, timing } = input.prepared;
+    const context = finalizePreparedRunContext(
+      input.prepared,
+      input.finalAppendSystemPrompt,
+    );
+    signal.throwIfAborted();
+
+    const modelProviderType =
+      context.modelProvider?.type ?? args.modelProviderType;
+    const selectedModel =
+      context.modelProvider?.selectedModel ?? args.selectedModelOverride;
+    const admissionGate = await timing.measure(
+      "api_dispatch_check_run_admission",
+      "top_level",
+      async () => {
+        return await checkFinalRunAdmission(db, {
+          orgId: args.orgId,
+          modelProviderType,
+          selectedModel,
+          enforceVm0Credits:
+            args.enforceVm0Credits === true &&
+            context.modelProvider?.type === "vm0",
+          signal,
+          timing,
+        });
+      },
+    );
+    signal.throwIfAborted();
+    if (admissionGate) {
+      return admissionGate;
     }
 
     if (args.beforeDispatch) {
@@ -7384,6 +7497,33 @@ export const createAgentRun$ = command(
         signal,
         timing,
       }),
+    );
+  },
+);
+
+export const createAgentRun$ = command(
+  async (
+    { set },
+    args: CreateAgentRunArgs,
+    signal: AbortSignal,
+  ): Promise<CreateRunRouteResult> => {
+    const timing = args.timing ?? new ApiDispatchTimingCollector();
+    timing.recordElapsed(
+      "api_dispatch_pre_create_agent_run",
+      "top_level",
+      args.apiStartTime,
+    );
+    const prepared = await set(prepareAgentRun$, { args, timing }, signal);
+    if (isRouteError(prepared)) {
+      return prepared;
+    }
+    return await set(
+      completeAgentRun$,
+      {
+        prepared,
+        finalAppendSystemPrompt: args.body.appendSystemPrompt,
+      },
+      signal,
     );
   },
 );

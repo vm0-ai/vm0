@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.17.58](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.57...vsock-host-v0.17.58) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.17.57](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.56...vsock-host-v0.17.57) (2026-07-15)
+
+
+### Bug Fixes
+
+* **vsock-host:** retain temp cleanup ownership during creation ([#21632](https://github.com/vm0-ai/vm0/issues/21632)) ([1680c6f](https://github.com/vm0-ai/vm0/commit/1680c6fea25b3ffb012a08ffbe7e0bb627a068ac))
+
+## [0.17.56](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.55...vsock-host-v0.17.56) (2026-07-15)
+
+
+### Bug Fixes
+
+* keep guest responsive during file writes ([#21556](https://github.com/vm0-ai/vm0/issues/21556)) ([28de816](https://github.com/vm0-ai/vm0/commit/28de81622ea55b1b67317dff3f6bd1e5c542962c))
+
+## [0.17.55](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.54...vsock-host-v0.17.55) (2026-07-15)
+
+## [0.17.54](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.53...vsock-host-v0.17.54) (2026-07-14)
+
+
+### Bug Fixes
+
+* **vsock-host:** bound lifecycle request timeout ([#21341](https://github.com/vm0-ai/vm0/issues/21341)) ([1f7051e](https://github.com/vm0-ai/vm0/commit/1f7051e9bee273fc28984c9fc31e30c2484a4560))
+
+## [0.17.53](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.52...vsock-host-v0.17.53) (2026-07-13)
+
+
+### Documentation
+
+* **vsock-host:** document captured exec output ([#21269](https://github.com/vm0-ai/vm0/issues/21269)) ([47acd85](https://github.com/vm0-ai/vm0/commit/47acd8544811f736fa77ae753b410bb8909d4461))
+
 ## [0.17.52](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.51...vsock-host-v0.17.52) (2026-07-07)
 
 

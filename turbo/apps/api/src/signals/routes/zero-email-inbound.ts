@@ -43,7 +43,7 @@ import {
   verifyResendWebhook,
   verifySenderAuthenticity,
 } from "../services/zero-email-common.service";
-import { settle } from "../utils";
+import { safeSync, tapError } from "../utils";
 
 const log = logger("zero:email:inbound");
 
@@ -646,7 +646,7 @@ const processReceivedEmail$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const result = await settle(
+    await tapError(
       (async () => {
         const handlerResult = await set(
           args.hasReplyAddress
@@ -668,29 +668,29 @@ const processReceivedEmail$ = command(
           );
         }
       })(),
+      async (error) => {
+        log.error("Failed to handle inbound email", { error });
+        await tapError(
+          set(
+            sendInboundErrorReply$,
+            {
+              to: args.event.data.from,
+              subject: args.event.data.subject,
+              errorMessage:
+                "An internal error occurred while processing your email. Please try again later.",
+            },
+            signal,
+          ),
+          (sendError) => {
+            log.error("Failed to send inbound email error reply", {
+              sendError,
+            });
+          },
+        );
+        signal.throwIfAborted();
+      },
     );
     signal.throwIfAborted();
-    if (!result.ok) {
-      log.error("Failed to handle inbound email", { error: result.error });
-      const sendResult = await settle(
-        set(
-          sendInboundErrorReply$,
-          {
-            to: args.event.data.from,
-            subject: args.event.data.subject,
-            errorMessage:
-              "An internal error occurred while processing your email. Please try again later.",
-          },
-          signal,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!sendResult.ok) {
-        log.error("Failed to send inbound email error reply", {
-          sendError: sendResult.error,
-        });
-      }
-    }
   },
 );
 
@@ -706,22 +706,15 @@ const handleInboundRoute$ = command(
     const rawBody = await req.text();
     signal.throwIfAborted();
 
-    // verifyResendWebhook is a synchronous svix verifier that throws on bad
-    // signatures — wrap in an async IIFE so the throw becomes a rejection
-    // settle can observe.
-    const payloadResult = await settle(
-      (async (): Promise<unknown> => {
-        await Promise.resolve();
-        return verifyResendWebhook(rawBody, svixHeaders);
-      })(),
-    );
+    const payloadResult = safeSync(() => {
+      return verifyResendWebhook(rawBody, svixHeaders);
+    });
     signal.throwIfAborted();
-    if (!payloadResult.ok) {
-      log.warn("Webhook signature verification failed");
+    if ("error" in payloadResult) {
       return jsonResponse({ error: "Invalid signature" }, 401);
     }
 
-    const event = payloadResult.value as WebhookEvent;
+    const event = payloadResult.ok as WebhookEvent;
     if (event.type === "email.bounced") {
       await set(handleBounce$, event, signal);
       signal.throwIfAborted();

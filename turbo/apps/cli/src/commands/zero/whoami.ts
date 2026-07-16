@@ -12,7 +12,7 @@ import {
   listZeroUserPermissionGrants,
 } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import { policyIcon } from "../../lib/utils/format-utils";
 import {
   loadConnectorPermissionInfos,

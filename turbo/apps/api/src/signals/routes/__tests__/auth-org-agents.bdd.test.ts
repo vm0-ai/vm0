@@ -8,7 +8,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /*
 helper gap:
@@ -26,7 +26,7 @@ helper gap:
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const bdd = createBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 function shortId(): string {
@@ -264,6 +264,10 @@ describe("AUTH-02 and AUTH-03", () => {
       description: "BDD secret",
       type: "user",
     });
+    await api.setSecret(admin, {
+      name: "GITHUB_ACCESS_TOKEN",
+      value: "github-user-secret-value",
+    });
 
     const invalidSecret = await api.requestSetSecret(
       admin,
@@ -276,8 +280,20 @@ describe("AUTH-02 and AUTH-03", () => {
     const listedSecret = secrets.secrets.find((candidate) => {
       return candidate.name === secretName;
     });
-    expect(listedSecret).toBeDefined();
+    expect(listedSecret).toMatchObject({ connectorDisplay: null });
+    expect(
+      secrets.secrets.find((candidate) => {
+        return candidate.name === "GITHUB_ACCESS_TOKEN";
+      }),
+    ).toMatchObject({
+      type: "user",
+      connectorDisplay: {
+        label: "GitHub",
+        environmentNames: ["GH_TOKEN", "GITHUB_TOKEN"],
+      },
+    });
     expect(JSON.stringify(secrets)).not.toContain("super-secret-value");
+    expect(JSON.stringify(secrets)).not.toContain("github-user-secret-value");
 
     const variableName = upperName("BDD_VARIABLE");
     const variable = await api.setVariable(admin, {
@@ -315,11 +331,15 @@ describe("AUTH-02 and AUTH-03", () => {
     expect(readBack).toStrictEqual(preferences);
 
     await api.deleteSecret(admin, secretName);
+    await api.deleteSecret(admin, "GITHUB_ACCESS_TOKEN");
     await api.deleteVariable(admin, variableName);
     const afterSecretDelete = await api.listSecrets(admin);
     expect(
       afterSecretDelete.secrets.some((candidate) => {
-        return candidate.name === secretName;
+        return (
+          candidate.name === secretName ||
+          candidate.name === "GITHUB_ACCESS_TOKEN"
+        );
       }),
     ).toBeFalsy();
     const afterVariableDelete = await api.listVariables(admin);
@@ -452,11 +472,21 @@ describe("ORG-01 and ORG-02", () => {
     expect(members.pendingInvitations?.[0]?.id).toBe(inviteId);
     expect(members.membershipRequests?.[0]?.id).toBe(requestId);
 
+    const inviteeEmail = `new-member-${shortId()}@example.test`;
     const invite = await api.inviteMember(admin, {
-      email: `new-member-${shortId()}@example.test`,
+      email: inviteeEmail,
       role: "member",
     });
     expect(invite.message).toContain("Invitation sent");
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).toHaveBeenCalledWith({
+      organizationId: admin.orgId,
+      emailAddress: inviteeEmail,
+      inviterUserId: admin.userId,
+      role: "org:member",
+      redirectUrl: "http://localhost:3002",
+    });
 
     api.mockClerkOrg(member, {
       slug: nextSlug,

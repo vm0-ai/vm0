@@ -20,7 +20,9 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
 
@@ -239,7 +241,7 @@ async function entitledRunActor(): Promise<{
   readonly runnerGroup: string;
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -303,7 +305,7 @@ beforeEach(() => {
 
 describe("system storage presigned URL cache", () => {
   it("reuses cached system-owned storage URLs across Zero runs", async () => {
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     mockUniquePresignedUrls();
     const skill = isolatedSystemSkillStorage();
@@ -381,6 +383,96 @@ describe("system storage presigned URL cache", () => {
         );
       },
     );
+  });
+
+  it("prefers system storage and falls back to the primary organization", async () => {
+    const api = createRunsApi(context);
+    const storages = createStoragesBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const skill = isolatedSystemSkillStorage();
+    const primaryFile = storageTextFile(
+      "primary.txt",
+      `primary fallback ${randomUUID()}`,
+    );
+    const primary = await storages.prepareStorage(actor, {
+      storageName: skill.storageName,
+      storageType: "volume",
+      files: [primaryFile],
+    });
+    await storages.commitStorage(actor, {
+      storageName: skill.storageName,
+      storageType: "volume",
+      versionId: primary.versionId,
+      files: [primaryFile],
+    });
+
+    await withCacheCleanup({ objectKeyPrefix: skill.s3Prefix }, async () => {
+      await withStorageStateRestore(
+        {
+          orgId: SYSTEM_ORG_ID,
+          userId: VOLUME_ORG_USER_ID,
+          storageName: skill.storageName,
+          cleanupVersionId: skill.versionId,
+        },
+        async () => {
+          await seedStorageVersion({
+            orgId: SYSTEM_ORG_ID,
+            userId: VOLUME_ORG_USER_ID,
+            storageName: skill.storageName,
+            versionId: skill.versionId,
+            s3Prefix: skill.s3Prefix,
+            s3Key: skill.s3Key,
+          });
+
+          const systemRun = await api.createRun(actor, {
+            agentId,
+            prompt: "prefer the system storage candidate",
+            modelProvider: "anthropic-api-key",
+          });
+          await api.heartbeatRunner(runnerGroup);
+          const systemClaim = await api.claimRunnerJob(systemRun.runId);
+          expect(
+            systemClaim.storageManifest?.storages.find((storage) => {
+              return storage.vasStorageName === skill.storageName;
+            }),
+          ).toMatchObject({ vasVersionId: skill.versionId });
+
+          // A system row without a HEAD is intentionally treated as missing,
+          // so the same injected volume must resolve from the primary org.
+          await restoreStorageState({
+            orgId: SYSTEM_ORG_ID,
+            userId: VOLUME_ORG_USER_ID,
+            storageName: skill.storageName,
+            previous: {
+              s3_prefix: skill.s3Prefix,
+              size: 1,
+              file_count: 1,
+              head_version_id: null,
+            },
+          });
+
+          const fallbackRun = await api.createRun(actor, {
+            agentId,
+            prompt: "fall back to the primary storage candidate",
+            modelProvider: "anthropic-api-key",
+          });
+          const fallbackClaim = await api.claimRunnerJob(fallbackRun.runId);
+          expect(
+            fallbackClaim.storageManifest?.storages.find((storage) => {
+              return storage.vasStorageName === skill.storageName;
+            }),
+          ).toMatchObject({ vasVersionId: primary.versionId });
+          expect(
+            fallbackClaim.storageManifest?.artifacts.some((artifact) => {
+              return artifact.vasStorageName === "memory";
+            }),
+          ).toBeTruthy();
+
+          await api.requestCancelRun(actor, systemRun.runId, [200]);
+          await api.requestCancelRun(actor, fallbackRun.runId, [200]);
+        },
+      );
+    });
   });
 
   it("refreshes only a bounded due cache batch from cron", async () => {

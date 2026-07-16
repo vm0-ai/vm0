@@ -846,7 +846,11 @@ mod tests {
 
     #[test]
     fn touch_mtime_nonexistent_dir_does_not_panic() {
-        touch_mtime(Path::new("/nonexistent/dir"));
+        let temp_dir = tempfile::tempdir().unwrap();
+        let missing_dir = temp_dir.path().join("missing");
+        assert!(!missing_dir.exists());
+
+        touch_mtime(&missing_dir);
     }
 
     #[test]

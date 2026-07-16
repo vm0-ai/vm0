@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import builtin_firewall_cache
+import builtin_host_policy
 import matching
 import registry
 import registry_firewalls
@@ -14,6 +15,7 @@ from tests.registry_helpers import (
     builtin_vm,
     inline_vm,
     write_multi_vm_registry,
+    write_trusted_catalog_cache_text,
 )
 
 
@@ -76,7 +78,8 @@ def _write_catalog_cache(
     version: str,
     firewalls: dict[str, dict],
 ) -> None:
-    path.write_text(
+    write_trusted_catalog_cache_text(
+        path,
         json.dumps(
             {
                 "schemaVersion": 1,
@@ -86,7 +89,7 @@ def _write_catalog_cache(
                 "firewalls": firewalls,
             },
             sort_keys=True,
-        )
+        ),
     )
 
 
@@ -249,7 +252,10 @@ class TestRegistryBuiltinCache:
         assert api["base"] == "https://cache-only.example.com"
         assert api["auth"]["awsSigv4"]["accessKeyId"] == "${{ secrets.AWS_ACCESS_KEY_ID }}"
         assert api["hostPolicy"]["exactHosts"] == ["cache-only.example.com"]
-        assert api["_builtinHostPolicyRuntime"] is True
+        assert isinstance(
+            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
 
     def test_catalog_api_ids_are_reassigned_per_vm(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
@@ -277,6 +283,123 @@ class TestRegistryBuiltinCache:
         vm_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["id"] == "run-cache-only:0"
+
+    def test_catalog_identity_is_checked_only_for_cached_builtin_registry(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={
+                "cache-only": _cache_firewall(
+                    "cache-only",
+                    "https://cache.example.com",
+                )
+            },
+        )
+        original_catalog_file_key = registry_firewalls.catalog_file_key
+
+        with (
+            mitm_ctx(
+                registry_path=str(registry_path),
+                builtin_firewall_catalog_cache_path=str(cache_path),
+            ),
+            patch.object(
+                registry_firewalls,
+                "catalog_file_key",
+                wraps=original_catalog_file_key,
+            ) as catalog_file_key,
+        ):
+            missing_state = registry.load_registry_state(str(registry_path))
+            assert isinstance(missing_state, registry.RegistryUnavailable)
+            assert missing_state.reason == "stat_failed"
+            assert catalog_file_key.call_count == 0
+
+            write_multi_vm_registry(
+                registry_path,
+                {"10.200.0.1": inline_vm("run-inline")},
+            )
+            os.utime(
+                registry_path,
+                ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000),
+            )
+            inline_state = registry.load_registry_state(str(registry_path))
+            cached_inline_state = registry.load_registry_state(str(registry_path))
+
+            assert not isinstance(inline_state, registry.RegistryUnavailable)
+            assert cached_inline_state is inline_state
+            assert inline_state.vms["10.200.0.1"]["runId"] == "run-inline"
+            assert catalog_file_key.call_count == 0
+
+            write_multi_vm_registry(
+                registry_path,
+                {"10.200.0.1": builtin_vm("run-cache-only", "cache-only")},
+            )
+            os.utime(
+                registry_path,
+                ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001),
+            )
+            builtin_state = registry.load_registry_state(str(registry_path))
+
+            assert not isinstance(builtin_state, registry.RegistryUnavailable)
+            assert (
+                builtin_state.vms["10.200.0.1"]["firewalls"][0]["apis"][0]["base"]
+                == "https://cache.example.com"
+            )
+            assert catalog_file_key.call_count == 0
+
+            cached_builtin_state = registry.load_registry_state(str(registry_path))
+
+        assert cached_builtin_state is builtin_state
+        assert catalog_file_key.call_count == 1
+
+    def test_malformed_registry_cache_is_independent_of_catalog_identity(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        registry_path.write_text("{ broken")
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"unused": _cache_firewall("unused", "https://unused-a.example.com")},
+        )
+        os.utime(
+            cache_path,
+            ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000),
+        )
+        original_catalog_file_key = registry_firewalls.catalog_file_key
+
+        with (
+            mitm_ctx(
+                registry_path=str(registry_path),
+                builtin_firewall_catalog_cache_path=str(cache_path),
+            ) as log,
+            patch.object(
+                registry_firewalls,
+                "catalog_file_key",
+                wraps=original_catalog_file_key,
+            ) as catalog_file_key,
+            patch.object(registry.json, "loads", wraps=registry.json.loads) as json_loads,
+        ):
+            first_state = registry.load_registry_state(str(registry_path))
+            _write_catalog_cache(
+                cache_path,
+                digest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                version="catalog-b",
+                firewalls={"unused": _cache_firewall("unused", "https://unused-b.example.com")},
+            )
+            os.utime(
+                cache_path,
+                ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001),
+            )
+            second_state = registry.load_registry_state(str(registry_path))
+
+        assert isinstance(first_state, registry.RegistryUnavailable)
+        assert second_state is first_state
+        assert json_loads.call_count == 1
+        assert catalog_file_key.call_count == 0
+        assert log.warn.call_count == 1
 
     def test_registry_snapshot_uses_actual_loaded_catalog_file_key(
         self, tmp_path, monkeypatch, mitm_ctx
@@ -554,7 +677,7 @@ class TestRegistryBuiltinCache:
     def test_malformed_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        cache_path.write_text('{"schemaVersion":1}')
+        write_trusted_catalog_cache_text(cache_path, '{"schemaVersion":1}')
         write_multi_vm_registry(
             registry_path,
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
@@ -738,8 +861,21 @@ class TestRegistryBuiltinCache:
         second_vm_info, second_compiled, _ = second_context
         assert first_compiled is not None
         assert second_compiled is not None
-        assert first_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache-a.example.com"
-        assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache-b.example.com"
+        first_api = first_vm_info["firewalls"][0]["apis"][0]
+        second_api = second_vm_info["firewalls"][0]["apis"][0]
+        assert first_api["base"] == "https://cache-a.example.com"
+        assert second_api["base"] == "https://cache-b.example.com"
+        first_runtime_policy = first_api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER]
+        second_runtime_policy = second_api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER]
+        assert isinstance(
+            first_runtime_policy,
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
+        assert isinstance(
+            second_runtime_policy,
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
+        assert first_runtime_policy is not second_runtime_policy
         assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
 
     def test_runner_catalog_cache_change_recompiles_core_when_metadata_is_unchanged(

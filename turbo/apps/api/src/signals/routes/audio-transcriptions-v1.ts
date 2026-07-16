@@ -1,7 +1,5 @@
 import { command } from "ccstate";
 import { audioTranscriptionsV1Contract } from "@vm0/api-contracts/contracts/audio-transcriptions-v1";
-import { orgTierSchema, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
@@ -13,6 +11,7 @@ import { nowDate } from "../external/time";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route-entry";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 
 const PCM_SAMPLE_RATE = 16_000;
 const PCM_CHANNELS = 1;
@@ -24,26 +23,9 @@ const OPENAI_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
 const OPENAI_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const MAX_REQUEST_DURATION_SECONDS = 5 * 60;
-const AUDIO_INPUT_FREE_QUOTA = 10;
 const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
 const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
 const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
-const DAILY_RATE_LIMITS: Readonly<Record<OrgTier, number>> = {
-  free: 10,
-  "limited-free-1": 10,
-  "pro-suspend": 0,
-  pro: 300,
-  team: 500,
-  custom: 500,
-};
-const DAILY_DURATION_LIMITS: Readonly<Record<OrgTier, number>> = {
-  free: 10 * 60,
-  "limited-free-1": 10 * 60,
-  "pro-suspend": 0,
-  pro: 200 * 60,
-  team: 500 * 60,
-  custom: 500 * 60,
-};
 
 const L = logger("AudioTranscriptionsV1");
 
@@ -72,7 +54,7 @@ interface PcmAudio {
 }
 
 interface VoiceInputPolicy {
-  readonly orgTier: OrgTier;
+  readonly recordLifetimeUsage: boolean;
   readonly rateKey: string;
   readonly durationKey: string;
   readonly durationSeconds: number;
@@ -214,12 +196,10 @@ const voiceInputPolicy$ = command(
     const currentDate = nowDate();
     const rateKey = dailyRateKey(currentDate);
     const durationKey = dailyDurationKey(currentDate);
-    const [orgRow] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-    const orgTier = orgTierSchema.parse(orgRow?.tier ?? "pro-suspend");
+    const capabilities = await loadOrgPlanCapabilities(db, orgId);
+    const lifetimeLimit = capabilities ? capabilities.audioLifetimeLimit : 0;
+    const dailyRateLimit = capabilities?.audioDailyRateLimit ?? 0;
+    const dailyDurationLimit = capabilities?.audioDailyDurationSeconds ?? 0;
 
     const behaviorKeys = [AUDIO_INPUT_BEHAVIOR_KEY, rateKey, durationKey];
     const behaviorRows = await db
@@ -241,7 +221,7 @@ const voiceInputPolicy$ = command(
       }),
     );
     const lifetimeAudioCount = counts.get(AUDIO_INPUT_BEHAVIOR_KEY) ?? 0;
-    if (orgTier === "free" && lifetimeAudioCount >= AUDIO_INPUT_FREE_QUOTA) {
+    if (lifetimeLimit !== null && lifetimeAudioCount >= lifetimeLimit) {
       return paymentRequired(
         "Audio input quota exceeded. Upgrade to Pro or Team for unlimited audio input.",
         "AUDIO_INPUT_QUOTA_EXCEEDED",
@@ -256,7 +236,6 @@ const voiceInputPolicy$ = command(
     }
 
     const dailyRateCount = counts.get(rateKey) ?? 0;
-    const dailyRateLimit = DAILY_RATE_LIMITS[orgTier];
     if (dailyRateCount >= dailyRateLimit) {
       return tooManyRequests(
         "Daily request rate limit exceeded",
@@ -265,7 +244,6 @@ const voiceInputPolicy$ = command(
     }
 
     const dailyDurationSeconds = counts.get(durationKey) ?? 0;
-    const dailyDurationLimit = DAILY_DURATION_LIMITS[orgTier];
     if (dailyDurationSeconds + durationSeconds > dailyDurationLimit) {
       return tooManyRequests(
         "Daily audio duration limit exceeded",
@@ -273,7 +251,12 @@ const voiceInputPolicy$ = command(
       );
     }
 
-    return { orgTier, rateKey, durationKey, durationSeconds };
+    return {
+      recordLifetimeUsage: lifetimeLimit !== null,
+      rateKey,
+      durationKey,
+      durationSeconds,
+    };
   },
 );
 
@@ -363,7 +346,7 @@ const recordVoiceInputUsage$ = command(
             lastAt: sql`now()`,
           },
         }),
-      params.orgTier === "free"
+      params.recordLifetimeUsage
         ? writeDb
             .insert(userBehaviorCount)
             .values({

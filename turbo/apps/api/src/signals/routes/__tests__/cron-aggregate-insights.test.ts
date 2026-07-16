@@ -16,7 +16,7 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 /**
@@ -69,7 +69,7 @@ interface InsightActor {
 
 async function seedInsightActor(displayName?: string): Promise<InsightActor> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -97,7 +97,7 @@ async function createAgentFor(
 }
 
 function sandboxHeaders(actor: ApiTestUser, runId: string) {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   return { authorization: `Bearer ${api.sandboxTokenForRun(actor, runId)}` };
 }
 
@@ -171,7 +171,7 @@ async function createRunFor(
   actor: ApiTestUser,
   agentId: string,
 ): Promise<string> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const run = await api.createRun(actor, {
     agentId,
     prompt: "generate insight activity",
@@ -435,6 +435,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       { name: "Test User", credits: 500 + runlessCredits },
     ]);
     expect(data?.services).toMatchObject([{ domain: "slack", calls: 1 }]);
+    expect(data?.automations).toStrictEqual([]);
   });
 
   it("counts processed credits for an earlier run on the current aggregation day", async () => {

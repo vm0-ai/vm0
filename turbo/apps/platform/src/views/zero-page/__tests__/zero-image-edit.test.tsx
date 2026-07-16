@@ -1,29 +1,20 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  artifactsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  type ImageArtifactEditSnapshotState,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  zeroConnectorCatalogContract,
-  type PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroConnectorOpenIdStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/zero-image-io-interpret-marks";
-import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image-share-x";
 import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
-import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 
-import {
-  detachedSetupPage,
-  fill,
-  queryAllByRoleFast,
-} from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -36,8 +27,6 @@ const SOURCE_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/source.png";
 const EDITED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/edited.png";
-const X_SHARE_CARD_URL =
-  "https://cdn.vm7.io/artifacts/test/image-edit/x-share-card.html";
 const UPLOADED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/uploaded.png";
 const SECOND_UPLOADED_IMAGE_URL =
@@ -75,16 +64,28 @@ const REMOVED_STYLE_TRANSFER_TEMPLATES = [
 ] as const;
 
 afterEach(() => {
-  vi.stubEnv("VITE_QA_BYPASS_X_SHARE_CONNECTOR", "");
   window.location.href = "http://localhost/";
 });
 
 function setupChatThread({
   featureSwitches,
+  imageEditSnapshotReady,
+  onImageEditSnapshotDelete,
+  onImageEditSnapshotGet,
+  onImageEditSnapshotUpsert,
   path = `${THREAD_PATH}?artifact=${encodeURIComponent(SOURCE_IMAGE_URL)}`,
+  persistedImageEditSnapshot = null,
 }: {
   featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
+  imageEditSnapshotReady?: Promise<void>;
+  onImageEditSnapshotDelete?: (query: { readonly url: string }) => void;
+  onImageEditSnapshotGet?: (query: { readonly url: string }) => void;
+  onImageEditSnapshotUpsert?: (body: {
+    readonly snapshot: ImageArtifactEditSnapshotState;
+    readonly url: string;
+  }) => void;
   path?: string;
+  persistedImageEditSnapshot?: ImageArtifactEditSnapshotState | null;
 }): void {
   context.mocks.data.team([
     {
@@ -147,6 +148,46 @@ function setupChatThread({
     }
     return respond(200, { messages, hasHistoryBefore: false });
   });
+  let currentPersistedImageEditSnapshot = persistedImageEditSnapshot;
+  context.mocks.api(
+    artifactsContract.getImageEditSnapshot,
+    async ({ query, respond }) => {
+      if (imageEditSnapshotReady) {
+        await imageEditSnapshotReady;
+      }
+      onImageEditSnapshotGet?.(query);
+      const snapshot = currentPersistedImageEditSnapshot;
+      return respond(200, {
+        snapshot: snapshot
+          ? {
+              artifactUrl: query.url,
+              snapshot,
+              updatedAt: "2026-03-10T00:00:03.000Z",
+            }
+          : null,
+      });
+    },
+  );
+  context.mocks.api(
+    artifactsContract.upsertImageEditSnapshot,
+    ({ body, respond }) => {
+      currentPersistedImageEditSnapshot = body.snapshot;
+      onImageEditSnapshotUpsert?.(body);
+      return respond(200, {
+        artifactUrl: body.url,
+        snapshot: body.snapshot,
+        updatedAt: "2026-03-10T00:00:03.000Z",
+      });
+    },
+  );
+  context.mocks.api(
+    artifactsContract.deleteImageEditSnapshot,
+    ({ query, respond }) => {
+      currentPersistedImageEditSnapshot = null;
+      onImageEditSnapshotDelete?.(query);
+      return respond(204);
+    },
+  );
 
   detachedSetupPage({
     context,
@@ -207,45 +248,6 @@ interface MockUploadResult {
   readonly id: string;
   readonly size: number;
   readonly url: string;
-}
-
-interface MockComposerWindow {
-  closed: boolean;
-  location: {
-    href: string;
-  };
-  opener: unknown;
-  close: () => void;
-}
-
-function createMockComposerWindow(): Window & MockComposerWindow {
-  const windowRef: MockComposerWindow = {
-    closed: false,
-    location: { href: "about:blank" },
-    opener: {},
-    close: () => {
-      windowRef.closed = true;
-    },
-  };
-  return windowRef as Window & MockComposerWindow;
-}
-
-function mockXShareCardUpload(cardUrl = X_SHARE_CARD_URL): string[] {
-  const uploadedHtml: string[] = [];
-  context.mocks.api(
-    zeroUploadsContract.htmlDomEditSnapshot,
-    ({ body, respond }) => {
-      uploadedHtml.push(body.html);
-      return respond(200, {
-        id: "x-share-card-upload",
-        filename: body.filename,
-        contentType: "text/html",
-        size: body.html.length,
-        url: cardUrl,
-      });
-    },
-  );
-  return uploadedHtml;
 }
 
 function mockSequentialUploads(results: readonly MockUploadResult[]): void {
@@ -315,123 +317,6 @@ function mockPendingImageEditGeneration(
       completedAt: null,
     });
   });
-}
-
-function xConnectorStatusItem(args?: {
-  authMethod?: string;
-  connected?: boolean;
-  connectionStatus?:
-    | "not-connected"
-    | "connected"
-    | "scope-mismatch"
-    | "reconnect-required";
-  externalUsername?: string | null;
-  grantKind?: "auth-code" | "openid-auth";
-}): PublicConnectorCatalogStatusItem {
-  const authMethod = args?.authMethod ?? "oauth";
-  const connected = args?.connected ?? false;
-  const connectionStatus = args?.connectionStatus ?? "not-connected";
-  const grantKind = args?.grantKind ?? "auth-code";
-  return {
-    connectorRef: "x",
-    label: "X",
-    description: "Connect your X account",
-    icon: {
-      url: "https://icons.example.test/x.svg",
-      invertInDarkMode: false,
-    },
-    category: "marketing-content-growth",
-    generation: [],
-    tags: [],
-    authMethods: [
-      {
-        id: authMethod,
-        label: "OAuth",
-        description: null,
-        grantKind,
-        manualFields: [],
-        startOptions: [],
-      },
-    ],
-    permissionSummary: {
-      hasPermissions: true,
-      permissionCount: 2,
-      hasCategories: false,
-      hasDefaultPolicyOverrides: false,
-    },
-    connection: connected
-      ? {
-          authMethod,
-          externalUsername: args?.externalUsername ?? "zero_user",
-          externalEmail: null,
-          reconnectReason: null,
-        }
-      : null,
-    connected,
-    connectionStatus,
-    scopeMismatch: connectionStatus === "scope-mismatch",
-    authMethodSupportsRefresh: true,
-    tokenExpiresAt: null,
-    singleAuthCodeAuthMethodId: grantKind === "auth-code" ? authMethod : null,
-    connectNotice: null,
-  };
-}
-
-function mockXConnectorStatus(
-  args?: Parameters<typeof xConnectorStatusItem>[0],
-  onStatus?: () => Promise<void> | void,
-): void {
-  context.mocks.api(
-    zeroConnectorCatalogContract.status,
-    async ({ respond }) => {
-      await onStatus?.();
-      return respond(200, { connectors: [xConnectorStatusItem(args)] });
-    },
-  );
-}
-
-function mockShareImageToX(
-  onPost?: (body: { caption?: string; imageUrl: string }) => void,
-): void {
-  context.mocks.api(zeroImageShareXContract.post, ({ body, respond }) => {
-    onPost?.(body);
-    return respond(200, {
-      tweetId: "1234567890",
-      tweetUrl: "https://x.com/i/web/status/1234567890",
-    });
-  });
-}
-
-function expectXComposerSharesCdnCardUrl(
-  composerUrl: URL,
-  cardUrl = X_SHARE_CARD_URL,
-): void {
-  expect(composerUrl.origin).toBe("https://x.com");
-  expect(composerUrl.pathname).toBe("/intent/tweet");
-  expect(composerUrl.searchParams.get("url")).toBe(cardUrl);
-}
-
-function expectXShareCardHtml(html: string): void {
-  expect(html).toContain(
-    '<meta name="twitter:card" content="summary_large_image">',
-  );
-  expect(html).toContain(
-    `<meta name="twitter:image" content="${SOURCE_IMAGE_URL}">`,
-  );
-  expect(html).toContain(
-    `<meta property="og:image" content="${SOURCE_IMAGE_URL}">`,
-  );
-  expect(html).toContain(`<img src="${SOURCE_IMAGE_URL}"`);
-}
-
-function getButtonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((element) => {
-    return element.textContent === text;
-  });
-  if (!button) {
-    throw new Error(`Missing ${text} button`);
-  }
-  return button;
 }
 
 const MARKED_DATA_URI = "data:image/png;base64,bWFya2Vk";
@@ -559,6 +444,60 @@ function mockElementClientSize(
   });
 }
 
+function domRect({
+  height,
+  left = 0,
+  top = 0,
+  width,
+}: {
+  readonly height: number;
+  readonly left?: number;
+  readonly top?: number;
+  readonly width: number;
+}): DOMRect {
+  return {
+    bottom: top + height,
+    height,
+    left,
+    right: left + width,
+    toJSON: () => {
+      return {};
+    },
+    top,
+    width,
+    x: left,
+    y: top,
+  };
+}
+
+function mockElementLayoutBox(
+  element: HTMLElement,
+  rect: {
+    readonly height: number;
+    readonly left?: number;
+    readonly top?: number;
+    readonly width: number;
+  },
+): void {
+  Object.defineProperties(element, {
+    clientHeight: { configurable: true, value: rect.height },
+    clientWidth: { configurable: true, value: rect.width },
+    offsetHeight: { configurable: true, value: rect.height },
+    offsetWidth: { configurable: true, value: rect.width },
+  });
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return domRect(rect);
+    },
+  });
+}
+
+function transformNumbers(transform: string): readonly number[] {
+  const matches = transform.match(/-?\d+(?:\.\d+)?/g);
+  return matches?.map(Number) ?? [];
+}
+
 function mockImageNaturalSize(
   image: HTMLImageElement,
   size: { readonly height: number; readonly width: number },
@@ -609,6 +548,45 @@ async function openSelectedImageEditToolbar(
   });
 }
 
+async function exitImageEditMode(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await user.click(screen.getByTestId("artifact-sidebar-exit-image-edit"));
+  await waitFor(() => {
+    expect(
+      screen.queryByTestId("artifact-sidebar-image-edit-canvas"),
+    ).toBeNull();
+  });
+}
+
+async function reopenImageEditMode(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  const visibleEditButton = screen.queryByTestId("image-edit-open");
+  if (visibleEditButton instanceof HTMLElement) {
+    await user.click(visibleEditButton);
+  } else {
+    await user.click(screen.getByLabelText("Preview source.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-open")).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId("image-edit-open"));
+  }
+
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("artifact-sidebar-image-edit-canvas"),
+    ).toBeInTheDocument();
+  });
+}
+
+async function exitAndReopenImageEditMode(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await exitImageEditMode(user);
+  await reopenImageEditMode(user);
+}
+
 async function createRegionComment(
   user: ReturnType<typeof userEvent.setup>,
   instruction: string,
@@ -657,7 +635,14 @@ async function createRegionComment(
 describe("image editing", () => {
   it("adds a remove-background result for the selected canvas image", async () => {
     const user = userEvent.setup({ delay: null });
-    mockImageEditGeneration();
+    const requests: {
+      model?: string;
+      prompt?: string;
+      sourceImageUrls?: readonly string[];
+    }[] = [];
+    mockImageEditGeneration((body) => {
+      requests.push(body);
+    });
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
     });
@@ -679,8 +664,8 @@ describe("image editing", () => {
       "image-edit-remove-background",
       "image-edit-enhance",
       "image-edit-style-transfer",
-      "image-edit-share-download-group",
-      "image-edit-share",
+      "image-edit-copy-download-group",
+      "image-edit-copy-link",
       "image-edit-download",
       "image-edit-delete",
     ]);
@@ -708,23 +693,23 @@ describe("image editing", () => {
       "image-edit-style-transfer",
     ]);
     expect(
-      screen.getByTestId("image-edit-share-download-group"),
+      screen.getByTestId("image-edit-copy-download-group"),
     ).toHaveAttribute("role", "group");
-    expect(screen.getByTestId("image-edit-share-download-group")).toHaveClass(
+    expect(screen.getByTestId("image-edit-copy-download-group")).toHaveClass(
       "overflow-hidden",
       "rounded-lg",
     );
     expect(
       Array.from(
         screen
-          .getByTestId("image-edit-share-download-group")
+          .getByTestId("image-edit-copy-download-group")
           .querySelectorAll("[data-testid]"),
       ).map((element) => {
         return element instanceof HTMLElement
           ? element.dataset.testid
           : undefined;
       }),
-    ).toStrictEqual(["image-edit-share", "image-edit-download"]);
+    ).toStrictEqual(["image-edit-copy-link", "image-edit-download"]);
     expect(screen.getByTestId("image-edit-remove-background")).toHaveAttribute(
       "aria-label",
       "Remove background",
@@ -737,6 +722,10 @@ describe("image editing", () => {
       "aria-label",
       "Download",
     );
+    expect(screen.getByTestId("image-edit-copy-link")).toHaveAttribute(
+      "aria-label",
+      "Copy link",
+    );
     expect(screen.getByTestId("image-edit-style-transfer")).toHaveAttribute(
       "aria-label",
       "Style Transfer",
@@ -748,6 +737,66 @@ describe("image editing", () => {
       "src",
       SOURCE_IMAGE_URL,
     );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+    expect(requests).toStrictEqual([
+      {
+        model: "birefnet",
+        sourceImageUrls: [SOURCE_IMAGE_URL],
+      },
+    ]);
+  });
+
+  it("uses the dedicated promptless upscaler when enhancing an image", async () => {
+    const user = userEvent.setup({ delay: null });
+    const requests: {
+      model?: string;
+      prompt?: string;
+      sourceImageUrls?: readonly string[];
+    }[] = [];
+    mockImageEditGeneration((body) => {
+      requests.push(body);
+    });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-enhance"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+    expect(requests).toStrictEqual([
+      {
+        model: "clarity-upscaler",
+        sourceImageUrls: [SOURCE_IMAGE_URL],
+      },
+    ]);
+  });
+
+  it("restores a generated image after exiting and reopening image edit mode", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockImageEditGeneration();
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-remove-background"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+
+    await exitAndReopenImageEditMode(user);
+
     await waitFor(() => {
       expect(
         screen.getByTestId("artifact-sidebar-body-image-copy"),
@@ -1238,6 +1287,198 @@ describe("image editing", () => {
     });
   });
 
+  it("does not restore a deleted generated image after reopening", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockImageEditGeneration();
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-remove-background"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+
+    await user.click(screen.getByTestId("image-edit-delete"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("artifact-sidebar-body-image-copy"),
+      ).toBeNull();
+    });
+
+    await exitAndReopenImageEditMode(user);
+
+    expect(screen.queryByTestId("artifact-sidebar-body-image-copy")).toBeNull();
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "src",
+      SOURCE_IMAGE_URL,
+    );
+  });
+
+  it("does not touch persistence when exiting an unmodified source image", async () => {
+    const user = userEvent.setup({ delay: null });
+    const deletedSnapshots: { readonly url: string }[] = [];
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotDelete: (query) => {
+        deletedSnapshots.push(query);
+      },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
+    });
+
+    await openImageEditMode(user);
+    await exitImageEditMode(user);
+
+    expect(savedSnapshots).toStrictEqual([]);
+    expect(deletedSnapshots).toStrictEqual([]);
+  });
+
+  it("persists a moved source image when exiting edit mode and closing the sidebar", async () => {
+    const user = userEvent.setup({ delay: null });
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
+    });
+
+    await openImageEditMode(user);
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    fireEvent.pointerDown(image, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 140 });
+    fireEvent.pointerUp(window);
+    expect(image).toHaveStyle({ left: "470px", top: "370px" });
+
+    await user.click(screen.getByTestId("artifact-sidebar-exit-image-edit"));
+    await user.click(screen.getByTestId("artifact-sidebar-close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).toBeNull();
+    });
+
+    await waitFor(() => {
+      expect(savedSnapshots.at(-1)?.snapshot.items).toStrictEqual([
+        { url: SOURCE_IMAGE_URL, x: 470, y: 370, zIndex: 1 },
+      ]);
+    });
+  });
+
+  it("keeps a local move when persisted restore finishes later", async () => {
+    const user = userEvent.setup({ delay: null });
+    const snapshotReady = createDeferredPromise<void>(context.signal);
+    const loadedSnapshotUrls: string[] = [];
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      imageEditSnapshotReady: snapshotReady.promise,
+      onImageEditSnapshotGet: ({ url }) => {
+        loadedSnapshotUrls.push(url);
+      },
+      persistedImageEditSnapshot: {
+        items: [{ url: SOURCE_IMAGE_URL, x: 250, y: 180, zIndex: 1 }],
+        version: 1,
+      },
+    });
+
+    await openImageEditMode(user);
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    fireEvent.pointerDown(image, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 140 });
+    fireEvent.pointerUp(window);
+    expect(image).toHaveStyle({ left: "470px", top: "370px" });
+
+    snapshotReady.resolve();
+    await waitFor(() => {
+      expect(loadedSnapshotUrls).toContain(SOURCE_IMAGE_URL);
+    });
+    expect(image).toHaveStyle({ left: "470px", top: "370px" });
+  });
+
+  it("clears persisted snapshot after deleting back to only the source image", async () => {
+    const user = userEvent.setup({ delay: null });
+    const deletedSnapshots: { readonly url: string }[] = [];
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    mockImageEditGeneration();
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotDelete: (query) => {
+        deletedSnapshots.push(query);
+      },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-remove-background"));
+    await waitFor(() => {
+      expect(savedSnapshots.at(-1)?.snapshot.items).toHaveLength(2);
+    });
+
+    await user.click(screen.getByTestId("image-edit-delete"));
+    await waitFor(() => {
+      expect(deletedSnapshots).toContainEqual({ url: SOURCE_IMAGE_URL });
+    });
+    expect(savedSnapshots.at(-1)?.snapshot.items).toHaveLength(2);
+  });
+
+  it("restores the source image after the last image is deleted", async () => {
+    const user = userEvent.setup({ delay: null });
+    const deletedSnapshots: { readonly url: string }[] = [];
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotDelete: (query) => {
+        deletedSnapshots.push(query);
+      },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
+      persistedImageEditSnapshot: {
+        items: [{ url: SOURCE_IMAGE_URL, x: 440, y: 330, zIndex: 1 }],
+        version: 1,
+      },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-delete"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
+    });
+    await waitFor(() => {
+      expect(deletedSnapshots).toContainEqual({ url: SOURCE_IMAGE_URL });
+    });
+    expect(savedSnapshots).toStrictEqual([]);
+
+    await exitAndReopenImageEditMode(user);
+
+    expect(
+      screen.getByTestId("artifact-sidebar-image-edit-canvas"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "src",
+      SOURCE_IMAGE_URL,
+    );
+    expect(screen.queryByTestId("artifact-sidebar-body-image-copy")).toBeNull();
+  });
+
   it("applies template and described style transfer prompts", async () => {
     const user = userEvent.setup({ delay: null });
     const prompts: string[] = [];
@@ -1487,22 +1728,21 @@ describe("image editing", () => {
     expect(screen.queryByTestId("image-edit-upload-link-add")).toBeNull();
   });
 
-  it("exposes share targets and delete from the image edit toolbar", async () => {
+  it("copies the image link and deletes from the image edit toolbar", async () => {
     const user = userEvent.setup({ delay: null });
+    const clipboard = context.mocks.browser.clipboardWriteText();
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
     });
 
     await openSelectedImageEditToolbar(user);
 
-    await user.click(screen.getByTestId("image-edit-share"));
+    await user.click(screen.getByTestId("image-edit-copy-link"));
     await waitFor(() => {
-      expect(screen.getByText("Share to X")).toBeInTheDocument();
-      expect(screen.getByText("Share to Instagram")).toBeInTheDocument();
-      expect(screen.getByText("Share to Slack")).toBeInTheDocument();
+      expect(clipboard.writes).toStrictEqual([SOURCE_IMAGE_URL]);
+      expect(screen.getByText("Link copied")).toBeInTheDocument();
     });
 
-    await user.keyboard("{Escape}");
     await user.click(screen.getByTestId("image-edit-delete"));
     await waitFor(() => {
       expect(screen.queryByTestId("image-edit-toolbar")).toBeNull();
@@ -1511,195 +1751,6 @@ describe("image editing", () => {
       screen.getByTestId("artifact-sidebar-image-edit-canvas"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
-  });
-
-  it("starts X connection from server catalog auth metadata", async () => {
-    const user = userEvent.setup({ delay: null });
-    const authMethod = "partner-openid";
-    const authorizationUrl = "https://openid.example.test/x/authorize";
-    const authWindow = context.mocks.browser.authWindow();
-    Object.defineProperty(authWindow, "location", {
-      value: { href: "" },
-      configurable: true,
-    });
-    context.mocks.browser.open(authWindow);
-    mockXConnectorStatus({
-      authMethod,
-      connected: false,
-      grantKind: "openid-auth",
-    });
-    context.mocks.api(
-      zeroConnectorOpenIdStartContract.start,
-      ({ body, params, respond }) => {
-        expect(params.type).toBe("x");
-        expect(body.authMethod).toBe(authMethod);
-        return respond(200, { authorizationUrl });
-      },
-    );
-    setupChatThread({
-      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
-    });
-
-    await openSelectedImageEditToolbar(user);
-    await user.click(screen.getByTestId("image-edit-share"));
-    await user.click(screen.getByTestId("image-edit-share-x"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("image-edit-share-x-dialog"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Connect X")).toBeInTheDocument();
-    expect(
-      screen.getByText("Connect X once, then share this image from Zero."),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("image-edit-share-x-caption"),
-    ).not.toBeInTheDocument();
-    await user.click(getButtonByText("Connect X"));
-
-    await waitFor(() => {
-      expect(authWindow.location.href).toBe(authorizationUrl);
-    });
-  });
-
-  it("posts the image to X with native media when X is connected", async () => {
-    const user = userEvent.setup({ delay: null });
-    let statusLoaded = false;
-    let postedBody: { caption?: string; imageUrl: string } | null = null;
-    mockShareImageToX((body) => {
-      postedBody = body;
-    });
-    mockXConnectorStatus(
-      {
-        connected: true,
-        connectionStatus: "connected",
-        externalUsername: "zero_user",
-      },
-      () => {
-        statusLoaded = true;
-      },
-    );
-    setupChatThread({
-      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
-    });
-
-    await openSelectedImageEditToolbar(user);
-    await waitFor(() => {
-      expect(statusLoaded).toBeTruthy();
-    });
-    await user.click(screen.getByTestId("image-edit-share"));
-    await user.click(screen.getByTestId("image-edit-share-x"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("image-edit-share-x-dialog"),
-      ).toBeInTheDocument();
-    });
-    await user.type(
-      screen.getByTestId("image-edit-share-x-caption"),
-      "Edited with Zero",
-    );
-    await user.click(getButtonByText("Post to X"));
-
-    await waitFor(() => {
-      expect(postedBody).toStrictEqual({
-        caption: "Edited with Zero",
-        imageUrl: SOURCE_IMAGE_URL,
-      });
-    });
-  });
-
-  it("opens X composer from the share dialog when the QA bypass is enabled", async () => {
-    const user = userEvent.setup({ delay: null });
-    const openedWindow = createMockComposerWindow();
-    const openMock = context.mocks.browser.open(openedWindow);
-    const uploadedHtml = mockXShareCardUpload();
-    vi.stubEnv("VITE_QA_BYPASS_X_SHARE_CONNECTOR", "true");
-    mockXConnectorStatus({ connected: false });
-    setupChatThread({
-      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
-    });
-
-    await openSelectedImageEditToolbar(user);
-    await user.click(screen.getByTestId("image-edit-share"));
-    await user.click(screen.getByTestId("image-edit-share-x"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("image-edit-share-x-dialog"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("QA sharing bypass enabled")).toBeInTheDocument();
-    await user.click(getButtonByText("Open X composer"));
-
-    await waitFor(() => {
-      expect(openMock.calls).toHaveLength(1);
-      expect(uploadedHtml).toHaveLength(1);
-    });
-    const composerCall = openMock.calls[0];
-    if (!composerCall) {
-      throw new Error("Missing X composer window call");
-    }
-    expect(composerCall.url).toBe("about:blank");
-    expect(composerCall.target).toBe("_blank");
-    expect(openedWindow.opener).toBeNull();
-    expectXShareCardHtml(uploadedHtml[0] ?? "");
-    expectXComposerSharesCdnCardUrl(new URL(openedWindow.location.href));
-  });
-
-  it("waits for X status before deciding whether to connect", async () => {
-    const user = userEvent.setup({ delay: null });
-    const statusReady = createDeferredPromise<void>(context.signal);
-    let postedBody: { caption?: string; imageUrl: string } | null = null;
-    mockShareImageToX((body) => {
-      postedBody = body;
-    });
-    mockXConnectorStatus(
-      {
-        connected: true,
-        connectionStatus: "connected",
-        externalUsername: "zero_user",
-      },
-      () => {
-        return statusReady.promise;
-      },
-    );
-    setupChatThread({
-      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
-    });
-
-    await openSelectedImageEditToolbar(user);
-    await user.click(screen.getByTestId("image-edit-share"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Checking X")).toBeInTheDocument();
-    });
-    expect(screen.getByTestId("image-edit-share-x")).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.queryByTestId("image-edit-share-x-dialog")).toBeNull();
-
-    statusReady.resolve();
-
-    await waitFor(() => {
-      expect(screen.queryByText("Checking X")).toBeNull();
-    });
-    await user.click(screen.getByTestId("image-edit-share-x"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("image-edit-share-x-dialog"),
-      ).toBeInTheDocument();
-    });
-    await user.click(getButtonByText("Post to X"));
-
-    await waitFor(() => {
-      expect(postedBody).toStrictEqual({
-        imageUrl: SOURCE_IMAGE_URL,
-      });
-    });
   });
 
   it("adds multiple uploaded local images to the edit canvas", async () => {
@@ -1732,6 +1783,18 @@ describe("image editing", () => {
       new File(["local"], "local.png", { type: "image/png" }),
       new File(["local-second"], "local-second.png", { type: "image/png" }),
     ]);
+
+    await waitFor(() => {
+      const copyImageUrls = screen
+        .getAllByTestId("artifact-sidebar-body-image-copy")
+        .map((image) => {
+          return image.getAttribute("src");
+        });
+      expect(copyImageUrls).toContain(UPLOADED_IMAGE_URL);
+      expect(copyImageUrls).toContain(SECOND_UPLOADED_IMAGE_URL);
+    });
+
+    await exitAndReopenImageEditMode(user);
 
     await waitFor(() => {
       const copyImageUrls = screen
@@ -1821,11 +1884,175 @@ describe("image editing", () => {
     if (!(image instanceof HTMLImageElement)) {
       throw new Error("Expected the edit canvas image to be an image element");
     }
+    expect(image.style.opacity).toBe("0");
     mockImageNaturalSize(image, { height: 900, width: 1200 });
     fireEvent.load(image);
 
     await waitFor(() => {
       expect(image).toHaveStyle({ height: "252px", width: "336px" });
+    });
+    expect(image.style.opacity).toBe("");
+  });
+
+  it("fits restored edit canvas items into the viewport", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      persistedImageEditSnapshot: {
+        items: [
+          { url: SOURCE_IMAGE_URL, x: 0, y: 0, zIndex: 1 },
+          { url: EDITED_IMAGE_URL, x: 1200, y: 900, zIndex: 2 },
+        ],
+        version: 1,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "source.png",
+      );
+    });
+
+    await user.click(screen.getByTestId("artifact-sidebar-edit-image"));
+    const canvas = await screen.findByTestId(
+      "artifact-sidebar-image-edit-canvas",
+    );
+    mockElementClientSize(canvas, { height: 500, width: 500 });
+
+    const transformWrapper = canvas.querySelector<HTMLElement>(
+      ".react-transform-wrapper",
+    );
+    const transformContent = canvas.querySelector<HTMLElement>(
+      ".react-transform-component",
+    );
+    const surface = screen.getByTestId(
+      "artifact-sidebar-image-edit-canvas-surface",
+    );
+    if (transformWrapper === null || transformContent === null) {
+      throw new Error("Expected edit canvas transform elements");
+    }
+    mockElementLayoutBox(transformWrapper, { height: 500, width: 500 });
+    mockElementLayoutBox(transformContent, {
+      height: 1200,
+      width: 1600,
+    });
+    mockElementLayoutBox(surface, {
+      height: 1200,
+      left: 64,
+      top: 64,
+      width: 1600,
+    });
+
+    const sourceImage = screen.getByTestId("artifact-sidebar-body-image");
+    const restoredImage = await screen.findByTestId(
+      "artifact-sidebar-body-image-copy",
+    );
+    if (
+      !(sourceImage instanceof HTMLImageElement) ||
+      !(restoredImage instanceof HTMLImageElement)
+    ) {
+      throw new Error("Expected restored canvas items to be image elements");
+    }
+    mockImageNaturalSize(sourceImage, { height: 900, width: 1200 });
+    mockImageNaturalSize(restoredImage, { height: 900, width: 1200 });
+    fireEvent.load(sourceImage);
+    fireEvent.load(restoredImage);
+
+    const expectedScale = Number.parseFloat((452 / 1652).toFixed(8));
+    const expectedX = 250 - (64 + 826) * expectedScale;
+    const expectedY = 250 - (64 + 619.5) * expectedScale;
+    await waitFor(() => {
+      expect(transformContent.style.transform).toContain(
+        `scale(${expectedScale})`,
+      );
+    });
+    const [x, y, scale] = transformNumbers(transformContent.style.transform);
+    expect(x).toBeCloseTo(expectedX, 4);
+    expect(y).toBeCloseTo(expectedY, 4);
+    expect(scale).toBeCloseTo(expectedScale, 8);
+  });
+
+  it("refits edit canvas item dimensions after entering fullscreen", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "source.png",
+      );
+    });
+
+    await user.click(screen.getByTestId("artifact-sidebar-edit-image"));
+    const sidebarCanvas = await screen.findByTestId(
+      "artifact-sidebar-image-edit-canvas",
+    );
+    mockElementClientSize(sidebarCanvas, { height: 300, width: 400 });
+    const sidebarImage = screen.getByTestId("artifact-sidebar-body-image");
+    if (!(sidebarImage instanceof HTMLImageElement)) {
+      throw new Error("Expected sidebar edit canvas item to be an image");
+    }
+    mockImageNaturalSize(sidebarImage, { height: 900, width: 1200 });
+    fireEvent.load(sidebarImage);
+    await waitFor(() => {
+      expect(sidebarImage).toHaveStyle({ height: "252px", width: "336px" });
+    });
+
+    await user.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-fullscreen-toggle"),
+      ).toHaveAttribute("aria-label", "Exit fullscreen");
+    });
+
+    const fullscreenCanvas = screen.getByTestId(
+      "artifact-sidebar-image-edit-canvas",
+    );
+    mockElementClientSize(fullscreenCanvas, { height: 900, width: 1200 });
+    const transformWrapper = fullscreenCanvas.querySelector<HTMLElement>(
+      ".react-transform-wrapper",
+    );
+    const transformContent = fullscreenCanvas.querySelector<HTMLElement>(
+      ".react-transform-component",
+    );
+    const surface = screen.getByTestId(
+      "artifact-sidebar-image-edit-canvas-surface",
+    );
+    if (transformWrapper === null || transformContent === null) {
+      throw new Error("Expected fullscreen edit canvas transform elements");
+    }
+    mockElementLayoutBox(transformWrapper, { height: 900, width: 1200 });
+    mockElementLayoutBox(transformContent, {
+      height: 1200,
+      width: 1600,
+    });
+    mockElementLayoutBox(surface, {
+      height: 1200,
+      left: 64,
+      top: 64,
+      width: 1600,
+    });
+
+    const fullscreenImage = screen.getByTestId("artifact-sidebar-body-image");
+    if (!(fullscreenImage instanceof HTMLImageElement)) {
+      throw new Error("Expected fullscreen edit canvas item to be an image");
+    }
+    expect(fullscreenImage.style.opacity).toBe("0");
+    mockImageNaturalSize(fullscreenImage, { height: 900, width: 1200 });
+    fireEvent.load(fullscreenImage);
+
+    await waitFor(() => {
+      expect(fullscreenImage).toHaveStyle({
+        height: "852px",
+        width: "1136px",
+      });
+    });
+    expect(fullscreenImage.style.opacity).toBe("");
+    await waitFor(() => {
+      expect(transformContent.style.transform).toContain("scale(1)");
     });
   });
 
@@ -1929,8 +2156,15 @@ describe("image editing", () => {
 
   it("moves and duplicates the selected image on the edit canvas", async () => {
     const user = userEvent.setup({ delay: null });
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
     });
 
     await waitFor(() => {
@@ -1959,6 +2193,19 @@ describe("image editing", () => {
     fireEvent.pointerUp(window);
 
     expect(image).toHaveStyle({ left: "470px", top: "370px" });
+
+    await exitAndReopenImageEditMode(user);
+    await waitFor(() => {
+      expect(savedSnapshots.at(-1)?.snapshot.items).toStrictEqual([
+        { url: SOURCE_IMAGE_URL, x: 470, y: 370, zIndex: 1 },
+      ]);
+    });
+    const restoredImage = screen.getByTestId("artifact-sidebar-body-image");
+    expect(restoredImage).toHaveStyle({ left: "470px", top: "370px" });
+    await user.click(restoredImage);
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
+    });
 
     fireEvent.keyDown(
       screen.getByTestId("artifact-sidebar-image-edit-canvas"),

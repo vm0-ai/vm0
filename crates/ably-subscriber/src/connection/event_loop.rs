@@ -19,14 +19,77 @@ use super::message::{decode_data, message_targets_channel};
 use super::session::{SessionState, TokenRenewalFailure};
 use super::state::{ChannelLifecycleState, reconnect_spacing_delay, retry_delay};
 use super::transport::{
-    WsRead, WsTransport, WsWrite, connect_and_split, websocket_close_frame_reason,
-    websocket_close_reason, websocket_error_reason,
+    WsTransport, connect_pending, websocket_close_frame_reason, websocket_close_reason,
+    websocket_error_reason,
 };
 use crate::Error;
 use crate::protocol::{
     AuthDetails, ProtocolMessage, action, decode_msg, encode_msg, error_code, flags,
 };
 use crate::types::{Event, Message, TimingConfig, TokenDetails, TokenFuture};
+
+const DROP_WARNING_INTERVAL: Duration = Duration::from_secs(60);
+
+#[derive(Default)]
+pub(crate) struct DropWarningState {
+    total_dropped: u64,
+    reported_dropped: u64,
+    last_reported_at: Option<Instant>,
+    report_at: Option<Instant>,
+}
+
+struct DropWarningReport {
+    dropped_since_last: u64,
+    total_dropped: u64,
+}
+
+impl DropWarningState {
+    fn record_drop(&mut self) -> Option<DropWarningReport> {
+        self.total_dropped += 1;
+        if self.report_at.is_some() {
+            return None;
+        }
+
+        let now = Instant::now();
+        let Some(last_reported_at) = self.last_reported_at else {
+            return Some(self.take_report(now));
+        };
+        let report_at = last_reported_at + DROP_WARNING_INTERVAL;
+        if now >= report_at {
+            return Some(self.take_report(now));
+        }
+
+        self.report_at = Some(report_at);
+        None
+    }
+
+    fn report_at(&self) -> Option<Instant> {
+        self.report_at
+    }
+
+    fn take_due_report(&mut self) -> DropWarningReport {
+        self.take_report(Instant::now())
+    }
+
+    fn take_report(&mut self, now: Instant) -> DropWarningReport {
+        let report = DropWarningReport {
+            dropped_since_last: self.total_dropped - self.reported_dropped,
+            total_dropped: self.total_dropped,
+        };
+        self.reported_dropped = self.total_dropped;
+        self.last_reported_at = Some(now);
+        self.report_at = None;
+        report
+    }
+}
+
+fn warn_dropped_messages(report: DropWarningReport) {
+    tracing::warn!(
+        dropped_since_last = report.dropped_since_last,
+        total_dropped = report.total_dropped,
+        "event channel full, dropping message"
+    );
+}
 
 pub(crate) struct EventLoopState {
     pub transport: Option<WsTransport>,
@@ -39,7 +102,7 @@ pub(crate) struct EventLoopState {
     pub http: reqwest::Client,
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
     pub timing: TimingConfig,
-    pub dropped_messages: u64,
+    pub drop_warnings: DropWarningState,
 }
 
 async fn sleep_until_optional(deadline: Option<Instant>) {
@@ -95,8 +158,8 @@ async fn send_close_message(p: &mut EventLoopState) {
     p.session.mark_closed();
 }
 
-// Reconnect paths should only close the current WebSocket transport. Sending
-// Ably CLOSE here would terminate the resumable connection state on the server.
+// Transport-only shutdown paths must not send Ably CLOSE, which would terminate
+// resumable connection state or duplicate a server-declared CLOSED transition.
 //
 // The transport is detached synchronously so status events and reconnects are
 // not delayed by a slow close handshake. The bounded background close still
@@ -105,24 +168,7 @@ fn close_websocket_transport(p: &mut EventLoopState) {
     let Some(transport) = p.transport.take() else {
         return;
     };
-    let WsTransport {
-        ws_read: _ws_read,
-        mut ws_write,
-    } = transport;
-    let close_timeout = p.timing.close_timeout;
-    let close_task = tokio::spawn(async move {
-        let result = tokio::time::timeout(close_timeout, async move {
-            let _ = ws_write.close().await;
-        })
-        .await;
-        if result.is_err() {
-            tracing::warn!(
-                timeout_ms = close_timeout.as_millis(),
-                "Timed out while closing websocket transport"
-            );
-        }
-    });
-    drop(close_task);
+    transport.close_in_background(p.timing.close_timeout);
 }
 
 async fn send_status_event(
@@ -210,6 +256,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 }
             }
 
+            let drop_warning_deadline = p.drop_warnings.report_at();
             let Some(transport) = p.transport.as_mut() else {
                 tracing::warn!("WebSocket transport missing before receive loop");
                 break;
@@ -224,6 +271,10 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
                 _ = sleep_until_optional(p.session.token_renewal_at()), if p.session.token_renewal_at().is_some() => {
                     ReceiveLoopEvent::TokenRenewal
+                }
+
+                _ = sleep_until_optional(drop_warning_deadline), if drop_warning_deadline.is_some() => {
+                    ReceiveLoopEvent::DropWarningDeadline
                 }
 
                 frame = transport.ws_read.next() => {
@@ -266,6 +317,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     if handle_renewal_result(&mut p, &mut close_rx, result).await {
                         return;
                     }
+                }
+                ReceiveLoopEvent::DropWarningDeadline => {
+                    warn_dropped_messages(p.drop_warnings.take_due_report());
                 }
                 ReceiveLoopEvent::ChannelOperationDeadline => {
                     if let Some(attach_timed_out) =
@@ -462,8 +516,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     connected_msg,
                     channel_serial,
                     token,
-                    ws_read,
-                    ws_write,
+                    transport,
                 }) => {
                     p.session.commit_reconnect_attached(
                         &connected_msg,
@@ -471,7 +524,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                         token,
                         p.timing.token_renewal_margin,
                     );
-                    p.transport = Some(WsTransport::new(ws_read, ws_write));
+                    p.transport = Some(transport);
                     if !send_status_event(&mut p, &mut close_rx, Event::Connected, "connected")
                         .await
                     {
@@ -482,8 +535,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 Ok(ReconnectOutcome::ChannelSuspended {
                     connected_msg,
                     token,
-                    ws_read,
-                    ws_write,
+                    transport,
                 }) => {
                     p.session.commit_reconnect_channel_suspended(
                         &connected_msg,
@@ -491,7 +543,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                         p.timing.token_renewal_margin,
                         p.timing.channel_retry_timeout,
                     );
-                    p.transport = Some(WsTransport::new(ws_read, ws_write));
+                    p.transport = Some(transport);
                     continue 'outer;
                 }
                 Ok(ReconnectOutcome::Closed) => {
@@ -510,6 +562,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 enum ReceiveLoopEvent {
     CloseRequested,
     TokenRenewal,
+    DropWarningDeadline,
     ChannelOperationDeadline,
     ChannelRetry,
     Frame(Option<Result<tungstenite::Message, tungstenite::Error>>),
@@ -543,14 +596,12 @@ enum ReconnectOutcome {
         connected_msg: ProtocolMessage,
         channel_serial: Option<String>,
         token: Option<TokenDetails>,
-        ws_read: WsRead,
-        ws_write: WsWrite,
+        transport: WsTransport,
     },
     ChannelSuspended {
         connected_msg: ProtocolMessage,
         token: Option<TokenDetails>,
-        ws_read: WsRead,
-        ws_write: WsWrite,
+        transport: WsTransport,
     },
     Closed,
 }
@@ -657,11 +708,9 @@ async fn handle_message(
                             }));
                         }
                         Err(mpsc::error::TrySendError::Full(_)) => {
-                            p.dropped_messages += 1;
-                            tracing::warn!(
-                                total_dropped = p.dropped_messages,
-                                "event channel full, dropping message"
-                            );
+                            if let Some(report) = p.drop_warnings.record_drop() {
+                                warn_dropped_messages(report);
+                            }
                         }
                         Err(mpsc::error::TrySendError::Closed(_)) => {
                             return LoopAction::Stop;
@@ -776,6 +825,7 @@ async fn handle_message(
         action::CLOSED => {
             tracing::info!("Connection closed by server");
             p.session.mark_closed();
+            close_websocket_transport(p);
             return LoopAction::Stop;
         }
         action::AUTH => {
@@ -896,7 +946,7 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 /// caller moves the channel into suspended retry, matching ably-js.
 async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, Error> {
     let reconnect_timeout = p.timing.reconnect_timeout;
-    let (connected_msg, mut ws_read, mut ws_write, new_token) =
+    let (connected_msg, mut transport, new_token) =
         tokio::time::timeout(reconnect_timeout, async {
             let use_resume = p.session.can_resume();
 
@@ -920,9 +970,9 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             };
 
             let ws_url = build_ws_url(&p.realtime_host, &active_token, resume.as_deref())?;
-            let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
+            let mut transport = connect_pending(&ws_url, p.timing.close_timeout).await?;
 
-            let connected_msg = wait_for_connected(&mut ws_read).await?;
+            let connected_msg = wait_for_connected(transport.read_mut()?).await?;
 
             let resumed = use_resume
                 && connected_msg.connection_id.as_deref() == p.session.connection_id()
@@ -951,11 +1001,12 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
                 p.session.channel_serial(),
                 p.session.attach_mode(),
             )?;
-            ws_write
+            transport
+                .write_mut()?
                 .send(tungstenite::Message::Binary(data.into()))
                 .await?;
 
-            Ok::<_, Error>((connected_msg, ws_read, ws_write, new_token))
+            Ok::<_, Error>((connected_msg, transport, new_token))
         })
         .await
         .map_err(|_| Error::Protocol {
@@ -965,7 +1016,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
 
     let attach_outcome = match tokio::time::timeout(p.timing.realtime_request_timeout, async {
         loop {
-            match wait_for_attach_outcome(&mut ws_read, &p.channel).await? {
+            match wait_for_attach_outcome(transport.read_mut()?, &p.channel).await? {
                 AttachOutcome::RetryAttach(err) => {
                     tracing::warn!(
                         code = err.code,
@@ -978,7 +1029,8 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
                         p.session.channel_serial(),
                         p.session.attach_mode(),
                     )?;
-                    ws_write
+                    transport
+                        .write_mut()?
                         .send(tungstenite::Message::Binary(data.into()))
                         .await?;
                 }
@@ -998,8 +1050,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             connected_msg,
             channel_serial,
             token: new_token,
-            ws_read,
-            ws_write,
+            transport: transport.into_transport()?,
         },
         AttachOutcome::Detached(err) => {
             tracing::warn!(
@@ -1009,8 +1060,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             ReconnectOutcome::ChannelSuspended {
                 connected_msg,
                 token: new_token,
-                ws_read,
-                ws_write,
+                transport: transport.into_transport()?,
             }
         }
         AttachOutcome::RetryAttach(err) => {
@@ -1035,8 +1085,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             ReconnectOutcome::ChannelSuspended {
                 connected_msg,
                 token: new_token,
-                ws_read,
-                ws_write,
+                transport: transport.into_transport()?,
             }
         }
     })
@@ -1046,60 +1095,11 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
 mod tests {
     use super::super::state::ConnState;
     use super::*;
-    use std::collections::BTreeMap;
-    use std::fmt;
-    use std::sync::{Arc, Mutex};
 
     use crate::protocol::{AblyMessage, ErrorInfo};
     use crate::types::{TokenDetails, TokenRequest};
-    use tracing::Subscriber;
-    use tracing::field::{Field, Visit};
-    use tracing_subscriber::layer::{Context, Layer};
     use tracing_subscriber::prelude::*;
-
-    #[derive(Clone, Default)]
-    struct CapturedEvents {
-        events: Arc<Mutex<Vec<BTreeMap<String, String>>>>,
-    }
-
-    impl CapturedEvents {
-        fn entries(&self) -> Vec<BTreeMap<String, String>> {
-            self.events.lock().unwrap().clone()
-        }
-    }
-
-    impl<S> Layer<S> for CapturedEvents
-    where
-        S: Subscriber,
-    {
-        fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = CapturedFields::default();
-            event.record(&mut visitor);
-            self.events.lock().unwrap().push(visitor.fields);
-        }
-    }
-
-    #[derive(Default)]
-    struct CapturedFields {
-        fields: BTreeMap<String, String>,
-    }
-
-    impl Visit for CapturedFields {
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-            self.fields
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     fn test_event_loop_state(event_tx: mpsc::Sender<Event>) -> EventLoopState {
         let timing = TimingConfig::default();
@@ -1141,7 +1141,7 @@ mod tests {
                 })
             }),
             timing,
-            dropped_messages: 0,
+            drop_warnings: DropWarningState::default(),
         }
     }
 
@@ -1152,10 +1152,10 @@ mod tests {
         );
     }
 
-    fn captured_contains(events: &[BTreeMap<String, String>], needle: &str) -> bool {
+    fn captured_contains(events: &[CapturedEvent], needle: &str) -> bool {
         events
             .iter()
-            .flat_map(BTreeMap::values)
+            .flat_map(|event| event.fields.values())
             .any(|value| value.contains(needle))
     }
 
@@ -1246,7 +1246,7 @@ mod tests {
         .await;
 
         assert_eq!(action, LoopAction::Continue);
-        assert_eq!(state.dropped_messages, 1);
+        assert_eq!(state.drop_warnings.total_dropped, 1);
         assert!(
             matches!(event_rx.try_recv(), Ok(Event::Connected)),
             "expected pre-filled event to remain queued"
@@ -1290,7 +1290,7 @@ mod tests {
         .await;
 
         assert_eq!(action, LoopAction::Stop);
-        assert_eq!(state.dropped_messages, 0);
+        assert_eq!(state.drop_warnings.total_dropped, 0);
         let events = captured.entries();
         assert!(
             !captured_contains(&events, "Failed to decode JSON encoding layer"),

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { z } from "zod";
@@ -36,6 +36,7 @@ const PREVIEW_VIEWPORT = {
 } as const;
 const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
+const PREVIEW_IMAGE_BASENAME = "preview-v2";
 const PREVIEW_WAF_COOKIE_NAME = "vm0_artifact_preview";
 
 const browserSnapshotSchema = z.object({
@@ -75,23 +76,17 @@ export interface RenderArtifactPreviewArgs {
   readonly deploymentId: string | null;
 }
 
-// Version the preview object by deployment so a redeploy produces a new URL
-// (busts the CDN) rather than overwriting the previous deployment's image.
+// Version the preview object by renderer and deployment so both renderer
+// upgrades and site redeploys produce a fresh CDN URL.
 function previewImageFilename(deploymentId: string | null): string {
-  const base = deploymentId ? `preview-${deploymentId}` : "preview";
+  const base = deploymentId
+    ? `${PREVIEW_IMAGE_BASENAME}-${deploymentId}`
+    : PREVIEW_IMAGE_BASENAME;
   return `${base}.${PREVIEW_IMAGE_EXTENSION}`;
 }
 
 function isVideoContentType(contentType: string | null): boolean {
   return contentType?.startsWith("video/") ?? false;
-}
-
-// The switch that gates this artifact's preview: video posters and HTML
-// screenshots roll out independently.
-function previewFeatureSwitchKey(contentType: string | null): FeatureSwitchKey {
-  return isVideoContentType(contentType)
-    ? FeatureSwitchKey.ArtifactVideoPreview
-    : FeatureSwitchKey.ArtifactPreviewImage;
 }
 
 // Extract a poster frame from a video via Cloudflare Media Transformations.
@@ -112,12 +107,11 @@ async function extractVideoPoster(
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function isArtifactPreviewEnabledForOwner(
+async function isHtmlArtifactPreviewEnabledForOwner(
   db: ReadonlyDb,
   args: {
     readonly orgId: string | null;
     readonly userId: string;
-    readonly switchKey: FeatureSwitchKey;
   },
 ): Promise<boolean> {
   const featureCtx = await loadUserFeatureSwitchContext(
@@ -125,20 +119,28 @@ async function isArtifactPreviewEnabledForOwner(
     args.orgId ?? "",
     args.userId,
   );
-  return isFeatureEnabled(args.switchKey, featureCtx);
+  return isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx);
 }
 
 function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
   const conditions = [
-    isNull(runUploadedFiles.previewImageUrl),
     sql`${runUploadedFiles.url} IS NOT NULL`,
-    // HTML/website artifacts (by artifactKind) or generated video artifacts.
-    // Ordinary user-uploaded videos are not artifacts and should not be swept.
-    sql`(${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html') OR (jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string' AND ${runUploadedFiles.contentType} LIKE 'video/%'))`,
+    // Re-render HTML previews created by the previous renderer so the new key
+    // also bypasses cached challenge images. Video posters remain null-only.
+    sql`((
+      ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
+      AND (
+        ${runUploadedFiles.previewImageUrl} IS NULL
+        OR ${runUploadedFiles.previewImageUrl} NOT LIKE ${`%/${PREVIEW_IMAGE_BASENAME}%`}
+      )
+    ) OR (
+      jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'
+      AND ${runUploadedFiles.contentType} LIKE 'video/%'
+      AND ${runUploadedFiles.previewImageUrl} IS NULL
+    ))`,
     // Grace window: skip rows touched in the last 2 minutes so the deploy-time
-    // fast path can finish first. The cron only picks up rows it demonstrably
-    // failed on, plus pre-feature backfill (already old), avoiding a duplicate
-    // render racing the deploy trigger.
+    // fast path can finish first. The cron only picks up missing or superseded
+    // previews, avoiding a duplicate render racing the deploy trigger.
     sql`${runUploadedFiles.updatedAt} < now() - interval '2 minutes'`,
   ];
 
@@ -172,7 +174,9 @@ function isCloudflareChallenge(content: string, title?: string): boolean {
   const hasChallengeImplementation = [
     "challenges.cloudflare.com",
     "/cdn-cgi/challenge-platform/",
+    "challenge-platform",
     "cf-chl-",
+    "__cf_chl_",
   ].some((marker) => {
     return page.includes(marker);
   });
@@ -260,23 +264,25 @@ const renderAndStoreArtifactPreview$ = command(
     args: RenderArtifactPreviewArgs,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    // Resolve the switch against the artifact owner's context including their
-    // per-user Lab overrides, so a user can opt in without a code change. Video
-    // posters gate on a separate switch from HTML screenshots.
-    const featureCtx = await get(
-      userFeatureSwitchContext(args.orgId ?? "", args.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(previewFeatureSwitchKey(args.contentType), featureCtx)
-    ) {
-      return false;
+    const isVideo = isVideoContentType(args.contentType);
+    if (!isVideo) {
+      // Resolve the HTML preview switch against the artifact owner's context,
+      // including per-user Lab overrides. Video posters are fully rolled out.
+      const featureCtx = await get(
+        userFeatureSwitchContext(args.orgId ?? "", args.userId),
+      );
+      signal.throwIfAborted();
+      if (
+        !isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx)
+      ) {
+        return false;
+      }
     }
 
     let image: Buffer;
     let filename: string;
     let contentType: string;
-    if (isVideoContentType(args.contentType)) {
+    if (isVideo) {
       image = await extractVideoPoster(args.url, signal);
       filename = VIDEO_POSTER_FILENAME;
       contentType = VIDEO_POSTER_CONTENT_TYPE;
@@ -349,18 +355,17 @@ export const scheduleArtifactPreviewRender$ = command(
 );
 
 /**
- * Backfill / retry sweep: render previews for HTML/website and video artifacts
- * that still have none (never rendered, or the deploy-time trigger failed / was
- * cut off). Best-effort per artifact — a failure leaves the row's
- * `previewImageUrl` NULL so it retries next sweep and the frontend falls back to
- * the live iframe/video. Returns the count generated.
+ * Backfill / retry sweep: render previews that are missing, failed during the
+ * deploy-time trigger, or were produced by an older HTML renderer. Best-effort
+ * per artifact — a failure leaves the row eligible for the next sweep. Returns
+ * the count generated.
  */
 export const generateArtifactPreviews$ = command(
   async ({ set }, signal: AbortSignal): Promise<number> => {
     const db = set(writeDb$);
     let generated = 0;
     let cursor: PreviewCandidateCursor | undefined;
-    const ownerFeatureEnabled = new Map<string, boolean>();
+    const htmlPreviewEnabledByOwner = new Map<string, boolean>();
 
     while (generated < PREVIEW_BATCH_SIZE) {
       const rows = await db
@@ -391,22 +396,21 @@ export const generateArtifactPreviews$ = command(
           continue;
         }
 
-        // Gate on the switch matching this artifact's kind (video/HTML roll out
-        // independently), cached per owner + switch.
-        const switchKey = previewFeatureSwitchKey(row.contentType);
-        const featureKey = `${row.orgId ?? ""}:${row.userId}:${switchKey}`;
-        let enabled = ownerFeatureEnabled.get(featureKey);
-        if (enabled === undefined) {
-          enabled = await isArtifactPreviewEnabledForOwner(db, {
-            orgId: row.orgId,
-            userId: row.userId,
-            switchKey,
-          });
-          ownerFeatureEnabled.set(featureKey, enabled);
-          signal.throwIfAborted();
-        }
-        if (!enabled) {
-          continue;
+        if (!isVideoContentType(row.contentType)) {
+          // HTML preview generation remains gated and is cached per owner.
+          const ownerKey = `${row.orgId ?? ""}:${row.userId}`;
+          let enabled = htmlPreviewEnabledByOwner.get(ownerKey);
+          if (enabled === undefined) {
+            enabled = await isHtmlArtifactPreviewEnabledForOwner(db, {
+              orgId: row.orgId,
+              userId: row.userId,
+            });
+            htmlPreviewEnabledByOwner.set(ownerKey, enabled);
+            signal.throwIfAborted();
+          }
+          if (!enabled) {
+            continue;
+          }
         }
 
         const succeeded = await tapError(

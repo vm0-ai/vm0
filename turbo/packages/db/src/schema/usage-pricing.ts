@@ -29,6 +29,8 @@ import {
  *   video      fal-ai/veo3.1/fast        output_video_seconds.audio 180 1      generated video seconds
  *   video      bytedance/seedance-2.0    output_video_tokens 1680   100000     generated video tokens
  *   maps       google-maps               geocoding      6           1          $0.005 request + 20% markup
+ *   scrape     firecrawl                 standard.markdown 4        1          fixed per-request scrape pricing
+ *   web-search perplexity                request        5           1          $0.005 per search request
  */
 export const usagePricing = pgTable(
   "usage_pricing",

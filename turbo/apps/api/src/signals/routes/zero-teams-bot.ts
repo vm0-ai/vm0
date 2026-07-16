@@ -17,8 +17,10 @@ import { authorization$, request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import {
   deleteTeamsReaction,
+  sendTeamsMessage,
   sendTeamsMessageReply,
   type TeamsAdaptiveCard,
+  type TeamsMentionEntity,
 } from "../external/teams-bot-client";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route-entry";
@@ -27,14 +29,19 @@ import {
   publishTeamsChanged$,
   recordTeamsInstallationActivity$,
 } from "../services/zero-teams-connect.service";
-import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.service";
+import {
+  dispatchTeamsMessageToAgent$,
+  TEAMS_WELCOME_TEXT,
+} from "../services/zero-teams-dispatch.service";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import { safeJsonParse, settle, tapError } from "../utils";
+import { bestEffort, safeJsonParse, tapError } from "../utils";
 
 const L = logger("TeamsBot");
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
-  "Please connect your account to use Zero in this Teams workspace.";
+  "Please connect your account to use Okou in this Teams workspace.";
 const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
+const TEAMS_SUPPORTED_COMMANDS_TEXT =
+  "`help`, `connect`, `disconnect`, `switch`, `model`";
 
 function errorResponse(
   status: 400 | 401 | 403 | 503,
@@ -130,6 +137,10 @@ type TeamsDispatchReplySource =
   | { readonly kind: "ignored" | "accepted" };
 
 type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
+type TeamsInstallWelcomeActivity = Extract<
+  TeamsInboundActivity,
+  { kind: "conversation_update" | "installation_update" }
+>;
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 
 function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
@@ -163,6 +174,100 @@ function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
   return { replyText: null };
 }
 
+function teamsInstallWelcomeActivity(
+  activity: TeamsInboundActivity,
+): TeamsInstallWelcomeActivity | null {
+  if (activity.kind === "installation_update") {
+    return activity.action === "add" ? activity : null;
+  }
+  if (activity.kind !== "conversation_update") {
+    return null;
+  }
+  if (activity.action !== "members_added") {
+    return null;
+  }
+  const botAdded = activity.membersAdded.some((member) => {
+    return member.id === activity.recipient.id;
+  });
+  return botAdded ? activity : null;
+}
+
+function buildTeamsInstallWelcomeMention(
+  activity: TeamsInstallWelcomeActivity,
+): TeamsMentionEntity | null {
+  if (activity.conversationType === "personal" || activity.sender.id === "") {
+    return null;
+  }
+
+  const name = activity.sender.name ?? "the person who added Okou";
+  return {
+    type: "mention",
+    text: `<at>${name}</at>`,
+    mentioned: {
+      id: activity.sender.id,
+      name,
+    },
+  };
+}
+
+function buildTeamsInstallWelcomeContent(
+  activity: TeamsInstallWelcomeActivity,
+): {
+  readonly text: string;
+  readonly entities?: readonly TeamsMentionEntity[];
+} {
+  const mention = buildTeamsInstallWelcomeMention(activity);
+  if (!mention) {
+    return { text: TEAMS_WELCOME_TEXT };
+  }
+
+  return {
+    text: [
+      `${mention.text} added Okou to this Teams workspace.`,
+      "",
+      "Okou connects Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
+      "",
+      "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
+      "",
+      `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@Okou\` with a task or send a DM to work privately.`,
+    ].join("\n"),
+    entities: [mention],
+  };
+}
+
+const sendTeamsInstallWelcome$ = command(
+  async (
+    _,
+    activity: TeamsInboundActivity,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const welcomeActivity = teamsInstallWelcomeActivity(activity);
+    if (!welcomeActivity) {
+      return;
+    }
+
+    const welcome = buildTeamsInstallWelcomeContent(welcomeActivity);
+    const reply = await sendTeamsMessage({
+      serviceUrl: welcomeActivity.serviceUrl,
+      conversationId: welcomeActivity.conversationId,
+      tenantId: welcomeActivity.tenantId,
+      text: welcome.text,
+      ...(welcome.entities ? { entities: welcome.entities } : {}),
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (reply.kind === "teams-error") {
+      L.warn("Teams install welcome failed", {
+        tenantId: welcomeActivity.tenantId,
+        conversationId: welcomeActivity.conversationId,
+        status: reply.status,
+        error: reply.error,
+      });
+    }
+  },
+);
+
 async function clearTeamsThinkingReactionForActivity(args: {
   readonly activity: TeamsMessageActivity;
   readonly signal: AbortSignal;
@@ -174,7 +279,7 @@ async function clearTeamsThinkingReactionForActivity(args: {
     return;
   }
 
-  const result = await settle(
+  await bestEffort(
     deleteTeamsReaction({
       serviceUrl: args.activity.serviceUrl,
       conversationId: args.activity.conversationId,
@@ -185,19 +290,6 @@ async function clearTeamsThinkingReactionForActivity(args: {
     }),
     args.signal,
   );
-  const error = !result.ok
-    ? result.error
-    : result.value.kind === "teams-error"
-      ? result.value.error
-      : undefined;
-  if (error !== undefined) {
-    L.debug("Failed to clear Teams thinking reaction after dispatch failure", {
-      tenantId: args.activity.tenantId,
-      conversationId: args.activity.conversationId,
-      activityId: args.activity.activityId,
-      error,
-    });
-  }
 }
 
 const dispatchTeamsMessageAndReply$ = command(
@@ -314,6 +406,17 @@ const handleZeroTeamsBot$ = command(
       );
       signal.throwIfAborted();
     }
+    if (
+      activityResult.kind === "upserted" &&
+      activityResult.installation.orgId
+    ) {
+      await set(
+        publishTeamsChanged$,
+        { orgId: activityResult.installation.orgId },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
 
     const installation =
       activityResult.kind === "upserted" ? activityResult.installation : null;
@@ -338,6 +441,17 @@ const handleZeroTeamsBot$ = command(
           ),
           (error) => {
             L.error("Error handling Teams message activity", { error });
+          },
+        ),
+      );
+    }
+
+    if (teamsInstallWelcomeActivity(normalized.activity)) {
+      waitUntil(
+        tapError(
+          set(sendTeamsInstallWelcome$, normalized.activity, signal),
+          (error) => {
+            L.error("Error sending Teams install welcome", { error });
           },
         ),
       );

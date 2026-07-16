@@ -14,8 +14,8 @@ import {
 } from "@vm0/db/schema/google-workspace-event";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
-  workflowUserTriggerThreads,
-  zeroWorkflowTriggers,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 
@@ -23,7 +23,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -34,11 +34,11 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowTriggerCallbacks,
-  runWorkflowTriggerNow$,
-  type TriggerRow,
-} from "./zero-workflow-trigger-run.service";
-import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
+  buildChatOnlyWorkflowAutomationCallbacks,
+  runWorkflowAutomationNow$,
+  type AutomationRow,
+} from "./zero-workflow-automation-run.service";
+import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:google-meet-workflow-event");
 
@@ -196,8 +196,8 @@ interface GoogleMeetTranscriptEventContext {
   readonly transcriptName: string;
 }
 
-interface GoogleMeetEventTriggerRow {
-  readonly trigger: TriggerRow;
+interface GoogleMeetEventAutomationRow {
+  readonly automation: AutomationRow;
   readonly agentId: string;
   readonly workflowName: string;
   readonly workflowTitle: string;
@@ -353,7 +353,7 @@ async function refreshGoogleMeetAccessToken(args: {
   const refreshToken = await decryptStoredSecretValue(
     args.refreshSecret.encryptedValue,
   );
-  const refreshResult = await settle(
+  const refreshed = await tapError(
     refreshGoogleToken(
       "google-meet",
       clientId,
@@ -361,9 +361,9 @@ async function refreshGoogleMeetAccessToken(args: {
       refreshToken,
       args.signal,
     ),
-    args.signal,
   );
-  if (!refreshResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     await markGoogleMeetConnectorNeedsReconnect({
       db: args.db,
       connectorId: args.connector.id,
@@ -372,20 +372,19 @@ async function refreshGoogleMeetAccessToken(args: {
     });
     return {
       kind: "bad_request",
-      message: "Reconnect Google Meet before using Google Meet event triggers",
+      message:
+        "Reconnect Google Meet before using Google Meet event automations",
     };
   }
 
   const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshResult.value.expiresIn,
+    refreshed.expiresIn,
     args.currentTime,
   );
   await args.db
     .update(secretsTable)
     .set({
-      encryptedValue: await encryptStoredSecretValue(
-        refreshResult.value.accessToken,
-      ),
+      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
       updatedAt: args.currentTime,
     })
     .where(
@@ -414,7 +413,7 @@ async function refreshGoogleMeetAccessToken(args: {
       connectorId: args.connector.id,
       externalId: args.connector.externalId,
       emailAddress: args.connector.externalEmail,
-      accessToken: refreshResult.value.accessToken,
+      accessToken: refreshed.accessToken,
     },
   };
 }
@@ -431,13 +430,15 @@ async function resolveGoogleMeetAccess(args: {
   if (!connector) {
     return {
       kind: "bad_request",
-      message: "Connect Google Meet before adding a Google Meet event trigger",
+      message:
+        "Connect Google Meet before adding a Google Meet event automation",
     };
   }
   if (connector.needsReconnect) {
     return {
       kind: "bad_request",
-      message: "Reconnect Google Meet before using Google Meet event triggers",
+      message:
+        "Reconnect Google Meet before using Google Meet event automations",
     };
   }
 
@@ -446,7 +447,8 @@ async function resolveGoogleMeetAccess(args: {
   if (!accessSecret) {
     return {
       kind: "bad_request",
-      message: "Reconnect Google Meet before using Google Meet event triggers",
+      message:
+        "Reconnect Google Meet before using Google Meet event automations",
     };
   }
 
@@ -473,7 +475,8 @@ async function resolveGoogleMeetAccess(args: {
     });
     return {
       kind: "bad_request",
-      message: "Reconnect Google Meet before using Google Meet event triggers",
+      message:
+        "Reconnect Google Meet before using Google Meet event automations",
     };
   }
 
@@ -896,7 +899,7 @@ export async function ensureGoogleMeetTranscriptGeneratedSubscriptionForUser(arg
     return {
       kind: "bad_request",
       message:
-        "Reconnect Google Meet before using Google Meet event triggers; the connected account is missing a Google user id",
+        "Reconnect Google Meet before using Google Meet event automations; the connected account is missing a Google user id",
     };
   }
 
@@ -1020,17 +1023,15 @@ async function verifyGoogleWorkspacePubSubOidc(args: {
   }
 
   const token = args.authorization.slice("Bearer ".length);
-  const claimsResult = await settle(
+  const claims = await tapError(
     defaultPubSubOidcVerifier(token, audience, args.signal),
-    args.signal,
   );
   args.signal.throwIfAborted();
-  if (!claimsResult.ok) {
+  if (!claims) {
     return { kind: "unauthorized" };
   }
 
-  return claimsResult.value.email === expectedEmail &&
-    claimsResult.value.emailVerified
+  return claims.email === expectedEmail && claims.emailVerified
     ? { kind: "ok" }
     : { kind: "unauthorized" };
 }
@@ -1290,43 +1291,46 @@ async function handleWorkspaceLifecycleEvent(args: {
   args.signal.throwIfAborted();
 }
 
-async function loadGoogleMeetEventTriggers(args: {
+async function loadGoogleMeetEventAutomations(args: {
   readonly db: Db;
   readonly state: GoogleWorkspaceSubscriptionStateRow;
   readonly signal: AbortSignal;
-}): Promise<GoogleMeetEventTriggerRow[]> {
-  const triggerRows = await args.db
+}): Promise<GoogleMeetEventAutomationRow[]> {
+  const automationRows = await args.db
     .select({
-      trigger: zeroWorkflowTriggers,
+      automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
-      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+      chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .innerJoin(
       zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
     )
     .leftJoin(
-      workflowUserTriggerThreads,
+      workflowUserAutomationThreads,
       and(
-        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
-        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
         eq(
-          workflowUserTriggerThreads.workflowId,
-          zeroWorkflowTriggers.workflowId,
+          workflowUserAutomationThreads.userId,
+          zeroWorkflowAutomations.ownerUserId,
+        ),
+        eq(
+          workflowUserAutomationThreads.workflowId,
+          zeroWorkflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, args.state.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.state.userId),
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.kind, "event"),
+        eq(zeroWorkflowAutomations.orgId, args.state.orgId),
+        eq(zeroWorkflowAutomations.ownerUserId, args.state.userId),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.kind, "event"),
         eq(
-          zeroWorkflowTriggers.eventType,
+          zeroWorkflowAutomations.eventType,
           GOOGLE_MEET_TRANSCRIPT_GENERATED_EVENT_TYPE,
         ),
       ),
@@ -1334,10 +1338,10 @@ async function loadGoogleMeetEventTriggers(args: {
   args.signal.throwIfAborted();
 
   const currentTime = nowDate();
-  const triggers: GoogleMeetEventTriggerRow[] = [];
-  for (const row of triggerRows) {
+  const automations: GoogleMeetEventAutomationRow[] = [];
+  for (const row of automationRows) {
     const config = googleMeetTranscriptGeneratedEventConfigSchema.safeParse(
-      row.trigger.eventConfig,
+      row.automation.eventConfig,
     );
     if (!config.success || config.data.scope.type !== "organizer_user") {
       continue;
@@ -1345,31 +1349,31 @@ async function loadGoogleMeetEventTriggers(args: {
     const chatThreadId =
       row.chatThreadId ??
       (await args.db.transaction(async (tx) => {
-        return await ensureWorkflowUserTriggerThread(tx, {
-          orgId: row.trigger.orgId,
-          userId: row.trigger.ownerUserId,
-          workflowId: row.trigger.workflowId,
+        return await ensureWorkflowUserAutomationThread(tx, {
+          orgId: row.automation.orgId,
+          userId: row.automation.ownerUserId,
+          workflowId: row.automation.workflowId,
           agentId: row.agentId,
           workflowTitle: row.workflowDisplayName ?? row.workflowName,
           currentTime,
         });
       }));
     args.signal.throwIfAborted();
-    triggers.push({
-      trigger: row.trigger,
+    automations.push({
+      automation: row.automation,
       agentId: row.agentId,
       workflowName: row.workflowName,
       workflowTitle: row.workflowDisplayName ?? row.workflowName,
       chatThreadId,
     });
   }
-  return triggers;
+  return automations;
 }
 
 async function insertWorkspaceProcessedEvent(args: {
   readonly db: Db;
   readonly state: GoogleWorkspaceSubscriptionStateRow;
-  readonly trigger: GoogleMeetEventTriggerRow;
+  readonly automation: GoogleMeetEventAutomationRow;
   readonly decoded: DecodedWorkspacePubSubPush;
   readonly event: GoogleMeetTranscriptEventContext;
   readonly signal: AbortSignal;
@@ -1378,7 +1382,7 @@ async function insertWorkspaceProcessedEvent(args: {
     .insert(googleWorkspaceProcessedEvents)
     .values({
       subscriptionStateId: args.state.id,
-      triggerId: args.trigger.trigger.id,
+      automationId: args.automation.automation.id,
       pubsubMessageId: args.decoded.messageId,
       cloudEventId: args.event.cloudEventId,
       cloudEventType: args.event.cloudEventType,
@@ -1392,14 +1396,14 @@ async function insertWorkspaceProcessedEvent(args: {
   return processed?.id ?? null;
 }
 
-function buildGoogleMeetWorkflowTriggerBrief(
+function buildGoogleMeetWorkflowAutomationBrief(
   event: GoogleMeetTranscriptEventContext,
 ): string {
   return `Google Meet transcript ready: ${event.transcriptName}`;
 }
 
 function buildGoogleMeetWorkflowEventSystemPrompt(args: {
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly event: GoogleMeetTranscriptEventContext;
 }): string {
   return [
@@ -1407,12 +1411,12 @@ function buildGoogleMeetWorkflowEventSystemPrompt(args: {
     "You are running because Google Meet generated a transcript for a meeting organized by the connected Google Meet account.",
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The transcript text is not included in this trigger context. Use the connected Google Meet tools to read transcript metadata or transcript entries if the workflow needs the content.",
+    "The transcript text is not included in this automation context. Use the connected Google Meet tools to read transcript metadata or transcript entries if the workflow needs the content.",
     "",
     "# Google Meet event",
     JSON.stringify(
       {
-        triggerId: args.triggerId,
+        automationId: args.automationId,
         eventType: GOOGLE_MEET_TRANSCRIPT_GENERATED_EVENT_TYPE,
         googleWorkspaceEventType: args.event.cloudEventType,
         cloudEventId: args.event.cloudEventId,
@@ -1435,7 +1439,7 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
   readonly decoded: DecodedWorkspacePubSubPush;
   readonly event: GoogleMeetTranscriptEventContext;
   readonly startRun: (args: {
-    readonly trigger: GoogleMeetEventTriggerRow;
+    readonly automation: GoogleMeetEventAutomationRow;
     readonly event: GoogleMeetTranscriptEventContext;
     readonly timing: WorkflowEventRunTiming;
   }) => Promise<"ok" | "error">;
@@ -1449,10 +1453,10 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
     }
   | { readonly kind: "run_error"; readonly message: string }
 > {
-  const triggers = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+  const automations = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_automations",
     async () => {
-      return await loadGoogleMeetEventTriggers({
+      return await loadGoogleMeetEventAutomations({
         db: args.db,
         state: args.state,
         signal: args.signal,
@@ -1462,7 +1466,7 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
   let dispatched = 0;
   let duplicates = 0;
 
-  for (const trigger of triggers) {
+  for (const automation of automations) {
     const runTiming = args.sourceTiming.createRunTiming();
     const processedId = await runTiming.measure(
       "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
@@ -1470,7 +1474,7 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
         return await insertWorkspaceProcessedEvent({
           db: args.db,
           state: args.state,
-          trigger,
+          automation,
           decoded: args.decoded,
           event: args.event,
           signal: args.signal,
@@ -1483,7 +1487,7 @@ async function dispatchGoogleMeetTranscriptEventForState(args: {
     }
 
     const started = await args.startRun({
-      trigger,
+      automation,
       event: args.event,
       timing: runTiming,
     });
@@ -1571,31 +1575,31 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
       decoded,
       event: event.context,
       sourceTiming,
-      startRun: async ({ trigger, event, timing }) => {
+      startRun: async ({ automation, event, timing }) => {
         const runInput = await timing.measure(
           "api_dispatch_pre_create_zero_workflow_event_build_run_input",
           () => {
             return {
               appendSystemPrompt: buildGoogleMeetWorkflowEventSystemPrompt({
-                triggerId: trigger.trigger.id,
+                automationId: automation.automation.id,
                 event,
               }),
-              triggerBrief: buildGoogleMeetWorkflowTriggerBrief(event),
-              callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-                trigger.chatThreadId,
-                trigger.agentId,
+              triggerBrief: buildGoogleMeetWorkflowAutomationBrief(event),
+              callbacks: buildChatOnlyWorkflowAutomationCallbacks(
+                automation.chatThreadId,
+                automation.agentId,
               ),
             };
           },
         );
         const result = await set(
-          runWorkflowTriggerNow$,
+          runWorkflowAutomationNow$,
           {
             due: {
-              trigger: trigger.trigger,
-              agentId: trigger.agentId,
-              workflowName: trigger.workflowName,
-              chatThreadId: trigger.chatThreadId,
+              automation: automation.automation,
+              agentId: automation.agentId,
+              workflowName: automation.workflowName,
+              chatThreadId: automation.chatThreadId,
             },
             apiStartTime: args.apiStartTime,
             triggerSource: "workflow-event",
@@ -1630,22 +1634,22 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
   },
 );
 
-async function repairEnabledGoogleMeetTriggers(args: {
+async function repairEnabledGoogleMeetAutomations(args: {
   readonly db: Db;
   readonly signal: AbortSignal;
 }): Promise<{ readonly repaired: number; readonly failed: number }> {
-  const triggerRows = await args.db
+  const automationRows = await args.db
     .select({
-      orgId: zeroWorkflowTriggers.orgId,
-      userId: zeroWorkflowTriggers.ownerUserId,
+      orgId: zeroWorkflowAutomations.orgId,
+      userId: zeroWorkflowAutomations.ownerUserId,
     })
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .where(
       and(
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.kind, "event"),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.kind, "event"),
         eq(
-          zeroWorkflowTriggers.eventType,
+          zeroWorkflowAutomations.eventType,
           GOOGLE_MEET_TRANSCRIPT_GENERATED_EVENT_TYPE,
         ),
       ),
@@ -1655,8 +1659,8 @@ async function repairEnabledGoogleMeetTriggers(args: {
   const seen = new Set<string>();
   let repaired = 0;
   let failed = 0;
-  for (const trigger of triggerRows) {
-    const key = `${trigger.orgId}\n${trigger.userId}`;
+  for (const automation of automationRows) {
+    const key = `${automation.orgId}\n${automation.userId}`;
     if (seen.has(key)) {
       continue;
     }
@@ -1664,8 +1668,8 @@ async function repairEnabledGoogleMeetTriggers(args: {
     const ensured =
       await ensureGoogleMeetTranscriptGeneratedSubscriptionForUser({
         db: args.db,
-        orgId: trigger.orgId,
-        userId: trigger.userId,
+        orgId: automation.orgId,
+        userId: automation.userId,
         signal: args.signal,
       });
     args.signal.throwIfAborted();
@@ -1674,8 +1678,8 @@ async function repairEnabledGoogleMeetTriggers(args: {
     } else {
       failed++;
       log.warn("Failed to repair Google Meet Workspace Events subscription", {
-        orgId: trigger.orgId,
-        userId: trigger.userId,
+        orgId: automation.orgId,
+        userId: automation.userId,
         message: ensured.message,
       });
     }
@@ -1778,7 +1782,7 @@ export const renewGoogleWorkspaceEventSubscriptions$ = command(
       renewed++;
     }
 
-    const repair = await repairEnabledGoogleMeetTriggers({ db, signal });
+    const repair = await repairEnabledGoogleMeetAutomations({ db, signal });
     return {
       renewed,
       repaired: repair.repaired,

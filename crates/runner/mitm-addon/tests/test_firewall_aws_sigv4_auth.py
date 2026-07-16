@@ -326,11 +326,12 @@ async def test_re_signs_header_sigv4_request_keeps_resolved_query_with_trusted_u
     )
 
 
-async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
+@pytest.mark.parametrize("expires", ["1", "604800"], ids=["minimum", "maximum"])
+async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx, expires):
     flow = real_flow(
         with_response=False,
         host=STS_HOST,
-        path=aws_sigv4_presigned_query_path(),
+        path=aws_sigv4_presigned_query_path(expires=expires),
         method="GET",
     )
 
@@ -341,6 +342,7 @@ async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
     query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(flow.request.url).query))
     assert query["X-Amz-Algorithm"] == "AWS4-HMAC-SHA256"
     assert query["X-Amz-Credential"] == "AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"
+    assert query["X-Amz-Expires"] == expires
     assert query["X-Amz-Security-Token"] == RESOLVED_AWS_SESSION_TOKEN
     assert query["X-Amz-Signature"] != "placeholder"
     assert "PLACEHOLDER" not in flow.request.url
@@ -1035,10 +1037,25 @@ async def test_query_sigv4_with_duplicate_signed_header_fails_closed(
     assert_sigv4_failed_closed(result, flow, "Malformed AWS signed headers")
 
 
-async def test_query_sigv4_with_malformed_expiry_fails_closed(real_flow, tmp_path, mitm_ctx):
+@pytest.mark.parametrize(
+    "expires",
+    [
+        pytest.param("0", id="zero"),
+        pytest.param("604801", id="above-maximum"),
+        pytest.param("sixty", id="text"),
+        pytest.param("9" * 5000, id="oversized"),
+        pytest.param("1\u0661", id="unicode-digit"),
+    ],
+)
+async def test_query_sigv4_with_invalid_expiry_fails_closed(
+    real_flow,
+    tmp_path,
+    mitm_ctx,
+    expires,
+):
     flow = make_sts_query_sigv4_flow(
         real_flow,
-        path=aws_sigv4_presigned_query_path(expires="sixty"),
+        path=aws_sigv4_presigned_query_path(expires=expires),
     )
 
     result = await handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)

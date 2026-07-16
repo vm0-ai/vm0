@@ -10,7 +10,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
-import { zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations } from "./zero-workflow";
 import type { GoogleWorkspaceEventTypes } from "@vm0/db/jsonb-contracts/google-workspace-event";
 
 export type GoogleWorkspaceEventProvider = "google-meet";
@@ -82,11 +82,11 @@ export const googleWorkspaceProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    triggerId: uuid("trigger_id")
+    automationId: uuid("automation_id")
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -99,16 +99,12 @@ export const googleWorkspaceProcessedEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_google_workspace_processed_events_cloudevent").on(
-        table.subscriptionStateId,
-        table.triggerId,
-        table.cloudEventId,
-      ),
-      uniqueIndex("idx_google_workspace_processed_events_transcript").on(
-        table.subscriptionStateId,
-        table.triggerId,
-        table.transcriptName,
-      ),
+      uniqueIndex(
+        "idx_google_workspace_processed_events_automation_cloudevent",
+      ).on(table.subscriptionStateId, table.automationId, table.cloudEventId),
+      uniqueIndex(
+        "idx_google_workspace_processed_events_automation_transcript",
+      ).on(table.subscriptionStateId, table.automationId, table.transcriptName),
       index("idx_google_workspace_processed_events_pubsub_message").on(
         table.pubsubMessageId,
       ),

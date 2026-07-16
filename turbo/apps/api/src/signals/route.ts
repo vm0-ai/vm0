@@ -1,6 +1,5 @@
 import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
-import { webClientCompatibilityContract } from "@vm0/api-contracts/contracts/web-client-compatibility";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
@@ -23,9 +22,10 @@ import { cronArtifactPreviewRoutes } from "./routes/cron-artifact-preview";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
+import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
 import { cronDrainRelationshipMemoryRoutes } from "./routes/cron-drain-relationship-memory";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
-import { cronExecuteWorkflowTriggersRoutes } from "./routes/cron-execute-workflow-triggers";
+import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
@@ -42,7 +42,7 @@ import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
-import { webClientCompatibility$ } from "./routes/web-client-compatibility";
+import { legacyWebClientCompatibilityRoutes } from "./routes/legacy-web-client-compatibility";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
@@ -66,7 +66,7 @@ import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
 import { webhooksGoogleCalendarRoutes } from "./routes/webhooks-google-calendar";
 import { webhooksGoogleWorkspaceEventsRoutes } from "./routes/webhooks-google-workspace-events";
 import { webhooksNotionRoutes } from "./routes/webhooks-notion";
-import { webhooksWorkflowTriggersRoutes } from "./routes/webhooks-workflow-triggers";
+import { webhooksWorkflowAutomationsRoutes } from "./routes/webhooks-workflow-automations";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
@@ -95,6 +95,8 @@ import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-a
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
 import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
+import { zeroConnectorCheckRoutes } from "./routes/zero-connector-check";
+import { zeroConnectorPermissionDenyRoutes } from "./routes/zero-connector-permission-deny";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
@@ -116,6 +118,7 @@ import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { zeroImageIoInterpretMarksRoutes } from "./routes/zero-image-io-interpret-marks";
 import { zeroImageShareXRoutes } from "./routes/zero-image-share-x";
 import { zeroLogsRoutes } from "./routes/zero-logs";
+import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
@@ -140,8 +143,10 @@ import { zeroMeModelProvidersListRoutes } from "./routes/zero-me-model-providers
 import { zeroMeModelProvidersResetSubscriptionRoutes } from "./routes/zero-me-model-providers-reset-subscription";
 import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-providers-upsert";
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
+import { zeroScrapeRoutes } from "./routes/zero-scrape";
+import { zeroWebSearchRoutes } from "./routes/zero-web-search";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
-import { zeroWorkflowTriggersRoutes } from "./routes/zero-workflow-triggers";
+import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
 import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
@@ -207,10 +212,7 @@ export const ROUTES: readonly RouteEntry[] = [
     route: buildInfoContract.get,
     handler: apiBuildInfo$,
   },
-  {
-    route: webClientCompatibilityContract.get,
-    handler: webClientCompatibility$,
-  },
+  ...legacyWebClientCompatibilityRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,
@@ -228,7 +230,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksGoogleCalendarRoutes,
   ...webhooksGoogleWorkspaceEventsRoutes,
   ...webhooksNotionRoutes,
-  ...webhooksWorkflowTriggersRoutes,
+  ...webhooksWorkflowAutomationsRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
   ...webhooksAgentCheckpointsRoutes,
@@ -250,9 +252,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronAggregateUsageRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronCleanupSandboxesRoutes,
+  ...cronConnectorCatalogRoutes,
   ...cronDrainRelationshipMemoryRoutes,
   ...cronDrainEmailOutboxRoutes,
-  ...cronExecuteWorkflowTriggersRoutes,
+  ...cronExecuteWorkflowAutomationsRoutes,
   ...cronRenewGmailWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
@@ -293,6 +296,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroComputerUseRoutes,
   ...zeroCodexDeviceAuthRoutes,
   ...zeroConnectorCatalogRoutes,
+  ...zeroConnectorCheckRoutes,
+  ...zeroConnectorPermissionDenyRoutes,
   ...zeroConnectorsExternalCodeRoutes,
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
@@ -315,7 +320,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroImageShareXRoutes,
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
+  ...zeroMailRoutes,
   ...zeroMapsRoutes,
+  ...zeroScrapeRoutes,
+  ...zeroWebSearchRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
@@ -347,7 +355,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUserModelPreferenceRoutes,
   ...zeroSecretsRoutes,
   ...zeroWorkflowsRoutes,
-  ...zeroWorkflowTriggersRoutes,
+  ...zeroWorkflowAutomationsRoutes,
   ...zeroWorkflowQueueRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackBrowserConnectRoutes,

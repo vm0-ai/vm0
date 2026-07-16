@@ -5,7 +5,6 @@ import {
   type ModelProviderCredentialScope,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { and, eq, inArray, or } from "drizzle-orm";
@@ -14,6 +13,10 @@ import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 import { ensureOrgModelPolicies } from "./zero-model-policy.service";
 import { checkOrgCreditsForRunAdmission } from "./zero-run-admission.service";
+import {
+  loadOrgPlanCapabilities,
+  type OrgPlanCapabilities,
+} from "./org-plan-entitlement-read.service";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -35,32 +38,38 @@ interface AvailableModelProviderPin {
   readonly type: string;
 }
 
-async function orgHasLimitedFree1Restrictions(
+async function orgModelCapabilities(
   db: Db,
   orgId: string,
-): Promise<boolean> {
-  const [org] = await db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return org?.tier === "limited-free-1";
+): Promise<Pick<OrgPlanCapabilities, "restrictedVm0Models" | "supportByok">> {
+  const capabilities = await loadOrgPlanCapabilities(db, orgId);
+  if (capabilities?.status !== "active") {
+    return {
+      restrictedVm0Models: false,
+      supportByok: true,
+    };
+  }
+  return {
+    restrictedVm0Models: capabilities.restrictedVm0Models,
+    supportByok: capabilities.supportByok,
+  };
 }
 
-function modelAllowedForOrgTier(args: {
-  readonly limitedFree1: boolean;
+function modelAllowedForOrgPlan(args: {
+  readonly capabilities: Pick<OrgPlanCapabilities, "restrictedVm0Models">;
   readonly selectedModel: string | null | undefined;
 }): boolean {
   return (
-    !args.limitedFree1 || !isLimitedFree1RestrictedRunModel(args.selectedModel)
+    !args.capabilities.restrictedVm0Models ||
+    !isLimitedFree1RestrictedRunModel(args.selectedModel)
   );
 }
 
-function modelProviderAllowedForOrgTier(args: {
-  readonly limitedFree1: boolean;
+function modelProviderAllowedForOrgPlan(args: {
+  readonly capabilities: Pick<OrgPlanCapabilities, "supportByok">;
   readonly modelProviderType: string | null | undefined;
 }): boolean {
-  return !args.limitedFree1 || args.modelProviderType === "vm0";
+  return args.capabilities.supportByok || args.modelProviderType === "vm0";
 }
 
 function parseModelProviderCredentialScope(
@@ -91,7 +100,7 @@ export async function resolveDefaultModelFirstPin(
   if (userId !== "__no_preference__") {
     await ensureOrgModelPolicies(db, orgId, userId);
   }
-  const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
+  const capabilities = await orgModelCapabilities(db, orgId);
   const [preference] = await db
     .select({ selectedModel: orgMembersMetadata.selectedModel })
     .from(orgMembersMetadata)
@@ -105,8 +114,8 @@ export async function resolveDefaultModelFirstPin(
 
   const preferredModel =
     isSupportedRunModel(preference?.selectedModel) &&
-    modelAllowedForOrgTier({
-      limitedFree1,
+    modelAllowedForOrgPlan({
+      capabilities,
       selectedModel: preference.selectedModel,
     })
       ? preference.selectedModel
@@ -139,9 +148,9 @@ export async function resolveDefaultModelFirstPin(
   if (
     !policy ||
     !isSupportedRunModel(policy.model) ||
-    !modelAllowedForOrgTier({ limitedFree1, selectedModel: policy.model }) ||
-    !modelProviderAllowedForOrgTier({
-      limitedFree1,
+    !modelAllowedForOrgPlan({ capabilities, selectedModel: policy.model }) ||
+    !modelProviderAllowedForOrgPlan({
+      capabilities,
       modelProviderType: policy.defaultProviderType,
     })
   ) {
@@ -163,12 +172,12 @@ export async function resolveDefaultModelFirstPin(
     const fallbackPolicy = fallbackPolicies.find((candidate) => {
       return (
         isSupportedRunModel(candidate.model) &&
-        modelAllowedForOrgTier({
-          limitedFree1,
+        modelAllowedForOrgPlan({
+          capabilities,
           selectedModel: candidate.model,
         }) &&
-        modelProviderAllowedForOrgTier({
-          limitedFree1,
+        modelProviderAllowedForOrgPlan({
+          capabilities,
           modelProviderType: candidate.defaultProviderType,
         })
       );
@@ -176,12 +185,12 @@ export async function resolveDefaultModelFirstPin(
     if (
       fallbackPolicy &&
       isSupportedRunModel(fallbackPolicy.model) &&
-      modelAllowedForOrgTier({
-        limitedFree1,
+      modelAllowedForOrgPlan({
+        capabilities,
         selectedModel: fallbackPolicy.model,
       }) &&
-      modelProviderAllowedForOrgTier({
-        limitedFree1,
+      modelProviderAllowedForOrgPlan({
+        capabilities,
         modelProviderType: fallbackPolicy.defaultProviderType,
       })
     ) {
@@ -255,10 +264,10 @@ export async function resolveModelSelectionPin(params: {
   | ReturnType<typeof insufficientCredits>
 > {
   const { db, orgId, userId, modelSelection } = params;
-  const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
+  const capabilities = await orgModelCapabilities(db, orgId);
   if (
-    !modelAllowedForOrgTier({
-      limitedFree1,
+    !modelAllowedForOrgPlan({
+      capabilities,
       selectedModel: modelSelection.selectedModel,
     })
   ) {
@@ -275,8 +284,8 @@ export async function resolveModelSelectionPin(params: {
       return badRequestMessage("Unknown model provider for this workspace");
     }
     if (
-      !modelProviderAllowedForOrgTier({
-        limitedFree1,
+      !modelProviderAllowedForOrgPlan({
+        capabilities,
         modelProviderType: provider.type,
       })
     ) {
@@ -325,8 +334,8 @@ export async function resolveModelSelectionPin(params: {
     };
   }
   if (
-    !modelProviderAllowedForOrgTier({
-      limitedFree1,
+    !modelProviderAllowedForOrgPlan({
+      capabilities,
       modelProviderType: policy.defaultProviderType,
     })
   ) {

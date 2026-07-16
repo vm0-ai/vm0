@@ -40,7 +40,7 @@ import {
   type TeamsGraphMessage,
   type TeamsGraphUserInfo,
 } from "../external/teams-bot-client";
-import { safeJsonParse, settle } from "../utils";
+import { bestEffort, safeJsonParse } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -69,7 +69,16 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 
 const L = logger("TeamsDispatch");
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
-  "Please connect your account to use Zero in this Teams workspace.";
+  "Please connect your account to use Okou in this Teams workspace.";
+const TEAMS_SUPPORTED_COMMANDS_TEXT =
+  "`help`, `connect`, `disconnect`, `switch`, `model`";
+export const TEAMS_WELCOME_TEXT = [
+  "Hi, I'm Okou. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
+  "",
+  "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
+  "",
+  `Commands: ${TEAMS_SUPPORTED_COMMANDS_TEXT}. Mention \`@Okou\` with a task or send a DM to work privately.`,
+].join("\n");
 const TEAMS_AGENT_PICKER_MAX_OPTIONS = 100;
 const TEAMS_MODEL_PICKER_MAX_OPTIONS = 100;
 const TEAMS_CARD_ACTION_KEY = "zeroTeamsAction";
@@ -231,13 +240,23 @@ function modelLabel(option: TeamsModelPickerOption): string {
 
 function parseTeamsBotCommand(prompt: string): TeamsBotCommand | null {
   const parts = prompt.trim().split(/\s+/u);
-  const first = parts[0]?.toLowerCase() ?? "";
-  const prefixed = first === "/zero" || first === "zero";
-  const command = prefixed ? (parts[1]?.toLowerCase() ?? "") : first;
+  const first = parts[0]?.toLowerCase().replace(/^\//u, "") ?? "";
+  const prefixed = first === "zero" || first === "okou";
+  const command = prefixed
+    ? (parts[1]?.toLowerCase().replace(/^\//u, "") ?? "")
+    : first;
   if (!isTeamsBotCommand(command)) {
     return null;
   }
   return prefixed || parts.length === 1 ? command : null;
+}
+
+function isTeamsBotGreeting(prompt: string): boolean {
+  const normalized = prompt
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]+$/u, "");
+  return normalized === "hi" || normalized === "hello" || normalized === "hey";
 }
 
 function commandHelpNotice(args: {
@@ -251,16 +270,23 @@ function commandHelpNotice(args: {
   return {
     kind: "notice",
     replyText: [
-      "**Zero Teams Bot Help**",
+      "**Okou Teams Bot Help**",
       "",
       "**Commands**",
-      `- \`connect\` - Connect to Zero${switchLine}${modelLine}`,
-      "- `disconnect` - Disconnect from Zero",
+      `- \`connect\` - Connect to Okou${switchLine}${modelLine}`,
+      "- `disconnect` - Disconnect from Okou",
       "",
       "**Usage**",
-      "- `@Zero <message>` - Send a message to your agent",
-      "- Send a DM to Zero to chat without mentioning the bot",
+      "- `@Okou <message>` - Send a message to your agent",
+      "- Send a DM to Okou to chat without mentioning the bot",
     ].join("\n"),
+  };
+}
+
+function greetingNotice(): TeamsMessageDispatchResult {
+  return {
+    kind: "notice",
+    replyText: TEAMS_WELCOME_TEXT,
   };
 }
 
@@ -268,7 +294,7 @@ function connectedNotice(): TeamsMessageDispatchResult {
   return {
     kind: "notice",
     replyText:
-      "You're already connected. Mention @Zero in any channel or send a DM to start chatting with your agent.",
+      "You're already connected. Mention @Okou in any channel or send a DM to start chatting with your agent.",
   };
 }
 
@@ -276,7 +302,7 @@ function notInstalledNotice(): TeamsMessageDispatchResult {
   return {
     kind: "notice",
     replyText:
-      "The Zero Teams app hasn't been set up for this workspace yet. An org admin can complete the setup from VM0.",
+      "The Okou Teams app hasn't been set up for this workspace yet. An org admin can complete the setup in Okou.",
   };
 }
 
@@ -691,12 +717,10 @@ async function sendTeamsRunStartIndicator(args: {
   readonly signal: AbortSignal;
 }): Promise<void> {
   const activityId = args.activity.activityId;
-  let mode: "typing" | "reaction";
   let indicator:
     | ReturnType<typeof sendTeamsTypingActivity>
     | ReturnType<typeof sendTeamsReaction>;
   if (isTeamsDirectMessage(args.activity) || !activityId) {
-    mode = "typing";
     indicator = sendTeamsTypingActivity({
       serviceUrl: args.activity.serviceUrl,
       conversationId: args.activity.conversationId,
@@ -704,7 +728,6 @@ async function sendTeamsRunStartIndicator(args: {
       signal: args.signal,
     });
   } else {
-    mode = "reaction";
     indicator = sendTeamsReaction({
       serviceUrl: args.activity.serviceUrl,
       conversationId: args.activity.conversationId,
@@ -714,21 +737,7 @@ async function sendTeamsRunStartIndicator(args: {
       signal: args.signal,
     });
   }
-  const result = await settle(indicator, args.signal);
-  const error = !result.ok
-    ? result.error
-    : result.value.kind === "teams-error"
-      ? result.value.error
-      : undefined;
-  if (error !== undefined) {
-    L.debug("Failed to send Teams run start indicator", {
-      tenantId: args.activity.tenantId,
-      conversationId: args.activity.conversationId,
-      activityId: args.activity.activityId,
-      mode,
-      error,
-    });
-  }
+  await bestEffort(indicator, args.signal);
 }
 
 async function getUserAgentPreference(
@@ -1472,6 +1481,19 @@ function shouldDispatchTeamsMessage(activity: TeamsMessageActivity): boolean {
   return isTeamsDirectMessage(activity) || activity.mentionsRecipient;
 }
 
+function teamsValidationFallbackNotice(args: {
+  readonly command: TeamsBotCommand | null;
+  readonly isGreeting: boolean;
+}): TeamsMessageDispatchResult | null {
+  if (args.command === "help") {
+    return commandHelpNotice({ canSwitch: false, canModel: false });
+  }
+  if (args.isGreeting) {
+    return greetingNotice();
+  }
+  return null;
+}
+
 async function fetchTeamsPromptContext(args: {
   readonly activity: TeamsMessageActivity;
   readonly signal: AbortSignal;
@@ -1735,6 +1757,7 @@ function composeResolutionNotice(
 
 function unboundInstallationNotice(args: {
   readonly command: TeamsBotCommand | null;
+  readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation | null;
 }): TeamsMessageDispatchResult {
@@ -1744,16 +1767,23 @@ function unboundInstallationNotice(args: {
   if (args.command === "connect" && !args.installation) {
     return notInstalledNotice();
   }
+  if (args.isGreeting) {
+    return greetingNotice();
+  }
   return connectNotice(args.activity, args.installation);
 }
 
 function missingConnectionNotice(args: {
   readonly command: TeamsBotCommand | null;
+  readonly isGreeting: boolean;
   readonly activity: TeamsMessageActivity;
   readonly installation: TeamsInstallation;
 }): TeamsMessageDispatchResult {
   if (args.command === "help") {
     return commandHelpNotice({ canSwitch: true, canModel: false });
+  }
+  if (args.isGreeting) {
+    return greetingNotice();
   }
   return connectNotice(args.activity, args.installation);
 }
@@ -2111,19 +2141,24 @@ export const dispatchTeamsMessageToAgent$ = command(
     }
 
     const cardAction = teamsCardAction(activity.value);
-    if (!shouldDispatchTeamsMessage(activity) && !cardAction) {
-      return { kind: "ignored" };
+    const prompt = activity.text.trim();
+    const command = cardAction ? null : parseTeamsBotCommand(prompt);
+    const isGreeting = !cardAction && isTeamsBotGreeting(prompt);
+    if (!cardAction && !shouldDispatchTeamsMessage(activity)) {
+      return (
+        teamsValidationFallbackNotice({ command, isGreeting }) ?? {
+          kind: "ignored",
+        }
+      );
     }
 
-    const prompt = activity.text.trim();
     const promptFiles = cardAction ? [] : teamsPromptFiles(activity);
     if (!prompt && promptFiles.length === 0 && !cardAction) {
       return {
         kind: "notice",
-        replyText: "Please include a message for Zero.",
+        replyText: "Please include a message for Okou.",
       };
     }
-    const command = cardAction ? null : parseTeamsBotCommand(prompt);
 
     const db = set(writeDb$);
     const installation =
@@ -2133,7 +2168,12 @@ export const dispatchTeamsMessageToAgent$ = command(
     signal.throwIfAborted();
 
     if (!installation?.orgId) {
-      return unboundInstallationNotice({ command, activity, installation });
+      return unboundInstallationNotice({
+        command,
+        isGreeting,
+        activity,
+        installation,
+      });
     }
     const boundInstallation: BoundTeamsInstallation = {
       ...installation,
@@ -2149,7 +2189,12 @@ export const dispatchTeamsMessageToAgent$ = command(
     signal.throwIfAborted();
 
     if (!connection) {
-      return missingConnectionNotice({ command, activity, installation });
+      return missingConnectionNotice({
+        command,
+        isGreeting,
+        activity,
+        installation,
+      });
     }
 
     if (cardAction) {
@@ -2168,7 +2213,12 @@ export const dispatchTeamsMessageToAgent$ = command(
 
     const commandResult = await set(
       connectedCommandBeforeCompose$,
-      { db, command, installation: boundInstallation, connection },
+      {
+        db,
+        command,
+        installation: boundInstallation,
+        connection,
+      },
       signal,
     );
     signal.throwIfAborted();

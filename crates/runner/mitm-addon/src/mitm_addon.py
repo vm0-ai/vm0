@@ -14,17 +14,12 @@ This addon runs on the runner HOST (not inside VMs) and:
 import asyncio
 import base64
 import binascii
-import json
-import os
 import signal
 import tempfile
-import threading
-import time
 from collections.abc import Awaitable
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NoReturn
 
 from mitmproxy import connection, ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
@@ -32,14 +27,15 @@ from mitmproxy.addonmanager import Loader
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/matching/registry/
-# response_encoding_negotiation/response_streaming/terminal_usage/upstream_admission/
-# usage are imported by module (not selective `from X import ...`) so that:
+# response_encoding_negotiation/response_streaming/runner_flush_lifecycle/terminal_usage/
+# upstream_admission/usage are imported by module (not selective `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
 #      ``connector_intent.X(...)`` /
 #      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)`` /
-#      ``terminal_usage.X(...)`` / ``upstream_admission.X(...)`` / ``usage.X(...)``,
-#      making the module boundary visible at call sites.
+#      ``runner_flush_lifecycle.X(...)`` / ``terminal_usage.X(...)`` /
+#      ``upstream_admission.X(...)`` / ``usage.X(...)``, making the module boundary
+#      visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import auth_base_forwarder
@@ -52,6 +48,7 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import http_network_log
 import matching
+import model_usage_receipt
 import network_log_sanitization
 import platform_api
 import registry
@@ -59,6 +56,7 @@ import request_classification
 import request_streaming
 import response_encoding_negotiation
 import response_streaming
+import runner_flush_lifecycle
 import tcp_logging
 import terminal_usage
 import upstream_admission
@@ -87,7 +85,6 @@ from logging_utils import (
     NETWORK_LOG_MAX_SAFE_SIZE_DIGITS,
     add_firewall_metadata,
     elapsed_ms,
-    flush_log_path,
     log_network_entry,
     log_proxy_entry,
     shutdown_log_writer,
@@ -112,7 +109,6 @@ _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
 _WEBSOCKET_KEY_BYTES = 16
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
-_UsageFlushPhase = Literal["running", "draining", "closed"]
 
 
 @dataclass(frozen=True)
@@ -122,31 +118,6 @@ class _AuthBaseBodyCheck:
     reason: str = ""
 
 
-# Runner-triggered flush protocols:
-# - Rust writes `usage-flush-request` with the active usageStateId and a fresh
-#   flushRequestId, then sends SIGUSR1 to this addon process.
-# - This addon flushes buffered usage and writes `usage-pending` with the
-#   matching flushRequestId so the runner can observe a fresh snapshot.
-# - Rust performs a bounded wait for the acknowledged snapshot to have zero
-#   flows, buffered events, and reports before stopping the proxy.
-# - Rust may also write `jsonl-flush-request` for a concrete network log path.
-#   This addon drains accepted JSONL writes for that path and acknowledges with
-#   `jsonl-flush-state` before the runner uploads the file.
-#
-# Keep this in sync with usage/counters.py and the Rust wait path in
-# crates/runner/src/proxy.rs plus crates/runner/src/cmd/start/mod.rs.
-_RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
-_usage_flush_requested = threading.Event()
-_usage_flush_signal_lock = threading.Lock()
-# Running workers own requests under the lock. During shutdown, done() changes
-# the phase before waiting for that lock and becomes the sole draining owner.
-_usage_flush_phase: _UsageFlushPhase = "running"
-_jsonl_flush_state_write_lock = threading.Lock()
-_last_jsonl_flush_request_id: str | None = None
-_JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
-_JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
-RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS = 4.0
-
 # ============================================================================
 # Addon Configuration
 # ============================================================================
@@ -154,7 +125,10 @@ RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS = 4.0
 
 def load(loader: Loader) -> None:
     """Register custom options for the addon."""
-    signal.signal(_RUNNER_USAGE_FLUSH_SIGNAL, _handle_runner_usage_flush_signal)
+    signal.signal(
+        runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
+        runner_flush_lifecycle.handle_runner_usage_flush_signal,
+    )
     loader.add_option(
         name="vm0_api_url",
         typespec=str,
@@ -222,194 +196,6 @@ def configure(updated: set[str]) -> None:
         )
 
 
-def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
-    """Schedule runner-requested flush work from the SIGUSR1 handler.
-
-    Keep this handler minimal: it may interrupt mitmproxy's event loop, so it
-    only records that work is needed and lets the background worker perform
-    file I/O, usage flushing, and JSONL flushing.
-    """
-    del signum
-    if _usage_flush_phase == "closed":
-        return
-    _usage_flush_requested.set()
-    _start_usage_flush_worker()
-
-
-def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -> None:
-    deadline = time.monotonic() + timeout
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise AssertionError("runner usage flush worker did not stop")
-
-        acquired = _usage_flush_signal_lock.acquire(timeout=remaining)
-        if not acquired:
-            raise AssertionError("runner usage flush worker did not stop")
-        try:
-            if not _usage_flush_requested.is_set():
-                return
-        finally:
-            _usage_flush_signal_lock.release()
-        _start_usage_flush_worker()
-
-
-def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
-    global _last_jsonl_flush_request_id, _usage_flush_phase
-
-    acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
-    if not acquired:
-        raise AssertionError("runner usage flush worker did not stop")
-    try:
-        _usage_flush_phase = "running"
-        _usage_flush_requested.clear()
-        _last_jsonl_flush_request_id = None
-    finally:
-        _usage_flush_signal_lock.release()
-
-
-def _start_usage_flush_worker() -> None:
-    """Start one flush worker, coalescing repeated signals while active."""
-    if _usage_flush_phase != "running":
-        return
-    if not _usage_flush_signal_lock.acquire(blocking=False):
-        return
-    if _usage_flush_phase != "running":
-        _usage_flush_signal_lock.release()
-        return
-
-    thread = threading.Thread(
-        target=_run_usage_flush_worker,
-        name="runner-flush-request",
-        daemon=True,
-    )
-    started = False
-    try:
-        thread.start()
-        started = True
-    finally:
-        if not started:
-            _usage_flush_signal_lock.release()
-
-
-def _run_usage_flush_worker() -> None:
-    """Drain coalesced runner flush requests under the worker lock.
-
-    The event can be set again while a flush is running. Loop until no request
-    is pending. After releasing the lock, restart for a running-phase signal;
-    draining-phase requests belong to ``done()``.
-    """
-    try:
-        _drain_runner_usage_flush_requests()
-    finally:
-        _usage_flush_signal_lock.release()
-        if _usage_flush_requested.is_set():
-            _start_usage_flush_worker()
-
-
-def _drain_runner_usage_flush_requests() -> None:
-    """Drain coalesced runner requests while the caller owns the signal lock."""
-    while _usage_flush_requested.is_set():
-        _usage_flush_requested.clear()
-        _flush_usage_for_runner_request()
-        _flush_jsonl_for_runner_request()
-
-
-def _flush_usage_for_runner_request() -> None:
-    """Flush buffered usage and acknowledge the runner's current request.
-
-    The pending snapshot is written in ``finally`` so the runner can observe
-    fresh counters and the current flushRequestId even if usage flushing fails.
-    """
-    flush_request_id = usage.read_usage_flush_request_id()
-    try:
-        usage.flush_usage_events(trigger="runner")
-    except Exception as exc:
-        ctx.log.warn(f"Failed to flush usage events after runner request ({type(exc).__name__})")
-    finally:
-        usage.write_pending_snapshot(flush_request_id=flush_request_id)
-
-
-def _flush_jsonl_for_runner_request() -> None:
-    global _last_jsonl_flush_request_id
-
-    request = _read_jsonl_flush_request()
-    if request is None:
-        return
-
-    log_path, flush_request_id = request
-    pending = 0
-    timed_out = False
-    try:
-        if not flush_log_path(log_path, timeout=RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS):
-            pending = 1
-            timed_out = True
-            ctx.log.warn("JSONL flush did not complete before timeout")
-    except Exception as exc:
-        pending = 1
-        ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
-    finally:
-        state_written = _write_jsonl_flush_state(log_path, flush_request_id, pending=pending)
-        if state_written and (pending == 0 or timed_out):
-            _last_jsonl_flush_request_id = flush_request_id
-
-
-def _read_jsonl_flush_request() -> tuple[str, str] | None:
-    marker_path = Path(__file__).resolve().parent / _JSONL_FLUSH_REQUEST_FILE
-    try:
-        marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-
-    if not isinstance(marker, dict):
-        return None
-    if marker.get("usageStateId") != usage.current_usage_state_id():
-        return None
-    flush_request_id = marker.get("flushRequestId")
-    if (
-        not isinstance(flush_request_id, str)
-        or not flush_request_id
-        or not _is_safe_jsonl_flush_request_id(flush_request_id)
-        or flush_request_id == _last_jsonl_flush_request_id
-    ):
-        return None
-    log_path = marker.get("path")
-    if not isinstance(log_path, str) or not log_path:
-        return None
-    return log_path, flush_request_id
-
-
-def _is_safe_jsonl_flush_request_id(flush_request_id: str) -> bool:
-    return all(
-        ("a" <= char <= "z") or ("A" <= char <= "Z") or ("0" <= char <= "9") or char in "-_"
-        for char in flush_request_id
-    )
-
-
-def _write_jsonl_flush_state(log_path: str, flush_request_id: str, *, pending: int = 0) -> bool:
-    state_path = Path(__file__).resolve().parent / _JSONL_FLUSH_STATE_FILE
-    state = {
-        "pid": os.getpid(),
-        "usageStateId": usage.current_usage_state_id(),
-        "updatedAtMs": int(time.time() * 1000),
-        "flushRequestId": flush_request_id,
-        "path": log_path,
-        "pending": pending,
-    }
-    tmp_path = state_path.with_name(f"{state_path.name}.{flush_request_id}.tmp")
-    with _jsonl_flush_state_write_lock:
-        try:
-            with tmp_path.open("w") as f:
-                json.dump(state, f, separators=(",", ":"))
-            tmp_path.replace(state_path)
-            return True
-        except OSError as exc:
-            with suppress(OSError):
-                tmp_path.unlink()
-            ctx.log.warn(f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}")
-            return False
-
-
 def get_api_url() -> str:
     """Get API URL from options."""
     return ctx.options.vm0_api_url
@@ -467,7 +253,7 @@ def _prebind_requestheaders_upstream_destination(
     if classification.kind != "firewall_allow":
         return
     allow = classification.firewall_allow
-    if allow is None or not _firewall_allow_injects_ordinary_upstream_credentials(allow):
+    if not _firewall_allow_injects_ordinary_upstream_credentials(allow):
         return
     upstream_admission.ensure_bound_destination(
         flow,
@@ -494,7 +280,7 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
         if upstream_admission.api_hostname_matches(
             api_url,
             trusted_authority.host,
-        ) and not flow.request.path.startswith("/api/test/"):
+        ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
             classification = _classify_request_for_flow(
                 flow,
                 defer_unresolved_public_destination=True,
@@ -542,10 +328,19 @@ def _builtin_host_policy_error_for_firewall_allow(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
 ) -> builtin_host_policy.BuiltinRuntimeHostPolicyError | None:
-    if allow.api_entry.get(builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER) is not True:
+    marker_name = builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER
+    if marker_name not in allow.api_entry:
         return None
     if not _firewall_allow_injects_ordinary_upstream_credentials(allow):
         return None
+    runtime_host_policy = allow.api_entry[marker_name]
+    if runtime_host_policy is True:
+        runtime_host_policy = allow.api_entry.get("hostPolicy")
+    elif not isinstance(runtime_host_policy, builtin_host_policy.CompiledBuiltinHostPolicy):
+        return builtin_host_policy.BuiltinRuntimeHostPolicyError(
+            reason="invalid_host_policy",
+            message=(f'builtin firewall "{allow.name}" runtime host policy state is invalid'),
+        )
     trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
     if not trusted_host:
         return builtin_host_policy.BuiltinRuntimeHostPolicyError(
@@ -562,7 +357,7 @@ def _builtin_host_policy_error_for_firewall_allow(
             trusted_host=trusted_host,
             trusted_port=flow.request.port,
             auth_config=allow.api_entry.get("auth"),
-            host_policy=allow.api_entry.get("hostPolicy"),
+            host_policy=runtime_host_policy,
             upstream_endpoint=upstream_endpoint,
         )
     except builtin_host_policy.BuiltinRuntimeHostPolicyError as e:
@@ -812,59 +607,13 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         flow,
         defer_unresolved_public_destination=True,
     )
-    allow = classification.firewall_allow
-    vm_info = classification.vm_info
-    auth_base = _firewall_allow_auth_base(allow) if allow is not None else None
     if classification.kind == "public_destination_denied":
-        public_destination_denial = classification.public_destination_denial
-        if public_destination_denial is not None:
-            _start_request_timing(flow)
-            _block_public_destination_denied(
-                flow,
-                public_destination_denial,
-                send_response=False,
-            )
-            flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-            upstream_admission.forget_server_binding(flow.server_conn)
-            flow.kill()
-        return None
-
-    if connector_diagnostics.maybe_make_firewall_allow_local_response(
-        flow,
-        classification,
-        commit=False,
-    ):
-        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-        upstream_admission.forget_server_binding(flow.server_conn)
-        return None
-
-    _prebind_requestheaders_upstream_destination(flow, classification)
-    if (
-        classification.kind == "firewall_allow"
-        and allow is not None
-        and vm_info is not None
-        and body_check.kind != "ok"
-        and auth_base
-    ):
         _start_request_timing(flow)
-        prepare_firewall_metadata(flow, allow, vm_info)
-        proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
-        firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-        if body_check.kind == "too_large":
-            mark_auth_base_request_too_large(
-                flow,
-                proxy_log_path=proxy_log_path,
-                firewall_base=firewall_base,
-                observed_size=body_check.observed_size,
-            )
-        else:
-            mark_auth_base_request_length_required(
-                flow,
-                proxy_log_path=proxy_log_path,
-                firewall_base=firewall_base,
-                reason=body_check.reason,
-            )
-        request_classification.pop_cached_classification(flow)
+        _block_public_destination_denied(
+            flow,
+            classification.public_destination_denial,
+            send_response=False,
+        )
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         upstream_admission.forget_server_binding(flow.server_conn)
         flow.kill()
@@ -872,42 +621,84 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
 
     if (
         classification.kind == "firewall_allow"
-        and allow is not None
-        and vm_info is not None
-        and auth_base
-        and body_check.kind == "ok"
+        and connector_diagnostics.maybe_make_firewall_allow_local_response(
+            flow,
+            classification,
+            commit=False,
+        )
     ):
-        try:
-            admission = auth_base_forwarder.reserve_forward_request_admission(
-                body_check.observed_size
-            )
-        except (
-            auth_base_forwarder.AuthBaseForwardingSaturatedError,
-            RuntimeError,
-        ):
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        upstream_admission.forget_server_binding(flow.server_conn)
+        return None
+
+    _prebind_requestheaders_upstream_destination(flow, classification)
+    if classification.kind == "firewall_allow":
+        allow = classification.firewall_allow
+        vm_info = classification.vm_info
+        auth_base = _firewall_allow_auth_base(allow)
+        if body_check.kind != "ok" and auth_base:
             _start_request_timing(flow)
             prepare_firewall_metadata(flow, allow, vm_info)
             proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
             firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-            mark_auth_base_forwarding_saturated(
-                flow,
-                proxy_log_path=proxy_log_path,
-                firewall_base=firewall_base,
-            )
+            if body_check.kind == "too_large":
+                mark_auth_base_request_too_large(
+                    flow,
+                    proxy_log_path=proxy_log_path,
+                    firewall_base=firewall_base,
+                    observed_size=body_check.observed_size,
+                )
+            else:
+                mark_auth_base_request_length_required(
+                    flow,
+                    proxy_log_path=proxy_log_path,
+                    firewall_base=firewall_base,
+                    reason=body_check.reason,
+                )
             request_classification.pop_cached_classification(flow)
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
             upstream_admission.forget_server_binding(flow.server_conn)
             flow.kill()
             return None
-        try:
-            auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
-        except BaseException:
-            auth_base_forwarder.release_forward_request_admission(admission)
-            raise
-        request_classification.cache_classification(flow, classification)
-        return None
 
-    if request_classification.should_stream_capture_request(classification):
+        if auth_base and body_check.kind == "ok":
+            try:
+                admission = auth_base_forwarder.reserve_forward_request_admission(
+                    body_check.observed_size
+                )
+            except (
+                auth_base_forwarder.AuthBaseForwardingSaturatedError,
+                RuntimeError,
+            ):
+                _start_request_timing(flow)
+                prepare_firewall_metadata(flow, allow, vm_info)
+                proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+                firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+                mark_auth_base_forwarding_saturated(
+                    flow,
+                    proxy_log_path=proxy_log_path,
+                    firewall_base=firewall_base,
+                )
+                request_classification.pop_cached_classification(flow)
+                flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+                upstream_admission.forget_server_binding(flow.server_conn)
+                flow.kill()
+                return None
+            try:
+                auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
+            except BaseException:
+                auth_base_forwarder.release_forward_request_admission(admission)
+                raise
+            request_classification.cache_classification(flow, classification)
+            return None
+
+    if isinstance(
+        classification,
+        request_classification.ApiAllow
+        | request_classification.BrowserAllow
+        | request_classification.FirewallPolicyAllow
+        | request_classification.Allow,
+    ) and request_classification.should_stream_capture_request(classification):
         if classification.kind == "api_allow" and not upstream_admission.ensure_bound_destination(
             flow,
             kind="api_allow",
@@ -915,13 +706,17 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         ):
             _restore_request_headers_probe_metadata(flow, metadata_snapshot)
             return None
-        connector_diagnostics.record_allow_context(flow, classification)
+        if classification.kind == "allow":
+            connector_diagnostics.record_allow_context(flow, classification)
         request_classification.cache_classification(flow, classification)
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
         return None
 
-    if request_classification.should_try_firewall_stream_capture_request(classification):
+    if (
+        classification.kind == "firewall_allow"
+        and request_classification.should_try_firewall_stream_capture_request(classification)
+    ):
         return _try_firewall_request_stream_capture_from_headers(
             flow,
             classification=classification,
@@ -935,14 +730,11 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
 async def _try_firewall_request_stream_capture_from_headers(
     flow: http.HTTPFlow,
     *,
-    classification: request_classification.RequestClassification,
+    classification: request_classification.FirewallAllow,
     metadata_snapshot: dict[str, object],
 ) -> None:
     allow = classification.firewall_allow
     vm_info = classification.vm_info
-    if allow is None or vm_info is None:
-        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
-        return
     if _firewall_allow_injects_ordinary_upstream_credentials(
         allow
     ) and not upstream_admission.ensure_bound_destination(
@@ -1006,14 +798,19 @@ def _block_public_destination_denied(
     )
 
 
-async def request(flow: http.HTTPFlow) -> None:
-    """
-    Intercept request: inject firewall auth headers for configured firewall rules.
+def _unhandled_request_classification(classification: NoReturn) -> NoReturn:
+    raise AssertionError(f"Unhandled request classification: {classification!r}")
 
-    Order:
-    1. Registry gate (block unavailable or invalid registered VM state)
-    2. VM0 API auto-allow (agent must always reach the platform)
-    3. Firewall match (inject auth headers for allowed requests)
+
+async def request(flow: http.HTTPFlow) -> None:
+    """Dispatch a request-phase classification and apply its outcome.
+
+    `request_classification.classification_for_request()` reuses an intentionally
+    cached header-phase classification when present; otherwise it delegates to
+    `request_classification.classify_request()`, which owns the canonical decision
+    order. This hook dispatches the result. For firewall allows, it revalidates any
+    `publicDestination` constraint against the current runtime destination before
+    allowing traffic or injecting credentials.
     """
     connector_intent.capture_and_strip(flow)
 
@@ -1042,24 +839,18 @@ async def request(flow: http.HTTPFlow) -> None:
             ctx.log.warn("No client IP available, passing through")
             return
         if classification.kind == "registry_unavailable":
-            unavailable = classification.registry_unavailable
-            if unavailable is not None:
-                _block_registry_unavailable(flow, unavailable)
+            _block_registry_unavailable(flow, classification.registry_unavailable)
             return
         if classification.kind == "stale_tls_admission":
             _block_stale_tls_admission(flow, reason=classification.stale_tls_reason)
             return
         if classification.kind == "invalid_registry_vm":
-            invalid_vm = classification.invalid_vm
-            if invalid_vm is not None:
-                _block_invalid_registry_vm(flow, invalid_vm)
+            _block_invalid_registry_vm(flow, classification.invalid_vm)
             return
         if classification.kind == "pass_through":
             return
         if classification.kind == "authority_denied":
-            authority_error = classification.authority_error
-            if authority_error is not None:
-                _block_authority_validation_error(flow, authority_error)
+            _block_authority_validation_error(flow, classification.authority_error)
             return
         if classification.kind == "api_allow":
             if not upstream_admission.ensure_bound_destination(
@@ -1079,25 +870,34 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
             return
         if classification.kind == "firewall_ambiguous":
-            firewall_ambiguous = classification.firewall_ambiguous
-            if firewall_ambiguous is not None:
-                _set_firewall_ambiguous_response(flow, firewall_ambiguous)
+            _set_firewall_ambiguous_response(flow, classification.firewall_ambiguous)
             return
         if classification.kind == "firewall_block":
-            firewall_block = classification.firewall_block
-            if firewall_block is not None:
-                _set_firewall_block_response(flow, firewall_block)
+            _set_firewall_block_response(flow, classification.firewall_block)
             return
         if classification.kind == "public_destination_denied":
-            public_destination_denial = classification.public_destination_denial
+            _block_public_destination_denied(flow, classification.public_destination_denial)
+            return
+        if classification.kind == "firewall_policy_allow":
+            public_destination_denial = request_classification.current_public_destination_denial(
+                flow,
+                classification.firewall_allow,
+            )
             if public_destination_denial is not None:
                 _block_public_destination_denied(flow, public_destination_denial)
+                return
+            prepare_firewall_metadata(
+                flow,
+                classification.firewall_allow,
+                classification.vm_info,
+            )
+            flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+            flow.metadata.pop(metadata_keys.MODEL_USAGE_PROVIDER, None)
+            flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
         if classification.kind == "firewall_allow":
             allow = classification.firewall_allow
             vm_info = classification.vm_info
-            if allow is None or vm_info is None:
-                return
             public_destination_denial = request_classification.current_public_destination_denial(
                 flow,
                 allow,
@@ -1151,18 +951,21 @@ async def request(flow: http.HTTPFlow) -> None:
                 terminal_usage.release_tracked_flow(flow)
             return
 
-        vm_info = classification.vm_info
-        if vm_info is None:
+        if classification.kind == "allow":
+            connector_diagnostics.record_allow_context(flow, classification)
+            if request_streaming.streamed_request_size(flow) is None:
+                original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+                if isinstance(
+                    original_url, str
+                ) and connector_diagnostics.maybe_make_local_response(
+                    flow,
+                    original_url=original_url,
+                ):
+                    return
+            flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
-        connector_diagnostics.record_allow_context(flow, classification)
-        if request_streaming.streamed_request_size(flow) is None:
-            original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-            if isinstance(original_url, str) and connector_diagnostics.maybe_make_local_response(
-                flow,
-                original_url=original_url,
-            ):
-                return
-        flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
+
+        _unhandled_request_classification(classification)
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
@@ -1261,6 +1064,7 @@ def _is_valid_websocket_key(value: str) -> bool:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
+    model_usage_receipt.apply_signed_usage_receipt(flow)
     if connector_diagnostics.install_response_stream_if_needed(flow):
         return
     response_streaming.configure_response_stream(flow)
@@ -1563,14 +1367,10 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     response_streaming.finalize_model_sse_usage(flow)
     terminal_usage.report_model_provider_usage_once(flow, run_id)
 
-    # Billable connector usage for X NDJSON streams that crash mid-flight
-    # (issue #9534): the incremental parser populated x_ndjson_state during
-    # chunks; log what was observed so partial streams aren't silently
-    # dropped from billing.  Do not run the generic connector fallback for
-    # non-streaming JSON errors: partial bodies could otherwise be treated
-    # as unparseable successes and billed from request-side hints.
-    if flow.metadata.get(metadata_keys.X_NDJSON_STATE) is not None:
-        response_streaming.finalize_connector_response_state(flow)
+    # Connector parsers opt into interrupted reporting only when accumulated
+    # partial observations are independently billable. Ordinary JSON parsers do
+    # not opt in because incomplete responses could reach request-side hints.
+    if response_streaming.finalize_interrupted_connector_response_state(flow):
         usage.report_connector_usage(flow, run_id)
 
     safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
@@ -1591,31 +1391,17 @@ def _handle_error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports and forwarding workers before mitmproxy exits.
 
-    Runner-triggered flush workers and shutdown flush share
-    ``_usage_flush_signal_lock``. Waiting here keeps shutdown from closing the
-    executor while a SIGUSR1 worker is still converting buffered usage into
-    webhook reports. Shutdown then owns signals received before the request
-    cutoff and acknowledges them before ``shutdown(wait=True)`` drains submitted
-    webhook futures. Auth.base forwarding does not need to finish running work
-    during shutdown, so its worker shutdown stops new forwards and best-effort
-    closes active upstream sockets without waiting for slow upstream responses.
+    The runner flush lifecycle waits for any active SIGUSR1 worker, drains
+    accepted requests, and closes admission before this hook shuts down the
+    usage executor and JSONL writer. Auth.base forwarding does not need to
+    finish running work during shutdown, so its worker shutdown stops new
+    forwards and best-effort closes active upstream sockets without waiting for
+    slow upstream responses. JSONL writer shutdown is also bounded and
+    best-effort; if it times out, process shutdown continues with accepted log
+    entries possibly still pending.
     """
-    global _usage_flush_phase
-
-    _usage_flush_phase = "draining"
     try:
-        # Wait for any in-flight runner-triggered flush before closing the
-        # executor used by webhook report delivery. Once the lock is ours,
-        # shutdown also owns requests recorded while the final drain runs.
-        with _usage_flush_signal_lock:
-            try:
-                usage.flush_usage_events(trigger="shutdown")
-                _drain_runner_usage_flush_requests()
-            finally:
-                # Close request admission while still owning the lock, then
-                # consume any event recorded immediately before this cutoff.
-                _usage_flush_phase = "closed"
-                _drain_runner_usage_flush_requests()
+        runner_flush_lifecycle.drain_and_close()
     finally:
         try:
             usage.webhook.usage_executor.shutdown(wait=True)

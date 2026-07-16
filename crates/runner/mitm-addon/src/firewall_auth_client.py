@@ -3,7 +3,6 @@
 import asyncio
 import json
 import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -19,6 +18,7 @@ _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
     }
 )
 _FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
+_opener = platform_api.build_api_opener()
 
 
 class ConnectorNotConfiguredError(Exception):
@@ -210,9 +210,9 @@ def _parse_optional_string_list(decoded: dict[object, object], field_name: str) 
 def _parse_optional_aws_sigv4_credentials(
     decoded: dict[object, object],
 ) -> AwsSigV4Credentials | None:
-    value = decoded.get("awsSigv4")
-    if value is None:
+    if "awsSigv4" not in decoded:
         return None
+    value = decoded["awsSigv4"]
     if not isinstance(value, dict):
         raise _malformed_firewall_auth_success("awsSigv4 must be an object")
     access_key_id = value.get("accessKeyId")
@@ -221,6 +221,8 @@ def _parse_optional_aws_sigv4_credentials(
         raise _malformed_firewall_auth_success("awsSigv4.accessKeyId is required")
     if not isinstance(secret_access_key, str) or not secret_access_key:
         raise _malformed_firewall_auth_success("awsSigv4.secretAccessKey is required")
+    if "sessionToken" in value and value["sessionToken"] is None:
+        raise _malformed_firewall_auth_success("sessionToken must be a string")
     return AwsSigV4Credentials(
         access_key_id=access_key_id,
         secret_access_key=secret_access_key,
@@ -300,7 +302,7 @@ def _fetch_firewall_headers_sync(
     req = platform_api.make_api_request(url, data, request.sandbox_token)
     try:
         # nosemgrep: dynamic-urllib-use-detected
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+        with _opener.open(req, timeout=10) as resp:
             decoded: object = json.loads(_read_firewall_auth_response_body(resp))
             return _parse_firewall_auth_success(decoded, request)
     except urllib.error.HTTPError as e:
@@ -309,7 +311,7 @@ def _fetch_firewall_headers_sync(
         with e:
             try:
                 error_body = json.loads(_read_firewall_auth_response_body(e))
-            except (json.JSONDecodeError, OSError):
+            except (UnicodeDecodeError, json.JSONDecodeError, OSError):
                 raise e from None
             if not isinstance(error_body, dict):
                 raise e from None

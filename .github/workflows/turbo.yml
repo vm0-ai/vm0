@@ -771,6 +771,7 @@ jobs:
     if: >-
       ${{
         (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
         startsWith(needs.prepare.outputs.job-ref, 'pr-') &&
         needs.prepare.outputs.www-preview-url != ''
       }}
@@ -805,6 +806,7 @@ jobs:
     # cannot resolve the temporary `gh-readonly-queue/*` ref via the GitHub API).
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -846,7 +848,7 @@ jobs:
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           web-url: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
-          api-url: ${{ needs.prepare.outputs.api-preview-url }}
+          api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -953,7 +955,7 @@ jobs:
           job-ref: ${{ needs.prepare.outputs.job-ref }}
           web-url: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
-          api-url: ${{ needs.prepare.outputs.api-preview-url }}
+          api-backend-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -1114,7 +1116,7 @@ jobs:
           e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+runner@vm0-e2e.ai"
           cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
         env:
-          VM0_API_URL: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
+          VM0_API_BACKEND_URL: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
 
@@ -1142,6 +1144,7 @@ jobs:
     if: >-
       ${{
         (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
         needs.prepare.outputs.job-ref != '' && (
           needs.prepare.outputs.api-changed == 'true' ||
           needs.prepare.outputs.cli-changed == 'true' ||
@@ -1180,7 +1183,10 @@ jobs:
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
-            VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
+            VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW=${{ vars.PLAUSIBLE_SCRIPT_URL }}
+            VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+            VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
+            VITE_SENTRY_DSN=${{ vars.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
@@ -1216,6 +1222,7 @@ jobs:
     if: |
       always() &&
       github.event_name != 'push' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1321,7 +1328,7 @@ jobs:
         run: |
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
           VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
           VM0_AUTH_DOMAIN: ${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
@@ -1424,7 +1431,7 @@ jobs:
       - name: Run Playwright E2E tests
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VM0_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           VM0_ONBOARDING_URL: ${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
@@ -1596,10 +1603,10 @@ jobs:
       - name: Start Cron Simulator
         run: |
           chmod +x ./e2e/scripts/cron-simulator.sh
-          ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
+          ./e2e/scripts/cron-simulator.sh "$VM0_API_BACKEND_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
         env:
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -1610,7 +1617,7 @@ jobs:
           BATS_TEST_TIMEOUT=30 ./e2e/test/libs/bats/bin/bats -T --report-formatter junit --output e2e/results ./e2e/tests/01-serial/*.bats
           echo "✅ Serial tests passed"
         env:
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
@@ -1671,6 +1678,7 @@ jobs:
     timeout-minutes: 20
     if: |
       needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     outputs:
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
@@ -1766,6 +1774,7 @@ jobs:
     timeout-minutes: 8
     if: |
       needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     steps:
       - uses: actions/checkout@v7
@@ -2039,6 +2048,7 @@ jobs:
     needs: [prepare, build-cli, deploy-api]
     if: |
       needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     timeout-minutes: 2
     steps:
@@ -2095,16 +2105,16 @@ jobs:
             ]
           }')"
 
-          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${VM0_API_URL}/api/zero/model-policies" >/dev/null
-          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null}' "${VM0_API_URL}/api/zero/user-model-preference" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${VM0_API_BACKEND_URL}/api/zero/model-policies" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null}' "${VM0_API_BACKEND_URL}/api/zero/user-model-preference" >/dev/null
         env:
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap test account
         run: |
           zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   # Skip on push to main - runner tests are only needed for PRs
@@ -2124,6 +2134,7 @@ jobs:
       ]
     if: |
       needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     strategy:
       fail-fast: false
@@ -2170,10 +2181,10 @@ jobs:
       - name: Start Cron Simulator
         run: |
           chmod +x ./e2e/scripts/cron-simulator.sh
-          ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
+          ./e2e/scripts/cron-simulator.sh "$VM0_API_BACKEND_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
         env:
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -2193,7 +2204,7 @@ jobs:
         env:
           RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
           RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
-          VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
           USE_MOCK_CODEX: "true"
@@ -2399,6 +2410,11 @@ jobs:
           RUNNER_E2E_SKIP_ALLOWED="true"
           if [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ]; then
             RUNNER_E2E_SKIP_ALLOWED=""
+          fi
+          if [ "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}" = "true" ]; then
+            # External fork PRs cannot access runner infra secrets, so their
+            # runner deployment and runner E2E jobs are expected to skip.
+            RUNNER_E2E_SKIP_ALLOWED="true"
           fi
 
           check_result() {

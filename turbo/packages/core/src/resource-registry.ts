@@ -3320,44 +3320,44 @@ export interface PresentationRunbookPackage {
 // these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "playful-launch":
-    "c0d5ee9d37a45550865517aff796dae245cce4a63dfc5e1068423a1c918bb43c",
-  bloom: "860875251a8e11f8ef76dade474df236260ec92ed505e2aaf518f37116f7b805",
+    "78292a9a5c454e36a5255f22d147ac56f53c69538a4ac0897160239c2ca941e3",
+  bloom: "7f05f31603d2ad3055b23147cc2b41e047c5969b6640502489b34bd33a837d62",
   "blueprint-academy":
-    "bd4d007c2f2cc8fd05a1be1aa623d1323db265d690cb738e71c36a547fe389eb",
+    "d6f16dff7c2f7830b71a3d6ed3fd228f1de7a29fa7795e2a31afb9fc841a0f72",
   "botane-organic":
-    "824406b31ee091744855787c216065cdfc5193f1aab5eaea66ed99718cdf1957",
+    "052c937dc4a9c6e7c528265d86210c15488b19710d22437b25fb1710853c8a6f",
   "business-data":
-    "9fc6dbba7000c1dc829660f432c509477680599044be4fcf5cb7ce78b53cfcdd",
-  crayon: "077e304a9cee422cd06d5dbccc10f8ece6b9b5a6e87e36c17bf04694913ce69a",
+    "c3ca2128d7dbfb2e683bb0386d5335505c1f540160481da1c97aae9ff52a15ac",
+  crayon: "1e698ca42b7a36dfa8a1ed6f45c2b25181bf1058c91207b934612a73701fae70",
   "creative-agency":
-    "064aa337eac676892f7f12fab6cd5afe04dcbec0676729ad3199cc75d9fbd4c5",
+    "7c3b33353bd22b2a6dc0c50c7ed9d3d97b159199ad30aa61b2abeb46a931b6ec",
   "data-report":
-    "358293329b6c57b4f7d3a29db2df11330528ecfab587cdc2a0fabda14e42a37a",
+    "11747371adb6561e25cd4c3095caf62f52840c4ee625d234478f7631b746a9b3",
   "editorial-magazine":
-    "4b614c9b7d85d974b2dc9bccdbc7900e62fb09b071340811a20c6a9d1505e047",
+    "d1ae6492925d2e9ed7cc0acc1684c33fea6613b6bef34b21aa228f01fc76c5d7",
   "landing-consulting":
-    "55bda6ab9a33ec420bc3f5182c3e92ed43e185aee1fefa7edf54946f006c71bf",
-  lumina: "cbffea118ab6b1d78cf3e9d3a46b8481e11a7d797a21e09b30af794c2cb81df7",
-  meridian: "b4c221fa44ff02d12be917834a54d5c44ee96873d9bb1d1d1220e3e6b3ad211a",
+    "01323dcebc9413781ad518d86f6b6611c3fb39a8bfd6287b2abced7c9432b6c7",
+  lumina: "38ae1652ababd62fbb2dcbc612a7a9458dae0b88283e09b34d113882f94ca063",
+  meridian: "6d31c74008ea8f854da929edb135ecbc8410dc3790e9c5ff8d43681029c1ecff",
   "mosaic-geometric":
-    "490f96ae89413eb2ad5661dcf7675c5bdda66cdda0a067984518580c1442d5b2",
+    "fd036b42ef323011f0a2c771ceb0bbc6cfb6fb29272633f4e187cd672a89d336",
   "neo-brutalism":
-    "757ada0787b71d6f54041c8e94a77d7e8546897461bde18600ee60251ea074d4",
-  nocturne: "5a394fad17ad92b1e8be903a3a4b09df8fe55280f8e16a822dd45a09372fc05c",
+    "70ca020b00cd79abdb471e3145f2bd706c1a2978fdd5870e372565033f3a4ead",
+  nocturne: "83d26dbd95a839310db7553b3a2e4dfe2cc3d9678d988fa864d4dd61f6941213",
   "pixel-glitch":
-    "6ba91b8fc1dbb41f4d98b9d68525b32bb72b614b85c6c012cf41a8bfbd0fa39a",
+    "bf3f5312f2281490f592c8d1c02477e57632299ea93b9e3eef65fe1dc2236e29",
   "playful-pop":
-    "0a6871f27caa8fc434a1142d64486a5312fcadc44fe1ec6afcf07586758eadaf",
+    "1c84b4a0df81a8ca169ac30a589410b8d846af5900c38d08fb77688b2556a565",
   prospectus:
-    "8e9595845cc76df222e822bcde82ed665024a533c641882efd6d0de3ed63dd54",
+    "0dc2b86b15970312003f6a60a90b03c47729870a38f85ae79c89547cd1cb485d",
   schoolhouse:
-    "9bd19af256dfb6f17073ec9af52ed0163a5f432a3d143eb82f1fa67aaf8b015e",
+    "44e95a44ac37174b6dec3e2a2b21c0fe7d6d9f83c254d86cff1779030d5b11ad",
   "sticker-scrapbook":
-    "d02ce61703c4b0000e0e03f568356a7d2e0ed43a7f2e37430a4afebb4280baa6",
-  strata: "72c73b34abe7da4230048d6d532e5e1ee5dfb7f9d4895ed90ec412b7ff50ceeb",
+    "cddd7f14573af6aa922b2873658dc81fbcd45dfb42b84da8be9b8e0866874dab",
+  strata: "39ebdffe9de88faebb6427d734927b57ebe69b9b98db5efbee59b5f7ab120cc6",
   "taped-consulting":
-    "21801079a05d1e47bbf3342e8dbfa2245f00abaf31de29484efbdecd3eba4e99",
-  vantage: "bc55f661edf81189594229478a0f90cf5409790e8e6da2b7b6e0a9d5c92bfd8e",
+    "7b05540c82b410abd1f236ef8a42ff53601489a4a8531413983830d42cec614b",
+  vantage: "096678c9f5bc1760b9f2c25bf10949296ddaa98511a2ecae2bc59528bd7969ed",
 };
 
 function presentationRunbookArchiveSha256(slug: string): string {
@@ -3780,6 +3780,8 @@ export function buildPresentationRunbookInstructionLines(args: {
     `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
     `- Follow ./generated/resources/${pkg.slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
     "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
+    "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
+    "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",
     "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
     "- Return only the generated HTML deck as the final deliverable.",
   ];

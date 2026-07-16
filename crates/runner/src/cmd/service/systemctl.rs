@@ -235,7 +235,15 @@ async fn kill_and_reap_child(program: &str, child: &mut tokio::process::Child) -
     }
 }
 
-/// Check whether a systemd unit is active (running or activating).
+/// Check whether a systemd unit is active for normal health checks.
+///
+/// Returns `true` for the `ActiveState` values `active`, `activating`,
+/// `reloading`, and `refreshing`. `deactivating` intentionally returns `false`
+/// because a unit that has begun shutdown is no longer runnable.
+///
+/// Cleanup callers must use `cleanup_unit_active_state_bounded`, which treats
+/// `deactivating` as active-like so cleanup can wait or escalate instead of
+/// reporting success before the unit is fully inactive.
 pub(crate) async fn is_unit_active(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
     let svc = unit.service_name();
     let properties = ["LoadState", "ActiveState"];
@@ -394,7 +402,11 @@ fn cleanup_unit_active_state_from_output(
     )
 }
 
-/// Check whether a systemd unit is enabled for boot.
+/// Check whether systemd reports a unit file as enabled.
+///
+/// Returns `true` for both the persistent `enabled` state and the transient
+/// `enabled-runtime` state. This does not indicate whether the unit is active
+/// or whether it will remain enabled after a reboot.
 pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
     let svc = unit.service_name();
     let output = tokio::process::Command::new("systemctl")
@@ -402,6 +414,20 @@ pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bo
         .output()
         .await
         .map_err(|e| RunnerError::Internal(format!("spawn systemctl is-enabled: {e}")))?;
+    unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
+}
+
+/// Check whether systemd reports a unit file as enabled.
+///
+/// Returns `true` for both the persistent `enabled` state and the transient
+/// `enabled-runtime` state. This does not indicate whether the unit is active
+/// or whether it will remain enabled after a reboot.
+pub(super) async fn is_unit_enabled_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<bool> {
+    let svc = unit.service_name();
+    let output = run_command_output_bounded("systemctl", &["is-enabled", svc], duration).await?;
     unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
 }
 
@@ -688,14 +714,12 @@ fn unit_enabled_from_systemctl_is_enabled(
     match state {
         "enabled" | "enabled-runtime" => Ok(true),
         "alias" | "disabled" | "generated" | "indirect" | "linked" | "linked-runtime"
-        | "masked" | "masked-runtime" | "static" | "transient" => Ok(false),
+        | "masked" | "masked-runtime" | "not-found" | "static" | "transient" => Ok(false),
         "" if !status.success() => Err(systemctl_is_enabled_status_error(svc, status, stderr)),
-        other if !status.success() => {
-            tracing::debug!(
-                "systemctl is-enabled {svc} exited with {status} and state {other:?}; treating as disabled"
-            );
-            Ok(false)
-        }
+        other if !status.success() => Err(RunnerError::Internal(format!(
+            "unknown UnitFileState for {svc}: {other:?}; {}",
+            systemctl_is_enabled_status_error(svc, status, stderr)
+        ))),
         other => Err(RunnerError::Internal(format!(
             "unknown UnitFileState for {svc}: {other:?}"
         ))),
@@ -752,6 +776,8 @@ fn systemctl_show_status_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    use crate::process::read_process_stat;
 
     fn systemctl_show_output(status: ExitStatus, stdout: &[u8], stderr: &[u8]) -> Output {
         Output {
@@ -792,7 +818,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_command_bounded_times_out_and_reaps_child() {
+    async fn run_command_bounded_times_out() {
         let outcome = run_command_bounded("sleep", &["60"], Duration::from_millis(1))
             .await
             .unwrap();
@@ -801,12 +827,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_command_output_bounded_times_out_and_reaps_child() {
+    async fn run_command_output_bounded_times_out() {
         let err = run_command_output_bounded("sleep", &["60"], Duration::from_millis(1))
             .await
             .unwrap_err();
 
         assert!(err.to_string().contains("timed out"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn kill_and_reap_child_reaps_running_child() {
+        let mut child = tokio::process::Command::new("sleep")
+            .arg("60")
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let pid = child.id().unwrap();
+        let starttime = read_process_stat(pid)
+            .await
+            .unwrap_or_else(|| panic!("read initial process stat for pid {pid}"))
+            .starttime;
+
+        kill_and_reap_child("sleep", &mut child).await.unwrap();
+
+        let observed = read_process_stat(pid).await;
+        assert!(
+            !matches!(&observed, Some(stat) if stat.starttime == starttime),
+            "killed child pid {pid} was not reaped: {observed:?}"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -1328,6 +1377,7 @@ mod tests {
             "linked-runtime",
             "masked",
             "masked-runtime",
+            "not-found",
             "static",
             "transient",
         ] {
@@ -1359,6 +1409,25 @@ mod tests {
         let message = err.to_string();
 
         assert!(message.contains("unknown UnitFileState"));
+    }
+
+    #[test]
+    fn unit_enabled_from_systemctl_is_enabled_rejects_unknown_failed_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(0x100);
+        let err = unit_enabled_from_systemctl_is_enabled(
+            "vm0-runner-test.service",
+            &status,
+            b"bad\n",
+            b"unit file is invalid\n",
+        )
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("unknown UnitFileState"));
+        assert!(message.contains("bad"));
+        assert!(message.contains("unit file is invalid"));
     }
 
     #[test]

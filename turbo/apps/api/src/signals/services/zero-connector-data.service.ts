@@ -2222,6 +2222,7 @@ export function zeroConnectorSearch(args: {
       overrides,
     });
     return searchConnectorCatalog({
+      db: get(db$),
       keyword: args.keyword,
       featureStates,
       apiAuthMethodPolicy: "include",

@@ -12,7 +12,6 @@ use tokio::sync::oneshot;
 
 use crate::env::Framework;
 use crate::error::AgentError;
-use crate::events;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
@@ -21,7 +20,7 @@ use super::codex_app_server::{
     CodexAppServerClient, CodexAppServerConfig, CodexAppServerError, ServerNotification,
 };
 use super::codex_app_server_events::{IGNORED_NOTIFICATION_METHODS, notification_to_codex_event};
-use super::event_delivery::{AckedEventPrefix, PreparedEvent};
+use super::event_delivery::{PreparedEvent, run_event_sender};
 use super::{
     CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
     LOG_TAG, ParsedEventAction, command,
@@ -73,35 +72,13 @@ pub(super) async fn execute_codex_app_server_for_runtime(
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting codex app-server execution...");
 
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
+    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
-    let event_http = http.clone();
-    let event_error_flag = runtime.event_error_flag.to_string();
-    let event_sender = tokio::spawn(async move {
-        let mut acked_prefix = AckedEventPrefix::default();
-        while let Some(event) = event_rx.recv().await {
-            match event {
-                PreparedEvent::Webhook { sequence, payload } => {
-                    match events::post_event_with_error_flag(
-                        &event_http,
-                        &payload,
-                        &event_error_flag,
-                    )
-                    .await
-                    {
-                        Ok(()) => {
-                            acked_prefix.record_success(sequence);
-                        }
-                        Err(e) => {
-                            acked_prefix.record_failure(sequence);
-                            log_warn!(LOG_TAG, "Event send failed: {e}");
-                        }
-                    }
-                }
-            }
-        }
-        acked_prefix.last_contiguous()
-    });
+    let event_sender = tokio::spawn(run_event_sender(
+        event_rx,
+        http.clone(),
+        runtime.event_error_flag.to_string(),
+    ));
 
     let run_result = run_codex_app_server(
         masker,

@@ -100,7 +100,89 @@ const cronSyncSkillsResponseSchema = z.object({
   total: z.number(),
 });
 
-const cronExecuteWorkflowTriggersResponseSchema = z.object({
+export const connectorCatalogSyncFailureCodeSchema = z.enum([
+  "source-unavailable",
+  "object-too-large",
+  "invalid-json",
+  "invalid-pointer",
+  "invalid-reference",
+  "digest-mismatch",
+  "unsupported-schema",
+  "invalid-artifact",
+  "public-leakage",
+  "relationship-mismatch",
+]);
+
+export const connectorCatalogCompatibilityReasonSchema = z.enum([
+  "missing-grant-provider",
+  "missing-access-provider",
+  "missing-revoke-provider",
+  "provider-contract-mismatch",
+  "missing-platform-configuration",
+]);
+
+export const connectorCatalogFilteredAuthMethodSchema = z.object({
+  connectorRef: z.string().min(1),
+  authMethodId: z.string().min(1),
+  reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
+});
+
+export const connectorCatalogFilteredAuthMethodsSchema = z.array(
+  connectorCatalogFilteredAuthMethodSchema,
+);
+
+const connectorCatalogFilteringStatusSchema = z.object({
+  capabilityDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  evaluatedAt: z.string().datetime().nullable(),
+  stale: z.boolean(),
+  filteredAuthMethods: connectorCatalogFilteredAuthMethodsSchema,
+});
+
+const connectorCatalogSyncStatusSchema = z.object({
+  state: z.enum(["never-synced", "current", "stale"]),
+  active: z
+    .object({
+      catalogVersion: z.string(),
+      integrityDigest: z.string(),
+      activatedAt: z.string().datetime(),
+    })
+    .nullable(),
+  lastAttempt: z
+    .object({
+      at: z.string().datetime(),
+      outcome: z.enum(["accepted", "unchanged", "rejected"]),
+      failureCode: connectorCatalogSyncFailureCodeSchema.nullable(),
+    })
+    .nullable(),
+  lastSuccessAt: z.string().datetime().nullable(),
+  filtering: connectorCatalogFilteringStatusSchema,
+});
+
+const connectorCatalogSyncResponseSchema =
+  connectorCatalogSyncStatusSchema.extend({
+    outcome: z.enum(["accepted", "unchanged", "rejected"]),
+  });
+
+export type ConnectorCatalogSyncFailureCode = z.infer<
+  typeof connectorCatalogSyncFailureCodeSchema
+>;
+export type ConnectorCatalogCompatibilityReason = z.infer<
+  typeof connectorCatalogCompatibilityReasonSchema
+>;
+export type ConnectorCatalogFilteredAuthMethod = z.infer<
+  typeof connectorCatalogFilteredAuthMethodSchema
+>;
+export type ConnectorCatalogFilteringStatus = z.infer<
+  typeof connectorCatalogFilteringStatusSchema
+>;
+export type ConnectorCatalogSyncStatus = z.infer<
+  typeof connectorCatalogSyncStatusSchema
+>;
+export type ConnectorCatalogSyncResponse = z.infer<
+  typeof connectorCatalogSyncResponseSchema
+>;
+
+const cronExecuteWorkflowAutomationsResponseSchema = z.object({
   success: z.literal(true),
   executed: z.number(),
   skipped: z.number(),
@@ -344,16 +426,39 @@ export const cronSyncSkillsContract = c.router({
   },
 });
 
-export const cronExecuteWorkflowTriggersContract = c.router({
-  execute: {
+export const cronConnectorCatalogContract = c.router({
+  sync: {
     method: "GET",
-    path: "/api/cron/execute-workflow-triggers",
+    path: "/api/cron/sync-connector-catalog",
     headers: authHeadersSchema,
     responses: {
-      200: cronExecuteWorkflowTriggersResponseSchema,
+      200: connectorCatalogSyncResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "Execute due workflow schedule triggers",
+    summary: "Sync the validated connector catalog snapshot",
+  },
+  status: {
+    method: "GET",
+    path: "/api/cron/connector-catalog-status",
+    headers: authHeadersSchema,
+    responses: {
+      200: connectorCatalogSyncStatusSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Read connector catalog sync status",
+  },
+});
+
+export const cronExecuteWorkflowAutomationsContract = c.router({
+  execute: {
+    method: "GET",
+    path: "/api/cron/execute-workflow-automations",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronExecuteWorkflowAutomationsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Execute due workflow automations",
   },
 });
 
@@ -452,6 +557,7 @@ export type CronComputerUseScreenshotCleanupContract =
 export type CronArtifactPreviewContract = typeof cronArtifactPreviewContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
+export type CronConnectorCatalogContract = typeof cronConnectorCatalogContract;
 export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;
 export type CronRenewGoogleCalendarWatchesContract =
@@ -472,7 +578,7 @@ export {
   cronArtifactPreviewResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
-  cronExecuteWorkflowTriggersResponseSchema,
+  cronExecuteWorkflowAutomationsResponseSchema,
   cronRenewGmailWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,

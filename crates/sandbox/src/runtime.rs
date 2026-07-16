@@ -29,8 +29,19 @@ pub trait SandboxRuntime: Send + Sync {
     ///
     /// Backends that create VM-facing host interfaces can return a scoped
     /// pattern here so dnsmasq avoids listening on unrelated host interfaces.
+    /// When this returns a pattern, the caller must start DNS and call
+    /// [`Self::activate_dns_readiness`] before creating factories.
     async fn dns_interface_pattern(&self) -> Option<String> {
         None
+    }
+
+    /// Admit runtime resources that depend on runner-managed DNS.
+    ///
+    /// The runner calls this after starting DNS on the interface pattern
+    /// returned by [`Self::dns_interface_pattern`]. Backends without that
+    /// dependency can use the default no-op implementation.
+    async fn activate_dns_readiness(&self) -> Result<()> {
+        Ok(())
     }
 
     /// Release shared resources (network pools, device caches).
@@ -52,10 +63,13 @@ pub trait RuntimeProvider: Send + Sync {
     /// Implementations may validate these values and initialize
     /// backend-specific shared resources while creating the runtime.
     ///
-    /// On success, the returned runtime is ready for
-    /// [`SandboxRuntime::create_factory`] calls. This does not create or
-    /// initialize any factory; factory initialization remains part of
-    /// [`SandboxRuntime::create_factory`].
+    /// On success, a runtime that does not expose a DNS interface pattern is
+    /// ready for [`SandboxRuntime::create_factory`] calls. When
+    /// [`SandboxRuntime::dns_interface_pattern`] returns a pattern, the caller
+    /// must start runner-managed DNS and call
+    /// [`SandboxRuntime::activate_dns_readiness`] first. Runtime creation does
+    /// not create or initialize any factory; factory initialization remains
+    /// part of [`SandboxRuntime::create_factory`].
     ///
     /// The caller owns the returned runtime and is responsible for eventually
     /// calling [`SandboxRuntime::shutdown`] after all factories created from it

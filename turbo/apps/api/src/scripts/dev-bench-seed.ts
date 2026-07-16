@@ -21,7 +21,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
-import { settle } from "../signals/utils";
+import { onRejection } from "../signals/utils";
 
 const BULK_INSERT_CHUNK = 500;
 const SCRIPT_MARKER = "dev-bench-seed";
@@ -65,8 +65,8 @@ interface FixedRunCount {
   readonly bucketName: string;
 }
 
-interface AutomationTitleSpec {
-  readonly title: string;
+interface WorkflowAutomationSpec {
+  readonly triggerBrief: string;
   readonly count: number;
 }
 
@@ -82,8 +82,7 @@ export interface ThreadProfile {
   readonly fixedRunCounts: readonly FixedRunCount[];
   readonly followupCount: number;
   readonly usageCount: number;
-  readonly automationIdCount: number;
-  readonly automationTitles: readonly AutomationTitleSpec[];
+  readonly workflowAutomations: readonly WorkflowAutomationSpec[];
   readonly revokeCount: number;
   readonly failedRunCount: number;
   readonly runEventStyle: "mixed" | "items";
@@ -123,13 +122,12 @@ export const DEV_BENCH_THREAD_PROFILES: readonly ThreadProfile[] = [
     ],
     followupCount: 72,
     usageCount: 32,
-    automationIdCount: 19,
-    automationTitles: [
-      { title: "pr-auto-16384", count: 5 },
-      { title: "main-feature-switch-digest", count: 22 },
-      { title: "pr-auto-17189", count: 8 },
-      { title: "pr-auto-17218", count: 6 },
-      { title: "pr-auto-17608", count: 5 },
+    workflowAutomations: [
+      { triggerBrief: "pr-auto-16384", count: 5 },
+      { triggerBrief: "main-feature-switch-digest", count: 22 },
+      { triggerBrief: "pr-auto-17189", count: 8 },
+      { triggerBrief: "pr-auto-17218", count: 6 },
+      { triggerBrief: "pr-auto-17608", count: 5 },
     ],
     revokeCount: 6,
     failedRunCount: 1,
@@ -168,10 +166,9 @@ export const DEV_BENCH_THREAD_PROFILES: readonly ThreadProfile[] = [
     ],
     followupCount: 142,
     usageCount: 0,
-    automationIdCount: 51,
-    automationTitles: [
-      { title: "release-pr-auto-merge", count: 134 },
-      { title: "verify-auto-merge-status", count: 1 },
+    workflowAutomations: [
+      { triggerBrief: "release-pr-auto-merge", count: 134 },
+      { triggerBrief: "verify-auto-merge-status", count: 1 },
     ],
     revokeCount: 6,
     failedRunCount: 0,
@@ -342,16 +339,16 @@ function buildRunCounts(profile: ThreadProfile): number[] {
   );
 }
 
-function buildAutomationTitles(
+function buildWorkflowAutomationBriefs(
   profile: ThreadProfile,
 ): readonly (string | null)[] {
   return shuffle(
-    profile.automationTitles.flatMap((spec) => {
+    profile.workflowAutomations.flatMap((spec) => {
       return Array.from({ length: spec.count }, () => {
-        return spec.title;
+        return spec.triggerBrief;
       });
     }),
-    `${profile.slug}:automation`,
+    `${profile.slug}:workflow-automation`,
   );
 }
 
@@ -627,7 +624,7 @@ function appendRunMessages(
     readonly runIndex: number;
     readonly runRowCount: number;
     readonly runCount: number;
-    readonly automationTitle: string | null;
+    readonly workflowAutomationBrief: string | null;
     readonly startAt: Date;
     readonly endAt: Date;
     readonly rows: BuiltProfileRows;
@@ -644,8 +641,6 @@ function appendRunMessages(
     args.runCount,
   );
   const failed = args.runIndex < args.profile.failedRunCount;
-  const automationId =
-    args.runIndex < args.profile.automationIdCount ? randomUUID() : null;
   const userMessageRow: SeedChatMessageRow = {
     id: randomUUID(),
     chatThreadId: args.threadId,
@@ -653,8 +648,6 @@ function appendRunMessages(
     role: "user",
     content: userPromptLorem(args.profile, args.runIndex),
     createdAt: baseCreatedAt,
-    automationId,
-    automationTitle: args.automationTitle,
   };
 
   args.runUserMessageRows.push(userMessageRow);
@@ -680,10 +673,11 @@ function appendRunMessages(
   });
   args.rows.zeroRunRows.push({
     id: runId,
-    triggerSource: args.automationTitle ? "automation" : "web",
+    triggerSource: args.workflowAutomationBrief ? "workflow-schedule" : "web",
     selectedModel: args.profile.selectedModel,
     chatThreadId: args.threadId,
     summary: `Synthetic ${args.profile.slug} run ${String(args.runIndex)}`,
+    triggerBrief: args.workflowAutomationBrief,
   });
 
   appendAssistantEventMessages({
@@ -869,7 +863,7 @@ export function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
   const startAt = new Date(args.profile.startAt);
   const endAt = new Date(args.profile.endAt);
   const runCounts = buildRunCounts(args.profile);
-  const automationTitles = buildAutomationTitles(args.profile);
+  const workflowAutomationBriefs = buildWorkflowAutomationBriefs(args.profile);
   const rows: BuiltProfileRows = {
     runRows: [],
     zeroRunRows: [],
@@ -883,7 +877,7 @@ export function buildProfileRows(args: BuildProfileRowsArgs): BuiltProfileRows {
       runIndex,
       runRowCount: runCounts[runIndex]!,
       runCount: runCounts.length,
-      automationTitle: automationTitles[runIndex] ?? null,
+      workflowAutomationBrief: workflowAutomationBriefs[runIndex] ?? null,
       startAt,
       endAt,
       rows,
@@ -1015,11 +1009,8 @@ async function main(): Promise<void> {
   if (!userId || !agentId) {
     usage();
   }
-  const result = await settle(seedDevBench({ userId, agentId }));
+  await onRejection(seedDevBench({ userId, agentId }), closeDbPool);
   await closeDbPool();
-  if (!result.ok) {
-    throw result.error;
-  }
 }
 
 if (isMainModule()) {

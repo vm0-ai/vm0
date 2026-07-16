@@ -3,7 +3,7 @@
 use tokio::sync::{mpsc, oneshot};
 
 use crate::connection::{
-    DEFAULT_REALTIME_HOST, EventLoopState, SessionState, WsTransport, connect_and_attach,
+    DEFAULT_REALTIME_HOST, DropWarningState, EventLoopState, SessionState, connect_and_attach,
     exchange_token, rest_host, run_event_loop,
 };
 use crate::protocol::error_code;
@@ -78,7 +78,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     let token = exchange_token(&http, &token_request, &rest).await?;
 
     // Connect, handshake, and attach with timeout
-    let (ws_write, ws_read, conn_state) = tokio::time::timeout(
+    let (transport, conn_state) = tokio::time::timeout(
         timing.connect_timeout,
         connect_and_attach(
             &realtime_host,
@@ -99,7 +99,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     // Spawn background event loop
     tokio::spawn(run_event_loop(
         EventLoopState {
-            transport: Some(WsTransport::new(ws_read, ws_write)),
+            transport: Some(transport),
             event_tx,
             session: SessionState::connected(conn_state),
             channel: config.channel,
@@ -109,7 +109,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             http,
             get_token: config.get_token,
             timing,
-            dropped_messages: 0,
+            drop_warnings: DropWarningState::default(),
         },
         close_rx,
     ));

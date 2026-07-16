@@ -2,10 +2,11 @@ import { command, computed, state, type Command } from "ccstate";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { logger } from "../log.ts";
 import {
-  pushPathSilently$,
+  detachedNavigateTo$,
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
+import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
@@ -144,29 +145,12 @@ const setupPaneThread$ = command(
   },
 );
 
-export const loadLeftThread$ = command(
+export const setupLeftThread$ = command(
   async (
-    { get, set },
+    { set },
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    if (get(internalRightThread$)?.threadId === threadId) {
-      set(unloadRightThread$);
-    }
-
-    const currentLeftThread = get(internalLeftThread$);
-    if (currentLeftThread && currentLeftThread.threadId !== threadId) {
-      set(currentLeftThread.resetRenderedChatGroupsIfAtBottom$);
-    }
-
-    if (get(currentChatThreadId$) !== threadId) {
-      // Drop right sidebar state before switching threads — open artifact
-      // and automation panels are anchored to the previous thread's messages.
-      set(clearArtifactPreview$);
-      set(closeHeaderAutomationSidebar$);
-      set(pushPathSilently$, "/chats/:threadId", { threadId });
-    }
-
     await Promise.all([
       set(syncPrimaryThread$, threadId, parentSignal),
       set(
@@ -182,13 +166,50 @@ export const loadLeftThread$ = command(
   },
 );
 
-export const loadRightThread$ = command(
+export const setupRightThread$ = command(
   async (
-    { get, set },
+    { set },
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    if (get(internalLeftThread$)?.threadId === threadId) {
+    await set(
+      setupPaneThread$,
+      {
+        setPaneThread$: setRightThread$,
+        resetSetupSignal$: resetRightSetupSignal$,
+      },
+      threadId,
+      parentSignal,
+    );
+  },
+);
+
+export const loadLeftThread$ = command(
+  ({ get, set }, threadId: string): void => {
+    if (get(currentChatThreadId$) === threadId) {
+      return;
+    }
+
+    // Drop right sidebar state before switching threads — open artifact
+    // and automation panels are anchored to the previous thread's messages.
+    set(clearArtifactPreview$);
+    set(closeHeaderAutomationSidebar$);
+
+    const next = new URLSearchParams(get(searchParams$));
+    if (next.get(SIDEBAR_PARAM) === threadId) {
+      next.delete(SIDEBAR_PARAM);
+    }
+    set(detachedNavigateTo$, ROUTES.chat, {
+      pathParams: { threadId },
+      searchParams: next,
+    });
+  },
+);
+
+export const loadRightThread$ = command(
+  ({ get, set }, threadId: string): void => {
+    const mainThreadId = get(currentChatThreadId$);
+    if (!mainThreadId || mainThreadId === threadId) {
       return;
     }
 
@@ -205,19 +226,10 @@ export const loadRightThread$ = command(
     set(closeHeaderAutomationSidebar$);
 
     const next = new URLSearchParams(get(searchParams$));
-    if (next.get(SIDEBAR_PARAM) !== threadId) {
-      next.set(SIDEBAR_PARAM, threadId);
-      set(updateSearchParams$, next);
-    }
-
-    await set(
-      setupPaneThread$,
-      {
-        setPaneThread$: setRightThread$,
-        resetSetupSignal$: resetRightSetupSignal$,
-      },
-      threadId,
-      parentSignal,
-    );
+    next.set(SIDEBAR_PARAM, threadId);
+    set(detachedNavigateTo$, ROUTES.chat, {
+      pathParams: { threadId: mainThreadId },
+      searchParams: next,
+    });
   },
 );

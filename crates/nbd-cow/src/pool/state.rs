@@ -370,7 +370,11 @@ impl DevicePool {
         self.release_claim(claim);
     }
 
-    /// Clean up the pool: reject waiters and clear queues.
+    /// Permanently deactivate the pool.
+    ///
+    /// Cleanup fails queued acquire requests with [`NbdCowError::NoFreeDevice`]
+    /// and causes all subsequent acquire requests to return the same error.
+    /// Repeated cleanup calls are safe and idempotent.
     pub async fn cleanup(&mut self) {
         self.begin_cleanup();
         self.finish_cleanup();

@@ -7,7 +7,7 @@ import { authRoute } from "../auth/auth-route";
 import type { RouteEntry } from "../route-entry";
 import { ensureOrgLimitedFreeBootstrap$ } from "../services/org-limited-free-bootstrap.service";
 import { onboardingStatus } from "../services/onboarding.service";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const L = logger("zero-onboarding-status.route");
 
@@ -18,16 +18,22 @@ const getOnboardingStatusInner$ = command(
     signal.throwIfAborted();
 
     if (auth.orgId && body.isAdmin && !body.hasDefaultAgent) {
-      const bootstrapResult = await settle(
+      const bootstrapResult = await tapError(
         set(
           ensureOrgLimitedFreeBootstrap$,
           { orgId: auth.orgId, ownerUserId: auth.userId },
           signal,
         ),
+        (error) => {
+          L.warn("Lazy onboarding status bootstrap failed", {
+            orgId: auth.orgId,
+            error,
+          });
+        },
       );
       signal.throwIfAborted();
 
-      if (bootstrapResult.ok) {
+      if (bootstrapResult !== undefined) {
         const repairedBody = await get(onboardingStatus(auth));
         signal.throwIfAborted();
         return {
@@ -35,11 +41,6 @@ const getOnboardingStatusInner$ = command(
           body: repairedBody,
         };
       }
-
-      L.warn("Lazy onboarding status bootstrap failed", {
-        orgId: auth.orgId,
-        error: bootstrapResult.error,
-      });
     }
 
     return {

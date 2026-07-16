@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.19.33](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.32...vsock-guest-v0.19.33) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.19.32](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.31...vsock-guest-v0.19.32) (2026-07-15)
+
+## [0.19.31](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.30...vsock-guest-v0.19.31) (2026-07-15)
+
+
+### Bug Fixes
+
+* keep guest responsive during file writes ([#21556](https://github.com/vm0-ai/vm0/issues/21556)) ([28de816](https://github.com/vm0-ai/vm0/commit/28de81622ea55b1b67317dff3f6bd1e5c542962c))
+
+## [0.19.30](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.29...vsock-guest-v0.19.30) (2026-07-13)
+
 ## [0.19.29](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.28...vsock-guest-v0.19.29) (2026-07-10)
 
 ## [0.19.28](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.27...vsock-guest-v0.19.28) (2026-07-09)

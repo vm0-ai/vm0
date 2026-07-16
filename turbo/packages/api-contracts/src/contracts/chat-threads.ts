@@ -6,6 +6,7 @@ import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
 import { triggerSourceSchema } from "./logs";
 import { isSupportedRunModel } from "./model-providers";
+import { zeroMailDraftSchema } from "./zero-mail";
 
 const c = initContract();
 export const MODEL_FIRST_SELECTION_PROVIDER_ID =
@@ -102,6 +103,33 @@ const artifactFavoriteBodySchema = z.object({
   artifactUrl: z.string().min(1),
 });
 
+const imageArtifactEditSnapshotItemSchema = z.object({
+  url: z.string().url(),
+  x: z.number(),
+  y: z.number(),
+  zIndex: z.number().int(),
+});
+
+const imageArtifactEditSnapshotStateSchema = z.object({
+  items: z.array(imageArtifactEditSnapshotItemSchema),
+  version: z.literal(1),
+});
+
+const imageArtifactEditSnapshotQuerySchema = z.object({
+  url: z.string().url(),
+});
+
+const imageArtifactEditSnapshotUpsertSchema = z.object({
+  snapshot: imageArtifactEditSnapshotStateSchema,
+  url: z.string().url(),
+});
+
+const imageArtifactEditSnapshotSchema = z.object({
+  artifactUrl: z.string().url(),
+  snapshot: imageArtifactEditSnapshotStateSchema,
+  updatedAt: z.string(),
+});
+
 const htmlArtifactEditSnapshotQuerySchema = z.object({
   url: z.string().url(),
 });
@@ -151,39 +179,6 @@ const chatThreadUnreadAgentsSchema = z.object({
 
 const chatThreadEventIdSchema = z.string().uuid();
 const codexServiceTierSchema = z.enum(["fast"]);
-
-const chatThreadListItemSchema = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  /**
-   * Owning agent snapshot emitted by the server for every list row.
-   */
-  agent: z.object({
-    id: z.string(),
-    avatarUrl: z.string().nullable(),
-  }),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  /**
-   * True when the thread has at least one non-terminal run
-   * (queued / pending / running). Drives the sidebar running indicator,
-   * which is mutually exclusive with the unread dot.
-   */
-  running: z.boolean(),
-  /**
-   * ISO timestamp at which the user pinned this thread. Null/undefined means
-   * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
-   * keep recency order. Optional for back-compat with fixtures that predate
-   * the field.
-   */
-  pinnedAt: z.string().nullable().optional(),
-  /**
-   * ISO timestamp at which the user manually renamed this thread. Null/undefined
-   * means never renamed. When set, automated title generation is suppressed.
-   * Optional for back-compat with fixtures that predate the field.
-   */
-  renamedAt: z.string().nullable().optional(),
-});
 
 const chatThreadSnapshotProjectionSchema = z.object({
   id: z.string().uuid(),
@@ -299,6 +294,30 @@ const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   websiteGenerationTemplateRequestSchema,
 ]);
 
+const workflowSnapshotSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    agentId: z.string().uuid().optional(),
+    name: z.string(),
+    displayName: z.string().nullable(),
+    description: z.string().nullable(),
+    automationId: z.string().uuid().optional(),
+    triggerId: z.string().uuid().optional(),
+    triggerBrief: z.string().nullable().optional(),
+  })
+  .superRefine((snapshot, context) => {
+    if (
+      snapshot.automationId !== undefined &&
+      snapshot.triggerId !== undefined &&
+      snapshot.automationId !== snapshot.triggerId
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "automationId and triggerId must match",
+      });
+    }
+  });
+
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
@@ -319,29 +338,9 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  mailDraft: zeroMailDraftSchema.optional(),
   sequenceNumber: z.number().nullable().optional(),
-  // Deprecated legacy schedule automation metadata. Migration 0545 clears
-  // existing values; new message writes no longer populate these fields.
-  automationId: z.string().optional(),
-  automationTitle: z.string().optional(),
-  automationSnapshot: z
-    .object({
-      id: z.string(),
-      title: z.string(),
-      description: z.string().nullable(),
-    })
-    .optional(),
-  workflowSnapshot: z
-    .object({
-      id: z.string().uuid().optional(),
-      agentId: z.string().uuid().optional(),
-      name: z.string(),
-      displayName: z.string().nullable(),
-      description: z.string().nullable(),
-      triggerId: z.string().uuid().optional(),
-      triggerBrief: z.string().nullable().optional(),
-    })
-    .optional(),
+  workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),
 });
 
@@ -1207,7 +1206,7 @@ export const artifactsContract = c.router({
       403: apiErrorSchema,
     },
     summary:
-      "List generated artifacts for the caller's current organization (keyset-paginated)",
+      "List artifacts for the caller's current organization (keyset-paginated)",
   },
   favorite: {
     method: "POST",
@@ -1221,7 +1220,7 @@ export const artifactsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Favorite a generated artifact for the caller",
+    summary: "Favorite an artifact for the caller",
   },
   unfavorite: {
     method: "POST",
@@ -1235,7 +1234,50 @@ export const artifactsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Remove a generated artifact favorite for the caller",
+    summary: "Remove an artifact favorite for the caller",
+  },
+  getImageEditSnapshot: {
+    method: "GET",
+    path: "/api/zero/artifacts/image-edit-snapshot",
+    headers: authHeadersSchema,
+    query: imageArtifactEditSnapshotQuerySchema,
+    responses: {
+      200: z.object({ snapshot: imageArtifactEditSnapshotSchema.nullable() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a resumable image artifact edit snapshot for the caller",
+  },
+  upsertImageEditSnapshot: {
+    method: "PUT",
+    path: "/api/zero/artifacts/image-edit-snapshot",
+    headers: authHeadersSchema,
+    body: imageArtifactEditSnapshotUpsertSchema,
+    responses: {
+      200: imageArtifactEditSnapshotSchema,
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Upsert a resumable image artifact edit snapshot for the caller",
+  },
+  deleteImageEditSnapshot: {
+    method: "DELETE",
+    path: "/api/zero/artifacts/image-edit-snapshot",
+    headers: authHeadersSchema,
+    query: imageArtifactEditSnapshotQuerySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete a resumable image artifact edit snapshot for the caller",
   },
 });
 
@@ -1263,7 +1305,6 @@ export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
 export type ChatSearchMessage = z.infer<typeof chatSearchMessageSchema>;
 
 export {
-  chatThreadListItemSchema,
   chatThreadSnapshotProjectionSchema,
   chatThreadEventSchema,
   chatThreadDetailSchema,
@@ -1284,6 +1325,8 @@ export {
   artifactItemSchema,
   artifactFavoriteBodySchema,
   artifactsListResponseSchema,
+  imageArtifactEditSnapshotSchema,
+  imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
@@ -1331,7 +1374,6 @@ export type WebsiteGenerationTemplateRequest = z.infer<
 >;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
-export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadSnapshotProjection = z.infer<
   typeof chatThreadSnapshotProjectionSchema
 >;
@@ -1355,6 +1397,12 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
 export type ArtifactItem = z.infer<typeof artifactItemSchema>;
 export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
+export type ImageArtifactEditSnapshot = z.infer<
+  typeof imageArtifactEditSnapshotSchema
+>;
+export type ImageArtifactEditSnapshotState = z.infer<
+  typeof imageArtifactEditSnapshotStateSchema
+>;
 export type HtmlArtifactEditSnapshot = z.infer<
   typeof htmlArtifactEditSnapshotSchema
 >;

@@ -1,24 +1,28 @@
-//! CLI stdout event delivery state.
+//! Shared CLI event delivery worker and acknowledgement state.
 //!
-//! Event schema transformation and HTTP posting stay in `events`; this module
-//! only owns execution-delivery state consumed by `execute_cli`.
+//! Event schema transformation and HTTP retry details stay in `events` and
+//! `http`; this module owns ordered background delivery shared by CLI backends.
 
-pub(super) enum PreparedEvent {
-    Webhook {
-        sequence: u32,
-        payload: serde_json::Value,
-    },
+use crate::events;
+use crate::http::HttpClient;
+use guest_common::log_warn;
+
+use super::LOG_TAG;
+
+pub(super) struct PreparedEvent {
+    pub(super) sequence: u32,
+    pub(super) payload: serde_json::Value,
 }
 
 #[derive(Default)]
-pub(super) struct AckedEventPrefix {
+struct AckedEventPrefix {
     next_expected: u32,
     last_contiguous: Option<u32>,
     prefix_broken: bool,
 }
 
 impl AckedEventPrefix {
-    pub(super) fn record_success(&mut self, sequence: u32) {
+    fn record_success(&mut self, sequence: u32) {
         if self.prefix_broken {
             return;
         }
@@ -31,15 +35,35 @@ impl AckedEventPrefix {
         }
     }
 
-    pub(super) fn record_failure(&mut self, sequence: u32) {
+    fn record_failure(&mut self, sequence: u32) {
         if sequence >= self.next_expected {
             self.prefix_broken = true;
         }
     }
 
-    pub(super) fn last_contiguous(&self) -> Option<u32> {
+    fn last_contiguous(&self) -> Option<u32> {
         self.last_contiguous
     }
+}
+
+pub(super) async fn run_event_sender(
+    mut event_rx: tokio::sync::mpsc::UnboundedReceiver<PreparedEvent>,
+    http: HttpClient,
+    event_error_flag: String,
+) -> Option<u32> {
+    let mut acked_prefix = AckedEventPrefix::default();
+    while let Some(PreparedEvent { sequence, payload }) = event_rx.recv().await {
+        match events::post_event_with_error_flag(&http, &payload, &event_error_flag).await {
+            Ok(()) => {
+                acked_prefix.record_success(sequence);
+            }
+            Err(e) => {
+                acked_prefix.record_failure(sequence);
+                log_warn!(LOG_TAG, "Event send failed: {e}");
+            }
+        }
+    }
+    acked_prefix.last_contiguous()
 }
 
 #[cfg(test)]

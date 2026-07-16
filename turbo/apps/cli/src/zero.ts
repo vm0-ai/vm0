@@ -29,13 +29,11 @@ const COMMAND_CAPABILITY_MAP: Record<
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: "connector:read",
+  mail: "connector:read",
   memory: "relationship:read",
   relationship: "relationship:read",
-  // "schedule" and "automation" are deliberately absent: the removal stubs
-  // stay out of token-scoped (agent) help but remain invokable and visible to
-  // humans.
   doctor: null,
-  credit: "billing:write",
+  credit: ["billing:read", "billing:write"],
   model: null,
   "model-provider": null,
   logs: "agent-run:read",
@@ -56,6 +54,8 @@ const COMMAND_CAPABILITY_MAP: Record<
   video: null,
   host: ["host:read", "host:write"],
   maps: "maps:read",
+  scrape: "scrape:read",
+  "web-search": "web-search:read",
   banking: "banking:read",
 };
 
@@ -97,6 +97,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "mail",
+    description: "Review and send mail through Gmail or Outlook Mail",
+    load: async () => {
+      return (await import("./commands/zero/mail")).zeroMailCommand;
+    },
+  },
+  {
     name: "relationship",
     description: "Query relationship memory",
     load: async () => {
@@ -113,7 +120,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "credit",
-    description: "Create a Stripe checkout link to buy credits",
+    description: "View or buy credits",
     load: async () => {
       return (await import("./commands/zero/credit")).zeroCreditCommand;
     },
@@ -131,21 +138,6 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "View or update user preferences (timezone, notifications)",
     load: async () => {
       return (await import("./commands/zero/preference")).zeroPreferenceCommand;
-    },
-  },
-  {
-    name: "schedule",
-    description:
-      "(removed: use `zero workflow`) Schedules are workflow triggers now",
-    load: async () => {
-      return (await import("./commands/zero/schedule")).zeroScheduleCommand;
-    },
-  },
-  {
-    name: "automation",
-    description: "(removed: use `zero workflow`) Automations are workflows now",
-    load: async () => {
-      return (await import("./commands/zero/automation")).zeroAutomationCommand;
     },
   },
   {
@@ -309,6 +301,20 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "scrape",
+    description: "Scrape public web pages through managed zero scrape",
+    load: async () => {
+      return (await import("./commands/zero/scrape")).zeroScrapeCommand;
+    },
+  },
+  {
+    name: "web-search",
+    description: "Search the public web through managed zero web search",
+    load: async () => {
+      return (await import("./commands/zero/web-search")).zeroWebSearchCommand;
+    },
+  },
+  {
     name: "banking",
     description: "Use managed zero banking services",
     load: async () => {
@@ -405,11 +411,14 @@ export function buildZeroHelpText(
     "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
     ...(payload && !payload.capabilities.includes("billing:read")
       ? []
-      : ["  Check credits?         zero doctor credit"]),
-    ...(shouldHideCommand("credit", payload)
+      : ["  Check credits?         zero credit"]),
+    ...(payload && !payload.capabilities.includes("billing:write")
       ? []
       : ["  Buy credits?           zero credit 20000"]),
     "  Send a Slack message?  zero slack message send --help",
+    ...(shouldHideCommand("mail", payload)
+      ? []
+      : ["  Draft an email?       zero mail send --help"]),
     "  Send Teams?           zero teams message send --help",
     "  Upload Teams?         zero teams upload-file --help",
     "  Download Teams?       zero teams download-file --help",
@@ -448,6 +457,12 @@ export function buildZeroHelpText(
       : [
           '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
         ]),
+    ...(shouldHideCommand("scrape", payload)
+      ? []
+      : ["  Scrape a web page?    zero scrape https://example.com --json"]),
+    ...(shouldHideCommand("web-search", payload)
+      ? []
+      : ['  Search the public web? zero web-search "latest news" --json']),
     ...(shouldHideCommand("banking", payload)
       ? []
       : ["  Read bank data?       zero banking accounts --json"]),

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.6.8](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.7...guest-mock-codex-v0.6.8) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.6.7](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.6...guest-mock-codex-v0.6.7) (2026-07-15)
+
+
+### Bug Fixes
+
+* **guest-agent:** pass codex prompts through stdin ([#21548](https://github.com/vm0-ai/vm0/issues/21548)) ([3c5e277](https://github.com/vm0-ai/vm0/commit/3c5e2779872cf7e93de88f6b10be646e2ad06ba6))
+
+## [0.6.6](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.5...guest-mock-codex-v0.6.6) (2026-07-13)
+
+
+### Refactoring
+
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
+## [0.6.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.4...guest-mock-codex-v0.6.5) (2026-07-13)
+
+
+### Performance Improvements
+
+* **guest-agent:** move parsed app-server payloads ([#21198](https://github.com/vm0-ai/vm0/issues/21198)) ([d89b5ec](https://github.com/vm0-ai/vm0/commit/d89b5ec872f58efd31c99ae6c9986b3b1662ee21))
+
 ## [0.6.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.3...guest-mock-codex-v0.6.4) (2026-07-11)
 
 

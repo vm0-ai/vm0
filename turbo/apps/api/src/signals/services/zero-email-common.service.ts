@@ -24,7 +24,7 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { writeDb$, type Db } from "../external/db";
-import { settle } from "../utils";
+import { bestEffort, tapError } from "../utils";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -218,11 +218,15 @@ export function generateCallbackSecret(): string {
 }
 
 export function apiUrl(): string {
-  return env("VM0_API_URL");
+  return env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
 }
 
 function appUrl(): string {
   return env("APP_URL");
+}
+
+function webUrl(): string {
+  return env("VM0_WEB_URL");
 }
 
 export function buildIntegrationPrompt(): string {
@@ -363,7 +367,7 @@ function generateUnsubscribeToken(userId: string): string {
 }
 
 export function buildUnsubscribeUrl(userId: string): string {
-  return `${apiUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
+  return `${webUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }
@@ -811,14 +815,8 @@ export const enqueueEmail$ = command(
       throw new Error("Failed to insert email outbox row");
     }
 
-    const drainResult = await settle(drainById(db, row.id));
+    await bestEffort(drainById(db, row.id), signal);
     signal.throwIfAborted();
-    if (!drainResult.ok) {
-      log.debug("Inline email outbox drain failed", {
-        id: row.id,
-        error: drainResult.error,
-      });
-    }
   },
 );
 
@@ -938,7 +936,7 @@ function downloadAndUploadEmailAttachment(
       return null;
     }
 
-    const bufferResult = await settle(
+    const buffer = await tapError(
       (async (): Promise<Buffer | null> => {
         const response = await fetch(attachment.downloadUrl);
         if (!response.ok) {
@@ -947,15 +945,13 @@ function downloadAndUploadEmailAttachment(
         return Buffer.from(await response.arrayBuffer());
       })(),
     );
-    if (!bufferResult.ok || !bufferResult.value) {
+    if (!buffer) {
       return null;
     }
 
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const key = `${R2_PATH_PREFIX}/${emailId}/${attachment.id}-${attachment.filename}`;
-    await get(
-      putS3Object(bucket, key, bufferResult.value, attachment.contentType),
-    );
+    await get(putS3Object(bucket, key, buffer, attachment.contentType));
     return await get(
       generatePresignedGetUrl(
         bucket,
@@ -1156,11 +1152,10 @@ export async function getOrgIdBySlug(
     return cached.orgId;
   }
 
-  const orgResult = await settle(clerk.organizations.getOrganization({ slug }));
-  if (!orgResult.ok) {
+  const org = await tapError(clerk.organizations.getOrganization({ slug }));
+  if (!org) {
     return null;
   }
-  const org = orgResult.value;
   if (!org.slug) {
     return null;
   }

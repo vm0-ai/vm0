@@ -12,6 +12,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 
 use nix::fcntl::{OFlag, open, openat};
 use nix::sys::stat::{Mode, SFlag, fstat, mkdirat};
@@ -27,13 +28,33 @@ const SETUP_TEMP_ARTIFACT_MODE: u32 = 0o600;
 const SETUP_EXECUTABLE_ARTIFACT_MODE: u32 = 0o755;
 const SETUP_KERNEL_ARTIFACT_MODE: u32 = 0o644;
 const SETUP_TEMP_CREATE_ATTEMPTS: usize = 16;
+const SETUP_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const SETUP_READ_TIMEOUT: Duration = Duration::from_secs(60);
+const SETUP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
+const START_SYSTEM_DEPENDENCIES: [&str; 9] = [
+    "ip",
+    "iptables",
+    "iptables-save",
+    "ip6tables",
+    "ip6tables-save",
+    "sysctl",
+    "dnsmasq",
+    "mkfs.ext4",
+    "openssl",
+];
+const OTHER_COMMAND_SYSTEM_DEPENDENCIES: [&str; 3] = ["pgrep", "debootstrap", "flock"];
 
 struct ProducedSetupArtifact {
     path: PathBuf,
     file: File,
+    sha256: String,
+}
+
+struct SetupArtifactIdentity {
+    size: u64,
     sha256: String,
 }
 
@@ -49,9 +70,15 @@ pub async fn run_setup() -> RunnerResult<()> {
 
     let paths = HomePaths::new()?;
     create_directories(&paths).await?;
-    artifacts::install_firecracker(&paths, arch).await?;
-    artifacts::install_kernel(&paths, arch).await?;
-    artifacts::install_mitmdump(&paths, arch).await?;
+    let http_client = reqwest::Client::builder()
+        .connect_timeout(SETUP_CONNECT_TIMEOUT)
+        .read_timeout(SETUP_READ_TIMEOUT)
+        .timeout(SETUP_REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| RunnerError::Internal(format!("build setup HTTP client: {e}")))?;
+    artifacts::install_firecracker(&http_client, &paths, arch).await?;
+    artifacts::install_kernel(&http_client, &paths, arch).await?;
+    artifacts::install_mitmdump(&http_client, &paths, arch).await?;
     check_system_ca_bundle()?;
     check_kvm();
 
@@ -82,24 +109,12 @@ fn check_architecture() -> RunnerResult<&'static str> {
 
 /// Returns names of missing required dependencies.
 fn check_system_dependencies() -> Vec<&'static str> {
-    // Required by `runner start` (sandbox networking and workspace images).
-    let required = [
-        "ip",
-        "iptables",
-        "iptables-save",
-        "sysctl",
-        "dnsmasq",
-        "mkfs.ext4",
-    ];
-    // Only needed by specific commands (rootfs, build, etc.)
-    let optional = ["pgrep", "debootstrap", "flock", "openssl"];
-
-    let missing_required: Vec<&str> = required
+    let missing_required: Vec<&str> = START_SYSTEM_DEPENDENCIES
         .iter()
         .filter(|dep| which::which(dep).is_err())
         .copied()
         .collect();
-    let missing_optional: Vec<&str> = optional
+    let missing_optional: Vec<&str> = OTHER_COMMAND_SYSTEM_DEPENDENCIES
         .iter()
         .filter(|dep| which::which(dep).is_err())
         .copied()
@@ -507,7 +522,7 @@ fn install_produced_artifact(
 
 fn ensure_artifact_installed_blocking(
     path: &Path,
-    expected_sha: &str,
+    expected: &SetupArtifactIdentity,
     mode: u32,
 ) -> RunnerResult<bool> {
     let Some(mut file) = open_existing_setup_artifact(path)? else {
@@ -525,7 +540,11 @@ fn ensure_artifact_installed_blocking(
         return Ok(false);
     }
 
-    if file_sha256_open(&mut file, path)? != expected_sha {
+    if setup_artifact_file_size(&stat, path, "setup artifact")? != expected.size {
+        return Ok(false);
+    }
+
+    if file_sha256_open(&mut file, path)? != expected.sha256 {
         return Ok(false);
     }
 
@@ -535,7 +554,10 @@ fn ensure_artifact_installed_blocking(
         if (repaired.st_mode & 0o7777) != mode {
             return Ok(false);
         }
-        if file_sha256_open(&mut file, path)? != expected_sha {
+        if setup_artifact_file_size(&repaired, path, "setup artifact")? != expected.size {
+            return Ok(false);
+        }
+        if file_sha256_open(&mut file, path)? != expected.sha256 {
             return Ok(false);
         }
     }
@@ -618,6 +640,12 @@ fn setup_file_stat<Fd: AsRawFd>(file: &Fd, path: &Path, context: &str) -> Runner
     }
     // SAFETY: successful `fstat` initialized the full struct.
     Ok(unsafe { stat.assume_init() })
+}
+
+fn setup_artifact_file_size(stat: &libc::stat, path: &Path, context: &str) -> RunnerResult<u64> {
+    u64::try_from(stat.st_size).map_err(|e| {
+        RunnerError::Internal(format!("read {context} size for {}: {e}", path.display()))
+    })
 }
 
 fn validate_same_setup_file_identity(
@@ -711,24 +739,46 @@ fn file_parent(path: &Path) -> &Path {
 // Shared download helpers
 // ---------------------------------------------------------------------------
 
-/// Stream an HTTP response to an opened temp file, computing SHA256 incrementally.
-/// Returns the written file and hex-encoded digest.
+/// Stream an HTTP response to an opened temp file, enforcing its exact identity.
 async fn stream_to_file(
     mut response: reqwest::Response,
     mut file: tokio::fs::File,
     path: &Path,
+    expected: &SetupArtifactIdentity,
+    label: &str,
 ) -> RunnerResult<(File, String)> {
     let mut hasher = Sha256::new();
+    let mut observed_size = 0_u64;
 
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|e| RunnerError::Internal(format!("read response chunk: {e}")))?
+        .map_err(|e| RunnerError::Internal(format!("read {label} response chunk: {e}")))?
     {
+        let chunk_size = u64::try_from(chunk.len())
+            .map_err(|e| RunnerError::Internal(format!("measure {label} response chunk: {e}")))?;
+        let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
+            RunnerError::Internal(format!("{label} source size overflow while downloading"))
+        })?;
+        if next_size > expected.size {
+            return Err(RunnerError::Internal(format!(
+                "{label} source exceeds expected size of {} bytes (received at least {next_size} bytes)",
+                expected.size
+            )));
+        }
+
         hasher.update(&chunk);
         file.write_all(&chunk)
             .await
             .map_err(|e| RunnerError::Internal(format!("write {}: {e}", path.display())))?;
+        observed_size = next_size;
+    }
+
+    if observed_size != expected.size {
+        return Err(RunnerError::Internal(format!(
+            "{label} source size mismatch: expected {} bytes, got {observed_size} bytes",
+            expected.size
+        )));
     }
 
     file.flush()
@@ -740,25 +790,47 @@ async fn stream_to_file(
 
 /// Download a URL to a temp file. Cleans up on failure.
 async fn download_to_temp(
+    client: &reqwest::Client,
     url: &str,
     target: &Path,
     kind: &str,
     label: &str,
+    expected: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("download {label}: {e}")))?;
+
+    if !response.status().is_success() {
+        return Err(RunnerError::Internal(format!(
+            "download {label}: HTTP {}",
+            response.status()
+        )));
+    }
+
+    if let Some(content_length) = response.content_length()
+        && content_length != expected.size
+    {
+        return Err(RunnerError::Internal(format!(
+            "{label} source size mismatch: expected {} bytes, got {content_length} bytes",
+            expected.size
+        )));
+    }
+
     let (tmp_path, file) = create_setup_temp_file(target, kind)?;
     let result = async {
-        let response = reqwest::get(url)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("download {label}: {e}")))?;
-
-        if !response.status().is_success() {
-            return Err(RunnerError::Internal(format!(
-                "download {label}: HTTP {}",
-                response.status()
-            )));
-        }
-
-        stream_to_file(response, tokio::fs::File::from_std(file), &tmp_path).await
+        let (file, sha256) = stream_to_file(
+            response,
+            tokio::fs::File::from_std(file),
+            &tmp_path,
+            expected,
+            label,
+        )
+        .await?;
+        verify_sha256(&sha256, &expected.sha256, &format!("{label} source"))?;
+        Ok((file, sha256))
     }
     .await;
 
@@ -777,20 +849,29 @@ async fn download_to_temp(
 
 /// Download a tarball, extract a named entry. Cleans up tarball after extraction.
 async fn download_and_extract(
+    client: &reqwest::Client,
     url: &str,
     label: &str,
     entry_name: &str,
     target: &Path,
+    archive_identity: &SetupArtifactIdentity,
+    installed_identity: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
-    // Tarball SHA is intentionally discarded — we verify the extracted binary's SHA instead.
     let ProducedSetupArtifact {
         path: tarball_path,
         file: tarball_file,
         sha256: _,
-    } = download_to_temp(url, target, "tarball", label).await?;
-    drop(tarball_file);
+    } = download_to_temp(client, url, target, "tarball", label, archive_identity).await?;
 
-    let result = extract_tar_entry(&tarball_path, target, entry_name).await;
+    let result = extract_tar_entry(
+        tarball_file,
+        &tarball_path,
+        target,
+        entry_name,
+        label,
+        installed_identity,
+    )
+    .await;
     let _ = tokio::fs::remove_file(&tarball_path).await;
     result
 }
@@ -798,18 +879,24 @@ async fn download_and_extract(
 /// Extract a named entry from a gzipped tarball, writing to tmp_path.
 /// Matches by file_name (last path component).
 async fn extract_tar_entry(
+    mut tarball_file: File,
     tarball_path: &Path,
     target: &Path,
     entry_name: &str,
+    label: &str,
+    installed_identity: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
     let tarball = tarball_path.to_owned();
     let target = target.to_owned();
     let entry_name = entry_name.to_owned();
+    let label = label.to_owned();
+    let expected_size = installed_identity.size;
 
     tokio::task::spawn_blocking(move || {
-        let file = std::fs::File::open(&tarball)
-            .map_err(|e| RunnerError::Internal(format!("open tarball: {e}")))?;
-        let decoder = flate2::read::GzDecoder::new(file);
+        tarball_file.seek(SeekFrom::Start(0)).map_err(|e| {
+            RunnerError::Internal(format!("seek verified tarball {}: {e}", tarball.display()))
+        })?;
+        let decoder = flate2::read::GzDecoder::new(tarball_file);
         let mut archive = tar::Archive::new(decoder);
 
         let entries = archive
@@ -830,25 +917,54 @@ async fn extract_tar_entry(
                 .unwrap_or_default();
 
             if file_name == entry_name {
+                let declared_size = entry.size();
+                if declared_size != expected_size {
+                    return Err(RunnerError::Internal(format!(
+                        "{label} entry size mismatch: expected {expected_size} bytes, got {declared_size} bytes"
+                    )));
+                }
+
                 let (tmp, mut out) = create_setup_temp_file(&target, "extract")?;
-                let mut hasher = Sha256::new();
-                let mut buf = [0u8; 64 * 1024];
-                let result = loop {
-                    let n = entry
-                        .read(&mut buf)
-                        .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
-                    if n == 0 {
-                        std::io::Write::flush(&mut out)
-                            .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
-                        break Ok(hex::encode(hasher.finalize()));
+                let result = (|| {
+                    let mut hasher = Sha256::new();
+                    let mut buf = [0u8; 64 * 1024];
+                    let mut observed_size = 0_u64;
+                    loop {
+                        let n = entry
+                            .read(&mut buf)
+                            .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
+                        if n == 0 {
+                            if observed_size != expected_size {
+                                return Err(RunnerError::Internal(format!(
+                                    "{label} entry size mismatch: expected {expected_size} bytes, got {observed_size} bytes"
+                                )));
+                            }
+                            std::io::Write::flush(&mut out)
+                                .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
+                            return Ok(hex::encode(hasher.finalize()));
+                        }
+                        let chunk = buf.get(..n).ok_or_else(|| {
+                            RunnerError::Internal("read returned invalid length".into())
+                        })?;
+                        let chunk_size = u64::try_from(chunk.len()).map_err(|e| {
+                            RunnerError::Internal(format!("measure {label} tar entry chunk: {e}"))
+                        })?;
+                        let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
+                            RunnerError::Internal(format!(
+                                "{label} entry size overflow while extracting"
+                            ))
+                        })?;
+                        if next_size > expected_size {
+                            return Err(RunnerError::Internal(format!(
+                                "{label} entry exceeds expected size of {expected_size} bytes (read at least {next_size} bytes)"
+                            )));
+                        }
+                        hasher.update(chunk);
+                        std::io::Write::write_all(&mut out, chunk)
+                            .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
+                        observed_size = next_size;
                     }
-                    let chunk = buf.get(..n).ok_or_else(|| {
-                        RunnerError::Internal("read returned invalid length".into())
-                    })?;
-                    hasher.update(chunk);
-                    std::io::Write::write_all(&mut out, chunk)
-                        .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
-                };
+                })();
                 if result.is_err() {
                     let _ = std::fs::remove_file(&tmp);
                 }
@@ -872,19 +988,31 @@ async fn extract_tar_entry(
 /// A failed rename only counts as a concurrent install if the target verifies.
 async fn verify_and_install(
     artifact: ProducedSetupArtifact,
-    expected_sha: &str,
+    expected: &SetupArtifactIdentity,
     label: &str,
     target: &Path,
     mode: u32,
 ) -> RunnerResult<()> {
-    if let Err(e) = verify_sha256(&artifact.sha256, expected_sha, label) {
+    let verification = (|| {
+        let stat = setup_file_stat(&artifact.file, &artifact.path, "produced setup artifact")?;
+        let actual_size =
+            setup_artifact_file_size(&stat, &artifact.path, "produced setup artifact")?;
+        if actual_size != expected.size {
+            return Err(RunnerError::Internal(format!(
+                "{label} size mismatch: expected {} bytes, got {actual_size} bytes",
+                expected.size
+            )));
+        }
+        verify_sha256(&artifact.sha256, &expected.sha256, label)
+    })();
+    if let Err(e) = verification {
         let _ = tokio::fs::remove_file(&artifact.path).await;
         return Err(e);
     }
 
     match atomic_install_produced(artifact, target, mode).await {
         Ok(()) => Ok(()),
-        Err(e) => match ensure_artifact_installed(target, expected_sha, mode).await {
+        Err(e) => match ensure_artifact_installed(target, expected, mode).await {
             Ok(true) => {
                 tracing::info!("[OK] {label} verified after another install attempt");
                 Ok(())
@@ -926,6 +1054,15 @@ fn select_sha<'a>(arch: &str, x86_64: &'a str, aarch64: &'a str) -> &'a str {
     }
 }
 
+#[allow(clippy::unreachable)] // arch validated by check_architecture
+fn select_size(arch: &str, x86_64: u64, aarch64: u64) -> u64 {
+    match arch {
+        "x86_64" => x86_64,
+        "aarch64" => aarch64,
+        _ => unreachable!(),
+    }
+}
+
 fn verify_sha256(actual_hex: &str, expected_hex: &str, label: &str) -> RunnerResult<()> {
     if actual_hex != expected_hex {
         return Err(RunnerError::Internal(format!(
@@ -959,19 +1096,20 @@ async fn file_sha256(path: &Path) -> RunnerResult<String> {
     .map_err(|e| RunnerError::Internal(format!("sha256 task failed: {e}")))?
 }
 
-/// Ensure an existing setup artifact matches its pinned SHA and usable mode.
+/// Ensure an existing setup artifact matches its pinned identity and usable mode.
 async fn ensure_artifact_installed(
     path: &Path,
-    expected_sha: &str,
+    expected: &SetupArtifactIdentity,
     mode: u32,
 ) -> RunnerResult<bool> {
     let path = path.to_owned();
-    let expected_sha = expected_sha.to_owned();
-    tokio::task::spawn_blocking(move || {
-        ensure_artifact_installed_blocking(&path, &expected_sha, mode)
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("artifact validation task failed: {e}")))?
+    let expected = SetupArtifactIdentity {
+        size: expected.size,
+        sha256: expected.sha256.clone(),
+    };
+    tokio::task::spawn_blocking(move || ensure_artifact_installed_blocking(&path, &expected, mode))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("artifact validation task failed: {e}")))?
 }
 
 // ---------------------------------------------------------------------------
@@ -1030,6 +1168,13 @@ mod tests {
         }
     }
 
+    fn artifact_identity(content: &[u8]) -> SetupArtifactIdentity {
+        SetupArtifactIdentity {
+            size: u64::try_from(content.len()).unwrap(),
+            sha256: hex::encode(Sha256::digest(content)),
+        }
+    }
+
     #[test]
     fn check_architecture_returns_current() {
         let arch = check_architecture().unwrap();
@@ -1069,19 +1214,24 @@ mod tests {
     #[test]
     fn check_system_dependencies_only_returns_known_deps() {
         let missing = check_system_dependencies();
-        let known = [
-            "ip",
-            "iptables",
-            "iptables-save",
-            "sysctl",
-            "dnsmasq",
-            "mkfs.ext4",
-        ];
         for dep in &missing {
             assert!(
-                known.contains(dep),
+                START_SYSTEM_DEPENDENCIES.contains(dep),
                 "unexpected dependency reported as missing: {dep}"
             );
+        }
+    }
+
+    #[test]
+    fn runner_start_dependencies_include_openssl_for_proxy_ca_validation() {
+        assert!(START_SYSTEM_DEPENDENCIES.contains(&"openssl"));
+        assert!(!OTHER_COMMAND_SYSTEM_DEPENDENCIES.contains(&"openssl"));
+    }
+
+    #[test]
+    fn runner_start_dependencies_include_dual_stack_firewall_tools() {
+        for dependency in ["iptables", "iptables-save", "ip6tables", "ip6tables-save"] {
+            assert!(START_SYSTEM_DEPENDENCIES.contains(&dependency));
         }
     }
 
@@ -1211,8 +1361,9 @@ mod tests {
     async fn ensure_artifact_installed_returns_false_for_missing() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nonexistent");
+        let expected = artifact_identity(b"anything");
         assert!(
-            !ensure_artifact_installed(&path, "anything", SETUP_EXECUTABLE_ARTIFACT_MODE)
+            !ensure_artifact_installed(&path, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1223,8 +1374,27 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file.bin");
         std::fs::write(&path, b"content").unwrap();
+        let expected = SetupArtifactIdentity {
+            size: u64::try_from(b"content".len()).unwrap(),
+            sha256: "wrong_sha".to_owned(),
+        };
         assert!(
-            !ensure_artifact_installed(&path, "wrong_sha", SETUP_EXECUTABLE_ARTIFACT_MODE)
+            !ensure_artifact_installed(&path, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_artifact_installed_returns_false_for_wrong_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"content").unwrap();
+        let mut expected = artifact_identity(b"content");
+        expected.size += 1;
+
+        assert!(
+            !ensure_artifact_installed(&path, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1240,9 +1410,9 @@ mod tests {
             std::fs::Permissions::from_mode(SETUP_KERNEL_ARTIFACT_MODE),
         )
         .unwrap();
-        let sha = file_sha256(&path).await.unwrap();
+        let expected = artifact_identity(b"content");
         assert!(
-            ensure_artifact_installed(&path, &sha, SETUP_KERNEL_ARTIFACT_MODE)
+            ensure_artifact_installed(&path, &expected, SETUP_KERNEL_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1254,10 +1424,10 @@ mod tests {
         let path = dir.path().join("file.bin");
         std::fs::write(&path, b"content").unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let sha = file_sha256(&path).await.unwrap();
+        let expected = artifact_identity(b"content");
 
         assert!(
-            ensure_artifact_installed(&path, &sha, SETUP_EXECUTABLE_ARTIFACT_MODE)
+            ensure_artifact_installed(&path, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1269,10 +1439,10 @@ mod tests {
         let path = dir.path().join("file.bin");
         std::fs::write(&path, b"content").unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        let sha = file_sha256(&path).await.unwrap();
+        let expected = artifact_identity(b"content");
 
         assert!(
-            ensure_artifact_installed(&path, &sha, SETUP_EXECUTABLE_ARTIFACT_MODE)
+            ensure_artifact_installed(&path, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1285,10 +1455,10 @@ mod tests {
         let path = dir.path().join("file.bin");
         std::fs::write(&path, b"content").unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
-        let sha = file_sha256(&path).await.unwrap();
+        let expected = artifact_identity(b"content");
 
         assert!(
-            ensure_artifact_installed(&path, &sha, SETUP_KERNEL_ARTIFACT_MODE)
+            ensure_artifact_installed(&path, &expected, SETUP_KERNEL_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1302,10 +1472,10 @@ mod tests {
         let link = dir.path().join("file.bin");
         std::fs::write(&outside, b"content").unwrap();
         symlink(&outside, &link).unwrap();
-        let sha = file_sha256(&outside).await.unwrap();
+        let expected = artifact_identity(b"content");
 
         assert!(
-            !ensure_artifact_installed(&link, &sha, SETUP_EXECUTABLE_ARTIFACT_MODE)
+            !ensure_artifact_installed(&link, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1317,9 +1487,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file.bin");
         nix::unistd::mkfifo(&path, Mode::from_bits_truncate(0o600)).unwrap();
+        let expected = artifact_identity(b"anything");
 
         assert!(
-            !ensure_artifact_installed(&path, "anything", SETUP_EXECUTABLE_ARTIFACT_MODE)
+            !ensure_artifact_installed(&path, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1330,9 +1501,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file.bin");
         let _listener = UnixListener::bind(&path).unwrap();
+        let expected = artifact_identity(b"anything");
 
         assert!(
-            !ensure_artifact_installed(&path, "anything", SETUP_EXECUTABLE_ARTIFACT_MODE)
+            !ensure_artifact_installed(&path, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1343,9 +1515,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file.bin");
         std::fs::create_dir(&path).unwrap();
+        let expected = artifact_identity(b"anything");
 
         assert!(
-            !ensure_artifact_installed(&path, "anything", SETUP_EXECUTABLE_ARTIFACT_MODE)
+            !ensure_artifact_installed(&path, &expected, SETUP_EXECUTABLE_ARTIFACT_MODE)
                 .await
                 .unwrap()
         );
@@ -1396,11 +1569,11 @@ mod tests {
         let tmp_path = dir.path().join("tmp.bin");
         let target = dir.path().join("target.bin");
         let artifact = produced_artifact(&tmp_path, b"content");
-        let sha = artifact.sha256.clone();
+        let expected = artifact_identity(b"content");
 
         verify_and_install(
             artifact,
-            &sha,
+            &expected,
             "test",
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,
@@ -1419,10 +1592,14 @@ mod tests {
         let tmp_path = dir.path().join("tmp.bin");
         let target = dir.path().join("target.bin");
         let artifact = produced_artifact(&tmp_path, b"content");
+        let expected = SetupArtifactIdentity {
+            size: u64::try_from(b"content".len()).unwrap(),
+            sha256: "wrong_sha".to_owned(),
+        };
 
         let result = verify_and_install(
             artifact,
-            "wrong_sha",
+            &expected,
             "test",
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,
@@ -1435,18 +1612,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn verify_and_install_removes_produced_artifact_on_wrong_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp_path = dir.path().join("tmp.bin");
+        let target = dir.path().join("target.bin");
+        let artifact = produced_artifact(&tmp_path, b"content");
+        let mut expected = artifact_identity(b"content");
+        expected.size += 1;
+
+        let result = verify_and_install(
+            artifact,
+            &expected,
+            "test",
+            &target,
+            SETUP_EXECUTABLE_ARTIFACT_MODE,
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert!(!tmp_path.exists(), "size mismatch should clean temp file");
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
     async fn verify_and_install_rejects_replaced_temp_path() {
         let dir = tempfile::tempdir().unwrap();
         let tmp_path = dir.path().join("tmp.bin");
         let target = dir.path().join("target.bin");
         let artifact = produced_artifact(&tmp_path, b"content");
-        let sha = artifact.sha256.clone();
+        let expected = artifact_identity(b"content");
         std::fs::remove_file(&tmp_path).unwrap();
         std::fs::write(&tmp_path, b"replacement").unwrap();
 
         let result = verify_and_install(
             artifact,
-            &sha,
+            &expected,
             "test",
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,
@@ -1467,12 +1667,12 @@ mod tests {
         let tmp_path = dir.path().join("tmp.bin");
         let target = dir.path().join("target.bin");
         let artifact = produced_artifact(&tmp_path, b"content");
-        let sha = artifact.sha256.clone();
+        let expected = artifact_identity(b"content");
         std::fs::create_dir(&target).unwrap();
 
         let result = verify_and_install(
             artifact,
-            &sha,
+            &expected,
             "test",
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,
@@ -1490,12 +1690,12 @@ mod tests {
         let tmp_path = dir.path().join("tmp.bin");
         let target = dir.path().join("target.bin");
         let artifact = produced_artifact(&tmp_path, b"new content");
-        let sha = artifact.sha256.clone();
+        let expected = artifact_identity(b"new content");
         std::fs::write(&target, b"old content").unwrap();
 
         verify_and_install(
             artifact,
-            &sha,
+            &expected,
             "test",
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,
@@ -1518,13 +1718,13 @@ mod tests {
             std::fs::Permissions::from_mode(SETUP_EXECUTABLE_ARTIFACT_MODE),
         )
         .unwrap();
-        let sha = file_sha256(&target).await.unwrap();
+        let expected = artifact_identity(b"content");
         let artifact = produced_artifact(&tmp_path, b"content");
         std::fs::remove_file(&tmp_path).unwrap();
 
         verify_and_install(
             artifact,
-            &sha,
+            &expected,
             "test",
             &target,
             SETUP_EXECUTABLE_ARTIFACT_MODE,

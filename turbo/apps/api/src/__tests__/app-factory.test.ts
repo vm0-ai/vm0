@@ -1,4 +1,11 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import {
+  CLIENT_FORCE_UPGRADE_STATUS,
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_CLI,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
@@ -780,6 +787,66 @@ describe("createApp", () => {
     });
   });
 
+  describe("web client compatibility", () => {
+    it("keeps the legacy polling endpoint for already-loaded clients", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request(
+        "/api/client/compatibility?version=0.599.18",
+        { method: "GET" },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toStrictEqual({
+        minimumSupportedVersion: "0.599.19",
+        supported: false,
+      });
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    });
+
+    it("rejects stale app clients before route handlers run", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.599.18",
+        },
+      });
+
+      expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: "Client update required",
+      });
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    });
+
+    it("allows current app clients", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.599.19",
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("does not force upgrade other client types", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_CLI,
+          [CLIENT_VERSION_HEADER]: "0.599.18",
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+  });
+
   describe("axiom request log", () => {
     it("records client headers on request log events", async () => {
       context.mocks.axiom.flush.mockResolvedValue(undefined);
@@ -789,7 +856,7 @@ describe("createApp", () => {
         headers: {
           "user-agent": "zero-test-agent",
           "x-forwarded-for": "203.0.113.10, 198.51.100.5",
-          "x-client-version": "0.569.1",
+          "x-client-version": "0.599.19",
           "x-client-type": "App",
           "x-client-session-id": "session-test",
           "x-client-request-id": "request-test",
@@ -807,7 +874,7 @@ describe("createApp", () => {
         path_template: "/health",
         remote_addr: "203.0.113.10",
         user_agent: "zero-test-agent",
-        x_client_version: "0.569.1",
+        x_client_version: "0.599.19",
         x_client_type: "App",
         x_client_session_id: "session-test",
         x_client_request_id: "request-test",

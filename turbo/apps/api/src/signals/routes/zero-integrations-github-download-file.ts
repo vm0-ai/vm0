@@ -8,7 +8,7 @@ import { inferMimetype } from "../../lib/mimetype";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const c = initContract();
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
@@ -151,17 +151,16 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const headers = new Headers({ Accept: "application/octet-stream" });
-  const downloadResult = await settle(
+  const downloadResponse = await tapError(
     fetch(fileUrl, {
       headers,
       signal,
     }),
   );
   signal.throwIfAborted();
-  if (!downloadResult.ok) {
+  if (!downloadResponse) {
     return jsonResponse(502, "Failed to download GitHub file", "BAD_GATEWAY");
   }
-  const downloadResponse = downloadResult.value;
   if (!downloadResponse.ok) {
     const status = downloadResponse.status === 404 ? 404 : 502;
     return jsonResponse(

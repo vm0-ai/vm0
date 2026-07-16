@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   artifactsContract,
   type ArtifactItem,
@@ -373,6 +374,43 @@ function mockArtifacts(artifacts: readonly ArtifactItem[]): void {
   });
 }
 
+function mockScrollViewport(
+  element: HTMLElement,
+  initial: {
+    readonly clientHeight: number;
+    readonly scrollHeight: number;
+    readonly scrollTop: number;
+  },
+) {
+  let metrics = initial;
+  Object.defineProperties(element, {
+    clientHeight: {
+      configurable: true,
+      get: () => {
+        return metrics.clientHeight;
+      },
+    },
+    scrollHeight: {
+      configurable: true,
+      get: () => {
+        return metrics.scrollHeight;
+      },
+    },
+    scrollTop: {
+      configurable: true,
+      get: () => {
+        return metrics.scrollTop;
+      },
+      set: (scrollTop: number) => {
+        metrics = { ...metrics, scrollTop };
+      },
+    },
+  });
+  return (next: Partial<typeof initial>) => {
+    metrics = { ...metrics, ...next };
+  };
+}
+
 function setupArtifactsPage({
   scope,
   enabled = true,
@@ -473,6 +511,23 @@ function buttonByLabel(label: string): HTMLElement {
   return button;
 }
 
+function buttonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function focusedArtifactIndex(): string | null {
+  return (
+    document.activeElement?.closest<HTMLElement>("[data-artifact-index]")
+      ?.dataset.artifactIndex ?? null
+  );
+}
+
 describe("artifacts page", () => {
   it("hides the entry and redirects when the feature switch is disabled", async () => {
     setupTeam();
@@ -519,22 +574,66 @@ describe("artifacts page", () => {
     expect(screen.getByText("hosted site")).toBeInTheDocument();
     expect(screen.queryByText(/Jan 15/u)).not.toBeInTheDocument();
     expect(screen.getByTitle("launch-plan.html preview")).toHaveStyle({
-      height: "1280px",
+      height: "800px",
       width: "1280px",
     });
   });
 
-  it("renders static preview images while preserving the HTML iframe fallback", async () => {
+  it("shows the full artifact name when hovering its truncated title", async () => {
+    const user = userEvent.setup();
+    setupTeam();
+    const scope = testAuthScope("filename-tooltip");
+    const filename =
+      "zero-template-picker-ui-7-final-production-hosted-site.html";
+    mockArtifacts([createArtifact({ filename })]);
+
+    setupArtifactsPage({ scope });
+
+    const title = await screen.findByRole("heading", { name: filename });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    await user.hover(title);
+
+    await expect(screen.findByRole("tooltip")).resolves.toHaveTextContent(
+      filename,
+    );
+  });
+
+  it("provides visible focus feedback for the agent filter", async () => {
+    setupTeam();
+    const scope = testAuthScope("agent-filter-focus");
+    mockArtifacts([]);
+
+    setupArtifactsPage({ scope });
+
+    const agentFilter = await screen.findByLabelText("Agent filter");
+    expect(agentFilter).toHaveClass(
+      "focus:border-primary",
+      "focus:ring-[3px]",
+      "focus:ring-primary/10",
+    );
+  });
+
+  it("renders unified 16:10 previews above card metadata while preserving the HTML fallback", async () => {
     setupTeam();
     const scope = testAuthScope("preview-image");
     const previewImageUrl =
       "https://cdn.vm7.io/artifacts/user/artifact-row/preview-deploy.webp";
+    const imageUrl = "https://artifacts.example.com/full-image.png";
     mockArtifacts([
       createArtifact({
         artifactItemId: "static-run:file-1",
         runId: "static-run",
         filename: "static-preview.html",
         previewImageUrl,
+      }),
+      createArtifact({
+        artifactItemId: "image-run:file-1",
+        runId: "image-run",
+        filename: "full-image.png",
+        contentType: "image/png",
+        url: imageUrl,
+        artifactKind: undefined,
       }),
       createArtifact({
         artifactItemId: "fallback-run:file-1",
@@ -548,19 +647,212 @@ describe("artifacts page", () => {
     setupArtifactsPage({ scope });
 
     await screen.findByText("static-preview.html");
+    await screen.findByText("full-image.png");
     await screen.findByText("fallback-preview.html");
-    const previewImages = Array.from(document.querySelectorAll("img")).filter(
-      (image) => {
-        return image.getAttribute("src") === previewImageUrl;
-      },
+    const staticCard = buttonByLabel("Preview static-preview.html");
+    const staticPreview = within(staticCard).getByTestId(
+      "artifact-card-preview",
     );
-    expect(previewImages).toHaveLength(1);
+    const staticDetails = within(staticCard).getByTestId(
+      "artifact-card-details",
+    );
+    expect(staticCard).toHaveClass("flex", "flex-col");
+    expect(staticCard).not.toHaveClass("aspect-square");
+    expect(staticPreview).toHaveClass(
+      "aspect-[16/10]",
+      "w-full",
+      "shrink-0",
+      "overflow-hidden",
+    );
+    expect(staticPreview.nextElementSibling).toBe(staticDetails);
+    expect(staticDetails).not.toHaveClass("absolute");
+    expect(staticDetails).toHaveClass("h-16", "shrink-0");
+    expect(
+      within(staticDetails).getByRole("heading", {
+        name: "static-preview.html",
+      }),
+    ).toBeInTheDocument();
+    const htmlPreviewImages = Array.from(
+      document.querySelectorAll<HTMLImageElement>(
+        `img[src="${previewImageUrl}"]`,
+      ),
+    );
+    expect(htmlPreviewImages).toHaveLength(1);
+    expect(htmlPreviewImages[0]).toHaveClass(
+      "h-full",
+      "w-full",
+      "object-cover",
+    );
+    const artifactImages = Array.from(
+      document.querySelectorAll<HTMLImageElement>(`img[src="${imageUrl}"]`),
+    );
+    expect(artifactImages).toHaveLength(1);
+    expect(artifactImages[0]).toHaveClass("h-full", "w-full", "object-cover");
     expect(screen.queryByTitle("static-preview.html preview")).toBeNull();
     expect(screen.getByTitle("fallback-preview.html preview")).toHaveAttribute(
       "src",
       "https://artifacts.example.com/fallback-preview.html",
     );
   });
+
+  it("keeps card widths fluid without squeezing in a third column", async () => {
+    setupTeam();
+    const scope = testAuthScope("fluid-grid-width");
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.dataset.testid === "artifacts-virtual-grid" ? 700 : 0;
+      },
+    );
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "fluid-grid-1:file-1",
+        runId: "fluid-grid-1",
+        filename: "fluid-grid-1.html",
+      }),
+      createArtifact({
+        artifactItemId: "fluid-grid-2:file-1",
+        runId: "fluid-grid-2",
+        filename: "fluid-grid-2.html",
+      }),
+      createArtifact({
+        artifactItemId: "fluid-grid-3:file-1",
+        runId: "fluid-grid-3",
+        filename: "fluid-grid-3.html",
+      }),
+    ]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("fluid-grid-1.html");
+    await waitFor(() => {
+      expect(screen.getByTestId("artifacts-virtual-grid-items")).toHaveStyle({
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+      });
+      expect(screen.getByTestId("artifacts-virtual-grid")).toHaveStyle({
+        height: "571.5px",
+      });
+    });
+  });
+
+  it("loads CDN image cards as thumbnails while preserving original previews", async () => {
+    setupTeam();
+    const scope = testAuthScope("image-thumbnail");
+    const cdnImageUrl =
+      "https://cdn.vm7.io/artifacts/user/image-run/generated.png";
+    const thumbnailUrl =
+      "https://cdn.vm7.io/cdn-cgi/image/width=640,height=400,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/user/image-run/generated.png";
+    const externalImageUrl =
+      "https://images.example.com/artifacts/external-image.png";
+    const unsupportedCdnImageUrl =
+      "https://cdn.vm7.io/artifacts/user/image-run/legacy.bmp";
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "image-run:file-1",
+        runId: "image-run",
+        fileId: "image-file",
+        filename: "generated.png",
+        contentType: "image/png",
+        url: cdnImageUrl,
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "external-image-run:file-1",
+        runId: "external-image-run",
+        fileId: "external-image-file",
+        filename: "external-image.png",
+        contentType: "image/png",
+        url: externalImageUrl,
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "unsupported-image-run:file-1",
+        runId: "unsupported-image-run",
+        fileId: "unsupported-image-file",
+        filename: "legacy.bmp",
+        contentType: "image/bmp",
+        url: unsupportedCdnImageUrl,
+        artifactKind: undefined,
+      }),
+    ]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("generated.png");
+    await screen.findByText("external-image.png");
+    await screen.findByText("legacy.bmp");
+    const cardImageUrls = Array.from(
+      document.querySelectorAll("article img"),
+      (image) => {
+        return image.getAttribute("src");
+      },
+    );
+    expect(cardImageUrls).toStrictEqual(
+      expect.arrayContaining([
+        thumbnailUrl,
+        externalImageUrl,
+        unsupportedCdnImageUrl,
+      ]),
+    );
+    expect(cardImageUrls).not.toContain(cdnImageUrl);
+
+    click(buttonByLabel("Preview generated.png"));
+    await expect(
+      screen.findByRole("dialog", { name: "generated.png preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+      "src",
+      cdnImageUrl,
+    );
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    click(buttonByLabel("More actions for generated.png"));
+    expect(
+      screen.getByLabelText("Open preview for generated.png"),
+    ).toHaveAttribute("href", cdnImageUrl);
+  });
+
+  it.each(["application/zip", "application/x-zip-compressed"])(
+    "downloads %s artifacts from the actions menu",
+    async (contentType) => {
+      setupTeam();
+      const scope = testAuthScope("download-zip");
+      const artifact = createArtifact({
+        filename: "launch-assets.zip",
+        contentType,
+        url: "https://artifacts.example.com/launch-assets.zip",
+        artifactKind: undefined,
+      });
+      const downloads = context.mocks.browser.blobDownload();
+      context.mocks.http.get(artifact.url, () => {
+        return new Response("zip contents", {
+          headers: { "Content-Type": contentType },
+        });
+      });
+      mockArtifacts([artifact]);
+
+      setupArtifactsPage({ scope });
+
+      await screen.findByText("launch-assets.zip");
+      click(buttonByLabel("More actions for launch-assets.zip"));
+      const downloadItem = screen
+        .getByText("Download")
+        .closest("[role=menuitem]");
+      expect(downloadItem).not.toBeNull();
+      expect(
+        downloadItem?.querySelector(".tabler-icon-download"),
+      ).not.toBeNull();
+      expect(screen.queryByText("Open in new tab")).not.toBeInTheDocument();
+
+      click(screen.getByText("Download"));
+      await waitFor(() => {
+        expect(downloads.downloads).toHaveLength(1);
+      });
+      expect(downloads.downloads[0]?.filename).toBe("launch-assets.zip");
+    },
+  );
 
   it("opens previewable artifacts in the lightbox without split view", async () => {
     setupTeam();
@@ -764,6 +1056,10 @@ describe("artifacts page", () => {
       },
     );
     expect(posterImages).toHaveLength(1);
+    expect(posterImages[0]).toHaveClass("object-cover");
+    expect(
+      posterImages[0]?.closest('[data-testid="artifact-card-preview"]'),
+    ).toHaveClass("aspect-[16/10]");
     expect(
       document.querySelector(".tabler-icon-player-play-filled"),
     ).not.toBeInTheDocument();
@@ -893,6 +1189,41 @@ describe("artifacts page", () => {
     expect(listCalls).toBe(1);
   });
 
+  it("hides favorite controls when artifact favorites are disabled", async () => {
+    setupTeam();
+    const scope = testAuthScope("favorites-disabled");
+    mockArtifacts([createArtifact()]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("launch-plan.html");
+    expect(
+      screen.queryByLabelText("Show favorite artifacts"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Add launch-plan.html to favorites"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows interaction feedback on artifact card actions", async () => {
+    setupTeam();
+    const scope = testAuthScope("card-action-feedback");
+    mockArtifacts([createArtifact()]);
+
+    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
+
+    await screen.findByText("launch-plan.html");
+    expect(buttonByLabel("Add launch-plan.html to favorites")).toHaveClass(
+      "hover:bg-muted",
+      "active:bg-gray-100",
+    );
+    expect(buttonByLabel("More actions for launch-plan.html")).toHaveClass(
+      "hover:bg-muted",
+      "active:bg-gray-100",
+      "data-[state=open]:bg-gray-100",
+    );
+  });
+
   it("favorites artifacts optimistically and filters favorites locally", async () => {
     setupTeam();
     const scope = testAuthScope("favorites");
@@ -940,7 +1271,11 @@ describe("artifacts page", () => {
     await screen.findByText("favorite-brief.html");
     await screen.findByText("archive.html");
 
-    click(buttonByLabel("Add launch-plan.html to favorites"));
+    const favoriteButton = buttonByLabel("Add launch-plan.html to favorites");
+    expect(
+      favoriteButton.closest('[data-testid="artifact-card-details"]'),
+    ).not.toBeNull();
+    click(favoriteButton);
     await waitFor(() => {
       expect(favoriteBody).toStrictEqual({ artifactUrl: launch.url });
       expect(
@@ -978,7 +1313,7 @@ describe("artifacts page", () => {
 
     await screen.findByText("launch-plan.html");
     click(buttonByLabel("More actions for launch-plan.html"));
-    click(screen.getByText("Ask about it"));
+    click(screen.getByText("Ask about this"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
@@ -1034,7 +1369,7 @@ describe("artifacts page", () => {
 
     await screen.findByText("same-name.png");
     click(buttonByLabel("More actions for same-name.png"));
-    click(screen.getByText("Ask about it"));
+    click(screen.getByText("Ask about this"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
@@ -1079,7 +1414,7 @@ describe("artifacts page", () => {
       screen.queryByLabelText("Open source chat for launch-plan.html"),
     ).toBeNull();
     click(buttonByLabel("More actions for launch-plan.html"));
-    click(screen.getByText("View creation chat"));
+    click(screen.getByText("View original chat"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${SOURCE_THREAD_ID}`);
@@ -1254,34 +1589,111 @@ describe("artifacts page", () => {
     await screen.findByText("page-two.html");
   });
 
-  it("windows a large set behind a load more control", async () => {
+  it("virtualizes a large set and loads more near the scroll boundary", async () => {
     setupTeam();
     const scope = testAuthScope("windowed");
-    const many = Array.from({ length: 65 }, (_, index) => {
-      const label = String(index).padStart(2, "0");
+    const many = Array.from({ length: 180 }, (_, index) => {
+      const label = String(index).padStart(3, "0");
       return createArtifact({
         artifactItemId: `windowed-${label}:file`,
         runId: `windowed-${label}`,
         filename: `windowed-${label}.html`,
-        createdAt: `2026-01-01T00:${label}:00Z`,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
       });
     });
     mockArtifacts(many);
 
     setupArtifactsPage({ scope });
 
-    // The first window renders; the tail stays hidden until "Load more".
-    await screen.findByText("windowed-00.html");
-    expect(screen.queryByText("windowed-64.html")).not.toBeInTheDocument();
+    await screen.findByText("windowed-000.html");
+    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(24);
 
-    const loadMoreButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Load more";
+    const scrollViewport = screen.getByRole("main");
+    const setScrollMetrics = mockScrollViewport(scrollViewport, {
+      clientHeight: 800,
+      scrollHeight: 5173,
+      scrollTop: 4373,
     });
-    if (!loadMoreButton) {
-      throw new Error("Load more button not found");
-    }
-    click(loadMoreButton);
+    fireEvent.scroll(scrollViewport);
 
-    await screen.findByText("windowed-64.html");
+    await screen.findByText("windowed-064.html");
+    expect(screen.queryByText("windowed-000.html")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(24);
+
+    setScrollMetrics({ scrollHeight: 10_358, scrollTop: 9558 });
+    fireEvent.scroll(scrollViewport);
+
+    await screen.findByText("windowed-119.html");
+    expect(screen.queryByText("windowed-064.html")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(24);
+
+    setScrollMetrics({ scrollHeight: 15_543, scrollTop: 14_743 });
+    fireEvent.scroll(scrollViewport);
+
+    await screen.findByText("windowed-179.html");
+    expect(screen.queryByText("windowed-119.html")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(24);
+  });
+
+  it("continues keyboard navigation through virtualized artifacts", async () => {
+    setupTeam();
+    const scope = testAuthScope("keyboard-windowed");
+    const many = Array.from({ length: 120 }, (_, index) => {
+      const label = String(index).padStart(3, "0");
+      return createArtifact({
+        artifactItemId: `keyboard-windowed-${label}:file`,
+        runId: `keyboard-windowed-${label}`,
+        filename: `keyboard-windowed-${label}.html`,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+      });
+    });
+    mockArtifacts(many);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("keyboard-windowed-000.html");
+    const scrollViewport = screen.getByRole("main");
+    const setScrollMetrics = mockScrollViewport(scrollViewport, {
+      clientHeight: 800,
+      scrollHeight: 6068,
+      scrollTop: 0,
+    });
+
+    fireEvent.focus(buttonByText("Continue browsing artifacts"));
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe("18");
+    });
+    await screen.findByText("keyboard-windowed-018.html");
+
+    setScrollMetrics({ scrollHeight: 20_000, scrollTop: 4560 });
+    fireEvent.scroll(scrollViewport);
+    await screen.findByText("keyboard-windowed-059.html");
+
+    fireEvent.focus(buttonByText("Continue browsing artifacts"));
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe("60");
+    });
+    await screen.findByText("keyboard-windowed-060.html");
+
+    const firstMountedArtifact = document.querySelector<HTMLElement>(
+      "article[data-artifact-index]",
+    );
+    if (!firstMountedArtifact?.dataset.artifactIndex) {
+      throw new Error("First mounted artifact not found");
+    }
+    const firstMountedIndex = Number(
+      firstMountedArtifact.dataset.artifactIndex,
+    );
+    expect(firstMountedIndex).toBeGreaterThan(0);
+
+    firstMountedArtifact.focus();
+    fireEvent.keyDown(firstMountedArtifact, { key: "Tab", shiftKey: true });
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe(String(firstMountedIndex - 1));
+    });
   });
 });

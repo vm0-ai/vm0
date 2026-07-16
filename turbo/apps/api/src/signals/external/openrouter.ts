@@ -1,5 +1,5 @@
 import { optionalEnv } from "../../lib/env";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -21,7 +21,26 @@ interface OpenRouterMessage {
   readonly content: string | readonly OpenRouterContentPart[];
 }
 
+export interface OpenRouterTokenDetails {
+  readonly cached_tokens?: number;
+  readonly cache_write_tokens?: number;
+  readonly reasoning_tokens?: number;
+}
+
+export interface OpenRouterUsage {
+  readonly prompt_tokens?: number;
+  readonly completion_tokens?: number;
+  readonly prompt_tokens_details?: OpenRouterTokenDetails;
+  readonly completion_tokens_details?: OpenRouterTokenDetails;
+}
+
+interface OpenRouterTextGeneration {
+  readonly text: string;
+  readonly usage?: OpenRouterUsage;
+}
+
 interface OpenRouterResponse {
+  readonly usage?: OpenRouterUsage;
   readonly choices: readonly {
     readonly finish_reason: string | null;
     readonly native_finish_reason?: string | null;
@@ -57,6 +76,26 @@ export async function generateText(
   maxTokens?: number,
   options?: OpenRouterGenerateTextOptions,
 ): Promise<string | null> {
+  const generation = await generateTextWithUsage(
+    model,
+    messages,
+    maxTokens,
+    options,
+  );
+  return generation?.text ?? null;
+}
+
+/**
+ * Call OpenRouter chat completions and return both text and provider-reported
+ * usage. The usage payload is intentionally passed through with OpenRouter's
+ * snake_case fields so billing code can stay aligned with their API surface.
+ */
+export async function generateTextWithUsage(
+  model: string,
+  messages: readonly OpenRouterMessage[],
+  maxTokens?: number,
+  options?: OpenRouterGenerateTextOptions,
+): Promise<OpenRouterTextGeneration | null> {
   const apiKey = optionalEnv("OPENROUTER_API_KEY");
   if (!apiKey) {
     return null;
@@ -81,8 +120,7 @@ export async function generateText(
   });
 
   if (!response.ok) {
-    const settled = await settle(response.text());
-    const text = settled.ok ? settled.value : "unknown error";
+    const text = (await tapError(response.text())) ?? "unknown error";
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 
@@ -104,5 +142,7 @@ export async function generateText(
   if (!content) {
     throw new Error("OpenRouter returned empty content");
   }
-  return content;
+  return data.usage === undefined
+    ? { text: content }
+    : { text: content, usage: data.usage };
 }

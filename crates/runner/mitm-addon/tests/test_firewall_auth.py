@@ -1206,7 +1206,7 @@ class TestHandleFirewallRequest:
         ],
         ids=["url-error", "socket-timeout", "connection-reset"],
     )
-    async def test_urlopen_transport_failure_returns_502(
+    async def test_auth_endpoint_transport_failure_returns_502(
         self,
         network_error: Exception,
         expected_message: str,
@@ -1220,7 +1220,7 @@ class TestHandleFirewallRequest:
         allow = _allow(api_entry)
 
         with (
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=network_error),
+            patch("firewall_auth_client._opener.open", side_effect=network_error),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1258,7 +1258,7 @@ class TestHandleFirewallRequest:
         mock_resp.read.return_value = b"not-json"
 
         with (
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1302,7 +1302,7 @@ class TestHandleFirewallRequest:
         )
 
         with (
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             result = await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1341,7 +1341,7 @@ class TestHandleFirewallRequest:
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(response_body) - 1,
             ),
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1380,7 +1380,7 @@ class TestHandleFirewallRequest:
         mock_resp = _json_response({"headers": []})
 
         with (
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1778,6 +1778,26 @@ class TestMakeApiRequest:
         assert normalized_headers["x-client-session-id"] == "runner-session-direct"
         uuid.UUID(normalized_headers["x-client-request-id"])
 
+    def test_marks_credentials_as_unredirected(self, mitm_ctx):
+        with (
+            mitm_ctx(),
+            patch.object(platform_api, "VERCEL_BYPASS", "secret-bypass-value"),
+        ):
+            req = platform_api.make_api_request(
+                "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+                b"{}",
+                "tok-xyz",
+            )
+
+        redirected_headers = {name.lower(): value for name, value in req.headers.items()}
+        unredirected_headers = {
+            name.lower(): value for name, value in req.unredirected_hdrs.items()
+        }
+        assert "authorization" not in redirected_headers
+        assert "x-vercel-protection-bypass" not in redirected_headers
+        assert unredirected_headers["authorization"] == "Bearer tok-xyz"
+        assert unredirected_headers["x-vercel-protection-bypass"] == "secret-bypass-value"
+
     @pytest.mark.parametrize(
         "url",
         [
@@ -1880,39 +1900,160 @@ class TestFetchFirewallHeaders:
         assert result.refreshed_secrets == ["NOTION_TOKEN"]
         assert not hasattr(result, "futureField")
 
-    async def test_sigv4_success_response_shape_is_mapped(self, mitm_ctx):
+    @pytest.mark.parametrize(
+        "session_token",
+        [
+            pytest.param(None, id="without-session-token"),
+            pytest.param("session-token", id="with-session-token"),
+        ],
+    )
+    async def test_sigv4_success_response_is_cached(
+        self,
+        mitm_ctx,
+        session_token: str | None,
+    ):
+        request_aws_sigv4 = {
+            "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+            "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+        }
+        response_aws_sigv4: dict[str, object] = {
+            "accessKeyId": "access-key-id",
+            "secretAccessKey": "secret-access-key",
+            "futureField": {"ignored": True},
+        }
+        if session_token is not None:
+            request_aws_sigv4["sessionToken"] = "${{ secrets.AWS_SESSION_TOKEN }}"
+            response_aws_sigv4["sessionToken"] = session_token
+
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response(
             {
                 "headers": {},
-                "awsSigv4": {
-                    "accessKeyId": "access-key-id",
-                    "secretAccessKey": "secret-access-key",
-                    "sessionToken": "session-token",
-                },
+                "awsSigv4": response_aws_sigv4,
             }
         )
+        cache_key = auth_cache_key()
 
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            result = await auth_client.fetch_firewall_headers(
+            result = await auth_cache.get_firewall_headers(
+                cache_key,
+                _firewall_auth_request(auth_aws_sigv4=request_aws_sigv4),
+            )
+
+        expected_credentials = AwsSigV4Credentials(
+            "access-key-id",
+            "secret-access-key",
+            session_token,
+        )
+        assert result["aws_sigv4"] == expected_credentials
+        assert require_cached_headers(cache_key).aws_sigv4 == expected_credentials
+
+    @pytest.mark.parametrize(
+        ("aws_sigv4", "expected_reason"),
+        [
+            pytest.param(None, "awsSigv4 must be an object", id="sigv4-null"),
+            pytest.param([], "awsSigv4 must be an object", id="sigv4-array"),
+            pytest.param(
+                {"secretAccessKey": "secret-access-key"},
+                "awsSigv4.accessKeyId is required",
+                id="access-key-missing",
+            ),
+            pytest.param(
+                {"accessKeyId": "", "secretAccessKey": "secret-access-key"},
+                "awsSigv4.accessKeyId is required",
+                id="access-key-empty",
+            ),
+            pytest.param(
+                {"accessKeyId": None, "secretAccessKey": "secret-access-key"},
+                "awsSigv4.accessKeyId is required",
+                id="access-key-null",
+            ),
+            pytest.param(
+                {"accessKeyId": 123, "secretAccessKey": "secret-access-key"},
+                "awsSigv4.accessKeyId is required",
+                id="access-key-number",
+            ),
+            pytest.param(
+                {"accessKeyId": "access-key-id"},
+                "awsSigv4.secretAccessKey is required",
+                id="secret-key-missing",
+            ),
+            pytest.param(
+                {"accessKeyId": "access-key-id", "secretAccessKey": ""},
+                "awsSigv4.secretAccessKey is required",
+                id="secret-key-empty",
+            ),
+            pytest.param(
+                {"accessKeyId": "access-key-id", "secretAccessKey": None},
+                "awsSigv4.secretAccessKey is required",
+                id="secret-key-null",
+            ),
+            pytest.param(
+                {"accessKeyId": "access-key-id", "secretAccessKey": 123},
+                "awsSigv4.secretAccessKey is required",
+                id="secret-key-number",
+            ),
+            pytest.param(
+                {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": "",
+                },
+                "sessionToken must not be empty",
+                id="session-token-empty",
+            ),
+            pytest.param(
+                {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": None,
+                },
+                "sessionToken must be a string",
+                id="session-token-null",
+            ),
+            pytest.param(
+                {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": 123,
+                },
+                "sessionToken must be a string",
+                id="session-token-number",
+            ),
+        ],
+    )
+    async def test_malformed_sigv4_response_is_not_cached(
+        self,
+        mitm_ctx,
+        aws_sigv4: object,
+        expected_reason: str,
+    ):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"headers": {}, "awsSigv4": aws_sigv4})
+        cache_key = auth_cache_key()
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX) as exc_info,
+        ):
+            await auth_cache.get_firewall_headers(
+                cache_key,
                 _firewall_auth_request(
                     auth_aws_sigv4={
                         "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
                         "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
                     }
-                )
+                ),
             )
 
-        assert result.payload.aws_sigv4 == AwsSigV4Credentials(
-            "access-key-id",
-            "secret-access-key",
-            "session-token",
-        )
+        assert str(exc_info.value) == f"{_MALFORMED_SUCCESS_PREFIX}: {expected_reason}"
+        assert cached_headers(cache_key) is None
 
     @pytest.mark.parametrize(
         ("auth_request", "response"),
@@ -2164,15 +2305,45 @@ class TestFetchFirewallHeaders:
 
         assert endpoint.requests[0].headers["x-vercel-protection-bypass"] == "secret-bypass-value"
 
-    async def test_invalid_api_url_raises_before_urlopen(self):
+    @pytest.mark.parametrize("status", [301, 302, 303])
+    async def test_rejects_cross_origin_redirect_without_forwarding_credentials(
+        self,
+        status: int,
+        mitm_ctx,
+    ):
+        source = FakeAuthEndpoint()
+        target = FakeAuthEndpoint()
+
+        with target.run():
+            source.queue_response(
+                status,
+                headers=(("Location", f"{target.api_url}/redirected"),),
+            )
+            with (
+                source.run(),
+                mitm_ctx(api_url=source.api_url),
+                patch.object(platform_api, "VERCEL_BYPASS", "secret-bypass-value"),
+                pytest.raises(urllib.error.HTTPError) as exc_info,
+            ):
+                await auth_client.fetch_firewall_headers(_firewall_auth_request())
+
+        assert exc_info.value.code == status
+        assert source.request_count == 1
+        request = source.requests[0]
+        assert request.method == "POST"
+        assert request.headers["authorization"] == "Bearer tok-xyz"
+        assert request.headers["x-vercel-protection-bypass"] == "secret-bypass-value"
+        assert target.requests == ()
+
+    async def test_invalid_api_url_raises_before_open(self):
         with (
             patch.object(platform_api, "get_api_url", return_value="file:///etc/passwd"),
-            patch("firewall_auth_client.urllib.request.urlopen") as mock_urlopen,
+            patch("firewall_auth_client._opener.open") as mock_open,
             pytest.raises(ValueError, match="absolute http"),
         ):
             await auth_client.fetch_firewall_headers(_firewall_auth_request())
 
-        mock_urlopen.assert_not_called()
+        mock_open.assert_not_called()
 
     async def test_424_connector_not_configured_raises_custom_error(self, mitm_ctx):
         """Auth endpoint 424 CONNECTOR_NOT_CONFIGURED raises ConnectorNotConfiguredError."""
@@ -2361,6 +2532,7 @@ class TestFetchFirewallHeaders:
     @pytest.mark.parametrize(
         "error_body",
         [
+            pytest.param(b"\xff", id="invalid-utf8"),
             b"not-json",
             b'"plain string"',
             b"[1, 2, 3]",
@@ -2517,7 +2689,7 @@ class TestFirewallAuthResponseBodyReader:
 
 class TestFetchFirewallHeadersResourceBoundary:
     def test_closes_response_on_success(self, mitm_ctx):
-        """Success path must close the urlopen response — FD leak guard (#10475)."""
+        """Success path must close the HTTP response — FD leak guard (#10475)."""
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
@@ -2525,7 +2697,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         with (
             mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
             auth_client._fetch_firewall_headers_sync(_firewall_auth_request(), "https://api.vm0.ai")
@@ -2545,13 +2717,35 @@ class TestFetchFirewallHeadersResourceBoundary:
         with (
             mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch("firewall_auth_client._opener.open", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
             auth_client._fetch_firewall_headers_sync(_firewall_auth_request(), "https://api.vm0.ai")
 
         assert exc_info.value is http_error
+        http_error.close.assert_called_once()
+
+    def test_closes_http_error_response_when_body_has_invalid_utf8(self, mitm_ctx):
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            400,
+            "Bad Request",
+            b"\xff",
+        )
+        http_error.close = MagicMock()
+
+        with (
+            mitm_ctx(),
+            patch("platform_api.urllib.request.Request"),
+            patch("firewall_auth_client._opener.open", side_effect=http_error),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError) as exc_info,
+        ):
+            auth_client._fetch_firewall_headers_sync(_firewall_auth_request(), "https://api.vm0.ai")
+
+        assert exc_info.value is http_error
+        assert exc_info.value.code == 400
         http_error.close.assert_called_once()
 
     def test_closes_http_error_response_when_body_is_too_large(self, mitm_ctx):
@@ -2579,7 +2773,7 @@ class TestFetchFirewallHeadersResourceBoundary:
                 len(error_body) - 1,
             ),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch("firewall_auth_client._opener.open", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(
                 auth_client.FirewallAuthResponseTooLargeError,
@@ -2625,7 +2819,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         with (
             mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
-            patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
+            patch("firewall_auth_client._opener.open", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
             pytest.raises(expected_exception),
         ):

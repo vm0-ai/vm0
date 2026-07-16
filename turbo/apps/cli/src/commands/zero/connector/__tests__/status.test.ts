@@ -75,8 +75,12 @@ function stubConnector(
   );
 }
 
-function stubAgent(id: string, displayName: string | null) {
-  return http.get(`http://localhost:3000/api/zero/agents/${id}`, () => {
+function stubAgent(
+  id: string,
+  displayName: string | null,
+  origin = "http://localhost:3000",
+) {
+  return http.get(`${origin}/api/zero/agents/${id}`, () => {
     return HttpResponse.json({
       agentId: id,
       ownerId: "owner-1",
@@ -88,13 +92,14 @@ function stubAgent(id: string, displayName: string | null) {
   });
 }
 
-function stubUserConnectors(id: string, enabledTypes: string[]) {
-  return http.get(
-    `http://localhost:3000/api/zero/agents/${id}/user-connectors`,
-    () => {
-      return HttpResponse.json({ enabledTypes });
-    },
-  );
+function stubUserConnectors(
+  id: string,
+  enabledTypes: string[],
+  origin = "http://localhost:3000",
+) {
+  return http.get(`${origin}/api/zero/agents/${id}/user-connectors`, () => {
+    return HttpResponse.json({ enabledTypes });
+  });
 }
 
 function stubAvailableConnectors(types: string[]) {
@@ -119,7 +124,7 @@ describe("zero connector status command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
@@ -248,6 +253,32 @@ describe("zero connector status command", () => {
       expect(logCalls).not.toContain("is not connected");
       expect(logCalls).not.toContain("[Connect github]");
       expect(logCalls).not.toContain("zero doctor check-connector");
+    });
+
+    it("uses the production app origin in authorization links", async () => {
+      const apiOrigin = "https://api.vm0.ai";
+      vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
+      server.use(
+        stubConnectorCatalogStatus(
+          [statusItemFromConnector(connectedGithub)],
+          apiOrigin,
+        ),
+        stubAgent(AGENT_UUID, "maya", apiOrigin),
+        stubUserConnectors(AGENT_UUID, [], apiOrigin),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        `[Authorize github](https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_UUID})`,
+      );
     });
 
     it("shows connect link when connector is not connected", async () => {

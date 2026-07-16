@@ -14,7 +14,7 @@ import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { recordNotionBackfillPageMemorySource } from "./notion-memory-source.service";
 import {
   NOTION_API_BASE,
@@ -584,32 +584,29 @@ export const advanceNotionMemorySourceBackfillJobs$ = command(
         continue;
       }
 
-      const result = await settle(
+      const result = await tapError(
         processNotionBackfillJob(db, lockedJob, signal),
-        signal,
+        async (error) => {
+          failed += 1;
+          log.warn("Notion memory source backfill failed", {
+            jobId: lockedJob.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          await markNotionBackfillFailed({
+            db,
+            job: lockedJob,
+            error,
+          });
+        },
       );
       signal.throwIfAborted();
-      if (result.ok) {
-        processed += 1;
-        scanned += result.value.scanned;
-        enqueued += result.value.recorded;
+      if (!result) {
         continue;
       }
 
-      failed += 1;
-      log.warn("Notion memory source backfill failed", {
-        jobId: lockedJob.id,
-        error:
-          result.error instanceof Error
-            ? result.error.message
-            : String(result.error),
-      });
-      await markNotionBackfillFailed({
-        db,
-        job: lockedJob,
-        error: result.error,
-      });
-      signal.throwIfAborted();
+      processed += 1;
+      scanned += result.scanned;
+      enqueued += result.recorded;
     }
 
     return { processed, failed, scanned, enqueued };

@@ -66,19 +66,14 @@ async fn failed_job_with_session_not_parked() {
     shutdown(&env, run_handle).await;
 }
 
-/// Test 21: Cancelled job is not parked.
-///
-/// `wait_process_gate` blocks the agent execution. The test cancels the job
-/// via the cancel token, causing `select!` in the executor to take the
-/// cancellation branch. `job_cancel.is_cancelled()` is true, so
-/// `parkable_session` is `None` → sandbox destroyed.
+/// Test 21: A cancelled job is destroyed instead of parked.
 #[tokio::test(start_paused = true)]
 async fn cancelled_job_not_parked() {
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        gate,
-    ));
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, overrides);
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, Arc::clone(&overrides));
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
@@ -92,9 +87,11 @@ async fn cancelled_job_not_parked() {
         Some(context_with_session(run_id, "sess-cancel")),
     );
 
-    // Wait for the job to be claimed (cancel token inserted).
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter before cancellation");
     let cancel_handle = wait_cancel_handle(&cancel_tokens, run_id, Duration::from_secs(5)).await;
-    // Cancel the job — executor's select! takes the cancelled branch.
     cancel_handle.cancel().await;
 
     let c = env
@@ -112,6 +109,9 @@ async fn cancelled_job_not_parked() {
         0,
         "cancelled job must not park"
     );
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(overrides.park_call_count(), 0);
+    assert_eq!(overrides.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
 }

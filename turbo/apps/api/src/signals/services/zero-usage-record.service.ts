@@ -28,7 +28,6 @@ const MODEL_TOKEN_CATEGORIES = [
 const THREADED_SOURCES = ["chat", "automation"] as const;
 const USAGE_RECORD_KINDS = ["model", "image", "video", "connector"] as const;
 const PASSTHROUGH_TRIGGER_SOURCES = [
-  "automation",
   "slack",
   "teams",
   "telegram",
@@ -88,6 +87,7 @@ function sourceExpr(triggerSource: string): string {
   return `
     CASE
       WHEN ${triggerSource} = 'web' THEN 'chat'
+      WHEN ${triggerSource} IN ('workflow-schedule', 'workflow-event') THEN 'automation'
       WHEN ${triggerSource} IN (${passthroughList}) THEN ${triggerSource}
       ELSE 'other'
     END`;

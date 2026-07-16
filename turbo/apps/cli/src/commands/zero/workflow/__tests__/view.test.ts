@@ -46,7 +46,7 @@ describe("zero workflow view command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     vi.stubEnv("ZERO_AGENT_ID", undefined);
   });
@@ -79,7 +79,7 @@ describe("zero workflow view command", () => {
               instruction: "Do helpful things.",
               files: [],
               fileContents: [],
-              triggers: [],
+              automations: [],
             });
           },
         ),
@@ -130,7 +130,7 @@ describe("zero workflow view command", () => {
               instruction: "Tell one short joke.",
               files: [],
               fileContents: [],
-              triggers: [],
+              automations: [],
             });
           },
         ),

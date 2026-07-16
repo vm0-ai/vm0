@@ -13,6 +13,7 @@ use sandbox::SandboxId;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
+use super::HEARTBEAT_PERIOD;
 use super::active_sessions::ActiveCliAgentSessionGuard;
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
@@ -24,9 +25,9 @@ use super::idle_lifecycle::{
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer, SessionHistoryProbe,
-    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, effective_cli_framework,
-    validate_resume_session_id,
+    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryCpuPool, SessionHistoryMaterializer,
+    SessionHistoryProbe, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
+    effective_cli_framework, validate_resume_session_id,
 };
 use crate::http::HttpClient;
 use crate::idle_pool::{
@@ -35,7 +36,10 @@ use crate::idle_pool::{
 };
 use crate::ids::RunId;
 use crate::paths::short_digest;
-use crate::provider::{ClaimedJob, JobCandidate, PreLocalAdmissionOutcome};
+use crate::provider::{
+    ClaimedJob, JobCandidate, PreLocalAdmissionOutcome, SessionHistoryGenerationLocalAvailability,
+    SessionHistoryGenerationRelationship,
+};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
@@ -72,10 +76,58 @@ enum LocalAdmissionResource {
     Reusable(Box<ReservedIdleSandbox>),
 }
 
+impl LocalAdmissionResource {
+    fn session_history_generation_relationship(
+        &self,
+        target_generation_run_id: Option<RunId>,
+    ) -> SessionHistoryGenerationRelationship {
+        let Some(target_generation_run_id) = target_generation_run_id else {
+            return SessionHistoryGenerationRelationship::UnknownTarget;
+        };
+        match self {
+            Self::Fresh(_) => SessionHistoryGenerationRelationship::Fresh,
+            Self::Reusable(reservation) => match reservation.history_generation_run_id() {
+                Some(reserved_generation_run_id)
+                    if reserved_generation_run_id == target_generation_run_id =>
+                {
+                    SessionHistoryGenerationRelationship::Exact
+                }
+                Some(_) => SessionHistoryGenerationRelationship::Different,
+                None => SessionHistoryGenerationRelationship::UnknownReserved,
+            },
+        }
+    }
+
+    fn session_history_generation_local_availability(
+        &self,
+        target_generation_run_id: Option<RunId>,
+        candidate_discovered_at: Instant,
+    ) -> Option<SessionHistoryGenerationLocalAvailability> {
+        target_generation_run_id?;
+        let Self::Reusable(reservation) = self else {
+            return None;
+        };
+        let parked_at = reservation.parked_at();
+        if parked_at > candidate_discovered_at {
+            return Some(SessionHistoryGenerationLocalAvailability::AfterDiscovery);
+        }
+        if candidate_discovered_at.duration_since(parked_at) < HEARTBEAT_PERIOD {
+            Some(SessionHistoryGenerationLocalAvailability::BeforeDiscoveryLtHeartbeatPeriod)
+        } else {
+            Some(SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod)
+        }
+    }
+}
+
 struct AdmittedClaim {
     claimed: ClaimedJob,
     resource: LocalAdmissionResource,
     cancel: RunCancellationHandle,
+}
+
+struct PreparedAffinityCandidate {
+    candidate: JobCandidate,
+    exact_generation_reservation: Option<Box<ReservedIdleSandbox>>,
 }
 
 struct ReuseAdmissionRequest<'a> {
@@ -241,18 +293,22 @@ pub(super) async fn handle_discovered_job(
             }
         };
 
-    let session_history_restore_plan = build_session_history_restore_plan(
-        &ctx.spawn_ctx.exec_config.http,
-        claimed.context(),
-        resume_session_valid,
-        &job_cancel,
-        SessionHistoryRestoreReuse {
-            entry: reuse_entry.as_ref(),
-            result: reuse_result,
-        },
-        &mut pre_spawn_timing,
-        Some(&ctx.spawn_ctx.exec_config.session_history_probe),
-    );
+    let session_history_restore_plan = if resume_session_valid {
+        build_session_history_restore_plan(
+            &ctx.spawn_ctx.exec_config.http,
+            &ctx.spawn_ctx.exec_config.session_history_cpu,
+            claimed.context(),
+            &job_cancel,
+            SessionHistoryRestoreReuse {
+                entry: reuse_entry.as_ref(),
+                result: reuse_result,
+            },
+            &mut pre_spawn_timing,
+            Some(&ctx.spawn_ctx.exec_config.session_history_probe),
+        )
+    } else {
+        SessionHistoryRestorePlan::Default
+    };
 
     // Determine sandbox_id after the reuse decision. On reuse, the sandbox keeps
     // its original identity; on a fresh create, allocate a new UUID for the
@@ -307,16 +363,13 @@ struct SessionHistoryRestoreReuse<'a> {
 
 fn build_session_history_restore_plan(
     http: &HttpClient,
+    cpu: &SessionHistoryCpuPool,
     context: &ExecutionContext,
-    resume_session_valid: bool,
     cancel: &RunCancellationHandle,
     reuse: SessionHistoryRestoreReuse<'_>,
     pre_spawn_timing: &mut RunnerPreSpawnTiming,
     probe: Option<&SessionHistoryProbe>,
 ) -> SessionHistoryRestorePlan {
-    if !resume_session_valid {
-        return SessionHistoryRestorePlan::Default;
-    }
     let Some(resume_session) = context.resume_session.as_ref() else {
         return SessionHistoryRestorePlan::Default;
     };
@@ -324,6 +377,7 @@ fn build_session_history_restore_plan(
         return SessionHistoryRestorePlan::Default;
     }
 
+    let mut prefix_attribution = None;
     let fallback = match reuse.result {
         SandboxReuseResult::Reused => {
             let requested_identity = RestoredSessionIdentity::from_context(context);
@@ -347,8 +401,11 @@ fn build_session_history_restore_plan(
                         }
                     }
                     Some(restored_identity) => {
+                        let (mismatch_reason, attribution) = restored_identity
+                            .mismatch_reason_and_prefix_attribution(&requested_identity);
+                        prefix_attribution = attribution;
                         Some(SessionHistoryRestoreFallback::IdentityMismatch(
-                            restored_identity.mismatch_reason_for_request(&requested_identity),
+                            mismatch_reason,
                         ))
                     }
                     None => Some(SessionHistoryRestoreFallback::MissingIdleIdentity),
@@ -371,13 +428,27 @@ fn build_session_history_restore_plan(
     }
 
     let started_at = Instant::now();
-    let materializer = SessionHistoryMaterializer::start_cancellable(
-        http,
-        Some(resume_session),
-        effective_cli_framework(&context.cli_agent_type),
-        cancel.token(),
-        probe,
-    );
+    let materializer = match prefix_attribution {
+        Some(prefix_attribution) => {
+            SessionHistoryMaterializer::start_cancellable_with_prefix_attribution(
+                http,
+                cpu,
+                Some(resume_session),
+                effective_cli_framework(&context.cli_agent_type),
+                cancel.token(),
+                probe,
+                prefix_attribution,
+            )
+        }
+        None => SessionHistoryMaterializer::start_cancellable(
+            http,
+            cpu,
+            Some(resume_session),
+            effective_cli_framework(&context.cli_agent_type),
+            cancel.token(),
+            probe,
+        ),
+    };
     pre_spawn_timing.record_phase_elapsed(
         RunnerPreSpawnPhase::SessionHistoryMaterializerStart,
         started_at,
@@ -415,7 +486,10 @@ async fn claim_with_local_admission(
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
-    let mut candidate = prepare_affinity_protected_candidate(
+    let PreparedAffinityCandidate {
+        mut candidate,
+        exact_generation_reservation,
+    } = prepare_affinity_protected_candidate(
         candidate,
         profile_name,
         job_vcpu,
@@ -428,15 +502,20 @@ async fn claim_with_local_admission(
 
     // Reserve either the exact reusable sandbox or fresh capacity before
     // claiming so a losing claim can restore all local ownership.
-    let resource = acquire_local_admission_resource(
-        &candidate,
-        profile_name,
-        job_vcpu,
-        job_memory,
-        device_rate_limits,
-        ctx,
-    )
-    .await?;
+    let resource = match exact_generation_reservation {
+        Some(reservation) => LocalAdmissionResource::Reusable(reservation),
+        None => {
+            acquire_local_admission_resource(
+                &candidate,
+                profile_name,
+                job_vcpu,
+                job_memory,
+                device_rate_limits,
+                ctx,
+            )
+            .await?
+        }
+    };
 
     // Insert cancel token before claiming so provider-side cancel channels
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
@@ -485,6 +564,20 @@ async fn claim_with_local_admission(
             return None;
         }
     }
+    let target_generation_run_id = candidate.history_generation_run_id();
+    let relationship = admission
+        .resource
+        .session_history_generation_relationship(target_generation_run_id);
+    let local_availability = admission
+        .resource
+        .session_history_generation_local_availability(
+            target_generation_run_id,
+            candidate.discovered_at(),
+        );
+    candidate.set_session_history_generation_relationship(relationship);
+    if let Some(local_availability) = local_availability {
+        candidate.set_session_history_generation_local_availability(local_availability);
+    }
     // claim() runs in the branch handler: non-interruptible, so a valid
     // successful claim is always paired with complete().
     let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
@@ -514,20 +607,59 @@ async fn prepare_affinity_protected_candidate(
     job_memory: u32,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &DiscoveredJobContext<'_>,
-) -> Option<JobCandidate> {
-    if !candidate.is_affinity_protected() {
-        return Some(
-            candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
+) -> Option<PreparedAffinityCandidate> {
+    if candidate.is_history_generation_affinity_protected()
+        && let (Some(cli_agent_session_id), Some(history_generation_run_id)) = (
+            candidate.cli_agent_session_id().map(str::to_owned),
+            candidate.history_generation_run_id(),
+        )
+    {
+        if let Some(reservation) = reserve_reusable_idle(
+            &cli_agent_session_id,
+            profile_name,
+            device_rate_limits,
+            Some(history_generation_run_id),
+            ctx,
+        )
+        .await
+        {
+            return Some(PreparedAffinityCandidate {
+                candidate: candidate
+                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
+                exact_generation_reservation: Some(Box::new(reservation)),
+            });
+        }
+
+        let delay = candidate
+            .history_generation_affinity_protection_remaining()
+            .unwrap_or_default();
+        let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+        info!(
+            run_id = %candidate.run_id(),
+            session_fingerprint = %session_fingerprint,
+            delay_ms = delay.as_millis(),
+            "exact session-history generation protected by another runner, deferring claim"
         );
+        ctx.spawn_ctx.provider.defer_poll_after(delay).await;
+        return None;
+    }
+
+    if !candidate.is_affinity_protected() {
+        return Some(PreparedAffinityCandidate {
+            candidate: candidate
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
+            exact_generation_reservation: None,
+        });
     }
     let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
-        return Some(
-            candidate
+        return Some(PreparedAffinityCandidate {
+            candidate: candidate
                 .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::MissingSessionMetadata),
-        );
+            exact_generation_reservation: None,
+        });
     };
 
-    let has_exact_reusable = ctx.idle_pool.lock().await.has_reusable(
+    let has_reusable = ctx.idle_pool.lock().await.has_reusable(
         &cli_agent_session_id,
         profile_name,
         device_rate_limits,
@@ -537,10 +669,12 @@ async fn prepare_affinity_protected_candidate(
         && held_session_states
             .iter()
             .any(|state| state.session_id == cli_agent_session_id);
-    if has_exact_reusable || has_fresh_affinity {
-        return Some(
-            candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
-        );
+    if has_reusable || has_fresh_affinity {
+        return Some(PreparedAffinityCandidate {
+            candidate: candidate
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
+            exact_generation_reservation: None,
+        });
     }
 
     let delay = candidate
@@ -584,7 +718,7 @@ async fn acquire_local_admission_resource(
     loop {
         if let Some(session_id) = candidate.cli_agent_session_id()
             && let Some(reservation) =
-                reserve_reusable_idle(session_id, profile_name, device_rate_limits, ctx).await
+                reserve_reusable_idle(session_id, profile_name, device_rate_limits, None, ctx).await
         {
             return Some(LocalAdmissionResource::Reusable(Box::new(reservation)));
         }
@@ -623,11 +757,20 @@ async fn reserve_reusable_idle(
     session_id: &str,
     profile_name: &str,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    history_generation_run_id: Option<RunId>,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<ReservedIdleSandbox> {
     let (reservation, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let reservation = pool.reserve_reusable(session_id, profile_name, device_rate_limits)?;
+        let reservation = match history_generation_run_id {
+            Some(history_generation_run_id) => pool.reserve_reusable_generation(
+                session_id,
+                profile_name,
+                device_rate_limits,
+                history_generation_run_id,
+            )?,
+            None => pool.reserve_reusable(session_id, profile_name, device_rate_limits)?,
+        };
         let snapshot = pool.status_snapshot();
         (reservation, snapshot)
     };
@@ -1042,10 +1185,13 @@ mod tests {
     use crate::http::HttpClientConfig;
     use crate::idle_pool::test_support::ParkedIdleCandidateBuilder;
     use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult, ParkingGate};
+    use crate::idle_reuse_preparation::mock_sandbox_ready_for_idle_reuse;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
     use crate::provider::CompletionAuth;
     use crate::resource_budget::ResourceBudget;
-    use crate::restored_session_identity::RestoredSessionFramework;
+    use crate::restored_session_identity::{
+        RestoredSessionFramework, RestoredSessionHistoryHashSizeRelationship,
+    };
     use crate::status::IdleVm;
     use crate::test_fixtures::execution_context_for_test;
     use crate::types::{ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef};
@@ -1056,7 +1202,7 @@ mod tests {
         },
     };
     use sandbox::SandboxFactory;
-    use sandbox_mock::{MockSandbox, MockSandboxFactory};
+    use sandbox_mock::MockSandboxFactory;
     use sha2::{Digest, Sha256};
 
     fn read_active_run_phase(path: &std::path::Path) -> String {
@@ -1108,6 +1254,24 @@ mod tests {
             },
         });
         context
+    }
+
+    fn final_metadata_identity(history_hash: String, size: u64) -> RestoredSessionIdentity {
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(b"sess-restore-plan")),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
+            size,
+            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        )
+        .unwrap();
+        RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/previous",
+        )
+        .expect("checkpointed final identity")
     }
 
     async fn reusable_sandbox_with_identity(
@@ -1162,7 +1326,9 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
 
         let _completion_ready = finalize_sandbox_for_completion(
-            Some(Box::new(MockSandbox::new("restore-plan-finalizer"))),
+            Some(Box::new(mock_sandbox_ready_for_idle_reuse(
+                "restore-plan-finalizer",
+            ))),
             ActiveBudgetLease::new(lease),
             CompletionPayload::new(
                 run_id,
@@ -1275,8 +1441,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1340,8 +1506,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1388,8 +1554,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1418,8 +1584,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1466,8 +1632,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1500,8 +1666,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1532,8 +1698,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1555,7 +1721,68 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_plan_falls_back_when_reused_identity_mismatches() {
+    async fn restore_plan_classifies_history_hash_size_relationships() {
+        let http = test_http_client();
+        let requested_hash = "a".repeat(64);
+        let restored_hash = "b".repeat(64);
+        let cases = [
+            (
+                11,
+                RestoredSessionHistoryHashSizeRelationship::RequestedSmaller,
+            ),
+            (
+                12,
+                RestoredSessionHistoryHashSizeRelationship::RequestedEqual,
+            ),
+            (
+                13,
+                RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
+            ),
+            (0, RestoredSessionHistoryHashSizeRelationship::SizeUnknown),
+            (
+                api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+                RestoredSessionHistoryHashSizeRelationship::SizeUnknown,
+            ),
+        ];
+
+        for (requested_size, expected_relationship) in cases {
+            let context = context_with_history_ref_and_size(&requested_hash, requested_size);
+            let restored_identity = final_metadata_identity(restored_hash.clone(), 12);
+            let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
+            let cancel = RunCancellationHandle::new();
+            let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+            let plan = build_session_history_restore_plan(
+                &http,
+                &SessionHistoryCpuPool::with_capacity(1),
+                &context,
+                &cancel,
+                SessionHistoryRestoreReuse {
+                    entry: Some(&reusable_sandbox),
+                    result: SandboxReuseResult::Reused,
+                },
+                &mut timing,
+                None,
+            );
+
+            match plan {
+                SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                    assert_eq!(
+                        fallback,
+                        Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                            RestoredSessionIdentityMismatchReason::HistoryHash(
+                                expected_relationship
+                            )
+                        )))
+                    );
+                }
+                _ => panic!("history hash mismatch should keep the prestarted restore plan"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_classifies_unverified_history_hash_size_as_unknown() {
         let http = test_http_client();
         let context = context_with_history_ref("history-hash-a");
         let restored_identity = RestoredSessionIdentity::claude_code_for_test("history-hash-b");
@@ -1565,8 +1792,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1581,11 +1808,13 @@ mod tests {
                 assert_eq!(
                     fallback,
                     Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
-                        RestoredSessionIdentityMismatchReason::HistoryHash
+                        RestoredSessionIdentityMismatchReason::HistoryHash(
+                            RestoredSessionHistoryHashSizeRelationship::SizeUnknown
+                        )
                     )))
                 );
             }
-            _ => panic!("mismatched reused identity should fall back to restore"),
+            _ => panic!("unverified history hash mismatch should fall back to restore"),
         }
     }
 
@@ -1598,8 +1827,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: None,
@@ -1635,8 +1864,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1677,8 +1906,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),

@@ -17,9 +17,9 @@ import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
-  workflowUserTriggerThreads,
-  zeroWorkflowTriggers,
-  zeroWorkflowWebhookTriggers,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
+  zeroWorkflowWebhookAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 import { and, eq, ne } from "drizzle-orm";
@@ -28,6 +28,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db } from "../external/db";
+import { publishChatThreadWorkflowsChangedSafely } from "../external/realtime";
 import {
   conflict,
   connectorReadinessTimeout,
@@ -40,11 +41,11 @@ import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { postAutomationUserMessage } from "../services/zero-chat-automation-message.service";
+import { postRunUserMessage } from "../services/zero-chat-run-message.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
-import { ensureWorkflowUserTriggerThread } from "../services/zero-workflow-user-trigger-thread.service";
+import { ensureWorkflowUserAutomationThread } from "../services/zero-workflow-user-automation-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { detectWorkflowConnectorReadiness$ } from "../services/zero-workflow-connector-readiness.service";
 import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
@@ -54,8 +55,7 @@ import {
   hashWorkflowWebhookToken,
   mintWorkflowWebhookSecret,
   mintWorkflowWebhookToken,
-} from "../services/workflow-webhook-trigger.service";
-import { workflowWebhookTriggerCreationEnabledForOwner } from "../services/workflow-webhook-trigger-feature-switch.service";
+} from "../services/workflow-webhook-automation.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { settle } from "../utils";
 import {
@@ -291,6 +291,17 @@ async function loadMatchingWorkflowCreationThreadId(
   return thread?.id ?? null;
 }
 
+async function publishCreatedWorkflow(
+  userId: string,
+  chatThreadId: string | null,
+  signal: AbortSignal,
+): Promise<void> {
+  if (chatThreadId) {
+    await publishChatThreadWorkflowsChangedSafely(userId, chatThreadId);
+    signal.throwIfAborted();
+  }
+}
+
 const createWorkflowBody$ = bodyResultOf(
   zeroWorkflowsCollectionContract.create,
 );
@@ -383,26 +394,30 @@ const createWorkflowInner$ = command(
         })
         .returning({ id: zeroWorkflows.id });
 
-      if (workflow && body.chatThreadId) {
-        const chatThreadId = await loadMatchingWorkflowCreationThreadId(tx, {
-          userId: auth.userId,
-          agentId: agent.id,
-          chatThreadId: body.chatThreadId,
-        });
-
-        if (chatThreadId) {
-          await tx.insert(workflowUserTriggerThreads).values({
-            orgId: auth.orgId,
-            userId: auth.userId,
-            workflowId: workflow.id,
-            chatThreadId,
-            createdAt: currentTime,
-            updatedAt: currentTime,
-          });
-        }
+      if (!workflow) {
+        return null;
       }
 
-      return workflow;
+      const chatThreadId = body.chatThreadId
+        ? await loadMatchingWorkflowCreationThreadId(tx, {
+            userId: auth.userId,
+            agentId: agent.id,
+            chatThreadId: body.chatThreadId,
+          })
+        : null;
+
+      if (chatThreadId) {
+        await tx.insert(workflowUserAutomationThreads).values({
+          orgId: auth.orgId,
+          userId: auth.userId,
+          workflowId: workflow.id,
+          chatThreadId,
+          createdAt: currentTime,
+          updatedAt: currentTime,
+        });
+      }
+
+      return { workflow, chatThreadId };
     });
     signal.throwIfAborted();
     if (!inserted) {
@@ -418,7 +433,7 @@ const createWorkflowInner$ = command(
       uploadVolumeServerSide$,
       {
         orgId: auth.orgId,
-        storageName: getCustomSkillStorageName(inserted.id),
+        storageName: getCustomSkillStorageName(inserted.workflow.id),
         files: [
           { path: "SKILL.md", content: skillMd },
           ...(body.files ?? []).map((file) => {
@@ -433,11 +448,11 @@ const createWorkflowInner$ = command(
     const visible = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
       member,
-      workflowId: inserted.id,
+      workflowId: inserted.workflow.id,
     });
     signal.throwIfAborted();
     if (!visible) {
-      throw new Error(`Created workflow not found: ${inserted.id}`);
+      throw new Error(`Created workflow not found: ${inserted.workflow.id}`);
     }
 
     const summary = workflowSummary({
@@ -445,6 +460,7 @@ const createWorkflowInner$ = command(
       agent: visible.agent,
       member,
     });
+    await publishCreatedWorkflow(auth.userId, inserted.chatThreadId, signal);
     return { status: 201 as const, body: summary };
   },
 );
@@ -684,7 +700,6 @@ interface CopyWorkflowRuntimeArgs {
   readonly userId: string;
   readonly sourceWorkflow: WorkflowRow;
   readonly targetAgentId: string;
-  readonly webhookTriggersEnabled: boolean;
   readonly currentTime: Date;
 }
 
@@ -696,10 +711,9 @@ interface CopyWorkflowScopedRowsArgs {
   readonly currentTime: Date;
 }
 
-interface CopyWorkflowTriggerRowsArgs extends CopyWorkflowScopedRowsArgs {
+interface CopyWorkflowAutomationRowsArgs extends CopyWorkflowScopedRowsArgs {
   readonly targetAgentId: string;
   readonly workflowTitle: string;
-  readonly webhookTriggersEnabled: boolean;
 }
 
 async function insertCopiedWorkflowRow(
@@ -726,23 +740,25 @@ async function insertCopiedWorkflowRow(
   return workflow;
 }
 
-async function copyWorkflowWebhookTriggerConfig(
+async function copyWorkflowWebhookAutomationConfig(
   tx: WorkflowCopyTransaction,
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly sourceTriggerId: string;
-    readonly targetTriggerId: string;
+    readonly sourceAutomationId: string;
+    readonly targetAutomationId: string;
     readonly currentTime: Date;
   },
 ): Promise<void> {
   const [sourceWebhook] = await tx
     .select({
-      encryptedSecret: zeroWorkflowWebhookTriggers.encryptedSecret,
-      secretLastFour: zeroWorkflowWebhookTriggers.secretLastFour,
+      encryptedSecret: zeroWorkflowWebhookAutomations.encryptedSecret,
+      secretLastFour: zeroWorkflowWebhookAutomations.secretLastFour,
     })
-    .from(zeroWorkflowWebhookTriggers)
-    .where(eq(zeroWorkflowWebhookTriggers.triggerId, args.sourceTriggerId))
+    .from(zeroWorkflowWebhookAutomations)
+    .where(
+      eq(zeroWorkflowWebhookAutomations.automationId, args.sourceAutomationId),
+    )
     .limit(1);
   const token = mintWorkflowWebhookToken();
   let encryptedSecret: string;
@@ -759,8 +775,8 @@ async function copyWorkflowWebhookTriggerConfig(
     secretLastFour = secret.slice(-4);
   }
 
-  await tx.insert(zeroWorkflowWebhookTriggers).values({
-    triggerId: args.targetTriggerId,
+  await tx.insert(zeroWorkflowWebhookAutomations).values({
+    automationId: args.targetAutomationId,
     tokenHash: hashWorkflowWebhookToken(token),
     encryptedToken: await encryptWorkflowWebhookToken(token, {
       orgId: args.orgId,
@@ -773,80 +789,72 @@ async function copyWorkflowWebhookTriggerConfig(
   });
 }
 
-async function copyWorkflowTriggerRow(
+async function copyWorkflowAutomationRow(
   tx: WorkflowCopyTransaction,
   args: CopyWorkflowScopedRowsArgs & {
-    readonly trigger: typeof zeroWorkflowTriggers.$inferSelect;
+    readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
   },
 ): Promise<void> {
-  const [copiedTrigger] = await tx
-    .insert(zeroWorkflowTriggers)
+  const [copiedAutomation] = await tx
+    .insert(zeroWorkflowAutomations)
     .values({
       orgId: args.orgId,
       workflowId: args.targetWorkflowId,
       ownerUserId: args.userId,
-      kind: args.trigger.kind,
-      eventType: args.trigger.eventType,
-      eventConfig: args.trigger.eventConfig,
-      scheduleType: args.trigger.scheduleType,
-      cronExpression: args.trigger.cronExpression,
-      intervalSeconds: args.trigger.intervalSeconds,
-      atTime: args.trigger.atTime,
-      timezone: args.trigger.timezone,
-      enabled: args.trigger.enabled,
-      nextRunAt: args.trigger.nextRunAt,
+      kind: args.automation.kind,
+      eventType: args.automation.eventType,
+      eventConfig: args.automation.eventConfig,
+      scheduleType: args.automation.scheduleType,
+      cronExpression: args.automation.cronExpression,
+      intervalSeconds: args.automation.intervalSeconds,
+      atTime: args.automation.atTime,
+      timezone: args.automation.timezone,
+      enabled: args.automation.enabled,
+      nextRunAt: args.automation.nextRunAt,
       lastRunAt: null,
       lastRunId: null,
       consecutiveFailures: 0,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
     })
-    .returning({ id: zeroWorkflowTriggers.id });
-  if (!copiedTrigger) {
-    throw new Error("Failed to copy workflow trigger");
+    .returning({ id: zeroWorkflowAutomations.id });
+  if (!copiedAutomation) {
+    throw new Error("Failed to copy workflow automation");
   }
 
   if (
-    args.trigger.kind === "event" &&
-    args.trigger.eventType === "webhook-received"
+    args.automation.kind === "event" &&
+    args.automation.eventType === "webhook-received"
   ) {
-    await copyWorkflowWebhookTriggerConfig(tx, {
+    await copyWorkflowWebhookAutomationConfig(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      sourceTriggerId: args.trigger.id,
-      targetTriggerId: copiedTrigger.id,
+      sourceAutomationId: args.automation.id,
+      targetAutomationId: copiedAutomation.id,
       currentTime: args.currentTime,
     });
   }
 }
 
-async function copyWorkflowUserTriggers(
+async function copyWorkflowUserAutomations(
   tx: WorkflowCopyTransaction,
-  args: CopyWorkflowTriggerRowsArgs,
+  args: CopyWorkflowAutomationRowsArgs,
 ): Promise<void> {
-  const rows = (
-    await tx
-      .select()
-      .from(zeroWorkflowTriggers)
-      .where(
-        and(
-          eq(zeroWorkflowTriggers.orgId, args.orgId),
-          eq(zeroWorkflowTriggers.ownerUserId, args.userId),
-          eq(zeroWorkflowTriggers.workflowId, args.sourceWorkflowId),
-        ),
-      )
-  ).filter((trigger) => {
-    return (
-      args.webhookTriggersEnabled ||
-      trigger.kind !== "event" ||
-      trigger.eventType !== "webhook-received"
+  const rows = await tx
+    .select()
+    .from(zeroWorkflowAutomations)
+    .where(
+      and(
+        eq(zeroWorkflowAutomations.orgId, args.orgId),
+        eq(zeroWorkflowAutomations.ownerUserId, args.userId),
+        eq(zeroWorkflowAutomations.workflowId, args.sourceWorkflowId),
+      ),
     );
-  });
   if (rows.length === 0) {
     return;
   }
 
-  await ensureWorkflowUserTriggerThread(tx, {
+  await ensureWorkflowUserAutomationThread(tx, {
     orgId: args.orgId,
     userId: args.userId,
     workflowId: args.targetWorkflowId,
@@ -854,8 +862,8 @@ async function copyWorkflowUserTriggers(
     workflowTitle: args.workflowTitle,
     currentTime: args.currentTime,
   });
-  for (const trigger of rows) {
-    await copyWorkflowTriggerRow(tx, { ...args, trigger });
+  for (const automation of rows) {
+    await copyWorkflowAutomationRow(tx, { ...args, automation });
   }
 }
 
@@ -875,11 +883,10 @@ async function copyWorkflowRuntimeConfiguration(
     targetWorkflowId: workflow.id,
     currentTime: args.currentTime,
   };
-  await copyWorkflowUserTriggers(tx, {
+  await copyWorkflowUserAutomations(tx, {
     ...scopedRowsArgs,
     targetAgentId: args.targetAgentId,
     workflowTitle: args.sourceWorkflow.displayName ?? args.sourceWorkflow.name,
-    webhookTriggersEnabled: args.webhookTriggersEnabled,
   });
   return workflow;
 }
@@ -896,10 +903,6 @@ const copyWorkflowInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const webhookTriggersEnabled = await get(
-      workflowWebhookTriggerCreationEnabledForOwner(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
     const source = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
       member,
@@ -941,7 +944,7 @@ const copyWorkflowInner$ = command(
 
     // A copy is a fork owned by the caller: a new private workflow under the
     // target agent. User-scoped runtime configuration is cloned only for the
-    // caller so copies do not leak another user's triggers.
+    // caller so copies do not leak another user's automations.
     const currentTime = nowDate();
     const inserted = await writeDb.transaction(async (tx) => {
       return await copyWorkflowRuntimeConfiguration(tx, {
@@ -949,7 +952,6 @@ const copyWorkflowInner$ = command(
         userId: auth.userId,
         sourceWorkflow: source.workflow,
         targetAgentId: targetAgent.id,
-        webhookTriggersEnabled,
         currentTime,
       });
     });
@@ -1043,7 +1045,7 @@ const prepareWorkflowChatThreadInner$ = command(
 
     const currentTime = nowDate();
     const chatThreadId = await writeDb.transaction(async (tx) => {
-      return await ensureWorkflowUserTriggerThread(tx, {
+      return await ensureWorkflowUserAutomationThread(tx, {
         orgId: auth.orgId,
         userId: auth.userId,
         workflowId: workflow.id,
@@ -1090,7 +1092,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const now = nowDate();
   const chatThreadId = await writeDb.transaction(async (tx) => {
-    return await ensureWorkflowUserTriggerThread(tx, {
+    return await ensureWorkflowUserAutomationThread(tx, {
       orgId: auth.orgId,
       userId: auth.userId,
       workflowId: workflow.id,
@@ -1134,7 +1136,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return result;
   }
 
-  await postAutomationUserMessage({
+  await postRunUserMessage({
     db: writeDb,
     threadId: chatThreadId,
     userId: auth.userId,

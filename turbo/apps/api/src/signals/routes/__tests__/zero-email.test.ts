@@ -10,7 +10,7 @@ import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { sessionHistoryBlobBodyForKey } from "./helpers/api-bdd-session-history";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -18,7 +18,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 const context = testContext();
 const resendMocks = context.mocks.resend;
 const bdd = createBddApi(context);
-const runs = createRunsAutomationsApi(context);
+const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 
 const INBOUND_SECRET = "whsec_test";

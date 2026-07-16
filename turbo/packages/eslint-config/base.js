@@ -73,6 +73,35 @@ const vm0Plugin = {
         };
       },
     },
+    "no-legacy-automation-identifiers": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "Disallow retired workflow automation entity identifiers",
+        },
+        messages: {
+          legacyIdentifier:
+            'The legacy entity has been renamed to Automation. Rename "{{name}}" to use workflow automation terminology.',
+        },
+        schema: [],
+      },
+      create(context) {
+        return {
+          Identifier(node) {
+            const normalizedName = node.name.replaceAll("_", "").toLowerCase();
+            const retiredEntityName = ["workflow", "trigger"].join("");
+            if (normalizedName.includes(retiredEntityName)) {
+              context.report({
+                node,
+                messageId: "legacyIdentifier",
+                data: { name: node.name },
+              });
+            }
+          },
+        };
+      },
+    },
   },
 };
 
@@ -107,6 +136,7 @@ export const config = [
   {
     files: ["**/*.ts", "**/*.tsx"],
     rules: {
+      "vm0/no-legacy-automation-identifiers": "error",
       "@typescript-eslint/naming-convention": [
         "error",
         // Variables and parameters: camelCase, UPPER_CASE, or PascalCase

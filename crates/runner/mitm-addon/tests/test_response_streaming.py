@@ -1006,10 +1006,13 @@ class TestResponseHeadersSseParser:
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
 
     def test_no_sse_parser_for_non_sse_response(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1017,10 +1020,12 @@ class TestResponseHeadersSseParser:
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
 
         mitm_addon.responseheaders(flow)
 
-        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        assert "model_json_usage_finish" in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
 
     def test_no_sse_parser_without_model_usage_provider(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1056,11 +1061,14 @@ class TestResponseHeadersSseParser:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        # No firewall_name set (e.g. auto-allowed VM0 API request)
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        # Model metadata alone must not classify the flow as a model provider.
 
         mitm_addon.responseheaders(flow)
 
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
 
     @pytest.mark.parametrize("firewall_name", [None, 42])
     def test_malformed_firewall_name_skips_usage_parsers(self, real_flow, firewall_name):
@@ -1105,7 +1113,14 @@ class TestReleaseResponseStreamState:
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     @pytest.mark.parametrize(
-        ("host", "path", "response_content_type", "metadata", "finish_key"),
+        (
+            "host",
+            "path",
+            "response_content_type",
+            "metadata",
+            "finish_key",
+            "reports_on_interruption",
+        ),
         [
             pytest.param(
                 "api.anthropic.com",
@@ -1117,6 +1132,7 @@ class TestReleaseResponseStreamState:
                     metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",
                 },
                 "model_json_usage_finish",
+                False,
                 id="model-json",
             ),
             pytest.param(
@@ -1130,6 +1146,7 @@ class TestReleaseResponseStreamState:
                     metadata_keys.MODEL_USAGE_PROVIDER: "gpt-5.5",
                 },
                 "model_sse_usage_finish",
+                False,
                 id="model-sse",
             ),
             pytest.param(
@@ -1142,6 +1159,7 @@ class TestReleaseResponseStreamState:
                     metadata_keys.ORIGINAL_URL: "https://api.x.com/2/tweets",
                 },
                 "connector_response_finish",
+                False,
                 id="x-json",
             ),
             pytest.param(
@@ -1154,6 +1172,7 @@ class TestReleaseResponseStreamState:
                     metadata_keys.ORIGINAL_URL: "https://api.x.com/2/tweets/search/stream",
                 },
                 "connector_response_finish",
+                True,
                 id="x-ndjson",
             ),
         ],
@@ -1166,6 +1185,7 @@ class TestReleaseResponseStreamState:
         response_content_type,
         metadata,
         finish_key,
+        reports_on_interruption,
     ):
         flow = real_flow(with_response=False, host=host, path=path)
         flow.metadata.update(metadata)
@@ -1176,10 +1196,14 @@ class TestReleaseResponseStreamState:
 
         mitm_addon.responseheaders(flow)
         assert finish_key in flow.metadata
+        assert (
+            "connector_response_report_on_interruption" in flow.metadata
+        ) is reports_on_interruption
 
         response_streaming.release_response_stream_state(flow)
 
         assert finish_key not in flow.metadata
+        assert "connector_response_report_on_interruption" not in flow.metadata
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata

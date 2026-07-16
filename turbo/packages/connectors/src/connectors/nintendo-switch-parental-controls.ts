@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connector-config";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const NINTENDO_SWITCH_PARENTAL_CONTROLS_APP = {
   clientId: "54789befb391a838",
@@ -47,7 +46,6 @@ export const nintendoSwitchParentalControls = {
       "Connect Nintendo Switch Parental Controls to read household play activity and manage explicitly granted console settings.",
     authMethods: {
       api: {
-        featureFlag: FeatureSwitchKey.NintendoSwitchParentalControlsConnector,
         label: "Nintendo sign-in",
         helpText:
           "Sign in with the adult Nintendo Account used by the Nintendo Switch Parental Controls app. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",

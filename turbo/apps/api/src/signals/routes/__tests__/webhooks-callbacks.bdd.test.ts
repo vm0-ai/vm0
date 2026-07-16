@@ -13,6 +13,10 @@ import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { expireAtomGrantFixture } from "../../../test-fixtures/org-metadata";
+import {
+  deleteOrgPlanEntitlementFixture,
+  readOrgPlanEntitlementFixture,
+} from "../../../test-fixtures/org-plan-entitlement";
 import { readUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
 import {
   createBddApi,
@@ -22,7 +26,7 @@ import {
 import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -451,7 +455,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
 
   it("bootstraps limited-free orgs after verified Clerk org creation events", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
 
@@ -472,6 +476,29 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       credits: 3000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
+    });
+    await expect(
+      readOrgPlanEntitlementFixture(orgOf(admin)),
+    ).resolves.toMatchObject({
+      orgId: orgOf(admin),
+      planKey: "limited-free-1",
+      planRank: 0,
+      source: "org_metadata_bootstrap",
+      status: "active",
+      baseConcurrencyLimit: 1,
+      canBuyConcurrency: false,
+      autoRechargeAllowed: false,
+      supportByok: false,
+      restrictedVm0Models: true,
+      videoGenerationAllowed: false,
+      workflowWebhookAutomationAllowed: false,
+      audioLifetimeLimit: 10,
+      audioDailyRateLimit: 10,
+      audioDailyDurationSeconds: 600,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodEnd: null,
+      expiresAt: null,
     });
     const onboardingCreditGrant = billing.creditGrants.find((grant) => {
       return grant.source === "onboarding";
@@ -530,11 +557,6 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       }),
     ).toHaveLength(1);
   });
-
-  // The membership-deleted automation-suspension scenario was removed with
-  // the automation -> workflow cutover (#19959): the frozen legacy API can
-  // no longer create automations. Owner-suspension coverage now uses
-  // workflow trigger and seeded legacy-row fixtures.
 
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {
     api.configureGithubWebhookSecret();
@@ -978,7 +1000,7 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
     expect(invalidReplyResponse.body).toStrictEqual({ received: true });
   });
 
-  it("skips email trigger callbacks while outbound email is not configured", async () => {
+  it("skips email automation callbacks while outbound email is not configured", async () => {
     api.disableResendApiKey();
 
     const response = await api.requestEmailTriggerCallback(
@@ -1003,7 +1025,7 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
 describe("WHCB-04: internal callback and event-consumer boundaries", () => {
   it("dispatches agent event batches to Axiom in-process", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -1574,7 +1596,7 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
 describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in the run organization", () => {
   it("prepares, commits, dedups, and bounds sandbox storage writes for the run org", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const storages = createStoragesBddApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -1769,13 +1791,14 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
   it("grants and renews Atom invoice-backed Team entitlements", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
     const grantExpiresAtUnix = epochSeconds(7);
     const renewedGrantExpiresAtUnix = epochSeconds(14);
     const suffix = randomUUID().slice(0, 8);
     api.configureStripeBillingEnv();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
     await bdd.setupOnboarding(actor, { displayName: "BDD Atom Grant" });
 
     await api.postStripeEvent(
@@ -1825,6 +1848,27 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         source: "subscription_renewal",
       }),
     ]);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "team",
+      planRank: 2,
+      source: "stripe_atom_grant",
+      status: "active",
+      baseConcurrencyLimit: 10,
+      canBuyConcurrency: true,
+      autoRechargeAllowed: true,
+      supportByok: true,
+      restrictedVm0Models: false,
+      videoGenerationAllowed: true,
+      workflowWebhookAutomationAllowed: true,
+      audioLifetimeLimit: null,
+      audioDailyRateLimit: 500,
+      audioDailyDurationSeconds: 30_000,
+      stripeSubscriptionId: null,
+      stripePriceId: "price_bdd_atom_grant",
+      currentPeriodEnd: isoOf(grantExpiresAtUnix),
+      expiresAt: isoOf(grantExpiresAtUnix),
+    });
 
     await api.postStripeEvent(
       stripeEvent({
@@ -1880,6 +1924,12 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         }),
       ]),
     );
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "team",
+      currentPeriodStart: isoOf(grantExpiresAtUnix),
+      currentPeriodEnd: isoOf(renewedGrantExpiresAtUnix),
+      expiresAt: isoOf(renewedGrantExpiresAtUnix),
+    });
 
     const expiredAt = new Date(now() - 1000);
     await expireAtomGrantFixture({ orgId, expiredAt });
@@ -1891,6 +1941,17 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(downgraded.credits).toBe(0);
     expect(downgraded.hasSubscription).toBeFalsy();
     expect(downgraded.creditGrants).toHaveLength(0);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "limited-free-1",
+      planRank: 0,
+      source: "stripe_atom_grant",
+      status: "active",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodEnd: null,
+      expiresAt: null,
+    });
   });
 
   it("upserts usage allowance entitlements from Atom subscription invoices", async () => {
@@ -2091,7 +2152,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("expires Atom day-grant subscription credits at the Atom grant end", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const grantExpiresAtUnix = epochSeconds(7);
@@ -2121,7 +2182,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
   it("cancels replaced Stripe subscriptions after Atom Team and Custom grants", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
     const granted = await runs.grantProEntitlement(actor);
@@ -2243,7 +2304,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
   it("rejects lower Atom grants after a Custom grant without canceling subscriptions", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
     const suffix = randomUUID().slice(0, 8);
@@ -2336,7 +2397,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("expires Atom redeem-code day-grant subscription credits at the grant end", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const grantExpiresAtUnix = epochSeconds(7);
@@ -2365,7 +2426,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("uses the normal renewal credit window when an Atom day-grant cancel_at is cleared", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const grantExpiresAtUnix = epochSeconds(7);
@@ -2397,7 +2458,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("replays, expires, and auto-recharges subscription invoice credits", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -2687,7 +2748,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("upgrades to team, drains the queue, and cancels the replaced pro subscription", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -2725,6 +2786,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     const teamSubscriptionId = `sub_bdd_team_${suffix}`;
     const teamInvoiceId = `in_bdd_team_${suffix}`;
+    const teamPeriodEnd = epochSeconds(30);
     const teamSubscription = {
       id: teamSubscriptionId,
       status: "active",
@@ -2737,6 +2799,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       items: { data: [{ price: { id: "price_bdd_team" } }] },
     };
     context.mocks.stripe.subscriptions.retrieve
+      .mockResolvedValueOnce(teamSubscription)
       .mockResolvedValueOnce(teamSubscription)
       .mockResolvedValueOnce(teamSubscription);
     context.mocks.stripe.subscriptions.list.mockResolvedValue({
@@ -2764,7 +2827,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       customer: granted.customerId,
       metadata: {},
       parent: { subscription_details: { subscription: teamSubscriptionId } },
-      lines: subscriptionLines(epochSeconds(30)),
+      lines: subscriptionLines(teamPeriodEnd),
     };
     await Promise.all([
       api.postStripeEvent(
@@ -2789,6 +2852,28 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         return grant.amount === 120_000;
       }),
     ).toHaveLength(1);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "team",
+      planRank: 2,
+      source: "stripe_subscription",
+      status: "active",
+      baseConcurrencyLimit: 10,
+      canBuyConcurrency: true,
+      autoRechargeAllowed: true,
+      supportByok: true,
+      restrictedVm0Models: false,
+      videoGenerationAllowed: true,
+      workflowWebhookAutomationAllowed: true,
+      audioLifetimeLimit: null,
+      audioDailyRateLimit: 500,
+      audioDailyDurationSeconds: 30_000,
+      stripeSubscriptionId: teamSubscriptionId,
+      stripePriceId: "price_bdd_team",
+      currentPeriodEnd: isoOf(teamPeriodEnd),
+      cancelAt: null,
+      expiresAt: null,
+    });
 
     const drained = await runs.readRunQueue(actor);
     expect(drained.body.concurrency.tier).toBe("team");
@@ -2798,6 +2883,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     // Redelivering the processed team invoice re-runs lingering-pro cleanup.
     const cancelCallsBefore =
       context.mocks.stripe.subscriptions.cancel.mock.calls.length;
+    await deleteOrgPlanEntitlementFixture(orgId);
     await api.postStripeEvent(
       stripeEvent({ type: "invoice.paid", object: teamInvoice }),
       [200],
@@ -2805,6 +2891,10 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(
       context.mocks.stripe.subscriptions.cancel.mock.calls.length,
     ).toBeGreaterThan(cancelCallsBefore);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "team",
+      stripeSubscriptionId: teamSubscriptionId,
+    });
     expect((await billing.readBillingStatus(actor)).credits).toBe(140_000);
 
     // A lower-tier subscription invoice cannot replace the team subscription.
@@ -2935,6 +3025,29 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(suspended.subscriptionStatus).toBe("canceled");
     expect(suspended.hasSubscription).toBeFalsy();
     expect(suspended.scheduledChange).toBeNull();
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "limited-free-1",
+      planRank: 0,
+      source: "stripe_subscription",
+      status: "active",
+      baseConcurrencyLimit: 1,
+      canBuyConcurrency: false,
+      autoRechargeAllowed: false,
+      supportByok: false,
+      restrictedVm0Models: true,
+      videoGenerationAllowed: false,
+      workflowWebhookAutomationAllowed: false,
+      audioLifetimeLimit: 10,
+      audioDailyRateLimit: 10,
+      audioDailyDurationSeconds: 600,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelAt: null,
+      expiresAt: null,
+    });
 
     await runs.requestCancelRun(actor, first.runId, [200]);
     await runs.requestCancelRun(actor, second.runId, [200]);
@@ -2945,7 +3058,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("keeps a team upgrade when the replaced pro subscription is already absent", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
@@ -3017,7 +3130,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("grants concurrency slots from invoice line quantity and drains the queue", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -3595,7 +3708,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("restores and schedules cancellations through setup checkouts and schedule webhooks", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
@@ -3921,7 +4034,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
   it("processes preview Stripe events only for the matching job ref", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
@@ -4006,7 +4119,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
   it("cleans up organization state after a verified organization.deleted event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -4035,8 +4148,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         githubUserId: newGithubUserId(),
       },
     });
-    // No automation is seeded into the teardown state: the legacy automation
-    // API is frozen after the workflow cutover (#19959).
     const botToken = await registerTelegramBot(actor, agent.agentId);
     await runs.applyUserPermissionGrant(actor, {
       agentId: agent.agentId,
@@ -4156,7 +4267,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
   it("cancels trialing Stripe subscriptions and deletes an empty org after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -4250,7 +4361,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
   it("preserves org data when a deleted user leaves an uncached Clerk member", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -4302,7 +4413,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
   it("does not update a Stripe subscription already canceled upstream", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -4352,7 +4463,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
   it("cleans up user state after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const gh = createGithubBddApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
@@ -4483,9 +4594,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(preserved.hasSubscription).toBeTruthy();
   });
 
-  it("suspends user-owned runs and automations after a verified user.banned event", async () => {
+  it("suspends user-owned runs after a verified user.banned event", async () => {
     const bdd = createBddApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     api.configureClerkWebhookSecret();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -4495,7 +4606,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const banned = bdd.user();
     const granted = await runs.grantProEntitlement(banned);
     await runs.ensureOrgModelProvider(banned);
-    await runs.enableAutomations(banned);
     const agent = await bdd.createAgent(banned, {
       displayName: "BDD Banned User Agent",
       visibility: "private",
@@ -4507,10 +4617,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
-
-    // No automation is created here: the legacy automation API is frozen
-    // after the workflow cutover (#19959), so this scenario covers the run
-    // cancellation and subscription side effects of a ban.
 
     context.mocks.stripe.subscriptions.list.mockResolvedValue({
       data: [],

@@ -3,13 +3,12 @@ import { randomUUID } from "node:crypto";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -20,11 +19,10 @@ import {
   type ApiTestUser,
   type ApiTestUserOptions,
 } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -35,7 +33,7 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const miscApi = createMiscRoutesApi(context);
 const mocks = createZeroRouteMocks(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const connectorApi = createConnectorBddApi(context);
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -128,8 +126,8 @@ function visibilityClient() {
   return setupApp({ context })(zeroWorkflowVisibilityContract);
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 async function createAgent(
@@ -640,6 +638,7 @@ describe("zero workflows", () => {
       title: "Source chat",
     });
 
+    context.mocks.ably.publish.mockClear();
     const sourceWorkflow = await createWorkflow(actor, {
       agentId: sourceAgent.agentId,
       chatThreadId: sourceThread.id,
@@ -653,11 +652,16 @@ describe("zero workflows", () => {
       }),
       [200],
     );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadWorkflowsChanged:${sourceThread.id}`,
+      null,
+    );
     expect(preparedSource.body.chatThreadId).toBe(sourceThread.id);
     expect(preparedSource.body.prompt).toBe(
       `help me refine the workflow /${sourceWorkflow.body.name}`,
     );
 
+    context.mocks.ably.publish.mockClear();
     const targetWorkflow = await createWorkflow(actor, {
       agentId: targetAgent.agentId,
       chatThreadId: sourceThread.id,
@@ -672,6 +676,40 @@ describe("zero workflows", () => {
       [200],
     );
     expect(preparedTarget.body.chatThreadId).not.toBe(sourceThread.id);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadWorkflowsChanged:${sourceThread.id}`,
+      null,
+    );
+  });
+
+  it("creates a workflow when its chat thread notification fails", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, {
+      displayName: "Realtime Failure Agent",
+      visibility: "private",
+    });
+    const thread = await chat.createThread(actor, {
+      agentId: agent.agentId,
+      title: "Realtime failure chat",
+    });
+
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("Ably unavailable"),
+    );
+
+    const created = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      chatThreadId: thread.id,
+      name: `realtime-failure-workflow-${randomUUID().slice(0, 8)}`,
+      instruction: "# realtime failure workflow",
+    });
+
+    expect(created.body.agentId).toBe(agent.agentId);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadWorkflowsChanged:${thread.id}`,
+      null,
+    );
   });
 
   it("protects public workflow slugs while allowing private overrides", async () => {
@@ -957,17 +995,12 @@ describe("zero workflows", () => {
     );
   });
 
-  it("copies workflows and caller-owned triggers through the API", async () => {
+  it("copies workflows and caller-owned automations through the API", async () => {
     const actor = user();
     if (!actor.orgId) {
       throw new Error("Expected workflow copy actor to belong to an org");
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    const featureSwitchActor = {
-      userId: actor.userId,
-      orgId: actor.orgId,
-      orgRole: actor.orgRole,
-    };
     const sourceAgent = await createAgent(actor, {
       displayName: "Copy Source Agent",
       visibility: "private",
@@ -981,8 +1014,8 @@ describe("zero workflows", () => {
       name: `copy-source-${randomUUID().slice(0, 8)}`,
       instruction: "# copy source",
     });
-    const trigger = await accept(
-      triggersClient().create({
+    const automation = await accept(
+      automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId: workflow.body.id },
         body: {
@@ -992,11 +1025,8 @@ describe("zero workflows", () => {
       }),
       [201],
     );
-    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-    });
-    const webhookTrigger = await accept(
-      triggersClient().create({
+    const webhookAutomation = await accept(
+      automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId: workflow.body.id },
         body: {
@@ -1006,14 +1036,10 @@ describe("zero workflows", () => {
       }),
       [201],
     );
-    expect(webhookTrigger.body).toMatchObject({
+    expect(webhookAutomation.body).toMatchObject({
       kind: "event",
       eventType: "webhook-received",
     });
-    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
-    });
-
     const copied = await accept(
       detailClient().copy({
         headers: authHeaders(actor),
@@ -1029,28 +1055,28 @@ describe("zero workflows", () => {
     });
     expect(copied.body.id).not.toBe(workflow.body.id);
 
-    const copiedTriggers = await accept(
-      triggersClient().list({
+    const copiedAutomations = await accept(
+      automationsClient().list({
         headers: authHeaders(actor),
         params: { workflowId: copied.body.id },
       }),
       [200],
     );
-    expect(copiedTriggers.body).toContainEqual(
+    expect(copiedAutomations.body).toContainEqual(
       expect.objectContaining({
         kind: "schedule",
         ownerUserId: actor.userId,
-        enabled: trigger.body.enabled,
+        enabled: automation.body.enabled,
       }),
     );
     expect(
-      copiedTriggers.body.some((copiedTrigger) => {
+      copiedAutomations.body.some((copiedAutomation) => {
         return (
-          copiedTrigger.kind === "event" &&
-          copiedTrigger.eventType === "webhook-received"
+          copiedAutomation.kind === "event" &&
+          copiedAutomation.eventType === "webhook-received"
         );
       }),
-    ).toBeFalsy();
+    ).toBeTruthy();
   });
 
   it("reads and updates workflow content, audit metadata, and deletion through API responses", async () => {

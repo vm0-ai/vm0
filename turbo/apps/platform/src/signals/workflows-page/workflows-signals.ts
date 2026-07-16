@@ -2,7 +2,7 @@ import { command, computed, state, type Computed } from "ccstate";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
@@ -19,9 +19,9 @@ import {
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
-  type ZeroWorkflowTriggerAutomationEntry,
-  type ZeroWorkflowTriggerCreateRequest,
-  type ZeroWorkflowTriggerSummary,
+  type ZeroWorkflowAutomationsListEntry,
+  type ZeroWorkflowAutomationCreateRequest,
+  type ZeroWorkflowAutomationSummary,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -43,6 +43,10 @@ import {
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 import { onRejection } from "../utils.ts";
+import {
+  reloadWorkflowData$,
+  workflowReloadVersion$,
+} from "./workflow-reload.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
@@ -64,7 +68,7 @@ function defaultWorkflowCopyForm(): WorkflowCopyFormState {
     removeOriginal: false,
   };
 }
-export type WorkflowTriggerCreateDialog =
+export type WorkflowAutomationCreateDialog =
   | "interval"
   | "scheduled"
   | "once"
@@ -81,19 +85,19 @@ export type WorkflowTriggerCreateDialog =
   | "webhook"
   | null;
 export type NotionPageContentUpdatedScopeMode = "page" | "database";
-export type WorkflowTriggerCategoryKey =
+export type WorkflowAutomationCategoryKey =
   | "schedule"
   | "email"
   | "calendar"
   | "notion"
   | "integrations";
-type WorkflowWebhookTriggerSummary = Extract<
-  ZeroWorkflowTriggerSummary,
+type WorkflowWebhookAutomationSummary = Extract<
+  ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
 type WorkflowGithubLabelActor =
   GithubLabelAppliedEventConfig["filters"]["actor"]["type"];
-export type WorkflowTriggerAutomationEntry = ZeroWorkflowTriggerAutomationEntry;
+export type WorkflowAutomationEntry = ZeroWorkflowAutomationsListEntry;
 export const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
 function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
@@ -186,7 +190,6 @@ export const currentWorkflowId$ = computed((get): string | null => {
   return typeof workflowId === "string" ? workflowId : null;
 });
 
-const internalWorkflowReload$ = state(0);
 const internalWorkflowDetailActiveTab$ =
   state<WorkflowDetailTab>("automations");
 
@@ -197,21 +200,21 @@ const internalWorkflowCopyForm$ = state<WorkflowCopyFormState>(
   defaultWorkflowCopyForm(),
 );
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
-const internalEditingWorkflowTriggerId$ = state<string | null>(null);
+const internalEditingWorkflowAutomationId$ = state<string | null>(null);
 const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
   null,
 );
-const internalWorkflowTriggerCreateDialog$ =
-  state<WorkflowTriggerCreateDialog>(null);
-const internalCreatedWorkflowWebhookTrigger$ =
-  state<WorkflowWebhookTriggerSummary | null>(null);
-const internalWorkflowTriggerPickerOpen$ = state(false);
+const internalWorkflowAutomationCreateDialog$ =
+  state<WorkflowAutomationCreateDialog>(null);
+const internalCreatedWorkflowWebhookAutomation$ =
+  state<WorkflowWebhookAutomationSummary | null>(null);
+const internalWorkflowAutomationPickerOpen$ = state(false);
 const internalWorkflowWebhookUpgradeDialogOpen$ = state(false);
-const internalWorkflowTriggerPickerCategory$ =
-  state<WorkflowTriggerCategoryKey>("schedule");
+const internalWorkflowAutomationPickerCategory$ =
+  state<WorkflowAutomationCategoryKey>("schedule");
 const internalCreateNotionPageContentUpdatedScope$ =
   state<NotionPageContentUpdatedScopeMode>("page");
-const internalRevealWebhookSecretTriggerId$ = state<string | null>(null);
+const internalRevealWebhookSecretAutomationId$ = state<string | null>(null);
 const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
 const internalEditingGithubLabelActors$ = state<
   Record<string, WorkflowGithubLabelActor>
@@ -413,10 +416,10 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowCopyForm$, defaultWorkflowCopyForm());
   set(internalWorkflowFileDraft$, null);
-  set(internalEditingWorkflowTriggerId$, null);
+  set(internalEditingWorkflowAutomationId$, null);
   set(internalWorkflowMetadataPatch$, null);
-  set(internalWorkflowTriggerCreateDialog$, null);
-  set(internalCreatedWorkflowWebhookTrigger$, null);
+  set(internalWorkflowAutomationCreateDialog$, null);
+  set(internalCreatedWorkflowWebhookAutomation$, null);
   set(internalCreateGithubLabelActor$, "me");
   set(internalEditingGithubLabelActors$, {});
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
@@ -448,48 +451,48 @@ export const setWorkflowDetailActiveTab$ = command(
   },
 );
 
-export const editingWorkflowTriggerId$ = computed((get) => {
-  return get(internalEditingWorkflowTriggerId$);
+export const editingWorkflowAutomationId$ = computed((get) => {
+  return get(internalEditingWorkflowAutomationId$);
 });
 
-export const setEditingWorkflowTriggerId$ = command(
-  ({ set }, triggerId: string | null) => {
-    set(internalEditingWorkflowTriggerId$, triggerId);
-    if (!triggerId) {
+export const setEditingWorkflowAutomationId$ = command(
+  ({ set }, automationId: string | null) => {
+    set(internalEditingWorkflowAutomationId$, automationId);
+    if (!automationId) {
       set(internalEditingGithubLabelActors$, {});
     }
   },
 );
 
-export const workflowTriggerCreateDialog$ = computed((get) => {
-  return get(internalWorkflowTriggerCreateDialog$);
+export const workflowAutomationCreateDialog$ = computed((get) => {
+  return get(internalWorkflowAutomationCreateDialog$);
 });
 
-export const createdWorkflowWebhookTrigger$ = computed((get) => {
-  return get(internalCreatedWorkflowWebhookTrigger$);
+export const createdWorkflowWebhookAutomation$ = computed((get) => {
+  return get(internalCreatedWorkflowWebhookAutomation$);
 });
 
-export const setCreatedWorkflowWebhookTrigger$ = command(
-  ({ set }, trigger: WorkflowWebhookTriggerSummary | null) => {
-    set(internalCreatedWorkflowWebhookTrigger$, trigger);
+export const setCreatedWorkflowWebhookAutomation$ = command(
+  ({ set }, automation: WorkflowWebhookAutomationSummary | null) => {
+    set(internalCreatedWorkflowWebhookAutomation$, automation);
   },
 );
 
-export const revealWebhookSecretTriggerId$ = computed((get) => {
-  return get(internalRevealWebhookSecretTriggerId$);
+export const revealWebhookSecretAutomationId$ = computed((get) => {
+  return get(internalRevealWebhookSecretAutomationId$);
 });
 
-export const setRevealWebhookSecretTriggerId$ = command(
-  ({ set }, triggerId: string | null) => {
-    set(internalRevealWebhookSecretTriggerId$, triggerId);
+export const setRevealWebhookSecretAutomationId$ = command(
+  ({ set }, automationId: string | null) => {
+    set(internalRevealWebhookSecretAutomationId$, automationId);
   },
 );
 
-export const setWorkflowTriggerCreateDialog$ = command(
-  ({ set }, dialog: WorkflowTriggerCreateDialog) => {
-    set(internalWorkflowTriggerCreateDialog$, dialog);
+export const setWorkflowAutomationCreateDialog$ = command(
+  ({ set }, dialog: WorkflowAutomationCreateDialog) => {
+    set(internalWorkflowAutomationCreateDialog$, dialog);
     if (dialog !== "webhook") {
-      set(internalCreatedWorkflowWebhookTrigger$, null);
+      set(internalCreatedWorkflowWebhookAutomation$, null);
     }
     if (dialog === "scheduled") {
       set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
@@ -503,16 +506,16 @@ export const setWorkflowTriggerCreateDialog$ = command(
   },
 );
 
-export const workflowTriggerPickerOpen$ = computed((get) => {
-  return get(internalWorkflowTriggerPickerOpen$);
+export const workflowAutomationPickerOpen$ = computed((get) => {
+  return get(internalWorkflowAutomationPickerOpen$);
 });
 
-export const setWorkflowTriggerPickerOpen$ = command(
+export const setWorkflowAutomationPickerOpen$ = command(
   ({ set }, open: boolean) => {
-    set(internalWorkflowTriggerPickerOpen$, open);
+    set(internalWorkflowAutomationPickerOpen$, open);
     // Reset to the first category each time the picker opens.
     if (open) {
-      set(internalWorkflowTriggerPickerCategory$, "schedule");
+      set(internalWorkflowAutomationPickerCategory$, "schedule");
     }
   },
 );
@@ -527,13 +530,13 @@ export const setWorkflowWebhookUpgradeDialogOpen$ = command(
   },
 );
 
-export const workflowTriggerPickerCategory$ = computed((get) => {
-  return get(internalWorkflowTriggerPickerCategory$);
+export const workflowAutomationPickerCategory$ = computed((get) => {
+  return get(internalWorkflowAutomationPickerCategory$);
 });
 
-export const setWorkflowTriggerPickerCategory$ = command(
-  ({ set }, category: WorkflowTriggerCategoryKey) => {
-    set(internalWorkflowTriggerPickerCategory$, category);
+export const setWorkflowAutomationPickerCategory$ = command(
+  ({ set }, category: WorkflowAutomationCategoryKey) => {
+    set(internalWorkflowAutomationPickerCategory$, category);
   },
 );
 
@@ -565,12 +568,12 @@ export const setEditingGithubLabelActor$ = command(
   (
     { set },
     input: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly actor: WorkflowGithubLabelActor;
     },
   ) => {
     set(internalEditingGithubLabelActors$, (actors) => {
-      return { ...actors, [input.triggerId]: input.actor };
+      return { ...actors, [input.automationId]: input.actor };
     });
   },
 );
@@ -626,9 +629,7 @@ export const setSelectedWorkflowFilePath$ = command(
 
 /** Bump to refetch every workflow list and detail. */
 export const reloadWorkflows$ = command(({ set }) => {
-  set(internalWorkflowReload$, (prev) => {
-    return prev + 1;
-  });
+  set(reloadWorkflowData$);
   set(internalWorkflowConnectorReadiness$, null);
 });
 
@@ -649,7 +650,7 @@ function createAgentWorkflowsFactory(): (
       return existing;
     }
     const atom$ = computed(async (get) => {
-      get(internalWorkflowReload$);
+      get(workflowReloadVersion$);
       const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
       const result = await accept(client.list({ query: { agentId } }), [200]);
       return result.body;
@@ -678,7 +679,7 @@ export const composerWorkflows$ = computed(
 
 export const allVisibleWorkflows$ = computed(
   async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    get(internalWorkflowReload$);
+    get(workflowReloadVersion$);
     const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
     const result = await accept(client.list({ query: {} }), [200]);
     return [...result.body].sort((a, b) => {
@@ -692,17 +693,20 @@ export const allVisibleWorkflows$ = computed(
   },
 );
 
-export const allWorkflowTriggerEntries$ = computed(
-  async (get): Promise<readonly WorkflowTriggerAutomationEntry[]> => {
-    get(internalWorkflowReload$);
-    const triggerClient = get(zeroClient$)(zeroWorkflowTriggersContract);
-    const triggerResult = await accept(triggerClient.listWorkspace(), [200]);
-    return [...triggerResult.body].sort((a, b) => {
-      if (a.trigger.enabled !== b.trigger.enabled) {
-        return a.trigger.enabled ? -1 : 1;
+export const allWorkflowAutomationEntries$ = computed(
+  async (get): Promise<readonly WorkflowAutomationEntry[]> => {
+    get(workflowReloadVersion$);
+    const automationClient = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const automationResult = await accept(
+      automationClient.listWorkspace(),
+      [200],
+    );
+    return [...automationResult.body].sort((a, b) => {
+      if (a.automation.enabled !== b.automation.enabled) {
+        return a.automation.enabled ? -1 : 1;
       }
-      const aNext = a.trigger.nextRunAt ?? "";
-      const bNext = b.trigger.nextRunAt ?? "";
+      const aNext = a.automation.nextRunAt ?? "";
+      const bNext = b.automation.nextRunAt ?? "";
       if (aNext && bNext && aNext !== bNext) {
         return aNext.localeCompare(bNext);
       }
@@ -732,7 +736,7 @@ function createWorkflowDetailFactory(): (
       return existing;
     }
     const atom$ = computed(async (get) => {
-      get(internalWorkflowReload$);
+      get(workflowReloadVersion$);
       const client = get(zeroClient$)(zeroWorkflowsDetailContract);
       const result = await accept(
         client.get({ params: { workflowId } }),
@@ -918,13 +922,13 @@ export const changeWorkflowVisibility$ = command(
   },
 );
 
-export const createWorkflowScheduleTrigger$ = command(
+export const createWorkflowScheduleAutomation$ = command(
   async (
     { get, set },
     input: { workflowId: string; schedule: ZeroWorkflowSchedule },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -938,7 +942,7 @@ export const createWorkflowScheduleTrigger$ = command(
   },
 );
 
-export const createWorkflowGmailNewMessageTrigger$ = command(
+export const createWorkflowGmailNewMessageAutomation$ = command(
   async (
     { get, set },
     input: {
@@ -947,7 +951,7 @@ export const createWorkflowGmailNewMessageTrigger$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -965,7 +969,7 @@ export const createWorkflowGmailNewMessageTrigger$ = command(
   },
 );
 
-export const createWorkflowGmailLabelAppliedTrigger$ = command(
+export const createWorkflowGmailLabelAppliedAutomation$ = command(
   async (
     { get, set },
     input: {
@@ -974,7 +978,7 @@ export const createWorkflowGmailLabelAppliedTrigger$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -992,7 +996,7 @@ export const createWorkflowGmailLabelAppliedTrigger$ = command(
   },
 );
 
-export const createWorkflowGithubLabelAppliedTrigger$ = command(
+export const createWorkflowGithubLabelAppliedAutomation$ = command(
   async (
     { get, set },
     input: {
@@ -1001,7 +1005,7 @@ export const createWorkflowGithubLabelAppliedTrigger$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1019,7 +1023,7 @@ export const createWorkflowGithubLabelAppliedTrigger$ = command(
   },
 );
 
-export const createWorkflowGoogleCalendarEventTrigger$ = command(
+export const createWorkflowGoogleCalendarEventAutomation$ = command(
   async (
     { get, set },
     input:
@@ -1040,8 +1044,8 @@ export const createWorkflowGoogleCalendarEventTrigger$ = command(
         },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
-    const body: ZeroWorkflowTriggerCreateRequest =
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    const body: ZeroWorkflowAutomationCreateRequest =
       input.eventType === "google-calendar-event-created"
         ? {
             kind: "event",
@@ -1072,7 +1076,7 @@ export const createWorkflowGoogleCalendarEventTrigger$ = command(
   },
 );
 
-export const createWorkflowGoogleMeetTranscriptGeneratedTrigger$ = command(
+export const createWorkflowGoogleMeetTranscriptGeneratedAutomation$ = command(
   async (
     { get, set },
     input: {
@@ -1081,7 +1085,7 @@ export const createWorkflowGoogleMeetTranscriptGeneratedTrigger$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1103,7 +1107,7 @@ export const createWorkflowGoogleMeetTranscriptGeneratedTrigger$ = command(
   },
 );
 
-export const createWorkflowNotionChildPageTrigger$ = command(
+export const createWorkflowNotionChildPageAutomation$ = command(
   async (
     { get, set },
     input: {
@@ -1112,7 +1116,7 @@ export const createWorkflowNotionChildPageTrigger$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1130,7 +1134,7 @@ export const createWorkflowNotionChildPageTrigger$ = command(
   },
 );
 
-export const createWorkflowNotionDatabaseItemTrigger$ = command(
+export const createWorkflowNotionDatabaseItemAutomation$ = command(
   async (
     { get, set },
     input: {
@@ -1139,7 +1143,7 @@ export const createWorkflowNotionDatabaseItemTrigger$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1157,7 +1161,7 @@ export const createWorkflowNotionDatabaseItemTrigger$ = command(
   },
 );
 
-export const createWorkflowNotionPageContentUpdatedTrigger$ = command(
+export const createWorkflowNotionPageContentUpdatedAutomation$ = command(
   async (
     { get, set },
     input: {
@@ -1166,7 +1170,7 @@ export const createWorkflowNotionPageContentUpdatedTrigger$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1184,13 +1188,13 @@ export const createWorkflowNotionPageContentUpdatedTrigger$ = command(
   },
 );
 
-export const createWorkflowWebhookTrigger$ = command(
+export const createWorkflowWebhookAutomation$ = command(
   async (
     { get, set },
     input: { readonly workflowId: string },
     signal: AbortSignal,
-  ): Promise<WorkflowWebhookTriggerSummary | null> => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+  ): Promise<WorkflowWebhookAutomationSummary | null> => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const result = await accept(
       client.create({
         params: { workflowId: input.workflowId },
@@ -1219,7 +1223,7 @@ export const createWorkflowWebhookTrigger$ = command(
       result.body.kind !== "event" ||
       result.body.eventType !== "webhook-received"
     ) {
-      throw new Error("Expected webhook workflow trigger summary");
+      throw new Error("Expected webhook workflow automation summary");
     }
     return result.body;
   },
@@ -1228,13 +1232,13 @@ export const createWorkflowWebhookTrigger$ = command(
 export const revealWorkflowWebhookSecret$ = command(
   async (
     { get },
-    input: { readonly triggerId: string },
+    input: { readonly automationId: string },
     signal: AbortSignal,
   ): Promise<ZeroWorkflowWebhookSecretResponse> => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const result = await accept(
       client.revealWebhookSecret({
-        params: { id: input.triggerId },
+        params: { id: input.automationId },
         body: undefined,
         fetchOptions: { signal },
       }),
@@ -1245,19 +1249,19 @@ export const revealWorkflowWebhookSecret$ = command(
   },
 );
 
-export const updateWorkflowGmailNewMessageTrigger$ = command(
+export const updateWorkflowGmailNewMessageAutomation$ = command(
   async (
     { get, set },
     input: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly eventConfig: GmailNewMessageEventConfig;
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: input.triggerId },
+        params: { id: input.automationId },
         body: { eventConfig: input.eventConfig },
         fetchOptions: { signal },
       }),
@@ -1268,19 +1272,19 @@ export const updateWorkflowGmailNewMessageTrigger$ = command(
   },
 );
 
-export const updateWorkflowGmailLabelAppliedTrigger$ = command(
+export const updateWorkflowGmailLabelAppliedAutomation$ = command(
   async (
     { get, set },
     input: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly eventConfig: GmailLabelAppliedEventConfig;
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: input.triggerId },
+        params: { id: input.automationId },
         body: { eventConfig: input.eventConfig },
         fetchOptions: { signal },
       }),
@@ -1291,19 +1295,19 @@ export const updateWorkflowGmailLabelAppliedTrigger$ = command(
   },
 );
 
-export const updateWorkflowGithubLabelAppliedTrigger$ = command(
+export const updateWorkflowGithubLabelAppliedAutomation$ = command(
   async (
     { get, set },
     input: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly eventConfig: GithubLabelAppliedEventConfig;
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: input.triggerId },
+        params: { id: input.automationId },
         body: { eventConfig: input.eventConfig },
         fetchOptions: { signal },
       }),
@@ -1314,19 +1318,19 @@ export const updateWorkflowGithubLabelAppliedTrigger$ = command(
   },
 );
 
-export const updateWorkflowScheduleTrigger$ = command(
+export const updateWorkflowScheduleAutomation$ = command(
   async (
     { get, set },
     input: {
-      readonly triggerId: string;
+      readonly automationId: string;
       readonly schedule: ZeroWorkflowSchedule;
     },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
       client.update({
-        params: { id: input.triggerId },
+        params: { id: input.automationId },
         body: { schedule: input.schedule },
         fetchOptions: { signal },
       }),
@@ -1337,20 +1341,20 @@ export const updateWorkflowScheduleTrigger$ = command(
   },
 );
 
-export const setWorkflowTriggerEnabled$ = command(
+export const setWorkflowAutomationEnabled$ = command(
   async (
     { get, set },
-    input: { triggerId: string; enabled: boolean },
+    input: { automationId: string; enabled: boolean },
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const request = input.enabled
       ? client.enable({
-          params: { id: input.triggerId },
+          params: { id: input.automationId },
           fetchOptions: { signal },
         })
       : client.disable({
-          params: { id: input.triggerId },
+          params: { id: input.automationId },
           fetchOptions: { signal },
         });
     const result = await accept(request, [200, 402]);
@@ -1366,22 +1370,22 @@ export const setWorkflowTriggerEnabled$ = command(
   },
 );
 
-export const pauseWorkflowTriggers$ = command(
+export const pauseWorkflowAutomations$ = command(
   async (
     { get, set },
-    triggerIds: readonly string[],
+    automationIds: readonly string[],
     signal: AbortSignal,
   ): Promise<{ readonly pausedCount: number }> => {
-    if (triggerIds.length === 0) {
+    if (automationIds.length === 0) {
       return { pausedCount: 0 };
     }
 
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await Promise.all(
-      triggerIds.map((triggerId) => {
+      automationIds.map((automationId) => {
         return accept(
           client.disable({
-            params: { id: triggerId },
+            params: { id: automationId },
             fetchOptions: { signal },
           }),
           [200],
@@ -1390,20 +1394,20 @@ export const pauseWorkflowTriggers$ = command(
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
-    return { pausedCount: triggerIds.length };
+    return { pausedCount: automationIds.length };
   },
 );
 
-export const runWorkflowTriggerNow$ = command(
+export const runWorkflowAutomationNow$ = command(
   async (
     { get },
-    triggerId: string,
+    automationId: string,
     signal: AbortSignal,
   ): Promise<{ chatThreadId: string; runId: string }> => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const result = await accept(
       client.run({
-        params: { id: triggerId },
+        params: { id: automationId },
         fetchOptions: { signal },
       }),
       [201],
@@ -1413,11 +1417,11 @@ export const runWorkflowTriggerNow$ = command(
   },
 );
 
-export const deleteWorkflowTrigger$ = command(
-  async ({ get, set }, triggerId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+export const deleteWorkflowAutomation$ = command(
+  async ({ get, set }, automationId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
     await accept(
-      client.delete({ params: { id: triggerId }, fetchOptions: { signal } }),
+      client.delete({ params: { id: automationId }, fetchOptions: { signal } }),
       [204],
     );
     signal.throwIfAborted();

@@ -15,15 +15,15 @@ export const currentHeaderAutomationThreadId$ = computed((get) => {
   return get(searchParams$).get(CHAT_AUTOMATIONS_QUERY_PARAM);
 });
 
-const editingHeaderWorkflowTriggerId$ = state<string | null>(null);
+const editingHeaderWorkflowAutomationId$ = state<string | null>(null);
 
-export const currentEditingHeaderWorkflowTriggerId$ = computed((get) => {
-  return get(editingHeaderWorkflowTriggerId$);
+export const currentEditingHeaderWorkflowAutomationId$ = computed((get) => {
+  return get(editingHeaderWorkflowAutomationId$);
 });
 
-export const setEditingHeaderWorkflowTriggerId$ = command(
-  ({ set }, triggerId: string | null) => {
-    set(editingHeaderWorkflowTriggerId$, triggerId);
+export const setEditingHeaderWorkflowAutomationId$ = command(
+  ({ set }, automationId: string | null) => {
+    set(editingHeaderWorkflowAutomationId$, automationId);
   },
 );
 
@@ -42,6 +42,6 @@ export const closeHeaderAutomationSidebar$ = command(({ get, set }) => {
     return;
   }
   clearChatAutomationSidebarParams(params);
-  set(setEditingHeaderWorkflowTriggerId$, null);
+  set(setEditingHeaderWorkflowAutomationId$, null);
   set(replaceSearchParams$, params);
 });

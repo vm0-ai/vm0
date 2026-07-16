@@ -220,6 +220,20 @@ fn control_response_from_active_input(
 mod tests {
     use super::*;
 
+    const CONTROL_TEST_READ_TIMEOUT: Duration = Duration::from_secs(3);
+
+    fn accept_control_stream_and_read_hello(
+        listener: &std::os::unix::net::UnixListener,
+    ) -> UnixStream {
+        let mut stream = process_control_ipc::accept_with_timeout(listener, Duration::from_secs(1))
+            .expect("control task should connect");
+        stream
+            .set_read_timeout(Some(CONTROL_TEST_READ_TIMEOUT))
+            .expect("control test stream should set read timeout");
+        process_control_ipc::read_hello(&mut stream).expect("control task should send hello");
+        stream
+    }
+
     #[test]
     fn control_task_accepts_request_until_shutdown() {
         let nonce = *b"0123456789abcdef";
@@ -239,10 +253,7 @@ mod tests {
             move || run_inner(&endpoint, worker_shutdown, stream_slot, active_input)
         });
 
-        let mut stream =
-            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
-                .expect("control task should connect");
-        process_control_ipc::read_hello(&mut stream).unwrap();
+        let mut stream = accept_control_stream_and_read_hello(&listener);
         process_control_ipc::write_request(
             &mut stream,
             &process_control_ipc::ControlRequest {
@@ -251,7 +262,8 @@ mod tests {
             },
         )
         .unwrap();
-        let response = process_control_ipc::read_response(&mut stream).unwrap();
+        let response = process_control_ipc::read_response(&mut stream)
+            .expect("control task should send response");
         assert_eq!(response.message_id, "msg-1");
         assert_eq!(
             response.status,
@@ -282,10 +294,7 @@ mod tests {
             move || run_inner(&endpoint, worker_shutdown, stream_slot, active_input)
         });
 
-        let mut stream =
-            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
-                .expect("control task should connect");
-        process_control_ipc::read_hello(&mut stream).unwrap();
+        let mut stream = accept_control_stream_and_read_hello(&listener);
         process_control_ipc::write_request(
             &mut stream,
             &process_control_ipc::ControlRequest {
@@ -294,7 +303,8 @@ mod tests {
             },
         )
         .unwrap();
-        let response = process_control_ipc::read_response(&mut stream).unwrap();
+        let response = process_control_ipc::read_response(&mut stream)
+            .expect("control task should send response");
         assert_eq!(response.message_id, "bad-1");
         assert_eq!(
             response.status,
@@ -329,10 +339,7 @@ mod tests {
             move || run_inner(&endpoint, worker_shutdown, stream_slot, active_input)
         });
 
-        let mut stream =
-            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
-                .expect("control task should connect");
-        process_control_ipc::read_hello(&mut stream).unwrap();
+        let mut stream = accept_control_stream_and_read_hello(&listener);
 
         let mut accepted_count = 0;
         let mut queue_full_response = None;
@@ -348,7 +355,8 @@ mod tests {
             )
             .unwrap();
 
-            let response = process_control_ipc::read_response(&mut stream).unwrap();
+            let response = process_control_ipc::read_response(&mut stream)
+                .expect("control task should send response");
             assert_eq!(response.message_id, message_id);
             match response.status {
                 process_control_ipc::ControlResponseStatus::Accepted => {
@@ -391,10 +399,7 @@ mod tests {
         let active_input = active_runtime.controller();
         let handle = ControlHandle::spawn_endpoint(endpoint, shutdown, active_input).unwrap();
 
-        let mut stream =
-            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
-                .expect("control task should connect");
-        process_control_ipc::read_hello(&mut stream).unwrap();
+        let stream = accept_control_stream_and_read_hello(&listener);
 
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let joiner = thread::spawn(move || {
@@ -424,10 +429,7 @@ mod tests {
         let active_input = active_runtime.controller();
         let handle = ControlHandle::spawn_endpoint(endpoint, shutdown, active_input).unwrap();
 
-        let mut stream =
-            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
-                .expect("control task should connect");
-        process_control_ipc::read_hello(&mut stream).unwrap();
+        let stream = accept_control_stream_and_read_hello(&listener);
 
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let dropper = thread::spawn(move || {
@@ -462,10 +464,7 @@ mod tests {
             move || run_inner(&endpoint, shutdown, worker_slot, active_input)
         });
 
-        let mut stream =
-            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
-                .expect("control task should connect");
-        process_control_ipc::read_hello(&mut stream).unwrap();
+        let stream = accept_control_stream_and_read_hello(&listener);
         drop(stream);
 
         worker.join().unwrap().unwrap();

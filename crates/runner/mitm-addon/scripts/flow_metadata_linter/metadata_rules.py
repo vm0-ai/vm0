@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from enum import Enum, auto
 from pathlib import Path
 
 from flow_metadata_linter.ast_helpers import _static_call_argument_nodes
@@ -12,6 +13,12 @@ from flow_metadata_linter.registry import REGISTERED_METADATA_KEYS as _REGISTERE
 _METADATA_PAIR_LENGTH = 2
 _STRING_FORMAT_CONVERSION = ord("s")
 _SEQUENCE_WRAPPER_CALLS = {"frozenset", "iter", "list", "reversed", "set", "sorted", "tuple"}
+
+
+class _MetadataCollectionMode(Enum):
+    MAPPING_INPUT = auto()
+    PAIR_ITERABLE = auto()
+    KEY_SEQUENCE = auto()
 
 
 def _is_metadata_attribute(node: ast.AST) -> bool:
@@ -68,79 +75,151 @@ def _violation(path: Path, node: ast.AST, key_name: str) -> str:
 
 
 def _metadata_dict_key_violations(path: Path, node: ast.AST | None) -> list[str]:
+    return _metadata_collection_violations(path, node, _MetadataCollectionMode.MAPPING_INPUT)
+
+
+def _metadata_pair_iterable_violations(path: Path, node: ast.AST) -> list[str]:
+    return _metadata_collection_violations(path, node, _MetadataCollectionMode.PAIR_ITERABLE)
+
+
+def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[str]:
+    return _metadata_collection_violations(path, node, _MetadataCollectionMode.KEY_SEQUENCE)
+
+
+def _metadata_collection_violations(
+    path: Path, node: ast.AST | None, mode: _MetadataCollectionMode
+) -> list[str]:
     if node is None:
         return []
     if isinstance(node, ast.NamedExpr):
-        return _metadata_dict_key_violations(path, node.value)
+        return _metadata_collection_violations(path, node.value, mode)
     if isinstance(node, ast.IfExp):
         return [
-            *_metadata_dict_key_violations(path, node.body),
-            *_metadata_dict_key_violations(path, node.orelse),
+            *_metadata_collection_violations(path, node.body, mode),
+            *_metadata_collection_violations(path, node.orelse, mode),
         ]
     if isinstance(node, ast.BoolOp):
-        boolop_violations: list[str] = []
+        violations: list[str] = []
         for value in node.values:
-            boolop_violations.extend(_metadata_dict_key_violations(path, value))
-        return boolop_violations
+            violations.extend(_metadata_collection_violations(path, value, mode))
+        return violations
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add | ast.BitOr):
+        operand_mode = mode
+        if isinstance(node.op, ast.Add) and mode is _MetadataCollectionMode.MAPPING_INPUT:
+            operand_mode = _MetadataCollectionMode.PAIR_ITERABLE
+        return [
+            *_metadata_collection_violations(path, node.left, operand_mode),
+            *_metadata_collection_violations(path, node.right, operand_mode),
+        ]
     if isinstance(node, ast.DictComp):
+        if mode is _MetadataCollectionMode.PAIR_ITERABLE:
+            return []
         return _metadata_key_expression_violations(path, node.key)
     if isinstance(node, ast.List | ast.Tuple | ast.Set):
-        return _metadata_pair_sequence_violations(path, node)
+        return _metadata_collection_sequence_violations(path, node, mode)
     if isinstance(node, ast.ListComp | ast.SetComp | ast.GeneratorExp):
+        if mode is _MetadataCollectionMode.KEY_SEQUENCE:
+            return _metadata_key_expression_violations(path, node.elt)
         return _metadata_pair_element_violations(path, node.elt)
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return [
-            *_metadata_dict_key_violations(path, node.left),
-            *_metadata_dict_key_violations(path, node.right),
-        ]
     if isinstance(node, ast.Call):
+        return _metadata_collection_call_violations(path, node, mode)
+    if not isinstance(node, ast.Dict) or mode is _MetadataCollectionMode.PAIR_ITERABLE:
+        return []
+    return _metadata_mapping_container_violations(path, node, mode)
+
+
+def _metadata_mapping_container_violations(
+    path: Path, node: ast.Dict, mode: _MetadataCollectionMode
+) -> list[str]:
+    violations: list[str] = []
+    for key, value in zip(node.keys, node.values, strict=True):
+        if key is None:
+            violations.extend(_metadata_collection_violations(path, value, mode))
+            continue
+        violations.extend(_metadata_key_expression_violations(path, key))
+    return violations
+
+
+def _metadata_collection_sequence_violations(
+    path: Path,
+    node: ast.List | ast.Tuple | ast.Set,
+    mode: _MetadataCollectionMode,
+) -> list[str]:
+    if mode is not _MetadataCollectionMode.KEY_SEQUENCE:
+        return _metadata_pair_sequence_violations(path, node)
+    violations: list[str] = []
+    for element in node.elts:
+        if isinstance(element, ast.Starred):
+            violations.extend(_metadata_collection_violations(path, element.value, mode))
+            continue
+        violations.extend(_metadata_key_expression_violations(path, element))
+    return violations
+
+
+def _metadata_collection_call_violations(
+    path: Path, node: ast.Call, mode: _MetadataCollectionMode
+) -> list[str]:
+    if isinstance(node.func, ast.Attribute):
         if (
-            isinstance(node.func, ast.Attribute)
+            mode is _MetadataCollectionMode.MAPPING_INPUT
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == "dict"
             and node.func.attr == "fromkeys"
         ):
-            fromkeys_violations: list[str] = []
+            violations: list[str] = []
             for keys_arg in _static_call_argument_nodes(node.args, 0):
-                fromkeys_violations.extend(_metadata_key_sequence_violations(path, keys_arg))
-            return fromkeys_violations
+                violations.extend(
+                    _metadata_collection_violations(
+                        path, keys_arg, _MetadataCollectionMode.KEY_SEQUENCE
+                    )
+                )
+            return violations
         if (
-            isinstance(node.func, ast.Attribute)
+            mode is not _MetadataCollectionMode.KEY_SEQUENCE
             and node.func.attr == "items"
             and not node.args
             and not node.keywords
         ):
-            return _metadata_dict_key_violations(path, node.func.value)
+            return _metadata_collection_violations(
+                path, node.func.value, _MetadataCollectionMode.MAPPING_INPUT
+            )
         if (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "copy"
+            mode is _MetadataCollectionMode.KEY_SEQUENCE
+            and node.func.attr == "keys"
             and not node.args
             and not node.keywords
         ):
-            return _metadata_dict_key_violations(path, node.func.value)
-        if isinstance(node.func, ast.Name):
-            if node.func.id == "dict":
-                dict_call_violations: list[str] = []
-                for update_arg in _static_call_argument_nodes(node.args, 0):
-                    dict_call_violations.extend(_metadata_dict_key_violations(path, update_arg))
-                dict_call_violations.extend(_metadata_keyword_violations(path, node.keywords))
-                return dict_call_violations
-            if node.func.id == "zip":
-                return _metadata_zip_key_violations(path, node)
-            if node.func.id in _SEQUENCE_WRAPPER_CALLS:
-                wrapper_violations: list[str] = []
-                for update_arg in _static_call_argument_nodes(node.args, 0):
-                    wrapper_violations.extend(_metadata_dict_key_violations(path, update_arg))
-                return wrapper_violations
-    if not isinstance(node, ast.Dict):
+            return _metadata_collection_violations(path, node.func.value, mode)
+        if node.func.attr == "copy" and not node.args and not node.keywords:
+            return _metadata_collection_violations(path, node.func.value, mode)
         return []
-    violations: list[str] = []
-    for key, value in zip(node.keys, node.values, strict=True):
-        if key is None:
-            violations.extend(_metadata_dict_key_violations(path, value))
-            continue
-        violations.extend(_metadata_key_expression_violations(path, key))
-    return violations
+    if not isinstance(node.func, ast.Name):
+        return []
+    if node.func.id == "dict" and mode is not _MetadataCollectionMode.PAIR_ITERABLE:
+        violations = []
+        for update_arg in _static_call_argument_nodes(node.args, 0):
+            violations.extend(
+                _metadata_collection_violations(
+                    path, update_arg, _MetadataCollectionMode.MAPPING_INPUT
+                )
+            )
+        violations.extend(_metadata_keyword_violations(path, node.keywords))
+        return violations
+    if node.func.id == "zip" and mode is not _MetadataCollectionMode.KEY_SEQUENCE:
+        violations = []
+        for keys_arg in _static_call_argument_nodes(node.args, 0):
+            violations.extend(
+                _metadata_collection_violations(
+                    path, keys_arg, _MetadataCollectionMode.KEY_SEQUENCE
+                )
+            )
+        return violations
+    if node.func.id in _SEQUENCE_WRAPPER_CALLS:
+        violations = []
+        for collection_arg in _static_call_argument_nodes(node.args, 0):
+            violations.extend(_metadata_collection_violations(path, collection_arg, mode))
+        return violations
+    return []
 
 
 def _metadata_pair_sequence_violations(
@@ -171,123 +250,6 @@ def _metadata_pair_element_violations(path: Path, node: ast.AST) -> list[str]:
     if not isinstance(node, ast.List | ast.Tuple) or len(node.elts) != _METADATA_PAIR_LENGTH:
         return []
     return _metadata_key_expression_violations(path, node.elts[0])
-
-
-def _metadata_pair_iterable_violations(path: Path, node: ast.AST) -> list[str]:
-    if isinstance(node, ast.NamedExpr):
-        return _metadata_pair_iterable_violations(path, node.value)
-    if isinstance(node, ast.IfExp):
-        return [
-            *_metadata_pair_iterable_violations(path, node.body),
-            *_metadata_pair_iterable_violations(path, node.orelse),
-        ]
-    if isinstance(node, ast.BoolOp):
-        boolop_violations: list[str] = []
-        for value in node.values:
-            boolop_violations.extend(_metadata_pair_iterable_violations(path, value))
-        return boolop_violations
-    if isinstance(node, ast.List | ast.Tuple | ast.Set):
-        return _metadata_pair_sequence_violations(path, node)
-    if isinstance(node, ast.ListComp | ast.SetComp | ast.GeneratorExp):
-        return _metadata_pair_element_violations(path, node.elt)
-    if isinstance(node, ast.Call):
-        if (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "items"
-            and not node.args
-            and not node.keywords
-        ):
-            return _metadata_dict_key_violations(path, node.func.value)
-        if (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "copy"
-            and not node.args
-            and not node.keywords
-        ):
-            return _metadata_pair_iterable_violations(path, node.func.value)
-        if isinstance(node.func, ast.Name):
-            if node.func.id == "zip":
-                return _metadata_zip_key_violations(path, node)
-            if node.func.id in _SEQUENCE_WRAPPER_CALLS:
-                violations: list[str] = []
-                for update_arg in _static_call_argument_nodes(node.args, 0):
-                    violations.extend(_metadata_pair_iterable_violations(path, update_arg))
-                return violations
-    return []
-
-
-def _metadata_key_sequence_violations(path: Path, node: ast.AST | None) -> list[str]:
-    if node is None:
-        return []
-    if isinstance(node, ast.NamedExpr):
-        return _metadata_key_sequence_violations(path, node.value)
-    if isinstance(node, ast.IfExp):
-        return [
-            *_metadata_key_sequence_violations(path, node.body),
-            *_metadata_key_sequence_violations(path, node.orelse),
-        ]
-    if isinstance(node, ast.BoolOp):
-        sequence_violations: list[str] = []
-        for value in node.values:
-            sequence_violations.extend(_metadata_key_sequence_violations(path, value))
-        return sequence_violations
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return [
-            *_metadata_key_sequence_violations(path, node.left),
-            *_metadata_key_sequence_violations(path, node.right),
-        ]
-    if isinstance(node, ast.ListComp | ast.SetComp | ast.GeneratorExp):
-        return _metadata_key_expression_violations(path, node.elt)
-    if isinstance(node, ast.DictComp):
-        return _metadata_key_expression_violations(path, node.key)
-    if isinstance(node, ast.Dict):
-        dict_key_violations: list[str] = []
-        for key, value in zip(node.keys, node.values, strict=True):
-            if key is None:
-                dict_key_violations.extend(_metadata_key_sequence_violations(path, value))
-                continue
-            dict_key_violations.extend(_metadata_key_expression_violations(path, key))
-        return dict_key_violations
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "keys"
-        and not node.args
-        and not node.keywords
-    ):
-        return _metadata_key_sequence_violations(path, node.func.value)
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "copy"
-        and not node.args
-        and not node.keywords
-    ):
-        return _metadata_key_sequence_violations(path, node.func.value)
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-        if node.func.id == "dict":
-            return _metadata_dict_key_violations(path, node)
-        if node.func.id in _SEQUENCE_WRAPPER_CALLS:
-            wrapper_violations: list[str] = []
-            for keys_arg in _static_call_argument_nodes(node.args, 0):
-                wrapper_violations.extend(_metadata_key_sequence_violations(path, keys_arg))
-            return wrapper_violations
-    if not isinstance(node, ast.List | ast.Tuple | ast.Set):
-        return []
-    violations: list[str] = []
-    for element in node.elts:
-        if isinstance(element, ast.Starred):
-            violations.extend(_metadata_key_sequence_violations(path, element.value))
-            continue
-        violations.extend(_metadata_key_expression_violations(path, element))
-    return violations
-
-
-def _metadata_zip_key_violations(path: Path, node: ast.Call) -> list[str]:
-    violations: list[str] = []
-    for keys_arg in _static_call_argument_nodes(node.args, 0):
-        violations.extend(_metadata_key_sequence_violations(path, keys_arg))
-    return violations
 
 
 def _metadata_key_expression_violations(path: Path, node: ast.AST) -> list[str]:

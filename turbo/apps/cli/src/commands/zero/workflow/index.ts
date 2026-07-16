@@ -5,7 +5,7 @@ import { viewCommand } from "./view";
 import { listCommand } from "./list";
 import { deleteCommand } from "./delete";
 import { copyCommand } from "./copy";
-import { triggerCommand } from "./trigger";
+import { automationCommand } from "./automation";
 
 export const zeroWorkflowCommand = new Command("workflow")
   .description("Manage workflows")
@@ -15,7 +15,7 @@ export const zeroWorkflowCommand = new Command("workflow")
   .addCommand(listCommand)
   .addCommand(deleteCommand)
   .addCommand(copyCommand)
-  .addCommand(triggerCommand)
+  .addCommand(automationCommand)
   .addHelpText(
     "after",
     `
@@ -25,6 +25,6 @@ Examples:
   View workflow content:   zero workflow view <workflow> --agent <agent-id>
   Update workflow content: zero workflow edit <workflow> --agent <agent-id> --instruction "New steps"
   Copy onto another agent: zero workflow copy <workflow> --agent <source-agent-id> --to-agent <target-agent-id>
-  Manage triggers:         zero workflow trigger --help
+  Manage automations:      zero workflow automation --help
   Delete a workflow:       zero workflow delete <workflow> --agent <agent-id> -y`,
   );

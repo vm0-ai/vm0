@@ -6,12 +6,19 @@ import { describe, expect, it } from "vitest";
 import { mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
-import { createBddApi, expectApiError } from "./helpers/api-bdd";
+import {
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
+import {
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
 import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createMapsBillingApi } from "./helpers/api-bdd-maps-billing";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /*
 FILE-01 host APIs plus BILL-02/CHAIN-BILLING-MEDIA maps billing. Replaces the
@@ -43,9 +50,51 @@ const GOOGLE_PLACE_DETAILS_URL =
 const OPENSTREETMAP_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_HTML_EDIT_STARTING_CREDITS = 1000;
+const OPENROUTER_HTML_EDIT_EXPECTED_CHARGE = 4;
+
+const OPENROUTER_EDIT_PRICING_ROWS = [
+  {
+    kind: "model",
+    provider: "openai/gpt-4.1-mini",
+    category: "tokens.input",
+    unitPrice: 400,
+    unitSize: 1_000_000,
+  },
+  {
+    kind: "model",
+    provider: "openai/gpt-4.1-mini",
+    category: "tokens.cache_read",
+    unitPrice: 100,
+    unitSize: 1_000_000,
+  },
+  {
+    kind: "model",
+    provider: "openai/gpt-4.1-mini",
+    category: "tokens.output",
+    unitPrice: 1600,
+    unitSize: 1_000_000,
+  },
+] as const;
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+async function grantOpenRouterEditCredits(actor: ApiTestUser): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected HTML edit actor to have an org");
+  }
+  await seedOrgMetadata({
+    orgId: actor.orgId,
+    tier: "pro",
+    credits: OPENROUTER_HTML_EDIT_STARTING_CREDITS,
+  });
+  await seedUsagePricingRows(OPENROUTER_EDIT_PRICING_ROWS);
+}
+
+async function readOrgCredits(actor: ApiTestUser): Promise<number> {
+  return (await createMapsBillingApi(context).readBillingStatus(actor)).credits;
 }
 
 const HTML_SCRIPT_TAG_NAME = "script";
@@ -513,6 +562,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     let upstreamAuthorization: string | null = null;
     let upstreamPrompt: string | null = null;
@@ -555,10 +605,18 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
               },
             },
           ],
+          usage: {
+            prompt_tokens: 2500,
+            completion_tokens: 1000,
+            prompt_tokens_details: { cached_tokens: 500 },
+          },
         });
       }),
     );
 
+    await expect(readOrgCredits(actor)).resolves.toBe(
+      OPENROUTER_HTML_EDIT_STARTING_CREDITS,
+    );
     const generated = await api.requestCreateHtmlEditDraft(
       actor,
       {
@@ -588,6 +646,10 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
       version: 1,
       html: "<!doctype html><html><body><main><h1>Launch sooner</h1><p>Ship the first version today.</p></main></body></html>",
     });
+    await expect(readOrgCredits(actor)).resolves.toBe(
+      OPENROUTER_HTML_EDIT_STARTING_CREDITS -
+        OPENROUTER_HTML_EDIT_EXPECTED_CHARGE,
+    );
     expect(upstreamAuthorization).toBe("Bearer bdd-html-edit-key");
     expect(upstreamPrompt).toContain("vm0-node-1");
     expect(upstreamPrompt).toContain("HTML may be a full snapshot");
@@ -697,6 +759,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     const oldScriptContent = [
       'const state = { title: "Draft headline" };',
@@ -815,6 +878,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     const oldScriptContent = [
       'const state = { title: "Draft headline" };',
@@ -901,6 +965,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     server.use(
       http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
@@ -955,6 +1020,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     const oldScriptContent =
       'fetch("/old-endpoint");\nconst title = "Draft headline";';
@@ -1017,6 +1083,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     const importScriptContent = 'const title = "Draft headline";';
     const importScriptSha = sha256Hex(
@@ -1138,6 +1205,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     server.use(
       http.post(OPENROUTER_CHAT_COMPLETIONS_URL, () => {
@@ -1191,6 +1259,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     const scriptLikeTemplate = `const template = "<${HTML_SCRIPT_TAG_NAME} data-demo=\\"x\\">";`;
     const oldScriptContent = [
@@ -1269,6 +1338,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-html-edit-key");
+    await grantOpenRouterEditCredits(actor);
 
     const oldScriptContent = [
       'import tracker from "/tracker.js";',
@@ -1349,7 +1419,7 @@ describe("BILL-02/CHAIN-BILLING-MEDIA: maps operations settle credits through pu
   it("charges marked-up Google Maps prices across geocode, directions, places, and details [MAPS-A]", async () => {
     const bdd = createBddApi(context);
     const billing = createMapsBillingApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const admin = bdd.user();
     bdd.acceptAgentStorageWrites();
     await runs.grantProEntitlement(admin);
@@ -1581,7 +1651,7 @@ describe("BILL-02/CHAIN-BILLING-MEDIA: maps operations settle credits through pu
   it("charges OpenStreetMap download and PNG render usage [MAPS-OSM-A]", async () => {
     const bdd = createBddApi(context);
     const billing = createMapsBillingApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const admin = bdd.user();
     bdd.acceptAgentStorageWrites();
     await runs.grantProEntitlement(admin);
@@ -1708,7 +1778,7 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
     const billing = createMapsBillingApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();

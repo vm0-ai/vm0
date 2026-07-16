@@ -1,7 +1,7 @@
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
-const appUrl = deriveAppUrl(process.env.VM0_API_URL!);
+const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 
 test("send a chat message and receive a response", async ({ page }) => {
   // Navigate to chat page (default agent)

@@ -79,7 +79,7 @@ describe("logs command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
@@ -4514,7 +4514,7 @@ describe("logs command", () => {
     });
 
     it("should transform www.vm0.ai to app.vm0.ai", async () => {
-      vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
 
       server.use(
         http.get(
@@ -4546,7 +4546,7 @@ describe("logs command", () => {
     });
 
     it("should not double-prefix when input URL already has app subdomain", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
 
       server.use(
         http.get(
@@ -4579,7 +4579,7 @@ describe("logs command", () => {
     });
 
     it("should replace platform subdomain with app", async () => {
-      vi.stubEnv("VM0_API_URL", "https://platform.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://platform.vm0.ai");
 
       server.use(
         http.get(
@@ -4612,7 +4612,7 @@ describe("logs command", () => {
     });
 
     it("should replace api subdomain with app", async () => {
-      vi.stubEnv("VM0_API_URL", "https://api.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
 
       server.use(
         http.get(
@@ -4645,7 +4645,7 @@ describe("logs command", () => {
     });
 
     it("should transform vm7.ai:8443 to app.vm7.ai:8443", async () => {
-      vi.stubEnv("VM0_API_URL", "https://www.vm7.ai:8443");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://www.vm7.ai:8443");
 
       server.use(
         http.get(

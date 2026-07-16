@@ -1,15 +1,19 @@
-import type { ReactNode } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+  UIEvent as ReactUIEvent,
+} from "react";
 import type { ArtifactItem } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
   IconAlertTriangle,
   IconCarambola,
   IconCarambolaFilled,
+  IconDownload,
   IconDots,
   IconExternalLink,
   IconHistory,
   IconMessagePlus,
-  IconPackage,
   IconPhoto,
   IconPresentationAnalytics,
   IconSearch,
@@ -17,6 +21,7 @@ import {
   IconWorld,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { r2ImageTransformUrl } from "@vm0/core";
 import {
   useGet,
   useLastLoadable,
@@ -35,6 +40,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@vm0/ui";
 
@@ -42,22 +51,32 @@ import { agents$ } from "../../signals/agent.ts";
 import {
   applyArtifactFavoriteOverrides,
   artifactFavoriteOverrides$,
+  artifactsGridElement$,
+  artifactsGridWidth$,
   artifactsFavoritesOnly$,
   artifactsSearch$,
+  artifactsScrollMetrics$,
+  artifactsScrollViewport$,
   artifactsWindow$,
   cachedArtifacts$,
   filterArtifacts,
+  getArtifactFocusTarget,
   growArtifactsWindow$,
   navigateToArtifactThread$,
   reloadArtifacts$,
   remoteArtifacts$,
+  requestArtifactsKeyboardFocus$,
   selectedArtifactsAgentId$,
   selectedArtifactsCategory$,
+  setArtifactCardRef$,
+  setArtifactsGridRef$,
   setArtifactsFavoritesOnly$,
+  setArtifactsScrollViewportRef$,
   setArtifactsSearch$,
   setSelectedArtifactsAgentId$,
   setSelectedArtifactsCategory$,
   startArtifactChat$,
+  syncArtifactsScrollMetrics$,
   toggleArtifactFavorite$,
 } from "../../signals/artifacts-page/artifacts-signals.ts";
 import type { ArtifactCategory } from "../../signals/artifacts-page/artifact-category.ts";
@@ -81,12 +100,28 @@ import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
 } from "../zero-page/zero-file-preview-icon.tsx";
-import { publicAttachmentUrl } from "../zero-page/zero-attachment-url.ts";
+import {
+  downloadAttachmentUrl,
+  publicAttachmentUrl,
+} from "../zero-page/zero-attachment-url.ts";
+import { emptyArtifactImg } from "../zero-page/platform-assets.ts";
 
 type ArtifactPreviewKind = "image" | "html" | "pdf" | "video" | "file";
 type ArtifactTypeIconKind = "presentation" | "html" | "image" | "video";
 
-const DESKTOP_ARTIFACT_PREVIEW_SIZE = 1280;
+const DESKTOP_ARTIFACT_PREVIEW_WIDTH = 1280;
+const DESKTOP_ARTIFACT_PREVIEW_HEIGHT = 800;
+const ARTIFACT_AUTO_LOAD_THRESHOLD_PX = 800;
+const ARTIFACT_GRID_GAP_PX = 12;
+const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 292;
+const ARTIFACT_GRID_OVERSCAN_ROWS = 2;
+const ARTIFACT_GRID_FALLBACK_WIDTH_PX = 900;
+const ARTIFACT_GRID_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
+const ARTIFACT_CARD_IMAGE_WIDTH = 640;
+const ARTIFACT_CARD_IMAGE_HEIGHT = 400;
+const ARTIFACT_CARD_PREVIEW_ASPECT_RATIO = 16 / 10;
+const ARTIFACT_CARD_DETAILS_HEIGHT_PX = 64;
+const ARTIFACT_CARD_BORDER_WIDTH_PX = 1;
 const ARTIFACT_CATEGORY_OPTIONS: readonly {
   readonly ariaLabel: string;
   readonly label: string;
@@ -133,6 +168,24 @@ function artifactPreviewKind(item: ArtifactItem): ArtifactPreviewKind {
     return "video";
   }
   return "file";
+}
+
+function isZipArtifact(item: ArtifactItem): boolean {
+  return (
+    item.contentType === "application/zip" ||
+    item.contentType === "application/x-zip-compressed"
+  );
+}
+
+function artifactCardImageSupportsTransform(item: ArtifactItem): boolean {
+  const extension = item.filename.split(".").pop()?.toLowerCase();
+  return (
+    extension === "gif" ||
+    extension === "jpeg" ||
+    extension === "jpg" ||
+    extension === "png" ||
+    extension === "webp"
+  );
 }
 
 function artifactTypeIconKind(
@@ -309,7 +362,10 @@ function ArtifactsToolbar({
             onAgentChange(value === "all" ? null : value);
           }}
         >
-          <SelectTrigger aria-label="Agent filter" className="w-full sm:w-52">
+          <SelectTrigger
+            aria-label="Agent filter"
+            className="w-full transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 sm:w-52"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -381,9 +437,9 @@ function DesktopArtifactPreviewFrame({
         sandbox="allow-same-origin allow-scripts"
         tabIndex={-1}
         style={{
-          height: `${DESKTOP_ARTIFACT_PREVIEW_SIZE}px`,
-          scale: `calc(100cqw / ${DESKTOP_ARTIFACT_PREVIEW_SIZE}px)`,
-          width: `${DESKTOP_ARTIFACT_PREVIEW_SIZE}px`,
+          height: `${DESKTOP_ARTIFACT_PREVIEW_HEIGHT}px`,
+          scale: `calc(100cqw / ${DESKTOP_ARTIFACT_PREVIEW_WIDTH}px)`,
+          width: `${DESKTOP_ARTIFACT_PREVIEW_WIDTH}px`,
         }}
         className="pointer-events-none absolute left-0 top-0 block origin-top-left scale-[0.22] border-0 bg-background"
       />
@@ -454,10 +510,17 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   }
 
   if (previewKind === "image") {
+    const thumbnailUrl = artifactCardImageSupportsTransform(item)
+      ? r2ImageTransformUrl(previewUrl, {
+          width: ARTIFACT_CARD_IMAGE_WIDTH,
+          height: ARTIFACT_CARD_IMAGE_HEIGHT,
+          fit: "scale-down",
+        })
+      : previewUrl;
     return (
       <ArtifactPreviewSurface iconKind={iconKind}>
         <img
-          src={previewUrl}
+          src={thumbnailUrl}
           alt=""
           loading="lazy"
           className="h-full w-full object-cover"
@@ -559,7 +622,7 @@ function ArtifactCardActions({
           variant="secondary"
           size="icon"
           className={cn(
-            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background",
+            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-muted active:bg-gray-100",
             favorited && "text-amber-500 hover:text-amber-500",
           )}
           aria-label={
@@ -590,7 +653,7 @@ function ArtifactCardActions({
             type="button"
             variant="secondary"
             size="icon"
-            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background"
+            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-muted active:bg-gray-100 data-[state=open]:bg-gray-100"
             aria-label={`More actions for ${item.filename}`}
             title={`More actions for ${item.filename}`}
           >
@@ -599,7 +662,7 @@ function ArtifactCardActions({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-48"
+          className="w-48 [&_svg]:text-muted-foreground"
           onClick={(event) => {
             event.stopPropagation();
           }}
@@ -613,7 +676,7 @@ function ArtifactCardActions({
             }}
           >
             <IconMessagePlus size={14} stroke={1.7} aria-hidden />
-            Ask about it
+            Ask about this
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
@@ -621,19 +684,34 @@ function ArtifactCardActions({
             }}
           >
             <IconHistory size={14} stroke={1.7} aria-hidden />
-            View creation chat
+            View original chat
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <a
-              href={previewUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`Open preview for ${item.filename}`}
+          {isZipArtifact(item) ? (
+            <DropdownMenuItem
+              onClick={() => {
+                detach(
+                  downloadAttachmentUrl(item.url, undefined, item.filename),
+                  Reason.DomCallback,
+                  "artifact download",
+                );
+              }}
             >
-              <IconExternalLink size={14} stroke={1.7} aria-hidden />
-              Open a new tab
-            </a>
-          </DropdownMenuItem>
+              <IconDownload size={14} stroke={1.7} aria-hidden />
+              Download
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem asChild>
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open preview for ${item.filename}`}
+              >
+                <IconExternalLink size={14} stroke={1.7} aria-hidden />
+                Open in new tab
+              </a>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -641,6 +719,8 @@ function ArtifactCardActions({
 }
 
 function ArtifactCard({
+  cardRef,
+  index,
   item,
   onOpenChat,
   onOpenPreview,
@@ -648,6 +728,8 @@ function ArtifactCard({
   onToggleFavorite,
   showFavoriteAction,
 }: {
+  readonly cardRef: (element: HTMLElement | null) => void;
+  readonly index: number;
   readonly item: ArtifactItem;
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
@@ -662,6 +744,8 @@ function ArtifactCard({
   const favorited = item.isFavorited === true;
   return (
     <article
+      ref={cardRef}
+      data-artifact-index={index}
       role={previewable ? "button" : undefined}
       tabIndex={previewable ? 0 : undefined}
       aria-label={previewable ? `Preview ${item.filename}` : undefined}
@@ -684,32 +768,45 @@ function ArtifactCard({
           : undefined
       }
       className={cn(
-        "group relative mb-3 aspect-square break-inside-avoid overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20",
+        "group flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20",
         previewable &&
           "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       )}
     >
-      <ArtifactPreview item={item} />
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/95 to-transparent p-3 pt-14">
-        <div className="flex min-w-0 items-end gap-2">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold text-foreground">
-              {item.filename}
-            </h2>
-            <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
-              {contextLabel}
-            </p>
-          </div>
-          <ArtifactCardActions
-            favorited={favorited}
-            item={item}
-            previewUrl={previewUrl}
-            showFavoriteAction={showFavoriteAction}
-            onOpenChat={onOpenChat}
-            onStartChat={onStartChat}
-            onToggleFavorite={onToggleFavorite}
-          />
+      <div
+        data-testid="artifact-card-preview"
+        className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-background"
+      >
+        <ArtifactPreview item={item} />
+      </div>
+      <div
+        data-testid="artifact-card-details"
+        className="flex h-16 min-w-0 shrink-0 items-center gap-2 border-t border-border p-3"
+      >
+        <div className="min-w-0 flex-1">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <h2 className="min-w-0 cursor-default truncate text-sm font-semibold leading-5 text-foreground">
+                  {item.filename}
+                </h2>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{item.filename}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
+            {contextLabel}
+          </p>
         </div>
+        <ArtifactCardActions
+          favorited={favorited}
+          item={item}
+          previewUrl={previewUrl}
+          showFavoriteAction={showFavoriteAction}
+          onOpenChat={onOpenChat}
+          onStartChat={onStartChat}
+          onToggleFavorite={onToggleFavorite}
+        />
       </div>
     </article>
   );
@@ -717,21 +814,24 @@ function ArtifactCard({
 
 function ArtifactsLoadingState() {
   return (
-    <div className="columns-[220px] gap-3" aria-label="Loading artifacts">
+    <div
+      className="grid gap-3"
+      aria-label="Loading artifacts"
+      style={{
+        gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${String(ARTIFACT_GRID_MIN_CARD_WIDTH_PX)}px), 1fr))`,
+      }}
+    >
       {Array.from({ length: 8 }, (_, index) => {
         return (
           <div
             key={index}
-            className="mb-3 aspect-square break-inside-avoid overflow-hidden rounded-lg border border-border bg-card"
+            className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
           >
-            <div className="h-full bg-muted/30">
-              <div className="flex h-full flex-col justify-end p-3">
-                <div className="h-4 w-3/4 rounded bg-background/70" />
-                <div className="mt-2 h-3 w-1/2 rounded bg-background/60" />
-                <div className="mt-3 flex gap-1.5">
-                  <div className="h-5 w-16 rounded border border-border/40 bg-background/60" />
-                  <div className="h-5 w-20 rounded border border-border/40 bg-background/60" />
-                </div>
+            <div className="aspect-[16/10] w-full shrink-0 bg-muted/30" />
+            <div className="flex h-16 shrink-0 items-center p-3">
+              <div className="w-full">
+                <div className="h-4 w-3/4 rounded bg-muted/60" />
+                <div className="mt-2 h-3 w-1/2 rounded bg-muted/40" />
               </div>
             </div>
           </div>
@@ -739,6 +839,94 @@ function ArtifactsLoadingState() {
       })}
     </div>
   );
+}
+
+function hasUsableLayoutPosition(rect: DOMRectReadOnly): boolean {
+  return rect.top !== 0 || rect.left !== 0;
+}
+
+function getArtifactsGridScrollMargin(
+  scrollViewport: HTMLElement | null,
+  gridElement: HTMLElement | null,
+): number {
+  if (!scrollViewport || !gridElement) {
+    return 0;
+  }
+
+  const viewportRect = scrollViewport.getBoundingClientRect();
+  const gridRect = gridElement.getBoundingClientRect();
+  if (
+    hasUsableLayoutPosition(viewportRect) ||
+    hasUsableLayoutPosition(gridRect)
+  ) {
+    return Math.max(
+      0,
+      scrollViewport.scrollTop + gridRect.top - viewportRect.top,
+    );
+  }
+
+  return Math.max(0, gridElement.offsetTop - scrollViewport.offsetTop);
+}
+
+function getArtifactGridDimensions(containerWidth: number) {
+  const columnCount = Math.max(
+    1,
+    Math.floor(
+      (containerWidth + ARTIFACT_GRID_GAP_PX) /
+        (ARTIFACT_GRID_MIN_CARD_WIDTH_PX + ARTIFACT_GRID_GAP_PX),
+    ),
+  );
+  const cardWidth =
+    (containerWidth - ARTIFACT_GRID_GAP_PX * (columnCount - 1)) / columnCount;
+  const cardContentWidth = Math.max(
+    0,
+    cardWidth - ARTIFACT_CARD_BORDER_WIDTH_PX * 2,
+  );
+  const cardHeight =
+    cardContentWidth / ARTIFACT_CARD_PREVIEW_ASPECT_RATIO +
+    ARTIFACT_CARD_DETAILS_HEIGHT_PX +
+    ARTIFACT_CARD_BORDER_WIDTH_PX * 2;
+  return {
+    columnCount,
+    rowHeight: cardHeight + ARTIFACT_GRID_GAP_PX,
+  };
+}
+
+function getVirtualArtifactRange({
+  columnCount,
+  itemCount,
+  rowHeight,
+  scrollMargin,
+  scrollTop,
+  viewportHeight,
+}: {
+  readonly columnCount: number;
+  readonly itemCount: number;
+  readonly rowHeight: number;
+  readonly scrollMargin: number;
+  readonly scrollTop: number;
+  readonly viewportHeight: number;
+}) {
+  const rowCount = Math.ceil(itemCount / columnCount);
+  const localScrollTop = Math.max(0, scrollTop - scrollMargin);
+  const firstVisibleRow = Math.min(
+    Math.max(0, rowCount - 1),
+    Math.floor(localScrollTop / rowHeight),
+  );
+  const visibleRowCount = Math.max(1, Math.ceil(viewportHeight / rowHeight));
+  const startRow = Math.max(0, firstVisibleRow - ARTIFACT_GRID_OVERSCAN_ROWS);
+  const endRow = Math.min(
+    rowCount,
+    firstVisibleRow + visibleRowCount + ARTIFACT_GRID_OVERSCAN_ROWS,
+  );
+
+  return {
+    endIndex: Math.min(itemCount, endRow * columnCount),
+    startIndex: startRow * columnCount,
+    startOffset: startRow * rowHeight,
+    totalHeight:
+      rowCount === 0 ? 0 : rowCount * rowHeight - ARTIFACT_GRID_GAP_PX,
+  };
 }
 
 function ArtifactsErrorState() {
@@ -753,27 +941,116 @@ function ArtifactsErrorState() {
   );
 }
 
-function ArtifactsEmptyState({ filtered }: { readonly filtered: boolean }) {
+function ArtifactsEmptyState() {
   return (
     <div className="rounded-lg border border-dashed border-border bg-card px-6 py-12 text-center">
-      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground">
-        <IconPackage size={20} stroke={1.5} aria-hidden />
-      </div>
+      <img
+        src={emptyArtifactImg}
+        alt=""
+        role="presentation"
+        loading="lazy"
+        className="mx-auto h-24 w-24 object-contain opacity-80"
+      />
       <h2 className="mt-4 text-sm font-medium text-foreground">
-        {filtered ? "No artifacts match this search" : "No artifacts yet"}
+        No artifacts found
       </h2>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        {filtered
-          ? "Adjust the search or agent filter to find generated artifacts."
-          : "Generated files will appear here after agents create them."}
+        Artifacts will appear here when they are available.
       </p>
     </div>
   );
 }
 
+function ArtifactsKeyboardContinuation({
+  onFocus,
+}: {
+  readonly onFocus: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="sr-only focus:not-sr-only focus:absolute focus:left-0 focus:top-full focus:z-10 focus:mt-2 focus:rounded-md focus:border focus:border-border focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:text-foreground focus:shadow-sm"
+      onFocus={onFocus}
+    >
+      Continue browsing artifacts
+    </button>
+  );
+}
+
+function createArtifactsKeyboardNavigation({
+  artifactsLength,
+  columnCount,
+  endIndex,
+  onLoadMore,
+  requestKeyboardFocus,
+  rowHeight,
+  scrollMargin,
+  scrollViewport,
+  startIndex,
+  syncScrollMetrics,
+  windowedLength,
+}: {
+  readonly artifactsLength: number;
+  readonly columnCount: number;
+  readonly endIndex: number;
+  readonly onLoadMore: () => void;
+  readonly requestKeyboardFocus: (index: number) => void;
+  readonly rowHeight: number;
+  readonly scrollMargin: number;
+  readonly scrollViewport: HTMLElement | null;
+  readonly startIndex: number;
+  readonly syncScrollMetrics: (viewport: HTMLElement) => void;
+  readonly windowedLength: number;
+}) {
+  const scrollToIndex = (index: number) => {
+    if (!scrollViewport) {
+      return;
+    }
+    const row = Math.floor(index / columnCount);
+    scrollViewport.scrollTop = scrollMargin + row * rowHeight;
+    syncScrollMetrics(scrollViewport);
+  };
+
+  const continueForward = () => {
+    const nextIndex = endIndex < windowedLength ? endIndex : windowedLength;
+    if (nextIndex >= artifactsLength) {
+      return;
+    }
+    requestKeyboardFocus(nextIndex);
+    if (nextIndex >= windowedLength) {
+      onLoadMore();
+    }
+    scrollToIndex(nextIndex);
+  };
+
+  const handleBackward = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (
+      event.key !== "Tab" ||
+      !event.shiftKey ||
+      startIndex === 0 ||
+      !scrollViewport
+    ) {
+      return;
+    }
+    const firstMountedArtifact = event.currentTarget.querySelector<HTMLElement>(
+      `[data-artifact-index="${startIndex}"]`,
+    );
+    if (
+      !firstMountedArtifact ||
+      event.target !== getArtifactFocusTarget(firstMountedArtifact)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    requestKeyboardFocus(startIndex - 1);
+    scrollToIndex(startIndex - 1);
+  };
+
+  return { continueForward, handleBackward };
+}
+
 function ArtifactsList({
   artifacts,
-  hasFilters,
   loading,
   error,
   visibleCount,
@@ -785,7 +1062,6 @@ function ArtifactsList({
   showFavoriteAction,
 }: {
   readonly artifacts: readonly ArtifactItem[];
-  readonly hasFilters: boolean;
   readonly loading: boolean;
   readonly error: boolean;
   readonly visibleCount: number;
@@ -796,6 +1072,58 @@ function ArtifactsList({
   readonly onToggleFavorite: (item: ArtifactItem) => void;
   readonly showFavoriteAction: boolean;
 }) {
+  const scrollViewport = useGet(artifactsScrollViewport$);
+  const scrollMetrics = useGet(artifactsScrollMetrics$);
+  const gridElement = useGet(artifactsGridElement$);
+  const measuredGridWidth = useGet(artifactsGridWidth$);
+  const setGridRef = useSet(setArtifactsGridRef$);
+  const syncScrollMetrics = useSet(syncArtifactsScrollMetrics$);
+  const requestKeyboardFocus = useSet(requestArtifactsKeyboardFocus$);
+  const setArtifactCardRef = useSet(setArtifactCardRef$);
+  const windowed = artifacts.slice(0, visibleCount);
+  const gridWidth =
+    measuredGridWidth ||
+    gridElement?.clientWidth ||
+    ARTIFACT_GRID_FALLBACK_WIDTH_PX;
+  const viewportHeight =
+    scrollMetrics.clientHeight ||
+    scrollViewport?.clientHeight ||
+    ARTIFACT_GRID_FALLBACK_VIEWPORT_HEIGHT_PX;
+  const scrollTop = scrollMetrics.scrollTop || scrollViewport?.scrollTop || 0;
+  const scrollMargin = getArtifactsGridScrollMargin(
+    scrollViewport,
+    gridElement,
+  );
+  const { columnCount, rowHeight } = getArtifactGridDimensions(gridWidth);
+  const { endIndex, startIndex, startOffset, totalHeight } =
+    getVirtualArtifactRange({
+      columnCount,
+      itemCount: windowed.length,
+      rowHeight,
+      scrollMargin,
+      scrollTop,
+      viewportHeight,
+    });
+  const virtualized = windowed.slice(startIndex, endIndex);
+  const hasKeyboardContinuation =
+    endIndex < windowed.length || windowed.length < artifacts.length;
+  const {
+    continueForward: continueKeyboardNavigation,
+    handleBackward: handleGridKeyDownCapture,
+  } = createArtifactsKeyboardNavigation({
+    artifactsLength: artifacts.length,
+    columnCount,
+    endIndex,
+    onLoadMore,
+    requestKeyboardFocus,
+    rowHeight,
+    scrollMargin,
+    scrollViewport,
+    startIndex,
+    syncScrollMetrics,
+    windowedLength: windowed.length,
+  });
+
   if (loading) {
     return <ArtifactsLoadingState />;
   }
@@ -803,19 +1131,32 @@ function ArtifactsList({
     return <ArtifactsErrorState />;
   }
   if (artifacts.length === 0) {
-    return <ArtifactsEmptyState filtered={hasFilters} />;
+    return <ArtifactsEmptyState />;
   }
-  // Render only the current window so a large set never mounts thousands of
-  // cards (and their iframes) at once; "Load more" reveals the next window.
-  const windowed = artifacts.slice(0, visibleCount);
-  const hasMore = windowed.length < artifacts.length;
+
   return (
-    <>
-      <div className="columns-[220px] gap-3">
-        {windowed.map((artifact) => {
+    <div
+      ref={setGridRef}
+      onKeyDownCapture={handleGridKeyDownCapture}
+      className="relative w-full"
+      data-testid="artifacts-virtual-grid"
+      style={{ height: totalHeight }}
+    >
+      <div
+        className="absolute left-0 top-0 grid w-full gap-3"
+        data-testid="artifacts-virtual-grid-items"
+        style={{
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+          transform: `translateY(${startOffset}px)`,
+        }}
+      >
+        {virtualized.map((artifact, visibleOffset) => {
+          const index = startIndex + visibleOffset;
           return (
             <ArtifactCard
               key={artifact.artifactItemId}
+              cardRef={setArtifactCardRef}
+              index={index}
               item={artifact}
               onOpenChat={onOpenChat}
               onOpenPreview={onOpenPreview}
@@ -826,14 +1167,10 @@ function ArtifactsList({
           );
         })}
       </div>
-      {hasMore && (
-        <div className="flex justify-center pt-1">
-          <Button variant="secondary" onClick={onLoadMore}>
-            Load more
-          </Button>
-        </div>
+      {hasKeyboardContinuation && (
+        <ArtifactsKeyboardContinuation onFocus={continueKeyboardNavigation} />
       )}
-    </>
+    </div>
   );
 }
 
@@ -853,6 +1190,8 @@ export function ArtifactsPage() {
   const pageSignal = useGet(pageSignal$);
   const visibleCount = useGet(artifactsWindow$);
   const loadMore = useSet(growArtifactsWindow$);
+  const setScrollViewportRef = useSet(setArtifactsScrollViewportRef$);
+  const syncScrollMetrics = useSet(syncArtifactsScrollMetrics$);
   const openArtifactPreview = useOpenArtifactPreview();
   const lightboxUrl = useGet(lightboxUrl$);
   const remoteLoadable = useLastLoadable(remoteArtifacts$);
@@ -886,11 +1225,18 @@ export function ArtifactsPage() {
     nothingCached &&
     (remoteLoadable.state === "loading" || cachedLoadable.state === "loading");
   const error = nothingCached && remoteLoadable.state === "hasError";
-  const hasFilters =
-    search.trim().length > 0 ||
-    selectedAgentId !== null ||
-    selectedCategory !== null ||
-    (artifactFavoritesEnabled && favoritesOnly);
+  const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
+    const viewport = event.currentTarget;
+    syncScrollMetrics(viewport);
+    if (visibleCount >= artifacts.length) {
+      return;
+    }
+    const distanceFromBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (distanceFromBottom <= ARTIFACT_AUTO_LOAD_THRESHOLD_PX) {
+      loadMore();
+    }
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -902,13 +1248,17 @@ export function ArtifactsPage() {
               Artifacts
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Browse generated files from this organization.
+              Browse files from this organization.
             </p>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6 [scrollbar-gutter:stable]">
+      <main
+        ref={setScrollViewportRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6 [scrollbar-gutter:stable]"
+      >
         <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
           <ArtifactsToolbar
             search={search}
@@ -924,7 +1274,6 @@ export function ArtifactsPage() {
           />
           <ArtifactsList
             artifacts={artifacts}
-            hasFilters={hasFilters}
             loading={loading}
             error={error}
             visibleCount={visibleCount}

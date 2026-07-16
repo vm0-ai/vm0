@@ -9,7 +9,8 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
+import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
@@ -44,9 +45,9 @@ import {
   type InternalRunCallbackKind,
 } from "./internal-run-callback";
 import {
-  handleWorkflowTriggerInternalCallback,
-  handleWorkflowTriggerInternalCallback$,
-} from "./zero-workflow-trigger-run-callback.service";
+  handleWorkflowAutomationInternalCallback,
+  handleWorkflowAutomationInternalCallback$,
+} from "./zero-workflow-automation-run-callback.service";
 import { continueGoalIfIdle$ } from "./zero-goal-continuation.service";
 
 const L = logger("AgentRunCallback");
@@ -85,6 +86,23 @@ interface DispatchSingleCallbackInput {
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
+export async function chatCallbackIdForRun(
+  db: Db,
+  runId: string,
+): Promise<string | undefined> {
+  const [callback] = await db
+    .select({ id: agentRunCallbacks.id })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      ),
+    )
+    .limit(1);
+  return callback?.id;
+}
+
 interface DispatchInternalRunCallbackInput {
   readonly db: Db;
   readonly callback: CallbackRecord;
@@ -119,7 +137,24 @@ const dispatchInternalCallback$ = command(
         );
       }
       case "chat": {
-        return await set(handleChatInternalCallback$, input.envelope, signal);
+        return await set(
+          handleChatInternalCallback$,
+          {
+            callback: input.envelope,
+            drainThreadQueue: (chatThreadId, inputSignal, timing) => {
+              return set(
+                drainChatThreadQueueForThread$,
+                {
+                  chatThreadId,
+                  dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+                  timing,
+                },
+                inputSignal,
+              );
+            },
+          },
+          signal,
+        );
       }
       case "github:issues": {
         return await set(
@@ -149,10 +184,10 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
-      case "workflow-trigger:cron":
-      case "workflow-trigger:loop": {
+      case "workflow-automation:cron":
+      case "workflow-automation:loop": {
         return await set(
-          handleWorkflowTriggerInternalCallback$,
+          handleWorkflowAutomationInternalCallback$,
           { kind: input.kind, callback: input.envelope },
           signal,
         );
@@ -368,7 +403,7 @@ export const dispatchRunCallbacks$ = command(
       signal.throwIfAborted();
       results.push(dispatchResult);
     }
-    const goalContinuationResult = await settle(
+    await tapError(
       set(
         continueGoalIfIdle$,
         {
@@ -378,14 +413,11 @@ export const dispatchRunCallbacks$ = command(
         },
         signal,
       ),
+      (error) => {
+        L.error("Goal continuation dispatch failed", { runId, error });
+      },
     );
     signal.throwIfAborted();
-    if (!goalContinuationResult.ok) {
-      L.error("Goal continuation dispatch failed", {
-        runId,
-        error: goalContinuationResult.error,
-      });
-    }
     return results;
   },
 );
@@ -496,9 +528,9 @@ async function dispatchInternalCallbackWithoutCcstate(
         callbackEnvelope(input),
       );
     }
-    case "workflow-trigger:cron":
-    case "workflow-trigger:loop": {
-      return await handleWorkflowTriggerInternalCallback(input.db, {
+    case "workflow-automation:cron":
+    case "workflow-automation:loop": {
+      return await handleWorkflowAutomationInternalCallback(input.db, {
         kind,
         callback: callbackEnvelope(input),
       });

@@ -17,6 +17,7 @@
 //! flow are part of the runtime contract.
 
 mod child_env;
+mod child_exit_notifier;
 #[doc(hidden)]
 pub mod codex_app_server;
 mod codex_app_server_backend;
@@ -43,7 +44,7 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
-use event_delivery::{AckedEventPrefix, PreparedEvent};
+use event_delivery::{PreparedEvent, run_event_sender};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
@@ -53,6 +54,7 @@ use guest_contracts::diagnostics::{
 use process_group::ChildProcessGroup;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::io::{Seek, Write};
 use std::path::Path;
 use std::pin::Pin;
 use std::process::{ExitStatus, Stdio};
@@ -98,6 +100,19 @@ fn claude_user_frame<'a>(uuid: &str, text: &'a str) -> ClaudeUserFrame<'a> {
 fn claude_initial_prompt_frame<'a>(run_id: &str, prompt: &'a str) -> ClaudeUserFrame<'a> {
     let uuid = crate::active_input::claude_initial_prompt_uuid(run_id);
     claude_user_frame(&uuid, prompt)
+}
+
+fn codex_prompt_stdin(prompt: &str) -> Result<Stdio, AgentError> {
+    let mut file = tempfile::tempfile().map_err(|error| {
+        AgentError::Execution(format!("create anonymous Codex prompt stdin: {error}"))
+    })?;
+    file.write_all(prompt.as_bytes()).map_err(|error| {
+        AgentError::Execution(format!("write anonymous Codex prompt stdin: {error}"))
+    })?;
+    file.rewind().map_err(|error| {
+        AgentError::Execution(format!("rewind anonymous Codex prompt stdin: {error}"))
+    })?;
+    Ok(Stdio::from(file))
 }
 
 async fn write_claude_user_frame_to_stdin(
@@ -177,13 +192,23 @@ pub struct CliFailureDiagnostic {
 /// the event-drain watermark consumed by host/API clients.
 #[derive(Debug)]
 pub struct CliExecutionResult {
-    /// Process exit code for the CLI.
+    /// Terminal outcome code for the configured CLI backend.
     ///
-    /// On Unix, signal termination is mapped to `128 + signal`, matching shell
+    /// For ordinary CLI execution, this is the CLI process exit code. On Unix,
+    /// signal termination is mapped to `128 + signal`, matching shell
     /// convention, so SIGKILL is reported as `137`.
+    ///
+    /// For Codex app-server execution, completed turns map to `0`, while failed
+    /// or interrupted turns and terminal non-retry errors map to `1`. These are
+    /// protocol-level outcomes, not the child process wait status.
     pub exit_code: i32,
 
-    /// Raw CLI process exit observation before signal exits are flattened.
+    /// Raw CLI process exit observation before signal exits are flattened, when
+    /// available.
+    ///
+    /// `None` means raw process-exit attribution is unavailable. Codex
+    /// app-server execution leaves this unset because its outcome is derived
+    /// from terminal protocol events, not the child process wait status.
     pub cli_observed_exit: Option<CliObservedExitDiagnostic>,
 
     /// Best-effort, secret-masked stderr tail captured from the CLI.
@@ -490,7 +515,7 @@ impl CliEventIngestor {
             let payload =
                 events::prepare_event_payload_for_run_id(event, self.seq, masker, &self.run_id);
             if event_tx
-                .send(PreparedEvent::Webhook {
+                .send(PreparedEvent {
                     sequence: self.seq,
                     payload,
                 })
@@ -561,11 +586,6 @@ async fn execute_cli_inner(
 
     let mut cmd = tokio::process::Command::new(bin);
     cmd.args(args)
-        .stdin(if behavior.uses_stream_json_stdin() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
@@ -631,6 +651,11 @@ async fn execute_cli_inner(
         &child_env_values,
     )
     .map_err(AgentError::Execution)?;
+    let stdin = match runtime.framework {
+        env::Framework::ClaudeCode => Stdio::piped(),
+        env::Framework::Codex => codex_prompt_stdin(runtime.prompt.as_ref())?,
+    };
+    cmd.stdin(stdin);
     child_env::apply_values_to_tokio_command(&mut cmd, &child_env_values);
     // Set the child cwd explicitly at spawn time so the CLI observes the
     // current canonical workspace mount instead of relying on inherited cwd.
@@ -732,35 +757,13 @@ async fn execute_cli_inner(
     // Background event sender: HTTP POSTs happen here, never in the
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
+    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
-    let event_http = http.clone();
-    let event_error_flag = runtime.event_error_flag.to_string();
-    let event_sender = tokio::spawn(async move {
-        let mut acked_prefix = AckedEventPrefix::default();
-        while let Some(event) = event_rx.recv().await {
-            match event {
-                PreparedEvent::Webhook { sequence, payload } => {
-                    match events::post_event_with_error_flag(
-                        &event_http,
-                        &payload,
-                        &event_error_flag,
-                    )
-                    .await
-                    {
-                        Ok(()) => {
-                            acked_prefix.record_success(sequence);
-                        }
-                        Err(e) => {
-                            acked_prefix.record_failure(sequence);
-                            log_warn!(LOG_TAG, "Event send failed: {e}");
-                        }
-                    }
-                }
-            }
-        }
-        acked_prefix.last_contiguous()
-    });
+    let event_sender = tokio::spawn(run_event_sender(
+        event_rx,
+        http.clone(),
+        runtime.event_error_flag.to_string(),
+    ));
 
     let mut heartbeat_done = false;
     let mut cli_exit_at: Option<Instant> = None;
@@ -1462,11 +1465,38 @@ mod tests {
     }
 
     #[test]
-    fn legacy_codex_large_prompt_is_rejected_by_process_argv_guard() {
+    fn ordinary_codex_large_prompt_is_not_rejected_by_process_argv_guard() {
         let user_env = HashMap::new();
         let prompt = "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
         let runtime =
             runtime_for_exec_boundary_test(env::Framework::Codex, &prompt, "", false, &user_env);
+
+        let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
+        let (bin, args) = cmd.split_first().unwrap();
+        let env_values = child_env::values_for_runtime(&runtime);
+        exec_boundary::validate_process_argv_env(
+            "test cli child",
+            bin,
+            args.iter().map(String::as_str),
+            &env_values,
+        )
+        .unwrap();
+
+        assert!(!args.iter().any(|arg| arg == &prompt));
+    }
+
+    #[test]
+    fn ordinary_codex_large_developer_instructions_still_fail_process_argv_guard() {
+        let user_env = HashMap::new();
+        let append_system_prompt =
+            "x".repeat(guest_contracts::exec_limits::EXECVE_STRING_MAX_BYTES + 1);
+        let runtime = runtime_for_exec_boundary_test(
+            env::Framework::Codex,
+            "user prompt",
+            &append_system_prompt,
+            false,
+            &user_env,
+        );
 
         let cmd = command::build_cli_command_for_runtime(&runtime, false).unwrap();
         let (bin, args) = cmd.split_first().unwrap();
@@ -1480,7 +1510,9 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("argv value too large"));
-        assert!(!error.contains(&prompt));
+        assert!(error.contains("length="));
+        assert!(error.contains("max=131071"));
+        assert!(!error.contains(&append_system_prompt));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
-  ZeroWorkflowTriggerSummary,
+  ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 export function workflowTitle(workflow: {
@@ -54,11 +54,13 @@ export function formatWorkflowIntervalSeconds(seconds: number): string {
   return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
-export function triggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
-  if (trigger.kind === "schedule") {
+export function automationKindLabel(
+  automation: ZeroWorkflowAutomationSummary,
+): string {
+  if (automation.kind === "schedule") {
     return "Schedule automation";
   }
-  return trigger.eventType === "webhook-received"
+  return automation.eventType === "webhook-received"
     ? "Webhook automation"
     : "Event automation";
 }
@@ -181,82 +183,84 @@ export function formatGmailMatchSummary(
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
 }
 
-export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
-  if (trigger.kind === "schedule") {
-    return trigger.scheduleSummary;
+export function gmailAutomationTitle(
+  automation: ZeroWorkflowAutomationSummary,
+): string {
+  if (automation.kind === "schedule") {
+    return automation.scheduleSummary;
   }
-  if (trigger.eventType === "gmail-label-applied") {
+  if (automation.eventType === "gmail-label-applied") {
     return "Gmail label applied";
   }
-  if (trigger.eventType === "gmail-new-message") {
+  if (automation.eventType === "gmail-new-message") {
     return "Gmail new message";
   }
-  if (trigger.eventType === "github-label-applied") {
+  if (automation.eventType === "github-label-applied") {
     return "GitHub label applied";
   }
-  if (trigger.eventType === "google-calendar-event-created") {
+  if (automation.eventType === "google-calendar-event-created") {
     return "Google Calendar event created";
   }
-  if (trigger.eventType === "google-calendar-event-updated") {
+  if (automation.eventType === "google-calendar-event-updated") {
     return "Google Calendar event updated";
   }
-  if (trigger.eventType === "google-calendar-event-cancelled") {
+  if (automation.eventType === "google-calendar-event-cancelled") {
     return "Google Calendar event cancelled";
   }
-  if (trigger.eventType === "google-meet-transcript-generated") {
+  if (automation.eventType === "google-meet-transcript-generated") {
     return "Google Meet transcript ready";
   }
-  if (trigger.eventType === "notion-child-page-created") {
+  if (automation.eventType === "notion-child-page-created") {
     return "New Notion child page";
   }
-  if (trigger.eventType === "notion-database-item-created") {
+  if (automation.eventType === "notion-database-item-created") {
     return "New Notion database item";
   }
-  if (trigger.eventType === "notion-page-content-updated") {
+  if (automation.eventType === "notion-page-content-updated") {
     return "Notion page content updated";
   }
   return "Webhook automation";
 }
 
-export function gmailTriggerSummary(
-  trigger: ZeroWorkflowTriggerSummary,
+export function gmailAutomationSummary(
+  automation: ZeroWorkflowAutomationSummary,
 ): string | null {
-  if (trigger.kind !== "event") {
+  if (automation.kind !== "event") {
     return null;
   }
-  if (trigger.eventType === "gmail-label-applied") {
-    return `Label ${quote(trigger.eventConfig.labelName)}`;
+  if (automation.eventType === "gmail-label-applied") {
+    return `Label ${quote(automation.eventConfig.labelName)}`;
   }
-  if (trigger.eventType === "gmail-new-message") {
-    return formatGmailMatchSummary(trigger.eventConfig);
+  if (automation.eventType === "gmail-new-message") {
+    return formatGmailMatchSummary(automation.eventConfig);
   }
-  if (trigger.eventType === "github-label-applied") {
-    return `Label ${quote(trigger.eventConfig.labelName)}`;
+  if (automation.eventType === "github-label-applied") {
+    return `Label ${quote(automation.eventConfig.labelName)}`;
   }
   if (
-    trigger.eventType === "google-calendar-event-created" ||
-    trigger.eventType === "google-calendar-event-updated" ||
-    trigger.eventType === "google-calendar-event-cancelled"
+    automation.eventType === "google-calendar-event-created" ||
+    automation.eventType === "google-calendar-event-updated" ||
+    automation.eventType === "google-calendar-event-cancelled"
   ) {
-    return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
+    return `Calendar ${quote(automation.eventConfig.calendarId)}`;
   }
-  if (trigger.eventType === "google-meet-transcript-generated") {
+  if (automation.eventType === "google-meet-transcript-generated") {
     return "Meetings you organize";
   }
-  if (trigger.eventType === "notion-child-page-created") {
-    const title = trigger.eventConfig.parentPage.title;
+  if (automation.eventType === "notion-child-page-created") {
+    const title = automation.eventConfig.parentPage.title;
     return title ? `Parent page ${quote(title)}` : "Configured parent page";
   }
-  if (trigger.eventType === "notion-database-item-created") {
-    const title = trigger.eventConfig.dataSource.title;
+  if (automation.eventType === "notion-database-item-created") {
+    const title = automation.eventConfig.dataSource.title;
     return title ? `Database ${quote(title)}` : "Configured database";
   }
-  if (trigger.eventType === "notion-page-content-updated") {
-    if (trigger.eventConfig.scope.type === "page") {
-      const title = trigger.eventConfig.scope.page.title;
+  if (automation.eventType === "notion-page-content-updated") {
+    if (automation.eventConfig.scope.type === "page") {
+      const title = automation.eventConfig.scope.page.title;
       return title ? `Page ${quote(title)}` : "Configured page";
     }
-    const title = trigger.eventConfig.scope.dataSource.title;
+    const title = automation.eventConfig.scope.dataSource.title;
     return title ? `Database ${quote(title)}` : "Configured database";
   }
   return null;

@@ -603,22 +603,72 @@ const fn session_history_download_source_value(
     }
 }
 
-const fn size_bucket(size: u64) -> &'static str {
-    if size < SIZE_64_KIB {
-        "lt_64_kib"
-    } else if size < SIZE_256_KIB {
-        "64_256_kib"
-    } else if size < SIZE_1_MIB {
-        "256_kib_1_mib"
-    } else if size < SIZE_4_MIB {
-        "1_4_mib"
-    } else if size < SIZE_16_MIB {
-        "4_16_mib"
-    } else if size < SIZE_64_MIB {
-        "16_64_mib"
-    } else {
-        "64_128_mib"
+#[derive(Clone, Copy)]
+enum SessionHistorySizeBucket {
+    LessThan64Kib,
+    From64To256Kib,
+    From256KibTo1Mib,
+    From1To4Mib,
+    From4To16Mib,
+    From16To64Mib,
+    From64To128Mib,
+}
+
+impl SessionHistorySizeBucket {
+    const fn from_size(size: u64) -> Self {
+        if size < SIZE_64_KIB {
+            Self::LessThan64Kib
+        } else if size < SIZE_256_KIB {
+            Self::From64To256Kib
+        } else if size < SIZE_1_MIB {
+            Self::From256KibTo1Mib
+        } else if size < SIZE_4_MIB {
+            Self::From1To4Mib
+        } else if size < SIZE_16_MIB {
+            Self::From4To16Mib
+        } else if size < SIZE_64_MIB {
+            Self::From16To64Mib
+        } else {
+            Self::From64To128Mib
+        }
     }
+
+    const fn value(self) -> &'static str {
+        match self {
+            Self::LessThan64Kib => "lt_64_kib",
+            Self::From64To256Kib => "64_256_kib",
+            Self::From256KibTo1Mib => "256_kib_1_mib",
+            Self::From1To4Mib => "1_4_mib",
+            Self::From4To16Mib => "4_16_mib",
+            Self::From16To64Mib => "16_64_mib",
+            Self::From64To128Mib => "64_128_mib",
+        }
+    }
+
+    const fn requested_larger_prefix_extension_action_type(self) -> &'static str {
+        match self {
+            Self::LessThan64Kib => "session_history_requested_larger_prefix_extension_lt_64_kib",
+            Self::From64To256Kib => "session_history_requested_larger_prefix_extension_64_256_kib",
+            Self::From256KibTo1Mib => {
+                "session_history_requested_larger_prefix_extension_256_kib_1_mib"
+            }
+            Self::From1To4Mib => "session_history_requested_larger_prefix_extension_1_4_mib",
+            Self::From4To16Mib => "session_history_requested_larger_prefix_extension_4_16_mib",
+            Self::From16To64Mib => "session_history_requested_larger_prefix_extension_16_64_mib",
+            Self::From64To128Mib => "session_history_requested_larger_prefix_extension_64_128_mib",
+        }
+    }
+}
+
+const fn size_bucket(size: u64) -> &'static str {
+    SessionHistorySizeBucket::from_size(size).value()
+}
+
+pub(crate) const fn session_history_prefix_extension_action_type(
+    raw_extension_size: u64,
+) -> &'static str {
+    SessionHistorySizeBucket::from_size(raw_extension_size)
+        .requested_larger_prefix_extension_action_type()
 }
 
 fn compression_ratio_bucket(
@@ -777,6 +827,85 @@ mod tests {
         assert_eq!(json["duration_ms"], 1500);
         assert_eq!(json["success"], true);
         assert!(json.get("error").is_none()); // omitted when None
+    }
+
+    #[test]
+    fn session_history_size_bucket_boundaries_keep_stable_labels_and_actions() {
+        let cases = [
+            (
+                0,
+                "lt_64_kib",
+                "session_history_requested_larger_prefix_extension_lt_64_kib",
+            ),
+            (
+                SIZE_64_KIB - 1,
+                "lt_64_kib",
+                "session_history_requested_larger_prefix_extension_lt_64_kib",
+            ),
+            (
+                SIZE_64_KIB,
+                "64_256_kib",
+                "session_history_requested_larger_prefix_extension_64_256_kib",
+            ),
+            (
+                SIZE_256_KIB - 1,
+                "64_256_kib",
+                "session_history_requested_larger_prefix_extension_64_256_kib",
+            ),
+            (
+                SIZE_256_KIB,
+                "256_kib_1_mib",
+                "session_history_requested_larger_prefix_extension_256_kib_1_mib",
+            ),
+            (
+                SIZE_1_MIB - 1,
+                "256_kib_1_mib",
+                "session_history_requested_larger_prefix_extension_256_kib_1_mib",
+            ),
+            (
+                SIZE_1_MIB,
+                "1_4_mib",
+                "session_history_requested_larger_prefix_extension_1_4_mib",
+            ),
+            (
+                SIZE_4_MIB - 1,
+                "1_4_mib",
+                "session_history_requested_larger_prefix_extension_1_4_mib",
+            ),
+            (
+                SIZE_4_MIB,
+                "4_16_mib",
+                "session_history_requested_larger_prefix_extension_4_16_mib",
+            ),
+            (
+                SIZE_16_MIB - 1,
+                "4_16_mib",
+                "session_history_requested_larger_prefix_extension_4_16_mib",
+            ),
+            (
+                SIZE_16_MIB,
+                "16_64_mib",
+                "session_history_requested_larger_prefix_extension_16_64_mib",
+            ),
+            (
+                SIZE_64_MIB - 1,
+                "16_64_mib",
+                "session_history_requested_larger_prefix_extension_16_64_mib",
+            ),
+            (
+                SIZE_64_MIB,
+                "64_128_mib",
+                "session_history_requested_larger_prefix_extension_64_128_mib",
+            ),
+        ];
+
+        for (size, expected_label, expected_action) in cases {
+            assert_eq!(size_bucket(size), expected_label);
+            assert_eq!(
+                session_history_prefix_extension_action_type(size),
+                expected_action
+            );
+        }
     }
 
     #[test]

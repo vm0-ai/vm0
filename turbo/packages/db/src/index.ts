@@ -54,6 +54,7 @@ import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
 import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
+import * as e2eTeamsMockCallLogSchema from "./schema/e2e-teams-mock-call-log";
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
 import * as orgSchema from "./schema/org-metadata";
 import * as orgPlanEntitlementSchema from "./schema/org-plan-entitlement";
@@ -78,6 +79,7 @@ import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroWorkflowSchema from "./schema/zero-workflow";
 import * as zeroWorkflowQueueSchema from "./schema/zero-workflow-queue";
+import * as chatMessageQueueSchema from "./schema/chat-message-queue";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
@@ -92,6 +94,7 @@ import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-s
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as htmlArtifactEditDraftSchema from "./schema/html-artifact-edit-draft";
+import * as imageArtifactEditSnapshotSchema from "./schema/image-artifact-edit-snapshot";
 import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
@@ -103,6 +106,7 @@ import * as gmailEventSchema from "./schema/gmail-event";
 import * as notionEventSchema from "./schema/notion-event";
 import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
+import * as connectorCatalogSchema from "./schema/connector-catalog";
 
 export const schema = {
   ...userSchema,
@@ -135,6 +139,7 @@ export const schema = {
   ...teamsOrgConnectionSchema,
   ...teamsOrgThreadSessionSchema,
   ...teamsUserAgentPreferenceSchema,
+  ...e2eTeamsMockCallLogSchema,
   ...e2eTelegramMockCallLogSchema,
   ...variableSchema,
   ...composeJobSchema,
@@ -185,6 +190,7 @@ export const schema = {
   ...vm0ApiKeySchema,
   ...zeroWorkflowSchema,
   ...zeroWorkflowQueueSchema,
+  ...chatMessageQueueSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,
   ...userFeatureSwitchesSchema,
@@ -199,6 +205,7 @@ export const schema = {
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
   ...htmlArtifactEditDraftSchema,
+  ...imageArtifactEditSnapshotSchema,
   ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,
@@ -210,6 +217,7 @@ export const schema = {
   ...notionEventSchema,
   ...googleCalendarEventSchema,
   ...googleWorkspaceEventSchema,
+  ...connectorCatalogSchema,
 };
 
 export type DatabaseSchema = typeof schema;

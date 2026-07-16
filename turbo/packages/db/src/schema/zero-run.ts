@@ -10,12 +10,12 @@ import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
 import { chatThreads } from "./chat-thread";
-import { zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations } from "./zero-workflow";
 import { threadGoals } from "./thread-goal";
 
 /**
  * Zero Runs table
- * Stores Zero-specific run metadata (trigger source, automation provenance) as first-class columns.
+ * Stores Zero-specific run metadata (trigger source, Workflow provenance) as first-class columns.
  * PK is the agent_runs.id — extends agent_runs with Zero-layer context.
  */
 export const zeroRuns = pgTable(
@@ -30,14 +30,14 @@ export const zeroRuns = pgTable(
         { onDelete: "cascade" },
       ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
-    // Run provenance for workflow schedule triggers.
-    workflowTriggerId: uuid("workflow_trigger_id").references(
+    // Canonical run provenance for the Automation that started this run.
+    workflowAutomationId: uuid("workflow_automation_id").references(
       (): AnyPgColumn => {
-        return zeroWorkflowTriggers.id;
+        return zeroWorkflowAutomations.id;
       },
       { onDelete: "set null" },
     ),
-    // Stable grouping key copied from workflow triggers/goals for chat
+    // Stable grouping key copied from workflow automations/goals for chat
     // rendering of repeated automated runs.
     runGroupId: uuid("run_group_id"),
     // Run provenance for autonomous thread-goal continuation.
@@ -78,9 +78,9 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_chat_thread_id")
         .on(table.chatThreadId)
         .where(sql`chat_thread_id IS NOT NULL`),
-      index("idx_zero_runs_workflow_trigger")
-        .on(table.workflowTriggerId)
-        .where(sql`workflow_trigger_id IS NOT NULL`),
+      index("idx_zero_runs_workflow_automation")
+        .on(table.workflowAutomationId)
+        .where(sql`workflow_automation_id IS NOT NULL`),
       index("idx_zero_runs_run_group")
         .on(table.runGroupId)
         .where(sql`run_group_id IS NOT NULL`),

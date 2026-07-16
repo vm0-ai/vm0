@@ -4,11 +4,13 @@ export const googleDrive = {
   "google-drive": {
     label: "Google Drive",
     category: "docs-files-knowledge",
-    helpText: "Connect your Google account to access and manage files in Drive",
+    helpText:
+      "Connect your Google account to manage Drive files and Google Slides presentations",
     authMethods: {
       oauth: {
         label: "OAuth (Recommended)",
-        helpText: "Sign in with Google to grant Google Drive access.",
+        helpText:
+          "Sign in with Google to grant Google Drive and Slides access.",
         client: {
           clientRegistration: "static",
           clientType: "confidential",

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -11,7 +11,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -20,7 +20,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-api-workflow";
@@ -29,8 +29,8 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 function queueClient() {
@@ -63,12 +63,13 @@ async function setup(
     name: WORKFLOW_NAME,
   });
   const fixture = { orgId: actor.orgId, userId: actor.userId };
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-    ...(options.workflowQueue === false
+  await updateFeatureSwitchesForUser(
+    context,
+    fixture,
+    options.workflowQueue === false
       ? {}
-      : { [FeatureSwitchKey.WorkflowQueue]: true }),
-  });
+      : { [FeatureSwitchKey.WorkflowQueue]: true },
+  );
   mocks.clerk.session(actor.userId, actor.orgId);
   context.mocks.s3.send.mockResolvedValue({});
   return {
@@ -81,18 +82,18 @@ async function setup(
   };
 }
 
-interface WebhookTrigger {
-  readonly triggerId: string;
+interface WebhookAutomation {
+  readonly automationId: string;
   readonly threadId: string;
   readonly token: string;
   readonly secret: string;
 }
 
-async function createWebhookTrigger(
+async function createWebhookAutomation(
   scenario: Scenario,
-): Promise<WebhookTrigger> {
+): Promise<WebhookAutomation> {
   const created = await accept(
-    triggersClient().create({
+    automationsClient().create({
       headers: authHeaders(),
       params: { workflowId: scenario.workflowId },
       body: { kind: "event", eventType: "webhook-received" },
@@ -106,14 +107,14 @@ async function createWebhookTrigger(
     !created.body.webhookSecret ||
     !created.body.chatThreadId
   ) {
-    throw new Error("Expected a thread-bound webhook trigger with a secret");
+    throw new Error("Expected a thread-bound webhook automation with a secret");
   }
   const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
   if (!token) {
     throw new Error("Expected webhook URL token");
   }
   return {
-    triggerId: created.body.id,
+    automationId: created.body.id,
     threadId: created.body.chatThreadId,
     token,
     secret: created.body.webhookSecret,
@@ -121,13 +122,13 @@ async function createWebhookTrigger(
 }
 
 async function postWorkflowWebhook(
-  trigger: WebhookTrigger,
+  automation: WebhookAutomation,
   payload: string,
 ): Promise<string | null> {
   const rawBody = JSON.stringify({ event: payload });
   const timestamp = Math.floor(now() / 1000);
   const response = await createApp({ signal: context.signal }).request(
-    `/api/webhooks/workflow-triggers/${trigger.token}`,
+    `/api/webhooks/workflow-automations/${automation.token}`,
     {
       method: "POST",
       headers: {
@@ -135,7 +136,7 @@ async function postWorkflowWebhook(
         "X-VM0-Timestamp": String(timestamp),
         "X-VM0-Signature": computeHmacSignature(
           rawBody,
-          trigger.secret,
+          automation.secret,
           timestamp,
         ),
       },
@@ -147,7 +148,7 @@ async function postWorkflowWebhook(
   return body.runId ?? null;
 }
 
-/** Run ids of trigger-fired `/workflow-name` user messages, oldest first. */
+/** Run ids of automation-fired `/workflow-name` user messages, oldest first. */
 async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   const messages = await wf.readThreadMessages(threadId);
   return messages.flatMap((message) => {
@@ -192,30 +193,30 @@ async function completeRunThroughSandbox(
 /** Occupy the workflow with one run and leave `pendingCount` queued events. */
 async function busyQueueFixture(pendingCount: number): Promise<{
   readonly scenario: Scenario;
-  readonly trigger: WebhookTrigger;
+  readonly automation: WebhookAutomation;
   readonly runningRunId: string;
 }> {
   const scenario = await setup();
-  const trigger = await createWebhookTrigger(scenario);
-  const runningRunId = await postWorkflowWebhook(trigger, "busy");
+  const automation = await createWebhookAutomation(scenario);
+  const runningRunId = await postWorkflowWebhook(automation, "busy");
   if (!runningRunId) {
     throw new Error("Expected the first webhook event to create a run");
   }
   for (let index = 0; index < pendingCount; index++) {
-    const queued = await postWorkflowWebhook(trigger, `pending-${index}`);
+    const queued = await postWorkflowWebhook(automation, `pending-${index}`);
     expect(queued).toBeNull();
   }
-  return { scenario, trigger, runningRunId };
+  return { scenario, automation, runningRunId };
 }
 
 describe("workflow queue API", () => {
   it("returns the running run, FIFO pending events, and pause state", async () => {
-    const { trigger, runningRunId } = await busyQueueFixture(2);
+    const { automation, runningRunId } = await busyQueueFixture(2);
 
     const queue = await accept(
       queueClient().get({
         headers: authHeaders(),
-        params: { threadId: trigger.threadId },
+        params: { threadId: automation.threadId },
       }),
       [200],
     );
@@ -225,7 +226,7 @@ describe("workflow queue API", () => {
       queue.body.pending.map((event) => {
         return event.triggerId;
       }),
-    ).toStrictEqual([trigger.triggerId, trigger.triggerId]);
+    ).toStrictEqual([automation.automationId, automation.automationId]);
     expect(Date.parse(queue.body.pending[0]!.createdAt)).toBeLessThanOrEqual(
       Date.parse(queue.body.pending[1]!.createdAt),
     );
@@ -235,24 +236,24 @@ describe("workflow queue API", () => {
 
   it("rejects queue reads when the feature switch is off", async () => {
     const scenario = await setup({ workflowQueue: false });
-    const trigger = await createWebhookTrigger(scenario);
+    const automation = await createWebhookAutomation(scenario);
 
     await accept(
       queueClient().get({
         headers: authHeaders(),
-        params: { threadId: trigger.threadId },
+        params: { threadId: automation.threadId },
       }),
       [403],
     );
   });
 
   it("skips a single pending event", async () => {
-    const { scenario, trigger, runningRunId } = await busyQueueFixture(2);
+    const { scenario, automation, runningRunId } = await busyQueueFixture(2);
 
     const before = await accept(
       queueClient().get({
         headers: authHeaders(),
-        params: { threadId: trigger.threadId },
+        params: { threadId: automation.threadId },
       }),
       [200],
     );
@@ -267,35 +268,35 @@ describe("workflow queue API", () => {
 
     // Only the remaining event drains after the running run completes.
     await completeRunThroughSandbox(scenario, runningRunId);
-    const runIds = await workflowRunIds(trigger.threadId);
+    const runIds = await workflowRunIds(automation.threadId);
     expect(runIds).toHaveLength(2);
     await completeRunThroughSandbox(scenario, runIds[1]!);
-    await expect(workflowRunIds(trigger.threadId)).resolves.toHaveLength(2);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
   });
 
   it("clears all pending events", async () => {
-    const { scenario, trigger, runningRunId } = await busyQueueFixture(2);
+    const { scenario, automation, runningRunId } = await busyQueueFixture(2);
 
     const cleared = await accept(
       queueClient().clear({
         headers: authHeaders(),
-        params: { threadId: trigger.threadId },
+        params: { threadId: automation.threadId },
       }),
       [200],
     );
     expect(cleared.body.pending).toHaveLength(0);
 
     await completeRunThroughSandbox(scenario, runningRunId);
-    await expect(workflowRunIds(trigger.threadId)).resolves.toHaveLength(1);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(1);
   });
 
   it("pause freezes consumption while intake continues; resume drains", async () => {
-    const { scenario, trigger, runningRunId } = await busyQueueFixture(1);
+    const { scenario, automation, runningRunId } = await busyQueueFixture(1);
 
     const paused = await accept(
       queueClient().pause({
         headers: authHeaders(),
-        params: { threadId: trigger.threadId },
+        params: { threadId: automation.threadId },
       }),
       [200],
     );
@@ -303,7 +304,7 @@ describe("workflow queue API", () => {
 
     // Intake continues while paused.
     await expect(
-      postWorkflowWebhook(trigger, "while-paused"),
+      postWorkflowWebhook(automation, "while-paused"),
     ).resolves.toBeNull();
 
     // Terminal run does not drain a paused queue.
@@ -311,7 +312,7 @@ describe("workflow queue API", () => {
     const stillPaused = await accept(
       queueClient().get({
         headers: authHeaders(),
-        params: { threadId: trigger.threadId },
+        params: { threadId: automation.threadId },
       }),
       [200],
     );
@@ -322,7 +323,7 @@ describe("workflow queue API", () => {
     const resumed = await accept(
       queueClient().resume({
         headers: authHeaders(),
-        params: { threadId: trigger.threadId },
+        params: { threadId: automation.threadId },
       }),
       [200],
     );

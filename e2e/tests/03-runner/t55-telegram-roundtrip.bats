@@ -4,7 +4,7 @@
 # run completes -> callback posts the reply to the Telegram Bot API mock.
 #
 # Required env:
-#   VM0_API_URL                      — preview deployment URL
+#   VM0_API_BACKEND_URL                      — preview deployment URL
 #   VERCEL_AUTOMATION_BYPASS_SECRET  — preview protection bypass
 #   E2E_RUNNER_EMAIL                 — runner test user provisioned by CI
 #
@@ -22,8 +22,8 @@ TELEGRAM_USER_ID="$TELEGRAM_FIXTURE_USER_ID"
 DM_CHAT_ID="${TELEGRAM_FIXTURE_CHAT_ID}${GITHUB_RUN_ID:-0}"
 
 setup_file() {
-    if [[ -z "${VM0_API_URL:-}" ]]; then
-        skip "VM0_API_URL not set"
+    if [[ -z "${VM0_API_BACKEND_URL:-}" ]]; then
+        skip "VM0_API_BACKEND_URL not set"
     fi
     export E2E_SERIAL_EMAIL="${E2E_RUNNER_EMAIL:-${E2E_SERIAL_EMAIL:-}}"
     export BOT_ID TELEGRAM_USER_ID DM_CHAT_ID TELEGRAM_ROUNDTRIP_PROMPT
@@ -46,7 +46,7 @@ setup_file() {
         -H "Content-Type: application/json" \
         "${bypass[@]}" \
         --data '{}' \
-        "$VM0_API_URL/api/test/telegram-mock/bot$TELEGRAM_FIXTURE_BOT_TOKEN/getMe")
+        "$VM0_API_BACKEND_URL/api/test/telegram-mock/bot$TELEGRAM_FIXTURE_BOT_TOKEN/getMe")
     if [[ "$code" != "200" ]]; then
         echo "# mock endpoint /api/test/telegram-mock/.../getMe returned HTTP $code" >&2
         return 1

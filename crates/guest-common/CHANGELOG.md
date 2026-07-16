@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.40](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.39...guest-common-v0.2.40) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.2.39](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.38...guest-common-v0.2.39) (2026-07-15)
+
+## [0.2.38](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.37...guest-common-v0.2.38) (2026-07-14)
+
+
+### Performance Improvements
+
+* **guest-common:** reuse sandbox telemetry file handle ([#21462](https://github.com/vm0-ai/vm0/issues/21462)) ([1cfd791](https://github.com/vm0-ai/vm0/commit/1cfd791c5c5eaa71e9d4e6acc4aefe18bc89b180))
+
+## [0.2.37](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.36...guest-common-v0.2.37) (2026-07-13)
+
+## [0.2.36](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.35...guest-common-v0.2.36) (2026-07-13)
+
+
+### Documentation
+
+* **guest-common:** document process-global log sinks ([#21194](https://github.com/vm0-ai/vm0/issues/21194)) ([7a336b1](https://github.com/vm0-ai/vm0/commit/7a336b17b8cd5cef7f0a9d5c84be78fd6552e4c7))
+
 ## [0.2.35](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.34...guest-common-v0.2.35) (2026-07-10)
 
 ## [0.2.34](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.33...guest-common-v0.2.34) (2026-07-09)

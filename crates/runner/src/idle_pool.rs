@@ -10,6 +10,8 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 
+use crate::idle_reuse_preparation::prepare_sandbox_for_idle_reuse;
+use crate::ids::RunId;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::status::IdleVm;
@@ -135,6 +137,7 @@ pub(crate) struct IdleParkRequest {
 
 #[must_use = "idle park request parts own active sandbox and budget"]
 pub(crate) struct IdleParkRequestParts {
+    pub(crate) run_id: RunId,
     pub(crate) sandbox: Box<dyn Sandbox>,
     pub(crate) factory: Arc<Box<dyn SandboxFactory>>,
     pub(crate) cli_agent_session_id: String,
@@ -145,6 +148,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) source_ip: String,
     pub(crate) storage_fingerprints: StorageFingerprints,
     pub(crate) restored_session_identity: Option<RestoredSessionIdentity>,
+    pub(crate) history_generation_run_id: Option<RunId>,
     pub(crate) workspace_image_size_bytes: u64,
     pub(crate) workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
@@ -164,6 +168,7 @@ struct IdleSandboxMetadata {
     /// Verified hash-backed resume state restored into this sandbox before it
     /// was parked. Missing means reuse must fall back to materialize+restore.
     restored_session_identity: Option<RestoredSessionIdentity>,
+    history_generation_run_id: Option<RunId>,
     /// Local terminal timestamp for this parked session.
     ///
     /// `None` is reserved for synthetic test entries and means the VM is not
@@ -172,27 +177,6 @@ struct IdleSandboxMetadata {
 }
 
 impl IdleSandboxMetadata {
-    fn new(
-        cli_agent_session_id: String,
-        sandbox_id: SandboxId,
-        profile_name: String,
-        device_rate_limits: Option<DeviceRateLimits>,
-        source_ip: String,
-        storage_fingerprints: StorageFingerprints,
-        restored_session_identity: Option<RestoredSessionIdentity>,
-    ) -> Self {
-        Self {
-            cli_agent_session_id,
-            sandbox_id,
-            profile_name,
-            device_rate_limits,
-            source_ip,
-            storage_fingerprints,
-            restored_session_identity,
-            last_completed_at: None,
-        }
-    }
-
     fn cli_agent_session_id(&self) -> &str {
         &self.cli_agent_session_id
     }
@@ -250,6 +234,7 @@ pub struct ParkedIdleCandidate {
 pub(crate) struct IdleParkFailure {
     resources: IdleSandboxResources,
     budget_lease: BudgetLease,
+    reason: &'static str,
     error: String,
 }
 
@@ -264,6 +249,7 @@ pub(crate) struct IdleParkActiveParts {
 #[must_use = "idle park failure parts must be logged and cleaned up"]
 pub(crate) struct IdleParkFailureParts {
     pub(crate) active: IdleParkActiveParts,
+    pub(crate) reason: &'static str,
     pub(crate) error: String,
 }
 
@@ -274,6 +260,7 @@ impl IdleParkRequest {
 
     pub(crate) async fn park_for_idle(self) -> Result<ParkedIdleCandidate, IdleParkFailure> {
         let IdleParkRequestParts {
+            run_id,
             mut sandbox,
             factory,
             cli_agent_session_id,
@@ -284,11 +271,17 @@ impl IdleParkRequest {
             source_ip,
             storage_fingerprints,
             restored_session_identity,
+            history_generation_run_id,
             workspace_image_size_bytes,
             workspace_promotion,
         } = self.parts;
 
-        let metadata = IdleSandboxMetadata::new(
+        let retained_runtime_dir = restored_session_identity
+            .as_ref()
+            .and_then(RestoredSessionIdentity::final_metadata_verification)
+            .map(|verification| verification.runtime_dir.to_owned());
+
+        let metadata = IdleSandboxMetadata {
             cli_agent_session_id,
             sandbox_id,
             profile_name,
@@ -296,7 +289,9 @@ impl IdleParkRequest {
             source_ip,
             storage_fingerprints,
             restored_session_identity,
-        );
+            history_generation_run_id,
+            last_completed_at: None,
+        };
 
         if let Some(promotion) = workspace_promotion.as_ref()
             && let Err(mismatch) =
@@ -326,7 +321,27 @@ impl IdleParkRequest {
                     workspace_promotion: None,
                 },
                 budget_lease,
+                reason: "promotion_identity_mismatch",
                 error: format!("workspace promotion identity mismatch: {mismatch}"),
+            });
+        }
+
+        if let Err(error) = prepare_sandbox_for_idle_reuse(
+            sandbox.as_ref(),
+            run_id,
+            retained_runtime_dir.as_deref(),
+        )
+        .await
+        {
+            return Err(IdleParkFailure {
+                resources: IdleSandboxResources {
+                    sandbox,
+                    factory,
+                    workspace_promotion,
+                },
+                budget_lease,
+                reason: "reuse_preparation_failed",
+                error: error.to_string(),
             });
         }
 
@@ -347,6 +362,7 @@ impl IdleParkRequest {
                     workspace_promotion,
                 },
                 budget_lease,
+                reason: "park_failed",
                 error: e.to_string(),
             }),
             Err(_) => {
@@ -360,6 +376,7 @@ impl IdleParkRequest {
                         workspace_promotion: None,
                     },
                     budget_lease,
+                    reason: "park_panicked",
                     error: "sandbox park panicked".into(),
                 })
             }
@@ -372,6 +389,7 @@ impl IdleParkFailure {
         let Self {
             resources,
             budget_lease,
+            reason,
             error,
         } = self;
         let IdleSandboxResources {
@@ -386,6 +404,7 @@ impl IdleParkFailure {
                 budget_lease,
                 workspace_promotion,
             },
+            reason,
             error,
         }
     }
@@ -534,6 +553,7 @@ impl ReusableIdleSandbox {
             source_ip,
             storage_fingerprints,
             restored_session_identity,
+            history_generation_run_id: _,
             last_completed_at: _,
         } = metadata;
 
@@ -860,6 +880,14 @@ impl ReservedIdleSandbox {
         self.entry.cli_agent_session_id()
     }
 
+    pub(crate) fn parked_at(&self) -> Instant {
+        self.entry.parked_at
+    }
+
+    pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
+        self.entry.metadata.history_generation_run_id
+    }
+
     pub fn validate_workspace_promotion_identity(
         &self,
         cache: &SessionWorkspaceCache,
@@ -991,6 +1019,27 @@ impl IdlePool {
         Some(ReservedIdleSandbox { entry })
     }
 
+    pub fn reserve_reusable_generation(
+        &mut self,
+        session_id: &str,
+        profile_name: &str,
+        device_rate_limits: &Option<DeviceRateLimits>,
+        history_generation_run_id: RunId,
+    ) -> Option<ReservedIdleSandbox> {
+        if !self.has_reusable(session_id, profile_name, device_rate_limits)
+            || self
+                .entries
+                .get(session_id)
+                .and_then(|entry| entry.metadata.history_generation_run_id)
+                != Some(history_generation_run_id)
+        {
+            return None;
+        }
+        let entry = self.entries.remove(session_id)?;
+        self.bump_revision();
+        Some(ReservedIdleSandbox { entry })
+    }
+
     pub fn restore_reserved(
         &mut self,
         reservation: ReservedIdleSandbox,
@@ -1101,6 +1150,7 @@ impl IdlePool {
                         last_completed_at: last_completed_at.clone(),
                         reusable_sandbox: Some(ReusableSandboxState {
                             profile: entry.metadata.profile_name.clone(),
+                            history_generation_run_id: entry.metadata.history_generation_run_id,
                         }),
                     })
             })
@@ -1180,6 +1230,13 @@ mod tests {
 
     use std::time::Duration;
 
+    use guest_contracts::reuse_preparation::ReusePreparationRequest;
+    use guest_contracts::session_history_identity::{
+        FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+    };
+    use sha2::{Digest, Sha256};
+
+    use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
     use crate::resource_budget::ResourceBudget;
     use crate::storage_fingerprints::StorageFingerprint;
 
@@ -1228,6 +1285,7 @@ mod tests {
         session_id: &str,
         budget_lease: BudgetLease,
     ) -> IdleParkRequest {
+        add_healthy_reuse_preparation_matcher(&overrides);
         let sandbox_id = SandboxId::new_v4();
         let factory: Arc<Box<dyn SandboxFactory>> =
             Arc::new(Box::new(MockSandboxFactory::with_overrides(overrides)));
@@ -1244,6 +1302,7 @@ mod tests {
             .await
             .expect("create sandbox");
         IdleParkRequest::new(IdleParkRequestParts {
+            run_id: RunId::new_v4(),
             sandbox,
             factory,
             cli_agent_session_id: session_id.into(),
@@ -1254,6 +1313,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
             restored_session_identity: None,
+            history_generation_run_id: None,
             workspace_image_size_bytes: 0,
             workspace_promotion: None,
         })
@@ -1279,13 +1339,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn idle_park_request_protects_retained_identity_runtime_directory() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let session_id = "session-retained-runtime";
+        let mut request = make_idle_park_request(
+            Arc::clone(&overrides),
+            session_id,
+            make_budget_lease(2, 2048),
+        )
+        .await;
+        let run_id = request.parts.run_id;
+        let retained_runtime_dir = "/home/user/.vm0/guest-agent/runs/previous-run";
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(session_id.as_bytes())),
+            FinalSessionHistoryRefKind::Blob,
+            hex::encode(Sha256::digest(b"history")),
+            b"history".len() as u64,
+            "/home/user/.claude/projects/session.jsonl",
+        )
+        .unwrap();
+        request.parts.restored_session_identity = Some(
+            RestoredSessionIdentity::from_final_metadata(
+                metadata,
+                format!("{retained_runtime_dir}/final-session-history-identity.json"),
+                retained_runtime_dir,
+            )
+            .unwrap(),
+        );
+
+        let _candidate = request
+            .park_for_idle()
+            .await
+            .unwrap_or_else(|_| panic!("healthy guest should park"));
+
+        let calls = overrides.exec_calls();
+        let call = calls
+            .iter()
+            .find(|call| call.cmd.contains("prepare-for-reuse"))
+            .expect("reuse preparation call");
+        let reuse_request: ReusePreparationRequest = serde_json::from_slice(
+            call.stdin_bytes
+                .as_deref()
+                .expect("reuse request should be sent on stdin"),
+        )
+        .unwrap();
+        assert_eq!(
+            reuse_request.current_runtime_dir,
+            format!("/home/user/.vm0/guest-agent/runs/{run_id}")
+        );
+        assert_eq!(
+            reuse_request.retained_runtime_dir.as_deref(),
+            Some(retained_runtime_dir)
+        );
+    }
+
+    #[tokio::test]
     async fn idle_park_request_success_preserves_reuse_metadata() {
         let overrides = Arc::new(MockSandboxOverrides::new());
         let sandbox_id = SandboxId::new_v4();
         let session_id = "session-metadata";
         let profile_name = "vm0/large";
         let source_ip = "10.99.0.42";
+        let history_generation_run_id = RunId::new_v4();
         let budget_lease = make_budget_lease(2, 2048);
+        add_healthy_reuse_preparation_matcher(&overrides);
         let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
             MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
         ));
@@ -1315,6 +1433,7 @@ mod tests {
         let restored_session_identity =
             RestoredSessionIdentity::claude_code_for_test("history-hash-a");
         let request = IdleParkRequest::new(IdleParkRequestParts {
+            run_id: RunId::new_v4(),
             sandbox,
             factory,
             cli_agent_session_id: session_id.into(),
@@ -1325,6 +1444,7 @@ mod tests {
             source_ip: source_ip.into(),
             storage_fingerprints,
             restored_session_identity: Some(restored_session_identity.clone()),
+            history_generation_run_id: Some(history_generation_run_id),
             workspace_image_size_bytes: 0,
             workspace_promotion: None,
         });
@@ -1338,16 +1458,25 @@ mod tests {
         assert_eq!(candidate.cli_agent_session_id(), session_id);
         assert_eq!(candidate.sandbox_id(), sandbox_id);
         assert_eq!(candidate.metadata.profile_name, profile_name);
+        assert_eq!(
+            candidate.metadata.history_generation_run_id,
+            Some(history_generation_run_id)
+        );
 
         let mut pool = IdlePool::new(pool_config(0));
         assert!(matches!(pool.park(candidate), ParkResult::Parked));
-        let entry = pool.take(session_id).expect("idle entry should be parked");
-        assert_eq!(entry.profile_name(), profile_name);
+        let reservation = pool
+            .reserve_reusable(session_id, profile_name, &None)
+            .expect("idle entry should be reserved");
+        assert_eq!(
+            reservation.history_generation_run_id(),
+            Some(history_generation_run_id)
+        );
 
         let IdleUnparkResult::Reused {
             sandbox,
             budget_lease,
-        } = entry.try_unpark().await
+        } = reservation.try_unpark().await
         else {
             panic!("unpark should succeed");
         };
@@ -1467,6 +1596,47 @@ mod tests {
         assert_eq!(pool.len(), 1);
         assert_eq!(pool.status_snapshot().revision, parked_revision + 2);
         assert_eq!(pool.status_snapshot().idle_vms[0].sandbox_id, sandbox_id);
+    }
+
+    #[test]
+    fn reusable_generation_reservation_requires_exact_generation() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let held_generation_run_id = RunId::new_v4();
+        let requested_generation_run_id = RunId::new_v4();
+        let candidate =
+            ParkedIdleCandidateBuilder::new("session-generation", make_budget_lease(2, 2048))
+                .with_history_generation_run_id(held_generation_run_id)
+                .with_last_completed_at("2026-07-15T00:00:00.000Z")
+                .build();
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let parked_revision = pool.status_snapshot().revision;
+
+        assert!(
+            pool.reserve_reusable_generation(
+                "session-generation",
+                "vm0/default",
+                &None,
+                requested_generation_run_id,
+            )
+            .is_none(),
+            "a different generation must remain parked"
+        );
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.status_snapshot().revision, parked_revision);
+
+        let reservation = pool
+            .reserve_reusable_generation(
+                "session-generation",
+                "vm0/default",
+                &None,
+                held_generation_run_id,
+            )
+            .expect("the exact generation should reserve");
+        assert_eq!(
+            reservation.history_generation_run_id(),
+            Some(held_generation_run_id)
+        );
+        assert_eq!(pool.len(), 0);
     }
 
     #[tokio::test]
@@ -1767,11 +1937,15 @@ mod tests {
     #[test]
     fn held_session_states_include_only_entries_with_timestamps() {
         let mut pool = IdlePool::new(pool_config(0));
+        let history_generation_run_id = RunId::new_v4();
         let unconfirmed = make_candidate_for("sess-unconfirmed", 2, 2048);
         let confirmed_b = make_candidate_for("sess-b", 2, 2048)
             .with_last_completed_at("2026-05-28T00:00:01.000Z".to_string());
-        let confirmed_a = make_candidate_for("sess-a", 2, 2048)
-            .with_last_completed_at("2026-05-28T00:00:00.000Z".to_string());
+        let confirmed_a = ParkedIdleCandidateBuilder::new("sess-a", make_budget_lease(2, 2048))
+            .with_mock_sandbox_name("test")
+            .with_history_generation_run_id(history_generation_run_id)
+            .with_last_completed_at("2026-05-28T00:00:00.000Z")
+            .build();
 
         let _ = pool.park(unconfirmed);
         let _ = pool.park(confirmed_b);
@@ -1785,6 +1959,7 @@ mod tests {
                     last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
                     reusable_sandbox: Some(ReusableSandboxState {
                         profile: "vm0/default".to_string(),
+                        history_generation_run_id: Some(history_generation_run_id),
                     }),
                 },
                 HeldSessionState {
@@ -1792,6 +1967,7 @@ mod tests {
                     last_completed_at: "2026-05-28T00:00:01.000Z".to_string(),
                     reusable_sandbox: Some(ReusableSandboxState {
                         profile: "vm0/default".to_string(),
+                        history_generation_run_id: None,
                     }),
                 },
             ],

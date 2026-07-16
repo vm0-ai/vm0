@@ -4,6 +4,8 @@ use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use sandbox_fc::{DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
+
 use super::log::tail_stderr;
 use super::port::DnsPortReservation;
 use crate::child_cleanup::kill_and_reap_child_on_drop;
@@ -111,11 +113,30 @@ async fn try_start(
     interface_pattern: &str,
     network_log_manager: NetworkLogManager,
 ) -> std::io::Result<DnsProxy> {
-    let mut child = tokio::process::Command::new("dnsmasq")
+    let expected_parent = nix::unistd::getpid();
+    let mut command = tokio::process::Command::new("dnsmasq");
+    command
         .args(dnsmasq_args(port, interface_pattern))
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .spawn()?;
+        .kill_on_drop(true);
+
+    // SAFETY: `set_pdeathsig` and `getppid` are async-signal-safe. Checking the
+    // parent after installing the signal closes the fork-to-prctl race: if the
+    // runner already exited, the child fails before exec instead of creating an
+    // unowned wildcard listener.
+    unsafe {
+        command.pre_exec(move || {
+            nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
+                .map_err(std::io::Error::from)?;
+            if nix::unistd::getppid() != expected_parent {
+                return Err(std::io::Error::from_raw_os_error(nix::libc::ESRCH));
+            }
+            Ok(())
+        });
+    }
+
+    let mut child = command.spawn()?;
 
     // Give dnsmasq a moment to bind, then verify it's still running.
     // Catches port-already-in-use, missing binary (spawn itself errors),
@@ -197,9 +218,12 @@ fn dnsmasq_args(port: u16, interface_pattern: &str) -> Vec<String> {
         "--no-resolv".into(),
         "--port".into(),
         port.to_string(),
-        // VM host-side veth devices are created after dnsmasq starts.
+        // Keep dnsmasq's default wildcard sockets so VM host-side veth churn
+        // cannot rebuild a per-address listener set in its query event loop.
+        // --interface still validates the arrival interface for every request.
         format!("--interface={interface_pattern}"),
-        "--bind-dynamic".into(),
+        format!("--address=/{DNS_READINESS_HOSTNAME}/{DNS_READINESS_IPV4}"),
+        format!("--local=/{DNS_READINESS_HOSTNAME}/"),
         "--server".into(),
         "8.8.8.8".into(),
         "--server".into(),
@@ -214,11 +238,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dnsmasq_args_restrict_listener_to_vm_interface_pattern() {
+    fn dnsmasq_args_use_wildcard_sockets_with_vm_interface_access_control() {
         let args = dnsmasq_args(5353, "vm0-ve-0a-*");
 
         assert!(args.contains(&"--interface=vm0-ve-0a-*".to_string()));
-        assert!(args.contains(&"--bind-dynamic".to_string()));
+        assert!(!args.contains(&"--bind-dynamic".to_string()));
+        assert!(!args.contains(&"--bind-interfaces".to_string()));
     }
 
     #[test]
@@ -233,7 +258,8 @@ mod tests {
                 "--port",
                 "5353",
                 "--interface=vm0-ve-0a-*",
-                "--bind-dynamic",
+                "--address=/vm0-readiness.invalid/192.0.2.1",
+                "--local=/vm0-readiness.invalid/",
                 "--server",
                 "8.8.8.8",
                 "--server",

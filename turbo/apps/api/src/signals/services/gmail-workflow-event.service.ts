@@ -20,8 +20,8 @@ import {
 } from "@vm0/db/schema/gmail-event";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
-  workflowUserTriggerThreads,
-  zeroWorkflowTriggers,
+  workflowUserAutomationThreads,
+  zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 
@@ -30,7 +30,7 @@ import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   decryptStoredSecretValue,
@@ -41,12 +41,12 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowTriggerCallbacks,
-  runWorkflowTriggerNow$,
-  type TriggerRow,
-} from "./zero-workflow-trigger-run.service";
-import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
-import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
+  buildChatOnlyWorkflowAutomationCallbacks,
+  runWorkflowAutomationNow$,
+  type AutomationRow,
+} from "./zero-workflow-automation-run.service";
+import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import { enqueueGmailRelationshipRefreshJob } from "./relationship-memory-gmail-queue.service";
 
 const log = logger("api:gmail-workflow-event");
@@ -385,7 +385,7 @@ async function refreshGmailAccessToken(args: {
   const refreshToken = await decryptStoredSecretValue(
     args.refreshSecret.encryptedValue,
   );
-  const refreshResult = await settle(
+  const refreshed = await tapError(
     refreshGoogleToken(
       "gmail",
       clientId,
@@ -393,9 +393,9 @@ async function refreshGmailAccessToken(args: {
       refreshToken,
       args.signal,
     ),
-    args.signal,
   );
-  if (!refreshResult.ok) {
+  args.signal.throwIfAborted();
+  if (!refreshed) {
     await markGmailConnectorNeedsReconnect({
       db: args.db,
       connectorId: args.connector.id,
@@ -404,20 +404,18 @@ async function refreshGmailAccessToken(args: {
     });
     return {
       kind: "bad_request",
-      message: "Reconnect Gmail before using Gmail event triggers",
+      message: "Reconnect Gmail before using Gmail event automations",
     };
   }
 
   const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshResult.value.expiresIn,
+    refreshed.expiresIn,
     args.currentTime,
   );
   await args.db
     .update(secretsTable)
     .set({
-      encryptedValue: await encryptStoredSecretValue(
-        refreshResult.value.accessToken,
-      ),
+      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
       updatedAt: args.currentTime,
     })
     .where(
@@ -445,7 +443,7 @@ async function refreshGmailAccessToken(args: {
     access: {
       connectorId: args.connector.id,
       emailAddress: args.connector.externalEmail,
-      accessToken: refreshResult.value.accessToken,
+      accessToken: refreshed.accessToken,
     },
   };
 }
@@ -462,13 +460,13 @@ export async function resolveGmailAccess(args: {
   if (!connector) {
     return {
       kind: "bad_request",
-      message: "Connect Gmail before adding a Gmail event trigger",
+      message: "Connect Gmail before adding a Gmail event automation",
     };
   }
   if (connector.needsReconnect) {
     return {
       kind: "bad_request",
-      message: "Reconnect Gmail before using Gmail event triggers",
+      message: "Reconnect Gmail before using Gmail event automations",
     };
   }
 
@@ -476,7 +474,7 @@ export async function resolveGmailAccess(args: {
   if (!accessSecret) {
     return {
       kind: "bad_request",
-      message: "Reconnect Gmail before using Gmail event triggers",
+      message: "Reconnect Gmail before using Gmail event automations",
     };
   }
 
@@ -502,7 +500,7 @@ export async function resolveGmailAccess(args: {
     });
     return {
       kind: "bad_request",
-      message: "Reconnect Gmail before using Gmail event triggers",
+      message: "Reconnect Gmail before using Gmail event automations",
     };
   }
 
@@ -688,7 +686,7 @@ export async function ensureGmailWatchForUser(args: {
     if (profile.kind !== "ok") {
       return {
         kind: "bad_request",
-        message: "Failed to read Gmail profile for event trigger setup",
+        message: "Failed to read Gmail profile for event automation setup",
       };
     }
     emailAddress = profile.value.emailAddress;
@@ -703,7 +701,7 @@ export async function ensureGmailWatchForUser(args: {
   if (watch.kind !== "ok") {
     return {
       kind: "bad_request",
-      message: "Failed to register Gmail watch for event trigger setup",
+      message: "Failed to register Gmail watch for event automation setup",
     };
   }
 
@@ -1035,14 +1033,13 @@ async function verifyPubSubOidc(args: {
   const token = args.authorization.slice("Bearer ".length);
   const verifier =
     pubSubOidcVerifierOverride.get() ?? defaultPubSubOidcVerifier;
-  const claimsResult = await settle(verifier(token, audience, args.signal));
+  const claims = await tapError(verifier(token, audience, args.signal));
   args.signal.throwIfAborted();
-  if (!claimsResult.ok) {
+  if (!claims) {
     return { kind: "unauthorized" };
   }
 
-  return claimsResult.value.email === expectedEmail &&
-    claimsResult.value.emailVerified
+  return claims.email === expectedEmail && claims.emailVerified
     ? { kind: "ok" }
     : { kind: "unauthorized" };
 }
@@ -1101,8 +1098,8 @@ type DecodedGmailPubSubPush = Extract<
 
 type GmailWatchStateRow = typeof gmailWatchStates.$inferSelect;
 
-interface GmailEventTriggerRow {
-  readonly trigger: TriggerRow;
+interface GmailEventAutomationRow {
+  readonly automation: AutomationRow;
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
@@ -1110,14 +1107,14 @@ interface GmailEventTriggerRow {
 }
 
 type GmailRunStarter = (args: {
-  readonly trigger: GmailEventTriggerRow;
+  readonly automation: GmailEventAutomationRow;
   readonly decoded: DecodedGmailPubSubPush;
   readonly message: GmailMessageContext;
   readonly timing: WorkflowEventRunTiming;
 }) => Promise<"ok" | "error">;
 
 interface GmailWorkflowRunStartTestInput {
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly workflowName: string;
   readonly emailAddress: string;
   readonly messageId: string;
@@ -1195,42 +1192,45 @@ async function renewStaleGmailWatchState(args: {
   args.signal.throwIfAborted();
 }
 
-async function loadGmailEventTriggers(args: {
+async function loadGmailEventAutomations(args: {
   readonly db: Db;
   readonly state: GmailWatchStateRow;
   readonly signal: AbortSignal;
-}): Promise<GmailEventTriggerRow[]> {
-  const triggerRows = await args.db
+}): Promise<GmailEventAutomationRow[]> {
+  const automationRows = await args.db
     .select({
-      trigger: zeroWorkflowTriggers,
+      automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
-      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+      chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .innerJoin(
       zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
     )
     .leftJoin(
-      workflowUserTriggerThreads,
+      workflowUserAutomationThreads,
       and(
-        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
-        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
         eq(
-          workflowUserTriggerThreads.workflowId,
-          zeroWorkflowTriggers.workflowId,
+          workflowUserAutomationThreads.userId,
+          zeroWorkflowAutomations.ownerUserId,
+        ),
+        eq(
+          workflowUserAutomationThreads.workflowId,
+          zeroWorkflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, args.state.orgId),
-        eq(zeroWorkflowTriggers.ownerUserId, args.state.userId),
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.kind, "event"),
-        inArray(zeroWorkflowTriggers.eventType, [
+        eq(zeroWorkflowAutomations.orgId, args.state.orgId),
+        eq(zeroWorkflowAutomations.ownerUserId, args.state.userId),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.kind, "event"),
+        inArray(zeroWorkflowAutomations.eventType, [
           "gmail-new-message",
           "gmail-label-applied",
         ]),
@@ -1239,17 +1239,21 @@ async function loadGmailEventTriggers(args: {
   args.signal.throwIfAborted();
 
   const currentTime = nowDate();
-  const triggers: GmailEventTriggerRow[] = [];
-  for (const row of triggerRows) {
+  const automations: GmailEventAutomationRow[] = [];
+  for (const row of automationRows) {
     const config =
-      row.trigger.eventType === "gmail-label-applied"
-        ? gmailLabelAppliedEventConfigSchema.safeParse(row.trigger.eventConfig)
-        : gmailNewMessageEventConfigSchema.safeParse(row.trigger.eventConfig);
+      row.automation.eventType === "gmail-label-applied"
+        ? gmailLabelAppliedEventConfigSchema.safeParse(
+            row.automation.eventConfig,
+          )
+        : gmailNewMessageEventConfigSchema.safeParse(
+            row.automation.eventConfig,
+          );
     if (!config.success) {
       continue;
     }
-    const canFire = await workflowTriggerCanFire(args.db, {
-      trigger: row.trigger,
+    const canFire = await workflowAutomationCanFire(args.db, {
+      automation: row.automation,
       agentId: row.agentId,
       signal: args.signal,
     });
@@ -1260,25 +1264,25 @@ async function loadGmailEventTriggers(args: {
     const chatThreadId =
       row.chatThreadId ??
       (await args.db.transaction(async (tx) => {
-        return await ensureWorkflowUserTriggerThread(tx, {
-          orgId: row.trigger.orgId,
-          userId: row.trigger.ownerUserId,
-          workflowId: row.trigger.workflowId,
+        return await ensureWorkflowUserAutomationThread(tx, {
+          orgId: row.automation.orgId,
+          userId: row.automation.ownerUserId,
+          workflowId: row.automation.workflowId,
           agentId: row.agentId,
           workflowTitle: row.workflowDisplayName ?? row.workflowName,
           currentTime,
         });
       }));
     args.signal.throwIfAborted();
-    triggers.push({
-      trigger: row.trigger,
+    automations.push({
+      automation: row.automation,
       agentId: row.agentId,
       workflowName: row.workflowName,
       chatThreadId,
       config: config.data,
     });
   }
-  return triggers;
+  return automations;
 }
 
 async function cachedGmailMessageContext(args: {
@@ -1306,7 +1310,7 @@ async function cachedGmailMessageContext(args: {
 async function insertGmailProcessedEvent(args: {
   readonly db: Db;
   readonly state: GmailWatchStateRow;
-  readonly trigger: GmailEventTriggerRow;
+  readonly automation: GmailEventAutomationRow;
   readonly decoded: DecodedGmailPubSubPush;
   readonly event: GmailHistoryMessageEvent;
   readonly message: GmailMessageContext;
@@ -1316,7 +1320,7 @@ async function insertGmailProcessedEvent(args: {
     .insert(gmailProcessedEvents)
     .values({
       watchStateId: args.state.id,
-      triggerId: args.trigger.trigger.id,
+      automationId: args.automation.automation.id,
       pubsubMessageId: args.decoded.messageId,
       historyId: args.event.historyId,
       messageId: args.event.messageId,
@@ -1331,31 +1335,31 @@ async function insertGmailProcessedEvent(args: {
 }
 
 function buildGmailWorkflowEventSystemPrompt(args: {
-  readonly triggerId: string;
-  readonly triggerConfig: GmailWorkflowEventConfig;
+  readonly automationId: string;
+  readonly automationConfig: GmailWorkflowEventConfig;
   readonly emailAddress: string;
   readonly message: GmailMessageContext;
 }): string {
-  const triggerContext =
-    args.triggerConfig.event === "label_applied"
-      ? `You are running because the Gmail label "${args.triggerConfig.labelName}" was applied to a message.`
-      : "You are running because a Gmail new-message workflow event trigger matched a new inbound email.";
+  const automationContext =
+    args.automationConfig.event === "label_applied"
+      ? `You are running because the Gmail label "${args.automationConfig.labelName}" was applied to a message.`
+      : "You are running because a Gmail new-message workflow event automation matched a new inbound email.";
   return [
     "# Current context",
-    triggerContext,
+    automationContext,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "Use connected Gmail tools to inspect the message or thread if the workflow needs more detail.",
+    "This context intentionally includes only event metadata. It does not include the email body. Use connected Gmail tools to read the message or thread if the workflow needs the content.",
     "Do not send email automatically. If the workflow involves email response work, draft or prepare the response unless a later explicit product permission model allows sending.",
     "",
     "# Gmail event",
     JSON.stringify(
       {
-        triggerId: args.triggerId,
-        event: args.triggerConfig.event,
+        automationId: args.automationId,
+        event: args.automationConfig.event,
         labelName:
-          args.triggerConfig.event === "label_applied"
-            ? args.triggerConfig.labelName
+          args.automationConfig.event === "label_applied"
+            ? args.automationConfig.labelName
             : undefined,
         emailAddress: args.emailAddress,
         messageId: args.message.messageId,
@@ -1364,7 +1368,6 @@ function buildGmailWorkflowEventSystemPrompt(args: {
         to: args.message.to,
         cc: args.message.cc,
         subject: args.message.subject,
-        bodyText: args.message.bodyText,
       },
       null,
       2,
@@ -1372,8 +1375,8 @@ function buildGmailWorkflowEventSystemPrompt(args: {
   ].join("\n");
 }
 
-function buildGmailWorkflowTriggerBrief(args: {
-  readonly triggerConfig: GmailWorkflowEventConfig;
+function buildGmailWorkflowAutomationBrief(args: {
+  readonly automationConfig: GmailWorkflowEventConfig;
   readonly message: {
     readonly messageId: string;
     readonly threadId: string | null;
@@ -1382,8 +1385,8 @@ function buildGmailWorkflowTriggerBrief(args: {
   };
 }): string {
   const title =
-    args.triggerConfig.event === "label_applied"
-      ? `Gmail label applied: ${args.triggerConfig.labelName}`
+    args.automationConfig.event === "label_applied"
+      ? `Gmail label applied: ${args.automationConfig.labelName}`
       : "Gmail new message";
   return [
     title,
@@ -1392,10 +1395,10 @@ function buildGmailWorkflowTriggerBrief(args: {
   ].join("\n");
 }
 
-async function dispatchGmailTriggerEvent(args: {
+async function dispatchGmailAutomationEvent(args: {
   readonly db: Db;
   readonly state: GmailWatchStateRow;
-  readonly trigger: GmailEventTriggerRow;
+  readonly automation: GmailEventAutomationRow;
   readonly decoded: DecodedGmailPubSubPush;
   readonly event: GmailHistoryMessageAdded;
   readonly message: GmailMessageContext;
@@ -1414,7 +1417,7 @@ async function dispatchGmailTriggerEvent(args: {
   }
 
   const result = await args.startRun({
-    trigger: args.trigger,
+    automation: args.automation,
     decoded: args.decoded,
     message: args.message,
     timing: args.timing,
@@ -1431,51 +1434,51 @@ async function dispatchGmailTriggerEvent(args: {
   return "dispatched";
 }
 
-function isGmailNewMessageTrigger(
-  trigger: GmailEventTriggerRow,
-): trigger is GmailEventTriggerRow & {
+function isGmailNewMessageAutomation(
+  automation: GmailEventAutomationRow,
+): automation is GmailEventAutomationRow & {
   readonly config: GmailNewMessageEventConfig;
 } {
-  return trigger.config.event === "new_message";
+  return automation.config.event === "new_message";
 }
 
-function isGmailLabelAppliedTrigger(
-  trigger: GmailEventTriggerRow,
-): trigger is GmailEventTriggerRow & {
+function isGmailLabelAppliedAutomation(
+  automation: GmailEventAutomationRow,
+): automation is GmailEventAutomationRow & {
   readonly config: GmailLabelAppliedEventConfig;
 } {
-  return trigger.config.event === "label_applied";
+  return automation.config.event === "label_applied";
 }
 
 async function updateResolvedGmailLabelId(args: {
   readonly db: Db;
-  readonly trigger: GmailEventTriggerRow & {
+  readonly automation: GmailEventAutomationRow & {
     readonly config: GmailLabelAppliedEventConfig;
   };
   readonly labelId: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  if (args.trigger.config.resolvedLabelId === args.labelId) {
+  if (args.automation.config.resolvedLabelId === args.labelId) {
     return;
   }
 
   await args.db
-    .update(zeroWorkflowTriggers)
+    .update(zeroWorkflowAutomations)
     .set({
       eventConfig: {
-        ...args.trigger.config,
+        ...args.automation.config,
         resolvedLabelId: args.labelId,
       },
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflowTriggers.id, args.trigger.trigger.id));
+    .where(eq(zeroWorkflowAutomations.id, args.automation.automation.id));
   args.signal.throwIfAborted();
 }
 
-async function labelAppliedTriggerMatchesEvent(args: {
+async function labelAppliedAutomationMatchesEvent(args: {
   readonly db: Db;
   readonly accessToken: string;
-  readonly trigger: GmailEventTriggerRow & {
+  readonly automation: GmailEventAutomationRow & {
     readonly config: GmailLabelAppliedEventConfig;
   };
   readonly event: GmailHistoryLabelAdded;
@@ -1483,12 +1486,12 @@ async function labelAppliedTriggerMatchesEvent(args: {
   readonly signal: AbortSignal;
 }): Promise<boolean> {
   const eventLabelIds = new Set(args.event.labelIds);
-  const resolvedLabelId = args.trigger.config.resolvedLabelId;
+  const resolvedLabelId = args.automation.config.resolvedLabelId;
   if (resolvedLabelId && eventLabelIds.has(resolvedLabelId)) {
     return true;
   }
 
-  const labelName = args.trigger.config.labelName;
+  const labelName = args.automation.config.labelName;
   const cached = args.labelCache.get(labelName);
   const label =
     cached ??
@@ -1503,7 +1506,7 @@ async function labelAppliedTriggerMatchesEvent(args: {
   }
   if (label.kind !== "ok") {
     log.warn("Gmail label event skipped because label lookup failed", {
-      triggerId: args.trigger.trigger.id,
+      automationId: args.automation.automation.id,
       labelName,
       message: label.message,
     });
@@ -1515,7 +1518,7 @@ async function labelAppliedTriggerMatchesEvent(args: {
 
   await updateResolvedGmailLabelId({
     db: args.db,
-    trigger: args.trigger,
+    automation: args.automation,
     labelId: label.labelId,
     signal: args.signal,
   });
@@ -1527,7 +1530,7 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
   readonly state: GmailWatchStateRow;
   readonly decoded: DecodedGmailPubSubPush;
   readonly accessToken: string;
-  readonly triggers: readonly GmailEventTriggerRow[];
+  readonly automations: readonly GmailEventAutomationRow[];
   readonly event: GmailHistoryMessageAdded;
   readonly messageCache: Map<string, GmailMessageContext | null>;
   readonly sourceTiming: WorkflowEventSourceTiming;
@@ -1550,7 +1553,7 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
   }
 
   if (message.occurredAt) {
-    const relationshipJob = await settle(
+    await tapError(
       enqueueGmailRelationshipRefreshJob(args.db, {
         orgId: args.state.orgId,
         userId: args.state.userId,
@@ -1569,17 +1572,14 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
           bodyText: message.bodyText,
         },
       }),
+      (error) => {
+        log.warn("Failed to enqueue Gmail relationship memory refresh", {
+          watchStateId: args.state.id,
+          messageId: message.messageId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
     );
-    if (!relationshipJob.ok) {
-      log.warn("Failed to enqueue Gmail relationship memory refresh", {
-        watchStateId: args.state.id,
-        messageId: message.messageId,
-        error:
-          relationshipJob.error instanceof Error
-            ? relationshipJob.error.message
-            : String(relationshipJob.error),
-      });
-    }
   } else {
     log.warn("Skipped Gmail relationship memory refresh without message time", {
       watchStateId: args.state.id,
@@ -1590,24 +1590,24 @@ async function dispatchGmailNewMessageHistoryEvent(args: {
   let dispatched = 0;
   let duplicates = 0;
 
-  for (const trigger of args.triggers) {
+  for (const automation of args.automations) {
     const runTiming = args.sourceTiming.createRunTiming();
     const matches = await runTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_match_automations",
       () => {
         return (
-          isGmailNewMessageTrigger(trigger) &&
-          gmailMessageMatchesConfig(message, trigger.config)
+          isGmailNewMessageAutomation(automation) &&
+          gmailMessageMatchesConfig(message, automation.config)
         );
       },
     );
     if (!matches) {
       continue;
     }
-    const result = await dispatchGmailTriggerEvent({
+    const result = await dispatchGmailAutomationEvent({
       db: args.db,
       state: args.state,
-      trigger,
+      automation,
       decoded: args.decoded,
       event: args.event,
       message,
@@ -1633,7 +1633,7 @@ async function dispatchGmailLabelAppliedHistoryEvent(args: {
   readonly state: GmailWatchStateRow;
   readonly decoded: DecodedGmailPubSubPush;
   readonly accessToken: string;
-  readonly triggers: readonly GmailEventTriggerRow[];
+  readonly automations: readonly GmailEventAutomationRow[];
   readonly event: GmailHistoryLabelAdded;
   readonly messageCache: Map<string, GmailMessageContext | null>;
   readonly labelCache: Map<string, GmailLabelResolveResult>;
@@ -1641,24 +1641,26 @@ async function dispatchGmailLabelAppliedHistoryEvent(args: {
   readonly startRun: GmailRunStarter;
   readonly signal: AbortSignal;
 }): Promise<GmailDispatchStateResult> {
-  const labelTriggers = args.triggers.filter(isGmailLabelAppliedTrigger);
-  if (labelTriggers.length === 0 || args.event.labelIds.length === 0) {
+  const labelAutomations = args.automations.filter(
+    isGmailLabelAppliedAutomation,
+  );
+  if (labelAutomations.length === 0 || args.event.labelIds.length === 0) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  const matchingTriggers: {
-    readonly trigger: (typeof labelTriggers)[number];
+  const matchingAutomations: {
+    readonly automation: (typeof labelAutomations)[number];
     readonly timing: WorkflowEventRunTiming;
   }[] = [];
-  for (const trigger of labelTriggers) {
+  for (const automation of labelAutomations) {
     const runTiming = args.sourceTiming.createRunTiming();
     const matches = await runTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_match_automations",
       async () => {
-        return await labelAppliedTriggerMatchesEvent({
+        return await labelAppliedAutomationMatchesEvent({
           db: args.db,
           accessToken: args.accessToken,
-          trigger,
+          automation,
           event: args.event,
           labelCache: args.labelCache,
           signal: args.signal,
@@ -1666,10 +1668,10 @@ async function dispatchGmailLabelAppliedHistoryEvent(args: {
       },
     );
     if (matches) {
-      matchingTriggers.push({ trigger, timing: runTiming });
+      matchingAutomations.push({ automation, timing: runTiming });
     }
   }
-  if (matchingTriggers.length === 0) {
+  if (matchingAutomations.length === 0) {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
@@ -1688,16 +1690,16 @@ async function dispatchGmailLabelAppliedHistoryEvent(args: {
   let dispatched = 0;
   let duplicates = 0;
 
-  for (const match of matchingTriggers) {
+  for (const match of matchingAutomations) {
     match.timing.recordElapsed(
       "api_dispatch_pre_create_zero_workflow_event_load_external_events",
       messageStartedAt,
       messageFinishedAt,
     );
-    const result = await dispatchGmailTriggerEvent({
+    const result = await dispatchGmailAutomationEvent({
       db: args.db,
       state: args.state,
-      trigger: match.trigger,
+      automation: match.automation,
       decoded: args.decoded,
       event: args.event,
       message,
@@ -1724,7 +1726,7 @@ async function dispatchGmailHistoryEvents(args: {
   readonly decoded: DecodedGmailPubSubPush;
   readonly accessToken: string;
   readonly history: Extract<GmailHistoryResult, { readonly kind: "ok" }>;
-  readonly triggers: readonly GmailEventTriggerRow[];
+  readonly automations: readonly GmailEventAutomationRow[];
   readonly sourceTiming: WorkflowEventSourceTiming;
   readonly startRun: GmailRunStarter;
   readonly signal: AbortSignal;
@@ -1740,7 +1742,7 @@ async function dispatchGmailHistoryEvents(args: {
       state: args.state,
       decoded: args.decoded,
       accessToken: args.accessToken,
-      triggers: args.triggers,
+      automations: args.automations,
       event,
       messageCache,
       sourceTiming: args.sourceTiming.fork(),
@@ -1760,7 +1762,7 @@ async function dispatchGmailHistoryEvents(args: {
       state: args.state,
       decoded: args.decoded,
       accessToken: args.accessToken,
-      triggers: args.triggers,
+      automations: args.automations,
       event,
       messageCache,
       labelCache,
@@ -1837,10 +1839,10 @@ async function dispatchGmailWatchState(args: {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  const triggers = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+  const automations = await args.sourceTiming.measure(
+    "api_dispatch_pre_create_zero_workflow_event_load_automations",
     async () => {
-      return await loadGmailEventTriggers(args);
+      return await loadGmailEventAutomations(args);
     },
   );
   const result = await dispatchGmailHistoryEvents({
@@ -1849,7 +1851,7 @@ async function dispatchGmailWatchState(args: {
     decoded: args.decoded,
     accessToken: access.access.accessToken,
     history,
-    triggers,
+    automations,
     sourceTiming: args.sourceTiming,
     startRun: args.startRun,
     signal: args.signal,
@@ -1875,7 +1877,7 @@ const startGmailWorkflowRun$ = command(
   async (
     { set },
     args: {
-      readonly trigger: GmailEventTriggerRow;
+      readonly automation: GmailEventAutomationRow;
       readonly decoded: DecodedGmailPubSubPush;
       readonly message: GmailMessageContext;
       readonly timing: WorkflowEventRunTiming;
@@ -1888,31 +1890,31 @@ const startGmailWorkflowRun$ = command(
       () => {
         return {
           appendSystemPrompt: buildGmailWorkflowEventSystemPrompt({
-            triggerId: args.trigger.trigger.id,
-            triggerConfig: args.trigger.config,
+            automationId: args.automation.automation.id,
+            automationConfig: args.automation.config,
             emailAddress: args.decoded.emailAddress,
             message: args.message,
           }),
-          triggerBrief: buildGmailWorkflowTriggerBrief({
-            triggerConfig: args.trigger.config,
+          triggerBrief: buildGmailWorkflowAutomationBrief({
+            automationConfig: args.automation.config,
             message: args.message,
           }),
-          callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-            args.trigger.chatThreadId,
-            args.trigger.agentId,
+          callbacks: buildChatOnlyWorkflowAutomationCallbacks(
+            args.automation.chatThreadId,
+            args.automation.agentId,
           ),
         };
       },
     );
     signal.throwIfAborted();
     const result = await set(
-      runWorkflowTriggerNow$,
+      runWorkflowAutomationNow$,
       {
         due: {
-          trigger: args.trigger.trigger,
-          agentId: args.trigger.agentId,
-          workflowName: args.trigger.workflowName,
-          chatThreadId: args.trigger.chatThreadId,
+          automation: args.automation.automation,
+          agentId: args.automation.agentId,
+          workflowName: args.automation.workflowName,
+          chatThreadId: args.automation.chatThreadId,
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
@@ -1983,25 +1985,25 @@ export const dispatchGmailPubSubPush$ = command(
     signal.throwIfAborted();
     const runStarterOverride = gmailRunStarterOverride.get();
     const startRun: GmailRunStarter = runStarterOverride
-      ? async ({ trigger, decoded, message }) => {
+      ? async ({ automation, decoded, message }) => {
           return await runStarterOverride({
-            triggerId: trigger.trigger.id,
-            workflowName: trigger.workflowName,
+            automationId: automation.automation.id,
+            workflowName: automation.workflowName,
             emailAddress: decoded.emailAddress,
             messageId: message.messageId,
             threadId: message.threadId,
             subject: message.subject,
-            triggerBrief: buildGmailWorkflowTriggerBrief({
-              triggerConfig: trigger.config,
+            triggerBrief: buildGmailWorkflowAutomationBrief({
+              automationConfig: automation.config,
               message,
             }),
           });
         }
-      : async ({ trigger, decoded, message, timing }) => {
+      : async ({ automation, decoded, message, timing }) => {
           return await set(
             startGmailWorkflowRun$,
             {
-              trigger,
+              automation,
               decoded,
               message,
               timing,

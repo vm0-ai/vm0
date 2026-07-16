@@ -5,6 +5,19 @@ use vsock_proto::{
     ExecControlStatus, ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy,
 };
 
+/// Owned terminal stdout or stderr representation selected by the requested
+/// [`ExecOutputPolicy`](vsock_proto::ExecOutputPolicy).
+///
+/// [`Discard`](vsock_proto::ExecOutputPolicy::Discard) and
+/// [`Stream`](vsock_proto::ExecOutputPolicy::Stream) produce `Discarded`
+/// because they do not retain bytes in the terminal result.
+/// [`Capture`](vsock_proto::ExecOutputPolicy::Capture) and
+/// [`CaptureAndStream`](vsock_proto::ExecOutputPolicy::CaptureAndStream)
+/// produce `Captured`, including when the retained bytes are empty.
+///
+/// The `truncated` field of `Captured` reports guest-side capture-policy
+/// truncation. Host-side loss from the bounded stream queue is reported
+/// separately by [`ExecOperationResult::stream_overflowed`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecOwnedCapturedOutput {
     /// The stream was discarded by policy and therefore has no captured bytes.

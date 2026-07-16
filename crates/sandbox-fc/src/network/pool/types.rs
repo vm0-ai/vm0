@@ -44,8 +44,11 @@ impl NetnsInfo {
 
 /// Non-cloneable release authority for a checked-out namespace.
 ///
-/// Dropping a live lease only emits a warning. Call `NetnsPool::release` so
-/// the namespace is either recycled into the pool or deleted during shutdown.
+/// Dropping a live lease only emits a warning. Call
+/// [`NetnsPool::release`](super::NetnsPool::release) to return ownership to the
+/// pool. An accepted release recycles the namespace only when it is safe to
+/// reuse; otherwise it attempts deletion and leaves failed cleanup for startup
+/// orphan reconciliation.
 #[derive(Debug)]
 #[must_use]
 pub struct NetnsLease {
@@ -118,6 +121,8 @@ impl Drop for NetnsLease {
 /// When `proxy_port` is set, the pool pre-warms and acquires from the proxy
 /// queue only. Without `proxy_port`, it pre-warms and acquires from the plain
 /// queue. This avoids keeping an unreachable plain queue alive in proxy mode.
+/// When both proxy and DNS ports are set, callers must start the DNS service
+/// and call [`super::NetnsPool::activate_dns_readiness`] before acquiring.
 pub struct NetnsPoolConfig {
     /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
     pub proxy_port: Option<u16>,
@@ -133,7 +138,7 @@ pub(crate) struct CheckedNetnsPoolConfig {
 impl NetnsPoolConfig {
     /// Validate host tools required by [`NetnsPool::create`].
     pub(crate) fn into_checked(self) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
-        crate::prerequisites::check_network_prerequisites()?;
+        crate::prerequisites::check_network_prerequisites(self.dns_port.is_some())?;
         Ok(CheckedNetnsPoolConfig { inner: self })
     }
 }

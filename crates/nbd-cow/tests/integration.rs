@@ -12,9 +12,13 @@
 //! ```
 
 use std::fs;
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::MetadataExt;
 use std::process::Command;
 use std::time::Duration;
+
+use nix::sys::socket::{Shutdown, shutdown as shutdown_socket};
+use tokio::io::AsyncReadExt;
 
 #[path = "support/nbd_fixture.rs"]
 mod nbd_fixture;
@@ -605,10 +609,10 @@ async fn snapshot_restore_round_trip() {
 // DevicePool-specific tests (require root + nbd module)
 // ---------------------------------------------------------------------------
 
-/// Verify connect_device works with a specific device index.
+/// Verify a specifically connected device remains readable after one connection is lost.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn connect_device_specific_index() {
+async fn connect_device_survives_connection_loss() {
     if !nbd_test_available() {
         return;
     }
@@ -668,6 +672,43 @@ async fn connect_device_specific_index() {
         false
     };
 
+    let opened_device = if connected {
+        // Opening the block device completes the kernel's deferred partition
+        // scan while every connection is healthy. Otherwise the injected loss
+        // can strand an already in-flight scan request on the removed socket.
+        Some(tokio::fs::File::open(format!("/dev/nbd{device_index}")).await)
+    } else {
+        None
+    };
+
+    let connection_shutdown_result = if connected {
+        // Closing only the userspace server races with the kernel noticing EOF.
+        // Shut down the socket retained after connect so I/O assigned to this
+        // NBD queue fails and is requeued immediately.
+        Some(shutdown_socket(client_fds[0].as_raw_fd(), Shutdown::Both))
+    } else {
+        None
+    };
+
+    let read_after_connection_loss = if connected {
+        let lost_server = server_handles.remove(0);
+        lost_server.abort();
+        let _ = lost_server.await;
+
+        let device = opened_device.expect("connected device should have an open attempt");
+        Some(
+            tokio::time::timeout(Duration::from_secs(5), async move {
+                let mut device = device?;
+                let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
+                device.read_exact(&mut block).await?;
+                Ok::<_, std::io::Error>(block)
+            })
+            .await,
+        )
+    } else {
+        None
+    };
+
     // Clean up
     shutdown.cancel();
     for h in server_handles {
@@ -681,6 +722,18 @@ async fn connect_device_specific_index() {
 
     connect_result.expect("socketpair setup or connect_device");
     assert!(device_has_correct_size, "device should have correct size");
+    connection_shutdown_result
+        .expect("connected device should lose a connection")
+        .expect("lost client connection should shut down");
+    let block = read_after_connection_loss
+        .expect("connected device should be read")
+        .expect("read after connection loss should not time out")
+        .expect("read after connection loss should succeed");
+    assert_eq!(
+        block,
+        vec![0_u8; nbd_cow::BLOCK_SIZE],
+        "read after connection loss should return base image data"
+    );
 }
 
 /// After destroy + release, the pool should not hand back the same device
@@ -730,17 +783,17 @@ async fn pool_cooldown_prevents_immediate_reuse() {
     pool.cleanup().await;
 }
 
-/// After cooldown expires, a released device should become available again.
+/// After cooldown expires, the pool should release the device claim.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn pool_release_and_reacquire_after_cooldown() {
+async fn pool_releases_claim_after_cooldown() {
     if !nbd_test_available() {
         return;
     }
 
     let fixture = NbdTestFixture::new();
 
-    // Very short cooldown so we can test re-acquisition
+    // Very short cooldown so we can test claim release
     let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig {
         cooldown: std::time::Duration::from_millis(50),
     });
@@ -750,23 +803,30 @@ async fn pool_release_and_reacquire_after_cooldown() {
         .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
+    let device_index = dev.device_index();
 
     dev.destroy_with_retries(destroy_policy())
         .await
         .expect("destroy");
 
-    // Wait for cooldown to expire
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let claim_released = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match nbd_cow::device_lock::try_acquire_device_claim(device_index) {
+                Ok(Some(claim)) => {
+                    drop(claim);
+                    return Ok(());
+                }
+                Ok(None) => tokio::time::sleep(Duration::from_millis(10)).await,
+                Err(e) => return Err(e),
+            }
+        }
+    })
+    .await;
 
-    let cow2 = fixture.cow_path("cow2.img");
-    let dev2 = pool
-        .create_cow_device(fixture.base(), &cow2, fixture.size())
-        .await
-        .expect("create after cooldown");
-    dev2.destroy_with_retries(destroy_policy())
-        .await
-        .expect("destroy after cooldown");
     pool.cleanup().await;
+    claim_released
+        .expect("timed out waiting for device claim release")
+        .expect("probe device claim release");
 }
 
 /// Dropping an NbdCowDevice without calling destroy() should still

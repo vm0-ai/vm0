@@ -9,20 +9,60 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS, SessionHistorySidecarExportMetadata,
+    SessionHistorySidecarRepresentation,
 };
+#[cfg(target_os = "linux")]
+use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-type TestResult = Result<(), Box<dyn std::error::Error>>;
+type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 struct VerifyCase {
     name: &'static str,
     metadata_path: PathBuf,
     expectation_args: Vec<OsString>,
     expected_exit_code: i32,
+}
+
+struct SourceOpenWatch {
+    #[cfg(target_os = "linux")]
+    inotify: Inotify,
+}
+
+impl SourceOpenWatch {
+    fn new(path: &Path) -> TestResult<Self> {
+        #[cfg(target_os = "linux")]
+        {
+            let inotify = Inotify::init(InitFlags::IN_CLOEXEC | InitFlags::IN_NONBLOCK)?;
+            let _watch = inotify.add_watch(
+                path,
+                AddWatchFlags::IN_OPEN | AddWatchFlags::IN_CLOSE_NOWRITE,
+            )?;
+            Ok(Self { inotify })
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = path;
+            Ok(Self {})
+        }
+    }
+
+    fn assert_opened_once(self) -> TestResult {
+        #[cfg(target_os = "linux")]
+        {
+            let events = self.inotify.read_events()?;
+            let open_count = events
+                .iter()
+                .filter(|event| event.mask.contains(AddWatchFlags::IN_OPEN))
+                .count();
+            assert_eq!(open_count, 1, "source events: {events:?}");
+        }
+        Ok(())
+    }
 }
 
 #[test]
@@ -178,6 +218,122 @@ fn verify_session_history_identity_returns_stable_exit_codes() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let history = br#"{"type":"system"}"#;
+    let history_path = dir.path().join("history.jsonl");
+    std::fs::write(&history_path, history)?;
+    let identity = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        "a".repeat(64),
+        FinalSessionHistoryRefKind::Blob,
+        sha256_hex(history),
+        history.len() as u64,
+        history_path.to_string_lossy(),
+    )?;
+    let metadata_path = write_metadata(dir.path(), "raw-identity.json", &identity)?;
+    let export_path = dir.path().join("raw-sidecar");
+    let source_watch = SourceOpenWatch::new(&history_path)?;
+
+    let output = run_export_helper(&metadata_path, &export_path)?;
+
+    assert!(
+        output.status.success(),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    source_watch.assert_opened_once()?;
+    let export_metadata =
+        serde_json::from_slice::<SessionHistorySidecarExportMetadata>(&output.stdout)?;
+    assert_eq!(
+        export_metadata.representation,
+        SessionHistorySidecarRepresentation::Raw
+    );
+    assert_eq!(export_metadata.encoded_size, history.len() as u64);
+    assert_eq!(std::fs::read(export_path)?, history);
+    Ok(())
+}
+
+#[test]
+fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let sessions_dir = dir.path().join("sessions");
+    let day_dir = sessions_dir.join("2026").join("07").join("13");
+    std::fs::create_dir_all(&day_dir)?;
+    let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let history = br#"{"type":"session_meta","timestamp":"2026-07-13T10:00:00Z"}"#;
+    let encoded = zstd::encode_all(history.as_slice(), 0)?;
+    let history_path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
+    std::fs::write(&history_path, &encoded)?;
+    let sessions_dir = sessions_dir.to_string_lossy();
+    let marker = format!(
+        "CODEX_SEARCH:{}:{sessions_dir}:{thread_id}",
+        sessions_dir.len()
+    );
+    let identity = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::Codex,
+        "a".repeat(64),
+        FinalSessionHistoryRefKind::Blob,
+        sha256_hex(history),
+        history.len() as u64,
+        marker,
+    )?;
+    let metadata_path = write_metadata(dir.path(), "codex-identity.json", &identity)?;
+    let export_path = dir.path().join("codex-sidecar");
+    let source_watch = SourceOpenWatch::new(&history_path)?;
+
+    let output = run_export_helper(&metadata_path, &export_path)?;
+
+    assert!(
+        output.status.success(),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    source_watch.assert_opened_once()?;
+    let export_metadata =
+        serde_json::from_slice::<SessionHistorySidecarExportMetadata>(&output.stdout)?;
+    assert_eq!(
+        export_metadata.representation,
+        SessionHistorySidecarRepresentation::CodexZstd
+    );
+    assert_eq!(export_metadata.encoded_size, encoded.len() as u64);
+    assert_eq!(std::fs::read(export_path)?, encoded);
+    Ok(())
+}
+
+#[test]
+fn export_session_history_sidecar_rejects_history_mismatch() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let history = b"actual";
+    let history_path = dir.path().join("mismatched-history.jsonl");
+    std::fs::write(&history_path, history)?;
+    let identity = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        "a".repeat(64),
+        FinalSessionHistoryRefKind::Blob,
+        sha256_hex(b"expect"),
+        history.len() as u64,
+        history_path.to_string_lossy(),
+    )?;
+    let metadata_path = write_metadata(dir.path(), "mismatched-identity.json", &identity)?;
+    let export_path = dir.path().join("mismatched-sidecar");
+
+    let output = run_export_helper(&metadata_path, &export_path)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH),
+        "stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!export_path.exists());
+    Ok(())
+}
+
 fn write_metadata(
     dir: &Path,
     name: &str,
@@ -211,5 +367,14 @@ fn run_helper(case: &VerifyCase) -> Result<Output, std::io::Error> {
         .arg("verify-session-history-identity")
         .arg(&case.metadata_path)
         .args(&case.expectation_args)
+        .output()
+}
+
+fn run_export_helper(metadata_path: &Path, export_path: &Path) -> Result<Output, std::io::Error> {
+    Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+        .env_clear()
+        .arg("export-session-history-sidecar")
+        .arg(metadata_path)
+        .arg(export_path)
         .output()
 }

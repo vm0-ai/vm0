@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.26](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.25...guest-write-file-v0.1.26) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.1.25](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.24...guest-write-file-v0.1.25) (2026-07-15)
+
+## [0.1.24](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.23...guest-write-file-v0.1.24) (2026-07-14)
+
+
+### Documentation
+
+* **rust:** document guest-write-file private and batch modes ([#21452](https://github.com/vm0-ai/vm0/issues/21452)) ([cd8e9eb](https://github.com/vm0-ai/vm0/commit/cd8e9eb464c376fecf38e24f63c0a364a9330cab))
+
+## [0.1.23](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.22...guest-write-file-v0.1.23) (2026-07-13)
+
 ## [0.1.22](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.21...guest-write-file-v0.1.22) (2026-07-10)
 
 ## [0.1.21](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.20...guest-write-file-v0.1.21) (2026-07-09)

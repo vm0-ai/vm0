@@ -165,7 +165,7 @@ impl Default for SandboxConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Base URL of the vm0 API (e.g. `https://api.example.com`). Overridable
-    /// via `--api-url` / `VM0_API_URL`.
+    /// via `--api-url` / `VM0_API_BACKEND_URL`.
     pub url: String,
     /// Runner auth token. Overridable via `--token` / `VM0_RUNNER_TOKEN`.
     pub token: String,

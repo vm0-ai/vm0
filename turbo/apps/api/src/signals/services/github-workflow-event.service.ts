@@ -8,9 +8,9 @@ import {
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import {
-  workflowUserTriggerThreads,
+  workflowUserAutomationThreads,
   zeroWorkflowGithubProcessedEvents,
-  zeroWorkflowTriggers,
+  zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 
@@ -24,12 +24,12 @@ import {
   type WorkflowEventRunTiming,
 } from "./workflow-event-source-timing.service";
 import {
-  buildChatOnlyWorkflowTriggerCallbacks,
-  runWorkflowTriggerNow$,
-  type TriggerRow,
-} from "./zero-workflow-trigger-run.service";
-import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
-import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
+  buildChatOnlyWorkflowAutomationCallbacks,
+  runWorkflowAutomationNow$,
+  type AutomationRow,
+} from "./zero-workflow-automation-run.service";
+import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const log = logger("api:github-workflow-event");
 
@@ -70,8 +70,8 @@ interface GithubLabelWorkflowEventPayload {
   readonly sender: GithubUser;
 }
 
-interface GithubLabelEventTriggerRow {
-  readonly trigger: TriggerRow;
+interface GithubLabelEventAutomationRow {
+  readonly automation: AutomationRow;
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
@@ -79,7 +79,7 @@ interface GithubLabelEventTriggerRow {
 }
 
 type GithubWorkflowRunStartArgs = {
-  readonly trigger: GithubLabelEventTriggerRow;
+  readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
@@ -93,7 +93,7 @@ interface GithubWorkflowDispatchCounts {
 }
 
 interface GithubWorkflowRunStartTestInput {
-  readonly triggerId: string;
+  readonly automationId: string;
   readonly workflowName: string;
   readonly deliveryId: string;
   readonly repo: string;
@@ -165,7 +165,8 @@ export async function prepareGithubLabelEventConfigForPersist(
   if (!installation) {
     return {
       kind: "bad-request",
-      message: "Install GitHub before creating GitHub label workflow triggers",
+      message:
+        "Install GitHub before creating GitHub label workflow automations",
     };
   }
 
@@ -179,7 +180,7 @@ export async function prepareGithubLabelEventConfigForPersist(
       return {
         kind: "bad-request",
         message:
-          "Connect your GitHub account before using Triggered by me for GitHub label workflow triggers",
+          "Connect your GitHub account before using Triggered by me for GitHub label workflow automations",
       };
     }
   }
@@ -250,71 +251,74 @@ function subjectMatchesConfig(args: {
 async function actorMatchesConfig(args: {
   readonly db: ReadonlyDb;
   readonly installation: GithubInstallationRecord;
-  readonly trigger: GithubLabelEventTriggerRow;
+  readonly automation: GithubLabelEventAutomationRow;
   readonly sender: GithubUser;
 }): Promise<boolean> {
-  if (args.trigger.config.filters.actor.type === "anyone") {
+  if (args.automation.config.filters.actor.type === "anyone") {
     return true;
   }
   const link = await loadGithubUserLink({
     db: args.db,
     installationId: args.installation.id,
-    userId: args.trigger.trigger.ownerUserId,
+    userId: args.automation.automation.ownerUserId,
   });
   return link?.githubUserId === String(args.sender.id);
 }
 
-async function loadGithubLabelEventTriggers(args: {
+async function loadGithubLabelEventAutomations(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly signal: AbortSignal;
-}): Promise<readonly GithubLabelEventTriggerRow[]> {
-  const triggerRows = await args.db
+}): Promise<readonly GithubLabelEventAutomationRow[]> {
+  const automationRows = await args.db
     .select({
-      trigger: zeroWorkflowTriggers,
+      automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
-      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+      chatThreadId: workflowUserAutomationThreads.chatThreadId,
     })
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .innerJoin(
       zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
     )
     .leftJoin(
-      workflowUserTriggerThreads,
+      workflowUserAutomationThreads,
       and(
-        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
-        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
         eq(
-          workflowUserTriggerThreads.workflowId,
-          zeroWorkflowTriggers.workflowId,
+          workflowUserAutomationThreads.userId,
+          zeroWorkflowAutomations.ownerUserId,
+        ),
+        eq(
+          workflowUserAutomationThreads.workflowId,
+          zeroWorkflowAutomations.workflowId,
         ),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowTriggers.orgId, args.orgId),
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.kind, "event"),
-        eq(zeroWorkflowTriggers.eventType, "github-label-applied"),
+        eq(zeroWorkflowAutomations.orgId, args.orgId),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.kind, "event"),
+        eq(zeroWorkflowAutomations.eventType, "github-label-applied"),
       ),
     )
-    .orderBy(asc(zeroWorkflowTriggers.createdAt));
+    .orderBy(asc(zeroWorkflowAutomations.createdAt));
   args.signal.throwIfAborted();
 
   const currentTime = nowDate();
-  const triggers: GithubLabelEventTriggerRow[] = [];
-  for (const row of triggerRows) {
+  const automations: GithubLabelEventAutomationRow[] = [];
+  for (const row of automationRows) {
     const config = githubLabelAppliedEventConfigSchema.safeParse(
-      row.trigger.eventConfig,
+      row.automation.eventConfig,
     );
     if (!config.success) {
       continue;
     }
-    const canFire = await workflowTriggerCanFire(args.db, {
-      trigger: row.trigger,
+    const canFire = await workflowAutomationCanFire(args.db, {
+      automation: row.automation,
       agentId: row.agentId,
       signal: args.signal,
     });
@@ -325,30 +329,30 @@ async function loadGithubLabelEventTriggers(args: {
     const chatThreadId =
       row.chatThreadId ??
       (await args.db.transaction(async (tx) => {
-        return await ensureWorkflowUserTriggerThread(tx, {
-          orgId: row.trigger.orgId,
-          userId: row.trigger.ownerUserId,
-          workflowId: row.trigger.workflowId,
+        return await ensureWorkflowUserAutomationThread(tx, {
+          orgId: row.automation.orgId,
+          userId: row.automation.ownerUserId,
+          workflowId: row.automation.workflowId,
           agentId: row.agentId,
           workflowTitle: row.workflowDisplayName ?? row.workflowName,
           currentTime,
         });
       }));
     args.signal.throwIfAborted();
-    triggers.push({
-      trigger: row.trigger,
+    automations.push({
+      automation: row.automation,
       agentId: row.agentId,
       workflowName: row.workflowName,
       chatThreadId,
       config: config.data,
     });
   }
-  return triggers;
+  return automations;
 }
 
 async function insertGithubProcessedEvent(args: {
   readonly db: Db;
-  readonly trigger: GithubLabelEventTriggerRow;
+  readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
@@ -356,14 +360,14 @@ async function insertGithubProcessedEvent(args: {
   const [processed] = await args.db
     .insert(zeroWorkflowGithubProcessedEvents)
     .values({
-      triggerId: args.trigger.trigger.id,
+      automationId: args.automation.automation.id,
       githubDeliveryId: args.deliveryId,
       repo: args.payload.repository.full_name,
       subjectType: args.subjectKind,
       subjectNumber: args.payload.issue.number,
       action: args.payload.action,
       labelNameNormalized: normalizeGithubWorkflowLabelName(
-        args.trigger.config.labelName,
+        args.automation.config.labelName,
       ),
       createdAt: nowDate(),
     })
@@ -382,7 +386,7 @@ function githubSubjectUrl(args: {
 }
 
 function buildGithubWorkflowEventSystemPrompt(args: {
-  readonly trigger: GithubLabelEventTriggerRow;
+  readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
@@ -401,7 +405,7 @@ function buildGithubWorkflowEventSystemPrompt(args: {
     "# GitHub event",
     JSON.stringify(
       {
-        triggerId: args.trigger.trigger.id,
+        automationId: args.automation.automation.id,
         deliveryId: args.deliveryId,
         event: "label_applied",
         action: args.payload.action,
@@ -432,9 +436,9 @@ function buildGithubWorkflowEventSystemPrompt(args: {
   ].join("\n");
 }
 
-async function dispatchGithubTriggerEvent(args: {
+async function dispatchGithubAutomationEvent(args: {
   readonly db: Db;
-  readonly trigger: GithubLabelEventTriggerRow;
+  readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
@@ -476,22 +480,22 @@ const startGithubWorkflowRun$ = command(
       () => {
         return {
           appendSystemPrompt: buildGithubWorkflowEventSystemPrompt(args),
-          callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-            args.trigger.chatThreadId,
-            args.trigger.agentId,
+          callbacks: buildChatOnlyWorkflowAutomationCallbacks(
+            args.automation.chatThreadId,
+            args.automation.agentId,
           ),
         };
       },
     );
     signal.throwIfAborted();
     const result = await set(
-      runWorkflowTriggerNow$,
+      runWorkflowAutomationNow$,
       {
         due: {
-          trigger: args.trigger.trigger,
-          agentId: args.trigger.agentId,
-          workflowName: args.trigger.workflowName,
-          chatThreadId: args.trigger.chatThreadId,
+          automation: args.automation.automation,
+          agentId: args.automation.agentId,
+          workflowName: args.automation.workflowName,
+          chatThreadId: args.automation.chatThreadId,
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
@@ -518,8 +522,8 @@ async function startGithubWorkflowRunOverride(
     return null;
   }
   return await runStarterOverride({
-    triggerId: args.trigger.trigger.id,
-    workflowName: args.trigger.workflowName,
+    automationId: args.automation.automation.id,
+    workflowName: args.automation.workflowName,
     deliveryId: args.deliveryId,
     repo: args.payload.repository.full_name,
     subjectType: args.subjectKind,
@@ -530,10 +534,10 @@ async function startGithubWorkflowRunOverride(
   });
 }
 
-async function matchedLabelForTrigger(args: {
+async function matchedLabelForAutomation(args: {
   readonly db: Db;
   readonly installation: GithubInstallationRecord;
-  readonly trigger: GithubLabelEventTriggerRow;
+  readonly automation: GithubLabelEventAutomationRow;
   readonly labelNames: readonly string[];
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly sender: GithubUser;
@@ -542,14 +546,14 @@ async function matchedLabelForTrigger(args: {
   if (
     !subjectMatchesConfig({
       subjectKind: args.subjectKind,
-      config: args.trigger.config,
+      config: args.automation.config,
     })
   ) {
     return null;
   }
   const matchedLabelName = matchingLabelName({
     labelNames: args.labelNames,
-    config: args.trigger.config,
+    config: args.automation.config,
   });
   if (!matchedLabelName) {
     return null;
@@ -557,20 +561,20 @@ async function matchedLabelForTrigger(args: {
   const actorMatches = await actorMatchesConfig({
     db: args.db,
     installation: args.installation,
-    trigger: args.trigger,
+    automation: args.automation,
     sender: args.sender,
   });
   args.signal.throwIfAborted();
   return actorMatches ? matchedLabelName : null;
 }
 
-const dispatchMatchedGithubTriggers$ = command(
+const dispatchMatchedGithubAutomations$ = command(
   async (
     { set },
     args: {
       readonly db: Db;
       readonly installation: GithubInstallationRecord;
-      readonly triggers: readonly GithubLabelEventTriggerRow[];
+      readonly automations: readonly GithubLabelEventAutomationRow[];
       readonly labelNames: readonly string[];
       readonly deliveryId: string;
       readonly payload: GithubLabelWorkflowEventPayload;
@@ -582,15 +586,15 @@ const dispatchMatchedGithubTriggers$ = command(
   ): Promise<GithubWorkflowDispatchCounts> => {
     let dispatched = 0;
     let duplicates = 0;
-    for (const trigger of args.triggers) {
+    for (const automation of args.automations) {
       const runTiming = args.sourceTiming.createRunTiming();
       const matchedLabelName = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+        "api_dispatch_pre_create_zero_workflow_event_match_automations",
         async () => {
-          return await matchedLabelForTrigger({
+          return await matchedLabelForAutomation({
             db: args.db,
             installation: args.installation,
-            trigger,
+            automation,
             labelNames: args.labelNames,
             subjectKind: args.subjectKind,
             sender: args.payload.sender,
@@ -604,16 +608,16 @@ const dispatchMatchedGithubTriggers$ = command(
       }
 
       const runArgs = {
-        trigger,
+        automation,
         deliveryId: args.deliveryId,
         payload: args.payload,
         subjectKind: args.subjectKind,
         matchedLabelName,
         timing: runTiming,
       };
-      const result = await dispatchGithubTriggerEvent({
+      const result = await dispatchGithubAutomationEvent({
         db: args.db,
-        trigger,
+        automation,
         deliveryId: args.deliveryId,
         payload: args.payload,
         subjectKind: args.subjectKind,
@@ -633,7 +637,7 @@ const dispatchMatchedGithubTriggers$ = command(
       signal.throwIfAborted();
       if (typeof result !== "string") {
         log.warn("Failed to start GitHub label workflow run", {
-          triggerId: trigger.trigger.id,
+          automationId: automation.automation.id,
           deliveryId: args.deliveryId,
           repo: args.payload.repository.full_name,
           subjectNumber: args.payload.issue.number,
@@ -647,7 +651,7 @@ const dispatchMatchedGithubTriggers$ = command(
   },
 );
 
-export const dispatchGithubLabelWorkflowTriggers$ = command(
+export const dispatchGithubLabelWorkflowAutomations$ = command(
   async (
     { set },
     args: {
@@ -708,10 +712,10 @@ export const dispatchGithubLabelWorkflowTriggers$ = command(
       return { kind: "ok", dispatched: 0, duplicates: 0 };
     }
 
-    const triggers = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_triggers",
+    const automations = await sourceTiming.measure(
+      "api_dispatch_pre_create_zero_workflow_event_load_automations",
       async () => {
-        return await loadGithubLabelEventTriggers({
+        return await loadGithubLabelEventAutomations({
           db,
           orgId: installationRecord.orgId,
           signal,
@@ -720,11 +724,11 @@ export const dispatchGithubLabelWorkflowTriggers$ = command(
     );
     signal.throwIfAborted();
     const counts = await set(
-      dispatchMatchedGithubTriggers$,
+      dispatchMatchedGithubAutomations$,
       {
         db,
         installation: installationRecord,
-        triggers,
+        automations,
         labelNames,
         deliveryId: args.deliveryId,
         payload: args.payload,

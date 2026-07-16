@@ -6,7 +6,7 @@ import stat
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import TypeAlias
 
 from mitmproxy import ctx
 
@@ -19,20 +19,12 @@ VmContext = tuple[
     matching.CompiledFirewallSet | None,
     matching.CompiledNetworkPolicies,
 ]
-_NoBuiltinFirewallCatalogDependency: TypeAlias = Literal["no-builtin-firewall-catalog-dependency"]
-_NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY: _NoBuiltinFirewallCatalogDependency = (
-    "no-builtin-firewall-catalog-dependency"
-)
-_BuiltinFirewallCatalogDependencyKey: TypeAlias = (
-    registry_firewalls.BuiltinFirewallCatalogFileKey | _NoBuiltinFirewallCatalogDependency | None
-)
-_RegistryCacheKey = tuple[
+_RegistryFileKey: TypeAlias = tuple[
     str,
     int,
     int,
     int,
     int,
-    _BuiltinFirewallCatalogDependencyKey,
 ]
 MAX_REGISTRY_BYTES = 16 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
@@ -57,7 +49,7 @@ class _RegistrySnapshot:
     compiled_firewalls: dict[str, matching.CompiledFirewallSet]
     compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
     builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
-    loaded_key: _RegistryCacheKey | None
+    loaded_key: _RegistryFileKey | None
 
 
 @dataclass(frozen=True)
@@ -84,12 +76,12 @@ class _RegistryCacheState:
     unavailable: RegistryUnavailable | None = None
     # Known-bad decoded registry input. This key should short-circuit until the
     # file changes again, while enforcement continues to see RegistryUnavailable.
-    failed_key: _RegistryCacheKey | None = None
+    failed_key: _RegistryFileKey | None = None
     # Open/stat failures do not provide a key, so use a one-shot guard. Read
     # errors have a key but are retried on every call; track their last warning
     # key only to avoid request-path log spam without poisoning the file state.
     stat_error_logged: bool = False
-    read_error_key: _RegistryCacheKey | None = None
+    read_error_key: _RegistryFileKey | None = None
     builtin_firewall_core_cache: dict[
         registry_firewalls.BuiltinFirewallCoreCacheKey,
         matching.CompiledFirewallCore,
@@ -217,17 +209,6 @@ def _builtin_firewall_catalog_cache_path() -> str | None:
     return registry_firewalls.configured_catalog_cache_path()
 
 
-def _registry_file_key_matches_snapshot_without_catalog_dependency(
-    key: _RegistryCacheKey,
-    snapshot_key: _RegistryCacheKey | None,
-) -> bool:
-    return (
-        snapshot_key is not None
-        and snapshot_key[:-1] == key[:-1]
-        and snapshot_key[-1] == _NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY
-    )
-
-
 def _classify_registry_vms(
     raw_registry: dict,
     *,
@@ -236,7 +217,6 @@ def _classify_registry_vms(
     dict,
     dict[str, InvalidVmEntry],
     dict[str, tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...]],
-    bool,
     registry_firewalls.BuiltinFirewallCatalogSnapshot | None,
 ]:
     new_registry: dict = {}
@@ -245,7 +225,6 @@ def _classify_registry_vms(
         str,
         tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...],
     ] = {}
-    uses_builtin_catalog_dependency = False
     builtin_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None = None
     for client_ip, vm in raw_registry.items():
         if not isinstance(vm, dict):
@@ -297,12 +276,10 @@ def _classify_registry_vms(
         vm_uses_builtin_catalog_dependency = isinstance(raw_firewalls, list) and any(
             isinstance(entry, dict) and entry.get("kind") == "builtin" for entry in raw_firewalls
         )
-        if vm_uses_builtin_catalog_dependency:
-            uses_builtin_catalog_dependency = True
-            if builtin_catalog_snapshot is None:
-                builtin_catalog_snapshot = registry_firewalls.load_catalog_snapshot(
-                    builtin_firewall_catalog_cache_path
-                )
+        if vm_uses_builtin_catalog_dependency and builtin_catalog_snapshot is None:
+            builtin_catalog_snapshot = registry_firewalls.load_catalog_snapshot(
+                builtin_firewall_catalog_cache_path
+            )
 
         try:
             resolved_firewalls = registry_firewalls.resolve_firewall_entries(
@@ -326,7 +303,6 @@ def _classify_registry_vms(
         new_registry,
         invalid_vms,
         builtin_cache_keys_by_client_ip,
-        uses_builtin_catalog_dependency,
         builtin_catalog_snapshot,
     )
 
@@ -406,7 +382,6 @@ def load_registry_state(registry_path: str) -> RegistryState:
     path_key = _path_key(path)
     state = _state_for_path(path_key)
     builtin_catalog_cache_path = _builtin_firewall_catalog_cache_path()
-    builtin_catalog_file_key = registry_firewalls.catalog_file_key(builtin_catalog_cache_path)
 
     try:
         fd, st = _open_registry_for_read(path)
@@ -424,16 +399,12 @@ def load_registry_state(registry_path: str) -> RegistryState:
             st.st_ino,
             st.st_mtime_ns,
             st.st_size,
-            builtin_catalog_file_key,
         )
-        if key == state.snapshot.loaded_key:
-            state.unavailable = None
-            state.stat_error_logged = False
-            state.read_error_key = None
-            return state.snapshot
-        if _registry_file_key_matches_snapshot_without_catalog_dependency(
-            key,
-            state.snapshot.loaded_key,
+        loaded_catalog_snapshot = state.snapshot.builtin_firewall_catalog_snapshot
+        if key == state.snapshot.loaded_key and (
+            loaded_catalog_snapshot is None
+            or registry_firewalls.catalog_file_key(builtin_catalog_cache_path)
+            == loaded_catalog_snapshot.dependency_file_key
         ):
             state.unavailable = None
             state.stat_error_logged = False
@@ -468,28 +439,10 @@ def load_registry_state(registry_path: str) -> RegistryState:
         new_registry,
         invalid_vms,
         builtin_cache_keys,
-        uses_builtin_catalog_dependency,
         builtin_catalog_snapshot,
     ) = _classify_registry_vms(
         raw_registry,
         builtin_firewall_catalog_cache_path=builtin_catalog_cache_path,
-    )
-    loaded_builtin_catalog_file_key = (
-        (
-            builtin_catalog_snapshot.dependency_file_key
-            if builtin_catalog_snapshot is not None
-            else None
-        )
-        if uses_builtin_catalog_dependency
-        else _NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY
-    )
-    loaded_key = (
-        path_key,
-        st.st_dev,
-        st.st_ino,
-        st.st_mtime_ns,
-        st.st_size,
-        loaded_builtin_catalog_file_key,
     )
     if invalid_vms:
         ctx.log.warn(f"Rejected {len(invalid_vms)} invalid proxy registry VM entries")
@@ -508,8 +461,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         new_compiled_registry,
         new_compiled_policy_registry,
-        builtin_catalog_snapshot if uses_builtin_catalog_dependency else None,
-        loaded_key,
+        builtin_catalog_snapshot,
+        key,
     )
     state.unavailable = None
     state.failed_key = None
@@ -519,7 +472,13 @@ def load_registry_state(registry_path: str) -> RegistryState:
 
 
 def load_registry(registry_path: str) -> dict:
-    """Load the proxy registry, reusing cached data when possible."""
+    """Load a lossy compatibility view containing only usable VM entries.
+
+    Invalid entries are omitted. An empty mapping can mean either that a
+    successfully loaded registry has no usable entries or that the registry is
+    unavailable after an open, stat, read, or parse failure. Use
+    `load_registry_state()` when those states must be distinguished.
+    """
     state = load_registry_state(registry_path)
     if isinstance(state, RegistryUnavailable):
         return {}
@@ -527,7 +486,12 @@ def load_registry(registry_path: str) -> dict:
 
 
 def get_vm_info(client_ip: str, registry_path: str) -> dict | None:
-    """Look up VM info by client IP address."""
+    """Look up VM info in the lossy compatibility view for a client IP.
+
+    `None` can mean that the IP is absent, its registry entry is invalid, or the
+    registry is unavailable. Use `load_registry_state()` when those states must
+    be distinguished.
+    """
     return load_registry(registry_path).get(client_ip)
 
 
@@ -535,7 +499,12 @@ def get_vm_context(
     client_ip: str,
     registry_path: str,
 ) -> VmContext | None:
-    """Look up raw VM info with compiled firewall and policy matcher sidecars."""
+    """Look up raw VM info with compiled matcher sidecars in a compatibility view.
+
+    `None` can mean that the IP is absent, its registry entry is invalid, or the
+    registry is unavailable. Use `load_registry_state()` when those states must
+    be distinguished.
+    """
     snapshot = load_registry_state(registry_path)
     if isinstance(snapshot, RegistryUnavailable):
         return None

@@ -49,9 +49,9 @@ import {
 } from "@vm0/connectors/firewall-metadata";
 import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import { FEATURE_SWITCH_CACHE_KEY } from "../../signals/external/feature-switch.ts";
 import { mockApi } from "../msw-contract.ts";
 
-const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
 const MOCK_CONNECTOR_TYPE_SET = new Set<string>(CONNECTOR_TYPE_KEYS);
 
 let mockConnectors: ConnectorResponse[] = [];

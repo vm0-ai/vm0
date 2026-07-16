@@ -79,6 +79,9 @@ function chatThreadRealtimeTopics(threadId: string): readonly string[] {
     `chatThreadRunCreated:${threadId}`,
     `chatThreadRunUpdated:${threadId}`,
     `chatThreadAutomationsChanged:${threadId}`,
+    `chatThreadArtifactsChanged:${threadId}`,
+    `chatThreadWorkflowsChanged:${threadId}`,
+    `chatThreadWorkflowQueueChanged:${threadId}`,
   ];
 }
 
@@ -290,6 +293,26 @@ describe("realtime signals", () => {
     subscriber.abort(abortError("subscriber aborted"));
 
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+  });
+
+  it("cleans up a payload subscription when channel attach fails", async () => {
+    mockSignedInUser();
+    const topic = "test:payload-subscribe-failure";
+
+    await context.store.set(setupRealtime$, context.signal);
+    context.mocks.ably.rejectNextSubscribe("Connection closed");
+
+    await expect(
+      context.store.set(
+        setAblyPayloadLoop$,
+        {
+          topic,
+          loopCommand$: keepAlivePayloadLoop$,
+        },
+        context.signal,
+      ),
+    ).resolves.toBeUndefined();
     expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
   });
 
@@ -533,6 +556,8 @@ describe("realtime signals", () => {
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
+            onArtifactsChanged$: keepAliveLoop$,
+            onWorkflowsChanged$: keepAliveLoop$,
             onWorkflowQueueChanged$: keepAliveLoop$,
             onSubscribed$: failReadyCatchup$,
           },
@@ -563,6 +588,8 @@ describe("realtime signals", () => {
             onMessageUpdated$: keepAlivePayloadLoop$,
             onRunChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
+            onArtifactsChanged$: keepAliveLoop$,
+            onWorkflowsChanged$: keepAliveLoop$,
             onWorkflowQueueChanged$: keepAliveLoop$,
             onSubscribed$: failReadyCatchupAfterReady$,
           },
@@ -590,6 +617,8 @@ describe("realtime signals", () => {
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
+          onArtifactsChanged$: keepAliveLoop$,
+          onWorkflowsChanged$: keepAliveLoop$,
           onWorkflowQueueChanged$: keepAliveLoop$,
           onSubscribed$: waitForReadyCatchupAbort$,
         },
@@ -610,6 +639,8 @@ describe("realtime signals", () => {
           onMessageUpdated$: keepAlivePayloadLoop$,
           onRunChanged$: keepAliveLoop$,
           onAutomationsChanged$: keepAliveLoop$,
+          onArtifactsChanged$: keepAliveLoop$,
+          onWorkflowsChanged$: keepAliveLoop$,
           onWorkflowQueueChanged$: keepAliveLoop$,
         },
       },

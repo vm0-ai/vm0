@@ -9,17 +9,15 @@ import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 
 import { env } from "../../lib/env";
-import { logger } from "../../lib/log";
 import { now, nowDate } from "../external/time";
 import { db$, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { putS3Object } from "../external/s3";
-import { settle } from "../utils";
+import { bestEffort } from "../utils";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
-const L = logger("api:telegram:link");
 const PENDING_TELEGRAM_USER_ID = "pending";
 const MAX_AUTH_AGE_SECONDS = 300;
 const MAX_CONNECT_AGE_SECONDS = 600;
@@ -195,14 +193,7 @@ export function verifyConnectSignature(args: {
 }
 
 async function publishTelegramUserChanged(userId: string): Promise<void> {
-  const publishResult = await settle(
-    publishUserSignal([userId], "telegram:changed"),
-  );
-  if (!publishResult.ok) {
-    L.warn("Failed to publish Telegram user change", {
-      error: publishResult.error,
-    });
-  }
+  await bestEffort(publishUserSignal([userId], "telegram:changed"));
 }
 
 export function telegramInstallationForLink(args: {

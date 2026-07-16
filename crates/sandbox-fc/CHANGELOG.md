@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.37.125](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.124...sandbox-fc-v0.37.125) (2026-07-16)
+
+
+### Documentation
+
+* **sandbox-fc:** document snapshot socket id constraints ([#21794](https://github.com/vm0-ai/vm0/issues/21794)) ([d211d78](https://github.com/vm0-ai/vm0/commit/d211d787ea7c714e9c2d335966889025d6efbb7b))
+
+## [0.37.124](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.123...sandbox-fc-v0.37.124) (2026-07-16)
+
+
+### Documentation
+
+* **sandbox-fc:** clarify netns release semantics ([#21743](https://github.com/vm0-ai/vm0/issues/21743)) ([29ed84c](https://github.com/vm0-ai/vm0/commit/29ed84c9bb3fb16071ae5b6239a8e6d5067d88ac))
+
+## [0.37.123](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.122...sandbox-fc-v0.37.123) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+## [0.37.122](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.121...sandbox-fc-v0.37.122) (2026-07-15)
+
+## [0.37.121](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.120...sandbox-fc-v0.37.121) (2026-07-15)
+
+## [0.37.120](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.119...sandbox-fc-v0.37.120) (2026-07-15)
+
+## [0.37.119](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.118...sandbox-fc-v0.37.119) (2026-07-15)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** bound firecracker process log records ([#21596](https://github.com/vm0-ai/vm0/issues/21596)) ([dbc12a2](https://github.com/vm0-ai/vm0/commit/dbc12a27c0e105ee341788f2d17d97f59dc98d53))
+
+## [0.37.118](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.117...sandbox-fc-v0.37.118) (2026-07-15)
+
+## [0.37.117](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.116...sandbox-fc-v0.37.117) (2026-07-15)
+
+## [0.37.116](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.115...sandbox-fc-v0.37.116) (2026-07-15)
+
+## [0.37.115](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.114...sandbox-fc-v0.37.115) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** prevent dnsmasq stalls during namespace churn ([#21373](https://github.com/vm0-ai/vm0/issues/21373)) ([1fd0fea](https://github.com/vm0-ai/vm0/commit/1fd0fea74884c8a644edbf62aaffc6c8ea5da615))
+
+## [0.37.114](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.113...sandbox-fc-v0.37.114) (2026-07-14)
+
+## [0.37.113](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.112...sandbox-fc-v0.37.113) (2026-07-14)
+
+## [0.37.112](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.111...sandbox-fc-v0.37.112) (2026-07-14)
+
+
+### Refactoring
+
+* **sandbox-fc:** isolate snapshot process lifecycle ([#21317](https://github.com/vm0-ai/vm0/issues/21317)) ([17f221a](https://github.com/vm0-ai/vm0/commit/17f221a436a27e948b80c293195aef606617e8e3))
+
+## [0.37.111](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.110...sandbox-fc-v0.37.111) (2026-07-14)
+
+## [0.37.110](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.109...sandbox-fc-v0.37.110) (2026-07-13)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** route tcp dns through dnsmasq ([#21288](https://github.com/vm0-ai/vm0/issues/21288)) ([a95d872](https://github.com/vm0-ai/vm0/commit/a95d8720fff31fa3be49fabac532eb5543865c82))
+
+## [0.37.109](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.108...sandbox-fc-v0.37.109) (2026-07-13)
+
 ## [0.37.108](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.107...sandbox-fc-v0.37.108) (2026-07-12)
 
 

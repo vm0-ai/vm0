@@ -103,12 +103,18 @@
     "https://storage.googleapis.com/$discovery/rest?version=v1": "b465cdaa160a5bcc53a79a1cfea4568a1e399b3387470d684ebd9e646057976e",
     "https://www.googleapis.com/discovery/v1/apis/compute/v1/rest": "f3b3b8891a895fbed0304dadbe850c83d0b78973aff5ec56970afd8c585a4a35"
   },
+  "google-contacts": {
+    "https://people.googleapis.com/$discovery/rest?version=v1": "8475b6805387984c4311f2601db843533443e82b977bb7cc0a31212add6aea3f"
+  },
   "google-docs": {
     "https://docs.googleapis.com/$discovery/rest?version=v1": "699e051c1579b00ed9a5cd5dc291f42bdbf152eefa1fe40b0352260f3bfe0ed9"
   },
   "google-drive": {
     "https://www.googleapis.com/discovery/v1/apis/drive/v2/rest": "6f2e160f2f34cac9d5e2d1123e0af1cf60b8eb1f06e0016ecb6cb443cbf72b8e",
     "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest": "a651ddcc6c505ab7c3713625ef6e17651837c707fc99cf3ccc135bc230f5bd46"
+  },
+  "google-forms": {
+    "https://forms.googleapis.com/$discovery/rest?version=v1": "be43d29adf2be4df561aaf9c4e61b9acda47b88cc8044a056715e9ea586715c2"
   },
   "google-meet": {
     "https://meet.googleapis.com/$discovery/rest?version=v2": "be461f4169cabd39a8ef6503e9612e1717d5c397261231fa32cc52607182fa0a"
@@ -118,6 +124,9 @@
   },
   "google-sheets": {
     "https://sheets.googleapis.com/$discovery/rest?version=v4": "0c6848d26f5e80d1482f1c552b8d371e01ef0d997a9b74c56b5a684cf9f55958"
+  },
+  "google-slides": {
+    "https://slides.googleapis.com/$discovery/rest?version=v1": "c739e9360c799fc2f4570e4374fbd0e4e9ad9e4a0a5b84a117b4fba9209fa103"
   },
   "notion": {
     "https://developers.notion.com/openapi.json": "b28e6ec6abc50b637355001425afbd6ef8644a95915a852893b9256d84f98c87"

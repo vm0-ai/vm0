@@ -10,6 +10,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
+import {
+  catalogPermissionDetail,
+  stubConnectorCatalogPermissions,
+} from "../../__tests__/helpers/connector-catalog";
 import { viewCommand } from "../view";
 import chalk from "chalk";
 
@@ -19,6 +23,26 @@ const mockAgent = {
   description: "A test agent",
   sound: "professional",
 };
+
+const defaultPermissionDetails = [
+  catalogPermissionDetail({
+    connectorRef: "github",
+    label: "GitHub",
+  }),
+  catalogPermissionDetail({
+    connectorRef: "slack",
+    label: "Slack",
+    permissions: [
+      { name: "conversations:read", description: "Read conversations" },
+      { name: "chat:write", description: "Send messages" },
+      { name: "reactions:read", description: "Read reactions" },
+    ],
+    defaultPolicy: {
+      permissionDefault: "allow",
+      unknownPolicy: "allow",
+    },
+  }),
+];
 
 function mockConnectorListHandler(
   connectors: Record<string, unknown>[] = [],
@@ -84,9 +108,10 @@ describe("zero agent view command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     server.use(mockUserPermissionGrantsHandler());
+    server.use(stubConnectorCatalogPermissions(defaultPermissionDetails));
   });
 
   afterEach(() => {
@@ -213,6 +238,46 @@ describe("zero agent view command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("slack");
       expect(logCalls).not.toContain("slack (0/");
+    });
+
+    it("should load a server-authored connector once per unique ref", async () => {
+      let permissionRequests = 0;
+      const serverOnlyDetail = catalogPermissionDetail({
+        connectorRef: "server-only",
+        label: "Server Only",
+        permissions: [
+          { name: "records.read", description: "Read server records" },
+        ],
+        defaultPolicy: {
+          permissionDefault: "deny",
+          unknownPolicy: "deny",
+        },
+      });
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/connector-catalog/server-only/permissions",
+          () => {
+            permissionRequests += 1;
+            return HttpResponse.json({ permissions: serverOnlyDetail });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["server-only"] });
+          },
+        ),
+        mockConnectorListHandler(),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("server-only (0/1 allowed)");
+      expect(permissionRequests).toBe(1);
     });
 
     it("should show instructions content with --instructions flag", async () => {
@@ -558,6 +623,43 @@ describe("zero agent view command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should fail instead of treating permission API errors as no metadata", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        mockConnectorListHandler(),
+        http.get(
+          "http://localhost:3000/api/zero/connector-catalog/github/permissions",
+          () => {
+            return HttpResponse.json(
+              {
+                error: {
+                  message: "Permission service unavailable",
+                  code: "INTERNAL",
+                },
+              },
+              { status: 500 },
+            );
+          },
+        ),
+      );
+
+      await expect(async () => {
+        await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("500: Permission service unavailable"),
+      );
     });
   });
 });

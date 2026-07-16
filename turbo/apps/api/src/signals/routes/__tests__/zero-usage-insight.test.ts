@@ -21,7 +21,7 @@ import {
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -62,7 +62,7 @@ function sumBucketSeries(
 
 async function entitledInsightActor(): Promise<ApiTestUser> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -81,7 +81,7 @@ async function createInsightCompose(
   actor: ApiTestUser,
   name = `usage-insight-${randomUUID().slice(0, 8)}`,
 ): Promise<{ readonly composeId: string; readonly name: string }> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   return await api.createCompose(actor, {
     version: "1",
     agents: {
@@ -98,7 +98,7 @@ async function createSourceRun(
   composeId: string,
   triggerSource: TriggerSource,
 ): Promise<string> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const run = await api.createDirectRun(actor, {
     agentComposeId: composeId,
     prompt: "generate usage insight activity",
@@ -127,7 +127,7 @@ async function reportRunUsage(
   runId: string,
   specs: readonly UsageEventSpec[],
 ): Promise<void> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const webhooks = createWebhookCallbackApi(context);
   const events = specs.map((spec) => {
     return {
@@ -350,7 +350,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totalByBucket["chat"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["slack"]).toBeGreaterThanOrEqual(50);
     expect(totalByBucket["email"]).toBeGreaterThanOrEqual(50);
-    expect(totalByBucket["automation"]).toBeGreaterThanOrEqual(50);
+    expect(totalByBucket["automation"]).toBeGreaterThanOrEqual(100);
     expect(totalByBucket["others"]).toBeGreaterThanOrEqual(250);
   });
 
@@ -570,7 +570,7 @@ describe("GET /api/zero/usage/insight", () => {
 
   it("returns chat rows when groupBy=source and there are chat runs", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const actor = await entitledInsightActor();
     await api.ensureOrgModelProvider(actor);

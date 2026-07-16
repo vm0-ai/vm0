@@ -31,6 +31,7 @@ import {
 import {
   ARTIFACT_FULLSCREEN_PARAM,
   ARTIFACT_HTML_EDIT_PARAM,
+  ARTIFACT_IMAGE_EDIT_PARAM,
   ARTIFACT_INBOX_QUERY_PARAM,
   ARTIFACT_QUERY_PARAM,
   clearArtifactSidebarParams,
@@ -38,7 +39,15 @@ import {
   PRESENTATION_EDITOR_QUERY_PARAM,
 } from "./right-sidebar-search-params.ts";
 import { refreshPresentationHtmlPreviews$ } from "./presentation-html-cache-bust.ts";
-import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
+import {
+  publicAttachmentUrl,
+  readableAttachmentResourceUrl,
+} from "../../views/zero-page/zero-attachment-url.ts";
+import {
+  clearEditableImageCanvasTransientState$,
+  editableImageArtifactCanvasKey,
+  saveEditableImageCanvasSnapshot$,
+} from "./zero-editable-image-canvas.ts";
 
 // ---------------------------------------------------------------------------
 // Artifact sidebar — URL-routed page-level slot for previewing a single
@@ -58,6 +67,7 @@ export type ArtifactInboxSection = "all" | "media" | "docs" | "sites";
 const internalArtifactInboxSection$ = state<ArtifactInboxSection>("all");
 const internalArtifactInboxQuery$ = state("");
 const internalArtifactInboxSearchOpen$ = state(false);
+const internalPresentationEditorCloseDialogOpen$ = state(false);
 const internalHtmlDomEditPendingUrl$ = state<string | null>(null);
 const internalHtmlDomEditPublishingUrl$ = state<string | null>(null);
 const internalHtmlDomEditPreviewHtmlByUrl$ = state<
@@ -295,6 +305,16 @@ export const currentPresentationEditorUrl$ = computed((get) => {
   return get(searchParams$).get(PRESENTATION_EDITOR_QUERY_PARAM);
 });
 
+export const presentationEditorCloseDialogOpen$ = computed((get) => {
+  return get(internalPresentationEditorCloseDialogOpen$);
+});
+
+export const setPresentationEditorCloseDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalPresentationEditorCloseDialogOpen$, open);
+  },
+);
+
 function setArtifactPreviewParams(
   params: URLSearchParams,
   args: {
@@ -354,6 +374,7 @@ export const openArtifactSidebarHtmlEdit$ = command(
 
 export const openPresentationEditor$ = command(({ get, set }, url: string) => {
   const params = new URLSearchParams(get(searchParams$));
+  set(internalPresentationEditorCloseDialogOpen$, false);
   params.set(PRESENTATION_EDITOR_QUERY_PARAM, url);
   params.set(ARTIFACT_FULLSCREEN_PARAM, "1");
   params.delete(ARTIFACT_QUERY_PARAM);
@@ -365,11 +386,14 @@ export const openPresentationEditor$ = command(({ get, set }, url: string) => {
 
 export const closePresentationEditor$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
-  if (!params.has(PRESENTATION_EDITOR_QUERY_PARAM)) {
+  set(internalPresentationEditorCloseDialogOpen$, false);
+  const presentationUrl = params.get(PRESENTATION_EDITOR_QUERY_PARAM);
+  if (presentationUrl === null) {
     return;
   }
   params.delete(PRESENTATION_EDITOR_QUERY_PARAM);
   params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  params.set(ARTIFACT_QUERY_PARAM, presentationUrl);
   set(replaceSearchParams$, params);
 });
 
@@ -442,6 +466,16 @@ export const closeArtifact$ = command(({ get, set }) => {
     !params.has(ARTIFACT_FULLSCREEN_PARAM)
   ) {
     return;
+  }
+  const imageEditUrl =
+    params.get(ARTIFACT_IMAGE_EDIT_PARAM) === "1"
+      ? params.get(ARTIFACT_QUERY_PARAM)
+      : null;
+  if (imageEditUrl) {
+    const canvasKey = editableImageArtifactCanvasKey(imageEditUrl);
+    const canvasSrc = publicAttachmentUrl(imageEditUrl);
+    set(saveEditableImageCanvasSnapshot$, canvasKey, canvasSrc);
+    set(clearEditableImageCanvasTransientState$, canvasKey);
   }
   clearArtifactSidebarParams(params);
   set(replaceSearchParams$, params);

@@ -25,7 +25,7 @@ describe("info command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", testApiUrl);
+    vi.stubEnv("VM0_API_BACKEND_URL", testApiUrl);
 
     // Create temp directory for each test
     tempDir = mkdtempSync(join(os.tmpdir(), "vm0-info-test-"));

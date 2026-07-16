@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connector-config";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const microsoft365 = {
   "microsoft-365": {
@@ -17,7 +16,6 @@ export const microsoft365 = {
     ],
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.Microsoft365Connector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Microsoft to grant Microsoft Graph access.",
         client: {

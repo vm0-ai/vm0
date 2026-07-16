@@ -32,7 +32,6 @@ const MICROSOFT_TOKEN_URL =
 const MICROSOFT_ME_URL = "https://graph.microsoft.com/v1.0/me";
 const TEAMS_APP_ID = "00000000-0000-0000-0000-000000000001";
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
-const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 
 async function appRequest(
   path: string,
@@ -84,12 +83,17 @@ function mockMicrosoftOAuth(args: {
   readonly aadObjectId: string;
   readonly displayName?: string;
   readonly userPrincipalName?: string;
+  readonly expectedRedirectUri?: string;
 }): void {
   server.use(
     http.post(MICROSOFT_TOKEN_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
       expect(body.get("client_id")).toBe("test-microsoft-client-id");
       expect(body.get("client_secret")).toBe("test-microsoft-client-secret");
+      expect(body.get("redirect_uri")).toBe(
+        args.expectedRedirectUri ??
+          `${API_ORIGIN}/api/zero/teams/oauth/callback`,
+      );
       expect(body.get("grant_type")).toBe("authorization_code");
       return HttpResponse.json({
         access_token: "ms-access-token",
@@ -145,18 +149,15 @@ describe("Teams OAuth API routes", () => {
   });
 
   beforeEach(() => {
-    setupTeamsConnectTestEnv(APP_ORIGIN);
+    setupTeamsConnectTestEnv(APP_ORIGIN, API_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockEnv("MICROSOFT_OAUTH_CLIENT_ID", "test-microsoft-client-id");
     mockEnv("MICROSOFT_OAUTH_CLIENT_SECRET", "test-microsoft-client-secret");
   });
 
-  it("redirects to Microsoft OAuth with connect state", async () => {
-    mocks.clerk.session("user_1", "org_1", "org:member");
-
+  it("redirects to Microsoft OAuth with connect state without a browser session", async () => {
     const response = await appRequest(
       "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
-      { headers: AUTH_HEADERS },
     );
 
     expect(response.status).toBe(307);
@@ -168,7 +169,7 @@ describe("Teams OAuth API routes", () => {
       "test-microsoft-client-id",
     );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      `${WEB_ORIGIN}/api/zero/teams/oauth/callback`,
+      `${API_ORIGIN}/api/zero/teams/oauth/callback`,
     );
     expect(redirectUrl.searchParams.get("scope")).toBe(
       "openid profile email User.Read",
@@ -180,35 +181,28 @@ describe("Teams OAuth API routes", () => {
     expect(state).toStrictEqual({ orgId: "org_1", vm0UserId: "user_1" });
   });
 
-  it("uses the web rewrite origin for callback URLs", async () => {
-    mocks.clerk.session("user_1", "org_1", "org:member");
-
+  it("keeps API-host connect requests on the API callback origin", async () => {
     const response = await appRequest(
       "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
-      {
-        origin: API_ORIGIN,
-        headers: { ...AUTH_HEADERS, "x-vm0-web-origin": WEB_ORIGIN },
-      },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);
     const redirectUrl = new URL(response.headers.get("location")!);
+    expect(redirectUrl.origin + redirectUrl.pathname).toBe(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      `${WEB_ORIGIN}/api/zero/teams/oauth/callback`,
+      `${API_ORIGIN}/api/zero/teams/oauth/callback`,
     );
   });
 
-  it("rejects connect requests for a different signed-in user", async () => {
-    mocks.clerk.session("user_other", "org_1", "org:member");
+  it("rejects connect requests without org and user state", async () => {
+    const response = await appRequest("/api/zero/teams/oauth/connect");
 
-    const response = await appRequest(
-      "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
-      { headers: AUTH_HEADERS },
-    );
-
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
-      error: "Authenticated user does not match Teams connect request",
+      error: "Missing orgId or vm0UserId",
     });
   });
 
@@ -226,7 +220,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN, headers: AUTH_HEADERS },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);
@@ -278,7 +272,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN, headers: AUTH_HEADERS },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);
@@ -329,7 +323,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN, headers: AUTH_HEADERS },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);
@@ -340,17 +334,18 @@ describe("Teams OAuth API routes", () => {
     );
   });
 
-  it("rejects callback state for a different signed-in user", async () => {
+  it("rejects callback state when the vm0 user is not an org member", async () => {
     const fixture = await seedTeamsInstallation(track);
-    await seedMembership(fixture.orgId, fixture.userId, "admin");
-    mocks.clerk.session("user_other", fixture.orgId, "org:admin");
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
 
     const response = await appRequest(
       callbackPath({
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN, headers: AUTH_HEADERS },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);

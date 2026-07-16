@@ -10,6 +10,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { createStore } from "ccstate";
 
@@ -1264,8 +1265,12 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     setZeroPrice();
   });
 
-  function trackedSeed(): { orgId: string; userId: string } {
-    return createOrgFixture();
+  async function trackedSeed(
+    tier: OrgTier = "team",
+  ): Promise<{ orgId: string; userId: string }> {
+    const fixture = createOrgFixture();
+    await seedOrgMetadata({ orgId: fixture.orgId, tier, credits: 0 });
+    return fixture;
   }
 
   it("creates concurrency subscription checkout with the requested quantity", async () => {
@@ -1366,6 +1371,37 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
         line_items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 2 }],
       }),
     );
+  });
+
+  it("rejects concurrency checkout for Pro workspaces", async () => {
+    const fixture = await trackedSeed("pro");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(
+      zeroBillingConcurrencyCheckoutContract,
+    );
+    const response = await accept(
+      client.create({
+        body: {
+          quantity: 1,
+          successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Additional concurrency is only available for Team or Custom workspaces",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
   });
 
   it("returns 400 when concurrency price is not configured", async () => {

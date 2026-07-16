@@ -15,6 +15,7 @@ import {
   type ClerkLike,
 } from "./auth-retry.ts";
 import { addClientHeaders } from "./client-headers.ts";
+import { reportForceUpgradeResponse } from "./force-upgrade.ts";
 
 interface AuthedClientOptions {
   readonly baseUrl: string;
@@ -69,6 +70,10 @@ export function createAuthedContractClient<T extends AppRouter>(
             options.getUnauthorizedRedirectSuppressionUntil?.() ?? 0,
           );
         }
+      }
+
+      if (reportForceUpgradeResponse(response)) {
+        return response;
       }
 
       if (IN_VITEST) {

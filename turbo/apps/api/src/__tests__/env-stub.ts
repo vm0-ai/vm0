@@ -34,7 +34,7 @@ vi.stubEnv("R2_HOSTED_SITES_ACCESS_KEY_ID", "test-hosted-sites-access-key");
 vi.stubEnv("R2_HOSTED_SITES_SECRET_ACCESS_KEY", "test-hosted-sites-secret-key");
 vi.stubEnv("ZERO_HOST_DOMAIN", "sites.example.com");
 vi.stubEnv("ZERO_HOST_SCHEME", "https");
-vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 vi.stubEnv("VM0_WEB_URL", "http://localhost:3001");
 vi.stubEnv("APP_URL", "http://localhost:3002");
 vi.stubEnv("RESEND_API_KEY", "test-resend-key");

@@ -22,7 +22,7 @@ import {
   type MemoryVersionSource,
 } from "./memory-activity-diff.service";
 import { generateMemoryDaySummary } from "./memory-activity-summarize.service";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const L = logger("CronSummarizeMemory");
 const MEMORY_SUMMARY_LOOKBACK_DAYS = 7;
@@ -300,17 +300,15 @@ function summarizeUserMemory(
 
       let summary: string | null = null;
       if (changeSet.changed) {
-        const summaryResult = await settle(generateMemoryDaySummary(changeSet));
-        if (summaryResult.ok) {
-          summary = summaryResult.value;
-        } else {
-          L.warn("Memory day summary generation failed", {
-            orgId: storage.orgId,
-            userId: storage.userId,
-            date: dateLabel,
-            err: summaryResult.error,
-          });
-        }
+        summary =
+          (await tapError(generateMemoryDaySummary(changeSet), (err) => {
+            L.warn("Memory day summary generation failed", {
+              orgId: storage.orgId,
+              userId: storage.userId,
+              date: dateLabel,
+              err,
+            });
+          })) ?? null;
       }
 
       await persistSummary(
@@ -393,9 +391,9 @@ export const summarizeMemory$ = command(
       const timezone = timezoneMap.get(cacheKey) ?? "UTC";
       // Isolate each user: one user's malformed data (e.g. invalid memory
       // frontmatter) must not abort the whole run for everyone. AbortError
-      // still propagates through `settle`, so a genuine cancellation stops the
+      // still propagates through `tapError`, so a genuine cancellation stops the
       // loop instead of being swallowed.
-      const result = await settle(
+      const result = await tapError(
         get(
           summarizeUserMemory(db, storage, timezone, {
             now,
@@ -403,18 +401,18 @@ export const summarizeMemory$ = command(
             force: false,
           }),
         ),
-        signal,
+        (err) => {
+          L.warn("Failed to summarize user memory", {
+            orgId: storage.orgId,
+            userId: storage.userId,
+            err,
+          });
+        },
       );
-      if (result.ok) {
-        summarized += result.value;
-      } else {
-        L.warn("Failed to summarize user memory", {
-          orgId: storage.orgId,
-          userId: storage.userId,
-          err: result.error,
-        });
-      }
       signal.throwIfAborted();
+      if (result !== undefined) {
+        summarized += result;
+      }
     }
 
     L.debug("Summarized memory changes", { summarized });

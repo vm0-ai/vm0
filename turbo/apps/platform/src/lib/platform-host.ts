@@ -1,4 +1,18 @@
-type PlatformEnvironment = "development" | "preview" | "production";
+export type PlatformEnvironment = "development" | "preview" | "production";
+
+export type PlatformService = "api" | "www" | "app" | "platform";
+
+export interface PlatformRuntimeConfig {
+  readonly environment: PlatformEnvironment;
+  readonly publicArtifactsBaseUrl: "https://cdn.vm0.io" | "https://cdn.vm7.io";
+  readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
+  readonly plausibleScriptUrl: string | null;
+  readonly postHogKey: string | null;
+  readonly sentryDsn: string | null;
+}
+
+const PRODUCTION_DOMAIN = "vm0.ai";
+const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
 function browserHostname(): string | null {
   if (typeof location === "undefined" || !location.hostname) {
@@ -8,7 +22,56 @@ function browserHostname(): string | null {
 }
 
 function isProductionHostname(hostname: string): boolean {
-  return hostname === "vm0.ai" || hostname.endsWith(".vm0.ai");
+  return (
+    hostname === PRODUCTION_DOMAIN || hostname.endsWith(`.${PRODUCTION_DOMAIN}`)
+  );
+}
+
+export function rewritePlatformHostname(
+  hostname: string,
+  target: PlatformService,
+): string {
+  const labels = hostname.split(".");
+  const serviceLabelIndex = labels.length - 3;
+  if (serviceLabelIndex < 0) {
+    return hostname;
+  }
+
+  const serviceLabel = labels[serviceLabelIndex];
+  if (!serviceLabel) {
+    return hostname;
+  }
+
+  if ((PLATFORM_SERVICE_LABELS as readonly string[]).includes(serviceLabel)) {
+    labels[serviceLabelIndex] = target;
+    return labels.join(".");
+  }
+
+  for (const label of PLATFORM_SERVICE_LABELS) {
+    const suffix = `-${label}`;
+    if (serviceLabel.endsWith(suffix)) {
+      labels[serviceLabelIndex] =
+        `${serviceLabel.slice(0, -label.length)}${target}`;
+      return labels.join(".");
+    }
+  }
+
+  return hostname;
+}
+
+export function derivePlatformServiceOrigin(
+  currentOrigin: string,
+  target: PlatformService,
+): string {
+  const url = new URL(currentOrigin);
+
+  // Production frontends may be served by more than one provider-specific
+  // hostname. They all share the canonical API and web services.
+  url.hostname = isProductionHostname(url.hostname)
+    ? `${target}.${PRODUCTION_DOMAIN}`
+    : rewritePlatformHostname(url.hostname, target);
+
+  return url.origin;
 }
 
 export function resolvePlatformEnvironment(): PlatformEnvironment {
@@ -24,16 +87,49 @@ export function resolvePlatformEnvironment(): PlatformEnvironment {
   return isProductionHostname(hostname) ? "production" : "preview";
 }
 
+function optionalBuildValue(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
+  const environment = resolvePlatformEnvironment();
+
+  if (environment === "production") {
+    return {
+      environment,
+      publicArtifactsBaseUrl: "https://cdn.vm0.io",
+      zeroHostDomain: "sites.vm0.io",
+      plausibleScriptUrl: optionalBuildValue(
+        import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION,
+      ),
+      postHogKey: optionalBuildValue(import.meta.env.VITE_POSTHOG_KEY),
+      sentryDsn: optionalBuildValue(import.meta.env.VITE_SENTRY_DSN),
+    };
+  }
+
+  return {
+    environment,
+    publicArtifactsBaseUrl: "https://cdn.vm7.io",
+    zeroHostDomain: "sites.vm7.io",
+    plausibleScriptUrl:
+      environment === "preview"
+        ? optionalBuildValue(import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW)
+        : null,
+    postHogKey: null,
+    sentryDsn: null,
+  };
+}
+
 export function resolvePublicArtifactsBaseUrl():
   | "https://cdn.vm0.io"
   | "https://cdn.vm7.io" {
-  return resolvePlatformEnvironment() === "production"
-    ? "https://cdn.vm0.io"
-    : "https://cdn.vm7.io";
+  return resolvePlatformRuntimeConfig().publicArtifactsBaseUrl;
 }
 
 export function resolveZeroHostDomain(): "sites.vm0.io" | "sites.vm7.io" {
-  return resolvePlatformEnvironment() === "production"
-    ? "sites.vm0.io"
-    : "sites.vm7.io";
+  return resolvePlatformRuntimeConfig().zeroHostDomain;
 }

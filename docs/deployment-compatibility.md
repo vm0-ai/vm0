@@ -169,6 +169,28 @@ For runner/backend API changes:
 - Include poll, claim, heartbeat, completion, artifact, and session-resume paths
   when those protocols change.
 
+### Firewall hostname policy
+
+The backend is the single owner of firewall configuration hostname policy.
+Generated firewall definitions must already contain canonical lowercase ASCII
+hostname literals; catalog tests enforce that invariant, and dispatch forwards
+those static definitions without rewriting them. The backend converts rendered
+custom connector hostnames and hostname-bearing built-in variable values to the
+same canonical identity before putting them into existing runner payload
+fields. Raw custom connector definitions and encrypted variable values remain
+unchanged in storage.
+
+Runner validation remains unchanged and fail closed. It defensively validates
+configuration received from old and new backends, resolved credential-bearing
+targets, and untrusted request authorities. The fixed backend policy must emit
+only canonical ASCII identities accepted unchanged by draining old runners; a
+policy upgrade requires deliberate compatibility analysis before deployment.
+
+A fully dynamic secret-backed `auth.base` remains runner-validated because the
+existing auth request has no policy/capability marker that can distinguish old
+and new runs. Changing that path requires an explicit backward-compatible
+protocol design rather than silently tightening old in-flight runs.
+
 For persisted state changes:
 
 - Test reading rows or payloads written by the previous version.

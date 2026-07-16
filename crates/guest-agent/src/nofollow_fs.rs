@@ -16,13 +16,35 @@ use std::fs::{self, File, OpenOptions};
 #[cfg(target_os = "linux")]
 use std::io;
 #[cfg(target_os = "linux")]
-use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 #[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "linux")]
 use std::os::unix::fs::OpenOptionsExt;
 #[cfg(target_os = "linux")]
 use std::path::{Path, PathBuf};
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FileIdentity {
+    device: libc::dev_t,
+    inode: libc::ino_t,
+    mount_id: u64,
+}
+
+#[cfg(target_os = "linux")]
+impl FileIdentity {
+    pub(crate) fn ensure_same_mount(self, expected: Self) -> io::Result<()> {
+        if self.device == expected.device && self.mount_id == expected.mount_id {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "refusing to cross a mount or filesystem boundary during cleanup",
+            ))
+        }
+    }
+}
 
 #[cfg(target_os = "linux")]
 pub(crate) struct Dir(File);
@@ -44,6 +66,38 @@ impl Dir {
         )))
     }
 
+    pub(crate) fn open_absolute(path: &Path) -> io::Result<Self> {
+        if !path.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "directory path must be absolute",
+            ));
+        }
+
+        let mut current = Self::open(Path::new("/"))?;
+        for component in path.components() {
+            match component {
+                std::path::Component::RootDir => {}
+                std::path::Component::Normal(name) => {
+                    current = current.open_child_dir(name)?;
+                }
+                std::path::Component::CurDir
+                | std::path::Component::ParentDir
+                | std::path::Component::Prefix(_) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "directory path must contain only normal components",
+                    ));
+                }
+            }
+        }
+        Ok(current)
+    }
+
+    pub(crate) fn identity(&self) -> io::Result<FileIdentity> {
+        file_identity(&self.0)
+    }
+
     pub(crate) fn open_child_dir(&self, name: &OsStr) -> io::Result<Self> {
         open_child(
             &self.0,
@@ -60,6 +114,82 @@ impl Dir {
             libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
         )
     }
+
+    pub(crate) fn remove_child_tree(
+        &self,
+        name: &OsStr,
+        filesystem: FileIdentity,
+        protected: &[FileIdentity],
+    ) -> io::Result<()> {
+        match self.open_child_dir(name) {
+            Ok(child) => {
+                let identity = child.identity()?;
+                identity.ensure_same_mount(filesystem)?;
+                if protected.contains(&identity) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "refusing to remove a protected runtime directory",
+                    ));
+                }
+                let entries = child
+                    .read_dir()?
+                    .map(|entry| entry.map(|entry| entry.file_name()))
+                    .collect::<io::Result<Vec<_>>>()?;
+                for child_name in entries {
+                    child.remove_child_tree(&child_name, filesystem, protected)?;
+                }
+                unlink_child(&self.0, name, libc::AT_REMOVEDIR)
+            }
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(libc::ENOTDIR) | Some(libc::ELOOP)
+                ) =>
+            {
+                unlink_child(&self.0, name, 0)
+            }
+            Err(error) => Err(error),
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn file_identity(file: &File) -> io::Result<FileIdentity> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` points to writable memory and `file` owns a live
+    // descriptor for the duration of the call.
+    let result = unsafe { libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: successful `fstat` initialized the full structure.
+    let stat = unsafe { stat.assume_init() };
+    let mount_id = mount_id_for_fd(file.as_raw_fd())?;
+    Ok(FileIdentity {
+        device: stat.st_dev,
+        inode: stat.st_ino,
+        mount_id,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn mount_id_for_fd(fd: RawFd) -> io::Result<u64> {
+    let fdinfo = fs::read_to_string(format!("/proc/self/fdinfo/{fd}"))?;
+    let value = fdinfo
+        .lines()
+        .find_map(|line| line.strip_prefix("mnt_id:"))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Unsupported,
+                "filesystem mount identity is unavailable",
+            )
+        })?;
+    value.trim().parse().map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid filesystem mount identity: {error}"),
+        )
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -82,6 +212,26 @@ fn open_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<File> {
     // SAFETY: a non-negative `openat` result is a newly owned fd. Converting
     // it into `File` transfers close responsibility to Rust.
     Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+#[cfg(target_os = "linux")]
+fn unlink_child(parent: &File, name: &OsStr, flags: i32) -> io::Result<()> {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes == b"." || bytes == b".." || bytes.contains(&b'/') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "child name must be a non-empty basename",
+        ));
+    }
+    let name = CString::new(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    // SAFETY: the parent is a live directory descriptor, `name` is a
+    // NUL-terminated basename, and `flags` is either zero or AT_REMOVEDIR.
+    let result = unsafe { libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), flags) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 #[cfg(all(test, target_os = "linux"))]

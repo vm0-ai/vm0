@@ -92,7 +92,7 @@ export async function openDMChannel(
     if (isSlackPlatformError(result.error)) {
       return { kind: "slack_error", error: result.error.data.error };
     }
-    throw result.error;
+    return { kind: "slack_error", error: "open_dm_failed" };
   }
   if (!result.value.channel?.id) {
     return { kind: "slack_error", error: "missing_channel_id" };
@@ -179,7 +179,7 @@ export async function postEphemeral(
     if (isSlackPlatformError(result.error)) {
       return { kind: "slack_error", error: result.error.data.error };
     }
-    throw result.error;
+    return { kind: "slack_error", error: "post_ephemeral_failed" };
   }
   return { kind: "ok", ts: result.value.message_ts };
 }

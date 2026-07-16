@@ -10,7 +10,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
-import { zeroWorkflowTriggers } from "./zero-workflow";
+import { zeroWorkflowAutomations } from "./zero-workflow";
 import type { GoogleCalendarEventSnapshot } from "@vm0/db/jsonb-contracts/google-calendar-event";
 
 export const googleCalendarWatchStates = pgTable(
@@ -106,11 +106,11 @@ export const googleCalendarProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    triggerId: uuid("trigger_id")
+    automationId: uuid("automation_id")
       .notNull()
       .references(
         () => {
-          return zeroWorkflowTriggers.id;
+          return zeroWorkflowAutomations.id;
         },
         { onDelete: "cascade" },
       ),
@@ -124,9 +124,9 @@ export const googleCalendarProcessedEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_google_calendar_processed_events_event").on(
+      uniqueIndex("idx_google_calendar_processed_events_automation_event").on(
         table.watchStateId,
-        table.triggerId,
+        table.automationId,
         table.calendarEventId,
         table.eventChangeKey,
       ),

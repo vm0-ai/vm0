@@ -7,6 +7,7 @@ import pytest
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
+import request_classification
 import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import auth_cache_key, has_auth_state
@@ -98,16 +99,35 @@ async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, rea
     assert metadata_keys.VM_RUN_ID not in flow.metadata
 
 
+async def test_unknown_cached_classification_does_not_bypass_registry_gate(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    reg_path = tmp_path / "proxy-registry.json"
+    reg_path.write_text("{ broken registry")
+    flow = real_flow(with_response=False, host="api.vm0.ai")
+    flow.metadata[request_classification.REQUEST_CLASSIFICATION_METADATA_KEY] = object()
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content)["error"] == "registry_unavailable"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
+
+
 async def test_vm0_api_test_paths_skip_auto_allow(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
     """`/api/test/*` routes exist to exercise the firewall pipeline itself.
 
-    If they fell into Step 2's auto-allow fast path, the test-oauth E2E
-    test would never get proxy-injected Authorization headers and the
-    pipeline it's supposed to exercise would be silently bypassed. The
-    carve-out drops these paths into Step 3 so the registered firewall
-    runs `handle_firewall_request`.
+    If they entered the platform API auto-allow fast path, the test-oauth E2E test
+    would never get proxy-injected Authorization headers and the pipeline it's
+    supposed to exercise would be silently bypassed. The carve-out instead lets the
+    registered firewall match these paths and run `handle_firewall_request`.
     """
     reg_path = _write_registry(
         tmp_path,
@@ -158,6 +178,74 @@ async def test_vm0_api_test_paths_skip_auto_allow(
     )
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
     assert binding.kinds == frozenset(("connector_auth",))
+
+
+async def test_vm0_model_proxy_path_on_vm0_api_host_uses_firewall_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.1",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            run_id="run-vm0-model",
+            sandbox_marker="tok-vm0-model",
+            firewall_name="model-provider:vm0-model",
+            api_entry={
+                "base": "https://api.vm0.ai/api/internal/vm0-model/v1/responses",
+                "auth": {
+                    "headers": {
+                        "Authorization": "Bearer ${{ secrets.OPENAI_API_KEY }}",
+                        "X-VM0-Upstream-Authorization": (
+                            "Bearer ${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}"
+                        ),
+                    }
+                },
+                "permissions": [],
+            },
+            network_policy=None,
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.1",
+        host="api.vm0.ai",
+        method="POST",
+        path="/api/internal/vm0-model/v1/responses",
+    )
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.vm0.ai",
+        port=443,
+        kinds=frozenset(("api_allow",)),
+        original_address=("api.vm0.ai", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(
+            headers={
+                "Authorization": "Bearer resolved-proxy-token",
+                "X-VM0-Upstream-Authorization": "Bearer resolved-upstream-token",
+            }
+        ) as auth_fetch,
+    ):
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "model-provider:vm0-model"
+    assert (
+        flow.metadata[metadata_keys.FIREWALL_BASE]
+        == "https://api.vm0.ai/api/internal/vm0-model/v1/responses"
+    )
+    assert flow.request.headers["Authorization"] == "Bearer resolved-proxy-token"
+    assert flow.request.headers["X-VM0-Upstream-Authorization"] == "Bearer resolved-upstream-token"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.kinds == frozenset(("api_allow", "connector_auth"))
 
 
 async def test_vm0_api_non_test_paths_auto_allow_before_firewall_auth(

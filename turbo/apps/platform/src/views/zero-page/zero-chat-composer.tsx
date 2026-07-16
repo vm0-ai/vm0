@@ -61,9 +61,11 @@ import {
   PopoverClose,
   PopoverContent,
   PopoverTrigger,
-  Tabs,
-  TabsList,
-  TabsTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -78,7 +80,6 @@ import {
   detach,
   onDomEventFn,
   Reason,
-  settle,
   tapError,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
@@ -149,7 +150,11 @@ import {
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  codexFastModeEnabled$,
+  composerUploadPopoverEnabled$,
+  featureSwitch$,
+} from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
   ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
@@ -263,6 +268,8 @@ export interface ZeroChatComposerProps {
   ) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
+  /** Blocks send and queue submission while an async composer command settles. */
+  submissionLoading?: boolean;
   /**
    * Cancel the active run. When provided, the Send button switches to a Stop
    * button while sending and the composer is empty; with content present the
@@ -857,13 +864,21 @@ function ComposerFeedbackRow({
   );
 }
 
-function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
+function ComposerFeedbackRows({
+  feedback,
+  submissionLoading,
+}: {
+  feedback: ComposerFeedback;
+  submissionLoading: boolean;
+}) {
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends, Shift+Enter inserts a newline — matching the main composer.
     // Escape clears the drafted feedback.
     if (matchShortcut("enter", event)) {
       event.preventDefault();
-      feedback.onSubmit();
+      if (!submissionLoading) {
+        feedback.onSubmit();
+      }
     } else if (matchShortcut("escape", event)) {
       event.preventDefault();
       feedback.onDismiss();
@@ -3105,12 +3120,12 @@ function TemplatePreview({
     });
     detach(
       (async () => {
-        const result = await settle(pendingLoad);
+        const result = await tapError(pendingLoad);
         if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
           cache.pendingLoads.delete(item.embedUrl);
         }
 
-        if (!result.ok || result.value === null) {
+        if (result === undefined || result === null) {
           cache.failed.add(item.embedUrl);
           if (cache.activeTokens.get(item.embedUrl) === activeToken) {
             setHtmlPreview({
@@ -3126,11 +3141,11 @@ function TemplatePreview({
           return;
         }
 
-        cache.drafts.set(item.embedUrl, result.value);
+        cache.drafts.set(item.embedUrl, result);
         if (cache.activeTokens.get(item.embedUrl) === activeToken) {
           setHtmlPreview(
             createPresentationTemplateCardHtmlPreviewState({
-              draft: result.value,
+              draft: result,
               index: cache.activeIndexes.get(item.embedUrl) ?? 0,
               item,
               previousFrameUrl: previousActiveFrameUrlForImmediateRevocation,
@@ -3507,11 +3522,11 @@ function TemplatePreviewPage({
     }
     detach(
       (async () => {
-        const result = await settle(pendingLoad);
+        const result = await tapError(pendingLoad);
         if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
           cache.pendingLoads.delete(item.embedUrl);
         }
-        if (!result.ok || result.value === null) {
+        if (result === undefined || result === null) {
           cache.failed.add(item.embedUrl);
           if (!isActive()) {
             return;
@@ -3528,10 +3543,10 @@ function TemplatePreviewPage({
           });
           return;
         }
-        cache.drafts.set(item.embedUrl, result.value);
+        cache.drafts.set(item.embedUrl, result);
         if (isActive()) {
           setLoadedDetailPreview({
-            draft: result.value,
+            draft: result,
             index: activeSlideIndex,
             previousFrameUrl: detailPreview?.frameUrl ?? null,
             theme: selectedTheme,
@@ -4490,7 +4505,37 @@ function resolveTemplatePickerCategory({
   return categories.includes(category) ? category : defaultCategory;
 }
 
-function TemplatePickerTabs({
+const TEMPLATE_PICKER_CATEGORY_META: Readonly<
+  Record<string, { title: string }>
+> = {
+  slides: {
+    title: "Presentation",
+  },
+  website: {
+    title: "Website",
+  },
+  illustration: {
+    title: "Illustration",
+  },
+  video: {
+    title: "Video",
+  },
+  workflow: {
+    title: "Workflow",
+  },
+};
+
+function templatePickerCategoryMeta(category: string): {
+  title: string;
+} {
+  return (
+    TEMPLATE_PICKER_CATEGORY_META[category] ?? {
+      title: "Template",
+    }
+  );
+}
+
+function TemplatePickerCategoryNav({
   selectedCategory,
   hasPptTab,
   hasWebsiteTab,
@@ -4507,129 +4552,192 @@ function TemplatePickerTabs({
   hasWorkflowTab: boolean;
   onChange: (value: string) => void;
 }) {
+  const categoryOptions: {
+    value: string;
+    label: string;
+    Icon: typeof IconPresentation;
+  }[] = [];
+  if (hasPptTab) {
+    categoryOptions.push({
+      value: "slides",
+      label: "Presentation",
+      Icon: IconPresentation,
+    });
+  }
+  if (hasWebsiteTab) {
+    categoryOptions.push({
+      value: "website",
+      label: "Website",
+      Icon: IconWorld,
+    });
+  }
+  if (hasIllustrationTab) {
+    categoryOptions.push({
+      value: "illustration",
+      label: "Illustration",
+      Icon: IconPhoto,
+    });
+  }
+  if (hasVideoTab) {
+    categoryOptions.push({
+      value: "video",
+      label: "Video",
+      Icon: IconVideo,
+    });
+  }
+  if (hasWorkflowTab) {
+    categoryOptions.push({
+      value: "workflow",
+      label: "Workflow",
+      Icon: IconRoute,
+    });
+  }
+
   return (
-    <div
-      data-template-picker-tabs-scroll=""
-      className="-mx-5 w-[calc(100%+2.5rem)] overflow-x-auto px-5 pb-1 [scrollbar-color:hsl(var(--muted-foreground)/0.24)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent sm:mx-0 sm:w-auto sm:overflow-visible sm:px-0 sm:pb-0 sm:[scrollbar-color:auto] sm:[scrollbar-width:auto] sm:[&::-webkit-scrollbar]:hidden"
-    >
-      <Tabs
-        value={selectedCategory}
-        onValueChange={onChange}
-        className="-mb-px min-w-max"
+    <>
+      <div className="shrink-0 border-b border-border bg-gray-50 px-4 pb-4 pr-14 pt-4 sm:hidden">
+        <Select value={selectedCategory} onValueChange={onChange}>
+          <SelectTrigger
+            aria-label="Template category"
+            className="h-9 w-full bg-card"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {categoryOptions.map(({ value, label, Icon }) => {
+              return (
+                <SelectItem key={value} value={value}>
+                  <span className="flex items-center gap-2">
+                    <Icon className="h-4 w-4" stroke={1.8} />
+                    {label}
+                  </span>
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </div>
+      <nav
+        role="tablist"
+        aria-label="Template categories"
+        aria-orientation="vertical"
+        data-template-picker-sidebar=""
+        className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-gray-50 p-3 sm:flex"
       >
-        <TabsList className="h-auto gap-6 rounded-none bg-transparent p-0">
-          {hasPptTab && (
-            <TabsTrigger
-              value="slides"
+        <div className="flex min-h-[50px] items-center px-2">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
+            Template
+          </h2>
+        </div>
+        {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
+          const selected = value === selectedCategory;
+          return (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => {
+                onChange(value);
+              }}
+              onKeyDown={(event) => {
+                let nextIndex: number | null = null;
+                if (event.key === "ArrowDown") {
+                  nextIndex = (categoryIndex + 1) % categoryOptions.length;
+                } else if (event.key === "ArrowUp") {
+                  nextIndex =
+                    (categoryIndex - 1 + categoryOptions.length) %
+                    categoryOptions.length;
+                } else if (event.key === "Home") {
+                  nextIndex = 0;
+                } else if (event.key === "End") {
+                  nextIndex = categoryOptions.length - 1;
+                }
+                if (nextIndex === null) {
+                  return;
+                }
+                event.preventDefault();
+                const nextTab = event.currentTarget.parentElement
+                  ?.querySelectorAll<HTMLElement>("[role=tab]")
+                  .item(nextIndex);
+                nextTab?.focus();
+                onChange(categoryOptions[nextIndex]?.value ?? value);
+              }}
               className={cn(
-                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
-                selectedCategory === "slides"
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
+                "flex h-9 w-full items-center gap-2 rounded-lg border px-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                selected
+                  ? "border-border bg-card font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:bg-card hover:text-foreground focus-visible:bg-card focus-visible:text-foreground",
               )}
             >
-              <IconPresentation
+              <Icon
                 className={cn(
-                  "h-5 w-5",
-                  selectedCategory === "slides"
-                    ? "text-blue-500"
-                    : "text-muted-foreground",
+                  "h-4 w-4 shrink-0",
+                  selected ? "text-primary" : "text-muted-foreground",
                 )}
                 stroke={1.8}
               />
-              Presentation
-            </TabsTrigger>
-          )}
-          {hasWebsiteTab && (
-            <TabsTrigger
-              value="website"
-              className={cn(
-                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
-                selectedCategory === "website"
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <IconWorld
-                className={cn(
-                  "h-5 w-5",
-                  selectedCategory === "website"
-                    ? "text-cyan-500"
-                    : "text-muted-foreground",
-                )}
-                stroke={1.8}
-              />
-              Website
-            </TabsTrigger>
-          )}
-          {hasIllustrationTab && (
-            <TabsTrigger
-              value="illustration"
-              className={cn(
-                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
-                selectedCategory === "illustration"
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <IconPhoto
-                className={cn(
-                  "h-5 w-5",
-                  selectedCategory === "illustration"
-                    ? "text-emerald-500"
-                    : "text-muted-foreground",
-                )}
-                stroke={1.8}
-              />
-              Illustration
-            </TabsTrigger>
-          )}
-          {hasVideoTab && (
-            <TabsTrigger
-              value="video"
-              className={cn(
-                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
-                selectedCategory === "video"
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <IconVideo
-                className={cn(
-                  "h-5 w-5",
-                  selectedCategory === "video"
-                    ? "text-purple-500"
-                    : "text-muted-foreground",
-                )}
-                stroke={1.8}
-              />
-              Video
-            </TabsTrigger>
-          )}
-          {hasWorkflowTab && (
-            <TabsTrigger
-              value="workflow"
-              className={cn(
-                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
-                selectedCategory === "workflow"
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <IconRoute
-                className={cn(
-                  "h-5 w-5",
-                  selectedCategory === "workflow"
-                    ? "text-sky-500"
-                    : "text-muted-foreground",
-                )}
-                stroke={1.8}
-              />
-              Workflow
-            </TabsTrigger>
-          )}
-        </TabsList>
-      </Tabs>
+              <span className="truncate">{label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </>
+  );
+}
+
+function TemplatePickerCategoryHeader({
+  selectedCategory,
+}: {
+  selectedCategory: string;
+}) {
+  const meta = templatePickerCategoryMeta(selectedCategory);
+  return (
+    <header
+      className={cn(
+        "hidden min-h-[74px] shrink-0 items-center border-b border-border px-5 py-4 sm:flex",
+        selectedCategory === "workflow" ? "pr-[21rem]" : "pr-14",
+      )}
+    >
+      <div className="min-w-0">
+        <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
+          {meta.title}
+        </h2>
+      </div>
+    </header>
+  );
+}
+
+function TemplatePickerWorkflowSearch({
+  selectedCategory,
+  search,
+  onSearchChange,
+}: {
+  selectedCategory: string;
+  search: string;
+  onSearchChange: (value: string) => void;
+}) {
+  if (selectedCategory !== "workflow") {
+    return null;
+  }
+  return (
+    <div className="shrink-0 border-b border-border px-4 py-3 sm:absolute sm:right-14 sm:top-[21px] sm:z-10 sm:w-64 sm:border-0 sm:p-0">
+      <div className="relative">
+        <IconSearch
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          stroke={1.8}
+        />
+        <Input
+          aria-label="Search connectors"
+          className="h-9 pl-9 text-sm sm:h-8"
+          value={search}
+          onChange={(event) => {
+            onSearchChange(event.target.value);
+          }}
+          placeholder="Search connector..."
+        />
+      </div>
     </div>
   );
 }
@@ -4747,13 +4855,9 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-    // The auto-rendered close button defaults to top-4, which is tuned for the
-    // default p-6 dialog. This dialog uses a custom py-4 header, so re-center the
-    // 36px (size-9) close button within the 50px header.
-    "[&>button[aria-label=Close]]:top-[7px]",
     isPreviewing
-      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto"
-      : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
+      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button[aria-label=Close]]:top-[7px]"
+      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button[aria-label=Close]]:top-[7px] sm:[&>button[aria-label=Close]]:top-[19px]",
   );
   const filteredPptItems = presentationItems;
   const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
@@ -4998,11 +5102,11 @@ function TemplatePickerDialog({
           />
         ) : (
           <>
-            <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
-              <DialogTitle>Create with template</DialogTitle>
+            <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
+              <DialogTitle>Template</DialogTitle>
             </DialogHeader>
-            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-center sm:justify-between">
-              <TemplatePickerTabs
+            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+              <TemplatePickerCategoryNav
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
                 hasWebsiteTab={hasWebsiteTab}
@@ -5011,60 +5115,44 @@ function TemplatePickerDialog({
                 hasWorkflowTab={hasWorkflowTab}
                 onChange={handleCategoryChange}
               />
-              <div
-                className={cn(
-                  "pb-3 pt-2 sm:w-64",
-                  selectedCategory === "workflow"
-                    ? "w-full"
-                    : "hidden sm:block",
-                )}
-              >
-                {selectedCategory === "workflow" ? (
-                  <div className="relative">
-                    <IconSearch
-                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                      stroke={1.8}
-                    />
-                    <Input
-                      aria-label="Search connectors"
-                      className="h-8 pl-9 text-sm"
-                      value={search}
-                      onChange={(event) => {
-                        handleSearchChange(event.target.value);
-                      }}
-                      placeholder="Search connector..."
-                    />
-                  </div>
-                ) : (
-                  <div aria-hidden="true" className="h-8" />
-                )}
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+                <TemplatePickerCategoryHeader
+                  selectedCategory={selectedCategory}
+                />
+                <TemplatePickerWorkflowSearch
+                  selectedCategory={selectedCategory}
+                  search={search}
+                  onSearchChange={handleSearchChange}
+                />
+                <TemplatePickerCategoryContent
+                  selectedCategory={selectedCategory}
+                  hasPptTab={hasPptTab}
+                  hasWebsiteTab={hasWebsiteTab}
+                  hasVideoTab={hasVideoTab}
+                  hasWorkflowTab={hasWorkflowTab}
+                  filteredPptItems={filteredPptItems}
+                  filteredWebsiteItems={filteredWebsiteItems}
+                  filteredIllustrationItems={filteredIllustrationItems}
+                  filteredVideoItems={filteredVideoItems}
+                  workflowCatalog={workflowCatalog}
+                  value={value}
+                  illustrationVariantIndex={illustrationVariantIndex}
+                  onPresentationScroll={setPresentationGridScrollTop}
+                  onRestorePresentationScroll={
+                    restorePresentationGridScrollNode
+                  }
+                  onSelectPresentation={handleSelectPresentation}
+                  onPreviewPresentation={handlePreview}
+                  onSelectWebsite={handleSelectWebsite}
+                  onPreviewWebsite={handlePreviewWebsite}
+                  onSelectIllustration={handleSelectIllustration}
+                  onIllustrationVariantChange={setIllustrationVariantIndex}
+                  onSelectVideo={handleSelectVideo}
+                  onWorkflowCategoryChange={setWorkflowCategoryFilter}
+                  onSelectWorkflow={handleSelectWorkflow}
+                />
               </div>
             </div>
-            <TemplatePickerCategoryContent
-              selectedCategory={selectedCategory}
-              hasPptTab={hasPptTab}
-              hasWebsiteTab={hasWebsiteTab}
-              hasVideoTab={hasVideoTab}
-              hasWorkflowTab={hasWorkflowTab}
-              filteredPptItems={filteredPptItems}
-              filteredWebsiteItems={filteredWebsiteItems}
-              filteredIllustrationItems={filteredIllustrationItems}
-              filteredVideoItems={filteredVideoItems}
-              workflowCatalog={workflowCatalog}
-              value={value}
-              illustrationVariantIndex={illustrationVariantIndex}
-              onPresentationScroll={setPresentationGridScrollTop}
-              onRestorePresentationScroll={restorePresentationGridScrollNode}
-              onSelectPresentation={handleSelectPresentation}
-              onPreviewPresentation={handlePreview}
-              onSelectWebsite={handleSelectWebsite}
-              onPreviewWebsite={handlePreviewWebsite}
-              onSelectIllustration={handleSelectIllustration}
-              onIllustrationVariantChange={setIllustrationVariantIndex}
-              onSelectVideo={handleSelectVideo}
-              onWorkflowCategoryChange={setWorkflowCategoryFilter}
-              onSelectWorkflow={handleSelectWorkflow}
-            />
           </>
         )}
       </DialogContent>
@@ -5378,16 +5466,16 @@ function SelectedPresentationTemplateChipPreview({
     }
     detach(
       (async () => {
-        const result = await settle(pendingLoad);
+        const result = await tapError(pendingLoad);
         if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
           cache.pendingLoads.delete(item.embedUrl);
         }
-        if (!result.ok || result.value === null) {
+        if (result === undefined || result === null) {
           cache.failed.add(item.embedUrl);
           return;
         }
-        cache.drafts.set(item.embedUrl, result.value);
-        setChipPreview(result.value);
+        cache.drafts.set(item.embedUrl, result);
+        setChipPreview(result);
       })(),
       Reason.DomCallback,
     );
@@ -6716,6 +6804,30 @@ function ComposerUploadMenu({
   );
 }
 
+function ComposerUploadControl({
+  readInput,
+  onDraftChange,
+  onInputChange,
+  onSelectFile,
+}: {
+  readonly readInput: () => string;
+  readonly onDraftChange?: () => void;
+  readonly onInputChange: (value: string) => void;
+  readonly onSelectFile: () => void;
+}) {
+  const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
+  return uploadPopoverEnabled ? (
+    <ComposerUploadMenu
+      readInput={readInput}
+      onDraftChange={onDraftChange}
+      onInputChange={onInputChange}
+      onSelectFile={onSelectFile}
+    />
+  ) : (
+    <ComposerAttachButton onSelectFile={onSelectFile} />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Signal resolution — resolves draft/file-input with singleton fallback
 // ---------------------------------------------------------------------------
@@ -6870,12 +6982,14 @@ function ComposerSendButton({
   onCancel,
   activeFeedback,
   sendAction,
+  submissionLoading,
   onSend,
 }: {
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
   activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
+  submissionLoading: boolean;
   onSend: () => void;
 }) {
   if (showStopButton && !activeFeedback) {
@@ -6897,7 +7011,7 @@ function ComposerSendButton({
         size="sm"
         className="rounded-lg h-9 w-9 p-0 shrink-0"
         onClick={activeFeedback.onSubmit}
-        disabled={activeFeedback.sendCount === 0}
+        disabled={activeFeedback.sendCount === 0 || submissionLoading}
         aria-label="Send feedback"
       >
         <IconArrowUp size={18} stroke={2} />
@@ -6928,6 +7042,7 @@ function ComposerSendControl({
   onCancel,
   activeFeedback,
   actionsLoading,
+  submissionLoading,
   onSend,
 }: {
   draft: DraftSignals;
@@ -6940,6 +7055,7 @@ function ComposerSendControl({
   onCancel: (() => void) | undefined;
   activeFeedback: ComposerFeedback | null;
   actionsLoading: boolean;
+  submissionLoading: boolean;
   onSend: () => void;
 }) {
   const hasInput = useGet(draft.hasInput$);
@@ -6949,7 +7065,7 @@ function ComposerSendControl({
     uploadsReady,
   });
   const sendAction = resolveKeyboardSendAction({
-    canSend: canSend && !submitBlocked,
+    canSend: canSend && !submitBlocked && !submissionLoading,
     sending,
     queueWhileSending,
     hasQueueHandler,
@@ -6961,7 +7077,13 @@ function ComposerSendControl({
     activeFeedback,
     sendAction,
   });
-  return <ComposerSendButton {...state} onSend={onSend} />;
+  return (
+    <ComposerSendButton
+      {...state}
+      submissionLoading={submissionLoading}
+      onSend={onSend}
+    />
+  );
 }
 
 function resolveSendButtonStateForActionsLoading({
@@ -7029,19 +7151,16 @@ function ComposerModelPickerSlot({
   modelPicker,
   modelPickerLoading,
   submitBlocker,
-  codexFastModeEnabled,
-  modelPickerOpen,
   onModelPickerChange,
-  onModelPickerOpenChange,
 }: {
   modelPicker: ComposerModelPicker | undefined;
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
-  codexFastModeEnabled: boolean;
-  modelPickerOpen: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
-  onModelPickerOpenChange: (open: boolean) => void;
 }) {
+  const codexFastModeEnabled = useGet(codexFastModeEnabled$);
+  const modelPickerOpen = useGet(modelPickerOpen$);
+  const setModelPickerOpen = useSet(setModelPickerOpen$);
   if (modelPickerLoading) {
     return null;
   }
@@ -7066,7 +7185,7 @@ function ComposerModelPickerSlot({
           mobileIconTrigger
           codexFastModeEnabled={codexFastModeEnabled}
           open={modelPickerOpen}
-          onOpenChange={onModelPickerOpenChange}
+          onOpenChange={setModelPickerOpen}
           disabled={modelPicker.disabled}
           resolveDefaultSelection={false}
         />
@@ -7079,16 +7198,6 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
-function resolveComposerFeatures(
-  features: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
-) {
-  return {
-    codexFastModeEnabled: features?.[FeatureSwitchKey.CodexFastMode] ?? false,
-    uploadPopoverEnabled:
-      features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false,
-  };
-}
-
 // The thread route invokes this hook from its ccstate-connected composer so
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
@@ -7098,6 +7207,7 @@ export function useZeroChatComposer({
   onQueue,
   sending,
   queueWhileSending = false,
+  submissionLoading = false,
   onCancel,
   displayName,
   className,
@@ -7123,12 +7233,7 @@ export function useZeroChatComposer({
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
-  const modelPickerOpen = useGet(modelPickerOpen$);
-  const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
-  const features = useLastResolved(featureSwitch$);
-  const { codexFastModeEnabled, uploadPopoverEnabled } =
-    resolveComposerFeatures(features);
 
   const resolved = useResolvedComposerSignals(
     draft,
@@ -7381,6 +7486,8 @@ export function useZeroChatComposer({
     const input = readInput();
     const sendAction = resolveKeyboardSendAction({
       canSend:
+        !actionsLoading &&
+        !submissionLoading &&
         uploadsReady &&
         (input.trim().length > 0 || visibleAttachments.length > 0) &&
         !submitBlocker,
@@ -7403,7 +7510,7 @@ export function useZeroChatComposer({
   // otherwise to the normal send path.
   const handleButtonSend = () => {
     const input = readInput();
-    if (submitBlocker) {
+    if (actionsLoading || submissionLoading || submitBlocker) {
       return;
     }
     if (sending && queueWhileSending && onQueue) {
@@ -7539,7 +7646,10 @@ export function useZeroChatComposer({
                 />
               )}
               {activeFeedback ? (
-                <ComposerFeedbackRows feedback={activeFeedback} />
+                <ComposerFeedbackRows
+                  feedback={activeFeedback}
+                  submissionLoading={submissionLoading}
+                />
               ) : (
                 <>
                   <ComposerInputSlot
@@ -7555,16 +7665,12 @@ export function useZeroChatComposer({
               )}
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  {uploadPopoverEnabled ? (
-                    <ComposerUploadMenu
-                      readInput={readInput}
-                      onDraftChange={onDraftChange}
-                      onInputChange={setInput}
-                      onSelectFile={handleFileSelect}
-                    />
-                  ) : (
-                    <ComposerAttachButton onSelectFile={handleFileSelect} />
-                  )}
+                  <ComposerUploadControl
+                    readInput={readInput}
+                    onDraftChange={onDraftChange}
+                    onInputChange={setInput}
+                    onSelectFile={handleFileSelect}
+                  />
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
@@ -7585,10 +7691,7 @@ export function useZeroChatComposer({
                     modelPicker={modelPicker}
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
-                    codexFastModeEnabled={codexFastModeEnabled}
-                    modelPickerOpen={modelPickerOpen}
                     onModelPickerChange={handleModelPickerChange}
-                    onModelPickerOpenChange={setModelPickerOpen}
                   />
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                   <MicButton
@@ -7608,6 +7711,7 @@ export function useZeroChatComposer({
                     onCancel={onCancel}
                     activeFeedback={activeFeedback}
                     actionsLoading={actionsLoading}
+                    submissionLoading={submissionLoading}
                     onSend={handleButtonSend}
                   />
                 </div>

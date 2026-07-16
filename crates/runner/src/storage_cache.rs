@@ -46,7 +46,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, short_digest, touch_mtime};
 use crate::storage_plan::{ArchiveHandle, StoragePlan};
-use crate::telemetry::{JobTelemetry, SandboxOpRecord, SandboxOpReporter};
+use crate::telemetry::{JobTelemetry, SandboxOpRecord};
 
 /// Archive sizes strictly larger than this are passthrough.
 const CACHE_MAX_SIZE: u64 = 8 * 1024 * 1024;
@@ -73,7 +73,6 @@ const CACHE_HTTP_MAX_ATTEMPTS: usize = 3;
 const CACHE_HTTP_RETRY_DELAY: Duration = Duration::from_millis(200);
 const STORAGE_CACHE_STAGE_TOTAL: &str = "storage_cache_stage_total";
 const STORAGE_CACHE_STAGE_BATCH_WRITE: &str = "storage_cache_stage_batch_write";
-const STORAGE_CACHE_STAGE_SINGLE_WRITE: &str = "storage_cache_stage_single_write";
 const STORAGE_CACHE_STAGE_FAILED: &str = "storage-cache-stage-failed";
 const STORAGE_CACHE_PROCESS_GROUP: &str = "storage_cache_process_group";
 const STORAGE_CACHE_PROCESS_GROUP_FAILED: &str = "storage-cache-process-group-failed";
@@ -134,6 +133,10 @@ pub(crate) struct DeferredBackgroundFill {
 }
 
 impl DeferredBackgroundFill {
+    async fn run(self) -> Vec<SandboxOpRecord> {
+        run_background_fill_groups(self.groups, self.home).await
+    }
+
     pub(crate) fn start(self, telemetry: &mut JobTelemetry) {
         telemetry.record(
             STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY,
@@ -149,22 +152,13 @@ impl DeferredBackgroundFill {
         );
         let reporter = telemetry.reporter();
         tokio::spawn(async move {
-            run_background_fill_groups(self.groups, self.home, reporter).await;
+            reporter.report(self.run().await).await;
         });
     }
 }
 
-enum GroupOutcome {
-    Shared {
-        outcome_target_index: usize,
-        outcome: TargetOutcome,
-    },
-    #[cfg(test)]
-    PerTarget(Vec<TargetOutcome>),
-}
-
 struct ProcessedGroup {
-    outcome: GroupOutcome,
+    outcome: TargetOutcome,
     stage_write: Option<GuestStageWrite>,
 }
 
@@ -248,26 +242,7 @@ type ProcessedGroupTaskResult = ProcessedGroupTask;
 
 enum TargetOutcome {
     Hit,
-    #[cfg(test)]
-    Miss {
-        download_duration: Duration,
-    },
-    SkippedOverSize,
-    /// Size probe (`GET` + `Range: bytes=0-0`) could not determine the
-    /// archive size, so the entry falls back to the original R2 URL.
-    /// `reason` carries either the upstream error string or a short tag
-    /// describing the missing-header case so ops can separate transient
-    /// network failures from permanent 4xx / missing size-header responses
-    /// in the telemetry feed.
-    SkippedHeadFailed {
-        reason: String,
-    },
-    SkippedInvalidDownload {
-        reason: String,
-    },
-    MissPassthrough {
-        reason: &'static str,
-    },
+    MissPassthrough { reason: &'static str },
     LockBusyPassthrough,
 }
 
@@ -285,11 +260,9 @@ enum CachedArchive {
 }
 
 enum CacheFetchOutcome {
-    Downloaded {
-        bytes: Bytes,
-        download_duration: Duration,
-    },
-    Skipped(TargetOutcome),
+    Downloaded(Bytes),
+    RetryableSkipped,
+    Skipped,
 }
 
 enum BackgroundFillOutcome {
@@ -360,25 +333,6 @@ struct GuestWriteLocks {
 }
 
 impl GuestWriteLocks {
-    async fn write_file(
-        &self,
-        sandbox: &dyn Sandbox,
-        guest_path: &str,
-        bytes: &[u8],
-    ) -> RunnerResult<()> {
-        let lock = {
-            let mut locks = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-            Arc::clone(
-                locks
-                    .entry(guest_path.to_string())
-                    .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
-            )
-        };
-        let _guard = lock.lock().await;
-        sandbox.write_file(guest_path, bytes).await?;
-        Ok(())
-    }
-
     async fn write_files(
         &self,
         sandbox: &dyn Sandbox,
@@ -509,33 +463,11 @@ async fn flush_guest_stage_batch(
     Ok(())
 }
 
-async fn stage_single_guest_write(
-    write: &GuestStageWrite,
-    stage: &mut GuestStageRecorder<'_>,
-) -> RunnerResult<()> {
-    let started_at = Instant::now();
-    let result = stage
-        .guest_writes
-        .write_file(stage.sandbox, &write.guest_path, &write.bytes)
-        .await;
-    stage.metrics.record_write_result(
-        stage.telemetry,
-        STORAGE_CACHE_STAGE_SINGLE_WRITE,
-        started_at,
-        &result,
-    );
-    result
-}
-
 async fn push_guest_stage_write(
     batch: &mut GuestStageBatch,
     write: GuestStageWrite,
     stage: &mut GuestStageRecorder<'_>,
 ) -> RunnerResult<()> {
-    if write.bytes.len() > GUEST_STAGE_BATCH_MAX_BYTES {
-        stage_single_guest_write(&write, stage).await?;
-        return Ok(());
-    }
     if batch.should_flush_before(&write) {
         flush_guest_stage_batch(batch, stage).await?;
     }
@@ -544,16 +476,6 @@ async fn push_guest_stage_write(
         flush_guest_stage_batch(batch, stage).await?;
     }
     Ok(())
-}
-
-fn should_batch_stage_write(outcome: &GroupOutcome) -> bool {
-    matches!(
-        outcome,
-        GroupOutcome::Shared {
-            outcome: TargetOutcome::Hit,
-            ..
-        }
-    )
 }
 
 async fn abort_pending_processed_groups(groups: &mut JoinSet<ProcessedGroupTaskResult>) {
@@ -579,7 +501,7 @@ async fn join_next_processed_group(
 async fn stage_processed_group(
     group: CacheTargetGroup,
     processed: ProcessedGroup,
-    outcomes: &mut Vec<(CacheTargetGroup, GroupOutcome)>,
+    outcomes: &mut Vec<(CacheTargetGroup, TargetOutcome)>,
     stage_batch: &mut GuestStageBatch,
     stage: &mut GuestStageRecorder<'_>,
 ) -> RunnerResult<()> {
@@ -588,12 +510,7 @@ async fn stage_processed_group(
         stage_write,
     } = processed;
     if let Some(stage_write) = stage_write {
-        if should_batch_stage_write(&outcome) {
-            push_guest_stage_write(stage_batch, stage_write, stage).await?;
-        } else {
-            flush_guest_stage_batch(stage_batch, stage).await?;
-            stage_single_guest_write(&stage_write, stage).await?;
-        }
+        push_guest_stage_write(stage_batch, stage_write, stage).await?;
     }
     outcomes.push((group, outcome));
     Ok(())
@@ -602,7 +519,7 @@ async fn stage_processed_group(
 async fn stage_joined_processed_group(
     groups: &mut JoinSet<ProcessedGroupTaskResult>,
     task: ProcessedGroupTask,
-    outcomes: &mut Vec<(CacheTargetGroup, GroupOutcome)>,
+    outcomes: &mut Vec<(CacheTargetGroup, TargetOutcome)>,
     stage_batch: &mut GuestStageBatch,
     stage: &mut GuestStageRecorder<'_>,
 ) -> RunnerResult<()> {
@@ -627,113 +544,36 @@ async fn stage_joined_processed_group(
     Ok(())
 }
 
-/// Populate the runner-side cache for eligible archive sources in `plan`.
+/// Resolves eligible archive sources against the runner-side cache.
 ///
-/// Resolves cache-eligible remote sources to `file://` URLs pointing at
-/// guest-local tarballs staged over vsock. Reuse, repair, empty, instruction,
-/// cleanup, and guest-work semantics remain owned by [`StoragePlan`].
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ForegroundCacheMode {
-    HitOrPassthrough,
-    #[cfg(test)]
-    HitOrPassthroughWithoutBackgroundFill,
-    #[cfg(test)]
-    BlockingFill,
-}
-
-impl ForegroundCacheMode {
-    fn uses_hit_or_passthrough(self) -> bool {
-        match self {
-            Self::HitOrPassthrough => true,
-            #[cfg(test)]
-            Self::HitOrPassthroughWithoutBackgroundFill => true,
-            #[cfg(test)]
-            Self::BlockingFill => false,
-        }
-    }
-
-    fn defers_background_fill(self) -> bool {
-        matches!(self, Self::HitOrPassthrough)
-    }
-}
-
+/// Warm hits are staged into the guest over vsock, and their sources in
+/// `plan` are rewritten to guest-local `file://` URLs before this function
+/// returns. Sources without a usable warm hit keep their original remote URLs
+/// for the current guest download. Eligible cold misses may be returned as
+/// deferred fill work for future runs; this function does not start those
+/// remote fill requests.
+///
+/// # Returns
+///
+/// Returns `Ok(Some(...))` when a [`DeferredBackgroundFill`] was selected. The
+/// caller must retain it through pre-spawn setup and call
+/// [`DeferredBackgroundFill::start`] only after the agent process has spawned;
+/// an earlier failure deliberately drops it without starting work. Returns
+/// `Ok(None)` when no deferred fill work was selected.
+///
+/// Reuse, repair, empty, instruction, cleanup, and guest-work semantics remain
+/// owned by [`StoragePlan`].
 pub async fn populate_cache(
     plan: &mut StoragePlan,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<Option<DeferredBackgroundFill>> {
-    populate_cache_with_mode(
-        plan,
-        sandbox,
-        home,
-        telemetry,
-        ForegroundCacheMode::HitOrPassthrough,
-    )
-    .await
-}
-
-#[cfg(test)]
-async fn populate_cache_passthrough_without_background(
-    plan: &mut StoragePlan,
-    sandbox: &dyn Sandbox,
-    home: &HomePaths,
-    telemetry: &mut JobTelemetry,
-) -> RunnerResult<()> {
-    let deferred = populate_cache_with_mode(
-        plan,
-        sandbox,
-        home,
-        telemetry,
-        ForegroundCacheMode::HitOrPassthroughWithoutBackgroundFill,
-    )
-    .await?;
-    assert!(deferred.is_none());
-    Ok(())
-}
-
-#[cfg(test)]
-async fn populate_cache_blocking(
-    plan: &mut StoragePlan,
-    sandbox: &dyn Sandbox,
-    home: &HomePaths,
-    telemetry: &mut JobTelemetry,
-) -> RunnerResult<()> {
-    let deferred = populate_cache_with_mode(
-        plan,
-        sandbox,
-        home,
-        telemetry,
-        ForegroundCacheMode::BlockingFill,
-    )
-    .await?;
-    assert!(deferred.is_none());
-    Ok(())
-}
-
-async fn populate_cache_with_mode(
-    plan: &mut StoragePlan,
-    sandbox: &dyn Sandbox,
-    home: &HomePaths,
-    telemetry: &mut JobTelemetry,
-    mode: ForegroundCacheMode,
-) -> RunnerResult<Option<DeferredBackgroundFill>> {
     let targets = collect_targets(plan);
     if targets.is_empty() {
         return Ok(None);
     }
     let target_groups = group_targets(targets);
-
-    #[cfg(test)]
-    let blocking_http = if mode == ForegroundCacheMode::BlockingFill {
-        Some(
-            Client::builder()
-                .build()
-                .map_err(|e| RunnerError::Internal(format!("build http client: {e}")))?,
-        )
-    } else {
-        None
-    };
 
     let guest_writes = GuestWriteLocks::default();
     let mut stage_metrics = StorageCacheStageMetrics::start();
@@ -743,7 +583,7 @@ async fn populate_cache_with_mode(
     // paths explicitly abort and drain pending workers so locks are not left for
     // the runtime to clean up later.
     let mut groups = JoinSet::new();
-    let stage_result: RunnerResult<Vec<(CacheTargetGroup, GroupOutcome)>> = async {
+    let stage_result: RunnerResult<Vec<(CacheTargetGroup, TargetOutcome)>> = async {
         let mut outcomes = Vec::new();
         let mut stage_batch = GuestStageBatch::default();
         let mut stage = GuestStageRecorder {
@@ -769,51 +609,23 @@ async fn populate_cache_with_mode(
             }
 
             let home = home.clone();
-            if mode.uses_hit_or_passthrough() {
-                groups.spawn(async move {
-                    let mut metrics = CacheProcessMetrics::default();
-                    let started_at = Instant::now();
-                    let processed =
-                        process_group_hit_or_passthrough(&group, &home, &mut metrics).await;
-                    let success = processed.is_ok();
-                    metrics.record(
-                        STORAGE_CACHE_PROCESS_GROUP,
-                        started_at.elapsed(),
-                        success,
-                        (!success).then_some(STORAGE_CACHE_PROCESS_GROUP_FAILED),
-                    );
-                    ProcessedGroupTask {
-                        group,
-                        metrics,
-                        processed,
-                    }
-                });
-            } else {
-                #[cfg(test)]
-                {
-                    let http = blocking_http
-                        .as_ref()
-                        .expect("blocking storage cache mode builds an http client")
-                        .clone();
-                    groups.spawn(async move {
-                        let mut metrics = CacheProcessMetrics::default();
-                        let started_at = Instant::now();
-                        let processed = process_group(&group, &http, &home, &mut metrics).await;
-                        let success = processed.is_ok();
-                        metrics.record(
-                            STORAGE_CACHE_PROCESS_GROUP,
-                            started_at.elapsed(),
-                            success,
-                            (!success).then_some(STORAGE_CACHE_PROCESS_GROUP_FAILED),
-                        );
-                        ProcessedGroupTask {
-                            group,
-                            metrics,
-                            processed,
-                        }
-                    });
+            groups.spawn(async move {
+                let mut metrics = CacheProcessMetrics::default();
+                let started_at = Instant::now();
+                let processed = process_group_hit_or_passthrough(&group, &home, &mut metrics).await;
+                let success = processed.is_ok();
+                metrics.record(
+                    STORAGE_CACHE_PROCESS_GROUP,
+                    started_at.elapsed(),
+                    success,
+                    (!success).then_some(STORAGE_CACHE_PROCESS_GROUP_FAILED),
+                );
+                ProcessedGroupTask {
+                    group,
+                    metrics,
+                    processed,
                 }
-            }
+            });
         }
 
         while let Some(task) = join_next_processed_group(&mut groups).await? {
@@ -833,16 +645,8 @@ async fn populate_cache_with_mode(
     stage_metrics.record_total(telemetry);
     let outcomes = stage_result?;
 
-    let deferred = if mode.uses_hit_or_passthrough() {
-        record_passthrough_summary(&outcomes, telemetry);
-        if mode.defers_background_fill() {
-            defer_background_fill_groups(&outcomes, home.clone(), telemetry)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    record_passthrough_summary(&outcomes, telemetry);
+    let deferred = defer_background_fill_groups(&outcomes, home.clone(), telemetry);
     for (group, outcome) in outcomes {
         apply_group_outcome(plan, &group, &outcome, telemetry);
     }
@@ -850,7 +654,7 @@ async fn populate_cache_with_mode(
 }
 
 fn defer_background_fill_groups(
-    outcomes: &[(CacheTargetGroup, GroupOutcome)],
+    outcomes: &[(CacheTargetGroup, TargetOutcome)],
     home: HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> Option<DeferredBackgroundFill> {
@@ -877,28 +681,19 @@ fn defer_background_fill_groups(
     })
 }
 
-fn should_background_fill(outcome: &GroupOutcome) -> bool {
-    match outcome {
-        GroupOutcome::Shared { outcome, .. } => {
-            matches!(outcome, TargetOutcome::MissPassthrough { .. })
-        }
-        #[cfg(test)]
-        GroupOutcome::PerTarget(outcomes) => outcomes
-            .iter()
-            .any(|outcome| matches!(outcome, TargetOutcome::MissPassthrough { .. })),
-    }
+fn should_background_fill(outcome: &TargetOutcome) -> bool {
+    matches!(outcome, TargetOutcome::MissPassthrough { .. })
 }
 
 async fn run_background_fill_groups(
     groups: Vec<CacheTargetGroup>,
     home: HomePaths,
-    reporter: SandboxOpReporter,
-) {
+) -> Vec<SandboxOpRecord> {
     let http = match Client::builder().build() {
         Ok(http) => http,
         Err(error) => {
             warn!(%error, "storage_cache: failed to build background fill http client");
-            let records = (0..groups.len())
+            return (0..groups.len())
                 .map(|_| {
                     SandboxOpRecord::new(
                         STORAGE_CACHE_BACKGROUND_FILL_FAILED,
@@ -908,8 +703,6 @@ async fn run_background_fill_groups(
                     )
                 })
                 .collect();
-            reporter.report(records).await;
-            return;
         }
     };
 
@@ -941,7 +734,7 @@ async fn run_background_fill_groups(
             reports.extend(report.into_records());
         }
     }
-    reporter.report(reports).await;
+    reports
 }
 
 async fn join_next_background_fill(
@@ -1017,52 +810,6 @@ fn cache_target_from_entry(
     })
 }
 
-#[cfg(test)]
-async fn process_group(
-    group: &CacheTargetGroup,
-    http: &Client,
-    home: &HomePaths,
-    metrics: &mut CacheProcessMetrics,
-) -> RunnerResult<ProcessedGroup> {
-    // Same-key targets are expected to refer to the same archive content, so a
-    // definitive cache outcome can be shared across the group. Probe and full
-    // download passthrough failures are the exception: they are URL/request
-    // level decisions, so try the next duplicate before giving up per target.
-    let mut retryable_passthrough_outcomes = Vec::new();
-    for (index, target) in group.targets.iter().enumerate() {
-        let ProcessedTarget {
-            outcome,
-            stage_write,
-        } = process_one(target, http, home, metrics).await?;
-        match outcome {
-            TargetOutcome::SkippedHeadFailed { .. }
-            | TargetOutcome::SkippedInvalidDownload { .. } => {
-                retryable_passthrough_outcomes.push(outcome);
-                if retryable_passthrough_outcomes.len() == group.targets.len() {
-                    return Ok(ProcessedGroup {
-                        outcome: GroupOutcome::PerTarget(retryable_passthrough_outcomes),
-                        stage_write: None,
-                    });
-                }
-            }
-            outcome => {
-                return Ok(ProcessedGroup {
-                    outcome: GroupOutcome::Shared {
-                        outcome_target_index: index,
-                        outcome,
-                    },
-                    stage_write,
-                });
-            }
-        }
-    }
-
-    Ok(ProcessedGroup {
-        outcome: GroupOutcome::PerTarget(retryable_passthrough_outcomes),
-        stage_write: None,
-    })
-}
-
 async fn process_group_background_fill(
     group: &CacheTargetGroup,
     http: &Client,
@@ -1099,100 +846,8 @@ async fn process_group_hit_or_passthrough(
     } = process_one_hit_or_passthrough(target, home, metrics).await?;
 
     Ok(ProcessedGroup {
-        outcome: GroupOutcome::Shared {
-            outcome_target_index: 0,
-            outcome,
-        },
+        outcome,
         stage_write,
-    })
-}
-
-#[cfg(test)]
-async fn process_one(
-    target: &CacheTarget,
-    http: &Client,
-    home: &HomePaths,
-    metrics: &mut CacheProcessMetrics,
-) -> RunnerResult<ProcessedTarget> {
-    let lock_path = home.storage_lock(&target.name, &target.version);
-    let cache_dir = home.storage_cache_dir(&target.name, &target.version);
-    let archive_path = cache_dir.join("archive.tar.gz");
-
-    // Fast path: a cache hit only needs reader ownership. Once bytes are in
-    // memory, the guest copy no longer depends on the on-disk cache entry.
-    {
-        let started_at = Instant::now();
-        let reader_result = lock::acquire_shared(lock_path.clone()).await;
-        let success = reader_result.is_ok();
-        metrics.record(
-            STORAGE_CACHE_LOCK_WAIT,
-            started_at.elapsed(),
-            success,
-            (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
-        );
-        let reader = reader_result?;
-        if let CachedArchive::Hit(bytes) =
-            read_cache_entry(&cache_dir, &archive_path, metrics).await?
-        {
-            let guest_path = guest_archive_path(&target.name, &target.version);
-            drop(reader);
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::Hit,
-                stage_write: Some(GuestStageWrite { guest_path, bytes }),
-            });
-        }
-    }
-
-    // Mutation path: re-check under exclusive ownership because another runner
-    // may have populated or repaired the cache while this task waited.
-    let started_at = Instant::now();
-    let writer_result = lock::acquire(lock_path).await;
-    let success = writer_result.is_ok();
-    metrics.record(
-        STORAGE_CACHE_LOCK_WAIT,
-        started_at.elapsed(),
-        success,
-        (!success).then_some(STORAGE_CACHE_LOCK_WAIT_FAILED),
-    );
-    let writer = writer_result?;
-    match read_cache_entry(&cache_dir, &archive_path, metrics).await? {
-        CachedArchive::Hit(bytes) => {
-            let guest_path = guest_archive_path(&target.name, &target.version);
-            drop(writer);
-            return Ok(ProcessedTarget {
-                outcome: TargetOutcome::Hit,
-                stage_write: Some(GuestStageWrite { guest_path, bytes }),
-            });
-        }
-        CachedArchive::Missing => {}
-        CachedArchive::Empty => {
-            evict_empty_cache(target, &cache_dir).await?;
-        }
-        CachedArchive::OverSize { observed_size } => {
-            evict_oversized_cache(target, &cache_dir, observed_size).await?;
-        }
-    }
-
-    let (bytes, download_duration) = match fetch_cache_target(target, http).await? {
-        CacheFetchOutcome::Downloaded {
-            bytes,
-            download_duration,
-        } => (bytes, download_duration),
-        CacheFetchOutcome::Skipped(outcome) => {
-            return Ok(ProcessedTarget {
-                outcome,
-                stage_write: None,
-            });
-        }
-    };
-
-    write_to_cache(&cache_dir, &bytes).await?;
-    let guest_path = guest_archive_path(&target.name, &target.version);
-    drop(writer);
-
-    Ok(ProcessedTarget {
-        outcome: TargetOutcome::Miss { download_duration },
-        stage_write: Some(GuestStageWrite { guest_path, bytes }),
     })
 }
 
@@ -1233,27 +888,13 @@ async fn process_one_background_fill(
     }
 
     let outcome = match fetch_cache_target(target, http).await? {
-        CacheFetchOutcome::Downloaded {
-            bytes,
-            download_duration,
-        } => {
-            let _ = download_duration;
+        CacheFetchOutcome::Downloaded(bytes) => {
             let size = bytes.len() as u64;
             write_to_cache(&cache_dir, &bytes).await?;
             BackgroundFillOutcome::Filled { size }
         }
-        CacheFetchOutcome::Skipped(TargetOutcome::SkippedHeadFailed { .. })
-        | CacheFetchOutcome::Skipped(TargetOutcome::SkippedInvalidDownload { .. }) => {
-            BackgroundFillOutcome::RetryableSkipped
-        }
-        CacheFetchOutcome::Skipped(TargetOutcome::SkippedOverSize) => {
-            BackgroundFillOutcome::Skipped
-        }
-        CacheFetchOutcome::Skipped(_) => {
-            return Err(RunnerError::Internal(
-                "background cache fill got unsupported fetch outcome".to_string(),
-            ));
-        }
+        CacheFetchOutcome::RetryableSkipped => BackgroundFillOutcome::RetryableSkipped,
+        CacheFetchOutcome::Skipped => BackgroundFillOutcome::Skipped,
     };
     drop(writer);
     Ok(outcome)
@@ -1276,11 +917,7 @@ async fn fetch_cache_target(
                 reason,
                 "storage_cache: probe returned no usable size header, passthrough"
             );
-            return Ok(CacheFetchOutcome::Skipped(
-                TargetOutcome::SkippedHeadFailed {
-                    reason: reason.to_string(),
-                },
-            ));
+            return Ok(CacheFetchOutcome::RetryableSkipped);
         }
         Err(e) => {
             let reason = e.to_string();
@@ -1290,9 +927,7 @@ async fn fetch_cache_target(
                 error = %reason,
                 "storage_cache: probe failed, passthrough"
             );
-            return Ok(CacheFetchOutcome::Skipped(
-                TargetOutcome::SkippedHeadFailed { reason },
-            ));
+            return Ok(CacheFetchOutcome::RetryableSkipped);
         }
     };
     if size > CACHE_MAX_SIZE {
@@ -1302,10 +937,9 @@ async fn fetch_cache_target(
             size,
             "storage_cache: entry over size limit, passthrough"
         );
-        return Ok(CacheFetchOutcome::Skipped(TargetOutcome::SkippedOverSize));
+        return Ok(CacheFetchOutcome::Skipped);
     }
 
-    let t = Instant::now();
     let body = retry_cache_fetch(|| {
         download_tarball(http, &target.archive_url, Some(size), CACHE_MAX_SIZE)
     })
@@ -1322,9 +956,7 @@ async fn fetch_cache_target(
                         error = %reason,
                         "storage_cache: full download failed, passthrough"
                     );
-                    return Ok(CacheFetchOutcome::Skipped(
-                        TargetOutcome::SkippedInvalidDownload { reason },
-                    ));
+                    return Ok(CacheFetchOutcome::RetryableSkipped);
                 }
                 CacheDownloadError::Internal(e) => return Err(e),
             }
@@ -1338,11 +970,7 @@ async fn fetch_cache_target(
                 version = %target.version,
                 "storage_cache: full download returned empty archive, passthrough"
             );
-            return Ok(CacheFetchOutcome::Skipped(
-                TargetOutcome::SkippedInvalidDownload {
-                    reason: "empty-download".to_string(),
-                },
-            ));
+            return Ok(CacheFetchOutcome::RetryableSkipped);
         }
         DownloadBody::OverSize { observed_size } => {
             warn!(
@@ -1369,17 +997,10 @@ async fn fetch_cache_target(
             observed_size,
             "storage_cache: full download size differed from probe, passthrough"
         );
-        return Ok(CacheFetchOutcome::Skipped(
-            TargetOutcome::SkippedInvalidDownload {
-                reason: "size-mismatch".to_string(),
-            },
-        ));
+        return Ok(CacheFetchOutcome::RetryableSkipped);
     }
 
-    Ok(CacheFetchOutcome::Downloaded {
-        bytes,
-        download_duration: t.elapsed(),
-    })
+    Ok(CacheFetchOutcome::Downloaded(bytes))
 }
 
 async fn process_one_hit_or_passthrough(
@@ -2128,50 +1749,11 @@ fn staging_dir(final_dir: &Path) -> PathBuf {
 fn apply_group_outcome(
     plan: &mut StoragePlan,
     group: &CacheTargetGroup,
-    group_outcome: &GroupOutcome,
+    outcome: &TargetOutcome,
     telemetry: &mut JobTelemetry,
 ) {
-    match group_outcome {
-        GroupOutcome::Shared {
-            outcome_target_index: _outcome_target_index,
-            outcome,
-        } => match outcome {
-            TargetOutcome::Hit => {
-                for target in &group.targets {
-                    apply_outcome(plan, target, outcome, telemetry);
-                }
-            }
-            #[cfg(test)]
-            TargetOutcome::Miss { .. } => {
-                // The representative miss already staged the group archive in
-                // the guest. Other same-key entries are equivalent to cache
-                // hits for both rewrite behavior and entry-level telemetry.
-                let hit = TargetOutcome::Hit;
-                for (index, target) in group.targets.iter().enumerate() {
-                    if index == *_outcome_target_index {
-                        apply_outcome(plan, target, outcome, telemetry);
-                    } else {
-                        apply_outcome(plan, target, &hit, telemetry);
-                    }
-                }
-            }
-            TargetOutcome::SkippedOverSize
-            | TargetOutcome::SkippedHeadFailed { .. }
-            | TargetOutcome::SkippedInvalidDownload { .. }
-            | TargetOutcome::MissPassthrough { .. }
-            | TargetOutcome::LockBusyPassthrough => {
-                for target in &group.targets {
-                    apply_outcome(plan, target, outcome, telemetry);
-                }
-            }
-        },
-        #[cfg(test)]
-        GroupOutcome::PerTarget(outcomes) => {
-            debug_assert_eq!(group.targets.len(), outcomes.len());
-            for (target, outcome) in group.targets.iter().zip(outcomes) {
-                apply_outcome(plan, target, outcome, telemetry);
-            }
-        }
+    for target in &group.targets {
+        apply_outcome(plan, target, outcome, telemetry);
     }
 }
 
@@ -2185,36 +1767,6 @@ fn apply_outcome(
         TargetOutcome::Hit => {
             rewrite_url(plan, target);
             telemetry.record("storage_cache_hit", Duration::ZERO, true, None);
-        }
-        #[cfg(test)]
-        TargetOutcome::Miss { download_duration } => {
-            rewrite_url(plan, target);
-            telemetry.record("storage_cache_miss", Duration::ZERO, true, None);
-            telemetry.record("storage_cache_download", *download_duration, true, None);
-        }
-        TargetOutcome::SkippedOverSize => {
-            telemetry.record(
-                "storage_cache_skipped_over_size",
-                Duration::ZERO,
-                true,
-                None,
-            );
-        }
-        TargetOutcome::SkippedHeadFailed { reason } => {
-            telemetry.record(
-                "storage_cache_skipped_head_failed",
-                Duration::ZERO,
-                true,
-                Some(reason.as_str()),
-            );
-        }
-        TargetOutcome::SkippedInvalidDownload { reason } => {
-            telemetry.record(
-                "storage_cache_skipped_invalid_download",
-                Duration::ZERO,
-                true,
-                Some(reason.as_str()),
-            );
         }
         TargetOutcome::MissPassthrough { reason } => {
             telemetry.record(
@@ -2243,22 +1795,12 @@ struct PassthroughSummary {
 }
 
 fn record_passthrough_summary(
-    outcomes: &[(CacheTargetGroup, GroupOutcome)],
+    outcomes: &[(CacheTargetGroup, TargetOutcome)],
     telemetry: &mut JobTelemetry,
 ) {
     let mut summary = PassthroughSummary::default();
-    for (group, group_outcome) in outcomes {
-        match group_outcome {
-            GroupOutcome::Shared { outcome, .. } => {
-                add_passthrough_summary(&mut summary, outcome, group.targets.len());
-            }
-            #[cfg(test)]
-            GroupOutcome::PerTarget(target_outcomes) => {
-                for outcome in target_outcomes {
-                    add_passthrough_summary(&mut summary, outcome, 1);
-                }
-            }
-        }
+    for (group, outcome) in outcomes {
+        add_passthrough_summary(&mut summary, outcome, group.targets.len());
     }
 
     telemetry.record(
@@ -2290,11 +1832,6 @@ fn add_passthrough_summary(
         TargetOutcome::Hit => summary.hit_targets += target_count,
         TargetOutcome::MissPassthrough { .. } => summary.miss_targets += target_count,
         TargetOutcome::LockBusyPassthrough => summary.lock_busy_targets += target_count,
-        #[cfg(test)]
-        TargetOutcome::Miss { .. } => {}
-        TargetOutcome::SkippedOverSize
-        | TargetOutcome::SkippedHeadFailed { .. }
-        | TargetOutcome::SkippedInvalidDownload { .. } => {}
     }
 }
 
@@ -2511,6 +2048,63 @@ mod tests {
             .find(|(key, _, _, _)| key == action_type)
             .map(|(_, duration_ms, _, _)| *duration_ms)
             .unwrap_or_else(|| panic!("expected {action_type} in {ops:?}"))
+    }
+
+    async fn select_background_fill(
+        plan: &mut StoragePlan,
+        sandbox: &dyn Sandbox,
+        home: &HomePaths,
+        telemetry: &mut JobTelemetry,
+    ) -> DeferredBackgroundFill {
+        populate_cache(plan, sandbox, home, telemetry)
+            .await
+            .unwrap()
+            .expect("cold cache entry should select a background fill")
+    }
+
+    async fn populate_cache_through_background(
+        plan: &mut StoragePlan,
+        sandbox: &dyn Sandbox,
+        home: &HomePaths,
+        telemetry: &mut JobTelemetry,
+    ) -> RunnerResult<Vec<SandboxOpRecord>> {
+        let Some(deferred) = populate_cache(plan, sandbox, home, telemetry).await? else {
+            return Ok(Vec::new());
+        };
+        let records = deferred.run().await;
+        if records.iter().any(|record| {
+            matches!(
+                record.action_type,
+                STORAGE_CACHE_BACKGROUND_FILL_FILLED | STORAGE_CACHE_BACKGROUND_FILL_ALREADY_CACHED
+            )
+        }) {
+            let deferred = populate_cache(plan, sandbox, home, telemetry).await?;
+            assert!(
+                deferred.is_none(),
+                "successful background fill should produce a later warm hit"
+            );
+        }
+        Ok(records)
+    }
+
+    fn assert_background_op(records: &[SandboxOpRecord], action_type: &str, success: bool) {
+        assert!(
+            records
+                .iter()
+                .any(|record| { record.action_type == action_type && record.success == success }),
+            "expected {action_type} success={success} in {records:?}"
+        );
+    }
+
+    fn assert_background_op_count(records: &[SandboxOpRecord], action_type: &str, expected: usize) {
+        let actual = records
+            .iter()
+            .filter(|record| record.action_type == action_type)
+            .count();
+        assert_eq!(
+            actual, expected,
+            "expected {expected} {action_type} records in {records:?}"
+        );
     }
 
     fn home_at(temp: &tempfile::TempDir) -> HomePaths {
@@ -2889,48 +2483,6 @@ mod tests {
         response
     }
 
-    fn assert_storage_cache_skipped_reason(ops: &[(String, bool, Option<String>)], expected: &str) {
-        let reason = ops
-            .iter()
-            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
-            .and_then(|(_, _, error)| error.as_deref());
-        assert_eq!(
-            reason,
-            Some(expected),
-            "expected storage_cache_skipped_head_failed reason {expected:?} in {ops:?}"
-        );
-    }
-
-    fn assert_storage_cache_skipped_reason_contains(
-        ops: &[(String, bool, Option<String>)],
-        expected: &str,
-    ) {
-        let reason = ops
-            .iter()
-            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
-            .and_then(|(_, _, error)| error.as_deref())
-            .expect("expected storage_cache_skipped_head_failed reason");
-        assert!(
-            reason.contains(expected),
-            "expected storage_cache_skipped_head_failed reason to contain {expected:?} in {ops:?}"
-        );
-    }
-
-    fn assert_storage_cache_skipped_invalid_download(
-        ops: &[(String, bool, Option<String>)],
-        expected: &str,
-    ) {
-        let reason = ops
-            .iter()
-            .find(|(k, _, _)| k == "storage_cache_skipped_invalid_download")
-            .and_then(|(_, _, error)| error.as_deref());
-        assert_eq!(
-            reason,
-            Some(expected),
-            "expected storage_cache_skipped_invalid_download reason {expected:?} in {ops:?}"
-        );
-    }
-
     #[tokio::test]
     async fn hit_path_reads_from_disk_and_rewrites_url() {
         let temp = tempfile::tempdir().unwrap();
@@ -2952,9 +2504,11 @@ mod tests {
             version,
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+        assert!(records.is_empty());
 
         assert_eq!(
             storage_archive_url(&manifest, 0),
@@ -2969,7 +2523,7 @@ mod tests {
         assert_op(&ops, STORAGE_CACHE_LOCK_WAIT, true);
         assert_op(&ops, STORAGE_CACHE_HIT_READ, true);
         assert_op_count(&ops, STORAGE_CACHE_PROCESS_GROUP, 1);
-        assert_op_count(&ops, STORAGE_CACHE_LOCK_WAIT, 1);
+        assert_op_count(&ops, STORAGE_CACHE_LOCK_WAIT, 2);
         assert_op_count(&ops, STORAGE_CACHE_HIT_READ, 1);
         let batches = sandbox.write_files_calls();
         assert_eq!(batches.len(), 1);
@@ -3024,14 +2578,11 @@ mod tests {
             version,
         );
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_none());
 
         assert_eq!(
             storage_archive_url(&manifest, 0),
@@ -3045,8 +2596,6 @@ mod tests {
         assert_op(&ops, "storage_cache_hit", true);
         assert_op(&ops, "storage_cache_passthrough_hit_count_1", true);
         assert_op(&ops, "storage_cache_passthrough_miss_count_0", true);
-        assert_no_op(&ops, "storage_cache_miss");
-        assert_no_op(&ops, "storage_cache_download");
     }
 
     #[tokio::test]
@@ -3063,14 +2612,11 @@ mod tests {
         assert!(!lock_path.exists());
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_none());
 
         assert_eq!(
             storage_archive_url(&manifest, 0),
@@ -3108,14 +2654,11 @@ mod tests {
         let original = format!("http://{addr}/archive.tar.gz");
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_some());
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
@@ -3132,8 +2675,6 @@ mod tests {
         assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
         assert_op(&ops, "storage_cache_passthrough_miss_count_1", true);
         assert_op(&ops, "storage_cache_passthrough_hit_count_0", true);
-        assert_no_op(&ops, "storage_cache_miss");
-        assert_no_op(&ops, "storage_cache_download");
         assert_no_op(&ops, "storage_cache_skipped_head_failed");
     }
 
@@ -3215,8 +2756,6 @@ mod tests {
             true,
         );
         assert_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY, true);
-        assert_no_op(&ops, "storage_cache_miss");
-        assert_no_op(&ops, "storage_cache_download");
     }
 
     #[tokio::test]
@@ -3295,19 +2834,15 @@ mod tests {
                 .unwrap();
             request
         });
-        let reporter = new_telemetry_for_api_url(&telemetry_api_url).reporter();
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry_for_api_url(&telemetry_api_url);
         let name = "background-report";
         let version = "v1";
-        let group = CacheTargetGroup {
-            targets: vec![CacheTarget {
-                handle: ArchiveHandle::storage(0),
-                name: name.to_string(),
-                version: version.to_string(),
-                archive_url,
-            }],
-        };
+        let mut plan = fresh_storage_plan(archive_url, name, version);
 
-        run_background_fill_groups(vec![group], home.clone(), reporter).await;
+        select_background_fill(&mut plan, &sandbox, &home, &mut telemetry)
+            .await
+            .start(&mut telemetry);
 
         await_raw_http_sequence(archive_server).await;
         assert_eq!(wait_cached_archive(&home, name, version).await, body);
@@ -3332,6 +2867,7 @@ mod tests {
         )
         .into_records();
         assert_eq!(filled.len(), 2);
+        assert_background_op_count(&filled, STORAGE_CACHE_BACKGROUND_FILL_FILLED, 1);
         assert_eq!(filled[0].action_type, STORAGE_CACHE_BACKGROUND_FILL_FILLED);
         assert_eq!(filled[0].duration, Duration::from_millis(12));
         assert!(filled[0].success);
@@ -3373,48 +2909,83 @@ mod tests {
     async fn background_fill_skips_busy_cache_lock_without_http() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
         let name = "background-busy";
         let version = "v1";
+        let mut plan = fresh_storage_plan(
+            "http://127.0.0.1:9/archive.tar.gz".to_string(),
+            name,
+            version,
+        );
+        let deferred = select_background_fill(&mut plan, &sandbox, &home, &mut telemetry).await;
         let _writer = lock::acquire(home.storage_lock(name, version))
             .await
             .unwrap();
-        let group = CacheTargetGroup {
-            targets: vec![CacheTarget {
-                handle: ArchiveHandle::storage(0),
-                name: name.to_string(),
-                version: version.to_string(),
-                archive_url: "http://127.0.0.1:9/archive.tar.gz".to_string(),
-            }],
-        };
-        let http = Client::builder().build().unwrap();
 
-        let outcome = process_group_background_fill(&group, &http, &home)
+        let records = deferred.run().await;
+
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_BUSY, true);
+        assert!(!home.storage_cache_dir(name, version).exists());
+    }
+
+    #[tokio::test]
+    async fn background_fill_observes_cache_written_after_selection() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "background-already-cached";
+        let version = "v1";
+        let mut plan = fresh_storage_plan(
+            "http://127.0.0.1:9/archive.tar.gz".to_string(),
+            name,
+            version,
+        );
+        let deferred = select_background_fill(&mut plan, &sandbox, &home, &mut telemetry).await;
+        let body = tarball_bytes();
+        write_cached_archive(&home, name, version, &body);
+
+        let records = deferred.run().await;
+
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_ALREADY_CACHED, true);
+        assert_background_op(
+            &records,
+            "storage_cache_background_fill_size_lt_64_kib",
+            true,
+        );
+        let later = populate_cache(&mut plan, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
-
-        assert!(matches!(outcome, BackgroundFillOutcome::Busy));
-        assert!(!home.storage_cache_dir(name, version).exists());
+        assert!(later.is_none());
+        assert_eq!(
+            storage_archive_url(&plan, 0),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
     }
 
     #[tokio::test]
     async fn background_fill_preserves_retryable_skipped_outcome() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
-        let group = CacheTargetGroup {
-            targets: vec![CacheTarget {
-                handle: ArchiveHandle::storage(0),
-                name: "background-retryable".to_string(),
-                version: "v1".to_string(),
-                archive_url: "http://127.0.0.1:9/archive.tar.gz".to_string(),
-            }],
-        };
-        let http = Client::builder().build().unwrap();
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let mut plan = fresh_storage_plan(
+            "http://127.0.0.1:9/archive.tar.gz".to_string(),
+            "background-retryable",
+            "v1",
+        );
 
-        let outcome = process_group_background_fill(&group, &http, &home)
+        let records = select_background_fill(&mut plan, &sandbox, &home, &mut telemetry)
             .await
-            .unwrap();
+            .run()
+            .await;
 
-        assert!(matches!(outcome, BackgroundFillOutcome::RetryableSkipped));
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
     }
 
     #[tokio::test]
@@ -3432,14 +3003,11 @@ mod tests {
         assert!(!home.storage_cache_dir(name, version).exists());
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_some());
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(!lock_path.exists());
@@ -3465,14 +3033,11 @@ mod tests {
         assert!(!home.storage_cache_dir(name, version).exists());
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_some());
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
@@ -3520,14 +3085,11 @@ mod tests {
             None,
         );
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_some());
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(empty_url.as_str()));
         assert_eq!(
@@ -3540,7 +3102,6 @@ mod tests {
         assert_op(&ops, "storage_cache_passthrough_miss_count_2", true);
         assert_op_count(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, 2);
         assert_no_op(&ops, "storage_cache_skipped_over_size");
-        assert_no_op(&ops, "storage_cache_miss");
     }
 
     #[tokio::test]
@@ -3556,21 +3117,17 @@ mod tests {
         let mut manifest =
             fresh_duplicate_storage_plan(first_url.clone(), second_url.clone(), name, version);
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_some());
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(first_url.as_str()));
         assert_eq!(storage_archive_url(&manifest, 1), Some(second_url.as_str()));
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, "storage_cache_passthrough_miss_count_2", true);
         assert_op_count(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, 2);
-        assert_no_op(&ops, "storage_cache_miss");
     }
 
     #[tokio::test]
@@ -3584,21 +3141,17 @@ mod tests {
         let original = "https://r2.example.com/artifact.tar.gz".to_string();
         let mut manifest = fresh_artifact_plan(original.clone(), name, version);
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_some());
 
         assert_eq!(artifact_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(!home.storage_cache_dir(name, version).exists());
         assert!(!home.storage_lock(name, version).exists());
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, true);
-        assert_no_op(&ops, "storage_cache_miss");
     }
 
     #[tokio::test]
@@ -3615,21 +3168,17 @@ mod tests {
             .unwrap();
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_passthrough_without_background(
-            &mut manifest,
-            &sandbox,
-            &home,
-            &mut telemetry,
-        )
-        .await
-        .unwrap();
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_none());
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_LOCK_BUSY_PASSTHROUGH, true);
         assert_op(&ops, "storage_cache_passthrough_lock_busy_count_1", true);
         assert_no_op(&ops, STORAGE_CACHE_MISS_PASSTHROUGH);
-        assert_no_op(&ops, "storage_cache_miss");
     }
 
     #[tokio::test]
@@ -3664,9 +3213,11 @@ mod tests {
             None,
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+        assert!(records.is_empty());
 
         let batches = sandbox.write_files_calls();
         assert_eq!(batches.len(), 1);
@@ -3687,7 +3238,6 @@ mod tests {
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, true);
         assert_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE, true);
-        assert_no_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE);
         let ops_with_duration = telemetry.pending_ops_with_duration_snapshot();
         assert_eq!(
             op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_TOTAL),
@@ -3710,7 +3260,7 @@ mod tests {
         write_cached_archive(&home, name, version, &tarball_bytes());
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        let err = populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap_err();
 
@@ -3726,7 +3276,6 @@ mod tests {
             STORAGE_CACHE_STAGE_FAILED,
         );
         assert_op_error(&ops, STORAGE_CACHE_STAGE_TOTAL, STORAGE_CACHE_STAGE_FAILED);
-        assert_no_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE);
         assert_no_op(&ops, "storage_cache_hit");
     }
 
@@ -3758,22 +3307,37 @@ mod tests {
             })
             .await;
 
-        let url = server.url("/archive.tar.gz");
+        let original = server.url("/archive.tar.gz");
         let name = "seed-skill-bar";
         let version = "v2";
-        let mut manifest = fresh_storage_plan(url, name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let deferred = select_background_fill(&mut manifest, &sandbox, &home, &mut telemetry).await;
+
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
+        assert!(sandbox.write_files_calls().is_empty());
+        assert!(!home.storage_cache_dir(name, version).exists());
+
+        let records = deferred.run().await;
 
         probe.assert_async().await;
         get.assert_async().await;
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
+        assert_background_op(
+            &records,
+            "storage_cache_background_fill_size_lt_64_kib",
+            true,
+        );
 
         let final_path = home.storage_cache_dir(name, version).join("archive.tar.gz");
         assert!(final_path.exists(), "cache file must exist after miss");
         assert_eq!(std::fs::read(&final_path).unwrap(), body);
 
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_none());
         assert_eq!(
             storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
@@ -3781,21 +3345,18 @@ mod tests {
 
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, true);
-        assert_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE, true);
-        assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
+        assert_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE, true);
         let ops_with_duration = telemetry.pending_ops_with_duration_snapshot();
         assert_eq!(
             op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_TOTAL),
-            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_SINGLE_WRITE),
-            "single-write staging total should equal the single guest write duration in {ops_with_duration:?}"
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_BATCH_WRITE),
+            "single-entry batch staging total should equal the guest write duration in {ops_with_duration:?}"
         );
-        assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_miss"));
-        assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_download"));
         assert_op(&ops, STORAGE_CACHE_PROCESS_GROUP, true);
         assert_op(&ops, STORAGE_CACHE_LOCK_WAIT, true);
-        assert_op_count(&ops, STORAGE_CACHE_PROCESS_GROUP, 1);
+        assert_op_count(&ops, STORAGE_CACHE_PROCESS_GROUP, 2);
         assert_op_count(&ops, STORAGE_CACHE_LOCK_WAIT, 2);
-        assert_no_op(&ops, STORAGE_CACHE_HIT_READ);
+        assert_op_count(&ops, STORAGE_CACHE_HIT_READ, 1);
     }
 
     #[tokio::test]
@@ -3815,9 +3376,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(url, name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
         await_raw_http_sequence(handle).await;
 
         assert_eq!(
@@ -3829,9 +3391,7 @@ mod tests {
             body
         );
         assert_eq!(sandbox.write_file_calls().len(), 1);
-        let ops = telemetry.pending_ops_snapshot();
-        assert!(ops.iter().any(|(key, _, _)| key == "storage_cache_miss"));
-        assert_no_op(&ops, "storage_cache_skipped_head_failed");
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
     }
 
     #[tokio::test]
@@ -3865,24 +3425,19 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_calls_async(1).await;
         full.assert_calls_async(0).await;
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
-        let ops = telemetry.pending_ops_snapshot();
-        let reason = ops
-            .iter()
-            .find(|(key, _, _)| key == "storage_cache_skipped_head_failed")
-            .and_then(|(_, _, error)| error.as_deref())
-            .expect("expected storage_cache_skipped_head_failed reason");
-        assert!(reason.contains("403"), "expected 403 in reason: {reason}");
-        assert!(
-            !reason.contains("retry exhausted"),
-            "4xx errors must not retry: {reason}"
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
         );
     }
 
@@ -3897,21 +3452,17 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
-        let ops = telemetry.pending_ops_snapshot();
-        let reason = ops
-            .iter()
-            .find(|(key, _, _)| key == "storage_cache_skipped_head_failed")
-            .and_then(|(_, _, error)| error.as_deref())
-            .expect("expected storage_cache_skipped_head_failed reason");
-        assert!(
-            !reason.contains("retry exhausted"),
-            "builder errors must not retry: {reason}"
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
         );
     }
 
@@ -3932,9 +3483,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(url, name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
         await_raw_http_sequence(handle).await;
 
         assert_eq!(
@@ -3946,9 +3498,7 @@ mod tests {
             body
         );
         assert_eq!(sandbox.write_file_calls().len(), 1);
-        let ops = telemetry.pending_ops_snapshot();
-        assert!(ops.iter().any(|(key, _, _)| key == "storage_cache_miss"));
-        assert_no_op(&ops, "storage_cache_skipped_invalid_download");
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
     }
 
     #[tokio::test]
@@ -3968,9 +3518,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(url, name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
         await_raw_http_sequence(handle).await;
 
         assert_eq!(
@@ -3982,9 +3533,7 @@ mod tests {
             body
         );
         assert_eq!(sandbox.write_file_calls().len(), 1);
-        let ops = telemetry.pending_ops_snapshot();
-        assert!(ops.iter().any(|(key, _, _)| key == "storage_cache_miss"));
-        assert_no_op(&ops, "storage_cache_skipped_invalid_download");
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
     }
 
     #[tokio::test]
@@ -4023,25 +3572,31 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         full.assert_calls_async(1).await;
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
-        let ops = telemetry.pending_ops_snapshot();
-        let reason = ops
-            .iter()
-            .find(|(key, _, _)| key == "storage_cache_skipped_invalid_download")
-            .and_then(|(_, _, error)| error.as_deref())
-            .expect("expected storage_cache_skipped_invalid_download reason");
-        assert!(reason.contains("403"), "expected 403 in reason: {reason}");
-        assert!(
-            !reason.contains("retry exhausted"),
-            "4xx errors must not retry: {reason}"
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
         );
+        let http = Client::builder().build().unwrap();
+        let reason = retry_cache_fetch(|| {
+            download_tarball(&http, &original, Some(body.len() as u64), CACHE_MAX_SIZE)
+        })
+        .await
+        .err()
+        .expect("403 download should fail")
+        .to_string();
+        full.assert_calls_async(2).await;
+        assert!(reason.contains("403"), "expected 403 in reason: {reason}");
+        assert!(!reason.contains("retry exhausted"), "got: {reason}");
         assert!(
             !reason.contains("X-Amz-Signature")
                 && !reason.contains("secret")
@@ -4087,9 +3642,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         full.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS).await;
@@ -4101,12 +3657,20 @@ mod tests {
                 .join("archive.tar.gz")
                 .exists()
         );
-        let ops = telemetry.pending_ops_snapshot();
-        let reason = ops
-            .iter()
-            .find(|(key, _, _)| key == "storage_cache_skipped_invalid_download")
-            .and_then(|(_, _, error)| error.as_deref())
-            .expect("expected storage_cache_skipped_invalid_download reason");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
+        let http = Client::builder().build().unwrap();
+        let reason = retry_cache_fetch(|| {
+            download_tarball(&http, &original, Some(body.len() as u64), CACHE_MAX_SIZE)
+        })
+        .await
+        .err()
+        .expect("503 downloads should exhaust retries")
+        .to_string();
+        full.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS * 2).await;
         assert!(
             reason.contains("retry exhausted after 3 attempts") && reason.contains("503"),
             "unexpected retry exhaustion reason: {reason}"
@@ -4121,11 +3685,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn miss_path_single_stage_failure_records_failed_staging_telemetry() {
+    async fn cold_fill_later_warm_batch_stage_failure_records_telemetry() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
-        sandbox.push_write_file_result(Err(sandbox_write_file_error("single write failed")));
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("batch write failed")));
         let mut telemetry = new_telemetry();
         let server = MockServer::start_async().await;
         let body = tarball_bytes();
@@ -4150,20 +3714,17 @@ mod tests {
             .await;
 
         let original = server.url("/archive.tar.gz");
-        let name = "single-stage-fail";
+        let name = "later-warm-stage-fail";
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        let err = populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap_err();
 
         probe.assert_async().await;
         get.assert_async().await;
-        assert!(
-            err.to_string().contains("single write failed"),
-            "got: {err}"
-        );
+        assert!(err.to_string().contains("batch write failed"), "got: {err}");
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert_eq!(
             std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
@@ -4171,17 +3732,14 @@ mod tests {
         );
 
         let ops = telemetry.pending_ops_snapshot();
-        assert_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE, false);
+        assert_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE, false);
         assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, false);
         assert_op_error(
             &ops,
-            STORAGE_CACHE_STAGE_SINGLE_WRITE,
+            STORAGE_CACHE_STAGE_BATCH_WRITE,
             STORAGE_CACHE_STAGE_FAILED,
         );
         assert_op_error(&ops, STORAGE_CACHE_STAGE_TOTAL, STORAGE_CACHE_STAGE_FAILED);
-        assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
-        assert_no_op(&ops, "storage_cache_miss");
-        assert_no_op(&ops, "storage_cache_download");
     }
 
     #[tokio::test]
@@ -4210,9 +3768,10 @@ mod tests {
         let version = "v9";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
 
@@ -4224,11 +3783,7 @@ mod tests {
         let ops = telemetry.pending_ops_snapshot();
         assert_no_op(&ops, STORAGE_CACHE_STAGE_TOTAL);
         assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
-        assert_no_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE);
-        assert!(
-            ops.iter()
-                .any(|(k, _, _)| k == "storage_cache_skipped_over_size")
-        );
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_SKIPPED, true);
     }
 
     #[tokio::test]
@@ -4265,15 +3820,17 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap_err();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         get.assert_async().await;
-        assert!(
-            err.to_string().contains("download size mismatch"),
-            "got: {err}"
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FAILED, false);
+        assert_eq!(
+            records[0].error,
+            Some(STORAGE_CACHE_BACKGROUND_FILL_FAILED_ERROR)
         );
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
@@ -4281,12 +3838,6 @@ mod tests {
                 .storage_cache_dir(name, version)
                 .join("archive.tar.gz")
                 .exists()
-        );
-        assert!(
-            !telemetry
-                .pending_ops_snapshot()
-                .iter()
-                .any(|(k, _, _)| k == "storage_cache_miss")
         );
         assert!(
             sandbox.write_file("/tmp/sentinel", b"x").await.is_err(),
@@ -4326,9 +3877,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         get.assert_async().await;
@@ -4340,8 +3892,11 @@ mod tests {
                 .exists()
         );
         assert!(sandbox.write_file_calls().is_empty());
-        let ops = telemetry.pending_ops_snapshot();
-        assert_storage_cache_skipped_invalid_download(&ops, "empty-download");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
     }
 
     #[tokio::test]
@@ -4377,9 +3932,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         get.assert_async().await;
@@ -4395,9 +3951,7 @@ mod tests {
         assert_eq!(writes.len(), 1);
         assert_eq!(writes[0].path, guest_archive_path(name, version));
         assert_eq!(writes[0].content, body);
-        let ops = telemetry.pending_ops_snapshot();
-        assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_miss"));
-        assert_no_op(&ops, "storage_cache_skipped_invalid_download");
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
     }
 
     #[tokio::test]
@@ -4433,9 +3987,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         get.assert_async().await;
@@ -4447,8 +4002,11 @@ mod tests {
                 .exists()
         );
         assert!(sandbox.write_file_calls().is_empty());
-        let ops = telemetry.pending_ops_snapshot();
-        assert_storage_cache_skipped_invalid_download(&ops, "size-mismatch");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
     }
 
     #[tokio::test]
@@ -4484,9 +4042,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         get.assert_async().await;
@@ -4498,8 +4057,11 @@ mod tests {
                 .exists()
         );
         assert!(sandbox.write_file_calls().is_empty());
-        let ops = telemetry.pending_ops_snapshot();
-        assert_storage_cache_skipped_invalid_download(&ops, "size-mismatch");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
     }
 
     #[tokio::test]
@@ -4524,9 +4086,11 @@ mod tests {
             Some(&previous),
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+        assert!(records.is_empty());
 
         assert!(storage_archive_url(&manifest, 0).is_none());
         assert!(manifest.cache_candidates().is_empty());
@@ -4545,7 +4109,7 @@ mod tests {
         let mut manifest =
             fresh_storage_plan("https://r2.example.com/legacy.tar.gz".into(), "", "");
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4581,7 +4145,7 @@ mod tests {
         let mut manifest =
             fresh_storage_plan("https://r2.example.com/ignored.tar.gz".into(), name, "v2");
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4632,9 +4196,10 @@ mod tests {
         let url = server.url("/revalidated.tar.gz");
         let mut manifest = fresh_storage_plan(url, name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         get.assert_async().await;
@@ -4647,14 +4212,8 @@ mod tests {
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let ops = telemetry.pending_ops_snapshot();
-        assert!(
-            ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
-            "expected revalidation miss in {ops:?}"
-        );
-        assert!(
-            !ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
-            "oversized cache file must not be treated as a hit: {ops:?}"
-        );
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "over-size");
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
     }
 
     #[tokio::test]
@@ -4694,9 +4253,10 @@ mod tests {
         let url = server.url("/empty-revalidated.tar.gz");
         let mut manifest = fresh_storage_plan(url, name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         get.assert_async().await;
@@ -4709,14 +4269,8 @@ mod tests {
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let ops = telemetry.pending_ops_snapshot();
-        assert!(
-            ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
-            "expected revalidation miss in {ops:?}"
-        );
-        assert!(
-            !ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
-            "empty cache file must not be treated as a hit: {ops:?}"
-        );
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "empty");
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
     }
 
     #[tokio::test]
@@ -4756,7 +4310,7 @@ mod tests {
         let url = server.url("/should-not-revalidate.tar.gz");
         let mut manifest = fresh_storage_plan(url, name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4780,10 +4334,6 @@ mod tests {
             ops.iter().any(|(k, _, _)| k == "storage_cache_hit"),
             "expected cache hit in {ops:?}"
         );
-        assert!(
-            !ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
-            "non-tar cache file must not be revalidated: {ops:?}"
-        );
     }
 
     #[tokio::test]
@@ -4805,7 +4355,7 @@ mod tests {
             version,
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -4838,24 +4388,26 @@ mod tests {
         );
         let mut manifest = fresh_storage_plan(original.clone(), "broken-skill", "v1");
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS).await;
 
         // archive_url untouched — guest-download will retry via the original URL.
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
-        let ops = telemetry.pending_ops_snapshot();
-        assert!(
-            ops.iter()
-                .any(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
         );
-        let (_, _, error) = ops
-            .iter()
-            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
-            .expect("expected skipped head telemetry");
-        let error = error.as_deref().expect("expected telemetry error reason");
+        let http = Client::builder().build().unwrap();
+        let error = retry_cache_fetch(|| probe_size(&http, &original))
+            .await
+            .unwrap_err()
+            .to_string();
+        probe.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS * 2).await;
         assert!(
             error.contains("retry exhausted after 3 attempts") && error.contains("500"),
             "unexpected retry exhaustion reason: {error}"
@@ -4875,7 +4427,7 @@ mod tests {
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
-        let responses = vec![Vec::new(); CACHE_HTTP_MAX_ATTEMPTS];
+        let responses = vec![Vec::new(); CACHE_HTTP_MAX_ATTEMPTS * 2];
         let (url, handle) = raw_http_sequence_url(responses).await;
 
         let original = format!("{url}?X-Amz-Signature=secret&X-Amz-Credential=credential");
@@ -4883,19 +4435,24 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+        let http = Client::builder().build().unwrap();
+        let error = retry_cache_fetch(|| probe_size(&http, &original))
             .await
-            .unwrap();
+            .unwrap_err()
+            .to_string();
         await_raw_http_sequence(handle).await;
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
-        let ops = telemetry.pending_ops_snapshot();
-        let (_, _, error) = ops
-            .iter()
-            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
-            .expect("expected skipped head telemetry");
-        let error = error.as_deref().expect("expected telemetry error reason");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
         assert!(
             error.contains("retry exhausted after 3 attempts"),
             "unexpected retry exhaustion reason: {error}"
@@ -4972,9 +4529,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         handle.await.unwrap().unwrap();
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
@@ -4985,15 +4543,10 @@ mod tests {
                 .exists()
         );
         assert!(sandbox.write_file_calls().is_empty());
-        let ops = telemetry.pending_ops_snapshot();
-        let reason = ops
-            .iter()
-            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
-            .and_then(|(_, _, error)| error.as_deref())
-            .expect("expected storage_cache_skipped_head_failed reason");
-        assert!(
-            reason == "invalid-size-header" || reason.contains("probe GET"),
-            "unexpected malformed Content-Length reason: {reason}"
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
         );
     }
 
@@ -5027,9 +4580,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         full.assert_calls_async(0).await;
@@ -5040,8 +4594,11 @@ mod tests {
                 .join("archive.tar.gz")
                 .exists()
         );
-        let ops = telemetry.pending_ops_snapshot();
-        assert_storage_cache_skipped_reason(&ops, "invalid-size-header");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
     }
 
     #[tokio::test]
@@ -5074,9 +4631,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         full.assert_calls_async(0).await;
@@ -5087,8 +4645,11 @@ mod tests {
                 .join("archive.tar.gz")
                 .exists()
         );
-        let ops = telemetry.pending_ops_snapshot();
-        assert_storage_cache_skipped_reason_contains(&ops, "204");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
     }
 
     #[tokio::test]
@@ -5301,9 +4862,14 @@ mod tests {
                     version,
                 );
                 let mut telemetry = new_telemetry();
-                populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
-                    .await
-                    .unwrap();
+                populate_cache_through_background(
+                    &mut manifest,
+                    sandbox.as_ref(),
+                    &home,
+                    &mut telemetry,
+                )
+                .await
+                .unwrap();
                 manifest
             })
         };
@@ -5326,9 +4892,14 @@ mod tests {
                     version,
                 );
                 let mut telemetry = new_telemetry();
-                populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
-                    .await
-                    .unwrap();
+                populate_cache_through_background(
+                    &mut manifest,
+                    sandbox.as_ref(),
+                    &home,
+                    &mut telemetry,
+                )
+                .await
+                .unwrap();
                 manifest
             })
         };
@@ -5348,7 +4919,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn slow_guest_staging_does_not_pause_in_flight_cache_population() {
+    async fn multi_group_background_fill_precedes_later_warm_staging() {
         async fn read_request(socket: &mut tokio::net::TcpStream) -> std::io::Result<String> {
             let mut request = Vec::new();
             let mut buf = [0u8; 1024];
@@ -5495,8 +5066,13 @@ mod tests {
                     None,
                 );
                 let mut telemetry = new_telemetry();
-                populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
-                    .await?;
+                populate_cache_through_background(
+                    &mut manifest,
+                    sandbox.as_ref(),
+                    &home,
+                    &mut telemetry,
+                )
+                .await?;
                 Ok::<StoragePlan, RunnerError>(manifest)
             })
         };
@@ -5506,28 +5082,21 @@ mod tests {
             .expect("cold worker should start the probe")
             .unwrap();
         allow_ready_tx.send(()).unwrap();
-        gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
         release_cold_probe_tx.send(()).unwrap();
         tokio::time::timeout(Duration::from_secs(5), cold_full_seen_rx)
             .await
-            .expect("cold worker should continue while guest staging is blocked")
+            .expect("both background fills should finish before later warm staging")
             .unwrap();
 
-        let cold_lock = tokio::time::timeout(
-            Duration::from_secs(5),
-            lock::acquire(home.storage_lock(cold_name, version)),
-        )
-        .await
-        .expect("cold worker should release the host cache lock before guest staging unblocks")
-        .unwrap();
-        drop(cold_lock);
-
-        gate.release_one();
-        gate.wait_entered(2, Duration::from_secs(5)).await.unwrap();
+        gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
         gate.release_one();
         let manifest = task.await.unwrap().unwrap();
         ready_server_task.await.unwrap().unwrap();
         cold_server_task.await.unwrap().unwrap();
+
+        let batches = sandbox.write_files_calls();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].files.len(), 2);
 
         assert_eq!(
             storage_archive_url(&manifest, 0),
@@ -5561,8 +5130,13 @@ mod tests {
                     version,
                 );
                 let mut telemetry = new_telemetry();
-                populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
-                    .await?;
+                populate_cache_through_background(
+                    &mut manifest,
+                    sandbox.as_ref(),
+                    &home,
+                    &mut telemetry,
+                )
+                .await?;
                 Ok::<StoragePlan, RunnerError>(manifest)
             })
         };
@@ -5642,9 +5216,10 @@ mod tests {
             version,
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         full.assert_async().await;
@@ -5660,28 +5235,9 @@ mod tests {
         assert_eq!(storage_archive_url(&manifest, 0), Some(expected.as_str()));
         assert_eq!(storage_archive_url(&manifest, 1), Some(expected.as_str()));
 
+        assert_background_op_count(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, 1);
         let ops = telemetry.pending_ops_snapshot();
-        assert_eq!(
-            ops.iter()
-                .filter(|(key, _, _)| key == "storage_cache_miss")
-                .count(),
-            1,
-            "expected one representative miss in {ops:?}"
-        );
-        assert_eq!(
-            ops.iter()
-                .filter(|(key, _, _)| key == "storage_cache_download")
-                .count(),
-            1,
-            "expected one representative download in {ops:?}"
-        );
-        assert_eq!(
-            ops.iter()
-                .filter(|(key, _, _)| key == "storage_cache_hit")
-                .count(),
-            1,
-            "expected one hit-equivalent duplicate target in {ops:?}"
-        );
+        assert_op_count(&ops, "storage_cache_hit", 2);
     }
 
     #[tokio::test]
@@ -5711,9 +5267,11 @@ mod tests {
             None,
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
+        assert!(records.is_empty());
 
         assert_eq!(
             sandbox.write_file_calls().len(),
@@ -5787,9 +5345,10 @@ mod tests {
             version,
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         failed_probe
             .assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS)
@@ -5807,19 +5366,7 @@ mod tests {
         assert_eq!(storage_archive_url(&manifest, 0), Some(expected.as_str()));
         assert_eq!(storage_archive_url(&manifest, 1), Some(expected.as_str()));
 
-        let ops = telemetry.pending_ops_snapshot();
-        assert_eq!(
-            ops.iter()
-                .filter(|(key, _, _)| key == "storage_cache_miss")
-                .count(),
-            1,
-            "expected one successful representative miss in {ops:?}"
-        );
-        assert!(
-            !ops.iter()
-                .any(|(key, _, _)| key == "storage_cache_skipped_head_failed"),
-            "transient representative probe failure should not be the final group outcome: {ops:?}"
-        );
+        assert_background_op_count(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, 1);
     }
 
     #[tokio::test]
@@ -5877,9 +5424,10 @@ mod tests {
             version,
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         invalid_probe.assert_async().await;
         invalid_full.assert_async().await;
@@ -5895,23 +5443,11 @@ mod tests {
         assert_eq!(storage_archive_url(&manifest, 0), Some(expected.as_str()));
         assert_eq!(storage_archive_url(&manifest, 1), Some(expected.as_str()));
 
-        let ops = telemetry.pending_ops_snapshot();
-        assert_eq!(
-            ops.iter()
-                .filter(|(key, _, _)| key == "storage_cache_miss")
-                .count(),
-            1,
-            "expected one successful representative miss in {ops:?}"
-        );
-        assert!(
-            !ops.iter()
-                .any(|(key, _, _)| key == "storage_cache_skipped_invalid_download"),
-            "transient representative invalid download should not be the final group outcome: {ops:?}"
-        );
+        assert_background_op_count(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, 1);
     }
 
     #[tokio::test]
-    async fn duplicate_same_key_all_probe_failures_stay_per_target_passthrough() {
+    async fn duplicate_same_key_all_probe_failures_yield_group_retryable_skip() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
@@ -5959,9 +5495,10 @@ mod tests {
         let mut manifest =
             fresh_duplicate_storage_plan(original_a.clone(), original_b.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         failed_probe_a
             .assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS)
@@ -5978,24 +5515,11 @@ mod tests {
         assert_eq!(storage_archive_url(&manifest, 0), Some(original_a.as_str()));
         assert_eq!(storage_archive_url(&manifest, 1), Some(original_b.as_str()));
 
-        let ops = telemetry.pending_ops_snapshot();
-        assert_eq!(
-            ops.iter()
-                .filter(|(key, _, _)| key == "storage_cache_skipped_head_failed")
-                .count(),
-            2,
-            "expected each failed duplicate probe to retain its passthrough telemetry in {ops:?}"
-        );
-        assert!(
-            !ops.iter().any(|(key, _, _)| key == "storage_cache_miss"
-                || key == "storage_cache_download"
-                || key == "storage_cache_hit"),
-            "all probe failures should not record cache hit/miss/download telemetry: {ops:?}"
-        );
+        assert_background_op_count(&records, STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED, 1);
     }
 
     #[tokio::test]
-    async fn duplicate_same_key_all_invalid_downloads_stay_per_target_passthrough() {
+    async fn duplicate_same_key_all_invalid_downloads_yield_group_retryable_skip() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
@@ -6047,9 +5571,10 @@ mod tests {
         let mut manifest =
             fresh_duplicate_storage_plan(original_a.clone(), original_b.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         empty_probe.assert_async().await;
         empty_full.assert_async().await;
@@ -6062,20 +5587,7 @@ mod tests {
         assert_eq!(storage_archive_url(&manifest, 0), Some(original_a.as_str()));
         assert_eq!(storage_archive_url(&manifest, 1), Some(original_b.as_str()));
 
-        let ops = telemetry.pending_ops_snapshot();
-        assert_eq!(
-            ops.iter()
-                .filter(|(key, _, _)| key == "storage_cache_skipped_invalid_download")
-                .count(),
-            2,
-            "expected each failed duplicate download to retain its passthrough telemetry in {ops:?}"
-        );
-        assert!(
-            !ops.iter().any(|(key, _, _)| key == "storage_cache_miss"
-                || key == "storage_cache_download"
-                || key == "storage_cache_hit"),
-            "all invalid downloads should not record cache hit/miss/download telemetry: {ops:?}"
-        );
+        assert_background_op_count(&records, STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED, 1);
     }
 
     #[tokio::test]
@@ -6118,7 +5630,7 @@ mod tests {
             None,
         );
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -6153,7 +5665,7 @@ mod tests {
         let original = "https://r2.example.com/nameless.tar.gz".to_string();
         let mut manifest = fresh_artifact_plan(original.clone(), "", "");
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -6164,12 +5676,6 @@ mod tests {
 
     #[tokio::test]
     async fn concurrent_populate_for_same_key_downloads_once() {
-        // Two `populate_cache` invocations race for the same (name, version).
-        // The per-version flock must serialize them, so exactly one issues a
-        // GET to upstream and the second hits the just-warmed disk cache.
-        // `populate_cache` runs cache workers in spawned tasks, so both tasks
-        // touch the flock acquire from separate spawn_blocking threads. This
-        // exercises real cross-thread flock semantics.
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox_a = MockSandbox::new("test-a");
@@ -6179,8 +5685,6 @@ mod tests {
         let server = MockServer::start_async().await;
         let body = tarball_bytes();
 
-        // `hits(1..)` expectations are checked after the race — the second
-        // caller must find the cache warm.
         let probe = server
             .mock_async(|when, then| {
                 when.method(GET)
@@ -6206,67 +5710,47 @@ mod tests {
         let mut manifest_a = fresh_storage_plan(url.clone(), name, version);
         let mut manifest_b = fresh_storage_plan(url.clone(), name, version);
 
-        let (res_a, res_b) = tokio::join!(
-            populate_cache_blocking(&mut manifest_a, &sandbox_a, &home, &mut telemetry_a),
-            populate_cache_blocking(&mut manifest_b, &sandbox_b, &home, &mut telemetry_b),
-        );
-        res_a.unwrap();
-        res_b.unwrap();
+        let deferred_a =
+            select_background_fill(&mut manifest_a, &sandbox_a, &home, &mut telemetry_a).await;
+        let deferred_b =
+            select_background_fill(&mut manifest_b, &sandbox_b, &home, &mut telemetry_b).await;
 
-        // Both manifests rewritten.
+        let (records_a, records_b) = tokio::join!(deferred_a.run(), deferred_b.run());
+
+        let filled = records_a
+            .iter()
+            .chain(&records_b)
+            .filter(|record| record.action_type == STORAGE_CACHE_BACKGROUND_FILL_FILLED)
+            .count();
+        let competing = records_a
+            .iter()
+            .chain(&records_b)
+            .filter(|record| {
+                matches!(
+                    record.action_type,
+                    STORAGE_CACHE_BACKGROUND_FILL_BUSY
+                        | STORAGE_CACHE_BACKGROUND_FILL_ALREADY_CACHED
+                )
+            })
+            .count();
+        assert_eq!(filled, 1, "exactly one background fill should win");
+        assert_eq!(competing, 1, "the competing fill should not download");
+
+        let later_a = populate_cache(&mut manifest_a, &sandbox_a, &home, &mut telemetry_a)
+            .await
+            .unwrap();
+        let later_b = populate_cache(&mut manifest_b, &sandbox_b, &home, &mut telemetry_b)
+            .await
+            .unwrap();
+        assert!(later_a.is_none());
+        assert!(later_b.is_none());
+
         let expected = format!("file://{}", guest_archive_path(name, version));
         assert_eq!(storage_archive_url(&manifest_a, 0), Some(expected.as_str()));
         assert_eq!(storage_archive_url(&manifest_b, 0), Some(expected.as_str()));
 
-        // Exactly one full download — the second caller saw the
-        // flock-serialized cache and took the hit path. The probe may
-        // be issued 1-2 times depending on which task acquired the lock
-        // first; the full GET must be exactly once.
         get.assert_calls_async(1).await;
-        assert!(probe.calls_async().await >= 1);
-
-        // One miss telemetry across both tasks; the other records a hit.
-        let ops_a = telemetry_a.pending_ops_snapshot();
-        let ops_b = telemetry_b.pending_ops_snapshot();
-        let total_miss = ops_a
-            .iter()
-            .filter(|(k, _, _)| k == "storage_cache_miss")
-            .count()
-            + ops_b
-                .iter()
-                .filter(|(k, _, _)| k == "storage_cache_miss")
-                .count();
-        let total_hit = ops_a
-            .iter()
-            .filter(|(k, _, _)| k == "storage_cache_hit")
-            .count()
-            + ops_b
-                .iter()
-                .filter(|(k, _, _)| k == "storage_cache_hit")
-                .count();
-        let total_process_group = op_count(&ops_a, STORAGE_CACHE_PROCESS_GROUP)
-            + op_count(&ops_b, STORAGE_CACHE_PROCESS_GROUP);
-        let total_lock_wait =
-            op_count(&ops_a, STORAGE_CACHE_LOCK_WAIT) + op_count(&ops_b, STORAGE_CACHE_LOCK_WAIT);
-        let total_hit_read =
-            op_count(&ops_a, STORAGE_CACHE_HIT_READ) + op_count(&ops_b, STORAGE_CACHE_HIT_READ);
-        assert_eq!(
-            total_miss, 1,
-            "exactly one miss across concurrent populates"
-        );
-        assert_eq!(total_hit, 1, "second populate must see the warmed cache");
-        assert_eq!(
-            total_process_group, 2,
-            "each concurrent populate should record group processing"
-        );
-        assert!(
-            total_lock_wait >= 3,
-            "miss plus hit paths should record lock wait telemetry in {ops_a:?} / {ops_b:?}"
-        );
-        assert_eq!(
-            total_hit_read, 1,
-            "the warmed-cache caller should record one hit read"
-        );
+        probe.assert_calls_async(1).await;
     }
 
     #[tokio::test]
@@ -6309,9 +5793,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(url, name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         head_forbidden.assert_calls_async(0).await;
         probe.assert_async().await;
@@ -6321,11 +5806,7 @@ mod tests {
             storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
-        let ops = telemetry.pending_ops_snapshot();
-        assert!(
-            ops.iter().any(|(k, _, _)| k == "storage_cache_miss"),
-            "expected storage_cache_miss in {ops:?}"
-        );
+        assert_background_op(&records, STORAGE_CACHE_BACKGROUND_FILL_FILLED, true);
     }
 
     #[tokio::test]
@@ -6360,9 +5841,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         full.assert_calls_async(0).await;
@@ -6373,8 +5855,11 @@ mod tests {
                 .join("archive.tar.gz")
                 .exists()
         );
-        let ops = telemetry.pending_ops_snapshot();
-        assert_storage_cache_skipped_reason(&ops, "missing-content-range");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
     }
 
     #[tokio::test]
@@ -6410,9 +5895,10 @@ mod tests {
         let version = "v1";
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-            .await
-            .unwrap();
+        let records =
+            populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                .await
+                .unwrap();
 
         probe.assert_async().await;
         full.assert_calls_async(0).await;
@@ -6423,8 +5909,11 @@ mod tests {
                 .join("archive.tar.gz")
                 .exists()
         );
-        let ops = telemetry.pending_ops_snapshot();
-        assert_storage_cache_skipped_reason(&ops, "unknown-size");
+        assert_background_op(
+            &records,
+            STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+            true,
+        );
     }
 
     #[tokio::test]
@@ -6483,9 +5972,10 @@ mod tests {
             let version = "v1";
             let mut manifest = fresh_storage_plan(original.clone(), name.as_str(), version);
 
-            populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
-                .await
-                .unwrap();
+            let records =
+                populate_cache_through_background(&mut manifest, &sandbox, &home, &mut telemetry)
+                    .await
+                    .unwrap();
 
             probe.assert_async().await;
             full.assert_calls_async(0).await;
@@ -6501,8 +5991,11 @@ mod tests {
                     .exists(),
                 "{content_range} must not write a cache archive"
             );
-            let ops = telemetry.pending_ops_snapshot();
-            assert_storage_cache_skipped_reason(&ops, "invalid-content-range");
+            assert_background_op(
+                &records,
+                STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED,
+                true,
+            );
         }
     }
 }

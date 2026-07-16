@@ -23,9 +23,11 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import {
   createConnectorBddApi,
   mockBase44OAuthProvider,
+  mockDatadogConnectorOAuth,
   mockDeferredTestOAuthTokenEndpoint,
   mockGitHubConnectorOAuth,
   mockGithubAppInstallProvider,
@@ -39,6 +41,7 @@ import {
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
+const authOrgApi = createAuthOrgAgentsBddApi(context);
 
 function uniqueSlug(prefix: string): string {
   return `${prefix}-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -104,6 +107,64 @@ const CONNECTOR_OAUTH_COOKIE_CLEARS = [
 ] as const;
 
 describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant lifecycle", () => {
+  it("authorizes a manual-grant connector for the requested agent in the connect request", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Manual Connector Agent",
+    });
+
+    await connectorsApi.connectManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { OPENAI_TOKEN: "manual-agent-token" },
+      agent.agentId,
+    );
+
+    await expect(
+      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+    ).resolves.toContain("openai");
+  });
+
+  it("authorizes a manual-grant connector for the current default agent when no agent is requested", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Default Connector Agent",
+    });
+    await authOrgApi.setDefaultAgent(actor, agent.agentId);
+
+    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
+      OPENAI_TOKEN: "default-agent-token",
+    });
+
+    await expect(
+      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+    ).resolves.toContain("openai");
+  });
+
+  it("keeps the previous manual-grant request shape connection-only during rollout", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Legacy Connector Agent",
+    });
+    await authOrgApi.setDefaultAgent(actor, agent.agentId);
+
+    const response = await connectorsApi.requestManualGrant(
+      actor,
+      "openai",
+      "api-token",
+      { OPENAI_TOKEN: "legacy-client-token" },
+      { statuses: [200] },
+    );
+    expect(response.status).toBe(200);
+    await expect(
+      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+    ).resolves.not.toContain("openai");
+  });
+
   it("discovers, connects, reads, computes scope diff, and deletes a manual connector through APIs", async () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -150,7 +211,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
         OPENAI_TOKEN: "sk-bdd-manual-secret",
         EXTRA_TOKEN: "secret-value-should-not-echo",
       },
-      [400],
+      { statuses: [400] },
     );
     expectApiError(badGrant.body);
     expect(badGrant.body.error.message).toContain("EXTRA_TOKEN");
@@ -187,6 +248,20 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
         name: "OPENAI_TOKEN",
       }),
     );
+
+    const secretList = await authOrgApi.listSecrets(actor);
+    expect(
+      secretList.secrets.find((secret) => {
+        return secret.name === "OPENAI_TOKEN";
+      }),
+    ).toMatchObject({
+      type: "connector",
+      connectorDisplay: {
+        label: "OpenAI",
+        environmentNames: ["OPENAI_TOKEN"],
+      },
+    });
+    expectNoVisibleSecret(secretList, "sk-bdd-manual-secret");
 
     await expect(
       connectorsApi.readScopeDiff(actor, "openai"),
@@ -284,6 +359,56 @@ describe("CONN-02: OAuth start and callback", () => {
     expect(failedConnector.body.error.code).toBe("NOT_FOUND");
   });
 
+  it("persists the callback-selected Datadog site through the public OAuth flow", async () => {
+    const provider = mockDatadogConnectorOAuth();
+
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.DatadogConnector]: true,
+    });
+
+    const start = await connectorsApi.startOauth(actor, "datadog", "oauth");
+    const authorizationUrl = new URL(start.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
+      "S256",
+    );
+    const state = stateFromAuthorizationUrl(start.authorizationUrl);
+
+    const callback = await connectorsApi.completeOauthCallback("datadog", {
+      code: "datadog-success-code",
+      state,
+      domain: "us3.datadoghq.com",
+    });
+    expect(redirectLocation(callback).pathname).toBe("/connector/success");
+
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("code")).toBe("datadog-success-code");
+    const codeVerifier = provider.tokenBodies[0]?.get("code_verifier");
+    expect(codeVerifier).toStrictEqual(expect.any(String));
+    expect(codeVerifier?.length).toBeGreaterThanOrEqual(43);
+
+    const connected = await connectorsApi.readConnectorByType(actor, "datadog");
+    expect(connected).toMatchObject({
+      type: "datadog",
+      authMethod: "oauth",
+      externalId: "us3.datadoghq.com",
+      externalUsername: "us3.datadoghq.com",
+      oauthScopes: [
+        "dashboards_read",
+        "events_read",
+        "incident_read",
+        "logs_read_index_data",
+        "metrics_read",
+        "monitors_read",
+        "slos_read",
+      ],
+      connectionStatus: "connected",
+    });
+    expectNoVisibleSecret(connected, "bdd-datadog-access-token");
+    expectNoVisibleSecret(connected, "bdd-datadog-refresh-token");
+  });
+
   it("rejects OAuth start requests that target unsupported or unavailable auth methods", async () => {
     mockGitHubConnectorOAuth();
 
@@ -294,7 +419,7 @@ describe("CONN-02: OAuth start and callback", () => {
       null,
       "github",
       "oauth",
-      [401],
+      { statuses: [401] },
     );
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
@@ -303,7 +428,7 @@ describe("CONN-02: OAuth start and callback", () => {
       actor,
       "openai",
       "api-token",
-      [400],
+      { statuses: [400] },
     );
     expectApiError(wrongGrant.body);
     expect(wrongGrant.body.error.message).toContain(
@@ -314,7 +439,7 @@ describe("CONN-02: OAuth start and callback", () => {
       actor,
       "github",
       "api-token",
-      [400],
+      { statuses: [400] },
     );
     expectApiError(missingMethod.body);
     expect(missingMethod.body.error.message).toContain(
@@ -1574,6 +1699,128 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toStrictEqual([]);
   });
 
+  it("rejects runtime-dependent custom connector hostnames at API boundaries", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+
+    for (const host of ["\u088f.example", "xn--7xb.example"]) {
+      const definition = await connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          ...customConnectorBody(uniqueSlug("invalid-hostname")),
+          prefixes: [`https://${host}/v1/`],
+        },
+        [400],
+      );
+      expectApiError(definition.body);
+      expect(definition.body.error.message).toContain("vm0-uts46-16.0-v1");
+
+      const proposal = await connectorsApi.requestSaveCustomConnectorProposal(
+        admin,
+        {
+          proposal: {
+            operation: "create",
+            displayName: "BDD Invalid Hostname API",
+            prefixTemplates: [
+              `https://{{variables.subdomain}}.${rand}.test/v1/`,
+            ],
+            fields: [
+              {
+                key: "api_key",
+                label: "API key",
+                kind: "secret",
+                required: true,
+              },
+              {
+                key: "subdomain",
+                label: "Subdomain",
+                kind: "variable",
+                required: true,
+              },
+            ],
+            headerInjections: [
+              {
+                name: "Authorization",
+                valueTemplate: "Bearer {{secrets.api_key}}",
+              },
+            ],
+            queryInjections: [],
+          },
+          values: [
+            { key: "api_key", kind: "secret", value: "invalid-host-secret" },
+            { key: "subdomain", kind: "variable", value: host },
+          ],
+        },
+        [400],
+      );
+      expectApiError(proposal.body);
+      expect(proposal.body.error.message).toContain(
+        "not a valid custom connector hostname",
+      );
+      expectNoVisibleSecret(proposal.body, "invalid-host-secret");
+    }
+
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("preserves valid Unicode prefixes while deriving a canonical default slug", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rawPrefix = "https://münich.example/v1/";
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Unicode Host API",
+      prefixes: [rawPrefix],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+
+    expect(connector.prefixes).toStrictEqual([rawPrefix]);
+    expect(connector.prefixTemplates).toStrictEqual([rawPrefix]);
+    expect(connector.slug).toMatch(/^xn-mnich-kva-example-[a-z0-9]{6}$/);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("rejects invalid hostname updates without changing the connector", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const original = await connectorsApi.createCustomConnector(
+      admin,
+      customConnectorBody(uniqueSlug("hostname-update")),
+    );
+
+    const rejected = await connectorsApi.requestSaveCustomConnectorProposal(
+      admin,
+      {
+        proposal: {
+          operation: "update",
+          connectorId: original.id,
+          displayName: "BDD Invalid Hostname Update",
+          prefixTemplates: ["https://\u088f.example/v2/"],
+          fields: original.fields,
+          headerInjections: original.headerInjections,
+          queryInjections: original.queryInjections,
+        },
+        values: [],
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain("vm0-uts46-16.0-v1");
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(listed).toContainEqual(original);
+
+    await connectorsApi.deleteCustomConnector(admin, original.id);
+  });
+
   it("deletes only the legacy secret value through the legacy secret endpoint", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
@@ -2225,8 +2472,16 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     await connectorsApi.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "OAuth Connector Agent",
+    });
 
-    const start = await connectorsApi.startOauth(actor, "test-oauth", "oauth");
+    const start = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "oauth",
+      agent.agentId,
+    );
     const authorizationUrl = new URL(start.authorizationUrl);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "http://localhost:3000/api/test/oauth-provider/authorize",
@@ -2277,6 +2532,9 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       connectionStatus: "connected",
     });
     expectNoVisibleSecret(oauthConnector, "bdd-test-oauth-access-token");
+    await expect(
+      authOrgApi.readEnabledConnectorTypes(actor, agent.agentId),
+    ).resolves.toContain("test-oauth");
 
     const listed = await connectorsApi.listConnectors(actor);
     expect(listed.connectorProvidedBindings).toContainEqual(

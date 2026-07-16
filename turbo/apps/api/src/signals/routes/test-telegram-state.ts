@@ -43,7 +43,7 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -1624,8 +1624,14 @@ async function updateRunCallbackForAction(
   signal: AbortSignal,
 ) {
   const runId = readActionString(body, "run_id");
-  if (!runId) {
-    return actionBadRequest("run_id is required");
+  const callbackId = readActionString(body, "callback_id");
+  const callbackCondition = callbackId
+    ? eq(agentRunCallbacks.id, callbackId)
+    : runId
+      ? eq(agentRunCallbacks.runId, runId)
+      : null;
+  if (!callbackCondition) {
+    return actionBadRequest("run_id or callback_id is required");
   }
   const encryptedSecret = await encryptPersistentSecretValue(
     readActionOptionalString(body, "secret") ?? "test-callback-secret",
@@ -1640,7 +1646,7 @@ async function updateRunCallbackForAction(
       payload: readActionRecord(body, "payload"),
       encryptedSecret,
     })
-    .where(eq(agentRunCallbacks.runId, runId))
+    .where(callbackCondition)
     .returning({ callbackId: agentRunCallbacks.id });
   signal.throwIfAborted();
   return actionOk({ callback_id: callback?.callbackId ?? null });
@@ -1930,9 +1936,8 @@ const postTestTelegramState$ = command(
       return testEndpointNotFoundResponse();
     }
 
-    const settled = await settle(request.json());
+    const rawBody: unknown = (await tapError(request.json())) ?? null;
     signal.throwIfAborted();
-    const rawBody: unknown = settled.ok ? settled.value : null;
     const body = isSeedRecord(rawBody) ? rawBody : {};
     const botId = readString(body.bot_id);
     const telegramUserId = readString(body.telegram_user_id);

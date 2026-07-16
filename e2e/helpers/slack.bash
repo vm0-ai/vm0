@@ -4,7 +4,7 @@
 # test-state endpoint hosted on the same Vercel preview deployment.
 #
 # Required env:
-#   VM0_API_URL                        — target web app URL
+#   VM0_API_BACKEND_URL                        — target API backend URL
 #   SLACK_SIGNING_SECRET               — shared secret the preview is deployed with
 #   VERCEL_AUTOMATION_BYPASS_SECRET    — for test-state endpoint on preview
 
@@ -41,11 +41,11 @@ _slack_test_endpoint_bypass_args() {
 }
 
 _slack_api_backend_url() {
-    if [[ "${VM0_API_URL:-}" == *"-www."* ]]; then
-        printf '%s' "${VM0_API_URL/-www./-api.}"
+    if [[ "${VM0_API_BACKEND_URL:-}" == *"-www."* ]]; then
+        printf '%s' "${VM0_API_BACKEND_URL/-www./-api.}"
         return
     fi
-    printf '%s' "${VM0_API_URL:-}"
+    printf '%s' "${VM0_API_BACKEND_URL:-}"
 }
 
 # Compute v0 Slack signature for a given body.
@@ -83,7 +83,7 @@ slack_post_command() {
         -H "x-slack-signature: $SLACK_SIG" \
         "${bypass[@]}" \
         --data "$body" \
-        "$VM0_API_URL/api/zero/slack/commands"
+        "$VM0_API_BACKEND_URL/api/zero/slack/commands"
 }
 
 # POST a JSON Slack event payload to the events endpoint.
@@ -99,7 +99,7 @@ slack_post_event() {
         -H "x-slack-signature: $SLACK_SIG" \
         "${bypass[@]}" \
         --data "$body" \
-        "$VM0_API_URL/api/zero/slack/events"
+        "$VM0_API_BACKEND_URL/api/zero/slack/events"
 }
 
 # Fetch the test-state endpoint output as JSON.
@@ -109,7 +109,7 @@ slack_fetch_state() {
     local -a bypass=()
     _slack_bypass_args bypass
     curl -sS "${bypass[@]}" \
-        "$VM0_API_URL/api/test/slack-state?team_id=$team_id"
+        "$VM0_API_BACKEND_URL/api/test/slack-state?team_id=$team_id"
 }
 
 # Seed a Slack installation (and optionally a connection / default agent)
@@ -150,7 +150,7 @@ slack_seed_state() {
         -H "Content-Type: application/json" \
         "${bypass[@]}" \
         --data "$body" \
-        "$VM0_API_URL/api/test/slack-state"
+        "$VM0_API_BACKEND_URL/api/test/slack-state"
 }
 
 # Delete all Slack state for a workspace.
@@ -160,7 +160,7 @@ slack_reset_state() {
     local -a bypass=()
     _slack_bypass_args bypass
     curl -sS -X DELETE "${bypass[@]}" \
-        "$VM0_API_URL/api/test/slack-state?team_id=$team_id" >/dev/null
+        "$VM0_API_BACKEND_URL/api/test/slack-state?team_id=$team_id" >/dev/null
 }
 
 # Poll test-state until `recent_runs` contains at least one entry or timeout.

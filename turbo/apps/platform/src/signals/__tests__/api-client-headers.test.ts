@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { clearMockedAuth, mockUser } from "../../__tests__/mock-auth.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { fetch$ } from "../fetch.ts";
+import {
+  forceUpgradeDialogOpen$,
+  listenForceUpgradeDialog$,
+} from "../force-upgrade.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -40,6 +45,11 @@ function mockSignedInUser(): void {
   context.signal.addEventListener("abort", () => {
     clearMockedAuth();
   });
+}
+
+function getFetchForTest() {
+  // eslint-disable-next-line ccstate/no-direct-fetch -- this regression test file covers fetch$ itself.
+  return context.store.get(fetch$);
 }
 
 describe("api client headers", () => {
@@ -93,8 +103,7 @@ describe("api client headers", () => {
       return new Response(null, { status: 204 });
     });
 
-    // eslint-disable-next-line ccstate/no-direct-fetch -- this regression test covers fetch$ itself.
-    const fetcher = context.store.get(fetch$);
+    const fetcher = getFetchForTest();
 
     await fetcher("/api/zero/client-header-test", {
       headers: {
@@ -119,5 +128,39 @@ describe("api client headers", () => {
     expect(first.requestId).toMatch(UUID_REGEX);
     expect(second.requestId).toMatch(UUID_REGEX);
     expect(second.requestId).not.toBe(first.requestId);
+  });
+
+  it("opens the force upgrade dialog for contract client responses", async () => {
+    context.store.set(listenForceUpgradeDialog$, context.signal);
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    context.mocks.http.get("*/api/zero/agents/:id/user-connectors", () => {
+      return Response.json(
+        { error: "Client update required" },
+        { status: CLIENT_FORCE_UPGRADE_STATUS },
+      );
+    });
+
+    const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
+    const response = await client.get({ params: { id: agentId } });
+
+    expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+    expect(context.store.get(forceUpgradeDialogOpen$)).toBeTruthy();
+  });
+
+  it("opens the force upgrade dialog for fetch$ responses", async () => {
+    mockSignedInUser();
+    context.store.set(listenForceUpgradeDialog$, context.signal);
+    context.mocks.http.get("*/api/zero/force-upgrade-test", () => {
+      return Response.json(
+        { error: "Client update required" },
+        { status: CLIENT_FORCE_UPGRADE_STATUS },
+      );
+    });
+
+    const fetcher = getFetchForTest();
+    const response = await fetcher("/api/zero/force-upgrade-test");
+
+    expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+    expect(context.store.get(forceUpgradeDialogOpen$)).toBeTruthy();
   });
 });

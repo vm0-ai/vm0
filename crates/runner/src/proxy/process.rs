@@ -40,6 +40,8 @@ pub struct ProxyConfig {
     pub mitmdump_bin: PathBuf,
     /// Directory containing mitmproxy CA files (mitmproxy-ca.pem).
     pub ca_dir: PathBuf,
+    /// Lock file coordinating CA reconciliation with runner builds.
+    pub ca_lock_path: PathBuf,
     /// Directory where addon scripts will be written.
     pub addon_dir: PathBuf,
     /// Path where the proxy registry JSON will be written.
@@ -429,6 +431,7 @@ impl MitmProxy {
                 config: ProxyConfig {
                     mitmdump_bin: std::path::PathBuf::new(),
                     ca_dir: std::path::PathBuf::new(),
+                    ca_lock_path: std::path::PathBuf::new(),
                     addon_dir: std::path::PathBuf::new(),
                     registry_path: std::path::PathBuf::new(),
                     registry_lock_path: std::path::PathBuf::new(),
@@ -506,6 +509,7 @@ pub(crate) async fn spawn_mitmdump(
     stopping: &Arc<AtomicBool>,
     usage_state_id: &str,
 ) -> RunnerResult<tokio::process::Child> {
+    let _prepared_ca = crate::ca::prepare_for_proxy(&config.ca_dir, &config.ca_lock_path).await?;
     let mut cmd = tokio::process::Command::new(&config.mitmdump_bin);
     cmd.arg("--mode")
         .arg("transparent")
@@ -733,6 +737,7 @@ fn send_usage_flush_signal(child: &tokio::process::Child) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paths::HomePaths;
     use std::os::unix::fs::PermissionsExt;
 
     fn write_fake_listening_mitmdump(path: &Path) {
@@ -897,6 +902,7 @@ PY
             "matching.py",
             "registry.py",
             "response_streaming.py",
+            "runner_flush_lifecycle.py",
             "terminal_usage.py",
             "upstream_admission.py",
             "url_utils.py",
@@ -940,6 +946,7 @@ PY
         let config = ProxyConfig {
             mitmdump_bin: dir.path().join("mitmdump"),
             ca_dir: dir.path().join("ca"),
+            ca_lock_path: dir.path().join("ca.lock"),
             addon_dir: addon_dir.clone(),
             registry_path: dir.path().join("proxy-registry.json"),
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),
@@ -971,6 +978,7 @@ PY
         let config = ProxyConfig {
             mitmdump_bin: dir.path().join("mitmdump"),
             ca_dir: dir.path().join("ca"),
+            ca_lock_path: dir.path().join("ca.lock"),
             addon_dir: addon_dir.clone(),
             registry_path: registry_path.clone(),
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),
@@ -1044,6 +1052,10 @@ PY
     #[tokio::test]
     async fn spawn_mitmdump_passes_usage_state_id_option() {
         let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        crate::ca::ensure(&home).await.unwrap();
+        let original_cert = std::fs::read(home.ca_dir().join(crate::ca::CA_CERT)).unwrap();
+        std::fs::remove_file(home.ca_dir().join("mitmproxy-ca.pem")).unwrap();
         let fake_mitmdump = dir.path().join("fake-mitmdump");
         write_fake_listening_mitmdump(&fake_mitmdump);
         let builtin_firewall_catalog_cache_path =
@@ -1051,7 +1063,8 @@ PY
 
         let config = ProxyConfig {
             mitmdump_bin: fake_mitmdump.clone(),
-            ca_dir: dir.path().join("ca"),
+            ca_dir: home.ca_dir(),
+            ca_lock_path: home.ca_lock(),
             addon_dir: dir.path().join("addon"),
             registry_path: dir.path().join("proxy-registry.json"),
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),
@@ -1070,6 +1083,14 @@ PY
         let _ = child.kill().await;
 
         let args = std::fs::read_to_string(fake_mitmdump.with_extension("args")).unwrap();
+        assert!(
+            home.ca_dir().join("mitmproxy-ca.pem").is_file(),
+            "proxy preparation should rebuild missing combined CA"
+        );
+        assert!(
+            std::fs::read(home.ca_dir().join(crate::ca::CA_CERT)).unwrap() == original_cert,
+            "proxy preparation must not rotate the standalone identity"
+        );
         assert!(
             args.lines()
                 .any(|arg| arg == "vm0_usage_state_id=usage-state-test"),
@@ -1101,14 +1122,55 @@ PY
     }
 
     #[tokio::test]
+    async fn spawn_mitmdump_rejects_unrecoverable_ca_before_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let ca_dir = dir.path().join("ca");
+        std::fs::create_dir(&ca_dir).unwrap();
+        let fake_mitmdump = dir.path().join("fake-mitmdump");
+        write_fake_listening_mitmdump(&fake_mitmdump);
+        let config = ProxyConfig {
+            mitmdump_bin: fake_mitmdump.clone(),
+            ca_dir,
+            ca_lock_path: dir.path().join("ca.lock"),
+            addon_dir: dir.path().join("addon"),
+            registry_path: dir.path().join("proxy-registry.json"),
+            registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+            builtin_firewall_catalog_cache_path: dir
+                .path()
+                .join("builtin-firewall-catalog-cache.json"),
+            api_url: None,
+            client_session_id: "runner-session-test".to_string(),
+        };
+        let (crash_tx, _crash_rx) = mpsc::channel(1);
+        let stopping = Arc::new(AtomicBool::new(false));
+        let port = find_available_port().unwrap();
+
+        let error = spawn_mitmdump(&config, port, &crash_tx, &stopping, "usage-state-test")
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("proxy CA") && error.to_string().contains("not recoverable"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !fake_mitmdump.with_extension("args").exists(),
+            "mitmdump must not be spawned for unrecoverable CA state"
+        );
+    }
+
+    #[tokio::test]
     async fn spawn_mitmdump_kills_child_when_handle_is_dropped() {
         let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        crate::ca::ensure(&home).await.unwrap();
         let fake_mitmdump = dir.path().join("fake-mitmdump");
         write_fake_listening_mitmdump(&fake_mitmdump);
 
         let config = ProxyConfig {
             mitmdump_bin: fake_mitmdump,
-            ca_dir: dir.path().join("ca"),
+            ca_dir: home.ca_dir(),
+            ca_lock_path: home.ca_lock(),
             addon_dir: dir.path().join("addon"),
             registry_path: dir.path().join("proxy-registry.json"),
             registry_lock_path: dir.path().join("proxy-registry.json.lock"),

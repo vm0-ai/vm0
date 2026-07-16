@@ -16,6 +16,7 @@ import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-tea
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
@@ -25,7 +26,6 @@ import {
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
 import { ensureUserArtifactStorage } from "./agent-run-storage.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
@@ -145,7 +145,7 @@ function buildTeamsOauthConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
 }): string {
-  const url = new URL(`${env("VM0_WEB_URL")}/api/zero/teams/oauth/connect`);
+  const url = new URL("/api/zero/teams/oauth/connect", internalApiBaseUrl());
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("vm0UserId", args.userId);
   return url.toString();
@@ -775,7 +775,7 @@ function buildTeamsWelcomeCard(): TeamsAdaptiveCard {
     body: [
       {
         type: "TextBlock",
-        text: "You're connected! 🎉\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
+        text: "You're connected! 🎉\nMention `@Okou` in any channel or send a DM to start chatting with your agent.",
         wrap: true,
       },
     ],
@@ -1275,13 +1275,8 @@ export const publishTeamsChanged$ = command(
       return;
     }
 
-    const publishResult = await settle(
-      publishUserSignal([...userIds], "teams:changed", args.payload),
-    );
+    await publishUserSignal([...userIds], "teams:changed", args.payload);
     signal.throwIfAborted();
-    if (!publishResult.ok) {
-      throw publishResult.error;
-    }
   },
 );
 

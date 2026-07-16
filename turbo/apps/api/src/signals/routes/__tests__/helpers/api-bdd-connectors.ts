@@ -69,12 +69,14 @@ interface AuthHeaders {
 type CallbackQuery = {
   readonly code?: string;
   readonly state?: string;
+  readonly domain?: string;
   readonly error?: string;
   readonly error_description?: string;
 };
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
+const DATADOG_US3_TOKEN_URL = "https://api.us3.datadoghq.com/oauth2/v1/token";
 const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
@@ -137,6 +139,31 @@ export function mockGitHubConnectorOAuth(): void {
       });
     }),
   );
+}
+
+interface DatadogOAuthProviderRecorder {
+  readonly tokenBodies: URLSearchParams[];
+}
+
+export function mockDatadogConnectorOAuth(): DatadogOAuthProviderRecorder {
+  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("DATADOG_OAUTH_CLIENT_ID", "datadog-client-id");
+  mockOptionalEnv("DATADOG_OAUTH_CLIENT_SECRET", "datadog-client-secret");
+
+  const tokenBodies: URLSearchParams[] = [];
+  server.use(
+    http.post(DATADOG_US3_TOKEN_URL, async ({ request }) => {
+      tokenBodies.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json({
+        access_token: "bdd-datadog-access-token",
+        refresh_token: "bdd-datadog-refresh-token",
+        expires_in: 3600,
+        scope: "dashboards_read logs_read_index_data",
+      });
+    }),
+  );
+
+  return { tokenBodies };
 }
 
 interface TestOAuthAuthCodeProviderOptions {
@@ -1172,16 +1199,25 @@ export function createConnectorBddApi(context: TestContext) {
       type: ConnectorType,
       authMethod: ConnectorAuthMethodId,
       values: Readonly<Record<string, string>>,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      options: {
+        readonly statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[];
+        readonly agentId?: string;
+        readonly authorizeAgent?: true;
+      },
     ) {
       const client = setupApp({ context })(zeroConnectorManualGrantContract);
       return await accept(
         client.connect({
           params: { type },
           headers: authenticate(actor),
-          body: { authMethod, values },
+          body: {
+            authMethod,
+            values,
+            ...(options.agentId ? { agentId: options.agentId } : {}),
+            ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
+          },
         }),
-        statuses,
+        options.statuses,
       );
     },
 
@@ -1190,13 +1226,14 @@ export function createConnectorBddApi(context: TestContext) {
       type: ConnectorType,
       authMethod: ConnectorAuthMethodId,
       values: Readonly<Record<string, string>>,
+      agentId?: string,
     ): Promise<ConnectorResponse> {
       const response = await api.requestManualGrant(
         actor,
         type,
         authMethod,
         values,
-        [200],
+        { statuses: [200], agentId, authorizeAgent: true },
       );
       expectStatus(response, 200);
       return response.body;
@@ -1206,16 +1243,24 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       type: ConnectorType,
       authMethod: ConnectorAuthMethodId,
-      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
+      options: {
+        readonly statuses: readonly (200 | 400 | 401 | 403 | 500)[];
+        readonly agentId?: string;
+        readonly authorizeAgent?: true;
+      },
     ) {
       const client = setupApp({ context })(zeroConnectorOauthStartContract);
       return await accept(
         client.start({
           params: { type },
           headers: authenticate(actor),
-          body: { authMethod },
+          body: {
+            authMethod,
+            ...(options.agentId ? { agentId: options.agentId } : {}),
+            ...(options.authorizeAgent ? { authorizeAgent: true } : {}),
+          },
         }),
-        statuses,
+        options.statuses,
       );
     },
 
@@ -1223,13 +1268,13 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       type: ConnectorType,
       authMethod: ConnectorAuthMethodId,
+      agentId?: string,
     ): Promise<ConnectorOauthStartResponse> {
-      const response = await api.requestOauthStart(
-        actor,
-        type,
-        authMethod,
-        [200],
-      );
+      const response = await api.requestOauthStart(actor, type, authMethod, {
+        statuses: [200],
+        agentId,
+        authorizeAgent: true,
+      });
       expectStatus(response, 200);
       return response.body;
     },
