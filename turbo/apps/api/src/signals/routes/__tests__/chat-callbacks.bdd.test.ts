@@ -3337,10 +3337,18 @@ describe("CHAT-02: auto-send after failures", () => {
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
-  it("starts a fresh session with prior web context when the queued model differs, without regenerating an existing title", async () => {
+  it("starts a fresh session with prior web context when family continuity is disabled, without regenerating an existing title", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected entitled actor to belong to an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatModelFamilySessionContinuity]: false },
+    );
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-4-6",
@@ -3478,18 +3486,10 @@ describe("CHAT-02: auto-send across a model switch", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("resumes the CLI session when the queued model stays within the same family", async () => {
+  it("resumes the CLI session by default when the queued model stays within the same family", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected entitled actor to belong to an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatModelFamilySessionContinuity]: true },
-    );
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
         model: "claude-opus-4-6",
