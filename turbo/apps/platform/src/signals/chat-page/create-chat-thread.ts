@@ -2080,25 +2080,29 @@ function createSyncRemoteMessagesCommand({
   >;
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
+  const sinceId$ = computed((get): string | undefined => {
+    return get(persistentMessages$).at(-1)?.id;
+  });
+
   return command(async ({ get, set }, signal: AbortSignal) => {
-    let sinceId = get(persistentMessages$).at(-1)?.id;
-    const startedWithoutCursor = sinceId === undefined;
+    const startedWithoutCursor = get(sinceId$) === undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
+      const requestedSinceId = get(sinceId$);
       const result = await set(
         dataSource.listMessagesAfter$,
-        { threadId, sinceId },
+        { threadId, sinceId: requestedSinceId },
         signal,
       );
       signal.throwIfAborted();
       L.debug("syncRemoteMessages$ listMessagesAfter result", {
         threadId,
-        sinceId: sinceId ?? null,
+        sinceId: requestedSinceId ?? null,
         gotCount: result.messages.length,
       });
 
-      if (sinceId === undefined) {
+      if (requestedSinceId === undefined) {
         initialHasHistoryBefore = result.hasHistoryBefore;
       }
 
@@ -2108,7 +2112,6 @@ function createSyncRemoteMessagesCommand({
 
       await set(writePersistentMessages$, result.messages, signal);
       signal.throwIfAborted();
-      sinceId = result.messages.at(-1)!.id;
 
       return syncMessagesAfter();
     }

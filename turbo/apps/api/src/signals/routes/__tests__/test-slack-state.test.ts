@@ -583,7 +583,12 @@ describe("POST /api/test/slack-state", () => {
         defaultAgentId: first.default_agent_id,
       }),
     );
-    mockTestUserMembership(userId, orgId);
+    context.mocks.clerk.users.getUserList.mockRejectedValue(
+      new Error("Clerk rate limited"),
+    );
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+      new Error("Clerk rate limited"),
+    );
     const secondResponse = await postSlackState({
       team_id: teamId,
       slack_user_id: slackUserId,
