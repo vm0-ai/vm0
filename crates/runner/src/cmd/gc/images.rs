@@ -1,10 +1,10 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use nix::fcntl::Flock;
 use tracing::{info, warn};
 
-use crate::error::RunnerResult;
+use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
@@ -18,45 +18,31 @@ use super::report::{GcReport, human_bytes};
 
 const TEMPLATE_WARM_DIR_PREFIX: &str = "template-warm-";
 
-/// An unused artifact directory whose exclusive lock is held to prevent races.
+/// Scan-time metadata for an unused snapshot eligible for global top-N.
 struct GcCandidate {
-    path: PathBuf,
     hash: String,
     size: u64,
     mtime: SystemTime,
-    /// Index into the enclosing `Vec<RootfsState>` so we can mark the parent
-    /// rootfs as "has a surviving snapshot" when this candidate is kept.
+    /// Index into the enclosing `Vec<RootfsState>`.
     rootfs_idx: usize,
-    /// Exclusive lock held until the candidate is deleted or explicitly kept.
-    /// Prevents a `runner start` from acquiring a shared lock between probe and delete.
-    _lock: Flock<std::fs::File>,
 }
 
-/// Per-rootfs state carried through the two-phase global GC for rootfs
-/// directories whose exclusive lock we hold: first we walk snapshots and record
-/// whether any locked / recent snapshot already forces the rootfs to survive;
-/// then we prune snapshots globally and, for each rootfs with no surviving
-/// snapshot, try to delete the rootfs dir itself.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum SnapshotDisposition {
+    Keep,
+    Delete,
+}
+
+/// Metadata for one rootfs whose initial snapshot inventory completed.
 struct RootfsState {
     path: PathBuf,
     hash: String,
-    /// Exclusive rootfs lock held until this GC pass finishes.
-    _rootfs_lock: Flock<std::fs::File>,
-    /// True once any snapshot under this rootfs is known to survive GC
-    /// (in-use, too recent, kept by top-N, or a deletion failure). Blocks
-    /// rootfs-dir deletion in the final pass.
-    any_snapshot_survives: bool,
+    snapshot_dispositions: HashMap<String, SnapshotDisposition>,
 }
 
-/// Set `any_snapshot_survives = true` on the rootfs at `idx`. `idx` is
-/// either a freshly-minted `rootfs_states.len()` at push time or a
-/// `GcCandidate.rootfs_idx` stamped at push time, so the `Some` branch is
-/// the only reachable one in practice; the no-op `None` is a belt-and-
-/// braces guard to satisfy panic-free indexing.
-fn mark_rootfs_survives(states: &mut [RootfsState], idx: usize) {
-    if let Some(state) = states.get_mut(idx) {
-        state.any_snapshot_survives = true;
-    }
+struct SnapshotDeletion {
+    path: PathBuf,
+    hash: String,
 }
 
 /// Try to delete an orphaned rootfs directory (no surviving snapshots).
@@ -174,19 +160,224 @@ async fn gc_template_warm_dir(
     Some(size)
 }
 
+/// Apply the global snapshot decisions for one rootfs under a fresh rootfs lock.
+///
+/// The current snapshot directory is fully enumerated before deletion starts.
+/// Each planned deletion then acquires and validates its snapshot lock while the
+/// rootfs lock remains held, preserving the global rootfs-before-snapshot order.
+async fn gc_rootfs_action(
+    home: &HomePaths,
+    state: &RootfsState,
+    dry_run: bool,
+    snapshot_entry_reader: &mut GcDirEntryReader,
+) -> GcReport {
+    let rootfs_lock_path = home.rootfs_lock(&state.hash);
+    let _rootfs_lock = match probe_lock(&rootfs_lock_path) {
+        LockProbe::Free(lock) => lock,
+        LockProbe::Held => {
+            info!("images/{}: rootfs in use, skipping", state.hash);
+            return GcReport::default();
+        }
+        LockProbe::Error(e) => {
+            info!("images/{}: lock probe failed ({e}), skipping", state.hash);
+            return GcReport::default();
+        }
+    };
+
+    match gc_path_dir_status(&state.path).await {
+        Ok(GcDirStatus::RealDir(_)) => {}
+        Ok(GcDirStatus::Missing) => return GcReport::default(),
+        Ok(GcDirStatus::NotDirectory) => {
+            info!("images/{}: not a real directory, skipping", state.hash);
+            return GcReport::default();
+        }
+        Err(e) => {
+            warn!("images/{}: stat failed ({e}), skipping", state.hash);
+            return GcReport::default();
+        }
+    }
+
+    let snapshots_dir = state.path.join("snapshots");
+    match gc_path_dir_status(&snapshots_dir).await {
+        Ok(GcDirStatus::RealDir(_)) => {}
+        Ok(GcDirStatus::Missing) => {
+            return try_delete_orphan_rootfs(&state.path, &state.hash, dry_run)
+                .await
+                .map_or_else(GcReport::default, |freed_bytes| {
+                    GcReport::cleanup(1, freed_bytes)
+                });
+        }
+        Ok(GcDirStatus::NotDirectory) => {
+            info!(
+                "images/{}/snapshots: not a real directory, skipping",
+                state.hash
+            );
+            return GcReport::default();
+        }
+        Err(e) => {
+            warn!(
+                "images/{}/snapshots: stat failed ({e}), skipping",
+                state.hash
+            );
+            return GcReport::default();
+        }
+    }
+
+    let mut snapshot_entries = match tokio::fs::read_dir(&snapshots_dir).await {
+        Ok(entries) => entries,
+        Err(e) => {
+            warn!(
+                "images/{}/snapshots: read failed ({e}), skipping",
+                state.hash
+            );
+            return GcReport::default();
+        }
+    };
+
+    let mut any_snapshot_survives = false;
+    let mut deletions = Vec::new();
+    loop {
+        let snap_entry = match snapshot_entry_reader
+            .next_entry_warn(&mut snapshot_entries, "snapshots", &snapshots_dir)
+            .await
+        {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(_) => return GcReport::default(),
+        };
+        let snap_path = snap_entry.path();
+        let Some(snap_hash) = snap_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(String::from)
+        else {
+            any_snapshot_survives = true;
+            continue;
+        };
+
+        match state.snapshot_dispositions.get(&snap_hash).copied() {
+            Some(SnapshotDisposition::Delete) => deletions.push(SnapshotDeletion {
+                path: snap_path,
+                hash: snap_hash,
+            }),
+            Some(SnapshotDisposition::Keep) | None => any_snapshot_survives = true,
+        }
+    }
+
+    let mut report = GcReport::default();
+    let mut dry_run_snapshot_bytes = 0u64;
+    for deletion in deletions {
+        let lock_path = home.snapshot_lock(&deletion.hash);
+        let _snapshot_lock = match probe_lock(&lock_path) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => {
+                any_snapshot_survives = true;
+                info!(
+                    "images/{}/snapshots/{}: in use, skipping",
+                    state.hash, deletion.hash
+                );
+                continue;
+            }
+            LockProbe::Error(e) => {
+                any_snapshot_survives = true;
+                info!(
+                    "images/{}/snapshots/{}: lock probe failed ({e}), skipping",
+                    state.hash, deletion.hash
+                );
+                continue;
+            }
+        };
+
+        match gc_path_dir_status(&deletion.path).await {
+            Ok(GcDirStatus::RealDir(_)) => {}
+            Ok(GcDirStatus::Missing) => continue,
+            Ok(GcDirStatus::NotDirectory) => {
+                any_snapshot_survives = true;
+                info!(
+                    "images/{}/snapshots/{}: not a real directory, skipping",
+                    state.hash, deletion.hash
+                );
+                continue;
+            }
+            Err(e) => {
+                any_snapshot_survives = true;
+                warn!(
+                    "images/{}/snapshots/{}: stat failed ({e}), skipping",
+                    state.hash, deletion.hash
+                );
+                continue;
+            }
+        }
+
+        let (size, mtime) = dir_stats(&deletion.path).await;
+        let age = SystemTime::now().duration_since(mtime).unwrap_or_default();
+        if age < GC_MIN_AGE {
+            any_snapshot_survives = true;
+            info!(
+                "images/{}/snapshots/{}: too recent ({}s), keeping",
+                state.hash,
+                deletion.hash,
+                age.as_secs()
+            );
+            continue;
+        }
+
+        if dry_run {
+            info!(
+                "[dry-run] would delete images/{}/snapshots/{} ({})",
+                state.hash,
+                deletion.hash,
+                human_bytes(size)
+            );
+            dry_run_snapshot_bytes = dry_run_snapshot_bytes.saturating_add(size);
+        } else {
+            match tokio::fs::remove_dir_all(&deletion.path).await {
+                Ok(()) => {
+                    info!(
+                        "deleted images/{}/snapshots/{} ({})",
+                        state.hash,
+                        deletion.hash,
+                        human_bytes(size)
+                    );
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    any_snapshot_survives = true;
+                    warn!(
+                        "failed to remove images/{}/snapshots/{}: {e}",
+                        state.hash, deletion.hash
+                    );
+                    continue;
+                }
+            }
+        }
+        report += GcReport::cleanup(1, size);
+    }
+
+    if !any_snapshot_survives
+        && let Some(rootfs_bytes) =
+            try_delete_orphan_rootfs(&state.path, &state.hash, dry_run).await
+    {
+        let overlap = if dry_run { dry_run_snapshot_bytes } else { 0 };
+        report += GcReport::cleanup(1, rootfs_bytes.saturating_sub(overlap));
+    }
+
+    report
+}
+
 /// GC for the nested image layout: `<images>/<rootfs>/snapshots/<snapshot>/`.
 ///
 /// Three phases, with **global** top-N semantics across all rootfs:
 ///
-/// 1. Walk every rootfs. Probe locks and filter out snapshots that must
-///    survive (in-use, too recent, malformed); collect the remaining
-///    eligible snapshots into one flat candidate list. Rootfs dirs with
-///    no `snapshots/` subdir are orphan-deleted inline when we hold the
-///    rootfs lock.
-/// 2. Global top-N: sort the candidate list by mtime (newest first), keep
-///    the first `keep_latest`, delete the rest.
-/// 3. Orphan rootfs sweep: any rootfs whose lock we hold AND where no
-///    snapshot survived is deleted.
+/// 1. Inventory every rootfs with short-lived lock probes. Filter out
+///    snapshots that must survive (in-use, too recent, malformed) and collect
+///    the remaining eligible metadata into one flat candidate list. Rootfs
+///    dirs with no `snapshots/` subdir are orphan-deleted inline.
+/// 2. Global top-N: sort the candidate list by mtime (newest first) and record
+///    keep/delete decisions per rootfs.
+/// 3. Reacquire one rootfs lock at a time, complete a current snapshot scan,
+///    then lock and revalidate each planned deletion. Delete the rootfs under
+///    the same lock only when no snapshot survives.
 ///
 /// Global (cross-rootfs) rather than per-rootfs so a host that has
 /// accumulated many distinct rootfs hashes (e.g. per-PR builds) can be
@@ -211,23 +402,26 @@ pub(super) async fn gc_nested_images_with_protected_refs(
     dry_run: bool,
     protected_image_refs: &ProtectedImageRefs,
 ) -> RunnerResult<GcReport> {
-    let mut snapshot_entry_reader = GcDirEntryReader::new();
-    gc_nested_images_with_protected_refs_and_reader(
+    let mut inventory_entry_reader = GcDirEntryReader::new();
+    let mut action_entry_reader = GcDirEntryReader::new();
+    gc_nested_images_with_protected_refs_and_readers(
         home,
         keep_latest,
         dry_run,
         protected_image_refs,
-        &mut snapshot_entry_reader,
+        &mut inventory_entry_reader,
+        &mut action_entry_reader,
     )
     .await
 }
 
-async fn gc_nested_images_with_protected_refs_and_reader(
+async fn gc_nested_images_with_protected_refs_and_readers(
     home: &HomePaths,
     keep_latest: Option<usize>,
     dry_run: bool,
     protected_image_refs: &ProtectedImageRefs,
-    snapshot_entry_reader: &mut GcDirEntryReader,
+    inventory_entry_reader: &mut GcDirEntryReader,
+    action_entry_reader: &mut GcDirEntryReader,
 ) -> RunnerResult<GcReport> {
     if !protected_image_refs.is_complete() {
         warn!("image protection inventory incomplete, skipping image GC");
@@ -322,25 +516,17 @@ async fn gc_nested_images_with_protected_refs_and_reader(
         };
 
         let rootfs_idx = rootfs_states.len();
-        rootfs_states.push(RootfsState {
-            path: rootfs_path.clone(),
-            hash: rootfs_hash.clone(),
-            _rootfs_lock: rootfs_lock,
-            any_snapshot_survives: false,
-        });
-
         let candidate_checkpoint = candidates.len();
-        loop {
-            let snap_entry = match snapshot_entry_reader
+        let scan_complete = loop {
+            let snap_entry = match inventory_entry_reader
                 .next_entry_warn(&mut snapshot_entries, "snapshots", &snapshots_dir)
                 .await
             {
                 Ok(Some(entry)) => entry,
-                Ok(None) => break,
+                Ok(None) => break true,
                 Err(_) => {
                     candidates.truncate(candidate_checkpoint);
-                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
-                    break;
+                    break false;
                 }
             };
             let snap_path = snap_entry.path();
@@ -349,17 +535,12 @@ async fn gc_nested_images_with_protected_refs_and_reader(
                 .and_then(|n| n.to_str())
                 .map(String::from)
             else {
-                mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                 continue;
             };
             match gc_entry_is_real_dir(&snap_entry).await {
                 Ok(true) => {}
-                Ok(false) => {
-                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
-                    continue;
-                }
+                Ok(false) => continue,
                 Err(e) => {
-                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                     warn!(
                         "images/{rootfs_hash}/snapshots/{snap_hash}: cannot read file type ({e}), skipping"
                     );
@@ -368,7 +549,6 @@ async fn gc_nested_images_with_protected_refs_and_reader(
             }
 
             if is_protected_image_ref(protected_image_refs, &rootfs_hash, &snap_hash) {
-                mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                 info!(
                     "images/{rootfs_hash}/snapshots/{snap_hash}: referenced by retained runner or service config, keeping"
                 );
@@ -380,114 +560,74 @@ async fn gc_nested_images_with_protected_refs_and_reader(
                 LockProbe::Free(lock) => {
                     let (size, mtime) = dir_stats(&snap_path).await;
                     let age = SystemTime::now().duration_since(mtime).unwrap_or_default();
+                    drop(lock);
                     if age < GC_MIN_AGE {
                         // Too recent to be safely deleted (races with
-                        // `runner build` releasing its lock). Drop our
-                        // exclusive lock so the next caller can pick it
-                        // up; mark the rootfs as preserved.
-                        mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
+                        // `runner build` releasing its lock).
                         info!(
                             "images/{rootfs_hash}/snapshots/{snap_hash}: too recent ({}s), keeping",
                             age.as_secs()
                         );
                     } else {
                         candidates.push(GcCandidate {
-                            path: snap_path,
                             hash: snap_hash,
                             size,
                             mtime,
                             rootfs_idx,
-                            _lock: lock,
                         });
                     }
                 }
                 LockProbe::Held => {
-                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                     info!("images/{rootfs_hash}/snapshots/{snap_hash}: in use, skipping");
                 }
                 LockProbe::Error(e) => {
-                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
                     info!(
                         "images/{rootfs_hash}/snapshots/{snap_hash}: lock probe failed ({e}), skipping"
                     );
                 }
             }
+        };
+
+        drop(rootfs_lock);
+        if scan_complete {
+            rootfs_states.push(RootfsState {
+                path: rootfs_path,
+                hash: rootfs_hash,
+                snapshot_dispositions: HashMap::new(),
+            });
         }
     }
+    drop(rootfs_entries);
 
-    // Phase 2a: global sort by mtime descending, keep the top N across all rootfs.
+    // Phase 2: global sort by mtime descending and record each top-N decision.
     candidates.sort_by_key(|c| std::cmp::Reverse(c.mtime));
     let keep_count = keep_latest.unwrap_or(0);
-    for c in candidates.iter().take(keep_count) {
-        if let Some(state) = rootfs_states.get_mut(c.rootfs_idx) {
-            state.any_snapshot_survives = true;
+    for (rank, candidate) in candidates.into_iter().enumerate() {
+        let state = rootfs_states.get_mut(candidate.rootfs_idx).ok_or_else(|| {
+            RunnerError::Internal(format!(
+                "image GC candidate {} references missing rootfs state {}",
+                candidate.hash, candidate.rootfs_idx
+            ))
+        })?;
+        let disposition = if rank < keep_count {
             info!(
                 "images/{}/snapshots/{}: keeping (global top-{keep_count}, {})",
                 state.hash,
-                c.hash,
-                human_bytes(c.size)
+                candidate.hash,
+                human_bytes(candidate.size)
             );
-        }
-    }
-
-    // Phase 2b: delete everything past the top-N cutoff. Track per-rootfs
-    // deleted-snapshot bytes so the dry-run orphan accounting can subtract
-    // the overlap (see orphan-rootfs note below). Skip the allocation in
-    // real-mode — nothing reads or writes it there.
-    let mut dry_run_snapshot_bytes: Vec<u64> = if dry_run {
-        vec![0; rootfs_states.len()]
-    } else {
-        Vec::new()
-    };
-    for c in candidates.iter().skip(keep_count) {
-        // Clone `hash` so the immutable borrow on `rootfs_states` is
-        // released before the error branch mutates it below.
-        let Some(rootfs_hash) = rootfs_states.get(c.rootfs_idx).map(|s| s.hash.clone()) else {
-            continue;
-        };
-        if dry_run {
-            info!(
-                "[dry-run] would delete images/{rootfs_hash}/snapshots/{} ({})",
-                c.hash,
-                human_bytes(c.size)
-            );
-            if let Some(slot) = dry_run_snapshot_bytes.get_mut(c.rootfs_idx) {
-                *slot += c.size;
-            }
-        } else if let Err(e) = tokio::fs::remove_dir_all(&c.path).await {
-            warn!(
-                "failed to remove images/{rootfs_hash}/snapshots/{}: {e}",
-                c.hash
-            );
-            mark_rootfs_survives(&mut rootfs_states, c.rootfs_idx);
-            continue;
+            SnapshotDisposition::Keep
         } else {
-            info!(
-                "deleted images/{rootfs_hash}/snapshots/{} ({})",
-                c.hash,
-                human_bytes(c.size)
-            );
-        }
-        report += GcReport::cleanup(1, c.size);
+            SnapshotDisposition::Delete
+        };
+        let _ = state
+            .snapshot_dispositions
+            .insert(candidate.hash, disposition);
     }
 
-    // Phase 3: any rootfs whose lock we hold AND where no snapshot survives
-    // is orphan — delete the rootfs directory itself. In dry-run mode
-    // `try_delete_orphan_rootfs` stats the rootfs *including* the snapshot
-    // subdirs we already counted (dry-run leaves them on disk), so subtract
-    // that overlap to match the real-mode total.
-    for (idx, state) in rootfs_states.iter().enumerate() {
-        if !state.any_snapshot_survives
-            && let Some(rootfs_bytes) =
-                try_delete_orphan_rootfs(&state.path, &state.hash, dry_run).await
-        {
-            let overlap = if dry_run {
-                dry_run_snapshot_bytes.get(idx).copied().unwrap_or(0)
-            } else {
-                0
-            };
-            report += GcReport::cleanup(1, rootfs_bytes.saturating_sub(overlap));
-        }
+    // Phase 3: lock, rescan, and act on one rootfs at a time.
+    for state in &rootfs_states {
+        report += gc_rootfs_action(home, state, dry_run, action_entry_reader).await;
     }
 
     Ok(report)
@@ -501,13 +641,36 @@ async fn gc_nested_images_with_injected_snapshot_scan_error(
     protected_image_refs: &ProtectedImageRefs,
     successful_entries: usize,
 ) -> RunnerResult<GcReport> {
-    let mut snapshot_entry_reader = GcDirEntryReader::failing_after(successful_entries);
-    gc_nested_images_with_protected_refs_and_reader(
+    let mut inventory_entry_reader = GcDirEntryReader::failing_after(successful_entries);
+    let mut action_entry_reader = GcDirEntryReader::new();
+    gc_nested_images_with_protected_refs_and_readers(
         home,
         keep_latest,
         dry_run,
         protected_image_refs,
-        &mut snapshot_entry_reader,
+        &mut inventory_entry_reader,
+        &mut action_entry_reader,
+    )
+    .await
+}
+
+#[cfg(test)]
+async fn gc_nested_images_with_injected_action_scan_error(
+    home: &HomePaths,
+    keep_latest: Option<usize>,
+    dry_run: bool,
+    protected_image_refs: &ProtectedImageRefs,
+    successful_entries: usize,
+) -> RunnerResult<GcReport> {
+    let mut inventory_entry_reader = GcDirEntryReader::new();
+    let mut action_entry_reader = GcDirEntryReader::failing_after(successful_entries);
+    gc_nested_images_with_protected_refs_and_readers(
+        home,
+        keep_latest,
+        dry_run,
+        protected_image_refs,
+        &mut inventory_entry_reader,
+        &mut action_entry_reader,
     )
     .await
 }
