@@ -20,6 +20,7 @@ type OpenChatIdbDatabase = <DBTypes extends DBSchema | unknown = unknown>(
 interface ChatIdbStoreState {
   dbName: string | null;
   dbPromise: Promise<IDBPDatabase> | null;
+  previousClosePromise: Promise<void> | null;
   reloadTriggered: boolean;
 }
 
@@ -51,6 +52,7 @@ export function createChatIdbStore(
   const state: ChatIdbStoreState = {
     dbName: null,
     dbPromise: null,
+    previousClosePromise: null,
     reloadTriggered: false,
   };
 
@@ -93,6 +95,15 @@ export function createChatIdbStore(
     return db;
   }
 
+  async function closeChatIdbAfterOpen(
+    promise: Promise<IDBPDatabase>,
+  ): Promise<void> {
+    const [result] = await Promise.allSettled([promise]);
+    if (result?.status === "fulfilled") {
+      result.value.close();
+    }
+  }
+
   return {
     openChatIdb(userId, orgId) {
       if (state.reloadTriggered) {
@@ -108,17 +119,12 @@ export function createChatIdbStore(
 
       L.debug("openDB", { dbName });
       const previous = state.dbPromise;
-      const promise = (async () => {
-        if (previous !== null) {
-          const [previousResult] = await Promise.allSettled([previous]);
-          if (previousResult?.status === "fulfilled") {
-            previousResult.value.close();
-          }
-        }
-        return openChatIdbConnection(dbName);
-      })();
+      const promise = openChatIdbConnection(dbName);
       state.dbName = dbName;
       state.dbPromise = promise;
+      if (previous !== null) {
+        state.previousClosePromise = closeChatIdbAfterOpen(previous);
+      }
       return promise;
     },
   };

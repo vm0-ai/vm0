@@ -150,18 +150,34 @@ describe("openChatIdb", () => {
     expect(secondDb.close).not.toHaveBeenCalled();
   });
 
-  it("opens a different chat database after the previous open fails", async () => {
+  it("opens a different chat database while the previous open is pending", async () => {
+    const firstDb = fakeDb();
     const secondDb = fakeDb();
     const { openDatabaseMock, subject } = setupSubject([secondDb]);
-    openDatabaseMock.mockRejectedValueOnce(new Error("first open failed"));
+    let resolveFirst: ((db: IDBPDatabase) => void) | undefined;
+    const pendingFirst = new Promise<IDBPDatabase>((resolve) => {
+      resolveFirst = resolve;
+    });
+    openDatabaseMock.mockReturnValueOnce(pendingFirst);
 
-    await expect(subject.openChatIdb("user_1", "org_1")).rejects.toThrow(
-      "first open failed",
-    );
-    await expect(subject.openChatIdb("user_1", "org_2")).resolves.toBe(
-      secondDb.db,
-    );
+    const first = subject.openChatIdb("user_1", "org_1");
+    const second = subject.openChatIdb("user_1", "org_2");
+
+    await expect(second).resolves.toBe(secondDb.db);
     expect(openDatabaseMock).toHaveBeenCalledTimes(2);
+    expect(
+      openDatabaseMock.mock.calls.map(([name]) => {
+        return name;
+      }),
+    ).toEqual(["vm0-chat-user_1-org_1", "vm0-chat-user_1-org_2"]);
+    expect(firstDb.close).not.toHaveBeenCalled();
+
+    if (resolveFirst === undefined) {
+      throw new Error("first open resolver was not registered");
+    }
+    resolveFirst(firstDb.db);
+    await expect(first).resolves.toBe(firstDb.db);
+    expect(firstDb.close).toHaveBeenCalledTimes(1);
   });
 
   it("registers the shared upgrade callback", async () => {
