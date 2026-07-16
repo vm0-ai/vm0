@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.279.2](https://github.com/vm0-ai/vm0/compare/api-v1.279.1...api-v1.279.2) (2026-07-16)
+
+
+### Performance Improvements
+
+* **api:** move queue-first invalidation off dispatch path ([#21745](https://github.com/vm0-ai/vm0/issues/21745)) ([206a772](https://github.com/vm0-ai/vm0/commit/206a77208bfade42d519930495ad2e91ce574b71))
+
 ## [1.279.1](https://github.com/vm0-ai/vm0/compare/api-v1.279.0...api-v1.279.1) (2026-07-16)
 
 

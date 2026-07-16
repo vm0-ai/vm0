@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.145.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.1...runner-rs-v0.145.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **mitm-addon:** validate empty zlib tails at decode limit ([#21750](https://github.com/vm0-ai/vm0/issues/21750)) ([8acba08](https://github.com/vm0-ai/vm0/commit/8acba0859c99cb39dec9113317b16ce88326fc22))
+* **runner:** close workspace gc ownership race ([#21754](https://github.com/vm0-ai/vm0/issues/21754)) ([e198e65](https://github.com/vm0-ai/vm0/commit/e198e6590e3fd2814451993b7210f261734bb1fd))
+
+
+### Documentation
+
+* **mitm-addon:** align request hook classification contract ([#21742](https://github.com/vm0-ai/vm0/issues/21742)) ([8c17d00](https://github.com/vm0-ai/vm0/commit/8c17d00b783bc4ed9d24c26942c2b0735ac845ec))
+
 ## [0.145.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.0...runner-rs-v0.145.1) (2026-07-16)
 
 
