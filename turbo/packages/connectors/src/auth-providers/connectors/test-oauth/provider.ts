@@ -225,6 +225,12 @@ function createTestOauthApiTokenAccess(): RefreshTokenAccessProvider<
         },
         expiresIn: 3600,
       };
+      if (refreshArgs.inputs.inputSecret === "undeclared-output") {
+        Object.defineProperty(providerResult.outputs, "unexpectedToken", {
+          enumerable: true,
+          value: "unexpected-token",
+        });
+      }
       return providerResult;
     },
   };
