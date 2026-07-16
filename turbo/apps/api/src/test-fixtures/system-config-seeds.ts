@@ -1,4 +1,7 @@
-import { upsertOrgMetadataFixture } from "./org-metadata";
+import {
+  setOnboardingPaymentPendingFixture,
+  upsertOrgMetadataFixture,
+} from "./org-metadata";
 import {
   deleteUsagePricingRows,
   ensureUsagePricingRow,
@@ -9,5 +12,6 @@ import {
 export type { UsagePricingRow };
 
 export const seedOrgMetadata = upsertOrgMetadataFixture;
+export { setOnboardingPaymentPendingFixture };
 export const seedUsagePricingRows = upsertUsagePricingRows;
 export { deleteUsagePricingRows, ensureUsagePricingRow };

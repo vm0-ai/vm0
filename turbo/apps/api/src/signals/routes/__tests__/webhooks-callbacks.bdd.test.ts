@@ -1799,7 +1799,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     api.configureStripeBillingEnv();
     context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
-    await bdd.setupOnboarding(actor, { displayName: "BDD Atom Grant" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Atom Grant" });
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2310,7 +2310,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     const grantExpiresAtUnix = epochSeconds(30);
     api.configureStripeBillingEnv();
-    await bdd.setupOnboarding(actor, { displayName: "BDD Custom Grant" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Custom Grant" });
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2621,7 +2621,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.setupOnboarding(actor, { displayName: "BDD Trial Agent" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Trial Agent" });
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_trial_${suffix}`;
@@ -3329,7 +3329,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.setupOnboarding(actor, { displayName: "BDD Binding Agent" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Binding Agent" });
 
     const suffix = randomUUID().slice(0, 8);
     const customerId = `cus_bdd_bind_${suffix}`;
@@ -3556,7 +3556,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     api.configureStripeBillingEnv();
-    await bdd.setupOnboarding(actor, { displayName: "BDD Credits Agent" });
+    await bdd.bootstrapOnboarding(actor, { displayName: "BDD Credits Agent" });
     const baselineCredits = (await billing.readBillingStatus(actor)).credits;
 
     // A one-time checkout before payment settles grants nothing.
@@ -4246,7 +4246,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const updateCalls =
       context.mocks.stripe.subscriptions.update.mock.calls.length;
     const plainActor = bdd.user();
-    await bdd.setupOnboarding(plainActor, {
+    await bdd.bootstrapOnboarding(plainActor, {
       displayName: "BDD Plain Teardown",
     });
     api.verifyNextClerkWebhook({

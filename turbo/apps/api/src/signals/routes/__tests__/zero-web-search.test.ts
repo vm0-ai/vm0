@@ -29,7 +29,6 @@ import { now } from "../../external/time";
 import type { RouteEntry } from "../../route-entry";
 import { createDeferredPromise } from "../../utils";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
-import { zeroOnboardingSetupRoutes } from "../zero-onboarding-setup";
 import { zeroWebSearchRoutes } from "../zero-web-search";
 import {
   createBddApi,
@@ -45,7 +44,6 @@ const PERPLEXITY_SEARCH_URL = "https://api.perplexity.ai/search";
 const MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024;
 
 const webSearchRoutes: readonly RouteEntry[] = [
-  ...zeroOnboardingSetupRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroWebSearchRoutes,
 ];
@@ -104,8 +102,8 @@ async function rawWebSearchRequest(
   return await app.request(request);
 }
 
-async function setupOnboarding(actor: ApiTestUser): Promise<void> {
-  await createBddApi(context).setupOnboarding(actor, {
+async function bootstrapOnboarding(actor: ApiTestUser): Promise<void> {
+  await createBddApi(context).bootstrapOnboarding(actor, {
     displayName: "Zero Web Search Test",
   });
 }
@@ -123,7 +121,7 @@ async function setActorCredits(
 }
 
 async function fundActor(actor: ApiTestUser): Promise<void> {
-  await setupOnboarding(actor);
+  await bootstrapOnboarding(actor);
   await setActorCredits(actor, 1000);
 }
 
@@ -230,7 +228,7 @@ describe("zero web-search route", () => {
         "Zero Web Search test actor must belong to an organization",
       );
     }
-    await setupOnboarding(actor);
+    await bootstrapOnboarding(actor);
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "zero",
@@ -402,7 +400,7 @@ describe("zero web-search route", () => {
     let providerRequests = 0;
     configureProvider();
     await seedWebSearchPricing();
-    await setupOnboarding(actor);
+    await bootstrapOnboarding(actor);
     await setActorCredits(actor, 0);
     server.use(
       http.post(PERPLEXITY_SEARCH_URL, () => {

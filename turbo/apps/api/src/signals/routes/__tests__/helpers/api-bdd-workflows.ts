@@ -126,7 +126,7 @@ export function createWorkflowsBddApi(context: TestContext) {
      * Production Given for a workflow-owning org: billing entitlement through
      * the Stripe invoice webhook (which also completes onboarding) and an org
      * default model policy through the model-provider routes. The optional
-     * timezone flows through the public onboarding setup route.
+     * timezone flows through the public user-preferences route.
      */
     async setupWorkflowOrg(
       options: {
@@ -141,7 +141,7 @@ export function createWorkflowsBddApi(context: TestContext) {
     }> {
       const actor = bdd.user();
       if (options.timezone) {
-        await bdd.setupOnboarding(actor, {
+        await bdd.bootstrapOnboarding(actor, {
           displayName: "Workflow BDD Owner",
           timezone: options.timezone,
         });

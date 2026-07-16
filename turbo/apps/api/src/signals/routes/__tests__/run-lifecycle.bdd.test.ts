@@ -3198,7 +3198,9 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     bdd.acceptAgentStorageWrites();
     api.configureRunnerGroup();
 
-    await bdd.setupOnboarding(actor, { displayName: "BDD Suspended Agent" });
+    await bdd.bootstrapOnboarding(actor, {
+      displayName: "BDD Suspended Agent",
+    });
     if (!actor.orgId) {
       throw new Error("Expected suspended run actor to have an org");
     }
@@ -4038,7 +4040,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       supportByok: true,
       restrictedVm0Models: false,
     });
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD staff entitlement admission",
     });
     await upsertOrgPlanEntitlementFixture({
@@ -7293,7 +7295,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     api.acceptTelemetryIngest();
     const runnerGroup = api.configureRunnerGroup();
 
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD Context Agent",
       timezone: "America/Los_Angeles",
     });
