@@ -81,6 +81,7 @@ pub(super) async fn download_storages(
     {
         Ok(result) => result,
         Err(e) => {
+            sandbox_fc::capture_storage_bootstrap_dns_diagnostics(sandbox, &run_id).await;
             if !use_stdin {
                 cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
             }
@@ -89,6 +90,7 @@ pub(super) async fn download_storages(
     };
 
     if !helper_exec_succeeded(&result) {
+        sandbox_fc::capture_storage_bootstrap_dns_diagnostics(sandbox, &run_id).await;
         if !use_stdin {
             cleanup_fallback_storage_manifest_after_failure(sandbox, context).await;
         }

@@ -1,0 +1,452 @@
+use std::fmt;
+use std::io;
+use std::time::Duration;
+
+use tokio::time::{Instant, timeout};
+use vsock_host::{ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput, VsockHost};
+use vsock_proto::ExecTermination;
+
+use crate::network::{DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
+
+const RESOLVER_ENV: &[(&str, &str)] = &[("RES_OPTIONS", "attempts:1 timeout:1")];
+const LABEL: &str = "guest-dns-readiness";
+const PROCESS_TIMEOUT_MS: u32 = 1_100;
+const OPERATION_WAIT_TIMEOUT: Duration = Duration::from_millis(1_500);
+const STDOUT_LIMIT_BYTES: u32 = 1_024;
+const STDERR_LIMIT_BYTES: u32 = 512;
+const EXPECTED_TRANSIENT_EXIT_CODES: &[i32] = &[2];
+
+const PRODUCTION_POLICY: ReadinessPolicy = ReadinessPolicy {
+    total_timeout: Duration::from_millis(3_500),
+    max_attempts: 3,
+};
+
+#[derive(Clone, Copy)]
+struct ReadinessPolicy {
+    total_timeout: Duration,
+    max_attempts: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GuestDnsReadinessFailure {
+    Deadline,
+    Transport(io::ErrorKind),
+    TimedOut,
+    Cancelled,
+    StartFailed,
+    WaitFailed,
+    ExitNonZero(i32),
+    OutputTruncated,
+    InvalidOutput,
+    UnexpectedAnswer,
+}
+
+impl fmt::Display for GuestDnsReadinessFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Deadline => f.write_str("deadline"),
+            Self::Transport(kind) => write!(f, "transport_{kind:?}"),
+            Self::TimedOut => f.write_str("process_timeout"),
+            Self::Cancelled => f.write_str("process_cancelled"),
+            Self::StartFailed => f.write_str("process_start_failed"),
+            Self::WaitFailed => f.write_str("process_wait_failed"),
+            Self::ExitNonZero(exit_code) => write!(f, "exit_nonzero_{exit_code}"),
+            Self::OutputTruncated => f.write_str("output_truncated"),
+            Self::InvalidOutput => f.write_str("invalid_output"),
+            Self::UnexpectedAnswer => f.write_str("unexpected_answer"),
+        }
+    }
+}
+
+impl GuestDnsReadinessFailure {
+    fn retryable(self) -> bool {
+        matches!(
+            self,
+            Self::TimedOut
+                | Self::Transport(io::ErrorKind::TimedOut)
+                | Self::ExitNonZero(2)
+                | Self::UnexpectedAnswer
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GuestDnsReadinessReport {
+    pub(crate) attempts: u16,
+    pub(crate) elapsed: Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GuestDnsReadinessError {
+    pub(crate) attempts: u16,
+    pub(crate) elapsed: Duration,
+    pub(crate) last_failure: GuestDnsReadinessFailure,
+}
+
+impl fmt::Display for GuestDnsReadinessError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "outcome={} attempts={} elapsed_ms={}",
+            self.last_failure,
+            self.attempts,
+            self.elapsed.as_millis(),
+        )
+    }
+}
+
+impl std::error::Error for GuestDnsReadinessError {}
+
+pub(crate) async fn wait_for_guest_dns_readiness(
+    guest: &VsockHost,
+) -> Result<GuestDnsReadinessReport, GuestDnsReadinessError> {
+    wait_for_guest_dns_readiness_with_policy(guest, PRODUCTION_POLICY).await
+}
+
+async fn wait_for_guest_dns_readiness_with_policy(
+    guest: &VsockHost,
+    policy: ReadinessPolicy,
+) -> Result<GuestDnsReadinessReport, GuestDnsReadinessError> {
+    let started = Instant::now();
+    let deadline = started + policy.total_timeout;
+    let mut attempts = 0;
+
+    loop {
+        attempts += 1;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let failure = match probe_guest_dns_once(guest, remaining.min(OPERATION_WAIT_TIMEOUT)).await
+        {
+            Ok(()) => {
+                return Ok(GuestDnsReadinessReport {
+                    attempts,
+                    elapsed: started.elapsed(),
+                });
+            }
+            Err(failure) => failure,
+        };
+
+        if !failure.retryable() || attempts >= policy.max_attempts || Instant::now() >= deadline {
+            return Err(GuestDnsReadinessError {
+                attempts,
+                elapsed: started.elapsed(),
+                last_failure: failure,
+            });
+        }
+    }
+}
+
+pub(crate) async fn probe_guest_dns_once(
+    guest: &VsockHost,
+    wait_timeout: Duration,
+) -> Result<(), GuestDnsReadinessFailure> {
+    let command = format!("/usr/bin/getent ahostsv4 {DNS_READINESS_HOSTNAME}");
+    let request = ExecCaptureRequest {
+        timeout_ms: PROCESS_TIMEOUT_MS,
+        command: &command,
+        env: RESOLVER_ENV,
+        sudo: false,
+        label: LABEL,
+        stdout_limit_bytes: STDOUT_LIMIT_BYTES,
+        stderr_limit_bytes: STDERR_LIMIT_BYTES,
+        expected_exit_codes: EXPECTED_TRANSIENT_EXIT_CODES,
+        stdin_bytes: None,
+        wait_timeout,
+    };
+
+    match timeout(wait_timeout, guest.exec_operation_capture(request)).await {
+        Ok(Ok(result)) => validate_result(result),
+        Ok(Err(error)) => Err(GuestDnsReadinessFailure::Transport(error.kind())),
+        Err(_) => Err(GuestDnsReadinessFailure::Deadline),
+    }
+}
+
+fn validate_result(result: ExecOperationResult) -> Result<(), GuestDnsReadinessFailure> {
+    let ExecOperationResult {
+        termination,
+        stdout,
+        stderr,
+        stream_overflowed,
+        ..
+    } = result;
+
+    match termination {
+        ExecTermination::Exited { exit_code: 0 } => {}
+        ExecTermination::Exited { exit_code } => {
+            return Err(GuestDnsReadinessFailure::ExitNonZero(exit_code));
+        }
+        ExecTermination::TimedOut => return Err(GuestDnsReadinessFailure::TimedOut),
+        ExecTermination::Cancelled => return Err(GuestDnsReadinessFailure::Cancelled),
+        ExecTermination::StartFailed => return Err(GuestDnsReadinessFailure::StartFailed),
+        ExecTermination::WaitFailed => return Err(GuestDnsReadinessFailure::WaitFailed),
+    }
+
+    if stream_overflowed {
+        return Err(GuestDnsReadinessFailure::OutputTruncated);
+    }
+    let (stdout, stdout_truncated) = captured_output(stdout)?;
+    let (_, stderr_truncated) = captured_output(stderr)?;
+    if stdout_truncated || stderr_truncated {
+        return Err(GuestDnsReadinessFailure::OutputTruncated);
+    }
+
+    let expected = DNS_READINESS_IPV4.to_string();
+    if stdout
+        .split(|byte| *byte == b'\n')
+        .filter_map(|line| {
+            line.split(|byte| byte.is_ascii_whitespace())
+                .find(|field| !field.is_empty())
+        })
+        .any(|address| address == expected.as_bytes())
+    {
+        Ok(())
+    } else {
+        Err(GuestDnsReadinessFailure::UnexpectedAnswer)
+    }
+}
+
+fn captured_output(
+    output: ExecOwnedCapturedOutput,
+) -> Result<(Vec<u8>, bool), GuestDnsReadinessFailure> {
+    match output {
+        ExecOwnedCapturedOutput::Captured { bytes, truncated } => Ok((bytes, truncated)),
+        ExecOwnedCapturedOutput::Discarded => Err(GuestDnsReadinessFailure::InvalidOutput),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::UnixStream;
+    use vsock_proto::{
+        ExecCapturedOutput, ExecOutputPolicy, ExecTimeoutPolicy, HEADER_SIZE, MAX_MESSAGE_SIZE,
+        MIN_BODY_SIZE, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+    };
+
+    use super::*;
+
+    const TEST_POLICY: ReadinessPolicy = ReadinessPolicy {
+        total_timeout: Duration::from_secs(1),
+        max_attempts: 3,
+    };
+
+    async fn read_message(stream: &mut UnixStream) -> RawMessage {
+        let mut header = [0_u8; HEADER_SIZE];
+        tokio::time::timeout(Duration::from_secs(1), stream.read_exact(&mut header))
+            .await
+            .unwrap()
+            .unwrap();
+        let body_len = u32::from_be_bytes(header) as usize;
+        assert!((MIN_BODY_SIZE..=MAX_MESSAGE_SIZE).contains(&body_len));
+        let mut body = vec![0_u8; body_len];
+        stream.read_exact(&mut body).await.unwrap();
+        RawMessage {
+            msg_type: body[0],
+            seq: u32::from_be_bytes(body[1..MIN_BODY_SIZE].try_into().unwrap()),
+            payload: body[MIN_BODY_SIZE..].to_vec(),
+        }
+    }
+
+    async fn connect_mock_guest(vsock_path: &str) -> UnixStream {
+        let listener_path = format!("{vsock_path}_{}", vsock_proto::VSOCK_PORT);
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            match UnixStream::connect(&listener_path).await {
+                Ok(stream) => return stream,
+                Err(error)
+                    if error.kind() == io::ErrorKind::NotFound && Instant::now() < deadline =>
+                {
+                    tokio::task::yield_now().await;
+                }
+                Err(error) => panic!("connect mock guest: {error}"),
+            }
+        }
+    }
+
+    async fn setup_host_and_guest() -> (Arc<VsockHost>, UnixStream) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let vsock_path = temp_dir
+            .path()
+            .join("guest-dns-readiness")
+            .to_string_lossy()
+            .into_owned();
+        let wait_path = vsock_path.clone();
+        let host_task = tokio::spawn(async move {
+            VsockHost::wait_for_connection(&wait_path, Duration::from_secs(1))
+                .await
+                .unwrap()
+        });
+        let mut guest = connect_mock_guest(&vsock_path).await;
+        guest
+            .write_all(&vsock_proto::encode(MSG_READY, 0, &[]).unwrap())
+            .await
+            .unwrap();
+        let ping = read_message(&mut guest).await;
+        assert_eq!(ping.msg_type, MSG_PING);
+        guest
+            .write_all(&vsock_proto::encode(MSG_PONG, ping.seq, &[]).unwrap())
+            .await
+            .unwrap();
+        (Arc::new(host_task.await.unwrap()), guest)
+    }
+
+    fn assert_readiness_request(message: &RawMessage) {
+        assert_eq!(message.msg_type, MSG_EXEC_START);
+        let request = vsock_proto::decode_exec_start(&message.payload).unwrap();
+        assert_eq!(
+            request.timeout,
+            ExecTimeoutPolicy::Duration {
+                timeout_ms: PROCESS_TIMEOUT_MS
+            }
+        );
+        assert_eq!(
+            request.command,
+            format!("/usr/bin/getent ahostsv4 {DNS_READINESS_HOSTNAME}")
+        );
+        assert_eq!(request.env, RESOLVER_ENV);
+        assert!(!request.sudo);
+        assert_eq!(request.label, LABEL);
+        assert_eq!(
+            request.stdout,
+            ExecOutputPolicy::Capture {
+                limit_bytes: STDOUT_LIMIT_BYTES
+            }
+        );
+        assert_eq!(
+            request.stderr,
+            ExecOutputPolicy::Capture {
+                limit_bytes: STDERR_LIMIT_BYTES
+            }
+        );
+        assert_eq!(request.expected_exit_codes, EXPECTED_TRANSIENT_EXIT_CODES);
+        assert!(request.stdin_bytes.is_none());
+    }
+
+    async fn send_result(
+        guest: &mut UnixStream,
+        request: &RawMessage,
+        termination: ExecTermination,
+        stdout: &[u8],
+        stdout_truncated: bool,
+    ) {
+        let payload = vsock_proto::encode_exec_result(
+            termination,
+            1,
+            ExecCapturedOutput::Captured {
+                bytes: stdout,
+                truncated: stdout_truncated,
+            },
+            ExecCapturedOutput::Captured {
+                bytes: b"",
+                truncated: false,
+            },
+            "",
+        )
+        .unwrap();
+        guest
+            .write_all(&vsock_proto::encode(MSG_EXEC_RESULT, request.seq, &payload).unwrap())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn guest_dns_readiness_uses_fixed_guest_resolver_request() {
+        let (host, mut guest) = setup_host_and_guest().await;
+        let task = tokio::spawn(async move {
+            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+        });
+        let request = read_message(&mut guest).await;
+        assert_readiness_request(&request);
+        send_result(
+            &mut guest,
+            &request,
+            ExecTermination::Exited { exit_code: 0 },
+            b"192.0.2.1 STREAM vm0-readiness.invalid\n",
+            false,
+        )
+        .await;
+
+        let report = task.await.unwrap().unwrap();
+        assert_eq!(report.attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn guest_dns_readiness_recovers_after_transient_failure() {
+        let (host, mut guest) = setup_host_and_guest().await;
+        let task = tokio::spawn(async move {
+            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+        });
+        let first = read_message(&mut guest).await;
+        send_result(
+            &mut guest,
+            &first,
+            ExecTermination::Exited { exit_code: 2 },
+            b"",
+            false,
+        )
+        .await;
+        let second = read_message(&mut guest).await;
+        send_result(
+            &mut guest,
+            &second,
+            ExecTermination::Exited { exit_code: 0 },
+            b"192.0.2.1 DGRAM vm0-readiness.invalid\n",
+            false,
+        )
+        .await;
+
+        let report = task.await.unwrap().unwrap();
+        assert_eq!(report.attempts, 2);
+    }
+
+    #[tokio::test]
+    async fn guest_dns_readiness_stops_at_attempt_limit() {
+        let (host, mut guest) = setup_host_and_guest().await;
+        let task = tokio::spawn(async move {
+            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+        });
+        for _ in 0..TEST_POLICY.max_attempts {
+            let request = read_message(&mut guest).await;
+            send_result(
+                &mut guest,
+                &request,
+                ExecTermination::Exited { exit_code: 0 },
+                b"203.0.113.1 STREAM vm0-readiness.invalid\n",
+                false,
+            )
+            .await;
+        }
+
+        let error = task.await.unwrap().unwrap_err();
+        assert_eq!(error.attempts, TEST_POLICY.max_attempts);
+        assert_eq!(
+            error.last_failure,
+            GuestDnsReadinessFailure::UnexpectedAnswer
+        );
+    }
+
+    #[tokio::test]
+    async fn guest_dns_readiness_rejects_truncated_output() {
+        let (host, mut guest) = setup_host_and_guest().await;
+        let task = tokio::spawn(async move {
+            wait_for_guest_dns_readiness_with_policy(&host, TEST_POLICY).await
+        });
+        let request = read_message(&mut guest).await;
+        send_result(
+            &mut guest,
+            &request,
+            ExecTermination::Exited { exit_code: 0 },
+            b"192.0.2.1 STREAM vm0-readiness.invalid\n",
+            true,
+        )
+        .await;
+
+        let error = task.await.unwrap().unwrap_err();
+        assert_eq!(
+            error.last_failure,
+            GuestDnsReadinessFailure::OutputTruncated
+        );
+        assert_eq!(error.attempts, 1);
+    }
+}

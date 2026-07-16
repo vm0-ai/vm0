@@ -32,11 +32,13 @@ use crate::api::ApiClient;
 use crate::balloon;
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::control;
+use crate::dns_diagnostics::{GuestDnsDiagnosticContext, capture_guest_dns_diagnostics};
 use crate::exec_operation_result::{
     captured_exec_output_bytes, exec_termination_from_vsock_termination, reject_stream_overflow,
     validate_exec_capture_timeout,
 };
 use crate::factory::InvariantConfig;
+use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
@@ -503,6 +505,30 @@ impl SandboxNetwork {
         self.info.peer_ip()
     }
 
+    fn host_device(&self) -> &str {
+        self.info.host_device()
+    }
+
+    fn attachment_generation(&self) -> u64 {
+        self.info.attachment_generation()
+    }
+
+    fn mark_non_reusable(&self) -> sandbox::Result<()> {
+        let lease = self.lease.as_ref().ok_or_else(|| SandboxError::Start {
+            message: "network lease missing while marking attachment non-reusable".into(),
+        })?;
+        lease.mark_non_reusable();
+        Ok(())
+    }
+
+    fn mark_reusable(&self) -> sandbox::Result<()> {
+        let lease = self.lease.as_ref().ok_or_else(|| SandboxError::Start {
+            message: "network lease missing while marking attachment reusable".into(),
+        })?;
+        lease.mark_reusable();
+        Ok(())
+    }
+
     pub(crate) fn lease_mut(&mut self) -> &mut Option<NetnsLease> {
         &mut self.lease
     }
@@ -514,6 +540,21 @@ impl SandboxNetwork {
     pub(crate) fn has_lease(&self) -> bool {
         self.lease.is_some()
     }
+}
+
+/// Capture Firecracker network evidence after terminal guest storage bootstrap
+/// failure. Other sandbox providers have no Firecracker attachment to inspect.
+pub async fn capture_storage_bootstrap_dns_diagnostics(sandbox: &dyn Sandbox, run_id: &str) {
+    let sandbox = sandbox as &dyn std::any::Any;
+    let Some(sandbox) = sandbox.downcast_ref::<FirecrackerSandbox>() else {
+        return;
+    };
+    let Some(dns_port) = sandbox.factory_config.dns_port else {
+        return;
+    };
+    sandbox
+        .capture_storage_bootstrap_dns_diagnostics(run_id, dns_port)
+        .await;
 }
 
 impl FirecrackerSandbox {
@@ -550,6 +591,53 @@ impl FirecrackerSandbox {
             destroyed: false,
             is_parked: false,
             park_fence: None,
+        }
+    }
+
+    fn startup_mode(&self) -> &'static str {
+        if self.factory_config.snapshot.is_some() {
+            "snapshot_restore"
+        } else {
+            "fresh"
+        }
+    }
+
+    fn dns_diagnostic_context<'a>(
+        &'a self,
+        run_id: Option<&'a str>,
+        dns_port: u16,
+        trigger: &'static str,
+    ) -> GuestDnsDiagnosticContext<'a> {
+        GuestDnsDiagnosticContext {
+            sandbox_id: &self.id,
+            run_id,
+            profile: &self.factory_config.profile,
+            namespace: self.network.name(),
+            host_device: self.network.host_device(),
+            peer_ip: self.network.peer_ip(),
+            attachment_generation: self.network.attachment_generation(),
+            dns_port,
+            startup_mode: self.startup_mode(),
+            trigger,
+        }
+    }
+
+    async fn capture_storage_bootstrap_dns_diagnostics(&self, run_id: &str, dns_port: u16) {
+        let guest = self.guest.lock().await.clone();
+        let outcome = capture_guest_dns_diagnostics(
+            guest.as_deref(),
+            self.dns_diagnostic_context(Some(run_id), dns_port, "storage_bootstrap"),
+        )
+        .await;
+        if !outcome.guest_ready
+            && let Err(error) = self.network.mark_non_reusable()
+        {
+            warn!(
+                id = %self.id,
+                run_id,
+                error = %error,
+                "failed to mark DNS-unready attachment non-reusable"
+            );
         }
     }
 
@@ -1489,6 +1577,10 @@ impl Sandbox for FirecrackerSandbox {
             });
         }
 
+        if self.factory_config.dns_port.is_some() {
+            self.network.mark_non_reusable()?;
+        }
+
         let runtime_cancel = CancellationToken::new();
 
         // Start the vsock listener BEFORE launching Firecracker.
@@ -1541,7 +1633,64 @@ impl Sandbox for FirecrackerSandbox {
             }
         };
 
-        *self.guest.lock().await = Some(Arc::new(vsock_guest));
+        let vsock_guest = Arc::new(vsock_guest);
+        *self.guest.lock().await = Some(Arc::clone(&vsock_guest));
+
+        if let Some(dns_port) = self.factory_config.dns_port {
+            match wait_for_guest_dns_readiness(&vsock_guest).await {
+                Ok(report) => {
+                    if let Err(error) = self.network.mark_reusable() {
+                        self.guest.lock().await.take();
+                        self.runtime.kill_process().await;
+                        return Err(error);
+                    }
+                    info!(
+                        id = %self.id,
+                        profile = %self.factory_config.profile,
+                        namespace = %self.network.name(),
+                        host_device = %self.network.host_device(),
+                        peer_ip = %self.network.peer_ip(),
+                        attachment_generation = self.network.attachment_generation(),
+                        startup_mode = self.startup_mode(),
+                        stage = "guest_dns_readiness",
+                        attempts = report.attempts,
+                        elapsed_ms = duration_ms(report.elapsed),
+                        "guest DNS readiness probe succeeded"
+                    );
+                }
+                Err(error) => {
+                    capture_guest_dns_diagnostics(
+                        Some(vsock_guest.as_ref()),
+                        self.dns_diagnostic_context(None, dns_port, "startup"),
+                    )
+                    .await;
+                    warn!(
+                        id = %self.id,
+                        profile = %self.factory_config.profile,
+                        namespace = %self.network.name(),
+                        host_device = %self.network.host_device(),
+                        peer_ip = %self.network.peer_ip(),
+                        attachment_generation = self.network.attachment_generation(),
+                        startup_mode = self.startup_mode(),
+                        stage = "guest_dns_readiness",
+                        outcome = %error.last_failure,
+                        attempts = error.attempts,
+                        elapsed_ms = duration_ms(error.elapsed),
+                        diagnostics_captured = true,
+                        "guest DNS readiness probe failed"
+                    );
+                    self.guest.lock().await.take();
+                    self.runtime.kill_process().await;
+                    return Err(SandboxError::Start {
+                        message: format!(
+                            "guest DNS readiness for namespace {} attachment {}: {error}",
+                            self.network.name(),
+                            self.network.attachment_generation(),
+                        ),
+                    });
+                }
+            }
+        }
 
         let control_sock_path = self.sock_paths.control_sock();
         let Some(termination_handle) = self

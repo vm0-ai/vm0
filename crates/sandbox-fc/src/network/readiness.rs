@@ -179,7 +179,7 @@ pub(super) async fn run_dns_readiness_probe(
     result
 }
 
-pub(super) async fn probe_namespace_dns(namespace: String) -> Result<u16, DnsReadinessError> {
+pub(crate) async fn probe_namespace_dns(namespace: String) -> Result<u16, DnsReadinessError> {
     let (tx, rx) = oneshot::channel();
     std::thread::Builder::new()
         .name("vm0-dns-readiness".into())
