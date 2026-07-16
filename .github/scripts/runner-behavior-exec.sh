@@ -446,8 +446,20 @@ RUNNER_NAMESPACE_COUNT=${#RUNNER_NAMESPACES[@]}
 [ "$RUNNER_NAMESPACE_COUNT" -ge 2 ] \
   || fail "expected at least two runner namespaces, found $RUNNER_NAMESPACE_COUNT"
 
-ATTACKER_NS=${RUNNER_NAMESPACES[0]}
-VICTIM_NS=${RUNNER_NAMESPACES[1]}
+IDLE_RUNNER_NAMESPACES=()
+for namespace in "${RUNNER_NAMESPACES[@]}"; do
+  NAMESPACE_PIDS=$(sudo ip netns pids "$namespace") \
+    || fail "failed to inspect namespace processes: $namespace"
+  if [ -z "$NAMESPACE_PIDS" ]; then
+    IDLE_RUNNER_NAMESPACES+=("$namespace")
+  fi
+done
+IDLE_RUNNER_NAMESPACE_COUNT=${#IDLE_RUNNER_NAMESPACES[@]}
+[ "$IDLE_RUNNER_NAMESPACE_COUNT" -ge 2 ] \
+  || fail "expected at least two idle runner namespaces, found $IDLE_RUNNER_NAMESPACE_COUNT"
+
+ATTACKER_NS=${IDLE_RUNNER_NAMESPACES[0]}
+VICTIM_NS=${IDLE_RUNNER_NAMESPACES[1]}
 ATTACKER_IF=${ATTACKER_NS/vm0-ns-/vm0-ve-}
 VICTIM_IF=${VICTIM_NS/vm0-ns-/vm0-ve-}
 
