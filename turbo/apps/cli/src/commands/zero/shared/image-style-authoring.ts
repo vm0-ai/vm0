@@ -5,6 +5,7 @@ import {
 
 interface StyledImageCompilationOptions {
   readonly prompt: string;
+  readonly details: readonly string[];
   readonly style: ImageStyleRegistryEntry;
 }
 

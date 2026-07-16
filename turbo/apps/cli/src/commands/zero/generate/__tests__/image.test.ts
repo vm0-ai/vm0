@@ -316,6 +316,8 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("authoring-only examples");
     expect(stdout).not.toContain("## Requested Parameters");
     expect(stdout).not.toContain("Caller-provided");
+    expect(stdout).not.toContain("Requested size:");
+    expect(stdout).not.toContain("Source image URLs:");
     expect(stdout).toContain("Style-source values override CLI fallbacks");
     expect(stdout).toContain(
       "stop and report that limitation instead of generating",

@@ -332,6 +332,19 @@ ${formatRegistryListing(styles, "image styles")}`;
           const packet = createStyledImageCompilationPacket({
             prompt: resolvedPrompt,
             style,
+            details: [
+              `Model preference if direct image generation is used: ${options.model}`,
+              `Requested size: ${options.size}`,
+              `Requested quality: ${options.quality}`,
+              `Requested background: ${options.background}`,
+              `Requested format: ${options.format}`,
+              `Source image URLs: ${
+                options.imageUrl.length > 0
+                  ? options.imageUrl.join(", ")
+                  : "none"
+              }`,
+              `Mask image URL: ${options.maskImageUrl ?? "none"}`,
+            ],
           });
 
           console.log(packet.instructions);
