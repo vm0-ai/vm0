@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.0...guest-agent-v0.53.1) (2026-07-16)
+
+
+### Documentation
+
+* **guest-agent:** correct heartbeat failure threshold wording ([#21718](https://github.com/vm0-ai/vm0/issues/21718)) ([e940472](https://github.com/vm0-ai/vm0/commit/e940472337856cd0b24f0e406750e466afa0acee))
+
 ## [0.53.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.52.0...guest-agent-v0.53.0) (2026-07-16)
 
 

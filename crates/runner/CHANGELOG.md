@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.145.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.0...runner-rs-v0.145.1) (2026-07-16)
+
+
+### Documentation
+
+* **mitm-addon:** clarify force-refresh cooldown start ([#21717](https://github.com/vm0-ai/vm0/issues/21717)) ([3cb10d3](https://github.com/vm0-ai/vm0/commit/3cb10d32285b1171dbcaed15406d48e53f1bd918))
+
 ## [0.145.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.26...runner-rs-v0.145.0) (2026-07-16)
 
 
