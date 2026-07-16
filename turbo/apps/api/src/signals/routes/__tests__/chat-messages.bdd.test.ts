@@ -225,30 +225,35 @@ async function sendChatRun(
     ...body,
     clientMessageId: body.clientMessageId ?? randomUUID(),
   };
-  let sent = await chat.requestSendMessage(actor, requestBody, [201]);
+  const sent = await chat.requestSendMessage(actor, requestBody, [201]);
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
-  if (sent.body.runId === null) {
-    const threadId = sent.body.threadId;
-    // Queue-first sends may be claimed by a terminal callback drain between
-    // enqueue and the inline dispatch decision. Replay the idempotent client
-    // message id until that winning run association is visible.
-    await expect
-      .poll(async () => {
-        sent = await chat.requestSendMessage(
-          actor,
-          { ...requestBody, threadId },
-          [201],
-        );
-        return sent.status === 201 ? sent.body.runId : null;
-      })
-      .not.toBeNull();
+  let runId: string | null | undefined = sent.body.runId;
+  if (runId === null) {
+    // A terminal callback may claim the queued row between enqueue and the
+    // inline dispatch decision. Recover as a refreshed client does: read the
+    // appended replacement instead of retrying the client message id.
+    const messages = await waitForThreadMessages(
+      actor,
+      sent.body.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === requestBody.clientMessageId &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    runId = userMessages(messages.messages).find((message) => {
+      return message.revokesMessageId === requestBody.clientMessageId;
+    })?.runId;
   }
-  if (sent.body.runId === null) {
+  if (runId === undefined || runId === null) {
     throw new Error("Expected the entitled chat send to create a run");
   }
-  return { runId: sent.body.runId, threadId: sent.body.threadId };
+  return { runId, threadId: sent.body.threadId };
 }
 
 async function expectThreadCreatedModelEvent(
