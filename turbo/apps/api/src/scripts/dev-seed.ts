@@ -27,7 +27,7 @@ function writeLine(message: string): void {
 }
 
 /**
- * Dev seed: populate usage_pricing, vm0_api_keys, and skills tables.
+ * Populate the development database with pricing, model keys, and skills.
  *
  * Pricing convention: 1 USD = 1000 credits.
  * Prices are per 1M tokens, stored as integer credits per 1M tokens.
