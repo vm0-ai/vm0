@@ -1486,6 +1486,7 @@ function showPresentationSlide(params: {
   readonly movementEnabled: boolean;
   readonly previewFrameRef: MutableValue<HTMLIFrameElement | null>;
   readonly slideId: string;
+  readonly sourceUrl: string;
 }) {
   for (const button of document.querySelectorAll<HTMLElement>(
     "[data-slide-id]",
@@ -1508,6 +1509,7 @@ function showPresentationSlide(params: {
         activeSlideId: params.slideId,
         html: params.buildEditedHtml(),
         movementEditingEnabled: params.movementEnabled,
+        sourceUrl: params.sourceUrl,
       }),
     );
   }
@@ -1516,6 +1518,7 @@ function showPresentationSlide(params: {
 function updateSlideThumbnail(params: {
   readonly buildEditedHtml: () => string;
   readonly slideId: string;
+  readonly sourceUrl: string;
 }) {
   const thumbnailFrame = Array.from(
     document.querySelectorAll<HTMLIFrameElement>(
@@ -1530,6 +1533,7 @@ function updateSlideThumbnail(params: {
       previewPresentationHtml({
         activeSlideId: params.slideId,
         html: params.buildEditedHtml(),
+        sourceUrl: params.sourceUrl,
       }),
     );
   }
@@ -1621,6 +1625,7 @@ function PresentationEditorWorkspace({
   showSlide,
   slidesRef,
   slides,
+  sourceUrl,
 }: {
   activeSlide: PresentationSlideDraft | undefined;
   activeSlideId: string;
@@ -1635,6 +1640,7 @@ function PresentationEditorWorkspace({
   showSlide: (slideId: string) => void;
   slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
   slides: readonly PresentationSlideDraft[];
+  sourceUrl: string;
 }) {
   if (slides.length === 0 || !activeSlide) {
     return <UnsupportedPresentation />;
@@ -1643,6 +1649,7 @@ function PresentationEditorWorkspace({
     return previewPresentationHtml({
       activeSlideId: slideId,
       html: buildEditedHtml(),
+      sourceUrl,
     });
   };
 
@@ -1808,12 +1815,14 @@ function buildActiveSlidePreviewHtml(
   activeSlideId: string,
   buildEditedHtml: () => string,
   movementEnabled: boolean,
+  sourceUrl: string,
 ): string | null {
   return activeSlideId.length > 0
     ? previewPresentationHtml({
         activeSlideId,
         html: buildEditedHtml(),
         movementEditingEnabled: movementEnabled,
+        sourceUrl,
       })
     : null;
 }
@@ -1888,7 +1897,11 @@ function createPresentationEditorController(
         const pendingSlideId = params.pendingThumbnailSlideIdRef.current;
         params.pendingThumbnailSlideIdRef.current = null;
         if (pendingSlideId) {
-          updateSlideThumbnail({ buildEditedHtml, slideId: pendingSlideId });
+          updateSlideThumbnail({
+            buildEditedHtml,
+            slideId: pendingSlideId,
+            sourceUrl: params.draft.publicUrl,
+          });
         }
       },
     );
@@ -1932,12 +1945,14 @@ function createPresentationEditorController(
       movementEnabled: params.movementEnabled,
       previewFrameRef: params.previewFrameRef,
       slideId,
+      sourceUrl: params.draft.publicUrl,
     });
   };
   const previewHtml = buildActiveSlidePreviewHtml(
     activeSlideId,
     buildEditedHtml,
     params.movementEnabled,
+    params.draft.publicUrl,
   );
 
   return {
@@ -2149,6 +2164,7 @@ function PresentationEditorReady({
         showSlide={controller.showSlide}
         slidesRef={slidesRef}
         slides={controller.slides}
+        sourceUrl={draft.publicUrl}
       />
       <PresentationEditorCloseDialog
         open={closeDialogOpen}
