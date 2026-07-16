@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.280.2](https://github.com/vm0-ai/vm0/compare/api-v1.280.1...api-v1.280.2) (2026-07-16)
+
+
+### Refactoring
+
+* switch automation identifier writes ([#21839](https://github.com/vm0-ai/vm0/issues/21839)) ([630671e](https://github.com/vm0-ai/vm0/commit/630671e82fc91fdb51cf5bdb251950a98a39f2aa))
+
 ## [1.280.1](https://github.com/vm0-ai/vm0/compare/api-v1.280.0...api-v1.280.1) (2026-07-16)
 
 
