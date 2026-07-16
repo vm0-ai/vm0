@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.602.2](https://github.com/vm0-ai/vm0/compare/app-v0.602.1...app-v0.602.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* close attachment lightbox on escape ([#21409](https://github.com/vm0-ai/vm0/issues/21409)) ([0de50ad](https://github.com/vm0-ai/vm0/commit/0de50ad6688f1a579f8b72ad27dcd15767c9bda2))
+* **platform:** clarify presentation speaker notes and close flow ([#21735](https://github.com/vm0-ai/vm0/issues/21735)) ([6dfb936](https://github.com/vm0-ai/vm0/commit/6dfb93669c17575816a5ec2486f682033fdabc20))
+
 ## [0.602.1](https://github.com/vm0-ai/vm0/compare/app-v0.602.0...app-v0.602.1) (2026-07-16)
 
 
