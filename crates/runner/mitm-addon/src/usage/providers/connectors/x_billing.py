@@ -53,7 +53,7 @@ sheet for drift.
 import json
 import re
 from collections.abc import Callable
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 
 import matching
 from host_normalization import UnsafeIdnaCompatibilityMappingError, normalize_idna_label
@@ -276,38 +276,35 @@ def classify_includes_bucket(key: str) -> str | None:
 # "could X auto-link this?" boolean, not link indices.  Keep protocol
 # matching case-insensitive and preserve twitter-text-style boundary
 # guards so emails, mentions, hashtags and cashtags do not look like
-# scheme-less URLs.
+# scheme-less URLs.  Candidate extraction stays greedy; classification
+# recognizes a valid TLD at its own boundary before later text can
+# invalidate the URL prefix.
 _URL_PRECEDING_CHARS = r"A-Za-z0-9@\uFF20$#\uFF03"
 _URL_WITH_PROTOCOL_RE = re.compile(rf"(?<![{_URL_PRECEDING_CHARS}])https?://", re.IGNORECASE)
-_URL_FOLLOWING_CHARS = r"A-Za-z0-9@+.-"
 _DOMAIN_CODEPOINT = r"[^\W_]"
 _DOMAIN_CANDIDATE_CHAR = rf"(?:{_DOMAIN_CODEPOINT}|-)"
 _BARE_DOMAIN_CANDIDATE_RE = re.compile(
     rf"(?<![{_URL_PRECEDING_CHARS}._/-])"
-    rf"({_DOMAIN_CANDIDATE_CHAR}+(?:\.{_DOMAIN_CANDIDATE_CHAR}+)+)"
-    rf"(?=$|[^{_URL_FOLLOWING_CHARS}]|\.(?:$|[^A-Za-z0-9]))",
+    rf"({_DOMAIN_CANDIDATE_CHAR}+(?:\.{_DOMAIN_CANDIDATE_CHAR}+)+)",
     re.IGNORECASE,
 )
-_DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9-]{1,63}$")
-_MIN_DOMAIN_LABELS = 2
-_URL_TRAILING_PUNCTUATION = ".,:;!?"
-_URL_WRAPPER_CHARS = " \t\r\n<>()[]{}\"'"
-_BareDomainClassification = Literal["url", "non_link", "ambiguous"]
+_MAX_DOMAIN_LABEL_CHARS = 63
+_DOMAIN_LABEL_RE = re.compile(rf"^[a-z0-9-]{{1,{_MAX_DOMAIN_LABEL_CHARS}}}$")
+_INVALID_TLD_FOLLOWING_CHARS = "@+-"
 
 
-def _host_from_bare_domain_candidate(candidate: str) -> str | None:
-    candidate = candidate.strip(_URL_WRAPPER_CHARS).rstrip(_URL_TRAILING_PUNCTUATION)
-    if not candidate:
-        return None
+def _build_iana_tld_text_keys() -> frozenset[str]:
+    texts = set(IANA_TLDS)
+    texts.update(
+        tld.removeprefix("xn--").encode("ascii").decode("punycode")
+        for tld in IANA_TLDS
+        if tld.startswith("xn--")
+    )
+    return frozenset(text.casefold() for text in texts)
 
-    host = candidate.split("/", maxsplit=1)[0]
-    host = host.split("?", maxsplit=1)[0]
-    host = host.split("#", maxsplit=1)[0]
-    host = host.rstrip(_URL_TRAILING_PUNCTUATION)
-    if not host:
-        return None
 
-    return host.rstrip(".")
+_IANA_TLD_TEXT_KEYS = _build_iana_tld_text_keys()
+_MAX_IANA_TLD_TEXT_KEY_CHARS = max(map(len, _IANA_TLD_TEXT_KEYS))
 
 
 def _label_is_billing_domain_label(label: str) -> bool:
@@ -319,47 +316,57 @@ def _label_is_billing_domain_label(label: str) -> bool:
     )
 
 
-def _classify_bare_domain_host(host: str) -> _BareDomainClassification:
-    labels = tuple(host.split("."))
-    if len(labels) < _MIN_DOMAIN_LABELS or any(not label for label in labels):
-        return "non_link"
+def _is_twitter_text_tld_boundary(following_char: str) -> bool:
+    return not following_char or not (
+        following_char.isascii()
+        and (following_char.isalnum() or following_char in _INVALID_TLD_FOLLOWING_CHARS)
+    )
 
-    has_ambiguous_label = False
-    normalized_labels: list[str | None] = []
-    for label in labels:
+
+def _label_has_tld_prefix_before_unicode(label: str) -> bool:
+    prefix_limit = min(len(label), _MAX_IANA_TLD_TEXT_KEY_CHARS + 1)
+    for prefix_end in range(1, prefix_limit):
+        if label[prefix_end].isascii():
+            continue
+        prefix = label[:prefix_end]
+        if prefix.casefold() not in _IANA_TLD_TEXT_KEYS:
+            continue
+        try:
+            normalized_prefix = normalize_idna_label(prefix)
+        except UnicodeError:
+            continue
+        if _label_is_billing_domain_label(normalized_prefix) and normalized_prefix in IANA_TLDS:
+            return True
+    return False
+
+
+def _bare_domain_candidate_likely_contains_url(candidate: str, following_char: str) -> bool:
+    labels = tuple(candidate.split("."))
+    last_label_index = len(labels) - 1
+    for index, label in enumerate(labels):
+        if index > 0 and _label_has_tld_prefix_before_unicode(label):
+            return True
+
         try:
             normalized_label = normalize_idna_label(label)
         except UnsafeIdnaCompatibilityMappingError:
             # Keep billing conservative for URL-like compatibility aliases,
             # but do not fold them into unrelated ASCII domains.
-            has_ambiguous_label = True
-            normalized_labels.append(None)
+            if index == last_label_index:
+                return _is_twitter_text_tld_boundary(following_char)
             continue
         except UnicodeError:
-            return "non_link"
+            return False
 
         if not _label_is_billing_domain_label(normalized_label):
-            return "non_link"
-        normalized_labels.append(normalized_label)
-
-    normalized_tld = normalized_labels[-1]
-    if normalized_tld is not None and normalized_tld not in IANA_TLDS:
-        return "non_link"
-    if has_ambiguous_label:
-        return "ambiguous"
-    return "url"
-
-
-def _bare_domain_candidate_likely_contains_url(candidate: str) -> bool:
-    host = _host_from_bare_domain_candidate(candidate)
-    if host is None:
-        return False
-
-    match _classify_bare_domain_host(host):
-        case "url" | "ambiguous":
-            return True
-        case "non_link":
             return False
+        if index > 0 and normalized_label in IANA_TLDS:
+            if index < last_label_index:
+                return True
+            if _is_twitter_text_tld_boundary(following_char):
+                return True
+
+    return False
 
 
 def _tweet_text_likely_contains_url(text: str) -> bool:
@@ -368,7 +375,9 @@ def _tweet_text_likely_contains_url(text: str) -> bool:
     if "." not in text:
         return False
     return any(
-        _bare_domain_candidate_likely_contains_url(match.group(1))
+        _bare_domain_candidate_likely_contains_url(
+            match.group(1), text[match.end(1) : match.end(1) + 1]
+        )
         for match in _BARE_DOMAIN_CANDIDATE_RE.finditer(text)
     )
 
