@@ -27,7 +27,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
-import { createPresentationDraftByUrlFactory } from "../../signals/zero-page/presentation-html-editor-draft.ts";
+import { createCurrentPresentationDraft } from "../../signals/zero-page/presentation-html-editor-draft.ts";
 import {
   createPresentationSlideListSignals,
   type PresentationSlideListSignals,
@@ -146,7 +146,7 @@ function createPresentationEditorSession(
   };
 }
 
-const presentationDraftByUrl = createPresentationDraftByUrlFactory<EditorDraft>(
+const currentPresentationDraft$ = createCurrentPresentationDraft<EditorDraft>(
   async (url, signal) => {
     const publicUrl = publicAttachmentUrl(url);
     const response = await fetch(readableAttachmentResourceUrl(publicUrl), {
@@ -1540,7 +1540,6 @@ async function ensurePresentationRedeployed(params: {
   readonly refreshPresentationHtmlPreviews: () => void;
   readonly setPublishing: (publishing: boolean) => void;
   readonly setStatus: (value: string) => void;
-  readonly sourceUrl: string;
 }): Promise<boolean> {
   const signature = params.currentSignature();
   if (signature === params.publishedSignatureRef.current) {
@@ -1555,8 +1554,6 @@ async function ensurePresentationRedeployed(params: {
       publicUrl: params.draft.publicUrl,
       signal: params.pageSignal,
     });
-    presentationDraftByUrl.invalidate(params.sourceUrl);
-    presentationDraftByUrl.invalidate(params.draft.publicUrl);
     params.refreshPresentationHtmlPreviews();
     params.publishedSignatureRef.current = signature;
     toast.success("Presentation updated");
@@ -1890,7 +1887,6 @@ function createPresentationEditorController(
       refreshPresentationHtmlPreviews: params.refreshPresentationHtmlPreviews,
       setPublishing,
       setStatus,
-      sourceUrl: params.sourceUrl,
     });
   };
   const fillEmptySpeakerNotes = () => {
@@ -1945,7 +1941,6 @@ function createPresentationEditorCloseActions(params: {
   readonly onClose: () => void;
   readonly publishingRef: MutableValue<boolean>;
   readonly setCloseDialogOpen: (open: boolean) => void;
-  readonly sourceUrl: string;
 }) {
   const requestClose = () => {
     if (!params.controller.hasUnsavedChanges()) {
@@ -1955,8 +1950,6 @@ function createPresentationEditorCloseActions(params: {
     params.setCloseDialogOpen(true);
   };
   const exitWithoutSaving = () => {
-    presentationDraftByUrl.invalidate(params.sourceUrl);
-    presentationDraftByUrl.invalidate(params.draft.publicUrl);
     params.setCloseDialogOpen(false);
     params.onClose();
   };
@@ -2080,7 +2073,6 @@ function PresentationEditorReady({
     onClose,
     publishingRef,
     setCloseDialogOpen,
-    sourceUrl,
   });
 
   return (
@@ -2151,7 +2143,7 @@ export function PresentationHtmlEditor({
 }: PresentationHtmlEditorProps) {
   const filename = attachmentFilenameFromUrl(url);
   const title = fallbackHtmlPreviewTitle(filename, url);
-  const loadable = useLoadable(presentationDraftByUrl.get(url));
+  const loadable = useLoadable(currentPresentationDraft$);
   const features = useGet(featureSwitch$);
   const movementFeatureEnabled = Boolean(
     features?.[FeatureSwitchKey.PresentationElementDragging],

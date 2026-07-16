@@ -1,4 +1,4 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
@@ -41,6 +41,7 @@ import {
   type RouteKey,
 } from "../route-paths.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
+import { currentAgentId$ } from "../agent.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 import { onRejection } from "../utils.ts";
 import {
@@ -633,35 +634,19 @@ export const reloadWorkflows$ = command(({ set }) => {
   set(internalWorkflowConnectorReadiness$, null);
 });
 
-/**
- * Factory for a single agent's visible workflows (public ∪ the caller's own
- * private), scoped via the `agentId` query parameter.
- */
-function createAgentWorkflowsFactory(): (
-  agentId: string,
-) => Computed<Promise<readonly ZeroWorkflowSummary[]>> {
-  const cache = new Map<
-    string,
-    Computed<Promise<readonly ZeroWorkflowSummary[]>>
-  >();
-  return (agentId: string) => {
-    const existing = cache.get(agentId);
-    if (existing) {
-      return existing;
+/** The current agent detail route's visible workflows. */
+export const currentAgentVisibleWorkflows$ = computed(
+  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
+    get(workflowReloadVersion$);
+    const agentId = get(currentAgentId$);
+    if (!agentId) {
+      return [];
     }
-    const atom$ = computed(async (get) => {
-      get(workflowReloadVersion$);
-      const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-      const result = await accept(client.list({ query: { agentId } }), [200]);
-      return result.body;
-    });
-    cache.set(agentId, atom$);
-    return atom$;
-  };
-}
-
-const agentWorkflows = createAgentWorkflowsFactory();
-export const agentVisibleWorkflows$ = agentWorkflows;
+    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
+    const result = await accept(client.list({ query: { agentId } }), [200]);
+    return result.body;
+  },
+);
 
 /**
  * The current chat agent's visible workflows, used by the slash-workflow
@@ -673,7 +658,10 @@ export const composerWorkflows$ = computed(
     if (!agentId) {
       return [];
     }
-    return get(agentWorkflows(agentId));
+    get(workflowReloadVersion$);
+    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
+    const result = await accept(client.list({ query: { agentId } }), [200]);
+    return result.body;
   },
 );
 
@@ -720,39 +708,22 @@ export const allWorkflowAutomationEntries$ = computed(
   },
 );
 
-/**
- * Factory for a single workflow's detail, addressed by its uuid.
- */
-function createWorkflowDetailFactory(): (
-  workflowId: string,
-) => Computed<Promise<ZeroWorkflowDetailResponse | null>> {
-  const cache = new Map<
-    string,
-    Computed<Promise<ZeroWorkflowDetailResponse | null>>
-  >();
-  return (workflowId: string) => {
-    const existing = cache.get(workflowId);
-    if (existing) {
-      return existing;
+/** The workflow detail derived from the active route. */
+export const currentWorkflowDetail$ = computed(
+  async (get): Promise<ZeroWorkflowDetailResponse | null> => {
+    get(workflowReloadVersion$);
+    const workflowId = get(currentWorkflowId$);
+    if (!workflowId) {
+      return null;
     }
-    const atom$ = computed(async (get) => {
-      get(workflowReloadVersion$);
-      const client = get(zeroClient$)(zeroWorkflowsDetailContract);
-      const result = await accept(
-        client.get({ params: { workflowId } }),
-        [200, 404],
-      );
-      if (result.status === 404) {
-        return null;
-      }
-      return result.body;
-    });
-    cache.set(workflowId, atom$);
-    return atom$;
-  };
-}
-
-export const workflowDetail = createWorkflowDetailFactory();
+    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const result = await accept(
+      client.get({ params: { workflowId } }),
+      [200, 404],
+    );
+    return result.status === 404 ? null : result.body;
+  },
+);
 
 export const checkWorkflowConnectorReadiness$ = command(
   async ({ get, set }, workflowId: string, signal: AbortSignal) => {

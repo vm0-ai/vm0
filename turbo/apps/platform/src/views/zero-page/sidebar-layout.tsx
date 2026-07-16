@@ -134,10 +134,7 @@ function MobileAutomationButtonLeaf() {
   }
 
   return (
-    <AutomationMenuButton
-      threadId={thread.threadId}
-      ariaLabel="Open mobile automations"
-    />
+    <AutomationMenuButton thread={thread} ariaLabel="Open mobile automations" />
   );
 }
 
