@@ -808,12 +808,16 @@ function menuItemByText(text: string): HTMLElement {
   return item;
 }
 
-function mockIntersectionObserver(): { triggerAll: () => void } {
+function mockIntersectionObserver(): {
+  activeRoots: () => (Document | Element | null)[];
+  observedTargetCount: () => number;
+  triggerAll: () => void;
+} {
   const originalDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
     "IntersectionObserver",
   );
-  const observers: { trigger: () => void }[] = [];
+  const observers: TestIntersectionObserver[] = [];
 
   class TestIntersectionObserver implements IntersectionObserver {
     readonly root: Element | Document | null;
@@ -855,6 +859,10 @@ function mockIntersectionObserver(): { triggerAll: () => void } {
       return [];
     }
 
+    observedTargetCount(): number {
+      return this.observedTargets.length;
+    }
+
     trigger(): void {
       const entries = this.observedTargets.map((target) => {
         return {
@@ -894,6 +902,16 @@ function mockIntersectionObserver(): { triggerAll: () => void } {
   );
 
   return {
+    activeRoots: () => {
+      return observers.flatMap((observer) => {
+        return observer.observedTargetCount() > 0 ? [observer.root] : [];
+      });
+    },
+    observedTargetCount: () => {
+      return observers.reduce((count, observer) => {
+        return count + observer.observedTargetCount();
+      }, 0);
+    },
     triggerAll: () => {
       for (const observer of observers) {
         observer.trigger();
@@ -4214,8 +4232,10 @@ ${openFencedHostedSiteUrl}`,
   });
 
   it("exits the presentation editor without publishing draft changes", async () => {
+    const thumbnailObserver = mockIntersectionObserver();
     const presentationUrl =
       "https://deck.sites.vm7.io/exit-without-saving.html";
+    const browser = context.mocks.browser.blobDownload();
     let redeployCount = 0;
 
     context.mocks.api(
@@ -4243,6 +4263,20 @@ ${openFencedHostedSiteUrl}`,
         "Open with launch metrics.",
       );
     });
+    const slideList = screen.getByTestId("presentation-editor-slide-list");
+    await waitFor(() => {
+      expect(thumbnailObserver.activeRoots()).toStrictEqual([slideList]);
+      expect(thumbnailObserver.observedTargetCount()).toBe(1);
+    });
+    const activeThumbnail = document.querySelector(
+      'iframe[data-slide-thumbnail-frame="slide-intro"]',
+    );
+    if (!(activeThumbnail instanceof HTMLIFrameElement)) {
+      throw new Error("Active presentation thumbnail frame not found");
+    }
+    const activeThumbnailUrl = activeThumbnail.dataset.vm0EditorObjectUrl;
+    expect(activeThumbnailUrl).toMatch(/^blob:/u);
+
     await fill(
       screen.getByLabelText("Speaker notes"),
       "Discard this local draft.",
@@ -4257,12 +4291,17 @@ ${openFencedHostedSiteUrl}`,
       ).toBeInTheDocument();
     });
     expect(redeployCount).toBe(0);
+    expect(thumbnailObserver.activeRoots()).toStrictEqual([slideList]);
+    expect(thumbnailObserver.observedTargetCount()).toBe(1);
 
     click(screen.getByText("Discard"));
     await waitFor(() => {
       expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
     });
     expect(redeployCount).toBe(0);
+    expect(thumbnailObserver.activeRoots()).toStrictEqual([]);
+    expect(thumbnailObserver.observedTargetCount()).toBe(0);
+    expect(browser.revokedUrls).toContain(activeThumbnailUrl);
 
     click(screen.getByLabelText("Edit presentation"));
     await waitFor(() => {
@@ -4270,6 +4309,11 @@ ${openFencedHostedSiteUrl}`,
         "Open with launch metrics.",
       );
     });
+    const reopenedSlideList = screen.getByTestId(
+      "presentation-editor-slide-list",
+    );
+    expect(thumbnailObserver.activeRoots()).toStrictEqual([reopenedSlideList]);
+    expect(thumbnailObserver.observedTargetCount()).toBe(1);
 
     click(screen.getByLabelText("Close presentation editor"));
     await waitFor(() => {
@@ -4281,6 +4325,8 @@ ${openFencedHostedSiteUrl}`,
       }),
     ).not.toBeInTheDocument();
     expect(redeployCount).toBe(0);
+    expect(thumbnailObserver.activeRoots()).toStrictEqual([]);
+    expect(thumbnailObserver.observedTargetCount()).toBe(0);
   });
 
   it("edits and downloads a presentation artifact from the editor", async () => {
