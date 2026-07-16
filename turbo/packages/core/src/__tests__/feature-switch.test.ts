@@ -144,6 +144,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
@@ -182,6 +183,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
