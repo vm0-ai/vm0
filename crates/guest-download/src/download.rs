@@ -19,7 +19,7 @@ type TaskRunner = fn(DownloadTask) -> bool;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DownloadTask {
     label: String,
-    op_name: &'static str,
+    archive_kind: ArchiveKind,
     url: String,
     mount_path: String,
     kind: DownloadTaskKind,
@@ -29,23 +29,29 @@ impl DownloadTask {
     #[cfg(test)]
     pub(crate) fn new(
         label: String,
-        op_name: &'static str,
+        archive_kind: ArchiveKind,
         url: String,
         mount_path: String,
     ) -> Self {
-        Self::new_with_kind(label, op_name, url, mount_path, DownloadTaskKind::Other)
+        Self::new_with_kind(
+            label,
+            archive_kind,
+            url,
+            mount_path,
+            DownloadTaskKind::Other,
+        )
     }
 
     pub(crate) fn new_with_kind(
         label: String,
-        op_name: &'static str,
+        archive_kind: ArchiveKind,
         url: String,
         mount_path: String,
         kind: DownloadTaskKind,
     ) -> Self {
         Self {
             label,
-            op_name,
+            archive_kind,
             url,
             mount_path,
             kind,
@@ -71,6 +77,165 @@ impl DownloadTask {
 
     fn failure_detail(&self, error: &DownloadError) -> String {
         format!("{} download failed: {}", self.label, error)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ArchiveKind {
+    Storage,
+    Artifact,
+}
+
+impl ArchiveKind {
+    fn total_action(self) -> &'static str {
+        match self {
+            Self::Storage => "storage_download",
+            Self::Artifact => "artifact_download",
+        }
+    }
+
+    fn request_to_response_headers_action(self) -> &'static str {
+        match self {
+            Self::Storage => "storage_download_remote_request_to_response_headers",
+            Self::Artifact => "artifact_download_remote_request_to_response_headers",
+        }
+    }
+
+    fn body_read_action(self) -> &'static str {
+        match self {
+            Self::Storage => "storage_download_remote_body_read",
+            Self::Artifact => "artifact_download_remote_body_read",
+        }
+    }
+
+    fn extract_outside_body_read_action(self) -> &'static str {
+        match self {
+            Self::Storage => "storage_download_remote_extract_outside_body_read",
+            Self::Artifact => "artifact_download_remote_extract_outside_body_read",
+        }
+    }
+
+    fn compressed_bytes_consumed_action(self, bytes: u64) -> &'static str {
+        match (self, CompressedBytesBucket::from_bytes(bytes)) {
+            (Self::Storage, CompressedBytesBucket::Zero) => {
+                "storage_download_remote_compressed_bytes_consumed_zero"
+            }
+            (Self::Storage, CompressedBytesBucket::Under64Kib) => {
+                "storage_download_remote_compressed_bytes_consumed_lt_64_kib"
+            }
+            (Self::Storage, CompressedBytesBucket::Kib64To256) => {
+                "storage_download_remote_compressed_bytes_consumed_64_kib_to_256_kib"
+            }
+            (Self::Storage, CompressedBytesBucket::Kib256To1Mib) => {
+                "storage_download_remote_compressed_bytes_consumed_256_kib_to_1_mib"
+            }
+            (Self::Storage, CompressedBytesBucket::Mib1To4) => {
+                "storage_download_remote_compressed_bytes_consumed_1_mib_to_4_mib"
+            }
+            (Self::Storage, CompressedBytesBucket::Mib4To16) => {
+                "storage_download_remote_compressed_bytes_consumed_4_mib_to_16_mib"
+            }
+            (Self::Storage, CompressedBytesBucket::Mib16To64) => {
+                "storage_download_remote_compressed_bytes_consumed_16_mib_to_64_mib"
+            }
+            (Self::Storage, CompressedBytesBucket::Mib64Plus) => {
+                "storage_download_remote_compressed_bytes_consumed_64_mib_plus"
+            }
+            (Self::Artifact, CompressedBytesBucket::Zero) => {
+                "artifact_download_remote_compressed_bytes_consumed_zero"
+            }
+            (Self::Artifact, CompressedBytesBucket::Under64Kib) => {
+                "artifact_download_remote_compressed_bytes_consumed_lt_64_kib"
+            }
+            (Self::Artifact, CompressedBytesBucket::Kib64To256) => {
+                "artifact_download_remote_compressed_bytes_consumed_64_kib_to_256_kib"
+            }
+            (Self::Artifact, CompressedBytesBucket::Kib256To1Mib) => {
+                "artifact_download_remote_compressed_bytes_consumed_256_kib_to_1_mib"
+            }
+            (Self::Artifact, CompressedBytesBucket::Mib1To4) => {
+                "artifact_download_remote_compressed_bytes_consumed_1_mib_to_4_mib"
+            }
+            (Self::Artifact, CompressedBytesBucket::Mib4To16) => {
+                "artifact_download_remote_compressed_bytes_consumed_4_mib_to_16_mib"
+            }
+            (Self::Artifact, CompressedBytesBucket::Mib16To64) => {
+                "artifact_download_remote_compressed_bytes_consumed_16_mib_to_64_mib"
+            }
+            (Self::Artifact, CompressedBytesBucket::Mib64Plus) => {
+                "artifact_download_remote_compressed_bytes_consumed_64_mib_plus"
+            }
+        }
+    }
+
+    fn attempt_count_action(self, attempts: u32) -> &'static str {
+        match (self, attempts) {
+            (Self::Storage, 1) => "storage_download_remote_attempt_count_1",
+            (Self::Storage, 2) => "storage_download_remote_attempt_count_2",
+            (Self::Storage, _) => "storage_download_remote_attempt_count_3",
+            (Self::Artifact, 1) => "artifact_download_remote_attempt_count_1",
+            (Self::Artifact, 2) => "artifact_download_remote_attempt_count_2",
+            (Self::Artifact, _) => "artifact_download_remote_attempt_count_3",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CompressedBytesBucket {
+    Zero,
+    Under64Kib,
+    Kib64To256,
+    Kib256To1Mib,
+    Mib1To4,
+    Mib4To16,
+    Mib16To64,
+    Mib64Plus,
+}
+
+impl CompressedBytesBucket {
+    fn from_bytes(bytes: u64) -> Self {
+        match bytes {
+            0 => Self::Zero,
+            1..65_536 => Self::Under64Kib,
+            65_536..262_144 => Self::Kib64To256,
+            262_144..1_048_576 => Self::Kib256To1Mib,
+            1_048_576..4_194_304 => Self::Mib1To4,
+            4_194_304..16_777_216 => Self::Mib4To16,
+            16_777_216..67_108_864 => Self::Mib16To64,
+            _ => Self::Mib64Plus,
+        }
+    }
+}
+
+#[derive(Default)]
+struct RemoteArchiveTaskMetrics {
+    request_to_response_headers: Duration,
+    body_read: Duration,
+    extract_outside_body_read: Duration,
+    compressed_bytes_consumed: u64,
+    attempts: u32,
+}
+
+impl RemoteArchiveTaskMetrics {
+    fn begin_attempt(&mut self) {
+        self.attempts = self.attempts.saturating_add(1);
+    }
+
+    fn record_attempt(
+        &mut self,
+        metrics: source::RemoteArchiveAttemptSnapshot,
+        extract_wall: Duration,
+    ) {
+        self.request_to_response_headers = self
+            .request_to_response_headers
+            .saturating_add(metrics.request_to_response_headers);
+        self.body_read = self.body_read.saturating_add(metrics.body_read);
+        self.extract_outside_body_read = self
+            .extract_outside_body_read
+            .saturating_add(extract_wall.saturating_sub(metrics.body_read));
+        self.compressed_bytes_consumed = self
+            .compressed_bytes_consumed
+            .saturating_add(metrics.compressed_bytes_consumed);
     }
 }
 
@@ -639,11 +804,15 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
 fn run_download_task(task: DownloadTask) -> bool {
     let start = Instant::now();
     log_info!(LOG_TAG, "Downloading {} to {}", task.label, task.mount_path);
+    let mut remote_metrics = task.is_remote_url().then(RemoteArchiveTaskMetrics::default);
 
-    match download_with_retry(&task.url, &task.mount_path) {
+    match download_with_retry(&task.url, &task.mount_path, remote_metrics.as_mut()) {
         Ok(()) => {
             let elapsed = start.elapsed();
-            record_sandbox_op(task.op_name, elapsed, true, None);
+            record_sandbox_op(task.archive_kind.total_action(), elapsed, true, None);
+            if let Some(metrics) = &remote_metrics {
+                record_remote_archive_attribution(task.archive_kind, metrics, true);
+            }
             log_info!(
                 LOG_TAG,
                 "{} downloaded in {}ms",
@@ -654,19 +823,71 @@ fn run_download_task(task: DownloadTask) -> bool {
         }
         Err(e) => {
             let failure_detail = task.failure_detail(&e);
-            record_sandbox_op(task.op_name, start.elapsed(), false, Some(&failure_detail));
+            record_sandbox_op(
+                task.archive_kind.total_action(),
+                start.elapsed(),
+                false,
+                Some(&failure_detail),
+            );
+            if let Some(metrics) = &remote_metrics {
+                record_remote_archive_attribution(task.archive_kind, metrics, false);
+            }
             log_error!(LOG_TAG, "{failure_detail}");
             false
         }
     }
 }
 
-fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError> {
+fn record_remote_archive_attribution(
+    archive_kind: ArchiveKind,
+    metrics: &RemoteArchiveTaskMetrics,
+    success: bool,
+) {
+    record_sandbox_op(
+        archive_kind.request_to_response_headers_action(),
+        metrics.request_to_response_headers,
+        success,
+        None,
+    );
+    record_sandbox_op(
+        archive_kind.body_read_action(),
+        metrics.body_read,
+        success,
+        None,
+    );
+    record_sandbox_op(
+        archive_kind.extract_outside_body_read_action(),
+        metrics.extract_outside_body_read,
+        success,
+        None,
+    );
+    record_sandbox_op(
+        archive_kind.compressed_bytes_consumed_action(metrics.compressed_bytes_consumed),
+        Duration::ZERO,
+        success,
+        None,
+    );
+    record_sandbox_op(
+        archive_kind.attempt_count_action(metrics.attempts),
+        Duration::ZERO,
+        success,
+        None,
+    );
+}
+
+fn download_with_retry(
+    url: &str,
+    target_path: &str,
+    mut remote_metrics: Option<&mut RemoteArchiveTaskMetrics>,
+) -> Result<(), DownloadError> {
     let mut last_error = None;
 
     for attempt in 1..=MAX_RETRIES {
+        if let Some(metrics) = remote_metrics.as_deref_mut() {
+            metrics.begin_attempt();
+        }
         let attempt_start = Instant::now();
-        match download_and_extract(url, target_path) {
+        match download_and_extract(url, target_path, remote_metrics.as_deref_mut()) {
             Ok(()) => return Ok(()),
             Err(e) => {
                 log_warn!(
@@ -689,13 +910,34 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError
     Err(last_error.unwrap_or_else(|| DownloadError::fatal("download failed with no error")))
 }
 
-fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadError> {
+fn download_and_extract(
+    url: &str,
+    target_path: &str,
+    remote_metrics: Option<&mut RemoteArchiveTaskMetrics>,
+) -> Result<(), DownloadError> {
     fs::create_dir_all(target_path).map_err(|e| {
         DownloadError::fatal(format!("Failed to create directory {target_path}: {e}"))
     })?;
 
-    let reader = source::open_archive(url)?;
-    archive::extract_tar_gz(reader, target_path)
+    let attempt_metrics = remote_metrics
+        .is_some()
+        .then(source::RemoteArchiveAttemptMetrics::default);
+    let reader = match source::open_archive(url, attempt_metrics.as_ref()) {
+        Ok(reader) => reader,
+        Err(error) => {
+            if let (Some(metrics), Some(attempt_metrics)) = (remote_metrics, &attempt_metrics) {
+                metrics.record_attempt(attempt_metrics.snapshot(), Duration::ZERO);
+            }
+            return Err(error);
+        }
+    };
+    let extract_start = Instant::now();
+    let result = archive::extract_tar_gz(reader, target_path);
+    let extract_wall = extract_start.elapsed();
+    if let (Some(metrics), Some(attempt_metrics)) = (remote_metrics, &attempt_metrics) {
+        metrics.record_attempt(attempt_metrics.snapshot(), extract_wall);
+    }
+    result
 }
 
 #[cfg(test)]
@@ -729,7 +971,7 @@ mod tests {
     fn task_at(path: &str, kind: DownloadTaskKind) -> DownloadTask {
         DownloadTask::new_with_kind(
             format!("task {path}"),
-            "storage_download",
+            ArchiveKind::Storage,
             "file:///tmp/archive.tar.gz".to_owned(),
             path.to_owned(),
             kind,
@@ -916,13 +1158,13 @@ mod tests {
                 vec![
                     DownloadTask::new(
                         "panic".to_owned(),
-                        "storage_download",
+                        ArchiveKind::Storage,
                         "panic".to_owned(),
                         "/tmp/panic".to_owned(),
                     ),
                     DownloadTask::new(
                         "success".to_owned(),
-                        "storage_download",
+                        ArchiveKind::Storage,
                         "success".to_owned(),
                         "/tmp/success".to_owned(),
                     ),
@@ -939,13 +1181,13 @@ mod tests {
         let pending = VecDeque::from(vec![
             DownloadTask::new(
                 "blocked child".to_owned(),
-                "storage_download",
+                ArchiveKind::Storage,
                 "file:///tmp/archive.tar.gz".to_owned(),
                 "/tmp/mount/child".to_owned(),
             ),
             DownloadTask::new(
                 "independent".to_owned(),
-                "artifact_download",
+                ArchiveKind::Artifact,
                 "https://example.com/archive.tar.gz".to_owned(),
                 "/tmp/other".to_owned(),
             ),
@@ -1101,7 +1343,7 @@ mod tests {
         let task = DownloadTask::new(
             "storage 1 mountPath=/workspace vasStorageName=repo vasVersionId=v1 urlScheme=file cached=false"
                 .into(),
-            "storage_download",
+            ArchiveKind::Storage,
             "file:///tmp/archive.tar.gz".into(),
             "/workspace".into(),
         );
