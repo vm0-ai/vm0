@@ -25,10 +25,10 @@ export async function refreshClerkSessionToken(
       { timeout: 30_000 },
     );
   }
-  const token = await page.evaluate(async () => {
-    return (await window.Clerk?.session?.getToken({ skipCache: true })) ?? null;
+  const tokenRefreshed = await page.evaluate(async () => {
+    return Boolean(await window.Clerk?.session?.getToken({ skipCache: true }));
   });
-  if (!token) {
+  if (!tokenRefreshed) {
     throw new Error("Clerk session token unavailable after refresh");
   }
 }
