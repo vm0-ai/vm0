@@ -120,6 +120,8 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("limited-free-1");
+    expect(response.body.supportByok).toBeFalsy();
+    expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.credits).toBe(100_000);
     expect(response.body.onboardingPaymentPending).toBeFalsy();
     expect(response.body.hasSubscription).toBeFalsy();
@@ -274,6 +276,8 @@ describe("GET /api/zero/billing/status", () => {
       orgId: STAFF_ORG_ID,
       status: "active",
       baseConcurrencyLimit: 10,
+      supportByok: false,
+      restrictedVm0Models: true,
     });
     mocks.clerk.session(userId, STAFF_ORG_ID);
 
@@ -285,6 +289,8 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro");
+    expect(response.body.supportByok).toBeFalsy();
+    expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.concurrencyLimit).toBe(3);
   });
 
