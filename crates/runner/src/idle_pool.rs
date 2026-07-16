@@ -589,12 +589,12 @@ impl IdleDestroyPayload {
     /// Stop the sandbox and destroy it via its factory.
     #[cfg(test)]
     pub(crate) async fn stop_and_destroy(self) -> DestroyOutcome {
-        self.promote_then_stop_and_destroy("idle_destroy")
+        self.finalize_workspace_and_destroy("idle_destroy")
             .await
             .outcome
     }
 
-    pub(crate) async fn promote_then_stop_and_destroy(
+    pub(crate) async fn finalize_workspace_and_destroy(
         self,
         context: &'static str,
     ) -> IdleDestroyResult {
@@ -692,7 +692,7 @@ impl IdleDestroyJob {
             cli_agent_session_id: _,
             profile_name: _,
         } = self;
-        let result = payload.promote_then_stop_and_destroy(context).await;
+        let result = payload.finalize_workspace_and_destroy(context).await;
         RetainedIdleDestroyResult {
             outcome: result.outcome,
             workspace_cache_promoted: result.workspace_cache_promoted,
