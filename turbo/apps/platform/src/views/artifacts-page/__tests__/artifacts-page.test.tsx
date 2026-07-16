@@ -844,7 +844,7 @@ describe("artifacts page", () => {
       expect(
         downloadItem?.querySelector(".tabler-icon-download"),
       ).not.toBeNull();
-      expect(screen.queryByText("Open a new tab")).not.toBeInTheDocument();
+      expect(screen.queryByText("Open in new tab")).not.toBeInTheDocument();
 
       click(screen.getByText("Download"));
       await waitFor(() => {
@@ -1313,7 +1313,7 @@ describe("artifacts page", () => {
 
     await screen.findByText("launch-plan.html");
     click(buttonByLabel("More actions for launch-plan.html"));
-    click(screen.getByText("Ask about it"));
+    click(screen.getByText("Ask about this"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
@@ -1369,7 +1369,7 @@ describe("artifacts page", () => {
 
     await screen.findByText("same-name.png");
     click(buttonByLabel("More actions for same-name.png"));
-    click(screen.getByText("Ask about it"));
+    click(screen.getByText("Ask about this"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
@@ -1414,7 +1414,7 @@ describe("artifacts page", () => {
       screen.queryByLabelText("Open source chat for launch-plan.html"),
     ).toBeNull();
     click(buttonByLabel("More actions for launch-plan.html"));
-    click(screen.getByText("View creation chat"));
+    click(screen.getByText("View original chat"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${SOURCE_THREAD_ID}`);
