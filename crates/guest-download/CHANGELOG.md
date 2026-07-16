@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.2](https://github.com/vm0-ai/vm0/compare/guest-download-v0.21.1...guest-download-v0.21.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** prevent stale conntrack dns failures ([#21817](https://github.com/vm0-ai/vm0/issues/21817)) ([b6d0691](https://github.com/vm0-ai/vm0/commit/b6d0691437caf15deb5c9ac9ca1bcf1d8cc859e3))
+
 ## [0.21.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.21.0...guest-download-v0.21.1) (2026-07-16)
 
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.64...guest-download-v0.21.0) (2026-07-16)

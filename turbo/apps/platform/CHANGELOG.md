@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.603.0](https://github.com/vm0-ai/vm0/compare/app-v0.602.5...app-v0.603.0) (2026-07-16)
+
+
+### Features
+
+* add slack-style three-column navigation behind a feature switch ([#21855](https://github.com/vm0-ai/vm0/issues/21855)) ([3f3bc98](https://github.com/vm0-ai/vm0/commit/3f3bc984de5f20f7d5c637203f39429d8c5bfa20))
+* match artifacts agent filter to connector agent dropdown ([#21833](https://github.com/vm0-ai/vm0/issues/21833)) ([b13870a](https://github.com/vm0-ai/vm0/commit/b13870a69c2aac6f7f3b550839d31ba1b0295779))
+
+
+### Bug Fixes
+
+* **platform:** gate limited-free byok actions behind pro ([#21807](https://github.com/vm0-ai/vm0/issues/21807)) ([329e0cb](https://github.com/vm0-ai/vm0/commit/329e0cbee692c81e50499935c6bac8c4a8dd761f))
+* **platform:** preserve relative images in pptx exports ([#21856](https://github.com/vm0-ai/vm0/issues/21856)) ([05e8f57](https://github.com/vm0-ai/vm0/commit/05e8f57be3334893fac04628394075ef99a86e1b))
+* **platform:** prevent duplicate artifact download menus ([#21865](https://github.com/vm0-ai/vm0/issues/21865)) ([9e03842](https://github.com/vm0-ai/vm0/commit/9e03842dce616160db9df65afa040fb04801a3c5))
+* reconcile stale queued chat messages on subscribe and isolate ably publish failures ([#21851](https://github.com/vm0-ai/vm0/issues/21851)) ([de474bd](https://github.com/vm0-ai/vm0/commit/de474bde2b241fa8b2972d8eab171f8c545f88c5))
+* remove shadow from artifact card favorite and more buttons ([#21825](https://github.com/vm0-ai/vm0/issues/21825)) ([04d642b](https://github.com/vm0-ai/vm0/commit/04d642bb819ea8377419620619e8805db92c01f2))
+
+
+### Refactoring
+
+* **api:** remove unused onboarding setup endpoint ([#21843](https://github.com/vm0-ai/vm0/issues/21843)) ([7cbf7b8](https://github.com/vm0-ai/vm0/commit/7cbf7b8b5423b7a681c60f919862275e863d1c6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.0
+    * @vm0/connectors bumped to 1.169.0
+    * @vm0/core bumped to 8.438.0
+
 ## [0.602.5](https://github.com/vm0-ai/vm0/compare/app-v0.602.4...app-v0.602.5) (2026-07-16)
 
 

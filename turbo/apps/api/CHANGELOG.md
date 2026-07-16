@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.281.0](https://github.com/vm0-ai/vm0/compare/api-v1.280.2...api-v1.281.0) (2026-07-16)
+
+
+### Features
+
+* bill model usage from signed proxy price schedules ([#21696](https://github.com/vm0-ai/vm0/issues/21696)) ([e4c9fc7](https://github.com/vm0-ai/vm0/commit/e4c9fc72ec4004b8ff6db197c6e4ee1a888e9d30))
+* enable workflow queue for all orgs ([#21853](https://github.com/vm0-ai/vm0/issues/21853)) ([5076e79](https://github.com/vm0-ai/vm0/commit/5076e79781786049aa346dcd908661388dbe7a3a))
+
+
+### Bug Fixes
+
+* **cli:** enforce source-first image template generation ([#21472](https://github.com/vm0-ai/vm0/issues/21472)) ([e686661](https://github.com/vm0-ai/vm0/commit/e686661b6fe100cbf821810daf9b1d00a587fc78))
+
+
+### Performance Improvements
+
+* **api:** lower postgres dns hedge delay and attribute budget misses ([#21846](https://github.com/vm0-ai/vm0/issues/21846)) ([a29eb59](https://github.com/vm0-ai/vm0/commit/a29eb5996c49bc329cf42b2f767debb9e1f8f5f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.0
+    * @vm0/connectors bumped to 1.169.0
+    * @vm0/core bumped to 8.438.0
+    * @vm0/db bumped to 1.118.0
+
 ## [1.280.2](https://github.com/vm0-ai/vm0/compare/api-v1.280.1...api-v1.280.2) (2026-07-16)
 
 

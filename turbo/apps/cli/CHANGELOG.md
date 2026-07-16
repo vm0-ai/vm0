@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.241.6](https://github.com/vm0-ai/vm0/compare/cli-v9.241.5...cli-v9.241.6) (2026-07-16)
+
+
+### Bug Fixes
+
+* **cli:** enforce source-first image template generation ([#21472](https://github.com/vm0-ai/vm0/issues/21472)) ([e686661](https://github.com/vm0-ai/vm0/commit/e686661b6fe100cbf821810daf9b1d00a587fc78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.199.0
+    * @vm0/connectors bumped to 1.169.0
+    * @vm0/core bumped to 8.438.0
+
 ## [9.241.5](https://github.com/vm0-ai/vm0/compare/cli-v9.241.4...cli-v9.241.5) (2026-07-16)
 
 

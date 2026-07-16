@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.37.127](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.126...sandbox-fc-v0.37.127) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** prevent stale conntrack dns failures ([#21817](https://github.com/vm0-ai/vm0/issues/21817)) ([b6d0691](https://github.com/vm0-ai/vm0/commit/b6d0691437caf15deb5c9ac9ca1bcf1d8cc859e3))
+* **runner:** reject spoofed sandbox source addresses ([#21838](https://github.com/vm0-ai/vm0/issues/21838)) ([f0888bf](https://github.com/vm0-ai/vm0/commit/f0888bfddb119701096de1eb6e0e8fc7ee79f174))
+
 ## [0.37.126](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.125...sandbox-fc-v0.37.126) (2026-07-16)
 
 ## [0.37.125](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.124...sandbox-fc-v0.37.125) (2026-07-16)

@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.146.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.6...runner-rs-v0.146.0) (2026-07-16)
+
+
+### Features
+
+* bill model usage from signed proxy price schedules ([#21696](https://github.com/vm0-ai/vm0/issues/21696)) ([e4c9fc7](https://github.com/vm0-ai/vm0/commit/e4c9fc72ec4004b8ff6db197c6e4ee1a888e9d30))
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve x url prefixes at valid boundaries ([#21852](https://github.com/vm0-ai/vm0/issues/21852)) ([c9f4352](https://github.com/vm0-ai/vm0/commit/c9f4352db18a431bc78abe3f2bd374c75b386d33))
+* **runner:** extend cancel terminal grace for containment ([#21840](https://github.com/vm0-ai/vm0/issues/21840)) ([2f29ee1](https://github.com/vm0-ai/vm0/commit/2f29ee111a7efaba1cf30ea818be2d1723a8cc51))
+* **runner:** freeze workspace before cache promotion ([#21766](https://github.com/vm0-ai/vm0/issues/21766)) ([4828529](https://github.com/vm0-ai/vm0/commit/4828529d91370061e0da065c7082bada5b426e21))
+
+
+### Documentation
+
+* **mitm-addon:** clarify firewall api id resolution ([#21847](https://github.com/vm0-ai/vm0/issues/21847)) ([5cfec09](https://github.com/vm0-ai/vm0/commit/5cfec093d3870056337c8b9d6ab7135007ce168c))
+
+
+### Refactoring
+
+* **mitm-addon:** expose websocket test helper api ([#21842](https://github.com/vm0-ai/vm0/issues/21842)) ([59a3f1b](https://github.com/vm0-ai/vm0/commit/59a3f1b8b4f15fcd661360c19dfe42090c63144e))
+* **mitm-addon:** share sync and async loop traversal ([#21848](https://github.com/vm0-ai/vm0/issues/21848)) ([fd99c6f](https://github.com/vm0-ai/vm0/commit/fd99c6f96141b1dcccf771026553cc784fae6da7))
+
 ## [0.145.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.5...runner-rs-v0.145.6) (2026-07-16)
 
 
