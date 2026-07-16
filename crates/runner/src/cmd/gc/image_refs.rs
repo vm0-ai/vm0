@@ -8,10 +8,44 @@ use crate::config;
 use crate::image_hash;
 use crate::paths::HomePaths;
 
-use super::filesystem::{next_entry_warn, read_dir_or_missing};
+use super::filesystem::{GcDirEntryReader, read_dir_or_missing};
 use super::versions::VersionGcAnalysis;
 
-pub(super) type ProtectedImageRefs = HashMap<String, HashSet<String>>;
+type ProtectedImageRefMap = HashMap<String, HashSet<String>>;
+
+pub(super) enum ProtectedImageRefs {
+    Complete(ProtectedImageRefMap),
+    Incomplete,
+}
+
+impl ProtectedImageRefs {
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) const fn is_complete(&self) -> bool {
+        matches!(self, Self::Complete(_))
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        match self {
+            Self::Complete(refs) => refs.is_empty(),
+            Self::Incomplete => false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) const fn incomplete() -> Self {
+        Self::Incomplete
+    }
+}
+
+impl Default for ProtectedImageRefs {
+    fn default() -> Self {
+        Self::Complete(HashMap::new())
+    }
+}
 
 #[derive(serde::Deserialize)]
 struct ConfigImageRefs {
@@ -29,10 +63,9 @@ fn insert_protected_image_ref(
     rootfs_hash: String,
     snapshot_hash: String,
 ) {
-    protected_image_refs
-        .entry(rootfs_hash)
-        .or_default()
-        .insert(snapshot_hash);
+    if let ProtectedImageRefs::Complete(refs) = protected_image_refs {
+        refs.entry(rootfs_hash).or_default().insert(snapshot_hash);
+    }
 }
 
 pub(super) fn is_protected_image_ref(
@@ -40,18 +73,30 @@ pub(super) fn is_protected_image_ref(
     rootfs_hash: &str,
     snapshot_hash: &str,
 ) -> bool {
-    protected_image_refs
-        .get(rootfs_hash)
-        .is_some_and(|snapshot_hashes| snapshot_hashes.contains(snapshot_hash))
+    match protected_image_refs {
+        ProtectedImageRefs::Complete(refs) => refs
+            .get(rootfs_hash)
+            .is_some_and(|snapshot_hashes| snapshot_hashes.contains(snapshot_hash)),
+        // Preserve fail-closed behavior if a future caller checks a pair
+        // without first rejecting the incomplete inventory.
+        ProtectedImageRefs::Incomplete => true,
+    }
 }
 
 pub(super) async fn protected_image_refs_for_gc(
     home: &HomePaths,
     version_analysis: &VersionGcAnalysis,
 ) -> ProtectedImageRefs {
+    if !version_analysis.directory_scan_complete() {
+        warn!("runner image refs: version directory scan incomplete, skipping image GC");
+        return ProtectedImageRefs::Incomplete;
+    }
+
     let mut refs = ProtectedImageRefs::new();
     collect_retained_version_image_refs(home, version_analysis, &mut refs).await;
-    collect_enabled_service_image_refs(&mut refs).await;
+    if !collect_enabled_service_image_refs(&mut refs).await {
+        return ProtectedImageRefs::Incomplete;
+    }
     refs
 }
 
@@ -66,13 +111,28 @@ async fn collect_retained_version_image_refs(
     }
 }
 
-async fn collect_enabled_service_image_refs(refs: &mut ProtectedImageRefs) {
-    for config_path in enabled_runner_service_config_paths(Path::new("/etc/systemd/system")).await {
+async fn collect_enabled_service_image_refs(refs: &mut ProtectedImageRefs) -> bool {
+    let scan = enabled_runner_service_config_paths(Path::new("/etc/systemd/system")).await;
+    for config_path in scan.paths {
         collect_config_image_refs(&config_path, "enabled service", refs).await;
     }
+    scan.directory_scan_complete
 }
 
-async fn enabled_runner_service_config_paths(system_dir: &Path) -> Vec<PathBuf> {
+struct EnabledRunnerServiceConfigPaths {
+    paths: Vec<PathBuf>,
+    directory_scan_complete: bool,
+}
+
+async fn enabled_runner_service_config_paths(system_dir: &Path) -> EnabledRunnerServiceConfigPaths {
+    let mut entry_reader = GcDirEntryReader::new();
+    enabled_runner_service_config_paths_with_reader(system_dir, &mut entry_reader).await
+}
+
+async fn enabled_runner_service_config_paths_with_reader(
+    system_dir: &Path,
+    entry_reader: &mut GcDirEntryReader,
+) -> EnabledRunnerServiceConfigPaths {
     let Some(mut entries) = (match read_dir_or_missing(system_dir).await {
         Ok(entries) => entries,
         Err(e) => {
@@ -80,16 +140,32 @@ async fn enabled_runner_service_config_paths(system_dir: &Path) -> Vec<PathBuf> 
                 "runner service image refs: cannot read {} ({e}), skipping service-derived refs",
                 system_dir.display()
             );
-            return Vec::new();
+            return EnabledRunnerServiceConfigPaths {
+                paths: Vec::new(),
+                directory_scan_complete: false,
+            };
         }
     }) else {
-        return Vec::new();
+        return EnabledRunnerServiceConfigPaths {
+            paths: Vec::new(),
+            directory_scan_complete: true,
+        };
     };
 
     let mut paths = Vec::new();
-    while let Some(entry) =
-        next_entry_warn(&mut entries, "runner_service_config_refs", system_dir).await
-    {
+    let mut directory_scan_complete = true;
+    loop {
+        let entry = match entry_reader
+            .next_entry_warn(&mut entries, "runner_service_config_refs", system_dir)
+            .await
+        {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(_) => {
+                directory_scan_complete = false;
+                break;
+            }
+        };
         let file_name = entry.file_name();
         let Some(file_name) = file_name.to_str() else {
             continue;
@@ -117,7 +193,10 @@ async fn enabled_runner_service_config_paths(system_dir: &Path) -> Vec<PathBuf> 
         };
         paths.push(config_path);
     }
-    paths
+    EnabledRunnerServiceConfigPaths {
+        paths,
+        directory_scan_complete,
+    }
 }
 
 fn runner_service_unit_from_file_name(file_name: &str) -> Option<service::RunnerServiceUnit> {

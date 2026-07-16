@@ -70,6 +70,12 @@ pub(crate) struct WorkspaceImagePromotionContext {
     restored_session_identity: Option<crate::restored_session_identity::RestoredSessionIdentity>,
 }
 
+pub(crate) struct WorkspaceSessionHistorySidecarEntryGuard<'a> {
+    promotion: &'a WorkspaceImagePromotionContext,
+    restored_session_identity: &'a crate::restored_session_identity::RestoredSessionIdentity,
+    _late_entry_lock: Option<Flock<std::fs::File>>,
+}
+
 pub(crate) struct WorkspaceImagePromotionIdentityFailure {
     pub(crate) promotion: WorkspaceImagePromotionContext,
     pub(crate) mismatch: WorkspaceImagePromotionIdentityMismatch,
@@ -1120,34 +1126,6 @@ impl WorkspaceImagePromotionContext {
         self.restored_session_identity.as_ref()
     }
 
-    pub(crate) fn session_history_sidecar_tmp_path(&self) -> PathBuf {
-        self.cache
-            .session_workspace_cache_tmp_sidecar(&self.cache_key, self.run_id)
-    }
-
-    pub(crate) fn session_history_sidecar_source(
-        &self,
-        tmp_path: PathBuf,
-        representation: super::types::WorkspaceSessionHistorySidecarRepresentation,
-        encoded_size: u64,
-    ) -> Option<WorkspaceSessionHistorySidecarPromotionSource> {
-        Some(WorkspaceSessionHistorySidecarPromotionSource {
-            tmp_path,
-            representation,
-            encoded_size,
-            restored_session_identity: self.restored_session_identity.clone()?,
-        })
-    }
-
-    pub(crate) async fn discard_session_history_sidecar_source(
-        &self,
-        source: &WorkspaceSessionHistorySidecarPromotionSource,
-    ) {
-        self.cache
-            .discard_session_history_sidecar_source(source)
-            .await;
-    }
-
     pub(crate) fn validate_identity(
         &self,
         expected: &WorkspaceImagePromotionIdentity,
@@ -1194,12 +1172,39 @@ impl WorkspaceImagePromotionContext {
 
     #[cfg(test)]
     pub(crate) async fn promote(&self) -> RunnerResult<WorkspaceImagePromotionOutcome> {
-        self.promote_with_session_history_sidecar(None).await
+        self.promote_without_session_history_sidecar().await
     }
 
-    pub(crate) async fn promote_with_session_history_sidecar(
+    pub(crate) async fn try_acquire_session_history_sidecar_entry_guard(
         &self,
-        session_history_sidecar: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
+    ) -> Option<WorkspaceSessionHistorySidecarEntryGuard<'_>> {
+        let restored_session_identity = self.restored_session_identity.as_ref()?;
+        let late_entry_lock = match self.entry_lock.as_ref() {
+            Some(_) => None,
+            None => {
+                match crate::lock::try_acquire(self.cache.entry_lock_path(&self.cache_key)).await {
+                    Ok(lock) => Some(lock),
+                    Err(e) => {
+                        info!(
+                            run_id = %self.run_id,
+                            cache_key = self.cache_key,
+                            error = %e,
+                            "workspace image cache sidecar staging skipped: late entry lock unavailable"
+                        );
+                        return None;
+                    }
+                }
+            }
+        };
+        Some(WorkspaceSessionHistorySidecarEntryGuard {
+            promotion: self,
+            restored_session_identity,
+            _late_entry_lock: late_entry_lock,
+        })
+    }
+
+    pub(crate) async fn promote_without_session_history_sidecar(
+        &self,
     ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
         let _late_entry_lock_guard = match self.entry_lock.as_ref() {
             Some(_) => None,
@@ -1219,6 +1224,13 @@ impl WorkspaceImagePromotionContext {
             }
         };
 
+        self.promote_locked(None).await
+    }
+
+    async fn promote_locked(
+        &self,
+        session_history_sidecar: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
+    ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
         self.cache
             .promote_locked(WorkspaceImagePromotionInput {
                 run_id: self.run_id,
@@ -1371,6 +1383,45 @@ impl WorkspaceImagePromotionContext {
                 result: WorkspaceCacheCheckoutResult::Miss,
             },
         )
+    }
+}
+
+impl WorkspaceSessionHistorySidecarEntryGuard<'_> {
+    pub(crate) fn session_history_sidecar_tmp_path(&self) -> PathBuf {
+        self.promotion
+            .cache
+            .session_workspace_cache_tmp_sidecar(&self.promotion.cache_key, self.promotion.run_id)
+    }
+
+    pub(crate) fn session_history_sidecar_source(
+        &self,
+        tmp_path: PathBuf,
+        representation: super::types::WorkspaceSessionHistorySidecarRepresentation,
+        encoded_size: u64,
+    ) -> WorkspaceSessionHistorySidecarPromotionSource {
+        WorkspaceSessionHistorySidecarPromotionSource {
+            tmp_path,
+            representation,
+            encoded_size,
+            restored_session_identity: self.restored_session_identity.clone(),
+        }
+    }
+
+    pub(crate) async fn discard_session_history_sidecar_source(
+        &self,
+        source: &WorkspaceSessionHistorySidecarPromotionSource,
+    ) {
+        self.promotion
+            .cache
+            .discard_session_history_sidecar_source(source)
+            .await;
+    }
+
+    pub(crate) async fn promote_with_session_history_sidecar(
+        &self,
+        source: &WorkspaceSessionHistorySidecarPromotionSource,
+    ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
+        self.promotion.promote_locked(Some(source)).await
     }
 }
 

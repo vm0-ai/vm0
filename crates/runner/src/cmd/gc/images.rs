@@ -9,8 +9,8 @@ use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
 use super::filesystem::{
-    GcDirStatus, dir_stats, gc_entry_is_real_dir, gc_path_dir_status, next_entry_warn,
-    read_dir_or_missing,
+    GcDirEntryReader, GcDirStatus, dir_stats, gc_entry_is_real_dir, gc_path_dir_status,
+    next_entry_warn_or_stop, read_dir_or_missing,
 };
 use super::image_refs::{ProtectedImageRefs, is_protected_image_ref};
 use super::lock_file::{LockProbe, probe_lock};
@@ -211,6 +211,29 @@ pub(super) async fn gc_nested_images_with_protected_refs(
     dry_run: bool,
     protected_image_refs: &ProtectedImageRefs,
 ) -> RunnerResult<GcReport> {
+    let mut snapshot_entry_reader = GcDirEntryReader::new();
+    gc_nested_images_with_protected_refs_and_reader(
+        home,
+        keep_latest,
+        dry_run,
+        protected_image_refs,
+        &mut snapshot_entry_reader,
+    )
+    .await
+}
+
+async fn gc_nested_images_with_protected_refs_and_reader(
+    home: &HomePaths,
+    keep_latest: Option<usize>,
+    dry_run: bool,
+    protected_image_refs: &ProtectedImageRefs,
+    snapshot_entry_reader: &mut GcDirEntryReader,
+) -> RunnerResult<GcReport> {
+    if !protected_image_refs.is_complete() {
+        warn!("image protection inventory incomplete, skipping image GC");
+        return Ok(GcReport::default());
+    }
+
     let images_dir = home.images_dir();
     let Some(mut rootfs_entries) = read_dir_or_missing(&images_dir).await? else {
         return Ok(GcReport::default());
@@ -221,7 +244,8 @@ pub(super) async fn gc_nested_images_with_protected_refs(
     let mut candidates: Vec<GcCandidate> = Vec::new();
 
     // Phase 1: walk all rootfs, collect candidates across the entire images tree.
-    while let Some(rootfs_entry) = next_entry_warn(&mut rootfs_entries, "images", &images_dir).await
+    while let Some(rootfs_entry) =
+        next_entry_warn_or_stop(&mut rootfs_entries, "images", &images_dir).await
     {
         let rootfs_path = rootfs_entry.path();
         let Some(rootfs_hash) = rootfs_path
@@ -305,9 +329,20 @@ pub(super) async fn gc_nested_images_with_protected_refs(
             any_snapshot_survives: false,
         });
 
-        while let Some(snap_entry) =
-            next_entry_warn(&mut snapshot_entries, "snapshots", &snapshots_dir).await
-        {
+        let candidate_checkpoint = candidates.len();
+        loop {
+            let snap_entry = match snapshot_entry_reader
+                .next_entry_warn(&mut snapshot_entries, "snapshots", &snapshots_dir)
+                .await
+            {
+                Ok(Some(entry)) => entry,
+                Ok(None) => break,
+                Err(_) => {
+                    candidates.truncate(candidate_checkpoint);
+                    mark_rootfs_survives(&mut rootfs_states, rootfs_idx);
+                    break;
+                }
+            };
             let snap_path = snap_entry.path();
             let Some(snap_hash) = snap_path
                 .file_name()
@@ -456,6 +491,25 @@ pub(super) async fn gc_nested_images_with_protected_refs(
     }
 
     Ok(report)
+}
+
+#[cfg(test)]
+async fn gc_nested_images_with_injected_snapshot_scan_error(
+    home: &HomePaths,
+    keep_latest: Option<usize>,
+    dry_run: bool,
+    protected_image_refs: &ProtectedImageRefs,
+    successful_entries: usize,
+) -> RunnerResult<GcReport> {
+    let mut snapshot_entry_reader = GcDirEntryReader::failing_after(successful_entries);
+    gc_nested_images_with_protected_refs_and_reader(
+        home,
+        keep_latest,
+        dry_run,
+        protected_image_refs,
+        &mut snapshot_entry_reader,
+    )
+    .await
 }
 
 #[cfg(test)]

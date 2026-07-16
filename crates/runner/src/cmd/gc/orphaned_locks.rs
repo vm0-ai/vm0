@@ -1,7 +1,7 @@
 use crate::error::RunnerResult;
 use crate::paths::HomePaths;
 
-use super::filesystem::{next_entry_warn, read_dir_or_missing};
+use super::filesystem::{next_entry_warn_or_stop, read_dir_or_missing};
 use super::lock_file::{LockProbe, probe_lock, remove_unused_lock_after_probe};
 use super::report::GcReport;
 use super::workspaces::is_base_dir_lock_name;
@@ -22,7 +22,9 @@ pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> Runner
 
     let mut removed = 0u64;
 
-    while let Some(entry) = next_entry_warn(&mut entries, "gc_orphaned_locks", &locks_dir).await {
+    while let Some(entry) =
+        next_entry_warn_or_stop(&mut entries, "gc_orphaned_locks", &locks_dir).await
+    {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !name.ends_with(".lock") {
