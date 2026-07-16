@@ -4,6 +4,7 @@ import { HttpResponse, http } from "msw";
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   zeroWorkflowsCollectionContract,
@@ -44,6 +45,15 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  deleteVm0ManagedDefaultModelKey,
+  seedVm0ManagedDefaultModelKey,
+} from "./helpers/runtime-state";
+import {
+  generatedStripeCustomerId,
+  generatedStripeSubscriptionId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -1533,6 +1543,148 @@ describe("CHAT-03 run usage messages", () => {
     await billing.processUsageEvents();
     usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages).toHaveLength(initialUsageMessageCount + 2);
+  }, 60_000);
+
+  it("appends allowance-covered usage revisions without mutating prior messages", async () => {
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const seededModel = await seedVm0ManagedDefaultModelKey(context);
+    const selectedModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    expect(seededModel).toBe(selectedModel);
+    onTestFinished(async () => {
+      await deleteVm0ManagedDefaultModelKey(context);
+    });
+
+    // Keep runner infrastructure disabled so the chat run reaches a terminal
+    // state during creation and usage messages can be emitted by settlement.
+    const actor = bdd.user();
+    chatCallbacks.acceptChatObjectStorage();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    chatCallbacks.disableVapid();
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Allowance usage message agent",
+      visibility: "private",
+    });
+    const agentId = agent.agentId;
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected allowance chat actor to have an org");
+    }
+    await seedOrgMetadata({ orgId, tier: "pro", credits: 10 });
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId,
+      userId: actor.userId,
+      customerId: generatedStripeCustomerId(),
+      subscriptionId: generatedStripeSubscriptionId(),
+      effectiveAt: new Date(now()),
+      expiresAt: new Date(now() + 365 * 24 * 60 * 60 * 1000),
+      shortWindowSeconds: 5 * 60 * 60,
+      shortWindowUnits: 100,
+      weeklyWindowSeconds: 7 * 24 * 60 * 60,
+      weeklyWindowUnits: 100,
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const provider = `allowance-chat-${randomUUID().slice(0, 8)}`;
+    const category = "api_request";
+    await seedUsagePricingRows([
+      { kind: "connector", provider, category, unitPrice: 1, unitSize: 1 },
+    ]);
+    const { runId, threadId } = await sendChatRun(actor, {
+      agentId,
+      prompt: "record allowance-covered usage",
+      model: selectedModel,
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${api.sandboxTokenForRun(actor, runId)}`,
+    };
+    const settlementTime = new Date(now());
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider,
+            category,
+            quantity: 40,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    mockNow(settlementTime);
+    await createBillingMediaApi(context).processUsageEvents();
+
+    let usageMessages = await usageMessagesForRun(actor, threadId, runId);
+    expect(usageMessages).toHaveLength(1);
+    const initialUsageMessage = usageMessages[0];
+    if (!initialUsageMessage?.usage) {
+      throw new Error("Expected initial allowance usage message");
+    }
+    expect(initialUsageMessage.usage.totalCredits).toBe(40);
+
+    clearMockNow();
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider,
+            category,
+            quantity: 30,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    mockNow(settlementTime);
+    await createBillingMediaApi(context).processUsageEvents();
+
+    usageMessages = await usageMessagesForRun(actor, threadId, runId);
+    expect(usageMessages).toHaveLength(2);
+    expect(
+      usageMessages.find((message) => {
+        return message.id === initialUsageMessage.id;
+      })?.usage?.totalCredits,
+    ).toBe(40);
+    expect(
+      usageMessages.find((message) => {
+        return message.id !== initialUsageMessage.id;
+      })?.usage,
+    ).toMatchObject({
+      totalCredits: 70,
+      settledAt: initialUsageMessage.usage.settledAt,
+    });
+    const billingStatus = await api.readBillingStatus(actor);
+    if (!billingStatus.usageAllowance) {
+      throw new Error("Expected allowance windows for chat usage");
+    }
+    expect(
+      Object.fromEntries(
+        billingStatus.usageAllowance.windows.map((window) => {
+          return [window.kind, window.consumedUnits];
+        }),
+      ),
+    ).toStrictEqual({ short: 70, weekly: 70 });
   }, 60_000);
 
   it("emits zero-credit usage messages and skips runs without usage", async () => {

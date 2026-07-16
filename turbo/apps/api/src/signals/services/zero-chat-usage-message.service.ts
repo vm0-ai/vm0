@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -121,13 +121,6 @@ function usageMessageMatchesPayload(
   );
 }
 
-function isSameUsageSettledAt(
-  message: { readonly createdAt: Date },
-  payload: ChatMessageUsagePayload,
-): boolean {
-  return message.createdAt.getTime() === new Date(payload.settledAt).getTime();
-}
-
 function usageCreditsExpression() {
   return sql`COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)`;
 }
@@ -224,7 +217,6 @@ export const maybeEmitRunUsageMessage$ = command(
 
       const existingUsageMessages = await tx
         .select({
-          id: chatMessages.id,
           createdAt: chatMessages.createdAt,
           usagePayload: chatMessages.usagePayload,
         })
@@ -244,24 +236,20 @@ export const maybeEmitRunUsageMessage$ = command(
         return null;
       }
 
-      const staleSameSettledAtMessage = existingUsageMessages.find(
-        (message) => {
-          return isSameUsageSettledAt(message, payload);
-        },
-      );
-      if (staleSameSettledAtMessage) {
-        await tx
-          .update(chatMessages)
-          .set({ usagePayload: payload })
-          .where(eq(chatMessages.id, staleSameSettledAtMessage.id));
-        signal.throwIfAborted();
+      const [latestThreadMessage] = await tx
+        .select({ createdAt: chatMessages.createdAt })
+        .from(chatMessages)
+        .where(eq(chatMessages.chatThreadId, context.chatThreadId))
+        .orderBy(desc(chatMessages.createdAt))
+        .limit(1);
+      signal.throwIfAborted();
 
-        return {
-          chatThreadId: context.chatThreadId,
-          userId: context.userId,
-          totalCredits: payload.totalCredits,
-        };
-      }
+      // Keep appended revisions after the current thread cursor even when the
+      // business settlement timestamp has not advanced.
+      const createdAtMs = Math.max(
+        new Date(payload.settledAt).getTime(),
+        (latestThreadMessage?.createdAt.getTime() ?? 0) + 1,
+      );
 
       const [inserted] = await tx
         .insert(chatMessages)
@@ -272,7 +260,7 @@ export const maybeEmitRunUsageMessage$ = command(
           runId,
           runGroupId: context.runGroupId,
           usagePayload: payload,
-          createdAt: new Date(payload.settledAt),
+          createdAt: new Date(createdAtMs),
         })
         .returning({ id: chatMessages.id });
       signal.throwIfAborted();
