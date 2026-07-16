@@ -25,9 +25,12 @@ export async function refreshClerkSessionToken(
       { timeout: 30_000 },
     );
   }
-  await page.evaluate(async () => {
-    await window.Clerk?.session?.getToken({ skipCache: true });
+  const tokenRefreshed = await page.evaluate(async () => {
+    return Boolean(await window.Clerk?.session?.getToken({ skipCache: true }));
   });
+  if (!tokenRefreshed) {
+    throw new Error("Clerk session token unavailable after refresh");
+  }
 }
 
 export async function signInThroughHostedAuth(
