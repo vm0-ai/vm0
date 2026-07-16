@@ -739,7 +739,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
             exit_aliases.update(orelse_aliases)
         self._replace_current_aliases(exit_aliases)
 
-    def visit_For(self, node: ast.For) -> None:
+    def _visit_for_statement(self, node: ast.For | ast.AsyncFor) -> None:
         self._record_metadata_merge_key_violations(node.iter)
         self.visit(node.iter)
         base_aliases = set(self._metadata_aliases)
@@ -755,21 +755,11 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         )
         self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
 
+    def visit_For(self, node: ast.For) -> None:
+        self._visit_for_statement(node)
+
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
-        self._record_metadata_merge_key_violations(node.iter)
-        self.visit(node.iter)
-        base_aliases = set(self._metadata_aliases)
-        self._discard_alias_target(node.target)
-        body_aliases, _body_falls_through = self._visit_branch_body(
-            node.body, set(self._metadata_aliases)
-        )
-        loop_exit_aliases = base_aliases | body_aliases
-        orelse_aliases = (
-            self._visit_branch_body(node.orelse, loop_exit_aliases)[0]
-            if node.orelse
-            else loop_exit_aliases
-        )
-        self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
+        self._visit_for_statement(node)
 
     def visit_While(self, node: ast.While) -> None:
         self._record_metadata_merge_key_violations(node.test)
