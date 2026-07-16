@@ -1,6 +1,7 @@
 import { CONNECTOR_TYPE_KEYS, type ConnectorType } from "./connectors";
 
 const STATIC_CONNECTOR_ICON_BASE_URL = "https://static.vm0.io/platform/";
+const STATIC_CONNECTOR_ICON_PUBLIC_PATH_PREFIX = "platform/";
 const STATIC_CONNECTOR_ICON_PATH_PATTERN =
   /^views\/zero-page\/components\/settings\/icons\/[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{12}\.(?:png|svg)$/u;
 const SLACK_ICON_PATH =
@@ -736,11 +737,33 @@ export function isConnectorIconAssetKey(
   return Object.prototype.hasOwnProperty.call(STATIC_CONNECTOR_ICON_PATHS, key);
 }
 
+export function staticConnectorIconPublicPathUrl(publicPath: string): string {
+  if (!publicPath.startsWith(STATIC_CONNECTOR_ICON_PUBLIC_PATH_PREFIX)) {
+    throw new Error(
+      `Invalid static connector icon public path "${publicPath}"`,
+    );
+  }
+  const assetPath = publicPath.slice(
+    STATIC_CONNECTOR_ICON_PUBLIC_PATH_PREFIX.length,
+  );
+  if (!STATIC_CONNECTOR_ICON_PATH_PATTERN.test(assetPath)) {
+    throw new Error(
+      `Invalid static connector icon public path "${publicPath}"`,
+    );
+  }
+  return `${STATIC_CONNECTOR_ICON_BASE_URL}${assetPath}`;
+}
+
 export function connectorIconAssetUrl(key: ConnectorIconAssetKey): string {
   const path = parseStaticConnectorIconAssetPath(
     STATIC_CONNECTOR_ICON_PATHS[key],
   );
-  return `${STATIC_CONNECTOR_ICON_BASE_URL}${path}`;
+  const queryIndex = path.indexOf("?");
+  const assetPath = queryIndex === -1 ? path : path.slice(0, queryIndex);
+  const url = staticConnectorIconPublicPathUrl(
+    `${STATIC_CONNECTOR_ICON_PUBLIC_PATH_PREFIX}${assetPath}`,
+  );
+  return queryIndex === -1 ? url : `${url}${path.slice(queryIndex)}`;
 }
 
 export function isStaticConnectorIconType(type: string): type is ConnectorType {

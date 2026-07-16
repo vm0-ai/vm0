@@ -1624,8 +1624,14 @@ async function updateRunCallbackForAction(
   signal: AbortSignal,
 ) {
   const runId = readActionString(body, "run_id");
-  if (!runId) {
-    return actionBadRequest("run_id is required");
+  const callbackId = readActionString(body, "callback_id");
+  const callbackCondition = callbackId
+    ? eq(agentRunCallbacks.id, callbackId)
+    : runId
+      ? eq(agentRunCallbacks.runId, runId)
+      : null;
+  if (!callbackCondition) {
+    return actionBadRequest("run_id or callback_id is required");
   }
   const encryptedSecret = await encryptPersistentSecretValue(
     readActionOptionalString(body, "secret") ?? "test-callback-secret",
@@ -1640,7 +1646,7 @@ async function updateRunCallbackForAction(
       payload: readActionRecord(body, "payload"),
       encryptedSecret,
     })
-    .where(eq(agentRunCallbacks.runId, runId))
+    .where(callbackCondition)
     .returning({ callbackId: agentRunCallbacks.id });
   signal.throwIfAborted();
   return actionOk({ callback_id: callback?.callbackId ?? null });

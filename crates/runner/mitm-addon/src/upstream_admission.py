@@ -24,6 +24,11 @@ TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
+_PLATFORM_FIREWALL_PATH_PREFIXES: Final = (
+    "/api/test/",
+    "/api/internal/vm0-model/v1/",
+)
+_VM0_MODEL_PROXY_PATH_PREFIX: Final = "/api/internal/vm0-model/v1/"
 _UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS: Final = 60.0
 _TRUSTED_HOST_ADDRESS_NEGATIVE_CACHE_TTL_SECONDS: Final = 5.0
@@ -236,7 +241,13 @@ def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
     return flow.request.headers.get(_TEST_ENDPOINT_BYPASS_HEADER) == expected_bypass
 
 
+def request_path_uses_platform_firewall(path: str) -> bool:
+    return path.startswith(_PLATFORM_FIREWALL_PATH_PREFIXES)
+
+
 def _request_allows_platform_connector_auth(flow: http.HTTPFlow) -> bool:
+    if flow.request.path.startswith(_VM0_MODEL_PROXY_PATH_PREFIX):
+        return True
     # Synthetic test providers live on the platform API preview host but
     # intentionally exercise connector auth injection instead of API auto-allow.
     # Keep this path limited to test endpoints gated by the same internal

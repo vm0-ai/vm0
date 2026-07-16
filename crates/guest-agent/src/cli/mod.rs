@@ -192,13 +192,23 @@ pub struct CliFailureDiagnostic {
 /// the event-drain watermark consumed by host/API clients.
 #[derive(Debug)]
 pub struct CliExecutionResult {
-    /// Process exit code for the CLI.
+    /// Terminal outcome code for the configured CLI backend.
     ///
-    /// On Unix, signal termination is mapped to `128 + signal`, matching shell
+    /// For ordinary CLI execution, this is the CLI process exit code. On Unix,
+    /// signal termination is mapped to `128 + signal`, matching shell
     /// convention, so SIGKILL is reported as `137`.
+    ///
+    /// For Codex app-server execution, completed turns map to `0`, while failed
+    /// or interrupted turns and terminal non-retry errors map to `1`. These are
+    /// protocol-level outcomes, not the child process wait status.
     pub exit_code: i32,
 
-    /// Raw CLI process exit observation before signal exits are flattened.
+    /// Raw CLI process exit observation before signal exits are flattened, when
+    /// available.
+    ///
+    /// `None` means raw process-exit attribution is unavailable. Codex
+    /// app-server execution leaves this unset because its outcome is derived
+    /// from terminal protocol events, not the child process wait status.
     pub cli_observed_exit: Option<CliObservedExitDiagnostic>,
 
     /// Best-effort, secret-masked stderr tail captured from the CLI.

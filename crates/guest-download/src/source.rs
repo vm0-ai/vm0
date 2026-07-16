@@ -6,7 +6,7 @@ use std::io;
 use std::io::Read;
 use std::rc::Rc;
 use std::sync::LazyLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 const LOOKUP_ERROR_PREFIX: &str = "failed to lookup address information:";
@@ -30,7 +30,10 @@ static HTTP_AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
 /// Open the archive byte stream. HTTP/HTTPS URLs use the direct remote-fetch
 /// path; `file://` URLs are the runner storage-cache path for guest-local
 /// tarballs staged over vsock.
-pub(crate) fn open_archive(url: &str) -> Result<ArchiveSource, DownloadError> {
+pub(crate) fn open_archive(
+    url: &str,
+    metrics: Option<&RemoteArchiveAttemptMetrics>,
+) -> Result<ArchiveSource, DownloadError> {
     if let Some(path) = url.strip_prefix("file://") {
         log_info!(LOG_TAG, "Reading local archive");
         let file = std::fs::File::open(path)
@@ -38,11 +41,18 @@ pub(crate) fn open_archive(url: &str) -> Result<ArchiveSource, DownloadError> {
         return Ok(ArchiveSource::local(file));
     }
 
-    let response = HTTP_AGENT.get(url).call().map_err(|e| {
+    let metrics = metrics.cloned().unwrap_or_default();
+    let request_start = Instant::now();
+    let response = HTTP_AGENT.get(url).call();
+    metrics.record_request_to_response_headers(request_start.elapsed());
+    let response = response.map_err(|e| {
         let (retriable, message) = classify_http_error(&e);
         DownloadError::transport(message, retriable)
     })?;
-    Ok(ArchiveSource::http(response.into_body().into_reader()))
+    Ok(ArchiveSource::http(
+        response.into_body().into_reader(),
+        metrics,
+    ))
 }
 
 fn classify_http_error(error: &ureq::Error) -> (bool, String) {
@@ -123,12 +133,13 @@ impl ArchiveSource {
         }
     }
 
-    fn http(reader: impl Read + 'static) -> Self {
+    fn http(reader: impl Read + 'static, metrics: RemoteArchiveAttemptMetrics) -> Self {
         let http_body_read_failure = HttpBodyReadFailure::enabled();
         Self {
             reader: Box::new(HttpBodyReader {
                 reader,
                 failure: http_body_read_failure.clone(),
+                metrics,
             }),
             http_body_read_failure,
         }
@@ -136,6 +147,57 @@ impl ArchiveSource {
 
     pub(crate) fn into_parts(self) -> (Box<dyn Read>, HttpBodyReadFailure) {
         (self.reader, self.http_body_read_failure)
+    }
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct RemoteArchiveAttemptMetrics {
+    state: Rc<RemoteArchiveAttemptMetricsState>,
+}
+
+#[derive(Default)]
+struct RemoteArchiveAttemptMetricsState {
+    request_to_response_headers: Cell<Duration>,
+    body_read: Cell<Duration>,
+    compressed_bytes_consumed: Cell<u64>,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct RemoteArchiveAttemptSnapshot {
+    pub(crate) request_to_response_headers: Duration,
+    pub(crate) body_read: Duration,
+    pub(crate) compressed_bytes_consumed: u64,
+}
+
+impl RemoteArchiveAttemptMetrics {
+    fn record_request_to_response_headers(&self, duration: Duration) {
+        self.state.request_to_response_headers.set(
+            self.state
+                .request_to_response_headers
+                .get()
+                .saturating_add(duration),
+        );
+    }
+
+    fn record_body_read(&self, duration: Duration, bytes_read: usize) {
+        let bytes_read = u64::try_from(bytes_read).unwrap_or(u64::MAX);
+        self.state
+            .body_read
+            .set(self.state.body_read.get().saturating_add(duration));
+        self.state.compressed_bytes_consumed.set(
+            self.state
+                .compressed_bytes_consumed
+                .get()
+                .saturating_add(bytes_read),
+        );
+    }
+
+    pub(crate) fn snapshot(&self) -> RemoteArchiveAttemptSnapshot {
+        RemoteArchiveAttemptSnapshot {
+            request_to_response_headers: self.state.request_to_response_headers.get(),
+            body_read: self.state.body_read.get(),
+            compressed_bytes_consumed: self.state.compressed_bytes_consumed.get(),
+        }
     }
 }
 
@@ -169,13 +231,21 @@ impl HttpBodyReadFailure {
 struct HttpBodyReader<R> {
     reader: R,
     failure: HttpBodyReadFailure,
+    metrics: RemoteArchiveAttemptMetrics,
 }
 
 impl<R: Read> Read for HttpBodyReader<R> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        match self.reader.read(buffer) {
-            Ok(bytes_read) => Ok(bytes_read),
+        let start = Instant::now();
+        let result = self.reader.read(buffer);
+        let duration = start.elapsed();
+        match result {
+            Ok(bytes_read) => {
+                self.metrics.record_body_read(duration, bytes_read);
+                Ok(bytes_read)
+            }
             Err(e) => {
+                self.metrics.record_body_read(duration, 0);
                 self.failure.mark_failed();
                 Err(e)
             }

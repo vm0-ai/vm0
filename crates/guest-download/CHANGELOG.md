@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.64...guest-download-v0.21.0) (2026-07-16)
+
+
+### Features
+
+* **guest-download:** attribute remote archive download phases ([#21784](https://github.com/vm0-ai/vm0/issues/21784)) ([c35dfed](https://github.com/vm0-ai/vm0/commit/c35dfed8d00387050635a90db20a1079e6c89616))
+
 ## [0.20.64](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.63...guest-download-v0.20.64) (2026-07-16)
 
 

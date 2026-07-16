@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.1...guest-agent-v0.53.2) (2026-07-16)
+
+
+### Documentation
+
+* **guest-agent:** clarify backend exit code semantics ([#21799](https://github.com/vm0-ai/vm0/issues/21799)) ([2592598](https://github.com/vm0-ai/vm0/commit/25925984aa59135335a3e187c19e560fe8821ce7))
+
 ## [0.53.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.0...guest-agent-v0.53.1) (2026-07-16)
 
 

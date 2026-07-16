@@ -14,13 +14,13 @@ import {
   IconExternalLink,
   IconHistory,
   IconMessagePlus,
-  IconPackage,
   IconPhoto,
   IconPresentationAnalytics,
   IconSearch,
   IconVideo,
   IconWorld,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { r2ImageTransformUrl } from "@vm0/core";
 import {
   useGet,
@@ -84,10 +84,7 @@ import {
   classifyChatAttachment,
   type BodyPreviewKind,
 } from "../../signals/chat-page/parse-body-blocks.ts";
-import {
-  featureSwitch$,
-  LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY,
-} from "../../signals/external/feature-switch.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   lightboxUrl$,
@@ -107,6 +104,7 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "../zero-page/zero-attachment-url.ts";
+import { emptyArtifactImg } from "../zero-page/platform-assets.ts";
 
 type ArtifactPreviewKind = "image" | "html" | "pdf" | "video" | "file";
 type ArtifactTypeIconKind = "presentation" | "html" | "image" | "video";
@@ -943,19 +941,21 @@ function ArtifactsErrorState() {
   );
 }
 
-function ArtifactsEmptyState({ filtered }: { readonly filtered: boolean }) {
+function ArtifactsEmptyState() {
   return (
     <div className="rounded-lg border border-dashed border-border bg-card px-6 py-12 text-center">
-      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground">
-        <IconPackage size={20} stroke={1.5} aria-hidden />
-      </div>
+      <img
+        src={emptyArtifactImg}
+        alt=""
+        role="presentation"
+        loading="lazy"
+        className="mx-auto h-24 w-24 object-contain opacity-80"
+      />
       <h2 className="mt-4 text-sm font-medium text-foreground">
-        {filtered ? "No artifacts match this search" : "No artifacts yet"}
+        No artifacts found
       </h2>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        {filtered
-          ? "Adjust the search or agent filter to find artifacts."
-          : "Files will appear here after agents create them."}
+        Artifacts will appear here when they are available.
       </p>
     </div>
   );
@@ -1051,7 +1051,6 @@ function createArtifactsKeyboardNavigation({
 
 function ArtifactsList({
   artifacts,
-  hasFilters,
   loading,
   error,
   visibleCount,
@@ -1063,7 +1062,6 @@ function ArtifactsList({
   showFavoriteAction,
 }: {
   readonly artifacts: readonly ArtifactItem[];
-  readonly hasFilters: boolean;
   readonly loading: boolean;
   readonly error: boolean;
   readonly visibleCount: number;
@@ -1133,7 +1131,7 @@ function ArtifactsList({
     return <ArtifactsErrorState />;
   }
   if (artifacts.length === 0) {
-    return <ArtifactsEmptyState filtered={hasFilters} />;
+    return <ArtifactsEmptyState />;
   }
 
   return (
@@ -1201,7 +1199,7 @@ export function ArtifactsPage() {
   const agents = useLastResolved(agents$) ?? [];
   const features = useLastResolved(featureSwitch$);
   const artifactFavoritesEnabled =
-    features?.[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY] !== false;
+    features?.[FeatureSwitchKey.ArtifactFavorites] ?? false;
   const remoteData =
     remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
   const cachedData =
@@ -1227,11 +1225,6 @@ export function ArtifactsPage() {
     nothingCached &&
     (remoteLoadable.state === "loading" || cachedLoadable.state === "loading");
   const error = nothingCached && remoteLoadable.state === "hasError";
-  const hasFilters =
-    search.trim().length > 0 ||
-    selectedAgentId !== null ||
-    selectedCategory !== null ||
-    (artifactFavoritesEnabled && favoritesOnly);
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     const viewport = event.currentTarget;
     syncScrollMetrics(viewport);
@@ -1281,7 +1274,6 @@ export function ArtifactsPage() {
           />
           <ArtifactsList
             artifacts={artifacts}
-            hasFilters={hasFilters}
             loading={loading}
             error={error}
             visibleCount={visibleCount}

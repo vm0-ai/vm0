@@ -326,6 +326,34 @@ describe("organization model providers settings", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("lets limited-free-1 workspaces add VM0 Model without upgrading", async () => {
+    mockAdminOrg();
+    mockBillingTier("limited-free-1");
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
+        true,
+      ),
+    ]);
+    await openProvidersTab({ vm0ModelEnabled: true });
+
+    click(buttonByText("Add model"));
+    await selectDialogModel("VM0 Model");
+
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    expect(buttonByText("Add model", dialog)).toBeInTheDocument();
+    expect(within(dialog).queryByText("Upgrade to Pro")).toBeNull();
+    click(buttonByText("Add model", dialog));
+
+    const vm0ModelRow = await screen.findByTestId(
+      "org-model-policy-row-vm0-model",
+    );
+    expect(within(vm0ModelRow).getByText("VM0 Model")).toBeInTheDocument();
+  });
+
   it("opens a workspace API key model route form", async () => {
     await openAddApiKeyModelDialog();
 
