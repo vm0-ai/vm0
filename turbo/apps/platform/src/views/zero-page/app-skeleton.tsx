@@ -1,27 +1,10 @@
-import { useGet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {
+  appSkeletonVisibleEventRef$,
   skeletonMessages$,
   skeletonAvatarConfig$,
 } from "../../signals/app-skeleton.ts";
-
-const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
-const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
-  "vm0AppSkeletonVisibleEventQueued";
-
-function queueSkeletonVisibleEvent(): void {
-  if (
-    document.documentElement.dataset[APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY] ===
-    "true"
-  ) {
-    return;
-  }
-  document.documentElement.dataset[APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY] =
-    "true";
-  queueMicrotask(() => {
-    window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
-  });
-}
 
 /** Static CSS — does not depend on message content. */
 const skeletonCSS = `
@@ -55,14 +38,12 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
   const skeletonConfig = useGet(skeletonAvatarConfig$);
   const { staticMsg, typewriterMsg, isFirst, cycle } =
     useGet(skeletonMessages$);
+  const visibleEventRef = useSet(appSkeletonVisibleEventRef$);
   const charCount = typewriterMsg.length;
-
-  if (visible) {
-    queueSkeletonVisibleEvent();
-  }
 
   return (
     <div
+      ref={visible ? visibleEventRef : undefined}
       data-testid="app-skeleton"
       aria-hidden={visible ? undefined : true}
       className={`fixed inset-0 z-50 flex items-center justify-center bg-background ${

@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { resetSignal, setLoop } from "./utils.ts";
+import { onRef, resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
 import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 
@@ -8,6 +8,27 @@ import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 // ---------------------------------------------------------------------------
 
 const internalVisible$ = state(true);
+
+const APP_SKELETON_VISIBLE_EVENT = "vm0:app-skeleton-visible";
+const APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY =
+  "vm0AppSkeletonVisibleEventQueued";
+
+export const appSkeletonVisibleEventRef$ = onRef(
+  command((_visitor, _element: HTMLDivElement, _signal: AbortSignal) => {
+    if (
+      document.documentElement.dataset[
+        APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY
+      ] === "true"
+    ) {
+      return;
+    }
+    document.documentElement.dataset[APP_SKELETON_VISIBLE_EVENT_QUEUED_KEY] =
+      "true";
+    queueMicrotask(() => {
+      window.dispatchEvent(new Event(APP_SKELETON_VISIBLE_EVENT));
+    });
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Avatar – picked once at module load so remounts don't flicker
