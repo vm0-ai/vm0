@@ -70,6 +70,7 @@ const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
   "https://login.botframework.com/v1/.well-known/keys";
+const BOT_FRAMEWORK_TOKEN_URL = `https://login.microsoftonline.com/${TEAMS_APP_TENANT_ID}/oauth2/v2.0/token`;
 
 const keyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicJwk = keyPair.publicKey.export({ format: "jwk" });
@@ -148,17 +149,14 @@ type TeamsOutboundRequests = TeamsOutboundRequest[] & {
   readonly reactions: TeamsReactionRequest[];
 };
 
-function teamsOutboundHandlers(
-  serviceUrl: string,
-  tenantId = "tenant-1",
-): TeamsOutboundRequests {
+function teamsOutboundHandlers(serviceUrl: string): TeamsOutboundRequests {
   const serviceBaseUrl = teamsServiceBaseUrl(serviceUrl);
   const requests: TeamsOutboundRequests = Object.assign(
     [] as TeamsOutboundRequest[],
     { reactions: [] as TeamsReactionRequest[] },
   );
   server.use(
-    http.post(graphTokenUrl(tenantId), async ({ request }) => {
+    http.post(BOT_FRAMEWORK_TOKEN_URL, async ({ request }) => {
       const form = await request.formData();
       expect(form.get("client_id")).toBe(BOT_APP_ID);
       expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
@@ -328,15 +326,7 @@ function teamsGraphHistoryHandlers(args: {
       const form = await request.formData();
       expect(form.get("client_id")).toBe(BOT_APP_ID);
       expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
-      const scope = form.get("scope");
-      if (scope === "https://api.botframework.com/.default") {
-        return HttpResponse.json({
-          access_token: "teams-access-token",
-          token_type: "Bearer",
-          expires_in: 3600,
-        });
-      }
-      expect(scope).toBe("https://graph.microsoft.com/.default");
+      expect(form.get("scope")).toBe("https://graph.microsoft.com/.default");
       requests.push("graph-token");
       return HttpResponse.json({
         access_token: "teams-graph-token",
@@ -727,10 +717,7 @@ async function setupConnectedTeamsBotActor(): Promise<{
   await runsApi.grantProEntitlement(actor);
   await runsApi.ensureOrgModelProvider(actor);
   botFrameworkHandlers();
-  const outboundRequests = teamsOutboundHandlers(
-    fixture.serviceUrl,
-    fixture.teamsTenantId,
-  );
+  const outboundRequests = teamsOutboundHandlers(fixture.serviceUrl);
 
   const installResponse = await postTeamsActivity({
     activity: teamsMessageActivity(fixture),
@@ -753,7 +740,7 @@ describe("POST /api/zero/teams/bot", () => {
     mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     context.mocks.axiom.query.mockResolvedValue([]);
-    teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+    teamsOutboundHandlers(SERVICE_URL);
   });
 
   afterEach(async () => {
@@ -796,7 +783,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("normalizes a valid Teams message activity", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(),
@@ -956,7 +943,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("sends a welcome message when Teams adds the bot in team scope", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const response = await postTeamsActivity({
       activity: teamsBotInstalledActivity(),
@@ -996,7 +983,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("sends a personal welcome message when Teams adds the bot in personal scope", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const response = await postTeamsActivity({
       activity: {
@@ -1036,7 +1023,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("responds to Teams validation help and greeting messages without a mention", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const helpResponse = await postTeamsActivity({
       activity: teamsMessageActivity(botFixture(), {
@@ -1116,7 +1103,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("responds to Teams greeting messages with a mention", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(botFixture(), {
@@ -1148,7 +1135,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("does not run other Teams commands without a mention in channel scope", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(botFixture(), {
@@ -1175,7 +1162,7 @@ describe("POST /api/zero/teams/bot", () => {
 
   it("handles Teams personal messages without requiring a bot mention", async () => {
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(SERVICE_URL, "tenant-1");
+    const outboundRequests = teamsOutboundHandlers(SERVICE_URL);
 
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(botFixture(), {
@@ -1270,7 +1257,7 @@ describe("POST /api/zero/teams/bot", () => {
     await connectTeamsFixture(fixture);
     clearTeamsBotAuthCacheForTest();
     botFrameworkHandlers();
-    teamsOutboundHandlers(fixture.serviceUrl, fixture.teamsTenantId);
+    teamsOutboundHandlers(fixture.serviceUrl);
 
     const downloadUrl = "https://contoso.sharepoint.com/sites/docs/spec.png";
     const response = await postTeamsActivity({
@@ -1803,10 +1790,7 @@ describe("POST /api/zero/teams/bot", () => {
       },
     );
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(
-      fixture.serviceUrl,
-      fixture.teamsTenantId,
-    );
+    const outboundRequests = teamsOutboundHandlers(fixture.serviceUrl);
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),
@@ -1890,10 +1874,7 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(
-      fixture.serviceUrl,
-      fixture.teamsTenantId,
-    );
+    const outboundRequests = teamsOutboundHandlers(fixture.serviceUrl);
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),
@@ -2247,10 +2228,7 @@ describe("POST /api/zero/teams/bot", () => {
       Promise.resolve(teamsConnectFixture()),
     );
     botFrameworkHandlers();
-    const outboundRequests = teamsOutboundHandlers(
-      fixture.serviceUrl,
-      fixture.teamsTenantId,
-    );
+    const outboundRequests = teamsOutboundHandlers(fixture.serviceUrl);
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),

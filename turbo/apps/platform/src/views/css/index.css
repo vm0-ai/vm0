@@ -211,6 +211,55 @@ body {
   }
 }
 
+.speaker-notes-dot-1 {
+  animation: speaker-notes-dot-1 1.2s steps(1, end) infinite;
+}
+
+.speaker-notes-dot-2 {
+  animation: speaker-notes-dot-2 1.2s steps(1, end) infinite;
+}
+
+.speaker-notes-dot-3 {
+  animation: speaker-notes-dot-3 1.2s steps(1, end) infinite;
+}
+
+@keyframes speaker-notes-dot-1 {
+  0%,
+  74% {
+    opacity: 1;
+  }
+  75%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes speaker-notes-dot-2 {
+  0%,
+  24%,
+  75%,
+  100% {
+    opacity: 0;
+  }
+  25%,
+  74% {
+    opacity: 1;
+  }
+}
+
+@keyframes speaker-notes-dot-3 {
+  0%,
+  49%,
+  75%,
+  100% {
+    opacity: 0;
+  }
+  50%,
+  74% {
+    opacity: 1;
+  }
+}
+
 /* Landing tagline carousel: smooth vertical fade-in */
 @keyframes zero-tagline-in {
   from {

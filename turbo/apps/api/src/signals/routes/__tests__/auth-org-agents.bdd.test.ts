@@ -472,11 +472,21 @@ describe("ORG-01 and ORG-02", () => {
     expect(members.pendingInvitations?.[0]?.id).toBe(inviteId);
     expect(members.membershipRequests?.[0]?.id).toBe(requestId);
 
+    const inviteeEmail = `new-member-${shortId()}@example.test`;
     const invite = await api.inviteMember(admin, {
-      email: `new-member-${shortId()}@example.test`,
+      email: inviteeEmail,
       role: "member",
     });
     expect(invite.message).toContain("Invitation sent");
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).toHaveBeenCalledWith({
+      organizationId: admin.orgId,
+      emailAddress: inviteeEmail,
+      inviterUserId: admin.userId,
+      role: "org:member",
+      redirectUrl: "http://localhost:3002",
+    });
 
     api.mockClerkOrg(member, {
       slug: nextSlug,

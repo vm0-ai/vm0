@@ -36,7 +36,9 @@ const pool = singleton((): Pool => {
       max: env("DB_POOL_MAX"),
       idleTimeoutMillis: env("DB_POOL_IDLE_TIMEOUT_MS"),
       connectionTimeoutMillis: env("DB_POOL_CONNECT_TIMEOUT_MS"),
-      stream: createInstrumentedPgStream,
+      stream: () => {
+        return createInstrumentedPgStream();
+      },
     }),
     trace.getTracer("vm0-api/pg"),
   );

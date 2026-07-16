@@ -117,7 +117,15 @@ def flush_all_logs() -> None:
 
 
 def shutdown_writer(*, timeout: float | None = SHUTDOWN_JOIN_TIMEOUT_SECONDS) -> bool:
-    """Drain accepted writes and stop the background writer."""
+    """Stop accepting entries and wait for the writer to process accepted entries.
+
+    When another thread owns the writer, the default wait is
+    ``SHUTDOWN_JOIN_TIMEOUT_SECONDS`` (one second), while ``timeout=None`` waits
+    without a deadline. Return ``False`` only when that writer remains alive
+    after the deadline. In that case, accepted entries may still be pending,
+    and the worker and stop-signal state remain registered so a later call can
+    wait for the same shutdown. Return ``True`` otherwise.
+    """
     global _worker, _shutdown, _stop_enqueued
 
     with _condition:

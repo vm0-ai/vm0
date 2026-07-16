@@ -362,11 +362,54 @@ describe("previewPresentationHtml", () => {
       .join("\n");
 
     expect(injectedCss).toMatch(
+      /\[data-vm0-editor-edit-id\]\s*{[^}]*outline:\s*4px solid transparent\s*!important;/,
+    );
+    expect(injectedCss).toMatch(
       /\[data-vm0-editor-edit-id\]:hover\s*{\s*outline-color:\s*#0f82ff\s*!important;/,
     );
     expect(injectedCss).toMatch(
       /\[data-vm0-editor-edit-id\]:focus\s*{\s*outline-color:\s*hsl\(var\(--ring, 15 80% 66%\)\)\s*!important;/,
     );
+    expect(injectedCss).toMatch(
+      /\[data-vm0-editor-edit-id\]:focus\s*{[^}]*filter:\s*none\s*!important;/,
+    );
+  });
+
+  it("uses an opaque selection overlay for movable presentation content", () => {
+    const previewHtml = previewPresentationHtml({
+      activeSlideId: "slide-1",
+      movementEditingEnabled: true,
+      html: `
+        <!doctype html>
+        <html>
+          <body>
+            <section data-vm0-slide data-slide-id="slide-1">
+              <div style="opacity: 0.15; transform: rotate(-15deg)">Decoration</div>
+            </section>
+          </body>
+        </html>
+      `,
+    });
+    const doc = new DOMParser().parseFromString(previewHtml, "text/html");
+    const injectedCss = Array.from(doc.querySelectorAll("style"))
+      .map((style) => {
+        return style.textContent ?? "";
+      })
+      .join("\n");
+
+    expect(injectedCss).toMatch(
+      /\[data-vm0-editor-selection-overlay\]\s*\{[\s\S]*?border:\s*4px solid #0f82ff\s*!important;/,
+    );
+    expect(injectedCss).toMatch(
+      /\[data-vm0-editor-selection-overlay\]\s*\{[\s\S]*?opacity:\s*1\s*!important;/,
+    );
+    expect(injectedCss).toMatch(
+      /\[data-vm0-editor-selection-overlay\]\s*\{[\s\S]*?pointer-events:\s*none\s*!important;/,
+    );
+    expect(injectedCss).toMatch(
+      /\[data-vm0-editor-edit-id\]\[contenteditable="true"\]:focus\s*\{\s*outline:\s*none\s*!important;/,
+    );
+    expect(injectedCss).not.toContain('[data-vm0-editor-selected="true"]');
   });
 
   it("appends additional head styles to the preview document", () => {
@@ -454,6 +497,7 @@ describe("previewPresentationHtml", () => {
             <section
               data-vm0-slide
               data-slide-id="slide-1"
+              data-vm0-editor-selection-overlay="forged"
               data-vm0-editor-selected="true"
             >
               <div class="stage" data-vm0-editor-stage="forged">
@@ -480,6 +524,9 @@ describe("previewPresentationHtml", () => {
     expect(article?.dataset.vm0EditorEditId).toBe("real-edit-id");
     expect(article?.dataset.vm0EditorSlideId).toBe("slide-1");
     expect(article?.dataset.vm0EditorSelected).toBeUndefined();
+    expect(
+      doc.querySelector("section")?.dataset.vm0EditorSelectionOverlay,
+    ).toBeUndefined();
     expect(nested?.dataset.vm0EditorMoveId).toBeUndefined();
     expect(authoredStage?.dataset.vm0EditorStage).toBeUndefined();
     expect(doc.querySelectorAll("[data-vm0-editor-stage]")).toHaveLength(1);

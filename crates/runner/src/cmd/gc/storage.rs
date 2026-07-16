@@ -10,7 +10,7 @@ use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
 use super::filesystem::{
-    GcDirStatus, dir_stats, gc_entry_is_real_dir, gc_path_dir_status, next_entry_warn,
+    GcDirStatus, dir_stats, gc_entry_is_real_dir, gc_path_dir_status, next_entry_warn_or_stop,
     read_dir_or_missing,
 };
 use super::lock_file::{LockProbe, probe_lock};
@@ -124,7 +124,7 @@ async fn gc_storage_cache_with_limits_report(
     let mut evicted_entries: u64 = 0;
 
     while let Some(name_entry) =
-        next_entry_warn(&mut name_entries, "gc_storage_cache", &storages_dir).await
+        next_entry_warn_or_stop(&mut name_entries, "gc_storage_cache", &storages_dir).await
     {
         let name_path = name_entry.path();
         let Some(name_str) = name_path.file_name().and_then(|n| n.to_str()) else {
@@ -148,7 +148,7 @@ async fn gc_storage_cache_with_limits_report(
         };
 
         while let Some(version_entry) =
-            next_entry_warn(&mut version_entries, "gc_storage_cache", &name_path).await
+            next_entry_warn_or_stop(&mut version_entries, "gc_storage_cache", &name_path).await
         {
             let version_path = version_entry.path();
             let Some(version_str) = version_path.file_name().and_then(|n| n.to_str()) else {

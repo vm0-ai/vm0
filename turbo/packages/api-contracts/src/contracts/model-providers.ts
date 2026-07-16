@@ -189,8 +189,8 @@ export function getVm0ModelCodexRuntimeConfig(
           truncation_policy: { mode: "tokens", limit: 10_000 },
           supports_parallel_tool_calls: true,
           supports_image_detail_original: true,
-          context_window: 272_000,
-          max_context_window: 272_000,
+          context_window: 1_000_000,
+          max_context_window: 1_000_000,
           auto_compact_token_limit: null,
           comp_hash: null,
           effective_context_window_percent: 95,
@@ -509,6 +509,7 @@ const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
 const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
+  "vm0-model",
   "claude-sonnet-5",
   "gpt-5.6-terra",
   "gpt-5.6-luna",

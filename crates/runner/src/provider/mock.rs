@@ -7,6 +7,8 @@
 //!   can wait on that resource, preserving the shutdown regression shape.
 //! - `discover()` has an optional pre-channel delay simulating the API provider's
 //!   poll timer that restarts from scratch when the future is cancelled.
+//! - `heartbeat()` can be blocked at the provider boundary while tests observe
+//!   request entry, release, and maximum concurrency.
 //!
 //! This lets integration tests catch:
 //! - **#8783**: heartbeat cancelling and recreating `discover()` each tick —
@@ -87,6 +89,7 @@ pub struct MockJobProvider {
     /// `wait_heartbeat_past` uses the same subscribe-then-check pattern as
     /// `wait_completion` so a heartbeat that lands mid-check is still observed.
     heartbeat_notify: Arc<Notify>,
+    heartbeat_control: Arc<MockHeartbeatControl>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -107,6 +110,7 @@ pub struct MockProviderHandle {
     discover_started_count: Arc<AtomicUsize>,
     /// See [`MockJobProvider::heartbeat_notify`].
     heartbeat_notify: Arc<Notify>,
+    heartbeat_control: Arc<MockHeartbeatControl>,
 }
 
 #[derive(Clone)]
@@ -122,6 +126,44 @@ struct MockStartupReadiness {
     release: Notify,
     released: AtomicBool,
     calls: AtomicUsize,
+}
+
+#[derive(Default)]
+struct MockHeartbeatControl {
+    blocked: AtomicBool,
+    in_flight: AtomicUsize,
+    max_in_flight: AtomicUsize,
+    release: Notify,
+    state_changed: Notify,
+}
+
+impl MockHeartbeatControl {
+    fn enter(&self) -> MockHeartbeatInFlight<'_> {
+        let in_flight = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_in_flight.fetch_max(in_flight, Ordering::SeqCst);
+        self.state_changed.notify_waiters();
+        MockHeartbeatInFlight { control: self }
+    }
+
+    fn block(&self) {
+        self.blocked.store(true, Ordering::SeqCst);
+    }
+
+    fn unblock(&self) {
+        self.blocked.store(false, Ordering::SeqCst);
+        self.release.notify_waiters();
+    }
+}
+
+struct MockHeartbeatInFlight<'a> {
+    control: &'a MockHeartbeatControl,
+}
+
+impl Drop for MockHeartbeatInFlight<'_> {
+    fn drop(&mut self) {
+        self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
+        self.control.state_changed.notify_waiters();
+    }
 }
 
 impl Default for MockStartupReadiness {
@@ -215,6 +257,7 @@ impl MockJobProvider {
         let discover_poll_started = Arc::new(Notify::new());
         let discover_started_count = Arc::new(AtomicUsize::new(0));
         let heartbeat_notify = Arc::new(Notify::new());
+        let heartbeat_control = Arc::new(MockHeartbeatControl::default());
         let provider = Arc::new(Self {
             startup_readiness: Arc::clone(&startup_readiness),
             discovery: Mutex::new(rx),
@@ -231,6 +274,7 @@ impl MockJobProvider {
             discover_poll_started: Arc::clone(&discover_poll_started),
             discover_started_count: Arc::clone(&discover_started_count),
             heartbeat_notify: Arc::clone(&heartbeat_notify),
+            heartbeat_control: Arc::clone(&heartbeat_control),
         });
         let handle = MockProviderHandle {
             startup_readiness,
@@ -245,6 +289,7 @@ impl MockJobProvider {
             discover_poll_started,
             discover_started_count,
             heartbeat_notify,
+            heartbeat_control,
         };
         (provider, handle)
     }
@@ -353,6 +398,45 @@ impl MockProviderHandle {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .len()
+    }
+
+    /// Block heartbeat calls after recording their submitted state.
+    pub fn block_heartbeats(&self) {
+        self.heartbeat_control.block();
+    }
+
+    /// Release all currently blocked heartbeat calls and allow later calls.
+    pub fn unblock_heartbeats(&self) {
+        self.heartbeat_control.unblock();
+    }
+
+    pub fn heartbeat_in_flight(&self) -> usize {
+        self.heartbeat_control.in_flight.load(Ordering::SeqCst)
+    }
+
+    pub fn max_heartbeat_in_flight(&self) -> usize {
+        self.heartbeat_control.max_in_flight.load(Ordering::SeqCst)
+    }
+
+    pub async fn wait_heartbeat_in_flight(&self, expected: usize, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let changed = self.heartbeat_control.state_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+
+            if self.heartbeat_in_flight() == expected {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, changed).await.is_err() {
+                return false;
+            }
+        }
     }
 
     pub fn claim_candidates(&self) -> Vec<JobCandidate> {
@@ -495,11 +579,18 @@ impl JobProvider for MockJobProvider {
     }
 
     async fn heartbeat(&self, state: &HeartbeatState) {
+        let release = self.heartbeat_control.release.notified();
+        tokio::pin!(release);
+        release.as_mut().enable();
+        let _in_flight = self.heartbeat_control.enter();
         self.heartbeats
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push(state.clone());
         self.heartbeat_notify.notify_waiters();
+        if self.heartbeat_control.blocked.load(Ordering::SeqCst) {
+            release.await;
+        }
     }
 
     async fn defer_poll_after(&self, delay: Duration) {

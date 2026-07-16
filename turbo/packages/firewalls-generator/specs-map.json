@@ -125,6 +125,9 @@
   "google-sheets": {
     "https://sheets.googleapis.com/$discovery/rest?version=v4": "0c6848d26f5e80d1482f1c552b8d371e01ef0d997a9b74c56b5a684cf9f55958"
   },
+  "google-slides": {
+    "https://slides.googleapis.com/$discovery/rest?version=v1": "c739e9360c799fc2f4570e4374fbd0e4e9ad9e4a0a5b84a117b4fba9209fa103"
+  },
   "notion": {
     "https://developers.notion.com/openapi.json": "b28e6ec6abc50b637355001425afbd6ef8644a95915a852893b9256d84f98c87"
   },

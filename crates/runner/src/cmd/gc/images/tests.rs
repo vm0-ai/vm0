@@ -1,10 +1,133 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
-use nix::fcntl::FlockArg;
+use nix::fcntl::{Flock, FlockArg};
 
 use super::*;
-use crate::cmd::gc::test_support::{assert_is_symlink, old_gc_time, set_mtime, test_home};
+use crate::cmd::gc::test_support::{
+    assert_is_symlink, old_gc_time, set_mtime, set_soft_nofile_limit_for_child, test_home,
+};
 use crate::lock;
+use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
+
+fn rootfs_state_with_deletion(
+    rootfs_path: PathBuf,
+    rootfs_hash: &str,
+    snapshot_hash: &str,
+) -> RootfsState {
+    RootfsState {
+        path: rootfs_path,
+        hash: rootfs_hash.to_owned(),
+        snapshot_dispositions: HashMap::from([(
+            snapshot_hash.to_owned(),
+            SnapshotDisposition::Delete,
+        )]),
+    }
+}
+
+async fn assert_incomplete_snapshot_scan_keeps_rootfs(dry_run: bool) {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let rootfs_dir = home.images_dir().join("rootfs_incomplete_scan");
+    let snapshots_dir = rootfs_dir.join("snapshots");
+    let snapshot_dirs = [
+        snapshots_dir.join("snapshot_a"),
+        snapshots_dir.join("snapshot_b"),
+    ];
+    for snapshot_dir in &snapshot_dirs {
+        std::fs::create_dir_all(snapshot_dir).unwrap();
+        std::fs::write(snapshot_dir.join("snapshot.bin"), b"snapshot").unwrap();
+        set_mtime(snapshot_dir, old_gc_time());
+    }
+    std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+    set_mtime(&rootfs_dir, old_gc_time());
+
+    let report = gc_nested_images_with_injected_snapshot_scan_error(
+        &home,
+        Some(0),
+        dry_run,
+        &ProtectedImageRefs::new(),
+        1,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report, GcReport::default());
+    assert!(
+        rootfs_dir.exists(),
+        "an incompletely scanned rootfs must survive"
+    );
+    for snapshot_dir in snapshot_dirs {
+        assert!(
+            snapshot_dir.exists(),
+            "all snapshots must survive an incomplete directory scan"
+        );
+    }
+}
+
+async fn assert_incomplete_action_scan_keeps_rootfs(dry_run: bool) {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let rootfs_dir = home.images_dir().join("rootfs_incomplete_action_scan");
+    let snapshots_dir = rootfs_dir.join("snapshots");
+    let snapshot_dirs = [
+        snapshots_dir.join("snapshot_a"),
+        snapshots_dir.join("snapshot_b"),
+    ];
+    for snapshot_dir in &snapshot_dirs {
+        std::fs::create_dir_all(snapshot_dir).unwrap();
+        std::fs::write(snapshot_dir.join("snapshot.bin"), b"snapshot").unwrap();
+        set_mtime(snapshot_dir, old_gc_time());
+    }
+    std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+    set_mtime(&rootfs_dir, old_gc_time());
+
+    let report = gc_nested_images_with_injected_action_scan_error(
+        &home,
+        Some(0),
+        dry_run,
+        &ProtectedImageRefs::new(),
+        1,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report, GcReport::default());
+    assert!(
+        rootfs_dir.exists(),
+        "a rootfs with an incomplete action scan must survive"
+    );
+    for snapshot_dir in snapshot_dirs {
+        assert!(
+            snapshot_dir.exists(),
+            "action must not start before the current snapshot scan completes"
+        );
+    }
+}
+
+#[tokio::test]
+async fn gc_nested_images_fails_closed_after_snapshot_scan_error() {
+    assert_incomplete_snapshot_scan_keeps_rootfs(false).await;
+}
+
+#[tokio::test]
+async fn gc_nested_images_dry_run_ignores_incomplete_snapshot_scan() {
+    assert_incomplete_snapshot_scan_keeps_rootfs(true).await;
+}
+
+#[tokio::test]
+async fn gc_nested_images_fails_closed_after_action_scan_error() {
+    assert_incomplete_action_scan_keeps_rootfs(false).await;
+}
+
+#[tokio::test]
+async fn gc_nested_images_dry_run_ignores_incomplete_action_scan() {
+    assert_incomplete_action_scan_keeps_rootfs(true).await;
+}
 
 #[tokio::test]
 async fn gc_nested_images_empty_dir_returns_zero() {
@@ -862,6 +985,67 @@ async fn gc_nested_images_skips_locked_snapshot() {
     assert_eq!(freed, 0);
 }
 
+#[tokio::test]
+async fn gc_rootfs_action_keeps_candidate_locked_after_inventory() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let rootfs_hash = "rootfs_action_lock";
+    let snapshot_hash = "snapshot_action_lock";
+    let rootfs_dir = home.images_dir().join(rootfs_hash);
+    let snapshot_dir = rootfs_dir.join("snapshots").join(snapshot_hash);
+    std::fs::create_dir_all(&snapshot_dir).unwrap();
+    std::fs::write(snapshot_dir.join("snapshot.bin"), b"snapshot").unwrap();
+    std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+    set_mtime(&snapshot_dir, old_gc_time());
+    set_mtime(&rootfs_dir, old_gc_time());
+
+    let state = rootfs_state_with_deletion(rootfs_dir.clone(), rootfs_hash, snapshot_hash);
+    let snapshot_lock_file = lock::open_lock_file(&home.snapshot_lock(snapshot_hash)).unwrap();
+    let _snapshot_lock = Flock::lock(snapshot_lock_file, FlockArg::LockShared).unwrap();
+    let mut action_entry_reader = GcDirEntryReader::new();
+
+    let report = gc_rootfs_action(&home, &state, false, &mut action_entry_reader).await;
+
+    assert_eq!(report, GcReport::default());
+    assert!(
+        snapshot_dir.exists(),
+        "a candidate locked after inventory must survive action"
+    );
+    assert!(rootfs_dir.exists(), "the candidate's rootfs must survive");
+}
+
+#[tokio::test]
+async fn gc_rootfs_action_keeps_candidate_that_became_recent() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let rootfs_hash = "rootfs_action_recent";
+    let snapshot_hash = "snapshot_action_recent";
+    let rootfs_dir = home.images_dir().join(rootfs_hash);
+    let snapshot_dir = rootfs_dir.join("snapshots").join(snapshot_hash);
+    std::fs::create_dir_all(&snapshot_dir).unwrap();
+    std::fs::write(snapshot_dir.join("snapshot.bin"), b"snapshot").unwrap();
+    std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+    set_mtime(&snapshot_dir, old_gc_time());
+    set_mtime(&rootfs_dir, old_gc_time());
+
+    let state = rootfs_state_with_deletion(rootfs_dir.clone(), rootfs_hash, snapshot_hash);
+    set_mtime(&snapshot_dir, SystemTime::now());
+    let mut action_entry_reader = GcDirEntryReader::new();
+
+    let report = gc_rootfs_action(&home, &state, false, &mut action_entry_reader).await;
+
+    assert_eq!(report, GcReport::default());
+    assert!(
+        snapshot_dir.exists(),
+        "a candidate that became recent after inventory must survive action"
+    );
+    assert!(rootfs_dir.exists(), "the candidate's rootfs must survive");
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn gc_nested_images_skips_symlink_rootfs_entry() {
@@ -958,4 +1142,70 @@ async fn gc_nested_images_symlink_snapshot_entry_preserves_rootfs() {
         outside_snapshot.exists(),
         "GC must not delete a symlinked snapshot target"
     );
+}
+
+const LOW_FD_IMAGE_GC_CHILD_ENV: &str = "VM0_RUNNER_LOW_FD_IMAGE_GC_CHILD";
+
+#[tokio::test]
+async fn gc_nested_images_many_candidates_does_not_exhaust_lock_fds() {
+    run_ignored_child_test(
+        "cmd::gc::images::tests::gc_nested_images_many_candidates_low_fd_child",
+        (LOW_FD_IMAGE_GC_CHILD_ENV, "1"),
+        &[],
+        Duration::from_secs(60),
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "spawned by gc_nested_images_many_candidates_does_not_exhaust_lock_fds"]
+async fn gc_nested_images_many_candidates_low_fd_child() {
+    if !ignored_child_test_env_guard_enabled((LOW_FD_IMAGE_GC_CHILD_ENV, "1")) {
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let entry_count = 220usize;
+    let keep_count = 20usize;
+    for index in 0..entry_count {
+        let rootfs_hash = format!("rootfs-low-fd-{index:03}");
+        let snapshot_hash = format!("snapshot-low-fd-{index:03}");
+        let rootfs_dir = home.images_dir().join(&rootfs_hash);
+        let snapshot_dir = rootfs_dir.join("snapshots").join(snapshot_hash);
+        std::fs::create_dir_all(&snapshot_dir).unwrap();
+        std::fs::write(snapshot_dir.join("snapshot.bin"), [0u8; 4096]).unwrap();
+        std::fs::write(rootfs_dir.join("rootfs.ext4"), [0u8; 4096]).unwrap();
+        set_mtime(&snapshot_dir, old_gc_time());
+        set_mtime(&rootfs_dir, old_gc_time());
+    }
+
+    let _nofile_limit = set_soft_nofile_limit_for_child(128);
+    let freed = gc_nested_images(&home, Some(keep_count), false)
+        .await
+        .unwrap();
+
+    let mut remaining_rootfs = 0usize;
+    let mut remaining_snapshots = 0usize;
+    for rootfs_entry in std::fs::read_dir(home.images_dir()).unwrap() {
+        let rootfs_entry = rootfs_entry.unwrap();
+        if !rootfs_entry.file_type().unwrap().is_dir() {
+            continue;
+        }
+        remaining_rootfs += 1;
+        for snapshot_entry in std::fs::read_dir(rootfs_entry.path().join("snapshots")).unwrap() {
+            if snapshot_entry.unwrap().file_type().unwrap().is_dir() {
+                remaining_snapshots += 1;
+            }
+        }
+    }
+
+    assert_eq!(
+        remaining_rootfs, keep_count,
+        "image GC left {remaining_rootfs} rootfs directories for keep count {keep_count}; freed {freed}"
+    );
+    assert_eq!(remaining_snapshots, keep_count);
+    assert!(freed > 0, "low-FD image GC must remove old artifacts");
 }

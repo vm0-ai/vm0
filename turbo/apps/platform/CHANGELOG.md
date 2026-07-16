@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.602.4](https://github.com/vm0-ai/vm0/compare/app-v0.602.3...app-v0.602.4) (2026-07-16)
+
+
+### Bug Fixes
+
+* **platform:** gate artifact favorites behind feature switch ([#21800](https://github.com/vm0-ai/vm0/issues/21800)) ([4057a12](https://github.com/vm0-ai/vm0/commit/4057a127ff33dbb327cd30100f4e4df143f0a496))
+* **platform:** refresh artifacts empty state ([#21801](https://github.com/vm0-ai/vm0/issues/21801)) ([9591561](https://github.com/vm0-ai/vm0/commit/95915611557a7ebb2862ea595d8854f56d062c62))
+* support dynamic vm0 model routing ([#21693](https://github.com/vm0-ai/vm0/issues/21693)) ([80d0dca](https://github.com/vm0-ai/vm0/commit/80d0dca1f3e198f7c83ed28783da740d2215675f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.198.0
+    * @vm0/connectors bumped to 1.168.0
+    * @vm0/core bumped to 8.437.3
+
+## [0.602.3](https://github.com/vm0-ai/vm0/compare/app-v0.602.2...app-v0.602.3) (2026-07-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.2
+    * @vm0/connectors bumped to 1.167.0
+    * @vm0/core bumped to 8.437.2
+
+## [0.602.2](https://github.com/vm0-ai/vm0/compare/app-v0.602.1...app-v0.602.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* close attachment lightbox on escape ([#21409](https://github.com/vm0-ai/vm0/issues/21409)) ([0de50ad](https://github.com/vm0-ai/vm0/commit/0de50ad6688f1a579f8b72ad27dcd15767c9bda2))
+* **platform:** clarify presentation speaker notes and close flow ([#21735](https://github.com/vm0-ai/vm0/issues/21735)) ([6dfb936](https://github.com/vm0-ai/vm0/commit/6dfb93669c17575816a5ec2486f682033fdabc20))
+
 ## [0.602.1](https://github.com/vm0-ai/vm0/compare/app-v0.602.0...app-v0.602.1) (2026-07-16)
 
 

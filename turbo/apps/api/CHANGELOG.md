@@ -1,5 +1,63 @@
 # Changelog
 
+## [1.280.0](https://github.com/vm0-ai/vm0/compare/api-v1.279.4...api-v1.280.0) (2026-07-16)
+
+
+### Features
+
+* prepare external public connector catalog backend ([#21773](https://github.com/vm0-ai/vm0/issues/21773)) ([f0c5204](https://github.com/vm0-ai/vm0/commit/f0c5204903dededbe7a6d88cc44558320bc1e542))
+
+
+### Bug Fixes
+
+* support dynamic vm0 model routing ([#21693](https://github.com/vm0-ai/vm0/issues/21693)) ([80d0dca](https://github.com/vm0-ai/vm0/commit/80d0dca1f3e198f7c83ed28783da740d2215675f))
+
+
+### Refactoring
+
+* dual-write automation identifiers across callbacks and chat snapshots ([#21795](https://github.com/vm0-ai/vm0/issues/21795)) ([b8fd86e](https://github.com/vm0-ai/vm0/commit/b8fd86ea8d3c7bf119f4a83e381698d6484120d7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.198.0
+    * @vm0/connectors bumped to 1.168.0
+    * @vm0/core bumped to 8.437.3
+    * @vm0/db bumped to 1.117.3
+
+## [1.279.4](https://github.com/vm0-ai/vm0/compare/api-v1.279.3...api-v1.279.4) (2026-07-16)
+
+
+### Performance Improvements
+
+* **api:** hedge slow postgres dns lookups ([#21774](https://github.com/vm0-ai/vm0/issues/21774)) ([cbac131](https://github.com/vm0-ai/vm0/commit/cbac1311fc79a065f644ecc01df4ce7e1fed606e))
+
+## [1.279.3](https://github.com/vm0-ai/vm0/compare/api-v1.279.2...api-v1.279.3) (2026-07-16)
+
+
+### Refactoring
+
+* read queued user messages from chat_message_queue ([#21779](https://github.com/vm0-ai/vm0/issues/21779)) ([dc6a275](https://github.com/vm0-ai/vm0/commit/dc6a27573bf527a04723bfae2d6cf69980ca3191))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.2
+    * @vm0/connectors bumped to 1.167.0
+    * @vm0/core bumped to 8.437.2
+    * @vm0/db bumped to 1.117.2
+
+## [1.279.2](https://github.com/vm0-ai/vm0/compare/api-v1.279.1...api-v1.279.2) (2026-07-16)
+
+
+### Performance Improvements
+
+* **api:** move queue-first invalidation off dispatch path ([#21745](https://github.com/vm0-ai/vm0/issues/21745)) ([206a772](https://github.com/vm0-ai/vm0/commit/206a77208bfade42d519930495ad2e91ce574b71))
+
 ## [1.279.1](https://github.com/vm0-ai/vm0/compare/api-v1.279.0...api-v1.279.1) (2026-07-16)
 
 

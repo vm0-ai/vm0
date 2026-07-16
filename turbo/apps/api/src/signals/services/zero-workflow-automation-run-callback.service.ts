@@ -76,7 +76,7 @@ export async function handleWorkflowAutomationInternalCallback(
   const [automation] = await db
     .select()
     .from(zeroWorkflowAutomations)
-    .where(eq(zeroWorkflowAutomations.id, payload.data.triggerId))
+    .where(eq(zeroWorkflowAutomations.id, payload.data.automationId))
     .limit(1);
   signal?.throwIfAborted();
 
@@ -110,7 +110,7 @@ export async function handleWorkflowAutomationInternalCallback(
     })
     .where(
       and(
-        eq(zeroWorkflowAutomations.id, payload.data.triggerId),
+        eq(zeroWorkflowAutomations.id, payload.data.automationId),
         eq(zeroWorkflowAutomations.enabled, true),
       ),
     );

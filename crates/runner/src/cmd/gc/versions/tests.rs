@@ -60,6 +60,42 @@ fn parse_semver_orders_numerically() {
 }
 
 #[tokio::test]
+async fn analyze_version_gc_marks_partial_directory_scan_incomplete() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    let versions = ["v1.0.0", "v2.0.0", "v3.0.0"];
+    for version in versions {
+        std::fs::create_dir_all(home.bin_dir().join(version)).unwrap();
+    }
+    age_versions_past_gc_min_age(&home, &versions);
+
+    let analysis = analyze_version_gc_with_injected_scan_error(&home, None, None, 1)
+        .await
+        .unwrap();
+
+    assert!(!analysis.directory_scan_complete());
+    assert_eq!(analysis.entries.len(), 1);
+
+    let removed = gc_versions_with_analysis_and_uninstall(
+        &home,
+        false,
+        analysis,
+        successful_fake_uninstall_service_unit,
+    )
+    .await
+    .unwrap();
+    assert_eq!(removed.len(), 1);
+    assert_eq!(
+        versions
+            .into_iter()
+            .filter(|version| home.bin_dir().join(version).exists())
+            .count(),
+        2,
+        "versions omitted by the interrupted scan must remain untouched"
+    );
+}
+
+#[tokio::test]
 async fn gc_versions_removes_inactive_semver_dirs() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());

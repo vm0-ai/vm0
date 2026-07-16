@@ -609,8 +609,10 @@ pub trait JobProvider: Send + Sync {
         completion_auth: CompletionAuth,
     );
 
-    /// Report runner state to the server. Fire-and-forget — failures are
-    /// logged but do not affect runner operation.
+    /// Report runner state to the server as a best-effort operation.
+    ///
+    /// Delivery failures do not affect runner operation, but callers retain
+    /// the future to enforce single-flight and lifecycle ordering.
     async fn heartbeat(&self, state: &HeartbeatState);
 
     /// Delay the next API-backed poll until a protected same-session job can

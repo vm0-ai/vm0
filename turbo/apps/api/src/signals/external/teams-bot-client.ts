@@ -266,13 +266,17 @@ function e2eTeamsMockHeaders(): Record<string, string> {
   };
 }
 
-function botTokenUrl(tenantId: string): string {
+function botTokenUrl(): string | undefined {
   const configured = optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL");
   if (configured) {
     return configured;
   }
   const mockBaseUrl = e2eTeamsMockBaseUrl();
-  return mockBaseUrl ? `${mockBaseUrl}/token` : tenantTokenUrl(tenantId);
+  if (mockBaseUrl) {
+    return `${mockBaseUrl}/token`;
+  }
+  const appTenantId = env("MICROSOFT_TEAMS_APP_TENANT_ID");
+  return appTenantId ? tenantTokenUrl(appTenantId) : undefined;
 }
 
 function graphTokenUrl(tenantId: string): string {
@@ -362,16 +366,21 @@ async function fetchClientCredentialsAccessToken(args: {
   return { kind: "ok", accessToken: parsed.data.access_token };
 }
 
-function fetchTeamsBotAccessToken(args: {
-  readonly tenantId: string;
-  readonly signal: AbortSignal;
-}): Promise<
+function fetchTeamsBotAccessToken(
+  signal: AbortSignal,
+): Promise<
   { readonly kind: "ok"; readonly accessToken: string } | TeamsApiErrorResult
 > {
+  const tokenUrl = botTokenUrl();
+  if (!tokenUrl) {
+    return Promise.resolve(
+      teamsApiError(502, "Microsoft Teams bot app tenant is not configured"),
+    );
+  }
   return fetchClientCredentialsAccessToken({
-    tokenUrl: botTokenUrl(args.tenantId),
+    tokenUrl,
     scope: BOT_FRAMEWORK_SCOPE,
-    signal: args.signal,
+    signal,
   });
 }
 
@@ -533,10 +542,7 @@ export async function fetchTeamsFile(args: {
   };
 
   if (shouldAuthorizeTeamsFileDownload(args.url)) {
-    const accessToken = await fetchTeamsBotAccessToken({
-      tenantId: args.tenantId,
-      signal: args.signal,
-    });
+    const accessToken = await fetchTeamsBotAccessToken(args.signal);
     if (accessToken.kind === "teams-error") {
       return accessToken;
     }
@@ -630,10 +636,7 @@ async function postTeamsActivity(args: {
   readonly activity: TeamsActivityBody;
   readonly signal: AbortSignal;
 }): Promise<SendTeamsActivityResult> {
-  const accessToken = await fetchTeamsBotAccessToken({
-    tenantId: args.tenantId,
-    signal: args.signal,
-  });
+  const accessToken = await fetchTeamsBotAccessToken(args.signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -696,10 +699,7 @@ export async function createTeamsPersonalConversation(args: {
   readonly teamsUserDisplayName?: string | null;
   readonly signal: AbortSignal;
 }): Promise<CreateTeamsConversationResult> {
-  const accessToken = await fetchTeamsBotAccessToken({
-    tenantId: args.tenantId,
-    signal: args.signal,
-  });
+  const accessToken = await fetchTeamsBotAccessToken(args.signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -774,10 +774,7 @@ async function requestTeamsReaction(args: {
   readonly reactionType: string;
   readonly signal: AbortSignal;
 }): Promise<SendTeamsReactionResult> {
-  const accessToken = await fetchTeamsBotAccessToken({
-    tenantId: args.tenantId,
-    signal: args.signal,
-  });
+  const accessToken = await fetchTeamsBotAccessToken(args.signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }

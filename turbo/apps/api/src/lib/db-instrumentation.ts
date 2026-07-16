@@ -1,4 +1,5 @@
-import { Socket } from "node:net";
+import { lookup as dnsLookup, type LookupAddress } from "node:dns";
+import { Socket, type LookupFunction, type SocketConnectOpts } from "node:net";
 import { performance } from "node:perf_hooks";
 
 import {
@@ -9,6 +10,7 @@ import {
   type Span,
   type Tracer,
 } from "@opentelemetry/api";
+import { createStore, state } from "ccstate";
 import type { Pool, PoolClient } from "pg";
 
 import { deriveSqlSpanName } from "./sql-span-name";
@@ -18,6 +20,8 @@ const POOL_ACQUIRE_DURATION_ATTRIBUTE = "vm0.db.pool.acquire.duration_ms";
 const POOL_ACQUIRE_PATH_ATTRIBUTE = "vm0.db.pool.acquire.path";
 const CONNECTION_LOOKUP_DURATION_ATTRIBUTE =
   "vm0.db.connection.lookup.duration_ms";
+const CONNECTION_LOOKUP_HEDGED_ATTRIBUTE = "vm0.db.connection.lookup.hedged";
+const CONNECTION_LOOKUP_SOURCE_ATTRIBUTE = "vm0.db.connection.lookup.source";
 const CONNECTION_SOCKET_CONNECT_DURATION_ATTRIBUTE =
   "vm0.db.connection.socket_connect.duration_ms";
 const CONNECTION_ATTEMPT_COUNT_ATTRIBUTE = "vm0.db.connection.attempt_count";
@@ -26,6 +30,7 @@ const CONNECTION_ATTEMPT_FAILED_COUNT_ATTRIBUTE =
 const CONNECTION_ATTEMPT_TIMEOUT_COUNT_ATTRIBUTE =
   "vm0.db.connection.attempt_timeout_count";
 const CONNECTION_ADDRESS_FAMILY_ATTRIBUTE = "vm0.db.connection.address_family";
+const LOOKUP_HEDGE_DELAY_MS = 250;
 
 type AnyArgs = readonly unknown[];
 type PgQuery = (...args: AnyArgs) => unknown;
@@ -36,9 +41,206 @@ type PoolConnectCallback = (
   client?: PoolClient,
   release?: PoolRelease,
 ) => void;
+type LookupSource = "primary" | "secondary";
+
+interface InstrumentedPgStreamOptions {
+  lookup?: LookupFunction;
+  lookupHedgeDelayMs?: number;
+}
+
+const systemLookup: LookupFunction = dnsLookup;
+const secondaryLookupInFlight$ = state(false);
+const lookupHedgeStore = createStore();
 
 class PoolQuerySpan {
   constructor(readonly span: Span) {}
+}
+
+function claimSecondaryLookup(): boolean {
+  if (lookupHedgeStore.get(secondaryLookupInFlight$)) {
+    return false;
+  }
+  lookupHedgeStore.set(secondaryLookupInFlight$, true);
+  return true;
+}
+
+function releaseSecondaryLookup(): void {
+  lookupHedgeStore.set(secondaryLookupInFlight$, false);
+}
+
+function createHedgedLookup(
+  socket: Socket,
+  lookup: LookupFunction,
+  hedgeDelayMs: number,
+  querySpan: Span | undefined,
+): LookupFunction {
+  return function hedgedLookup(hostname, options, callback): void {
+    let delivered = false;
+    let primarySettled = false;
+    let secondaryStarted = false;
+    let secondarySettled = false;
+    let holdsHedgeBudget = false;
+    let hedgeDelayController: AbortController | undefined;
+
+    function removePendingHedgeListeners(): void {
+      socket.removeListener("close", cancelPendingHedge);
+      socket.removeListener("timeout", cancelPendingHedge);
+    }
+
+    function cancelPendingHedge(): void {
+      hedgeDelayController?.abort();
+      hedgeDelayController = undefined;
+      removePendingHedgeListeners();
+    }
+
+    function releaseHedgeBudget(): void {
+      if (holdsHedgeBudget && primarySettled && secondarySettled) {
+        holdsHedgeBudget = false;
+        releaseSecondaryLookup();
+      }
+    }
+
+    function deliver(
+      source: LookupSource,
+      error: NodeJS.ErrnoException | null,
+      address: string | LookupAddress[],
+      family?: number,
+    ): void {
+      if (delivered) {
+        return;
+      }
+      delivered = true;
+      cancelPendingHedge();
+      if (secondaryStarted) {
+        querySpan?.setAttribute(CONNECTION_LOOKUP_SOURCE_ATTRIBUTE, source);
+      }
+      callback(error, address, family);
+    }
+
+    function onPrimaryLookup(
+      error: NodeJS.ErrnoException | null,
+      address: string | LookupAddress[],
+      family?: number,
+    ): void {
+      primarySettled = true;
+      releaseHedgeBudget();
+      deliver("primary", error, address, family);
+    }
+
+    function onSecondaryLookup(
+      error: NodeJS.ErrnoException | null,
+      address: string | LookupAddress[],
+      family?: number,
+    ): void {
+      secondarySettled = true;
+      releaseHedgeBudget();
+      if (error === null) {
+        deliver("secondary", error, address, family);
+      }
+    }
+
+    function startSecondaryLookup(): void {
+      hedgeDelayController = undefined;
+      removePendingHedgeListeners();
+      if (
+        primarySettled ||
+        socket.destroyed ||
+        !socket.connecting ||
+        !claimSecondaryLookup()
+      ) {
+        return;
+      }
+
+      holdsHedgeBudget = true;
+      secondaryStarted = true;
+      querySpan?.setAttribute(CONNECTION_LOOKUP_HEDGED_ATTRIBUTE, true);
+      lookup(hostname, options, onSecondaryLookup);
+    }
+
+    lookup(hostname, options, onPrimaryLookup);
+    if (primarySettled || socket.destroyed || !socket.connecting) {
+      return;
+    }
+
+    socket.once("close", cancelPendingHedge);
+    socket.once("timeout", cancelPendingHedge);
+    const delayController = new AbortController();
+    hedgeDelayController = delayController;
+    const delaySignal = AbortSignal.any([
+      delayController.signal,
+      AbortSignal.timeout(hedgeDelayMs),
+    ]);
+    delaySignal.addEventListener(
+      "abort",
+      () => {
+        if (!delayController.signal.aborted) {
+          startSecondaryLookup();
+        }
+      },
+      { once: true },
+    );
+  };
+}
+
+class InstrumentedPgSocket extends Socket {
+  constructor(
+    private readonly lookup: LookupFunction,
+    private readonly lookupHedgeDelayMs: number,
+    private readonly querySpan: Span | undefined,
+  ) {
+    super();
+  }
+
+  override connect(
+    options: SocketConnectOpts,
+    connectionListener?: () => void,
+  ): this;
+  override connect(
+    port: number,
+    host: string,
+    connectionListener?: () => void,
+  ): this;
+  override connect(port: number, connectionListener?: () => void): this;
+  override connect(path: string, connectionListener?: () => void): this;
+  override connect(
+    optionsOrPortOrPath: SocketConnectOpts | number | string,
+    hostOrListener?: string | (() => void),
+    connectionListener?: () => void,
+  ): this {
+    if (typeof optionsOrPortOrPath === "number") {
+      if (typeof hostOrListener === "string") {
+        return super.connect(
+          {
+            port: optionsOrPortOrPath,
+            host: hostOrListener,
+            lookup: createHedgedLookup(
+              this,
+              this.lookup,
+              this.lookupHedgeDelayMs,
+              this.querySpan,
+            ),
+          },
+          connectionListener,
+        );
+      }
+      if (hostOrListener) {
+        return super.connect(optionsOrPortOrPath, hostOrListener);
+      }
+      return super.connect(optionsOrPortOrPath);
+    }
+
+    if (typeof optionsOrPortOrPath === "string") {
+      if (typeof hostOrListener === "function") {
+        return super.connect(optionsOrPortOrPath, hostOrListener);
+      }
+      return super.connect(optionsOrPortOrPath);
+    }
+
+    if (typeof hostOrListener === "function") {
+      return super.connect(optionsOrPortOrPath, hostOrListener);
+    }
+    return super.connect(optionsOrPortOrPath);
+  }
 }
 
 function normalizeAddressFamily(
@@ -53,24 +255,31 @@ function normalizeAddressFamily(
   return undefined;
 }
 
-export function createInstrumentedPgStream(): Socket {
-  const socket = new Socket();
+export function createInstrumentedPgStream(
+  options: InstrumentedPgStreamOptions = {},
+): Socket {
   const markedSpan = context.active().getValue(POOL_QUERY_SPAN_KEY);
-  if (
-    !(markedSpan instanceof PoolQuerySpan) ||
-    !markedSpan.span.isRecording()
-  ) {
+  const querySpan =
+    markedSpan instanceof PoolQuerySpan && markedSpan.span.isRecording()
+      ? markedSpan.span
+      : undefined;
+  const socket = new InstrumentedPgSocket(
+    options.lookup ?? systemLookup,
+    options.lookupHedgeDelayMs ?? LOOKUP_HEDGE_DELAY_MS,
+    querySpan,
+  );
+  if (!querySpan) {
     return socket;
   }
+  const recordingSpan = querySpan;
 
-  const querySpan = markedSpan.span;
   const startedAt = performance.now();
   let attemptCount = 0;
   let failedAttemptCount = 0;
   let timedOutAttemptCount = 0;
 
   function onLookup(): void {
-    querySpan.setAttribute(
+    recordingSpan.setAttribute(
       CONNECTION_LOOKUP_DURATION_ATTRIBUTE,
       performance.now() - startedAt,
     );
@@ -78,12 +287,15 @@ export function createInstrumentedPgStream(): Socket {
 
   function onConnectionAttempt(): void {
     attemptCount += 1;
-    querySpan.setAttribute(CONNECTION_ATTEMPT_COUNT_ATTRIBUTE, attemptCount);
+    recordingSpan.setAttribute(
+      CONNECTION_ATTEMPT_COUNT_ATTRIBUTE,
+      attemptCount,
+    );
   }
 
   function onConnectionAttemptFailed(): void {
     failedAttemptCount += 1;
-    querySpan.setAttribute(
+    recordingSpan.setAttribute(
       CONNECTION_ATTEMPT_FAILED_COUNT_ATTRIBUTE,
       failedAttemptCount,
     );
@@ -91,7 +303,7 @@ export function createInstrumentedPgStream(): Socket {
 
   function onConnectionAttemptTimeout(): void {
     timedOutAttemptCount += 1;
-    querySpan.setAttribute(
+    recordingSpan.setAttribute(
       CONNECTION_ATTEMPT_TIMEOUT_COUNT_ATTRIBUTE,
       timedOutAttemptCount,
     );
@@ -110,13 +322,13 @@ export function createInstrumentedPgStream(): Socket {
   }
 
   function onConnect(): void {
-    querySpan.setAttribute(
+    recordingSpan.setAttribute(
       CONNECTION_SOCKET_CONNECT_DURATION_ATTRIBUTE,
       performance.now() - startedAt,
     );
     const addressFamily = normalizeAddressFamily(socket.remoteFamily);
     if (addressFamily) {
-      querySpan.setAttribute(
+      recordingSpan.setAttribute(
         CONNECTION_ADDRESS_FAMILY_ATTRIBUTE,
         addressFamily,
       );

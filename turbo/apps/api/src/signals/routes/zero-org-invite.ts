@@ -1,10 +1,11 @@
 import { command } from "ccstate";
 import { zeroOrgInviteContract } from "@vm0/api-contracts/contracts/zero-org-members";
 
+import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { clerk$ } from "../external/clerk";
 import { bodyResultOf } from "../context/request";
+import { clerk$ } from "../external/clerk";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -38,6 +39,7 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
     emailAddress: body.data.email,
     inviterUserId: auth.userId,
     role: body.data.role === "admin" ? "org:admin" : "org:member",
+    redirectUrl: env("APP_URL"),
   });
   signal.throwIfAborted();
 

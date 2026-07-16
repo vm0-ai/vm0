@@ -2761,23 +2761,26 @@ describe("CHAT-02: failed chat callbacks", () => {
       threadId = run.threadId;
       runIds.push(run.runId);
       const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-      await expect
-        .poll(() => {
-          return context.mocks.ably.publish.mock.calls.some((call) => {
-            return (
-              call[0] === `chatThreadRunCreated:${run.threadId}` &&
-              call[1] === null
-            );
-          });
-        })
-        .toBe(true);
-      context.mocks.ably.publish.mockClear();
-      await failChatRun(run.runId, sandboxHeaders, round.error);
-      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-        `chatThreadRunCreated:${threadId}`,
+      // Isolate failed-callback notifications from send-side background work.
+      await flushWaitUntilForTest();
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `chatThreadRunCreated:${run.threadId}`,
         null,
       );
-      await waitForChatThreadMessageCreatedPublish(run.threadId);
+      context.mocks.ably.publish.mockClear();
+      await failChatRun(run.runId, sandboxHeaders, round.error);
+      // The complete webhook acknowledges before terminal callback work
+      // finishes. Drain its tracked waitUntil work so both realtime assertions
+      // cover the complete failed-run callback instead of a one-second window.
+      await flushWaitUntilForTest();
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `chatThreadMessageCreated:${run.threadId}`,
+        null,
+      );
+      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+        `chatThreadRunCreated:${run.threadId}`,
+        null,
+      );
     }
     const reportRunId = runIds[2];
     if (!threadId || !reportRunId) {
@@ -2821,11 +2824,7 @@ describe("CHAT-02: failed chat callbacks", () => {
       })?.content,
     ).toBe(usageLimitError);
 
-    await expect
-      .poll(() => {
-        return context.mocks.webpush.sendNotification.mock.calls.length;
-      })
-      .toBe(4);
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(4);
     expect(
       pushPayload(context.mocks.webpush.sendNotification.mock.calls[1]),
     ).toMatchObject({

@@ -475,6 +475,9 @@ const UPDATERS: Updater[] = [
   staticUpdater("google-sheets", [
     "https://sheets.googleapis.com/$discovery/rest?version=v4",
   ]),
+  staticUpdater("google-slides", [
+    "https://slides.googleapis.com/$discovery/rest?version=v1",
+  ]),
   staticUpdater("youtube", [
     "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest",
   ]),

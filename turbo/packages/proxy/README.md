@@ -23,6 +23,12 @@ Caddy Proxy (HTTPS: 8443, HTTP: 8080)
   ↓              ↓              ↓
 Marketing      App            API
 (port 3042)    (port 3002)    (port 3001)
+
+Cloudflare www tunnel
+  ↓
+Caddy tunnel ingress (HTTP: 3043)
+  ├─ /api/internal/vm0-model/v1/* → Marketing (port 3042)
+  └─ all other paths                       → API (port 3001)
 ```
 
 ## Quick Start
@@ -84,6 +90,9 @@ The `Caddyfile` defines:
 | app.vm7.ai:8443 | 8443 | localhost:3002 (Vite app)   |
 | api.vm7.ai:8443 | 8443 | localhost:3001 (Hono API)   |
 | vm7.ai:8443     | 8443 | Redirect to www.vm7.ai:8443 |
+
+The public `tunnel-*-www.vm7.ai` development tunnel points to Caddy on port 3043. Caddy sends the VM0 Model proxy path to vm0-marketing and preserves the
+API as the fallback for every other path.
 
 ## Scripts
 

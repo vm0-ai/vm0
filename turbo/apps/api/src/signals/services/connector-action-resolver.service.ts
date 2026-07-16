@@ -19,8 +19,8 @@ import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 
 import {
-  getConnectorCatalogResolutionDetail,
-  getPublicConnectorCatalogDetail,
+  getStaticConnectorCatalogResolutionDetail,
+  getStaticPublicConnectorCatalogDetail,
 } from "./connector-catalog-reader.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -157,7 +157,7 @@ function createConnectorActionResolver(args: {
   readonly featureStates: ReturnType<typeof getAllFeatureStates>;
 }): ConnectorActionResolver {
   const readAvailableConnector = async (connectorRef: ConnectorCatalogRef) => {
-    return await getPublicConnectorCatalogDetail({
+    return await getStaticPublicConnectorCatalogDetail({
       connectorRef,
       featureStates: args.featureStates,
       apiAuthMethodPolicy: "include",
@@ -165,7 +165,7 @@ function createConnectorActionResolver(args: {
   };
 
   const resolveRef: ConnectorActionResolver["resolveRef"] = async (input) => {
-    const catalogConnector = await getConnectorCatalogResolutionDetail(
+    const catalogConnector = await getStaticConnectorCatalogResolutionDetail(
       input.connectorRef,
     );
     if (!catalogConnector) {
@@ -186,7 +186,7 @@ function createConnectorActionResolver(args: {
     resolveRef,
 
     async resolveMethod(input) {
-      const catalogConnector = await getConnectorCatalogResolutionDetail(
+      const catalogConnector = await getStaticConnectorCatalogResolutionDetail(
         input.connectorRef,
       );
       if (!catalogConnector) {

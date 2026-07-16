@@ -26,17 +26,8 @@ function unclaimedQueuedUserMessageCondition(
   threadId: string,
 ): SQL | undefined {
   return and(
-    eq(chatMessages.chatThreadId, threadId),
-    eq(chatMessages.role, "user"),
-    isNull(chatMessages.runId),
-    isNull(chatMessages.error),
-    isNull(chatMessages.revokesMessageId),
-    isNull(chatMessages.interruptsRunId),
-    sql`NOT EXISTS (
-      SELECT 1
-      FROM ${chatMessages} AS revoker
-      WHERE revoker.revokes_message_id = ${chatMessages.id}
-    )`,
+    eq(chatMessageQueue.chatThreadId, threadId),
+    eq(chatMessageQueue.itemType, "user_message"),
   );
 }
 
@@ -56,10 +47,14 @@ export async function loadNextUnclaimedQueuedUserMessage(
       modelProviderCredentialScope: sql<null>`NULL`,
       selectedModel: chatThreads.selectedModel,
     })
-    .from(chatMessages)
+    .from(chatMessageQueue)
+    .innerJoin(
+      chatMessages,
+      eq(chatMessages.id, chatMessageQueue.chatMessageId),
+    )
     .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
     .where(unclaimedQueuedUserMessageCondition(threadId))
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+    .orderBy(asc(chatMessageQueue.createdAt), asc(chatMessageQueue.id))
     .limit(1);
 
   return message ?? null;
@@ -69,13 +64,13 @@ export async function hasUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const [message] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+  const [item] = await db
+    .select({ id: chatMessageQueue.id })
+    .from(chatMessageQueue)
     .where(unclaimedQueuedUserMessageCondition(threadId))
     .limit(1);
 
-  return message !== undefined;
+  return item !== undefined;
 }
 
 /** Persist the queue pointer used by the shared per-thread scheduler. */

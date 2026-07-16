@@ -449,6 +449,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ArtifactFavorites]: {
+    maintainer: "bingjie@vm0.ai",
+    description: "Enable favoriting artifacts on the Artifacts page.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ArtifactPreviewImage]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -498,7 +504,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable persistent Gmail and Outlook draft cards created through the Zero Mail CLI.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

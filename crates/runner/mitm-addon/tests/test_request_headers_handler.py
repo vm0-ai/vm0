@@ -973,6 +973,77 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
 
 
+@pytest.mark.parametrize(
+    "auth_config",
+    [
+        {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
+        {"query": {"api_key": "${{ secrets.API_TOKEN }}"}},
+    ],
+    ids=["headers", "query"],
+)
+async def test_capture_enabled_trace_with_managed_auth_defers_to_request_block(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    auth_config,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": auth_config,
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="trace",
+        path="/diagnostic?client=visible",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("X-Client-Header", "visible"),
+        ),
+    )
+    original_headers = tuple(flow.request.headers.fields)
+    original_path = flow.request.path
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+        auth_fetch.assert_not_called()
+        _assert_no_request_stream(flow)
+        assert tuple(flow.request.headers.fields) == original_headers
+        assert flow.request.path == original_path
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_auth_method"
+    assert tuple(flow.request.headers.fields) == original_headers
+    assert flow.request.path == original_path
+
+
 async def test_firewall_allow_header_auth_requestheaders_strips_connector_intent(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):

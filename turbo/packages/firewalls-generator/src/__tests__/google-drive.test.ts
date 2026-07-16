@@ -2,8 +2,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { fetchSpec } from "../codegen";
 import {
   buildGoogleDriveOfficialRouteKeys,
+  buildGoogleSlidesOfficialRouteKeys,
   GOOGLE_DRIVE_DISCOVERY_URLS,
   GOOGLE_DRIVE_PERMISSION_MANIFEST,
+  GOOGLE_SLIDES_DISCOVERY_URL,
   validateGoogleDrivePermissionManifest,
   type GoogleDriveDiscoveryDocument,
   type GoogleDriveManifestPermission,
@@ -44,13 +46,20 @@ describe("Google Drive permission manifest", () => {
   let officialRouteKeys: Set<string>;
 
   beforeAll(async () => {
-    officialRouteKeys = buildGoogleDriveOfficialRouteKeys(
-      await loadDiscoveries(),
+    const slidesResponse = await fetchSpec(
+      GOOGLE_SLIDES_DISCOVERY_URL,
+      "google-slides test discovery document",
     );
+    const slidesDiscovery =
+      (await slidesResponse.json()) as GoogleDriveDiscoveryDocument;
+    officialRouteKeys = new Set([
+      ...buildGoogleDriveOfficialRouteKeys(await loadDiscoveries()),
+      ...buildGoogleSlidesOfficialRouteKeys(slidesDiscovery),
+    ]);
   });
 
   it("matches the official Discovery route set exactly", () => {
-    expect(officialRouteKeys.size).toBe(147);
+    expect(officialRouteKeys.size).toBe(152);
 
     expect(() => {
       validateGoogleDrivePermissionManifest(
@@ -170,6 +179,20 @@ describe("Google Drive permission manifest", () => {
     );
   });
 
+  it("separates Google Slides presentation reads and writes", () => {
+    expect(manifestPermission("presentations.create").routeKeys).toEqual([
+      "slides:POST /v1/presentations",
+    ]);
+    expect(manifestPermission("presentations.read").routeKeys).toEqual([
+      "slides:GET /v1/presentations/{presentationsId}",
+      "slides:GET /v1/presentations/{presentationId}/pages/{pageObjectId}",
+      "slides:GET /v1/presentations/{presentationId}/pages/{pageObjectId}/thumbnail",
+    ]);
+    expect(manifestPermission("presentations.write").routeKeys).toEqual([
+      "slides:POST /v1/presentations/{presentationId}:batchUpdate",
+    ]);
+  });
+
   it("does not expose OAuth scope names as permissions", () => {
     const names = GOOGLE_DRIVE_PERMISSION_MANIFEST.map((permission) => {
       return permission.name;
@@ -203,6 +226,9 @@ describe("Google Drive permission manifest", () => {
       "files.share": "Sharing",
       "files.write": "Files",
       "operations.read": "Drive Metadata",
+      "presentations.create": "Presentations",
+      "presentations.read": "Presentations",
+      "presentations.write": "Presentations",
       "replies.read": "Comments",
       "replies.write": "Comments",
       "revisions.delete": "Revisions",

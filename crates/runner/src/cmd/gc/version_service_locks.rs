@@ -5,7 +5,7 @@ use tracing::warn;
 use crate::error::RunnerResult;
 use crate::paths::HomePaths;
 
-use super::filesystem::{next_entry_warn, read_dir_or_missing};
+use super::filesystem::{next_entry_warn_or_stop, read_dir_or_missing};
 use super::lock_file::{ExistingLockProbe, probe_existing_lock, remove_unused_lock_after_probe};
 use super::report::GcReport;
 use super::versions::parse_semver;
@@ -39,7 +39,7 @@ pub(super) async fn gc_orphaned_version_service_locks(
     let mut removed = 0u64;
     let bin_dir = home.bin_dir();
 
-    while let Some(entry) = next_entry_warn(
+    while let Some(entry) = next_entry_warn_or_stop(
         &mut entries,
         "gc_orphaned_version_service_locks",
         &locks_dir,

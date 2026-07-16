@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.145.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.3...runner-rs-v0.145.4) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** block managed credentials on trace requests ([#21809](https://github.com/vm0-ai/vm0/issues/21809)) ([a566343](https://github.com/vm0-ai/vm0/commit/a566343639a826255c224bfaa7fbbda64145b76e))
+* support dynamic vm0 model routing ([#21693](https://github.com/vm0-ai/vm0/issues/21693)) ([80d0dca](https://github.com/vm0-ai/vm0/commit/80d0dca1f3e198f7c83ed28783da740d2215675f))
+
+## [0.145.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.2...runner-rs-v0.145.3) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** fail closed on incomplete image gc scans ([#21749](https://github.com/vm0-ai/vm0/issues/21749)) ([df65c9c](https://github.com/vm0-ai/vm0/commit/df65c9c846856e3ec8956b98bf6229f832841872))
+* **runner:** protect sidecar staging from cache gc ([#21768](https://github.com/vm0-ai/vm0/issues/21768)) ([8cb2c6e](https://github.com/vm0-ai/vm0/commit/8cb2c6edd019ec693de467a2e592fa7820fd0645))
+
+## [0.145.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.1...runner-rs-v0.145.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **mitm-addon:** validate empty zlib tails at decode limit ([#21750](https://github.com/vm0-ai/vm0/issues/21750)) ([8acba08](https://github.com/vm0-ai/vm0/commit/8acba0859c99cb39dec9113317b16ce88326fc22))
+* **runner:** close workspace gc ownership race ([#21754](https://github.com/vm0-ai/vm0/issues/21754)) ([e198e65](https://github.com/vm0-ai/vm0/commit/e198e6590e3fd2814451993b7210f261734bb1fd))
+
+
+### Documentation
+
+* **mitm-addon:** align request hook classification contract ([#21742](https://github.com/vm0-ai/vm0/issues/21742)) ([8c17d00](https://github.com/vm0-ai/vm0/commit/8c17d00b783bc4ed9d24c26942c2b0735ac845ec))
+
+## [0.145.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.0...runner-rs-v0.145.1) (2026-07-16)
+
+
+### Documentation
+
+* **mitm-addon:** clarify force-refresh cooldown start ([#21717](https://github.com/vm0-ai/vm0/issues/21717)) ([3cb10d3](https://github.com/vm0-ai/vm0/commit/3cb10d32285b1171dbcaed15406d48e53f1bd918))
+
 ## [0.145.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.26...runner-rs-v0.145.0) (2026-07-16)
 
 

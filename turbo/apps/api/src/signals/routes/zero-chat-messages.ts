@@ -57,6 +57,7 @@ import {
 } from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
+import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
   createZeroRun$,
@@ -106,12 +107,14 @@ import {
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { shouldStartNewChatSession } from "../services/chat-session-continuity.service";
-import { bestEffort } from "../utils";
+import { bestEffort, tapError } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { RouteEntry } from "../route-entry";
 import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
+
+const L = logger("ZeroChatMessages");
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -2426,7 +2429,15 @@ async function queueUnassociatedNormalMessage(params: {
     orgId: params.orgId,
   });
   if (message.kind === "queued" && message.inserted) {
-    await publishThreadListChanged(params.userId);
+    waitUntil(
+      tapError(publishThreadListChanged(params.userId), (error) => {
+        L.warn("Failed to publish queue-first thread list changed signal", {
+          userId: params.userId,
+          chatThreadId: params.prepared.thread.threadId,
+          error,
+        });
+      }),
+    );
   }
   const response = clientMessageIdResolutionResponse(
     message,
