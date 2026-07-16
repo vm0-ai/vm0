@@ -3472,7 +3472,7 @@ describe("chat composer templates", () => {
     expect(tabByText("Presentation")).toBeInTheDocument();
     expect(tabByText("Illustration")).toBeInTheDocument();
     expect(tabByText("Video")).toBeInTheDocument();
-    expect(screen.queryByText("Website")).not.toBeInTheDocument();
+    expect(tabByText("Website")).toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
     expect(tabByText("Presentation")).toHaveClass("bg-card");
