@@ -314,16 +314,12 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("registry summary above is context only");
     expect(stdout).toContain("required model inputs");
     expect(stdout).toContain("authoring-only examples");
-    expect(stdout).toContain("## Requested Parameters");
-    expect(stdout).toContain("may include CLI defaults");
-    expect(stdout).toContain("Requested size: 1024x1024");
-    expect(stdout).toContain("Source image URLs: none");
-    expect(stdout).toContain("## Parameter Precedence");
+    expect(stdout).not.toContain("## Requested Parameters");
+    expect(stdout).not.toContain("Requested size: 1024x1024");
+    expect(stdout).not.toContain("Source image URLs: none");
+    expect(stdout).not.toContain("## Parameter Precedence");
     expect(stdout).toContain(
-      "Explicit requirements in the User Prompt, including exact dimensions or aspect ratio",
-    );
-    expect(stdout).toContain(
-      "If explicit user dimensions conflict with the style dimensions, use the user dimensions",
+      "Explicit user requirements override conflicting style requirements",
     );
     expect(stdout).toContain(
       "`--background` accepts only `auto`, `opaque`, or `transparent`",
