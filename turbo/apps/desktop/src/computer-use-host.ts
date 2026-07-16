@@ -20,7 +20,12 @@ import {
 import { resolveComputerUseApiBaseUrl } from "./desktop-api-base-url";
 import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
 
-const ONLINE_POLL_MS = 2_000;
+const HEARTBEAT_POLL_MS = 2_000;
+const COMMAND_COLD_POLL_MS = 5_000;
+const COMMAND_BURST_POLL_MS = 500;
+const COMMAND_BURST_WINDOW_MS = 10_000;
+const COMMAND_ACTIVE_POLL_MS = 1_000;
+const COMMAND_ACTIVE_WINDOW_MS = 60_000;
 const RECOVERY_RETRY_BASE_MS = 2_000;
 const RECOVERY_RETRY_MAX_MS = 60_000;
 const RECOVERY_RETRY_AFTER_MAX_MS = 5 * 60_000;
@@ -244,6 +249,8 @@ export class ComputerUseHostRuntime {
   private commandTimer: NodeJS.Timeout | null = null;
   private recoveryTimer: NodeJS.Timeout | null = null;
   private commandExecutionRunning = false;
+  private lastCommandActivityAtMs: number | null = null;
+  private lastCommandCompletionAtMs: number | null = null;
   private hostToken: string | null = null;
   private nextErrorLogId = 0;
   private state: ComputerUseHostRuntimeState = {
@@ -290,7 +297,7 @@ export class ComputerUseHostRuntime {
         return;
       }
       this.scheduleHeartbeat(nextDelay);
-      this.scheduleCommandPoll(nextDelay);
+      this.scheduleCommandPoll(this.commandPollDelayMs());
     } catch (error) {
       this.handleRuntimeFailure("start", error);
     }
@@ -301,6 +308,8 @@ export class ComputerUseHostRuntime {
     this.clearHeartbeatTimer();
     this.clearCommandTimer();
     this.clearRecoveryTimer();
+    this.lastCommandActivityAtMs = null;
+    this.lastCommandCompletionAtMs = null;
     const hostToken = this.hostToken;
     this.setState({
       status: "offline",
@@ -579,7 +588,7 @@ export class ComputerUseHostRuntime {
         return;
       }
       this.scheduleHeartbeat(nextDelay);
-      this.scheduleCommandPoll(nextDelay);
+      this.scheduleCommandPoll(this.commandPollDelayMs());
     } catch (error) {
       this.handleRuntimeFailure("start", error);
     }
@@ -592,7 +601,7 @@ export class ComputerUseHostRuntime {
         this.clearCommandTimer();
         return;
       }
-      this.scheduleHeartbeat(ONLINE_POLL_MS);
+      this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
       this.scheduleCommandPoll(0);
     } catch (error) {
       this.handleRuntimeFailure("heartbeat", error);
@@ -626,7 +635,7 @@ export class ComputerUseHostRuntime {
         this.clearCommandTimer();
         return;
       }
-      this.scheduleHeartbeat(ONLINE_POLL_MS);
+      this.scheduleHeartbeat(HEARTBEAT_POLL_MS);
     } catch (error) {
       this.handleRuntimeFailure("heartbeat", error);
     }
@@ -638,8 +647,9 @@ export class ComputerUseHostRuntime {
     }
     this.commandExecutionRunning = true;
     let scheduleNextPoll = true;
+    let pollImmediately = false;
     try {
-      await this.claimAndExecuteCommand();
+      pollImmediately = (await this.claimAndExecuteCommand()) === "completed";
     } catch (error) {
       scheduleNextPoll =
         this.handleRuntimeFailure("command_poll", error) !==
@@ -652,9 +662,28 @@ export class ComputerUseHostRuntime {
         this.hostToken &&
         this.state.recovery?.phase !== "command_poll"
       ) {
-        this.scheduleCommandPoll(ONLINE_POLL_MS);
+        this.scheduleCommandPoll(
+          pollImmediately ? 0 : this.commandPollDelayMs(),
+        );
       }
     }
+  }
+
+  private commandPollDelayMs(): number {
+    const now = Date.now();
+    if (
+      this.lastCommandCompletionAtMs !== null &&
+      now - this.lastCommandCompletionAtMs < COMMAND_BURST_WINDOW_MS
+    ) {
+      return COMMAND_BURST_POLL_MS;
+    }
+    if (
+      this.lastCommandActivityAtMs !== null &&
+      now - this.lastCommandActivityAtMs < COMMAND_ACTIVE_WINDOW_MS
+    ) {
+      return COMMAND_ACTIVE_POLL_MS;
+    }
+    return COMMAND_COLD_POLL_MS;
   }
 
   private async startHost(): Promise<number | null> {
@@ -708,6 +737,8 @@ export class ComputerUseHostRuntime {
 
     const body = (await response.json()) as ComputerUseHostStartResponse;
     this.hostToken = body.hostToken;
+    this.lastCommandActivityAtMs = null;
+    this.lastCommandCompletionAtMs = null;
     this.clearRecoveryTimer();
     this.setState({
       status: "online",
@@ -716,7 +747,7 @@ export class ComputerUseHostRuntime {
       lastError: null,
       recovery: null,
     });
-    return ONLINE_POLL_MS;
+    return HEARTBEAT_POLL_MS;
   }
 
   private async hasAuthenticatedSession(): Promise<boolean> {
@@ -807,7 +838,7 @@ export class ComputerUseHostRuntime {
     return true;
   }
 
-  private async claimAndExecuteCommand(): Promise<void> {
+  private async claimAndExecuteCommand(): Promise<"idle" | "completed"> {
     const next = await this.runHostRequestWithTimeout({
       label: "command poll",
       timeoutMs: COMMAND_POLL_REQUEST_TIMEOUT_MS,
@@ -826,7 +857,7 @@ export class ComputerUseHostRuntime {
     });
     if (next.status === 401) {
       this.deactivateInvalidHostToken("command_poll");
-      return;
+      return "idle";
     }
     if (!next.ok) {
       throw new ComputerUseHttpError(
@@ -837,13 +868,14 @@ export class ComputerUseHostRuntime {
     const body = (await next.json()) as ComputerUseHostNextResponse;
     if (body.status === "idle") {
       if (!this.running || !this.hostToken) {
-        return;
+        return "idle";
       }
       this.clearRecoveryState("command_poll");
-      return;
+      return "idle";
     }
 
     const startedAtMs = Date.now();
+    this.lastCommandActivityAtMs = startedAtMs;
     const startedAt = new Date(startedAtMs).toISOString();
     this.startLocalCommandLogEntry(body.command, startedAt);
 
@@ -869,18 +901,22 @@ export class ComputerUseHostRuntime {
       this.onCommandFailure({ command: body.command, failure: completed });
     }
     if (!this.running || !this.hostToken) {
-      return;
+      return "idle";
     }
     await this.completeCommandWithRetry(body.command.id, completed);
     if (!this.running || !this.hostToken) {
-      return;
+      return "idle";
     }
+    const commandActivityAtMs = Date.now();
+    this.lastCommandActivityAtMs = commandActivityAtMs;
+    this.lastCommandCompletionAtMs = commandActivityAtMs;
     this.setState({
       status: "online",
-      lastCommandAt: new Date().toISOString(),
+      lastCommandAt: new Date(commandActivityAtMs).toISOString(),
       lastError: null,
       recovery: null,
     });
+    return "completed";
   }
 
   private async completeCommandWithRetry(
