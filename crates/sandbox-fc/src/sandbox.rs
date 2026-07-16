@@ -37,6 +37,9 @@ use crate::exec_operation_result::{
     validate_exec_capture_timeout,
 };
 use crate::factory::InvariantConfig;
+use crate::guest_dns_failure_diagnostics::{
+    GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_snapshot,
+};
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
@@ -502,6 +505,10 @@ impl SandboxNetwork {
 
     fn peer_ip(&self) -> &str {
         self.info.peer_ip()
+    }
+
+    fn host_device(&self) -> &str {
+        self.info.host_device()
     }
 
     fn mark_non_reusable(&mut self) -> sandbox::Result<()> {
@@ -1564,7 +1571,7 @@ impl Sandbox for FirecrackerSandbox {
 
         let vsock_guest = Arc::new(vsock_guest);
 
-        if self.factory_config.dns_port.is_some() {
+        if let Some(dns_port) = self.factory_config.dns_port {
             match wait_for_guest_dns_readiness(&vsock_guest).await {
                 Ok(()) => {
                     if let Err(error) = self.network.mark_reusable() {
@@ -1573,6 +1580,18 @@ impl Sandbox for FirecrackerSandbox {
                     }
                 }
                 Err(error) => {
+                    capture_guest_dns_failure_snapshot(
+                        vsock_guest.as_ref(),
+                        GuestDnsFailureDiagnosticContext {
+                            sandbox_id: &self.id,
+                            profile: &self.factory_config.profile,
+                            namespace: self.network.name(),
+                            host_device: self.network.host_device(),
+                            peer_ip: self.network.peer_ip(),
+                            dns_port,
+                        },
+                    )
+                    .await;
                     warn!(
                         id = %self.id,
                         profile = %self.factory_config.profile,
@@ -1585,7 +1604,7 @@ impl Sandbox for FirecrackerSandbox {
                         "guest DNS readiness probe failed"
                     );
                     self.runtime.kill_process().await;
-                    return Err(SandboxError::Start {
+                    return Err(SandboxError::GuestDnsReadiness {
                         message: format!(
                             "guest DNS readiness for namespace {}: {error}",
                             self.network.name(),

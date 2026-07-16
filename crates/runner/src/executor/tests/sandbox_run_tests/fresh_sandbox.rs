@@ -1,5 +1,11 @@
 use super::*;
 
+fn guest_dns_readiness_failure(message: &str) -> SandboxError {
+    SandboxError::GuestDnsReadiness {
+        message: message.to_string(),
+    }
+}
+
 #[tokio::test]
 async fn execute_inner_happy_path() {
     let dir = tempfile::tempdir().unwrap();
@@ -56,6 +62,229 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
 
     assert_eq!(outcome.exit_code(), 0);
     assert_eq!(notifications.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(guest_dns_readiness_failure("first attachment failed")));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let sandbox_id = SandboxId::new_v4();
+    let notifications = Arc::new(AtomicUsize::new(0));
+    let notifications_for_callback = Arc::clone(&notifications);
+    let notifier = SandboxPreparedNotifier::new(move |_run_id, prepared_sandbox_id| {
+        let notifications = Arc::clone(&notifications_for_callback);
+        async move {
+            assert_eq!(prepared_sandbox_id, sandbox_id);
+            notifications.fetch_add(1, Ordering::SeqCst);
+        }
+        .boxed()
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let outcome = execute_new_sandbox_with_prepared_notifier(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: sandbox_id,
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        NewSandboxHooks {
+            controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            sandbox_prepared: Some(&notifier),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_eq!(overrides.start_process_calls().len(), 1);
+    assert_eq!(notifications.load(Ordering::SeqCst), 1);
+    assert_proxy_registry_empty(dir.path()).await;
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_dns_readiness_retry",
+        true,
+        None,
+    );
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_stops_after_two_dns_unready_attachments() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(guest_dns_readiness_failure("first attachment failed")));
+    overrides.push_start_result(Err(guest_dns_readiness_failure("second attachment failed")));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    let error = result.err().expect("second DNS failure must be returned");
+    assert!(error.to_string().contains("second attachment failed"));
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_eq!(overrides.destroy_call_count(), 2);
+    assert!(overrides.start_process_calls().is_empty());
+    assert_proxy_registry_empty(dir.path()).await;
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_dns_readiness_retry",
+        false,
+        Some("replacement_prepare_failed"),
+    );
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_does_not_retry_an_unrelated_start_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(SandboxError::Start {
+        message: "boot failed".into(),
+    }));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    let error = result
+        .err()
+        .expect("ordinary start failure must be returned");
+    assert!(error.to_string().contains("boot failed"));
+    assert_eq!(overrides.create_configs().len(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_no_telemetry_action(&telemetry, "runner_fresh_sandbox_dns_readiness_retry");
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_suppresses_dns_retry_after_uncertain_destroy() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(guest_dns_readiness_failure("attachment failed")));
+    overrides.push_destroy_panic("simulated destroy panic");
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    let error = result
+        .err()
+        .expect("uncertain cleanup must preserve the readiness error");
+    assert!(error.to_string().contains("attachment failed"));
+    assert_eq!(overrides.create_configs().len(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert!(overrides.start_process_calls().is_empty());
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_dns_readiness_retry",
+        false,
+        Some("cleanup_uncertain"),
+    );
+}
+
+#[tokio::test]
+async fn execute_new_sandbox_waits_for_destroy_before_dns_retry_create() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(guest_dns_readiness_failure("attachment failed")));
+    overrides.set_destroy_lifecycle_gate(gate.clone());
+    let factory = Arc::new(MockSandboxFactory::with_overrides(Arc::clone(&overrides)));
+    let ctx = minimal_context();
+    let sandbox_id = SandboxId::new_v4();
+    let task = tokio::spawn({
+        let factory = Arc::clone(&factory);
+        async move {
+            let mut telemetry = test_telemetry(&config, &ctx);
+            let result = execute_new_sandbox(
+                factory.as_ref(),
+                &ctx,
+                NewSandboxDispatch {
+                    id: sandbox_id,
+                    reuse_result: SandboxReuseResult::PoolMiss,
+                },
+                &config,
+                &default_params(),
+                &mut telemetry,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await;
+            (result, telemetry)
+        }
+    });
+
+    gate.wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("first failed sandbox should enter explicit destroy");
+    assert_eq!(
+        overrides.create_configs().len(),
+        1,
+        "replacement create must wait for failed-sandbox destroy"
+    );
+
+    gate.release_one();
+    let (result, telemetry) = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("replacement should finish after destroy release")
+        .expect("replacement task should not panic");
+    assert_eq!(result.unwrap().exit_code(), 0);
+    assert_eq!(overrides.create_configs().len(), 2);
+    assert_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_dns_readiness_retry",
+        true,
+        None,
+    );
 }
 
 #[tokio::test]

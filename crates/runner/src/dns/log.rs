@@ -1,7 +1,10 @@
 use std::borrow::Cow;
+use std::io::SeekFrom;
+use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use tokio::io::AsyncBufRead;
+use sandbox_fc::DNS_READINESS_HOSTNAME;
+use tokio::io::{AsyncBufRead, AsyncReadExt, AsyncSeekExt};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -10,6 +13,46 @@ use crate::network_log_drain::{
     DrainableLineReaderExit, NetworkLogDrainRequest, run_drainable_line_reader,
 };
 use crate::network_log_manager::NetworkLogManager;
+
+const DNS_READINESS_LOG_SCAN_MAX_BYTES: u64 = 64 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DnsReadinessLogScanStatus {
+    Complete,
+    Truncated,
+    InvalidOffset,
+    Malformed,
+    Unavailable,
+}
+
+impl DnsReadinessLogScanStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Truncated => "truncated",
+            Self::InvalidOffset => "invalid_offset",
+            Self::Malformed => "malformed",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DnsReadinessLogObservation {
+    pub(crate) query_observed: bool,
+    pub(crate) result_observed: bool,
+    pub(crate) status: DnsReadinessLogScanStatus,
+}
+
+impl DnsReadinessLogObservation {
+    pub(crate) fn unavailable() -> Self {
+        Self {
+            query_observed: false,
+            result_observed: false,
+            status: DnsReadinessLogScanStatus::Unavailable,
+        }
+    }
+}
 
 /// Tail dnsmasq stderr and write DNS log entries to per-VM network JSONL.
 ///
@@ -83,6 +126,80 @@ async fn handle_dns_line(network_log_manager: &NetworkLogManager, line: &str) {
         // it reflects DNS observation time, not delayed write time.
         let timestamp = Utc::now();
         append_dns_entry(network_log_manager, &entry, timestamp).await;
+    }
+}
+
+pub(crate) async fn inspect_readiness_log_segment(
+    path: &Path,
+    start_offset: u64,
+) -> DnsReadinessLogObservation {
+    let mut file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return DnsReadinessLogObservation {
+                query_observed: false,
+                result_observed: false,
+                status: DnsReadinessLogScanStatus::Complete,
+            };
+        }
+        Err(_) => return DnsReadinessLogObservation::unavailable(),
+    };
+    let file_len = match file.metadata().await {
+        Ok(metadata) => metadata.len(),
+        Err(_) => return DnsReadinessLogObservation::unavailable(),
+    };
+    if file_len < start_offset {
+        return DnsReadinessLogObservation {
+            query_observed: false,
+            result_observed: false,
+            status: DnsReadinessLogScanStatus::InvalidOffset,
+        };
+    }
+    if file.seek(SeekFrom::Start(start_offset)).await.is_err() {
+        return DnsReadinessLogObservation::unavailable();
+    }
+
+    let segment_len = file_len - start_offset;
+    let scan_len = segment_len.min(DNS_READINESS_LOG_SCAN_MAX_BYTES);
+    let mut bytes = Vec::new();
+    if file.take(scan_len).read_to_end(&mut bytes).await.is_err() {
+        return DnsReadinessLogObservation::unavailable();
+    }
+
+    let mut query_observed = false;
+    let mut result_observed = false;
+    let mut malformed = false;
+    for line in bytes.split(|byte| *byte == b'\n') {
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        let Ok(row) = serde_json::from_slice::<serde_json::Value>(line) else {
+            malformed = true;
+            continue;
+        };
+        if row.get("type").and_then(serde_json::Value::as_str) != Some("dns")
+            || row.get("host").and_then(serde_json::Value::as_str) != Some(DNS_READINESS_HOSTNAME)
+        {
+            continue;
+        }
+        match row.get("dns_event").and_then(serde_json::Value::as_str) {
+            Some("query") => query_observed = true,
+            Some("reply" | "cached" | "config") => result_observed = true,
+            _ => {}
+        }
+    }
+
+    let status = if segment_len > DNS_READINESS_LOG_SCAN_MAX_BYTES {
+        DnsReadinessLogScanStatus::Truncated
+    } else if malformed {
+        DnsReadinessLogScanStatus::Malformed
+    } else {
+        DnsReadinessLogScanStatus::Complete
+    };
+    DnsReadinessLogObservation {
+        query_observed,
+        result_observed,
+        status,
     }
 }
 
@@ -322,6 +439,87 @@ mod tests {
             DnsEvent::Result { result, .. } => assert_eq!(result.as_ref(), expected_result),
             DnsEvent::Query { .. } => panic!("expected result event"),
         }
+    }
+
+    fn readiness_log_row(host: &str, event: &str) -> String {
+        serde_json::json!({
+            "type": "dns",
+            "host": host,
+            "dns_event": event,
+        })
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn readiness_log_inspection_uses_attempt_offset_and_fixed_hostname() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let old_row = readiness_log_row(DNS_READINESS_HOSTNAME, "query");
+        tokio::fs::write(&path, format!("{old_row}\n"))
+            .await
+            .unwrap();
+        let start_offset = tokio::fs::metadata(&path).await.unwrap().len();
+        let mut file = tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .await
+            .unwrap();
+        let current_rows = [
+            readiness_log_row("unrelated.example", "query"),
+            readiness_log_row(DNS_READINESS_HOSTNAME, "query"),
+            readiness_log_row(DNS_READINESS_HOSTNAME, "config"),
+        ]
+        .join("\n");
+        file.write_all(format!("{current_rows}\n").as_bytes())
+            .await
+            .unwrap();
+        file.flush().await.unwrap();
+
+        let observation = inspect_readiness_log_segment(&path, start_offset).await;
+
+        assert!(observation.query_observed);
+        assert!(observation.result_observed);
+        assert_eq!(observation.status, DnsReadinessLogScanStatus::Complete);
+    }
+
+    #[tokio::test]
+    async fn readiness_log_inspection_reports_missing_file_as_complete() {
+        let dir = tempfile::tempdir().unwrap();
+        let observation = inspect_readiness_log_segment(&dir.path().join("missing.jsonl"), 0).await;
+
+        assert!(!observation.query_observed);
+        assert!(!observation.result_observed);
+        assert_eq!(observation.status, DnsReadinessLogScanStatus::Complete);
+    }
+
+    #[tokio::test]
+    async fn readiness_log_inspection_reports_invalid_offset() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        tokio::fs::write(&path, b"{}\n").await.unwrap();
+
+        let observation = inspect_readiness_log_segment(&path, 4).await;
+
+        assert!(!observation.query_observed);
+        assert!(!observation.result_observed);
+        assert_eq!(observation.status, DnsReadinessLogScanStatus::InvalidOffset);
+    }
+
+    #[tokio::test]
+    async fn readiness_log_inspection_bounds_large_attempt_segment() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let query = readiness_log_row(DNS_READINESS_HOSTNAME, "query");
+        let padding_len = usize::try_from(DNS_READINESS_LOG_SCAN_MAX_BYTES).unwrap() + 1;
+        let mut content = format!("{query}\n").into_bytes();
+        content.extend(std::iter::repeat_n(b' ', padding_len));
+        tokio::fs::write(&path, content).await.unwrap();
+
+        let observation = inspect_readiness_log_segment(&path, 0).await;
+
+        assert!(observation.query_observed);
+        assert!(!observation.result_observed);
+        assert_eq!(observation.status, DnsReadinessLogScanStatus::Truncated);
     }
 
     #[test]
