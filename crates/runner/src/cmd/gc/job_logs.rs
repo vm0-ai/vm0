@@ -6,7 +6,7 @@ use tracing::{info, warn};
 use crate::error::RunnerResult;
 use crate::paths::{HomePaths, LogPaths};
 
-use super::filesystem::{next_entry_warn, read_dir_or_missing};
+use super::filesystem::{next_entry_warn_or_stop, read_dir_or_missing};
 use super::report::{GcReport, human_bytes};
 
 /// Per-job log files older than this are eligible for GC.
@@ -27,7 +27,7 @@ pub(super) async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult
     let mut removed = 0u64;
     let mut freed = 0u64;
 
-    while let Some(entry) = next_entry_warn(&mut entries, "gc_job_logs", &logs_dir).await {
+    while let Some(entry) = next_entry_warn_or_stop(&mut entries, "gc_job_logs", &logs_dir).await {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
 

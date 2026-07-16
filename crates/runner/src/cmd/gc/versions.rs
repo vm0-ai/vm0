@@ -15,7 +15,7 @@ use crate::lock;
 use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
-use super::filesystem::{next_entry_warn, read_dir_or_missing};
+use super::filesystem::{GcDirEntryReader, read_dir_or_missing};
 use super::lock_file::{ExistingLockProbe, probe_existing_lock, remove_unused_lock_after_probe};
 use super::report::GcReport;
 
@@ -117,6 +117,7 @@ struct VersionGcEntry {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(super) struct VersionGcAnalysis {
     entries: Vec<VersionGcEntry>,
+    directory_scan_complete: bool,
 }
 
 impl VersionGcAnalysis {
@@ -126,6 +127,10 @@ impl VersionGcAnalysis {
             .filter(|entry| entry.retained.is_some())
             .map(|entry| entry.name.as_str())
     }
+
+    pub(super) const fn directory_scan_complete(&self) -> bool {
+        self.directory_scan_complete
+    }
 }
 
 pub(super) async fn analyze_version_gc(
@@ -133,10 +138,21 @@ pub(super) async fn analyze_version_gc(
     protect: Option<&str>,
     keep_latest: Option<usize>,
 ) -> RunnerResult<VersionGcAnalysis> {
+    let mut entry_reader = GcDirEntryReader::new();
+    analyze_version_gc_with_reader(home, protect, keep_latest, &mut entry_reader).await
+}
+
+async fn analyze_version_gc_with_reader(
+    home: &HomePaths,
+    protect: Option<&str>,
+    keep_latest: Option<usize>,
+    entry_reader: &mut GcDirEntryReader,
+) -> RunnerResult<VersionGcAnalysis> {
     let bin_dir = home.bin_dir();
     let Some(mut entries) = read_dir_or_missing(&bin_dir).await? else {
         return Ok(VersionGcAnalysis {
             entries: Vec::new(),
+            directory_scan_complete: true,
         });
     };
 
@@ -144,10 +160,23 @@ pub(super) async fn analyze_version_gc(
     // pick the top `keep_latest` by version, so we can't decide-and-delete
     // in one pass.
     let mut semver_dirs: Vec<(String, (u32, u32, u32))> = Vec::new();
-    while let Some(entry) = next_entry_warn(&mut entries, "gc_versions", &bin_dir).await {
+    let mut directory_scan_complete = true;
+    loop {
+        let entry = match entry_reader
+            .next_entry_warn(&mut entries, "gc_versions", &bin_dir)
+            .await
+        {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            Err(_) => {
+                directory_scan_complete = false;
+                break;
+            }
+        };
         let file_type = match entry.file_type().await {
             Ok(file_type) => file_type,
             Err(e) => {
+                directory_scan_complete = false;
                 warn!(
                     "version entry {}: cannot read file type ({e}), skipping",
                     entry.path().display()
@@ -190,7 +219,21 @@ pub(super) async fn analyze_version_gc(
         });
     }
 
-    Ok(VersionGcAnalysis { entries })
+    Ok(VersionGcAnalysis {
+        entries,
+        directory_scan_complete,
+    })
+}
+
+#[cfg(test)]
+pub(super) async fn analyze_version_gc_with_injected_scan_error(
+    home: &HomePaths,
+    protect: Option<&str>,
+    keep_latest: Option<usize>,
+    successful_entries: usize,
+) -> RunnerResult<VersionGcAnalysis> {
+    let mut entry_reader = GcDirEntryReader::failing_after(successful_entries);
+    analyze_version_gc_with_reader(home, protect, keep_latest, &mut entry_reader).await
 }
 
 async fn version_retention_reason(

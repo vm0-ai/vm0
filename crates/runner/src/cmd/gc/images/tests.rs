@@ -6,6 +6,58 @@ use super::*;
 use crate::cmd::gc::test_support::{assert_is_symlink, old_gc_time, set_mtime, test_home};
 use crate::lock;
 
+async fn assert_incomplete_snapshot_scan_keeps_rootfs(dry_run: bool) {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let rootfs_dir = home.images_dir().join("rootfs_incomplete_scan");
+    let snapshots_dir = rootfs_dir.join("snapshots");
+    let snapshot_dirs = [
+        snapshots_dir.join("snapshot_a"),
+        snapshots_dir.join("snapshot_b"),
+    ];
+    for snapshot_dir in &snapshot_dirs {
+        std::fs::create_dir_all(snapshot_dir).unwrap();
+        std::fs::write(snapshot_dir.join("snapshot.bin"), b"snapshot").unwrap();
+        set_mtime(snapshot_dir, old_gc_time());
+    }
+    std::fs::write(rootfs_dir.join("rootfs.ext4"), b"rootfs").unwrap();
+    set_mtime(&rootfs_dir, old_gc_time());
+
+    let report = gc_nested_images_with_injected_snapshot_scan_error(
+        &home,
+        Some(0),
+        dry_run,
+        &ProtectedImageRefs::new(),
+        1,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report, GcReport::default());
+    assert!(
+        rootfs_dir.exists(),
+        "an incompletely scanned rootfs must survive"
+    );
+    for snapshot_dir in snapshot_dirs {
+        assert!(
+            snapshot_dir.exists(),
+            "all snapshots must survive an incomplete directory scan"
+        );
+    }
+}
+
+#[tokio::test]
+async fn gc_nested_images_fails_closed_after_snapshot_scan_error() {
+    assert_incomplete_snapshot_scan_keeps_rootfs(false).await;
+}
+
+#[tokio::test]
+async fn gc_nested_images_dry_run_ignores_incomplete_snapshot_scan() {
+    assert_incomplete_snapshot_scan_keeps_rootfs(true).await;
+}
+
 #[tokio::test]
 async fn gc_nested_images_empty_dir_returns_zero() {
     let dir = tempfile::tempdir().unwrap();

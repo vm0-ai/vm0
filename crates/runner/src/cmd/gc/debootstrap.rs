@@ -7,7 +7,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
 use super::GC_MIN_AGE;
-use super::filesystem::{next_entry_warn, read_dir_or_missing};
+use super::filesystem::{next_entry_warn_or_stop, read_dir_or_missing};
 use super::lock_file::{LockProbe, probe_lock};
 use super::report::{GcReport, human_bytes};
 
@@ -42,7 +42,7 @@ pub(super) async fn gc_debootstrap(
     };
 
     let mut files: Vec<DeBootstrapCacheFile> = Vec::new();
-    while let Some(entry) = next_entry_warn(&mut entries, "gc_debootstrap", &dir).await {
+    while let Some(entry) = next_entry_warn_or_stop(&mut entries, "gc_debootstrap", &dir).await {
         let path = entry.path();
         let meta = match tokio::fs::metadata(&path).await {
             Ok(m) => m,
