@@ -54,6 +54,8 @@ review "authentication changes"     # Review by description
 4. **Review Each Commit Against Bad Smells**
    - Read the bad smell documentation from `docs/bad-smell.md`
    - For testing-related changes, read testing spec from `docs/testing.md`
+   - For React, ccstate, cache, Store, ref, or resource-lifecycle changes, read
+     `docs/cache.md`
    - For each commit, analyze code changes against all code quality issues
    - Create individual review file: `codereviews/YYYYMMDD/review-{short-hash}.md`
 
@@ -69,6 +71,15 @@ review "authentication changes"     # Review by description
    - Evaluate test quality and completeness
    - Check for fake timers, partial mocks, implementation detail testing
    - Verify mocks are reset through the package's standard centralized cleanup
+
+   **React, ccstate, Cache, and Resource Lifecycles** (refer to `docs/cache.md`)
+   - Keep React render pure and do not allocate signal identities during render
+   - Reject unbounded lifetime caches and state whose owner outlives its domain
+   - Avoid duplicate mutable sources of truth and parallel state machines
+   - Verify callback-ref stability and preserve `onRef` cleanup returns
+   - Require symmetric teardown for listeners, timers, observers, object URLs,
+     editors, subscriptions, and async work
+   - Inspect helper, chaining, and nested-callback shapes that can evade lint
 
    **Error Handling (Bad Smell #3)**
    - Identify unnecessary try/catch blocks
@@ -546,6 +557,8 @@ codereviews/
 ## References
 
 - Bad smell documentation: `docs/bad-smell.md` (non-testing patterns)
+- React and ccstate cache practices: `docs/cache.md` (state ownership, retention,
+  refs, and resource lifecycles)
 - Testing spec: `docs/testing.md` (comprehensive testing patterns and anti-patterns)
 - Project principles: `CLAUDE.md`
 - Conventional commits: https://www.conventionalcommits.org/
