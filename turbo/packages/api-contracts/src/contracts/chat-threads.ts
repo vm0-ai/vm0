@@ -294,6 +294,30 @@ const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   websiteGenerationTemplateRequestSchema,
 ]);
 
+const workflowSnapshotSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    agentId: z.string().uuid().optional(),
+    name: z.string(),
+    displayName: z.string().nullable(),
+    description: z.string().nullable(),
+    automationId: z.string().uuid().optional(),
+    triggerId: z.string().uuid().optional(),
+    triggerBrief: z.string().nullable().optional(),
+  })
+  .superRefine((snapshot, context) => {
+    if (
+      snapshot.automationId !== undefined &&
+      snapshot.triggerId !== undefined &&
+      snapshot.automationId !== snapshot.triggerId
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "automationId and triggerId must match",
+      });
+    }
+  });
+
 const pagedChatMessageBaseSchema = z.object({
   id: z.string(),
   content: z.string().nullable(),
@@ -316,17 +340,7 @@ const pagedChatMessageBaseSchema = z.object({
   generationTemplate: generationTemplateRequestSchema.optional(),
   mailDraft: zeroMailDraftSchema.optional(),
   sequenceNumber: z.number().nullable().optional(),
-  workflowSnapshot: z
-    .object({
-      id: z.string().uuid().optional(),
-      agentId: z.string().uuid().optional(),
-      name: z.string(),
-      displayName: z.string().nullable(),
-      description: z.string().nullable(),
-      triggerId: z.string().uuid().optional(),
-      triggerBrief: z.string().nullable().optional(),
-    })
-    .optional(),
+  workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),
 });
 

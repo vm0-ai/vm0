@@ -1,18 +1,77 @@
 import { z } from "zod";
 
+const automationIdentifierFields = {
+  automationId: z.string().optional(),
+  triggerId: z.string().optional(),
+};
+
+function validateAutomationIdentifier(
+  payload: {
+    readonly automationId?: string;
+    readonly triggerId?: string;
+  },
+  context: z.RefinementCtx,
+): void {
+  if (payload.automationId === undefined && payload.triggerId === undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "automationId or triggerId is required",
+    });
+    return;
+  }
+  if (
+    payload.automationId !== undefined &&
+    payload.triggerId !== undefined &&
+    payload.automationId !== payload.triggerId
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "automationId and triggerId must match",
+    });
+  }
+}
+
 export const automationLoopCallbackPayloadSchema = z
   .object({
-    triggerId: z.string(),
+    ...automationIdentifierFields,
   })
-  .passthrough();
+  .passthrough()
+  .superRefine(validateAutomationIdentifier)
+  .transform((payload) => ({
+    ...payload,
+    automationId: payload.automationId ?? payload.triggerId,
+  }))
+  .pipe(
+    z
+      .object({
+        automationId: z.string(),
+        triggerId: z.string().optional(),
+      })
+      .passthrough(),
+  );
 
 export const automationCronCallbackPayloadSchema = z
   .object({
-    triggerId: z.string(),
+    ...automationIdentifierFields,
     timezone: z.string(),
     cronExpression: z.string().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine(validateAutomationIdentifier)
+  .transform((payload) => ({
+    ...payload,
+    automationId: payload.automationId ?? payload.triggerId,
+  }))
+  .pipe(
+    z
+      .object({
+        automationId: z.string(),
+        triggerId: z.string().optional(),
+        timezone: z.string(),
+        cronExpression: z.string().optional(),
+      })
+      .passthrough(),
+  );
 
 export type AutomationLoopCallbackPayload = z.infer<
   typeof automationLoopCallbackPayloadSchema
