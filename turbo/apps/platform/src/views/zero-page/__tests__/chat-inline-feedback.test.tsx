@@ -10,7 +10,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   detachedSetupPage,
-  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -139,6 +138,48 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+function feedbackNotes(): HTMLElement[] {
+  return Array.from(document.querySelectorAll("[data-feedback-note]")).filter(
+    (element): element is HTMLElement => {
+      return element instanceof HTMLElement;
+    },
+  );
+}
+
+async function findFeedbackNotes(count = 1): Promise<HTMLElement[]> {
+  return await waitFor(() => {
+    const notes = feedbackNotes();
+    expect(notes).toHaveLength(count);
+    return notes;
+  });
+}
+
+async function findFeedbackNote(): Promise<HTMLElement> {
+  const [note] = await findFeedbackNotes();
+  if (!note) {
+    throw new Error("Feedback note not found");
+  }
+  return note;
+}
+
+async function replaceFeedbackNote(
+  note: HTMLElement,
+  value: string,
+): Promise<void> {
+  const fastUser = userEvent.setup({ delay: null });
+  await fastUser.click(note);
+  const range = document.createRange();
+  range.selectNodeContents(note);
+  const selection = window.getSelection();
+  if (!selection) {
+    throw new Error("Selection API is not available");
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+  await fastUser.keyboard(value);
+}
+
 function dispatchDocumentShortcut(key: string): KeyboardEvent {
   const event = new KeyboardEvent("keydown", {
     bubbles: true,
@@ -188,6 +229,9 @@ describe("chat inline feedback", () => {
       path: `/chats/${FEEDBACK_THREAD_ID}`,
     });
 
+    const composerEditor = await findComposerEditor();
+    await user.click(composerEditor);
+    await user.keyboard("Mention the dates before the risk summary.");
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
 
@@ -209,11 +253,9 @@ describe("chat inline feedback", () => {
     });
     await user.click(buttonByText("Provide feedback"));
 
-    const feedbackComment = await screen.findByPlaceholderText(
-      "What should change about this?",
-    );
-    await fill(feedbackComment, "Mention the dates before the risk summary.");
-    expect(feedbackComment).toHaveValue(
+    const feedbackComment = await findFeedbackNote();
+    await expect(findComposerEditor()).resolves.toBe(composerEditor);
+    expect(feedbackComment).toHaveTextContent(
       "Mention the dates before the risk summary.",
     );
 
@@ -230,12 +272,11 @@ describe("chat inline feedback", () => {
       "Mention the dates before the risk summary.",
     );
 
-    expect(
-      screen.queryByPlaceholderText("What should change about this?"),
-    ).not.toBeInTheDocument();
+    expect(feedbackNotes()).toHaveLength(0);
+    await expect(findComposerEditor()).resolves.toBe(composerEditor);
   });
 
-  it("keeps inline feedback editable when the current model is unavailable", async () => {
+  it("clears inline feedback when the current model is unavailable", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
     let runCreateCount = 0;
@@ -274,31 +315,18 @@ describe("chat inline feedback", () => {
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
     await user.click(await screen.findByText("Provide feedback"));
 
-    const feedbackComment = await screen.findByPlaceholderText(
-      "What should change about this?",
-    );
-    await fill(feedbackComment, "Mention the dates before the risk summary.");
+    await findFeedbackNote();
+    await user.keyboard("Mention the dates before the risk summary.");
     await user.click(screen.getByLabelText("Send feedback"));
+
+    await waitFor(() => {
+      expect(feedbackNotes()).toHaveLength(0);
+    });
 
     await expect(
       screen.findByText("The selected model is not available"),
     ).resolves.toBeInTheDocument();
     expect(runCreateCount).toBe(0);
-
-    const preservedFeedbackComment = screen.getByPlaceholderText(
-      "What should change about this?",
-    );
-    expect(preservedFeedbackComment).toBeEnabled();
-    expect(preservedFeedbackComment).toHaveValue(
-      "Mention the dates before the risk summary.",
-    );
-    await fill(
-      preservedFeedbackComment,
-      "Mention exact dates before the risk summary.",
-    );
-    expect(preservedFeedbackComment).toHaveValue(
-      "Mention exact dates before the risk summary.",
-    );
   });
 
   it("submits inline feedback once while model validation is loading", async () => {
@@ -364,14 +392,12 @@ describe("chat inline feedback", () => {
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
     await user.click(await screen.findByText("Provide feedback"));
 
-    const feedbackComment = await screen.findByPlaceholderText(
-      "What should change about this?",
-    );
-    await fill(feedbackComment, "Mention the dates before the risk summary.");
+    await findFeedbackNote();
+    await user.keyboard("Mention the dates before the risk summary.");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Send feedback")).toBeDisabled();
+      expect(feedbackNotes()).toHaveLength(0);
     });
     await user.keyboard("{Enter}");
 
@@ -380,9 +406,61 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(runCreateCount).toBe(1);
     });
-    expect(
-      screen.queryByPlaceholderText("What should change about this?"),
-    ).not.toBeInTheDocument();
+    expect(feedbackNotes()).toHaveLength(0);
+  });
+
+  it("does not submit inline feedback while IME composition is active", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    let runCreateCount = 0;
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-composition-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-composition",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-composition-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-composition",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: () => {
+        runCreateCount++;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const composerEditor = await findComposerEditor();
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+
+    const feedbackComment = await findFeedbackNote();
+    await user.keyboard("补充具体日期");
+    const compositionEnter = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      isComposing: true,
+      key: "Enter",
+    });
+    composerEditor.dispatchEvent(compositionEnter);
+
+    expect(runCreateCount).toBe(0);
+    expect(feedbackNotes()).toHaveLength(1);
+    expect(feedbackComment).toHaveTextContent("补充具体日期");
+    await expect(findComposerEditor()).resolves.toBe(composerEditor);
   });
 
   it("shows the inline feedback toolbar when double-click selection settles after mouseup", async () => {
@@ -516,11 +594,11 @@ describe("chat inline feedback", () => {
     const event = dispatchDocumentShortcut("f");
     expect(event.defaultPrevented).toBeTruthy();
 
-    const feedbackComment = await screen.findByPlaceholderText(
-      "What should change about this?",
-    );
+    await findFeedbackNote();
     await waitFor(() => {
-      expect(feedbackComment).toHaveFocus();
+      expect(
+        document.querySelector('.zero-composer [contenteditable="true"]'),
+      ).toHaveFocus();
     });
   });
 
@@ -713,12 +791,9 @@ describe("chat inline feedback", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
-    window.getSelection()?.removeAllRanges();
 
-    await fill(
-      await screen.findByPlaceholderText("What should change about this?"),
-      "Use the attached brief as supporting context.",
-    );
+    await findFeedbackNote();
+    await user.keyboard("Use the attached brief as supporting context.");
     expect(
       screen.getByLabelText(`Remove template ${templateChipLabel}`),
     ).toBeInTheDocument();
@@ -793,42 +868,35 @@ describe("chat inline feedback", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
-    // Clicking into a note collapses the text selection in a real browser;
-    // mirror that so later clicks do not re-open the selection toolbar.
-    window.getSelection()?.removeAllRanges();
 
-    const firstComment = await screen.findByPlaceholderText(
-      "What should change about this?",
-    );
-    await fill(firstComment, "Assign each risk to an owner.");
+    const firstComment = await findFeedbackNote();
+    await user.keyboard("Assign each risk to an owner.");
+    await waitFor(() => {
+      expect(firstComment).toHaveTextContent("Assign each risk to an owner.");
+    });
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
-    window.getSelection()?.removeAllRanges();
 
-    const comments = screen.getAllByPlaceholderText(
-      "What should change about this?",
-    );
+    const comments = await findFeedbackNotes(2);
     expect(comments).toHaveLength(2);
     // The first note persists on top; the newest fragment sits below it with
     // an empty note, taking the composer position nearest Send.
-    expect(comments[0]).toHaveValue("Assign each risk to an owner.");
-    expect(comments[1]).toHaveValue("");
+    expect(comments[0]).toHaveTextContent("Assign each risk to an owner.");
+    expect(comments[1]).toHaveTextContent("");
 
     // Removing the empty draft row leaves the noted fragment intact.
     await user.click(screen.getAllByLabelText("Remove feedback")[1]);
 
     await waitFor(() => {
-      expect(
-        screen.getAllByPlaceholderText("What should change about this?"),
-      ).toHaveLength(1);
+      expect(feedbackNotes()).toHaveLength(1);
     });
-    expect(
-      screen.getByPlaceholderText("What should change about this?"),
-    ).toHaveValue("Assign each risk to an owner.");
+    expect(feedbackNotes()[0]).toHaveTextContent(
+      "Assign each risk to an owner.",
+    );
   });
 
   it("edits and sends multiple inline feedback comments", async () => {
@@ -874,40 +942,32 @@ describe("chat inline feedback", () => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
-    // Clicking into a note collapses the text selection in a real browser;
-    // mirror that so later clicks do not re-open the selection toolbar.
-    window.getSelection()?.removeAllRanges();
 
-    await fill(
-      await screen.findByPlaceholderText("What should change about this?"),
-      "Assign each risk to an owner.",
-    );
+    const firstComment = await findFeedbackNote();
+    await user.keyboard("Add owners.");
+    await waitFor(() => {
+      expect(firstComment).toHaveTextContent("Add owners.");
+    });
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
     await user.click(buttonByText("Provide feedback"));
-    window.getSelection()?.removeAllRanges();
 
-    await fill(
-      screen.getAllByPlaceholderText("What should change about this?")[1],
-      "Mention launch dates before the risk summary.",
-    );
+    const comments = await findFeedbackNotes(2);
+    await user.keyboard("Add dates.");
+    await waitFor(() => {
+      expect(comments[1]).toHaveTextContent("Add dates.");
+    });
 
     // Edit the first fragment's note in place — the oldest sits on top.
-    const editingComment = screen.getAllByPlaceholderText(
-      "What should change about this?",
-    )[0];
-    expect(editingComment).toHaveValue("Assign each risk to an owner.");
-    await fill(editingComment, "Assign named owners to each launch risk.");
-    expect(editingComment).toHaveFocus();
-    expect(editingComment).toHaveValue(
-      "Assign named owners to each launch risk.",
-    );
-    expect(
-      screen.getAllByPlaceholderText("What should change about this?")[1],
-    ).toHaveValue("Mention launch dates before the risk summary.");
+    const editingComment = feedbackNotes()[0]!;
+    expect(editingComment).toHaveTextContent("Add owners.");
+    await replaceFeedbackNote(editingComment, "Name owners.");
+    await expect(findComposerEditor()).resolves.toHaveFocus();
+    expect(editingComment).toHaveTextContent("Name owners.");
+    expect(feedbackNotes()[1]).toHaveTextContent("Add dates.");
 
     await user.click(screen.getByLabelText("Send feedback"));
 
@@ -919,11 +979,7 @@ describe("chat inline feedback", () => {
     expect(sentPrompts[0]).toContain(
       "> The launch summary needs clearer risk ownership.",
     );
-    expect(sentPrompts[0]).toContain(
-      "Assign named owners to each launch risk.",
-    );
-    expect(sentPrompts[0]).toContain(
-      "Mention launch dates before the risk summary.",
-    );
+    expect(sentPrompts[0]).toContain("Name owners.");
+    expect(sentPrompts[0]).toContain("Add dates.");
   });
 });

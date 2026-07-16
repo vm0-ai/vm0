@@ -6,13 +6,18 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { Editor, Extension, type JSONContent } from "@tiptap/core";
+import { Editor, Extension, Node, type JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { onRef } from "../utils.ts";
 import type { DraftSignals } from "./chat-draft.ts";
+import {
+  createFeedbackSignals,
+  type FeedbackItem,
+  type FeedbackSignals,
+} from "./chat-feedback.ts";
 import {
   findActiveChatThreadSuggestionRange,
   type ChatThreadSuggestionRange,
@@ -86,6 +91,7 @@ export interface WorkflowComposerSignals {
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
+  readonly feedback: FeedbackSignals;
 }
 
 export interface WorkflowComposerEventHandlers {
@@ -95,6 +101,231 @@ export interface WorkflowComposerEventHandlers {
     event: ClipboardEvent,
     currentTarget: HTMLElement,
   ) => boolean;
+}
+
+const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
+
+interface FeedbackItemNodeAttributes {
+  readonly feedbackId: number;
+  readonly quote: string;
+  readonly showDivider: boolean;
+  readonly fill: boolean;
+}
+
+function feedbackItemNodeAttributes(
+  node: ProseMirrorNode,
+): FeedbackItemNodeAttributes {
+  const feedbackId: unknown = node.attrs.feedbackId;
+  const quote: unknown = node.attrs.quote;
+  const showDivider: unknown = node.attrs.showDivider;
+  const fill: unknown = node.attrs.fill;
+  if (
+    typeof feedbackId !== "number" ||
+    typeof quote !== "string" ||
+    typeof showDivider !== "boolean" ||
+    typeof fill !== "boolean"
+  ) {
+    throw new Error("Feedback item node attributes are invalid");
+  }
+  return { feedbackId, quote, showDivider, fill };
+}
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+function createFeedbackIcon(
+  size: number,
+  strokeWidth: number,
+  paths: readonly string[],
+): SVGSVGElement {
+  const icon = document.createElementNS(SVG_NAMESPACE, "svg");
+  icon.setAttribute("width", String(size));
+  icon.setAttribute("height", String(size));
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", String(strokeWidth));
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.setAttribute("aria-hidden", "true");
+  for (const pathData of paths) {
+    const path = document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("d", pathData);
+    icon.append(path);
+  }
+  return icon;
+}
+
+function createFeedbackItemNodeView(
+  node: ProseMirrorNode,
+  removeFeedback: (id: number) => void,
+): NodeView {
+  const dom = document.createElement("div");
+  dom.dataset.feedbackItem = "";
+
+  const quoteDom = document.createElement("div");
+  quoteDom.className = "flex";
+  quoteDom.contentEditable = "false";
+  const quoteChip = document.createElement("div");
+  quoteChip.className =
+    "inline-flex h-8 max-w-full items-center gap-2 rounded-lg border " +
+    "border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground " +
+    "shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
+  const quoteIconContainer = document.createElement("span");
+  quoteIconContainer.className =
+    "flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted";
+  const quoteIcon = createFeedbackIcon(12, 1.5, [
+    "M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
+    "M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
+  ]);
+  quoteIcon.setAttribute("class", "-scale-x-100 text-muted-foreground");
+  quoteIconContainer.append(quoteIcon);
+  const quoteText = document.createElement("span");
+  quoteText.className = "min-w-0 truncate text-xs font-medium";
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className =
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md " +
+    "text-muted-foreground/70 transition-colors hover:bg-muted " +
+    "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
+    "focus-visible:ring-ring";
+  removeButton.setAttribute("aria-label", "Remove feedback");
+  removeButton.title = "Remove feedback";
+  removeButton.append(
+    createFeedbackIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
+  );
+  quoteChip.append(quoteIconContainer, quoteText, removeButton);
+  quoteDom.append(quoteChip);
+
+  const noteDom = document.createElement("div");
+  const placeholderDom = document.createElement("span");
+  placeholderDom.className =
+    "pointer-events-none absolute left-1 top-1 text-[0.9375rem] " +
+    "leading-snug text-muted-foreground/40";
+  placeholderDom.textContent = "What should change about this?";
+  placeholderDom.setAttribute("aria-hidden", "true");
+  const contentDOM = document.createElement("div");
+  contentDOM.dataset.feedbackNote = "";
+  contentDOM.setAttribute("role", "textbox");
+  contentDOM.setAttribute("aria-label", "What should change about this?");
+  contentDOM.setAttribute("aria-multiline", "true");
+  noteDom.append(placeholderDom, contentDOM);
+  dom.append(quoteDom, noteDom);
+
+  let currentNode = node;
+  function render(nextNode: ProseMirrorNode): void {
+    const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
+    dom.className = `flex flex-col gap-1.5 pb-1.5${
+      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
+    }`;
+    noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
+    placeholderDom.hidden = nextNode.textContent.length > 0;
+    contentDOM.className =
+      "relative w-full px-1 py-1 text-[0.9375rem] leading-snug " +
+      `text-foreground outline-none [&_p]:m-0${fill ? " min-h-[96px]" : ""}`;
+    quoteText.textContent = quote;
+  }
+  removeButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  removeButton.addEventListener("click", () => {
+    removeFeedback(feedbackItemNodeAttributes(currentNode).feedbackId);
+  });
+  render(currentNode);
+
+  return {
+    dom,
+    contentDOM,
+    update(nextNode) {
+      if (nextNode.type !== currentNode.type) {
+        return false;
+      }
+      currentNode = nextNode;
+      render(nextNode);
+      return true;
+    },
+    stopEvent(event) {
+      return (
+        event.target instanceof globalThis.Node &&
+        quoteDom.contains(event.target)
+      );
+    },
+    ignoreMutation(mutation) {
+      return (
+        mutation.type !== "selection" && !contentDOM.contains(mutation.target)
+      );
+    },
+  };
+}
+
+function feedbackNoteContent(note: string): JSONContent[] {
+  return note.split("\n").map((line) => {
+    return line.length > 0
+      ? { type: "paragraph", content: [{ type: "text", text: line }] }
+      : { type: "paragraph" };
+  });
+}
+
+function feedbackNoteFromNode(node: ProseMirrorNode): string {
+  return node.textBetween(0, node.content.size, "\n", (leafNode) => {
+    return leafNode.type.name === "hardBreak" ? "\n" : "";
+  });
+}
+
+function feedbackItemsToWorkflowComposerDoc(
+  editor: Editor,
+  items: readonly FeedbackItem[],
+): ProseMirrorNode {
+  const existingNodes = new Map<number, ProseMirrorNode>();
+  for (let index = 0; index < editor.state.doc.childCount; index++) {
+    const node = editor.state.doc.child(index);
+    if (node.type.name !== FEEDBACK_ITEM_NODE_NAME) {
+      continue;
+    }
+    existingNodes.set(feedbackItemNodeAttributes(node).feedbackId, node);
+  }
+  const nodes = items.map((item, index) => {
+    const existingNode = existingNodes.get(item.id);
+    const canReuseContent =
+      existingNode !== undefined &&
+      feedbackItemNodeAttributes(existingNode).quote === item.quote &&
+      feedbackNoteFromNode(existingNode) === item.note;
+    const content = canReuseContent
+      ? existingNode.content
+      : editor.schema.nodeFromJSON({
+          type: FEEDBACK_ITEM_NODE_NAME,
+          content: feedbackNoteContent(item.note),
+        }).content;
+    return editor.schema.node(
+      FEEDBACK_ITEM_NODE_NAME,
+      {
+        feedbackId: item.id,
+        quote: item.quote,
+        showDivider: index > 0,
+        fill: index === items.length - 1,
+      },
+      content,
+    );
+  });
+  return editor.schema.topNodeType.create(null, nodes);
+}
+
+function feedbackItemsFromWorkflowComposer(
+  editor: Editor,
+): readonly FeedbackItem[] {
+  const items: FeedbackItem[] = [];
+  for (let index = 0; index < editor.state.doc.childCount; index++) {
+    const node = editor.state.doc.child(index);
+    if (node.type.name !== FEEDBACK_ITEM_NODE_NAME) {
+      continue;
+    }
+    const attributes = feedbackItemNodeAttributes(node);
+    items.push({
+      id: attributes.feedbackId,
+      quote: attributes.quote,
+      note: feedbackNoteFromNode(node),
+    });
+  }
+  return items;
 }
 
 function valueToWorkflowComposerDoc(value: string): JSONContent {
@@ -217,14 +448,54 @@ interface WorkflowComposerRuntime {
   focus(editor: Editor): void;
   blur(): void;
   input(): void;
+  replaceFeedbackItems(items: readonly FeedbackItem[]): void;
+  removeFeedback(id: number): void;
   keyDown(event: KeyboardEvent): boolean;
   paste(event: ClipboardEvent, currentTarget: HTMLElement): boolean;
+}
+
+function createFeedbackItemNode(
+  runtime: WorkflowComposerRuntime,
+): Node<undefined, unknown> {
+  return Node.create({
+    name: FEEDBACK_ITEM_NODE_NAME,
+    group: "block",
+    content: "paragraph+",
+    defining: true,
+    isolating: true,
+    selectable: false,
+    addAttributes() {
+      return {
+        feedbackId: { default: 0 },
+        quote: { default: "" },
+        showDivider: { default: false },
+        fill: { default: false },
+      };
+    },
+    parseHTML() {
+      return [{ tag: "div[data-feedback-item]" }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["div", { ...HTMLAttributes, "data-feedback-item": "" }, 0];
+    },
+    addNodeView() {
+      return ({ node }) => {
+        return createFeedbackItemNodeView(node, (id) => {
+          runtime.removeFeedback(id);
+        });
+      };
+    },
+  });
 }
 
 function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
   return new Editor({
     element: null,
-    extensions: [STARTER_KIT, WorkflowHighlight],
+    extensions: [
+      STARTER_KIT,
+      createFeedbackItemNode(runtime),
+      WorkflowHighlight,
+    ],
     content: valueToWorkflowComposerDoc(""),
     editorProps: {
       attributes: {
@@ -255,6 +526,17 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
   });
 }
 
+function setWorkflowComposerDocument(
+  editor: Editor,
+  nextDocument: ProseMirrorNode,
+): boolean {
+  if (editor.state.doc.eq(nextDocument)) {
+    return false;
+  }
+  editor.commands.setContent(nextDocument, { emitUpdate: false });
+  return true;
+}
+
 function createMountEditorCommand({
   editor,
   draft,
@@ -262,6 +544,7 @@ function createMountEditorCommand({
   caretIndex$,
   editorFocusedState$,
   selectedSuggestionIndexState$,
+  feedback,
   autoFocus,
   singleLineOnMobile,
 }: {
@@ -271,16 +554,23 @@ function createMountEditorCommand({
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
+  feedback: FeedbackSignals;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }) {
   return onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
-        set(draft.setInput$, workflowComposerDocToString(updatedEditor));
+        if (get(feedback.active$)) {
+          runtime.replaceFeedbackItems(
+            feedbackItemsFromWorkflowComposer(updatedEditor),
+          );
+        } else {
+          set(draft.setInput$, workflowComposerDocToString(updatedEditor));
+          runtime.input();
+        }
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, caretStringIndex(updatedEditor));
-        runtime.input();
       };
       runtime.selectionUpdate = (updatedEditor) => {
         set(caretIndex$, caretStringIndex(updatedEditor));
@@ -291,6 +581,12 @@ function createMountEditorCommand({
       };
       runtime.blur = () => {
         set(editorFocusedState$, false);
+      };
+      runtime.replaceFeedbackItems = (items) => {
+        set(feedback.replaceFromEditor$, items);
+      };
+      runtime.removeFeedback = (id) => {
+        set(feedback.removeFeedback$, id);
       };
       editor.setOptions({
         editorProps: {
@@ -309,18 +605,20 @@ function createMountEditorCommand({
         },
       });
       const input = get(draft.input$);
-      if (workflowComposerDocToString(editor) !== input) {
-        editor.commands.setContent(valueToWorkflowComposerDoc(input), {
-          emitUpdate: false,
-        });
+      if (!get(feedback.active$)) {
+        setWorkflowComposerDocument(
+          editor,
+          editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(input)),
+        );
       }
       editor.mount(element);
       set(draft.setInputSyncTarget$, {
         syncInput(value: string) {
-          if (workflowComposerDocToString(editor) !== value) {
-            editor.commands.setContent(valueToWorkflowComposerDoc(value), {
-              emitUpdate: false,
-            });
+          if (!get(feedback.active$)) {
+            setWorkflowComposerDocument(
+              editor,
+              editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value)),
+            );
           }
         },
       });
@@ -333,6 +631,8 @@ function createMountEditorCommand({
         runtime.focus = () => {};
         runtime.blur = () => {};
         runtime.input = () => {};
+        runtime.replaceFeedbackItems = () => {};
+        runtime.removeFeedback = () => {};
         runtime.keyDown = () => {
           return false;
         };
@@ -399,18 +699,15 @@ function createInsertChatThreadCommand(
   });
 }
 
-export function createWorkflowComposerSignals(
-  draft: DraftSignals,
-): WorkflowComposerSignals {
-  const caretIndex$ = state(-1);
-  const editorFocusedState$ = state(false);
-  const selectedSuggestionIndexState$ = state(0);
-  const runtime: WorkflowComposerRuntime = {
+function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
+  return {
     update(_editor: Editor): void {},
     selectionUpdate(_editor: Editor): void {},
     focus(_editor: Editor): void {},
     blur(): void {},
     input(): void {},
+    replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
+    removeFeedback(_id: number): void {},
     keyDown(_event: KeyboardEvent): boolean {
       return false;
     },
@@ -418,20 +715,48 @@ export function createWorkflowComposerSignals(
       return false;
     },
   };
+}
+
+export function createWorkflowComposerSignals(
+  draft: DraftSignals,
+  threadId?: string,
+): WorkflowComposerSignals {
+  const caretIndex$ = state(-1);
+  const editorFocusedState$ = state(false);
+  const selectedSuggestionIndexState$ = state(0);
+  const runtime = createWorkflowComposerRuntime();
 
   const editor = createWorkflowEditor(runtime);
+  const feedback = createFeedbackSignals(threadId ?? "", draft, {
+    replaceItems(items, draftValue, focusNewest) {
+      const activeItems = items && items.length > 0 ? items : null;
+      const currentFeedbackCount =
+        feedbackItemsFromWorkflowComposer(editor).length;
+      const shouldFocusNewest =
+        activeItems !== null &&
+        focusNewest &&
+        activeItems.length > currentFeedbackCount;
+      const document = activeItems
+        ? feedbackItemsToWorkflowComposerDoc(editor, activeItems)
+        : editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(draftValue));
+      const changed = setWorkflowComposerDocument(editor, document);
+      if (changed && shouldFocusNewest && editor.isInitialized) {
+        editor.commands.focus("end");
+      }
+    },
+  });
 
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
   });
   const activeSlashRange$ = computed((get) => {
-    if (!get(editorFocusedState$)) {
+    if (get(feedback.active$) || !get(editorFocusedState$)) {
       return null;
     }
     return findActiveSlashWorkflowRange(get(draft.input$), get(caretIndex$));
   });
   const activeChatThreadSuggestionRange$ = computed((get) => {
-    if (!get(editorFocusedState$)) {
+    if (get(feedback.active$) || !get(editorFocusedState$)) {
       return null;
     }
     return findActiveChatThreadSuggestionRange(
@@ -472,6 +797,7 @@ export function createWorkflowComposerSignals(
       caretIndex$,
       editorFocusedState$,
       selectedSuggestionIndexState$,
+      feedback,
       autoFocus,
       singleLineOnMobile,
     });
@@ -504,5 +830,6 @@ export function createWorkflowComposerSignals(
     insertWorkflow$,
     insertChatThread$,
     setEventHandlers$,
+    feedback,
   };
 }
