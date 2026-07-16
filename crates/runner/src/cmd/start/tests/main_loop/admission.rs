@@ -1242,14 +1242,16 @@ async fn unknown_profile_skipped() {
 
 #[tokio::test(start_paused = true)]
 async fn duplicate_discovery_deduplicated() {
-    // Budget for 2 jobs — enough for the duplicate to pass the budget
-    // check and reach the cancel_tokens dedup logic.
+    // Budget for the running job plus one reusable idle sandbox.
     let gate = Arc::new(tokio::sync::Notify::new());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
     let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    let session_id = "sess-duplicate-reservation";
+    seed_idle_pool(&idle_pool, &budget, session_id, "vm0/default", 2, 4096).await;
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
@@ -1261,17 +1263,19 @@ async fn duplicate_discovery_deduplicated() {
     let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
-    // Push the same run_id again (simulates duplicate discovery).
-    // Budget has room, but cancel_tokens already contains this run_id →
-    // the duplicate is rejected and budget is released.
+    // Push the same run_id again with reusable affinity. The duplicate first
+    // owns the idle reservation, then must restore it when cancel_tokens shows
+    // that the original run already owns local admission.
     env.handle
         .discover_tx
-        .send(crate::provider::JobCandidate::new(
-            run_id,
-            "vm0/default".into(),
-        ))
+        .send(reusable_affinity_protected_candidate(run_id, session_id))
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert_eq!(
+        idle_pool.lock().await.held_sessions(),
+        vec![session_id.to_string()],
+        "duplicate rejection should restore the reusable reservation"
+    );
 
     // Wait for the original job to complete.
     gate.notify_one();
@@ -1290,7 +1294,8 @@ async fn duplicate_discovery_deduplicated() {
             "duplicate discovery should not produce a second completion"
         );
     }
-    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 }
