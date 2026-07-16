@@ -21,6 +21,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorFeatureStates } from "@vm0/connectors/connector-utils";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { staticConnectorIconPublicPathUrl } from "@vm0/connectors/static-connector-icons";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
@@ -39,8 +40,6 @@ import {
 } from "./connector-catalog-artifacts/artifacts";
 import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
 import { connectorCatalogSource } from "./connector-catalog-sync.service";
-
-const STATIC_ASSET_ORIGIN = "https://static.vm0.io/";
 
 type PublicArtifactConnector =
   ConnectorCatalogPublicArtifact["connectors"][number];
@@ -454,7 +453,7 @@ function iconForCatalog(
   connector: PublicArtifactConnector,
 ): PublicConnectorCatalogIcon {
   return {
-    url: new URL(connector.icon.asset.key, STATIC_ASSET_ORIGIN).toString(),
+    url: staticConnectorIconPublicPathUrl(connector.icon.asset.key),
     invertInDarkMode: connector.icon.invertInDarkMode,
     ...(connector.icon.scale === undefined
       ? {}
