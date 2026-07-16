@@ -944,9 +944,9 @@ describe("chat inline feedback", () => {
     await user.click(buttonByText("Provide feedback"));
 
     const firstComment = await findFeedbackNote();
-    await user.keyboard("Assign each risk to an owner.");
+    await user.keyboard("Add owners.");
     await waitFor(() => {
-      expect(firstComment).toHaveTextContent("Assign each risk to an owner.");
+      expect(firstComment).toHaveTextContent("Add owners.");
     });
 
     selectTextForInlineFeedback(assistantReplyElement);
@@ -956,27 +956,18 @@ describe("chat inline feedback", () => {
     await user.click(buttonByText("Provide feedback"));
 
     const comments = await findFeedbackNotes(2);
-    await user.keyboard("Mention launch dates before the risk summary.");
+    await user.keyboard("Add dates.");
     await waitFor(() => {
-      expect(comments[1]).toHaveTextContent(
-        "Mention launch dates before the risk summary.",
-      );
+      expect(comments[1]).toHaveTextContent("Add dates.");
     });
 
     // Edit the first fragment's note in place — the oldest sits on top.
     const editingComment = feedbackNotes()[0]!;
-    expect(editingComment).toHaveTextContent("Assign each risk to an owner.");
-    await replaceFeedbackNote(
-      editingComment,
-      "Assign named owners to each launch risk.",
-    );
+    expect(editingComment).toHaveTextContent("Add owners.");
+    await replaceFeedbackNote(editingComment, "Name owners.");
     await expect(findComposerEditor()).resolves.toHaveFocus();
-    expect(editingComment).toHaveTextContent(
-      "Assign named owners to each launch risk.",
-    );
-    expect(feedbackNotes()[1]).toHaveTextContent(
-      "Mention launch dates before the risk summary.",
-    );
+    expect(editingComment).toHaveTextContent("Name owners.");
+    expect(feedbackNotes()[1]).toHaveTextContent("Add dates.");
 
     await user.click(screen.getByLabelText("Send feedback"));
 
@@ -988,11 +979,7 @@ describe("chat inline feedback", () => {
     expect(sentPrompts[0]).toContain(
       "> The launch summary needs clearer risk ownership.",
     );
-    expect(sentPrompts[0]).toContain(
-      "Assign named owners to each launch risk.",
-    );
-    expect(sentPrompts[0]).toContain(
-      "Mention launch dates before the risk summary.",
-    );
+    expect(sentPrompts[0]).toContain("Name owners.");
+    expect(sentPrompts[0]).toContain("Add dates.");
   });
 });
