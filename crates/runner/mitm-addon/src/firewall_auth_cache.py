@@ -81,10 +81,12 @@ def _get_auth_state(cache_key: FirewallAuthCacheKey) -> _FirewallAuthState:
 def request_force_refresh(cache_key: FirewallAuthCacheKey) -> None:
     """Request a forced token refresh on the next /firewall/auth fetch.
 
-    No-op if a forced refresh already completed within
-    ``_FORCE_REFRESH_COOLDOWN_SECS`` — rate limiter for the case where the
-    token is actually fine but the endpoint rejects for another reason
-    (scope, resource-level permission). See #9860.
+    No-op if a force-refresh marker was consumed within
+    ``_FORCE_REFRESH_COOLDOWN_SECS``. The cooldown starts when the marker is
+    consumed, before the forced fetch completes, so the same window covers
+    requests made while that fetch is in flight or after it fails. This
+    rate-limits the case where the token is actually fine but the endpoint
+    rejects for another reason (scope, resource-level permission). See #9860.
 
     Design notes for future changes:
 
