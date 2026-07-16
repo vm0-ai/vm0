@@ -30,7 +30,6 @@ mod config;
 pub mod control;
 mod cow_cleanup;
 mod cow_pool;
-mod dns_diagnostics;
 mod duration;
 mod exec_operation_result;
 mod factory;
@@ -64,7 +63,7 @@ pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,
 };
 pub use runtime::{FirecrackerRuntime, FirecrackerRuntimeProvider};
-pub use sandbox::{FirecrackerSandbox, capture_storage_bootstrap_dns_diagnostics};
+pub use sandbox::FirecrackerSandbox;
 pub use snapshot::{
     FirecrackerSnapshotProvider, SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotError, create_snapshot,
 };

@@ -601,11 +601,10 @@ impl NetnsPoolState {
         }
     }
 
-    fn checkout(&mut self, mut info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
+    fn checkout(&mut self, info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
         if !self.in_flight.insert(info.name.clone()) {
             return Err(info);
         }
-        info.attachment_generation += 1;
         Ok(NetnsLease::new(info, self.instance_id))
     }
 
@@ -1325,10 +1324,10 @@ where
 {
     let namespace = create.await?;
 
-    // Pool indices make the peer IP unique to this namespace lifecycle, so no
-    // live workload can legitimately own matching host conntrack entries here.
-    // Clear leftovers before the namespace readiness probe or a restored guest
-    // can reuse a tuple that still points at a previous runner's REDIRECT port.
+    // Pool locking and the reserved namespace index give this new namespace
+    // exclusive current ownership of its peer IP. Clear leftovers before the
+    // readiness probe or a restored guest can reuse a tuple that still points
+    // at a previous runner's REDIRECT port.
     if !(ops.flush_conntrack)(namespace.peer_ip.clone())
         .await
         .is_trusted()
@@ -1340,12 +1339,6 @@ where
         delete_namespaces_with_ops(ops, vec![namespace]).await;
         return Err(error);
     }
-    info!(
-        name = %namespace.name,
-        peer_ip = %namespace.peer_ip,
-        "namespace conntrack reset completed before readiness"
-    );
-
     let Some((probe, timeout)) = readiness else {
         return Ok(namespace);
     };
@@ -2598,7 +2591,7 @@ mod tests {
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.ops = ops;
-        let lease = pool.checkout(test_info("failed-ns")).unwrap();
+        let mut lease = pool.checkout(test_info("failed-ns")).unwrap();
         lease.mark_non_reusable();
         let mut lease = Some(lease);
         let handle = NetnsPoolHandle::from_state_for_test(pool);
@@ -2624,7 +2617,7 @@ mod tests {
         let mut pool = NetnsPoolState::inactive_for_test();
         pool.active = true;
         pool.ops = ops;
-        let lease = pool.checkout(test_info("ready-ns")).unwrap();
+        let mut lease = pool.checkout(test_info("ready-ns")).unwrap();
         lease.mark_non_reusable();
         lease.mark_reusable();
         let mut lease = Some(lease);
@@ -2640,32 +2633,6 @@ mod tests {
         assert!(pool.in_flight.is_empty());
         assert_eq!(pool.plain_queue.len(), 1);
         assert_eq!(pool.plain_queue.front().unwrap().name(), "ready-ns");
-    }
-
-    #[tokio::test]
-    async fn attachment_generation_increments_when_namespace_is_rechecked_out() {
-        let mut pool = NetnsPoolState::inactive_for_test();
-        pool.active = true;
-        pool.next_ns_index = MAX_NAMESPACES;
-        pool.plain_queue.push_back(test_info("reused-ns"));
-        let handle = NetnsPoolHandle::from_state_for_test(pool);
-
-        let first = handle.acquire().await.unwrap();
-        assert_eq!(first.info().attachment_generation(), 1);
-        let mut first = Some(first);
-        assert!(matches!(
-            handle.release(&mut first).await,
-            NetnsReleaseOutcome::Released
-        ));
-
-        let second = handle.acquire().await.unwrap();
-        assert_eq!(second.info().attachment_generation(), 2);
-        let mut second = Some(second);
-        assert!(matches!(
-            handle.release(&mut second).await,
-            NetnsReleaseOutcome::Released
-        ));
-        handle.cleanup().await.unwrap();
     }
 
     #[tokio::test]

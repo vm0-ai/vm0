@@ -68,12 +68,6 @@ impl GuestDnsReadinessFailure {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GuestDnsReadinessReport {
-    pub(crate) attempts: u16,
-    pub(crate) elapsed: Duration,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GuestDnsReadinessError {
     pub(crate) attempts: u16,
     pub(crate) elapsed: Duration,
@@ -96,14 +90,14 @@ impl std::error::Error for GuestDnsReadinessError {}
 
 pub(crate) async fn wait_for_guest_dns_readiness(
     guest: &VsockHost,
-) -> Result<GuestDnsReadinessReport, GuestDnsReadinessError> {
+) -> Result<(), GuestDnsReadinessError> {
     wait_for_guest_dns_readiness_with_policy(guest, PRODUCTION_POLICY).await
 }
 
 async fn wait_for_guest_dns_readiness_with_policy(
     guest: &VsockHost,
     policy: ReadinessPolicy,
-) -> Result<GuestDnsReadinessReport, GuestDnsReadinessError> {
+) -> Result<(), GuestDnsReadinessError> {
     let started = Instant::now();
     let deadline = started + policy.total_timeout;
     let mut attempts = 0;
@@ -113,12 +107,7 @@ async fn wait_for_guest_dns_readiness_with_policy(
         let remaining = deadline.saturating_duration_since(Instant::now());
         let failure = match probe_guest_dns_once(guest, remaining.min(OPERATION_WAIT_TIMEOUT)).await
         {
-            Ok(()) => {
-                return Ok(GuestDnsReadinessReport {
-                    attempts,
-                    elapsed: started.elapsed(),
-                });
-            }
+            Ok(()) => return Ok(()),
             Err(failure) => failure,
         };
 
@@ -364,8 +353,7 @@ mod tests {
         )
         .await;
 
-        let report = task.await.unwrap().unwrap();
-        assert_eq!(report.attempts, 1);
+        task.await.unwrap().unwrap();
     }
 
     #[tokio::test]
@@ -393,8 +381,7 @@ mod tests {
         )
         .await;
 
-        let report = task.await.unwrap().unwrap();
-        assert_eq!(report.attempts, 2);
+        task.await.unwrap().unwrap();
     }
 
     #[tokio::test]

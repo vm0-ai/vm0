@@ -9,5 +9,4 @@ pub(crate) use pool::NetnsPoolHandle;
 pub use pool::{
     NetnsInfo, NetnsLease, NetnsPool, NetnsPoolConfig, ParsedNetnsName, parse_netns_name,
 };
-pub(crate) use readiness::probe_namespace_dns;
 pub use readiness::{DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
