@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.146.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.0...runner-rs-v0.146.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+* **runner:** recover from guest dns readiness failures ([#21879](https://github.com/vm0-ai/vm0/issues/21879)) ([38a6647](https://github.com/vm0-ai/vm0/commit/38a664712e595a88a482df90ef8012f976c3f128))
+
+
+### Refactoring
+
+* **runner:** publish profile-qualified workspace cache state ([#21874](https://github.com/vm0-ai/vm0/issues/21874)) ([68b399b](https://github.com/vm0-ai/vm0/commit/68b399b571023b63db4a2f4f625eef1c9ded9b48))
+
 ## [0.146.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.6...runner-rs-v0.146.0) (2026-07-16)
 
 

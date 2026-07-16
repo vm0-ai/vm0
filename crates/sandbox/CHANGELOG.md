@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.26](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.25...sandbox-v0.19.26) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+* **runner:** recover from guest dns readiness failures ([#21879](https://github.com/vm0-ai/vm0/issues/21879)) ([38a6647](https://github.com/vm0-ai/vm0/commit/38a664712e595a88a482df90ef8012f976c3f128))
+* **runner:** reject severe balloon retention from idle reuse ([#21878](https://github.com/vm0-ai/vm0/issues/21878)) ([069b871](https://github.com/vm0-ai/vm0/commit/069b8713f5a9f073ab97671b92e71bd4574faeca))
+
 ## [0.19.25](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.24...sandbox-v0.19.25) (2026-07-16)
 
 
