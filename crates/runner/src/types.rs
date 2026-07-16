@@ -11,6 +11,8 @@ use api_contracts::generated::types::runners::storage::StorageManifest;
 use crate::ids::RunId;
 
 pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
+pub(crate) const MAX_WORKSPACE_CACHES_PER_SESSION: usize = 8;
+pub(crate) const MAX_WORKSPACE_CACHES_PER_HEARTBEAT: usize = 1024;
 
 fn is_false(value: &bool) -> bool {
     !*value
@@ -1241,6 +1243,12 @@ pub struct ReusableSandboxState {
     pub history_generation_run_id: Option<RunId>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceCacheState {
+    pub profile: String,
+}
+
 /// Runner state snapshot sent to the server via heartbeat.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -1251,6 +1259,8 @@ pub struct HeldSessionState {
     pub last_completed_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reusable_sandbox: Option<ReusableSandboxState>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workspace_caches: Vec<WorkspaceCacheState>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1957,6 +1967,9 @@ mod tests {
                         "11111111-1111-4111-8111-111111111111".parse().unwrap(),
                     ),
                 }),
+                workspace_caches: vec![WorkspaceCacheState {
+                    profile: "vm0/large".into(),
+                }],
             }],
             mode: "running".into(),
         };
@@ -1980,7 +1993,8 @@ mod tests {
                 "reusableSandbox": {
                     "profile": "vm0/default",
                     "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
-                }
+                },
+                "workspaceCaches": [{ "profile": "vm0/large" }]
             }])
         );
         assert_eq!(json["mode"], "running");
@@ -2002,6 +2016,7 @@ mod tests {
                 .as_ref()
                 .is_some_and(|sandbox| sandbox.history_generation_run_id.is_none())
         );
+        assert!(state.workspace_caches.is_empty());
 
         let serialized = serde_json::to_value(state).unwrap();
         assert!(
@@ -2009,5 +2024,6 @@ mod tests {
                 .get("historyGenerationRunId")
                 .is_none()
         );
+        assert!(serialized.get("workspaceCaches").is_none());
     }
 }

@@ -1450,6 +1450,7 @@ mod tests {
                 session_id: "held-session-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
                 reusable_sandbox: None,
+                workspace_caches: Vec::new(),
             }],
             mode: "running".to_string(),
         }

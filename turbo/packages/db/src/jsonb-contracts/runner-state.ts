@@ -9,6 +9,9 @@ export interface RunnerHeldSessionState {
     readonly profile: string;
     readonly historyGenerationRunId?: string;
   };
+  readonly workspaceCaches?: readonly {
+    readonly profile: string;
+  }[];
 }
 
 export type RunnerHeldSessionStates = RunnerHeldSessionState[];

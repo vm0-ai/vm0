@@ -1207,6 +1207,7 @@ impl IdlePool {
                             profile: entry.metadata.profile_name.clone(),
                             history_generation_run_id: entry.metadata.history_generation_run_id,
                         }),
+                        workspace_caches: Vec::new(),
                     })
             })
             .collect();
@@ -2016,6 +2017,7 @@ mod tests {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: Some(history_generation_run_id),
                     }),
+                    workspace_caches: Vec::new(),
                 },
                 HeldSessionState {
                     session_id: "sess-b".to_string(),
@@ -2024,6 +2026,7 @@ mod tests {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: None,
                     }),
+                    workspace_caches: Vec::new(),
                 },
             ],
         );
