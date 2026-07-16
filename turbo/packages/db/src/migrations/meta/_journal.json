@@ -4257,6 +4257,13 @@
       "when": 1784141672974,
       "tag": "0607_tan_lady_ursula",
       "breakpoints": true
+    },
+    {
+      "idx": 608,
+      "version": "7",
+      "when": 1784177952821,
+      "tag": "0608_cleanup_stale_user_message_queue_rows",
+      "breakpoints": true
     }
   ]
 }
