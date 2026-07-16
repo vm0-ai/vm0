@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.3...guest-agent-v0.53.4) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+
 ## [0.53.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.2...guest-agent-v0.53.3) (2026-07-16)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.241.7](https://github.com/vm0-ai/vm0/compare/cli-v9.241.6...cli-v9.241.7) (2026-07-16)
+
+
+### Refactoring
+
+* **mail:** store email drafts outside chat messages ([#21887](https://github.com/vm0-ai/vm0/issues/21887)) ([b269ede](https://github.com/vm0-ai/vm0/commit/b269edec386afe0413eddb62bfc90c046a91be89))
+
+
+### Performance Improvements
+
+* **computer-use:** reduce cli result polling interval to 500ms ([#21863](https://github.com/vm0-ai/vm0/issues/21863)) ([13969e0](https://github.com/vm0-ai/vm0/commit/13969e0cb351c975815d09d83122d02cda4b4ec3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.199.1
+    * @vm0/core bumped to 8.438.1
+
 ## [9.241.6](https://github.com/vm0-ai/vm0/compare/cli-v9.241.5...cli-v9.241.6) (2026-07-16)
 
 
