@@ -366,6 +366,10 @@ export {
   type TestModelProviderStateContract,
 } from "./test-model-provider-state";
 export {
+  testMailDraftStateContract,
+  type TestMailDraftStateContract,
+} from "./test-mail-draft-state";
+export {
   testUsageInsightStateActionBodySchema,
   testUsageInsightStateActionResponseSchema,
   testUsageInsightStateContract,
