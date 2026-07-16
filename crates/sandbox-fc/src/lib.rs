@@ -33,6 +33,7 @@ mod cow_pool;
 mod duration;
 mod exec_operation_result;
 mod factory;
+mod guest_dns_readiness;
 mod guest_operations;
 mod leaked_resources;
 mod network;
