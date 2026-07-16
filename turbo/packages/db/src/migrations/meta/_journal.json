@@ -4296,8 +4296,22 @@
     {
       "idx": 613,
       "version": "7",
-      "when": 1784231801599,
-      "tag": "0613_retire_orphaned_queued_chat_messages",
+      "when": 1784229392155,
+      "tag": "0613_add_kimi_k3_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 614,
+      "version": "7",
+      "when": 1784229404189,
+      "tag": "0614_migrate_kimi_k3_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1784232246678,
+      "tag": "0615_retire_orphaned_queued_chat_messages",
       "breakpoints": true
     }
   ]
