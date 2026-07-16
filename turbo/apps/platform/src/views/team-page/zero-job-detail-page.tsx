@@ -119,7 +119,6 @@ import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
-import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import {
   DetailPageBreadcrumbBar,
   DetailPageHeader,
@@ -701,7 +700,6 @@ function JobPermissionsTab({
   );
   const userGrants =
     userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
-  useUserPermissionGrantExpiryTick(userGrants);
   const activeUserGrantSnapshot = activeUserPermissionGrantSnapshot(userGrants);
   const userGrantPolicies =
     userGrantsLoadable.state === "hasData"

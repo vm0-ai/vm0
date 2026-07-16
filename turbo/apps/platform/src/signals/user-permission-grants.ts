@@ -1,5 +1,3 @@
-import { computed, type Computed } from "ccstate";
-import { delay } from "signal-timers";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
@@ -12,36 +10,6 @@ import {
   resolveFirewallMetadataPolicies,
 } from "@vm0/connectors/firewall-metadata/policy";
 import { now } from "../lib/time.ts";
-
-const TIMER_POLL_CEILING_MS = 60 * 60 * 1000;
-
-function createUserPermissionGrantExpiryTimerFactory(): (
-  nextExpiryMs: number | null,
-) => Computed<Promise<number | null>> {
-  const cache = new Map<string, Computed<Promise<number | null>>>();
-  return (nextExpiryMs) => {
-    const key = nextExpiryMs?.toString() ?? "none";
-    const existing = cache.get(key);
-    if (existing) {
-      return existing;
-    }
-
-    const atom$ = computed(async () => {
-      if (nextExpiryMs === null) {
-        return null;
-      }
-      const delayMs = Math.min(
-        Math.max(0, nextExpiryMs - now() + 1),
-        TIMER_POLL_CEILING_MS,
-      );
-      await delay(delayMs);
-      cache.delete(key);
-      return nextExpiryMs;
-    });
-    cache.set(key, atom$);
-    return atom$;
-  };
-}
 
 export function isActiveUserPermissionGrant(
   grant: Pick<UserPermissionGrantResponse, "expiresAt">,
@@ -62,29 +30,6 @@ function activeUserPermissionGrants(
     return isActiveUserPermissionGrant(grant, checkedAtMs);
   });
 }
-
-export function nextUserPermissionGrantExpiryMs(
-  grants: readonly Pick<UserPermissionGrantResponse, "expiresAt">[],
-  checkedAtMs = now(),
-): number | null {
-  let nextExpiryMs: number | null = null;
-  for (const grant of grants) {
-    if (!grant.expiresAt) {
-      continue;
-    }
-    const expiresAtMs = Date.parse(grant.expiresAt);
-    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= checkedAtMs) {
-      continue;
-    }
-    if (nextExpiryMs === null || expiresAtMs < nextExpiryMs) {
-      nextExpiryMs = expiresAtMs;
-    }
-  }
-  return nextExpiryMs;
-}
-
-export const userPermissionGrantExpiryTimer =
-  createUserPermissionGrantExpiryTimerFactory();
 
 function userPermissionGrantsToActiveFirewallPolicies(
   grants: readonly UserPermissionGrantResponse[],

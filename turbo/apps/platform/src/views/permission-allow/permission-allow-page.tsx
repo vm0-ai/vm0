@@ -40,7 +40,6 @@ import { isActiveUserPermissionGrant } from "../../signals/user-permission-grant
 import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
-import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
@@ -450,10 +449,6 @@ function PermissionAllowDoctorPage({
   const grants = grantsLoadable.state === "hasData" ? grantsLoadable.data : [];
   const savedGrant =
     grantLoadable.state === "hasData" ? grantLoadable.data : null;
-  useUserPermissionGrantExpiryTick(
-    savedGrant ? [...grants, savedGrant] : grants,
-  );
-
   if (
     anyLoadableIsLoading([
       agentLoadable,

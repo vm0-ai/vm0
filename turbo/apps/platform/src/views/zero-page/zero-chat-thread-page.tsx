@@ -165,7 +165,6 @@ import {
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
-import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -5447,10 +5446,6 @@ function PermissionActionCardForTarget({
   const savedGrantActive = savedGrant
     ? isActiveUserPermissionGrant(savedGrant)
     : false;
-  const rawUserGrants = loadableData(userGrantsLoadable) ?? [];
-  useUserPermissionGrantExpiryTick(
-    savedGrant ? [...rawUserGrants, savedGrant] : rawUserGrants,
-  );
   const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const existingGrantActive = existingGrant
     ? isActiveUserPermissionGrant(existingGrant)

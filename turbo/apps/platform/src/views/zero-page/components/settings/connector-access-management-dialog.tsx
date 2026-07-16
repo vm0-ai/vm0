@@ -46,7 +46,6 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
-import { useUserPermissionGrantExpiryTick } from "../../../user-permission-grant-expiry-tick.ts";
 
 interface ConnectorAccessManagementDialogProps {
   readonly connectorType: ConnectorType;
@@ -328,7 +327,6 @@ function AgentPermissionDialog({
   readonly onClose: () => void;
 }) {
   const grants = row?.grants ?? [];
-  useUserPermissionGrantExpiryTick(grants);
   if (!row || !metadata) {
     return null;
   }
