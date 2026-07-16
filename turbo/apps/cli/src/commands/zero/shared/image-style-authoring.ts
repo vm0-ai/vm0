@@ -28,6 +28,7 @@ interface StyledImageCompilationPacket {
     readonly outputDir: string;
   };
   readonly authoring: {
+    readonly details: readonly string[];
     readonly artifactRules: readonly string[];
   };
   readonly outputDir: string;
@@ -48,7 +49,8 @@ function formatStyleSource(source: RegistryEntry["source"]): readonly string[] {
 const outputDir = "./generated/images";
 const artifactRules = [
   "Resolve the selected style source before compiling or generating.",
-  "Style-source parameters override CLI fallbacks unless the user explicitly requests an override.",
+  "Use caller-provided CLI overrides first, explicit requirements in the user prompt second, locked style requirements third, and CLI defaults last.",
+  "Keep visual style requirements in the compiled prompt instead of mapping similarly named prose to CLI flags.",
   "Generate with `--compiled-prompt`, without `--style`, and pass only required reference inputs.",
 ] as const;
 
@@ -87,6 +89,19 @@ export function createStyledImageCompilationPacket(
     "## Style Source",
     ...formatStyleSource(options.style.source),
     "",
+    "## Requested Parameters",
+    "The entries below come only from CLI flags explicitly provided by the caller. CLI defaults are excluded.",
+    ...options.details.map((detail) => {
+      return `- ${detail}`;
+    }),
+    "",
+    "## Parameter Precedence",
+    "1. Caller-provided CLI overrides listed under Requested Parameters.",
+    "2. Explicit requirements in the User Prompt, including exact dimensions or aspect ratio.",
+    "3. Locked requirements from the selected style source.",
+    "4. Compatible CLI defaults only when none of the sources above specifies a value.",
+    "Do not treat an omitted CLI flag or its default value as a user request. If explicit user dimensions conflict with the style dimensions, use the user dimensions and preserve the remaining style constraints.",
+    "",
     "## Required Stage 1: Resolve Locked Style Source",
     "- Read `SKILL.md` before compiling or generating. The registry summary above is context only and is not a substitute for the source.",
     "- Inspect the files it references, treating assets as required model inputs only when the source marks them so; otherwise they are authoring-only examples.",
@@ -94,7 +109,9 @@ export function createStyledImageCompilationPacket(
     "",
     "## Required Stage 2: Compile Prompt and Parameters",
     "- Compile one final image prompt that preserves user intent and includes the style's composition, medium, palette, subject handling, reference usage, and must-avoid constraints.",
-    "- Resolve model, size, quality, background, and format from the style source. Style-source values override CLI fallbacks; preserve an override only when the user explicitly requested it.",
+    "- Resolve generation settings using the Parameter Precedence above. Exact canvas dimensions and output format from the style source may become `--size` and `--format` values when the CLI supports them.",
+    "- Keep visual descriptions such as canvas color, background color, composition, medium, palette, and rendering treatment in the compiled prompt. Do not translate them into similarly named CLI flags.",
+    "- Only map model, quality, background, or format to a CLI flag when the user supplied that flag or the style source explicitly declares a compatible execution setting. In particular, `--background` accepts only `auto`, `opaque`, or `transparent`; a color such as `#f4ecd8` belongs in the compiled prompt.",
     "- Return only the compiled prompt text when preparing the next command.",
     "",
     "## Required Stage 3: Generate Image",
@@ -108,8 +125,9 @@ export function createStyledImageCompilationPacket(
     "",
     "## Next Command Template",
     "```bash",
-    'zero generate image --provider built-in --compiled-prompt "<compiled prompt>" --model "<resolved model>" --size "<resolved size>" --quality "<resolved quality>" --background "<resolved background>" --format "<resolved format>"',
+    'zero generate image --provider built-in --compiled-prompt "<compiled prompt>" <resolved compatible CLI options>',
     "```",
+    "Include only caller-provided overrides and compatible execution settings resolved from the style source. Omit unresolved options so the CLI can apply its defaults.",
     'Add one `--image-url "<required reference URL>"` per required model input identified in `SKILL.md`.',
     "",
     "## Verification",
@@ -124,6 +142,7 @@ export function createStyledImageCompilationPacket(
     prompt: options.prompt,
     artifact,
     authoring: {
+      details: options.details,
       artifactRules,
     },
     outputDir,

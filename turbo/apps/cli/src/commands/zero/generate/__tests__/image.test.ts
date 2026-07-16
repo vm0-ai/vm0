@@ -314,16 +314,63 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("registry summary above is context only");
     expect(stdout).toContain("required model inputs");
     expect(stdout).toContain("authoring-only examples");
-    expect(stdout).not.toContain("## Requested Parameters");
-    expect(stdout).not.toContain("Caller-provided");
-    expect(stdout).not.toContain("Requested size:");
-    expect(stdout).not.toContain("Source image URLs:");
-    expect(stdout).toContain("Style-source values override CLI fallbacks");
+    expect(stdout).toContain("## Requested Parameters");
+    expect(stdout).toContain("Caller-provided CLI generation overrides: none");
+    expect(stdout).not.toContain("size=1024x1024");
+    expect(stdout).not.toContain("Caller-provided source image URLs:");
+    expect(stdout).toContain("## Parameter Precedence");
+    expect(stdout).toContain(
+      "Explicit requirements in the User Prompt, including exact dimensions or aspect ratio",
+    );
+    expect(stdout).toContain(
+      "If explicit user dimensions conflict with the style dimensions, use the user dimensions",
+    );
+    expect(stdout).toContain(
+      "`--background` accepts only `auto`, `opaque`, or `transparent`",
+    );
     expect(stdout).toContain(
       "stop and report that limitation instead of generating",
     );
     expect(stdout).toContain("--compiled-prompt");
-    expect(stdout).toContain('--size "<resolved size>"');
+    expect(stdout).toContain("<resolved compatible CLI options>");
+  });
+
+  it("should label only caller-provided image compilation parameters as overrides", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--style",
+      "image-style:ink-storefront",
+      "--prompt",
+      "A florist named Luna Floral",
+      "--compile",
+      "--model",
+      "gpt-image-1.5",
+      "--size",
+      "1024x1536",
+      "--quality",
+      "high",
+      "--background",
+      "opaque",
+      "--format",
+      "jpeg",
+      "--image-url",
+      "https://example.com/source.png",
+      "--mask-image-url",
+      "https://example.com/mask.png",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Caller-provided CLI generation overrides: model=gpt-image-1.5, size=1024x1536, quality=high, background=opaque, format=jpeg",
+    );
+    expect(stdout).toContain(
+      "Caller-provided source image URLs: https://example.com/source.png",
+    );
+    expect(stdout).toContain(
+      "Caller-provided mask image URL: https://example.com/mask.png",
+    );
   });
 
   it("should fail with mode guidance when no image prompt mode is selected", async () => {

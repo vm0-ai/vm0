@@ -112,7 +112,16 @@ describe("buildGenerationTemplatePrompt", () => {
       "registry description is not a substitute for the source",
     );
     expect(result.prompt).toContain(
-      "instead of CLI fallback values unless the user explicitly requests an override",
+      "caller-provided CLI overrides first, explicit requirements in the user request second",
+    );
+    expect(result.prompt).toContain(
+      "Explicit user dimensions override conflicting style dimensions",
+    );
+    expect(result.prompt).toContain(
+      "Do not translate them into similarly named CLI flags",
+    );
+    expect(result.prompt).toContain(
+      "`--background` is only the alpha-mode setting `auto`, `opaque`, or `transparent`",
     );
     expect(result.prompt).toContain("required model inputs");
     expect(result.prompt).toContain("authoring-only examples");

@@ -123,6 +123,37 @@ function resolvePromptInput(options: ImageOptions): string | undefined {
   return options.compiledPrompt ?? options.rawPrompt ?? options.prompt;
 }
 
+function formatCallerProvidedCompilationDetails(
+  command: Command,
+  options: ImageOptions,
+): readonly string[] {
+  const overrides = (
+    ["model", "size", "quality", "background", "format"] as const
+  )
+    .filter((optionName) => {
+      return command.getOptionValueSource(optionName) === "cli";
+    })
+    .map((optionName) => {
+      return `${optionName}=${options[optionName]}`;
+    });
+  const details = [
+    `Caller-provided CLI generation overrides: ${
+      overrides.length > 0 ? overrides.join(", ") : "none"
+    }`,
+  ];
+
+  if (options.imageUrl.length > 0) {
+    details.push(
+      `Caller-provided source image URLs: ${options.imageUrl.join(", ")}`,
+    );
+  }
+  if (options.maskImageUrl !== undefined) {
+    details.push(`Caller-provided mask image URL: ${options.maskImageUrl}`);
+  }
+
+  return details;
+}
+
 function hasImagePromptModeRequest(options: ImageOptions): boolean {
   return (
     options.style !== undefined ||
@@ -332,19 +363,7 @@ ${formatRegistryListing(styles, "image styles")}`;
           const packet = createStyledImageCompilationPacket({
             prompt: resolvedPrompt,
             style,
-            details: [
-              `Model preference if direct image generation is used: ${options.model}`,
-              `Requested size: ${options.size}`,
-              `Requested quality: ${options.quality}`,
-              `Requested background: ${options.background}`,
-              `Requested format: ${options.format}`,
-              `Source image URLs: ${
-                options.imageUrl.length > 0
-                  ? options.imageUrl.join(", ")
-                  : "none"
-              }`,
-              `Mask image URL: ${options.maskImageUrl ?? "none"}`,
-            ],
+            details: formatCallerProvidedCompilationDetails(command, options),
           });
 
           console.log(packet.instructions);
