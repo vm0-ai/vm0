@@ -48,7 +48,6 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import http_network_log
 import matching
-import model_route_receipt
 import model_usage_receipt
 import network_log_sanitization
 import platform_api
@@ -950,8 +949,6 @@ async def request(flow: http.HTTPFlow) -> None:
                 # resolving, so release as soon as the local response exists.
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 terminal_usage.release_tracked_flow(flow)
-            elif auth_result is FirewallAuthHandlingResult.CONTINUE_UPSTREAM:
-                model_route_receipt.apply_cached_route_headers(flow)
             return
 
         if classification.kind == "allow":
@@ -1067,7 +1064,6 @@ def _is_valid_websocket_key(value: str) -> bool:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
-    model_route_receipt.capture_signed_route_receipt(flow)
     model_usage_receipt.apply_signed_usage_receipt(flow)
     if connector_diagnostics.install_response_stream_if_needed(flow):
         return
