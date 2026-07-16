@@ -1,10 +1,5 @@
 import { z } from "zod";
 
-const automationIdentifierFields = {
-  automationId: z.string().optional(),
-  triggerId: z.string().optional(),
-};
-
 function validateAutomationIdentifier(
   payload: {
     readonly automationId?: string;
@@ -33,14 +28,17 @@ function validateAutomationIdentifier(
 
 export const automationLoopCallbackPayloadSchema = z
   .object({
-    ...automationIdentifierFields,
+    automationId: z.string().optional(),
+    triggerId: z.string().optional(),
   })
   .passthrough()
   .superRefine(validateAutomationIdentifier)
-  .transform((payload) => ({
-    ...payload,
-    automationId: payload.automationId ?? payload.triggerId,
-  }))
+  .transform((payload) => {
+    return {
+      ...payload,
+      automationId: payload.automationId ?? payload.triggerId,
+    };
+  })
   .pipe(
     z
       .object({
@@ -52,16 +50,19 @@ export const automationLoopCallbackPayloadSchema = z
 
 export const automationCronCallbackPayloadSchema = z
   .object({
-    ...automationIdentifierFields,
+    automationId: z.string().optional(),
+    triggerId: z.string().optional(),
     timezone: z.string(),
     cronExpression: z.string().optional(),
   })
   .passthrough()
   .superRefine(validateAutomationIdentifier)
-  .transform((payload) => ({
-    ...payload,
-    automationId: payload.automationId ?? payload.triggerId,
-  }))
+  .transform((payload) => {
+    return {
+      ...payload,
+      automationId: payload.automationId ?? payload.triggerId,
+    };
+  })
   .pipe(
     z
       .object({

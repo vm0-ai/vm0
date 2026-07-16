@@ -194,7 +194,9 @@ async function rewriteAutomationCallback(
   internalKind: "workflow-automation:cron" | "workflow-automation:loop",
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const callback = callbacks.find((item) => item.internalKind === internalKind);
+  const callback = callbacks.find((item) => {
+    return item.internalKind === internalKind;
+  });
   if (!callback) {
     throw new Error(`Expected ${internalKind} callback`);
   }
@@ -624,6 +626,61 @@ describe("zero workflow automation scheduler", () => {
       throw new Error("Expected the loop automation to be rescheduled");
     }
     expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
+    await disableAutomation(automation.automationId);
+  });
+
+  it("fails a mismatched dual-key callback without mutating the automation", async () => {
+    const scenario = await setup();
+    const automation = await createDueLoopAutomation(scenario, 300);
+
+    await executeDueWorkflowAutomations();
+    const run = await onlyWorkflowRunMessage(automation.threadId);
+    const emittedCallbacks = await store.set(
+      readAgentRunCallbacks$,
+      {
+        orgId: scenario.orgId,
+        userId: scenario.userId,
+        prompt: `/${WORKFLOW_NAME}`,
+      },
+      context.signal,
+    );
+    const callback = emittedCallbacks.find((item) => {
+      return item.internalKind === "workflow-automation:loop";
+    });
+    if (!callback) {
+      throw new Error("Expected workflow automation loop callback");
+    }
+    await rewriteAutomationCallback(
+      emittedCallbacks,
+      "workflow-automation:loop",
+      {
+        automationId: automation.automationId,
+        triggerId: randomUUID(),
+      },
+    );
+    const beforeCallback = await wf.readAutomation(automation.automationId);
+
+    await completeRunThroughSandbox(scenario, run.runId, 0);
+
+    await expect
+      .poll(async () => {
+        const callbacks = await store.set(
+          readAgentRunCallbacks$,
+          {
+            orgId: scenario.orgId,
+            userId: scenario.userId,
+            prompt: `/${WORKFLOW_NAME}`,
+          },
+          context.signal,
+        );
+        return callbacks.find((item) => {
+          return item.id === callback.id;
+        })?.status;
+      })
+      .toBe("failed");
+    await expect(
+      wf.readAutomation(automation.automationId),
+    ).resolves.toStrictEqual(beforeCallback);
     await disableAutomation(automation.automationId);
   });
 
