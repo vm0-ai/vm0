@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.279.3](https://github.com/vm0-ai/vm0/compare/api-v1.279.2...api-v1.279.3) (2026-07-16)
+
+
+### Refactoring
+
+* read queued user messages from chat_message_queue ([#21779](https://github.com/vm0-ai/vm0/issues/21779)) ([dc6a275](https://github.com/vm0-ai/vm0/commit/dc6a27573bf527a04723bfae2d6cf69980ca3191))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.2
+    * @vm0/connectors bumped to 1.167.0
+    * @vm0/core bumped to 8.437.2
+    * @vm0/db bumped to 1.117.2
+
 ## [1.279.2](https://github.com/vm0-ai/vm0/compare/api-v1.279.1...api-v1.279.2) (2026-07-16)
 
 
