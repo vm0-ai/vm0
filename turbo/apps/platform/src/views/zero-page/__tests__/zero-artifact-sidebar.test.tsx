@@ -3287,6 +3287,50 @@ ${openFencedHostedSiteUrl}`,
     );
   });
 
+  it("preserves the authored presentation background while editing", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/authored-background.html";
+    const browser = context.mocks.browser.blobDownload();
+    const html = `<!doctype html>
+<html>
+  <head>
+    <style>
+      :root { --paper: #f6f5f1; }
+      html, body { margin: 0; min-height: 100%; background: var(--paper); }
+      .slide { min-height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <section class="slide" data-vm0-slide data-slide-id="slide-cover">
+      <h1>Cover</h1>
+    </section>
+  </body>
+</html>`;
+    setupPresentationArtifactThread(presentationUrl, html);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+
+    expect(
+      previewDocument.defaultView?.getComputedStyle(previewDocument.body)
+        .backgroundColor,
+    ).toBe("#f6f5f1");
+  });
+
   it("downloads an asset-backed presentation without speaker notes", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/asset-backed-deck.html";
     const assetUrl = "https://assets.test/roadmap-cover.png";
