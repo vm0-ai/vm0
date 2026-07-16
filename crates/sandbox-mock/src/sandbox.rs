@@ -339,6 +339,7 @@ impl Sandbox for MockSandbox {
                 .map(|(key, _)| (*key).to_string())
                 .collect(),
             sudo: request.sudo,
+            expected_exit_codes: request.expected_exit_codes.to_vec(),
             stdin_bytes: request.stdin_bytes.map(Vec::from),
             output_limits: request.output_limits,
         };

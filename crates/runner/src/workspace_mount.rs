@@ -70,6 +70,7 @@ async fn run_workspace_drive_command(
                 timeout,
                 env: &[],
                 sudo: true,
+                expected_exit_codes: &[],
                 stdin_bytes: None,
                 output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
             },

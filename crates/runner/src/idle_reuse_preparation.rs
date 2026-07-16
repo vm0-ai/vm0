@@ -100,6 +100,7 @@ pub(crate) async fn prepare_sandbox_for_idle_reuse(
                 timeout: REUSE_PREPARATION_TIMEOUT,
                 env: &[],
                 sudo: true,
+                expected_exit_codes: &[],
                 stdin_bytes: Some(&request_bytes),
                 output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
             },

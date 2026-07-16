@@ -1479,7 +1479,7 @@ fn exec_capture_request<'a>(
         label,
         stdout_limit_bytes: limits.stdout_limit_bytes,
         stderr_limit_bytes: limits.stderr_limit_bytes,
-        expected_exit_codes: &[],
+        expected_exit_codes: request.expected_exit_codes,
         stdin_bytes: request.stdin_bytes,
         wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
     }

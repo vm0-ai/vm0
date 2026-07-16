@@ -3524,6 +3524,7 @@ fn exec_capture_request_preserves_stable_operation_label() {
         timeout: Duration::from_millis(42),
         env: &[("TEST_ENV", "value")],
         sudo: true,
+        expected_exit_codes: &[10],
         stdin_bytes: Some(&stdin),
         output_limits: sandbox::ExecOutputLimits::separate(123, 456),
     };
@@ -3538,7 +3539,7 @@ fn exec_capture_request_preserves_stable_operation_label() {
     assert_eq!(capture.stdin_bytes, Some(stdin.as_slice()));
     assert_eq!(capture.stdout_limit_bytes, 123);
     assert_eq!(capture.stderr_limit_bytes, 456);
-    assert!(capture.expected_exit_codes.is_empty());
+    assert_eq!(capture.expected_exit_codes, &[10]);
     assert_eq!(capture.wait_timeout, Duration::from_millis(5042));
 }
 
