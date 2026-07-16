@@ -1268,8 +1268,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
-    // destroys at shutdown, preventing factory Arc leaks that cause
-    // "factory still referenced" warnings from Arc::try_unwrap.
+    // destroys at shutdown so their factory Arcs are released before the
+    // exclusive ownership preflight.
     let mut destroy_tasks: JoinSet<bool> = JoinSet::new();
 
     if startup_mode == RunnerMode::Running {
@@ -1763,8 +1763,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         teardown.phase_complete("orphan_reap_shutdown_final", phase);
     }
     // Wait for any in-flight destroy tasks (from cleanup tick, profile
-    // mismatch eviction, etc.) so their factory Arcs are dropped before
-    // shutdown_factories calls Arc::try_unwrap.
+    // mismatch eviction, etc.) so their factory Arcs are dropped before the
+    // factory shutdown ownership preflight.
     let phase = teardown.phase_start("destroy_tasks_drain");
     while let Some(result) = destroy_tasks.join_next().await {
         match result {
@@ -1785,7 +1785,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     info!("shutting down factories");
     let phase = teardown.phase_start("shutdown_factory_instances");
-    shutdown_factory_instances(&mut factories, Some(&teardown)).await;
+    shutdown_factory_instances(&mut factories, Some(&teardown)).await?;
     teardown.phase_complete("shutdown_factory_instances", phase);
 
     // Keep the pool-scoped INPUT filters installed until dnsmasq is gone.

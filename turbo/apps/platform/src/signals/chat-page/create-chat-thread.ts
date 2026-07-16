@@ -2596,34 +2596,33 @@ function createMarkThreadReadIfNeeded({
   });
 }
 
-function createRunTracking({
+function createOnSubscribedCatchup({
   threadId,
   reloadThread$,
   remoteThreadDetail$,
   latestChatMessageId$,
-  latestRunFinishCreatedAt$,
-  initializeIndexedDbMessages$,
   syncRemoteMessages$,
   fetchUpdatedMessage$,
   reconcileQueuedMessages$,
   reloadArtifacts$,
-  autoScroll$,
-  dataSource,
-}: RunTrackingDeps) {
-  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
-  const resetChatSubscriptionSignal$ = resetSignalScope();
+  markThreadReadIfNeeded$,
+}: Pick<
+  RunTrackingDeps,
+  | "threadId"
+  | "reloadThread$"
+  | "remoteThreadDetail$"
+  | "latestChatMessageId$"
+  | "syncRemoteMessages$"
+  | "fetchUpdatedMessage$"
+  | "reconcileQueuedMessages$"
+  | "reloadArtifacts$"
+> & {
+  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
+}) {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
 
-  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
-    threadId,
-    remoteThreadDetail$,
-    latestRunFinishCreatedAt$,
-    locallyMarkedReadAt$,
-    dataSource,
-  });
-
-  const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
+  return command(async ({ get, set }, sig: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(reloadThread$);
     set(reloadArtifacts$);
@@ -2644,12 +2643,49 @@ function createRunTracking({
       // fetch are queued instead of missed.
       await set(fetchUpdatedMessage$, { messageId: latestMessageId }, sig);
     }
-    // In-place queue claims are equally invisible to the sinceId fetch, so
-    // heal any stale locally-queued rows during the same catchup.
+    // In-place queue claims are equally invisible to the sinceId fetch.
     await set(reconcileQueuedMessages$, sig);
     await set(markThreadReadIfNeeded$, sig);
     sig.throwIfAborted();
     L.debug("subscribeChatThread$ catchup done", { threadId });
+  });
+}
+
+function createRunTracking({
+  threadId,
+  reloadThread$,
+  remoteThreadDetail$,
+  latestChatMessageId$,
+  latestRunFinishCreatedAt$,
+  initializeIndexedDbMessages$,
+  syncRemoteMessages$,
+  fetchUpdatedMessage$,
+  reconcileQueuedMessages$,
+  reloadArtifacts$,
+  autoScroll$,
+  dataSource,
+}: RunTrackingDeps) {
+  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
+  const resetChatSubscriptionSignal$ = resetSignalScope();
+
+  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
+    threadId,
+    remoteThreadDetail$,
+    latestRunFinishCreatedAt$,
+    locallyMarkedReadAt$,
+    dataSource,
+  });
+
+  const onSubscribed$ = createOnSubscribedCatchup({
+    threadId,
+    reloadThread$,
+    remoteThreadDetail$,
+    latestChatMessageId$,
+    syncRemoteMessages$,
+    fetchUpdatedMessage$,
+    reconcileQueuedMessages$,
+    reloadArtifacts$,
+    markThreadReadIfNeeded$,
   });
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
@@ -2682,8 +2718,7 @@ function createRunTracking({
       L.debug("onRunChanged$ fired", { threadId });
       await set(syncRemoteMessages$, sig);
       // A run change is exactly when a queued row gets claimed in place, so
-      // reconcile stale locally-queued rows even if the dedicated
-      // messageUpdated event was lost.
+      // reconcile stale queued rows even if messageUpdated was lost.
       await set(reconcileQueuedMessages$, sig);
       sig.throwIfAborted();
       animationFrame(
