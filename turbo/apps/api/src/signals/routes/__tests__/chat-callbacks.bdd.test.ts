@@ -2773,11 +2773,18 @@ describe("CHAT-02: failed chat callbacks", () => {
         .toBe(true);
       context.mocks.ably.publish.mockClear();
       await failChatRun(run.runId, sandboxHeaders, round.error);
-      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-        `chatThreadRunCreated:${threadId}`,
+      // The complete webhook acknowledges before terminal callback work
+      // finishes. Drain its tracked waitUntil work so both realtime assertions
+      // cover the complete failed-run callback instead of a one-second window.
+      await flushWaitUntilForTest();
+      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+        `chatThreadMessageCreated:${run.threadId}`,
         null,
       );
-      await waitForChatThreadMessageCreatedPublish(run.threadId);
+      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+        `chatThreadRunCreated:${run.threadId}`,
+        null,
+      );
     }
     const reportRunId = runIds[2];
     if (!threadId || !reportRunId) {
