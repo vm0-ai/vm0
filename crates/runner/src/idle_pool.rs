@@ -22,7 +22,7 @@ use crate::workspace_image_cache::{
     WorkspaceImagePromotionIdentityRequest,
 };
 use crate::workspace_promotion::{
-    abandon_unpublished_workspace_promotion, promote_workspace_image_from_parked_sandbox,
+    abandon_unpublished_workspace_promotion, prepare_workspace_image_from_parked_sandbox,
 };
 
 #[cfg(test)]
@@ -603,9 +603,9 @@ impl IdleDestroyPayload {
             factory,
             workspace_promotion,
         } = self.resources;
-        let workspace_cache_promoted = match self.workspace_promotion_policy {
+        let prepared_promotion = match self.workspace_promotion_policy {
             WorkspacePromotionPolicy::Promote => {
-                promote_workspace_image_from_parked_sandbox(
+                prepare_workspace_image_from_parked_sandbox(
                     sandbox.as_mut(),
                     workspace_promotion,
                     context,
@@ -614,18 +614,30 @@ impl IdleDestroyPayload {
             }
             WorkspacePromotionPolicy::AbandonUnpublished(reason) => {
                 abandon_unpublished_workspace_promotion(workspace_promotion, reason).await;
-                false
+                None
             }
         };
         let mut uncertain = false;
-        match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => tracing::warn!(error = %e, "failed to stop idle sandbox"),
+        let stopped = match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+            Ok(Ok(())) => true,
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "failed to stop idle sandbox");
+                false
+            }
             Err(_) => {
                 tracing::warn!("idle sandbox stop panicked");
                 uncertain = true;
+                false
             }
-        }
+        };
+        let workspace_cache_promoted = match (prepared_promotion, stopped) {
+            (Some(promotion), true) => promotion.publish().await,
+            (Some(promotion), false) => {
+                promotion.abandon("idle_sandbox_stop_failed").await;
+                false
+            }
+            (None, _) => false,
+        };
         if AssertUnwindSafe(factory.destroy(sandbox))
             .catch_unwind()
             .await

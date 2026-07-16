@@ -38,9 +38,10 @@ use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::HeldSessionState;
 use crate::workspace_image_cache::{
-    WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionRequest,
+    WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionContext,
+    WorkspaceImagePromotionRequest,
 };
-use crate::workspace_promotion::promote_workspace_image_from_active_sandbox;
+use crate::workspace_promotion::prepare_workspace_image_from_active_sandbox;
 
 fn local_completed_at() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -212,20 +213,10 @@ pub(super) async fn finalize_sandbox_for_completion(
                     error = %failure.error,
                     "sandbox idle admission failed, destroying instead of parking"
                 );
-                let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
-                    &held_session_snapshot,
-                    Some(&cli_agent_session_id),
-                    &completed_at,
-                    promote_workspace_image_from_active_sandbox(
-                        sandbox.as_ref(),
-                        workspace_promotion,
-                        failure.reason,
-                    )
-                    .await,
-                );
-                let destroy_outcome = stop_and_destroy_sandbox(
+                let destroy_result = stop_and_destroy_sandbox(
                     sandbox,
                     &**failure_factory,
+                    workspace_promotion,
                     ActiveCleanupContext {
                         run_id,
                         sandbox_id,
@@ -237,7 +228,13 @@ pub(super) async fn finalize_sandbox_for_completion(
                     },
                 )
                 .await;
-                record_destroy_result(destroy_outcome, destroy_bookkeeping);
+                let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+                    &held_session_snapshot,
+                    Some(&cli_agent_session_id),
+                    &completed_at,
+                    destroy_result.workspace_cache_promoted,
+                );
+                record_destroy_result(destroy_result.outcome, destroy_bookkeeping);
                 return mark_session_affinity_refresh(
                     CompletionReady::new(
                         completion_payload,
@@ -430,43 +427,34 @@ pub(super) async fn finalize_sandbox_for_completion(
         // No parkable session — stop + destroy.
         let workspace_cache_snapshot_session_id =
             resolved_cli_agent_session_id.or(workspace_promotion_session_id.as_deref());
-        let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
-            &held_session_snapshot,
-            workspace_cache_snapshot_session_id,
-            &completed_at,
-            promote_workspace_image_from_active_sandbox(
-                sandbox.as_ref(),
-                workspace_promotion,
-                active_cleanup_reason(
-                    exit_code,
-                    cancelled,
-                    parking_gate.is_open(),
-                    resolved_cli_agent_session_id,
-                ),
-            )
-            .await,
+        let cleanup_reason = active_cleanup_reason(
+            exit_code,
+            cancelled,
+            parking_gate.is_open(),
+            resolved_cli_agent_session_id,
         );
-        session_affinity_changed |= workspace_cache_promoted;
-        let destroy_outcome = stop_and_destroy_sandbox(
+        let destroy_result = stop_and_destroy_sandbox(
             sandbox,
             &**factory,
+            workspace_promotion,
             ActiveCleanupContext {
                 run_id,
                 sandbox_id,
                 profile_name: &profile_name,
                 cli_agent_session_id: resolved_cli_agent_session_id,
-                reason: active_cleanup_reason(
-                    exit_code,
-                    cancelled,
-                    parking_gate.is_open(),
-                    resolved_cli_agent_session_id,
-                ),
+                reason: cleanup_reason,
                 network_log_session: network_log_session.take(),
                 network_log_drain: network_log_drain.clone(),
             },
         )
         .await;
-        record_destroy_result(destroy_outcome, destroy_bookkeeping);
+        session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
+            &held_session_snapshot,
+            workspace_cache_snapshot_session_id,
+            &completed_at,
+            destroy_result.workspace_cache_promoted,
+        );
+        record_destroy_result(destroy_result.outcome, destroy_bookkeeping);
         BudgetOwnership::active(active_lease)
     };
 
@@ -487,6 +475,11 @@ struct DestroyBookkeepingContext<'a> {
 
 struct ActiveOwnedIdleDestroyResult {
     budget: BudgetOwnership,
+    workspace_cache_promoted: bool,
+}
+
+struct ActiveDestroyResult {
+    outcome: DestroyOutcome,
     workspace_cache_promoted: bool,
 }
 
@@ -569,21 +562,31 @@ struct ActiveCleanupContext<'a> {
 async fn stop_and_destroy_sandbox(
     mut sandbox: Box<dyn Sandbox>,
     factory: &dyn SandboxFactory,
+    workspace_promotion: Option<WorkspaceImagePromotionContext>,
     mut context: ActiveCleanupContext<'_>,
-) -> DestroyOutcome {
+) -> ActiveDestroyResult {
+    let prepared_promotion = prepare_workspace_image_from_active_sandbox(
+        sandbox.as_ref(),
+        workspace_promotion,
+        context.reason,
+    )
+    .await;
     let mut uncertain = false;
     let session_id = context.cli_agent_session_id;
-    match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => warn!(
-            run_id = %context.run_id,
-            sandbox_id = %context.sandbox_id,
-            profile_name = context.profile_name,
-            session_id = ?session_id,
-            reason = context.reason,
-            error = %e,
-            "sandbox stop failed during active cleanup"
-        ),
+    let stopped = match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
+        Ok(Ok(())) => true,
+        Ok(Err(e)) => {
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %context.sandbox_id,
+                profile_name = context.profile_name,
+                session_id = ?session_id,
+                reason = context.reason,
+                error = %e,
+                "sandbox stop failed during active cleanup"
+            );
+            false
+        }
         Err(_) => {
             warn!(
                 run_id = %context.run_id,
@@ -594,8 +597,17 @@ async fn stop_and_destroy_sandbox(
                 "sandbox stop panicked during active cleanup"
             );
             uncertain = true;
+            false
         }
-    }
+    };
+    let workspace_cache_promoted = match (prepared_promotion, stopped) {
+        (Some(promotion), true) => promotion.publish().await,
+        (Some(promotion), false) => {
+            promotion.abandon("active_sandbox_stop_failed").await;
+            false
+        }
+        (None, _) => false,
+    };
     close_network_log_session(
         context.run_id,
         context.network_log_session.take(),
@@ -617,10 +629,14 @@ async fn stop_and_destroy_sandbox(
         );
         uncertain = true;
     }
-    if uncertain {
+    let outcome = if uncertain {
         DestroyOutcome::Uncertain
     } else {
         DestroyOutcome::Completed
+    };
+    ActiveDestroyResult {
+        outcome,
+        workspace_cache_promoted,
     }
 }
 
@@ -663,6 +679,17 @@ mod tests {
         SessionWorkspaceCache, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
         WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityRequest,
     };
+
+    async fn prepare_and_publish_workspace_image(
+        sandbox: &dyn Sandbox,
+        promotion: WorkspaceImagePromotionContext,
+    ) -> bool {
+        prepare_workspace_image_from_active_sandbox(sandbox, Some(promotion), "test")
+            .await
+            .expect("workspace promotion should prepare")
+            .publish()
+            .await
+    }
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
@@ -1055,7 +1082,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_promotion_unmounts_and_promotes_cache_entry() {
+    async fn workspace_promotion_freezes_and_promotes_cache_entry() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -1075,8 +1102,7 @@ mod tests {
             crate::storage_fingerprints::StorageFingerprints::default(),
         );
 
-        let promoted =
-            promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test").await;
+        let promoted = prepare_and_publish_workspace_image(&sandbox, promotion).await;
 
         assert!(promoted);
         let states = cache.held_session_states().await;
@@ -1085,7 +1111,7 @@ mod tests {
         let exec_calls = sandbox.exec_calls();
         assert_eq!(exec_calls.len(), 1);
         assert!(exec_calls[0].sudo);
-        assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
+        assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
     }
 
     #[tokio::test]
@@ -1138,10 +1164,9 @@ mod tests {
                 let run_id = RunId::new_v4();
                 let (sandbox_id, lease) = if publish_seed {
                     assert!(
-                        promote_workspace_image_from_active_sandbox(
+                        prepare_and_publish_workspace_image(
                             &MockSandbox::new(format!("workspace-seed-{session_id}")),
-                            Some(seed_promotion),
-                            "test",
+                            seed_promotion,
                         )
                         .await
                     );
@@ -1202,14 +1227,12 @@ mod tests {
                     StorageFingerprints::from_manifest(&current_manifest),
                 );
 
-                let promoted =
-                    promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test")
-                        .await;
+                let promoted = prepare_and_publish_workspace_image(&sandbox, promotion).await;
 
                 assert!(promoted);
                 let exec_calls = sandbox.exec_calls();
                 assert_eq!(exec_calls.len(), 1);
-                assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
+                assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
                 assert!(!exec_calls[0].cmd.contains("export-session-history-sidecar"));
                 let checkout = cache
                     .prepare(WorkspaceImagePrepareRequest {
@@ -1271,7 +1294,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_promotion_skips_cache_when_guest_unmount_fails() {
+    async fn workspace_promotion_skips_cache_when_guest_freeze_fails() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -1292,13 +1315,13 @@ mod tests {
             crate::storage_fingerprints::StorageFingerprints::default(),
         );
 
-        let promoted =
-            promote_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test").await;
+        let prepared =
+            prepare_workspace_image_from_active_sandbox(&sandbox, Some(promotion), "test").await;
 
-        assert!(!promoted);
+        assert!(prepared.is_none());
         assert!(
             cache.held_session_states().await.is_empty(),
-            "unmount failure must not advertise an unflushed workspace image"
+            "freeze failure must not advertise an inconsistent workspace image"
         );
         assert_eq!(sandbox.exec_calls().len(), 1);
     }
@@ -1512,6 +1535,61 @@ mod tests {
             held_session_snapshot.current_held_session_states(Vec::new(), &active_sessions, None);
         assert_eq!(snapshot_states.len(), 1);
         assert_eq!(snapshot_states[0].session_id, session_id);
+    }
+
+    #[tokio::test]
+    async fn finalizer_stop_error_abandons_frozen_workspace_cache_before_destroy() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-active-stop-error";
+        let workspace_image =
+            prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, session_id)
+                .await;
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_stop_result(Err(sandbox::SandboxError::Start {
+            message: "simulated active stop failure".into(),
+        }));
+        let (factory, sandbox) = sandbox_with_overrides(sandbox_id, Arc::clone(&overrides)).await;
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            session_id,
+            network_log_session,
+            RunCancellationHandle::new(),
+        );
+        context.factory = factory;
+        context.exit_code = 1;
+        context.workspace_image = Some(workspace_image);
+        context.workspace_image_size_bytes = b"image".len() as u64;
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(sandbox),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                1,
+                Some("simulated failure".into()),
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        let exec_calls = overrides.exec_calls();
+        assert_eq!(exec_calls.len(), 1);
+        assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(cache.held_session_states().await.is_empty());
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
     }
 
     #[tokio::test]

@@ -45,6 +45,7 @@ set -euo pipefail
 BIN_DIR=$1; SVC=$2; GROUP=$3; RUNNER_DIR=$4; GROUP_DIR=$5
 UNIT="vm0-runner-${SVC}.service"
 SESSION_ID="e2e-keepalive-test-session"
+CACHE_SESSION_ID="e2e-workspace-cache-promotion-session"
 
 fail() { echo "FAIL: $1"; exit 1; }
 wait_for_unit_inactive() {
@@ -118,6 +119,38 @@ if ! grep -q '^0 warning(s) found$' <<<"$DOCTOR_OUT"; then
   fail "runner doctor reported warnings with parked idle VMs — regression for #9552"
 fi
 echo "PASS: runner doctor clean with parked VMs"
+
+# Exercise the terminal workspace-cache promotion path with guest references
+# that make clean unmount unreliable: a nested mount and a detached writer
+# whose cwd and open file descriptor both point into the workspace.
+echo "--- Workspace cache turn 1: create live workspace state ---"
+sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --session-id "$CACHE_SESSION_ID" \
+  --feature-flag sandboxReuse=true \
+  --prompt 'set -eu
+printf "workspace-cache-marker\n" > /home/user/workspace/cache-marker
+printf "writer-start\n" > /home/user/workspace/live-writer
+mkdir -p /home/user/workspace/nested
+sudo mount -t tmpfs -o size=1m tmpfs /home/user/workspace/nested
+sudo touch /home/user/workspace/nested/ephemeral
+setsid -f sh -c "cd /home/user/workspace && exec 3>>live-writer && while :; do printf x >&3; sleep 0.05; done" </dev/null >/dev/null 2>&1
+test -f /home/user/workspace/nested/ephemeral' \
+  || fail "Workspace cache turn 1 failed"
+
+# Force-draining the parked sandbox must freeze, stop, and promote its workspace.
+echo "--- Restarting runner to force workspace cache promotion ---"
+sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+wait_for_unit_inactive
+sudo "$BIN_DIR/runner" service start --name "$SVC" \
+  --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
+
+echo "--- Workspace cache turn 2: restore promoted workspace ---"
+sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+  --session-id "$CACHE_SESSION_ID" \
+  --feature-flag sandboxReuse=true \
+  --prompt 'test "$(cat /home/user/workspace/cache-marker)" = workspace-cache-marker && test -s /home/user/workspace/live-writer && test ! -e /home/user/workspace/nested/ephemeral' \
+  || fail "Workspace cache turn 2: promoted workspace state was not restored correctly"
+echo "PASS: workspace cache restored after freeze-based promotion"
 
 # Stop transient service (drains idle pool)
 sudo "$BIN_DIR/runner" service stop --name "$SVC" --force

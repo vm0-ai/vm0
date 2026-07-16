@@ -556,6 +556,7 @@ wait
                 &[
                     "/usr/bin/mountpoint",
                     "/usr/bin/mount",
+                    "/usr/sbin/fsfreeze",
                     "/usr/bin/umount",
                     "/usr/bin/sync",
                     "/usr/bin/chown",

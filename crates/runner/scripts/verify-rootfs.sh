@@ -286,9 +286,10 @@ check_required_executable "/usr/bin/xargs" "xargs"
 check_required_executable "/usr/bin/mktemp" "mktemp"
 check_required_executable "/usr/bin/tr" "tr"
 
-# Workspace mount/unmount helpers.
+# Workspace mount and terminal freeze helpers.
 check_required_executable "/usr/bin/mountpoint" "mountpoint"
 check_required_executable "/usr/bin/mount" "mount"
+check_required_executable "/usr/sbin/fsfreeze" "fsfreeze"
 check_required_executable "/usr/bin/umount" "umount"
 check_required_executable "/usr/bin/sync" "sync"
 check_required_executable "/usr/bin/chown" "chown"
