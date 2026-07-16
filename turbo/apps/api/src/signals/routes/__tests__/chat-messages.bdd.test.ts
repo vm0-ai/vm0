@@ -3526,6 +3526,159 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, runId);
   }, 90_000);
 
+  it("dispatches an idle send while thread-list publication is pending", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const publicationStarted = createDeferredPromise<void>(context.signal);
+    const releasePublication = createDeferredPromise<void>(context.signal);
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "threadListChanged") {
+        if (!publicationStarted.settled()) {
+          publicationStarted.resolve(undefined);
+        }
+        return releasePublication.promise;
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const prompt = "dispatch while thread list publication is pending";
+    const send = chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt,
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    const sendOutcome = send.then(
+      (value) => {
+        return { ok: true as const, value };
+      },
+      (error: unknown) => {
+        return { ok: false as const, error };
+      },
+    );
+    onTestFinished(async () => {
+      if (!releasePublication.settled()) {
+        releasePublication.resolve(undefined);
+      }
+      await sendOutcome;
+    });
+
+    await publicationStarted.promise;
+    await expect
+      .poll(async () => {
+        const runList = await api.listAgentRuns(actor, {
+          status: "queued,pending,running,completed,failed,timeout,cancelled",
+          limit: 100,
+        });
+        return runList.runs.some((run) => {
+          return run.prompt === prompt;
+        });
+      })
+      .toBe(true);
+    expect(releasePublication.settled()).toBeFalsy();
+
+    releasePublication.resolve(undefined);
+    const outcome = await sendOutcome;
+    if (!outcome.ok) {
+      throw outcome.error;
+    }
+    const sent = outcome.value;
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the pending publication not to gate dispatch");
+    }
+    await waitForRunUserMessage(
+      actor,
+      sent.body.threadId,
+      sent.body.runId,
+      prompt,
+    );
+
+    const threadListPublishes = context.mocks.ably.publish.mock.calls.filter(
+      ([topic]) => {
+        return topic === "threadListChanged";
+      },
+    );
+    expect(threadListPublishes).toHaveLength(1);
+    await cancelChatRun(actor, sent.body.runId);
+  }, 90_000);
+
+  it("keeps a queued send drainable when thread-list publication fails", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "thread list publication failure anchor",
+    });
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
+          return topic === "threadListChanged";
+        });
+      })
+      .toBe(true);
+    context.mocks.ably.publish.mockClear();
+
+    let failedThreadListPublish = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "threadListChanged" && !failedThreadListPublish) {
+        failedThreadListPublish = true;
+        return Promise.reject(new Error("thread list publication failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const queuedMessageId = randomUUID();
+    const queuedBody = {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: "queued send survives thread list publication failure",
+      clientMessageId: queuedMessageId,
+    };
+    const queued = await chat.requestSendMessage(actor, queuedBody, [201]);
+    expect(queued.body).toMatchObject({
+      runId: null,
+      threadId: anchor.threadId,
+    });
+    expect(failedThreadListPublish).toBeTruthy();
+
+    const retried = await chat.requestSendMessage(actor, queuedBody, [201]);
+    expect(retried.body).toMatchObject({
+      runId: null,
+      threadId: anchor.threadId,
+    });
+    const threadListPublishes = context.mocks.ably.publish.mock.calls.filter(
+      ([topic]) => {
+        return topic === "threadListChanged";
+      },
+    );
+    expect(threadListPublishes).toHaveLength(1);
+
+    await cancelChatRun(actor, anchor.runId);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.id === queuedMessageId && typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.id === queuedMessageId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued message to remain drainable");
+    }
+    await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+
   it("serializes a terminal drain against an idle queue-first send", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     if (!actor.orgId) {
