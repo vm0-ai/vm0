@@ -177,6 +177,54 @@ describe("organization general settings", () => {
     });
   });
 
+  it("releases workspace logo previews when settings close", async () => {
+    const user = userEvent.setup({ delay: null });
+    const imageDimensions = context.mocks.browser.imageDimensions([
+      { width: 512, height: 512 },
+      { width: 512, height: 512 },
+    ]);
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Acme",
+      slug: "acme",
+      role: "admin",
+    });
+
+    await openGeneralTab();
+
+    const uploadInput = screen.getByLabelText("Upload logo");
+    await user.upload(
+      uploadInput,
+      new File(["first"], "first-logo.png", { type: "image/png" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+        "src",
+        "blob:mock-image-2",
+      );
+    });
+
+    await user.upload(
+      uploadInput,
+      new File(["second"], "second-logo.png", { type: "image/png" }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "acme" })).toHaveAttribute(
+        "src",
+        "blob:mock-image-4",
+      );
+    });
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect([...imageDimensions.revokedUrls].sort()).toStrictEqual(
+        [...imageDimensions.createdUrls].sort(),
+      );
+    });
+  });
+
   it("rejects workspace logos outside the supported dimensions", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.imageDimensions([

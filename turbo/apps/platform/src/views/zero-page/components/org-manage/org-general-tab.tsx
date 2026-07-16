@@ -18,18 +18,18 @@ import {
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import { org$, isOrgAdmin$ } from "../../../../signals/org.ts";
-import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
+import { settingsDialogSignal$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import {
+  clearPendingLogo$,
   profileName$,
   setProfileName$,
   profileSlug$,
   setProfileSlug$,
   profileLogoUrl$,
   pendingLogoFile$,
-  setPendingLogoFile$,
   pendingLogoPreview$,
-  setPendingLogoPreview$,
+  setPendingLogo$,
   fileInputEl$,
   setFileInputEl$,
   logoLoaded$,
@@ -69,15 +69,14 @@ function ProfileSection({
   const logoUrl = useGet(profileLogoUrl$);
 
   const pendingLogoFile = useGet(pendingLogoFile$);
-  const setPendingLogoFile = useSet(setPendingLogoFile$);
-
   const pendingLogoPreview = useGet(pendingLogoPreview$);
-  const setPendingLogoPreview = useSet(setPendingLogoPreview$);
+  const setPendingLogo = useSet(setPendingLogo$);
+  const clearPendingLogo = useSet(clearPendingLogo$);
 
   const fileInputEl = useGet(fileInputEl$);
   const setFileInputEl = useSet(setFileInputEl$);
 
-  const pageSignal = useGet(pageSignal$);
+  const modalSignal = useGet(settingsDialogSignal$);
 
   const logoLoaded = useGet(logoLoaded$);
   const setLogoLoaded = useSet(setLogoLoaded$);
@@ -87,7 +86,11 @@ function ProfileSection({
   const hasChanges = hasNameChange || hasSlugChange || !!pendingLogoFile;
 
   const handleFileSelect = async (file: File) => {
+    if (!modalSignal) {
+      return;
+    }
     const dimensions = await readImageDimensions(file);
+    modalSignal.throwIfAborted();
     if (!dimensions) {
       toast.error("Could not read image file");
       return;
@@ -105,22 +108,17 @@ function ProfileSection({
       );
       return;
     }
-    setPendingLogoFile(file);
-    setPendingLogoPreview(URL.createObjectURL(file));
+    setPendingLogo(file, modalSignal);
   };
 
   const handleDiscard = () => {
     setName(org.name ?? "");
     setSlug(org.slug ?? "");
-    if (pendingLogoPreview) {
-      URL.revokeObjectURL(pendingLogoPreview);
-    }
-    setPendingLogoFile(null);
-    setPendingLogoPreview(null);
+    clearPendingLogo();
   };
 
   const handleSave = async () => {
-    if (!hasChanges || saving) {
+    if (!hasChanges || saving || !modalSignal) {
       return;
     }
     await saveProfile(
@@ -129,16 +127,16 @@ function ProfileSection({
         slug,
         logoFile: pendingLogoFile,
       },
-      pageSignal,
+      modalSignal,
     );
   };
 
   const handleLogoLoad = () => {
-    if (logoLoaded) {
+    if (logoLoaded || !modalSignal) {
       return;
     }
     setLogoLoaded(true);
-    detach(loadOrgLogo(pageSignal), Reason.DomCallback);
+    detach(loadOrgLogo(modalSignal), Reason.DomCallback);
   };
 
   return (
@@ -292,7 +290,7 @@ function DangerZoneSection({
   isAdmin: boolean;
 }) {
   const canLeave = !isAdmin;
-  const pageSignal = useGet(pageSignal$);
+  const modalSignal = useGet(settingsDialogSignal$);
   const [leaveLoadable, leave] = useLoadableSet(leaveOrg$);
   const [deleteLoadable, deleteWorkspace] = useLoadableSet(deleteOrg$);
   const leaving = leaveLoadable.state === "loading";
@@ -302,17 +300,17 @@ function DangerZoneSection({
   const setDeleteConfirm = useSet(setDeleteConfirm$);
 
   const handleLeave = async () => {
-    if (leaving) {
+    if (leaving || !modalSignal) {
       return;
     }
-    await leave(pageSignal);
+    await leave(modalSignal);
   };
 
   const handleDelete = async () => {
-    if (deleting || deleteConfirm !== org.slug) {
+    if (deleting || deleteConfirm !== org.slug || !modalSignal) {
       return;
     }
-    await deleteWorkspace(org.slug, pageSignal);
+    await deleteWorkspace(org.slug, modalSignal);
   };
 
   return (

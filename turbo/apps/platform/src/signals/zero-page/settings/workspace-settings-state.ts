@@ -67,21 +67,32 @@ export const pendingLogoFile$ = computed((get) => {
   return get(internalPendingLogoFile$);
 });
 
-export const setPendingLogoFile$ = command(({ set }, value: File | null) => {
-  set(internalPendingLogoFile$, value);
-});
-
 const internalPendingLogoPreview$ = state<string | null>(null);
 
 export const pendingLogoPreview$ = computed((get) => {
   return get(internalPendingLogoPreview$);
 });
 
-export const setPendingLogoPreview$ = command(
-  ({ set }, value: string | null) => {
-    set(internalPendingLogoPreview$, value);
+export const setPendingLogo$ = command(
+  ({ set }, file: File, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const preview = URL.createObjectURL(file);
+    signal.addEventListener(
+      "abort",
+      () => {
+        URL.revokeObjectURL(preview);
+      },
+      { once: true },
+    );
+    set(internalPendingLogoFile$, file);
+    set(internalPendingLogoPreview$, preview);
   },
 );
+
+export const clearPendingLogo$ = command(({ set }) => {
+  set(internalPendingLogoFile$, null);
+  set(internalPendingLogoPreview$, null);
+});
 
 const internalFileInputEl$ = state<HTMLInputElement | null>(null);
 
@@ -109,17 +120,13 @@ export const setLogoLoaded$ = command(({ set }, value: boolean) => {
 });
 
 export const initProfileName$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const org = await get(org$);
-    const preview = get(internalPendingLogoPreview$);
-    if (preview) {
-      URL.revokeObjectURL(preview);
-    }
+    signal.throwIfAborted();
     set(internalProfileName$, org?.name ?? "");
     set(internalProfileSlug$, org?.slug ?? "");
     set(internalProfileLogoUrl$, null);
-    set(internalPendingLogoFile$, null);
-    set(internalPendingLogoPreview$, null);
+    set(clearPendingLogo$);
     set(internalLogoLoaded$, false);
   },
 );
@@ -376,12 +383,7 @@ export const saveOrgProfile$ = command(
     }
 
     signal.throwIfAborted();
-    const preview = get(internalPendingLogoPreview$);
-    if (preview) {
-      URL.revokeObjectURL(preview);
-    }
-    set(internalPendingLogoFile$, null);
-    set(internalPendingLogoPreview$, null);
+    set(clearPendingLogo$);
     set(refreshOrg$);
     const clerk = await get(clerk$);
     signal.throwIfAborted();

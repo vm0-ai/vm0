@@ -23,12 +23,20 @@ export const setupHomePage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     const queue = params.get("queue");
+    const settings = params.get("settings");
+    const billingView = params.get("billingView");
     const forwardParams = new URLSearchParams();
     if (prompt) {
       forwardParams.set("prompt", prompt);
     }
     if (queue) {
       forwardParams.set("queue", queue);
+    }
+    if (settings) {
+      forwardParams.set("settings", settings);
+    }
+    if (billingView) {
+      forwardParams.set("billingView", billingView);
     }
     set(detachedNavigateTo$, "/agents/:agentId/chat", {
       pathParams: { agentId: homeAgentId },

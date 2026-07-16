@@ -5,7 +5,9 @@ import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
+import { resetSignal } from "../../utils.ts";
 import {
+  clearPendingLogo$,
   initProfileName$,
   setBillingScrollTarget$,
   setBillingSubPage$,
@@ -43,6 +45,8 @@ export function isAdminOnlySettingsSection(section: SettingsSection): boolean {
 }
 
 const internalSettingsDialogOpen$ = state(false);
+const internalSettingsDialogSignal$ = state<AbortSignal | null>(null);
+const resetSettingsDialogSignal$ = resetSignal();
 const internalExternalProfileModalOpen$ = state(false);
 const pendingAccountMenuSettingsSection$ = state<{
   readonly ownerId: string;
@@ -52,6 +56,8 @@ const pendingAccountMenuSettingsSection$ = state<{
 export const settingsDialogOpen$ = computed((get) => {
   return get(internalSettingsDialogOpen$);
 });
+
+export { internalSettingsDialogSignal$ as settingsDialogSignal$ };
 
 export const externalProfileModalOpen$ = computed((get) => {
   return get(internalExternalProfileModalOpen$);
@@ -118,29 +124,53 @@ export const openSettingsBillingPlans$ = command(({ get, set }) => {
   set(updateSearchParams$, params);
 });
 
+const clearSettingsDialogSession$ = command(({ set }) => {
+  set(internalSettingsDialogSignal$, null);
+  set(internalSettingsDialogOpen$, false);
+  set(clearPendingLogo$);
+});
+
+export const closeSettingsModal$ = command(({ get, set }) => {
+  set(resetSettingsDialogSignal$);
+  set(clearSettingsDialogSession$);
+
+  const params = new URLSearchParams(get(searchParams$));
+  if (params.has("settings") || params.has("billingView")) {
+    params.delete("settings");
+    params.delete("billingView");
+    set(updateSearchParams$, params);
+  }
+});
+
 export const setSettingsDialogOpen$ = command(
-  async ({ get, set }, open: boolean, signal: AbortSignal) => {
-    set(internalSettingsDialogOpen$, open);
-    if (open) {
-      await set(initProfileName$, signal);
-      signal.throwIfAborted();
-      set(reloadBillingStatus$);
-      const params = new URLSearchParams(get(searchParams$));
-      const section = get(internalActiveSection$);
-      if (section === "model") {
-        set(reloadPersonalModelProviders$);
-      }
-      if (params.get("settings") !== section) {
-        params.set("settings", section);
-        set(updateSearchParams$, params);
-      }
-    } else {
-      const params = new URLSearchParams(get(searchParams$));
-      if (params.has("settings") || params.has("billingView")) {
-        params.delete("settings");
-        params.delete("billingView");
-        set(updateSearchParams$, params);
-      }
+  async ({ get, set }, open: boolean, pageSignal: AbortSignal) => {
+    if (!open) {
+      set(closeSettingsModal$);
+      return;
+    }
+
+    const modalSignal = set(resetSettingsDialogSignal$, pageSignal);
+    modalSignal.addEventListener(
+      "abort",
+      () => {
+        set(clearSettingsDialogSession$);
+      },
+      { once: true },
+    );
+    set(internalSettingsDialogSignal$, modalSignal);
+    set(internalSettingsDialogOpen$, true);
+    await set(initProfileName$, modalSignal);
+    pageSignal.throwIfAborted();
+    modalSignal.throwIfAborted();
+    set(reloadBillingStatus$);
+    const params = new URLSearchParams(get(searchParams$));
+    const section = get(internalActiveSection$);
+    if (section === "model") {
+      set(reloadPersonalModelProviders$);
+    }
+    if (params.get("settings") !== section) {
+      params.set("settings", section);
+      set(updateSearchParams$, params);
     }
   },
 );
