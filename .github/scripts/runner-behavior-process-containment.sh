@@ -173,7 +173,7 @@ HEALTHY_CREATE_US=$(sed -n 's/.*create_us=\([0-9][0-9]*\).*/\1/p' <<<"$HEALTHY_L
 [ -n "$HEALTHY_CREATE_US" ] || fail "missing healthy creation latency"
 [ "$LEAK_CLEANUP_MS" -le 2000 ] \
   || fail "leaked cleanup exceeded bounded lifecycle: ${LEAK_CLEANUP_MS}ms"
-[ "$HEALTHY_CLEANUP_MS" -le 500 ] \
+[ "$HEALTHY_CLEANUP_MS" -lt 500 ] \
   || fail "healthy cleanup unexpectedly entered a wait: ${HEALTHY_CLEANUP_MS}ms"
 
 echo "PASS: detached user/root descendants were reclaimed"
