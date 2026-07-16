@@ -4671,10 +4671,7 @@ function TemplatePickerCategoryNav({
                   : "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:bg-sidebar-accent",
               )}
             >
-              <Icon
-                className="h-4 w-4 shrink-0 text-gray-700"
-                stroke={1.8}
-              />
+              <Icon className="h-4 w-4 shrink-0 text-gray-700" stroke={1.8} />
               <span className="truncate">{label}</span>
             </button>
           );

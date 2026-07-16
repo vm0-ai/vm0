@@ -3473,9 +3473,11 @@ describe("chat composer templates", () => {
     expect(screen.queryByText("Website")).not.toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
-    expect(tabByText("Presentation")).toHaveClass("bg-card");
-    expect(tabByText("Presentation")).toHaveClass("text-foreground");
-    expect(tabByText("Illustration")).toHaveClass("text-muted-foreground");
+    expect(tabByText("Presentation")).toHaveClass("bg-gray-200");
+    expect(tabByText("Presentation")).toHaveClass("font-medium");
+    expect(tabByText("Presentation")).toHaveClass("text-sidebar-foreground");
+    expect(tabByText("Illustration")).toHaveClass("text-sidebar-foreground");
+    expect(tabByText("Illustration")).not.toHaveClass("bg-gray-200");
     const categorySelect = screen.getByRole("combobox", {
       name: "Template category",
     });
