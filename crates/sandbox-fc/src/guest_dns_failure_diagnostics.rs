@@ -238,3 +238,38 @@ fn log_component(
         "guest DNS failure diagnostic component"
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounded_output_truncates_at_utf8_boundary() {
+        let output = "a".repeat(LOG_OUTPUT_LIMIT_BYTES - 1) + "界";
+
+        let bounded = bounded_output(output);
+
+        assert!(bounded.is_char_boundary(LOG_OUTPUT_LIMIT_BYTES - 1));
+        assert!(bounded.starts_with(&"a".repeat(LOG_OUTPUT_LIMIT_BYTES - 1)));
+        assert!(bounded.ends_with("\n[output truncated]"));
+        assert!(!bounded.contains('界'));
+    }
+
+    #[test]
+    fn filtered_command_output_keeps_only_namespace_rules() {
+        let namespace = "vm0-ns-0c-20";
+        let output = [
+            "-A PREROUTING -m comment --comment vm0-ns-0c-1f -j DROP",
+            "-A PREROUTING -m comment --comment vm0-ns-0c-20 -j DROP",
+            "-A PREROUTING -m comment --comment vm0-ns-0c-21 -j DROP",
+        ]
+        .join("\n");
+
+        let filtered = filtered_command_output(Ok(output), namespace);
+
+        assert_eq!(
+            filtered,
+            "-A PREROUTING -m comment --comment vm0-ns-0c-20 -j DROP"
+        );
+    }
+}
