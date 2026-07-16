@@ -360,10 +360,15 @@ const API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES = [
 const API_DISPATCH_RESOLVE_COMPOSE_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_resolve_compose_lookup_compose",
   "api_dispatch_resolve_compose_lookup_version",
-  "api_dispatch_resolve_compose_lookup_session",
+  "api_dispatch_resolve_compose_lookup_session_snapshot",
   "api_dispatch_resolve_compose_lookup_checkpoint",
   "api_dispatch_resolve_compose_load_resume_session",
   "api_dispatch_resolve_compose_resolve_session_history",
+] as const;
+const REPLACED_SESSION_RESOLUTION_ACTION_TYPES = [
+  "api_dispatch_resolve_compose_lookup_session",
+  "api_dispatch_resolve_compose_lookup_compose",
+  "api_dispatch_resolve_compose_load_resume_session",
   "api_dispatch_resolve_compose_lookup_session_vars",
 ] as const;
 const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
@@ -2257,12 +2262,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const sessionTimingEvents = apiDispatchTimingEventsForRun(resumed.runId);
     expectApiDispatchActions(sessionTimingEvents, [
       "api_dispatch_resolve_compose_by_session_id",
-      "api_dispatch_resolve_compose_lookup_session",
-      "api_dispatch_resolve_compose_lookup_compose",
-      "api_dispatch_resolve_compose_load_resume_session",
+      "api_dispatch_resolve_compose_lookup_session_snapshot",
       "api_dispatch_resolve_compose_resolve_session_history",
-      "api_dispatch_resolve_compose_lookup_session_vars",
     ]);
+    expectNoApiDispatchActions(
+      sessionTimingEvents,
+      REPLACED_SESSION_RESOLUTION_ACTION_TYPES,
+    );
     expectNoApiDispatchActions(
       sessionTimingEvents,
       API_DISPATCH_RESOLVE_COMPOSE_PATH_ACTION_TYPES.filter((actionType) => {
@@ -2318,9 +2324,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     expectNoApiDispatchActions(checkpointTimingEvents, [
-      "api_dispatch_resolve_compose_lookup_session",
+      "api_dispatch_resolve_compose_lookup_session_snapshot",
       "api_dispatch_resolve_compose_lookup_compose",
-      "api_dispatch_resolve_compose_lookup_session_vars",
     ]);
     for (const event of checkpointTimingEvents) {
       const serialized = JSON.stringify(event);
@@ -2586,19 +2591,36 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
     expect(resumed.sessionId).toBe(first.sessionId);
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toBeNull();
 
-    const outsider = createBddApi(context).user();
-    const crossUser = await api.requestCreateRun(
-      outsider,
+    if (!actor.orgId) {
+      throw new Error("Expected session owner to have an organization");
+    }
+    const sameOrgUser = createBddApi(context).user({ orgId: actor.orgId });
+    const crossUser = await api.requestDirectRun(
+      sameOrgUser,
       {
-        agentId,
         sessionId: first.sessionId,
         prompt: "steal the session",
-        modelProvider: "anthropic-api-key",
       },
-      [402, 404],
+      [404],
     );
     expectApiError(crossUser.body);
+    expect(crossUser.body.error.code).toBe("NOT_FOUND");
+
+    const otherOrgUser = createBddApi(context).user();
+    await api.grantProEntitlement(otherOrgUser);
+    const crossOrg = await api.requestDirectRun(
+      otherOrgUser,
+      {
+        sessionId: first.sessionId,
+        prompt: "steal the session from another organization",
+      },
+      [404],
+    );
+    expectApiError(crossOrg.body);
+    expect(crossOrg.body.error.code).toBe("NOT_FOUND");
 
     await api.requestCancelRun(actor, resumed.runId, [200]);
     await api.requestCancelRun(actor, first.runId, [200]);
