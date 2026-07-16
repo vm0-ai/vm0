@@ -36,7 +36,7 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
-use crate::types::HeldSessionState;
+use crate::types::{HeldSessionState, WorkspaceCacheState};
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionContext,
     WorkspaceImagePromotionRequest,
@@ -61,6 +61,7 @@ fn mark_session_affinity_refresh(
 fn mark_workspace_cache_snapshot_promoted(
     snapshot: &HeldSessionStateSnapshot,
     session_id: Option<&str>,
+    profile_name: &str,
     completed_at: &str,
     promoted: bool,
 ) -> bool {
@@ -69,6 +70,9 @@ fn mark_workspace_cache_snapshot_promoted(
             session_id: session_id.to_owned(),
             last_completed_at: completed_at.to_owned(),
             reusable_sandbox: None,
+            workspace_caches: vec![WorkspaceCacheState {
+                profile: profile_name.to_owned(),
+            }],
         });
     }
     promoted
@@ -231,6 +235,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                     &held_session_snapshot,
                     Some(&cli_agent_session_id),
+                    &profile_name,
                     &completed_at,
                     destroy_result.workspace_cache_promoted,
                 );
@@ -265,6 +270,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
                 &held_session_snapshot,
                 Some(&cli_agent_session_id),
+                &profile_name,
                 &completed_at,
                 destroy_result.workspace_cache_promoted,
             );
@@ -289,6 +295,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
                 &held_session_snapshot,
                 Some(&cli_agent_session_id),
+                &profile_name,
                 &completed_at,
                 destroy_result.workspace_cache_promoted,
             );
@@ -324,6 +331,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                             &held_session_snapshot,
                             Some(&cli_agent_session_id),
+                            &profile_name,
                             &completed_at,
                             destroy_result.workspace_cache_promoted,
                         );
@@ -354,6 +362,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                         &held_session_snapshot,
                         Some(&cli_agent_session_id),
+                        &profile_name,
                         &completed_at,
                         destroy_result.workspace_cache_promoted,
                     );
@@ -440,6 +449,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
                             &held_session_snapshot,
                             Some(&cli_agent_session_id),
+                            &profile_name,
                             &completed_at,
                             destroy_result.workspace_cache_promoted,
                         );
@@ -476,6 +486,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
             &held_session_snapshot,
             workspace_cache_snapshot_session_id,
+            &profile_name,
             &completed_at,
             destroy_result.workspace_cache_promoted,
         );
@@ -1560,6 +1571,11 @@ mod tests {
             held_session_snapshot.current_held_session_states(Vec::new(), &active_sessions, None);
         assert_eq!(snapshot_states.len(), 1);
         assert_eq!(snapshot_states[0].session_id, session_id);
+        assert_eq!(snapshot_states[0].workspace_caches.len(), 1);
+        assert_eq!(
+            snapshot_states[0].workspace_caches[0].profile,
+            "vm0/default"
+        );
     }
 
     #[tokio::test]

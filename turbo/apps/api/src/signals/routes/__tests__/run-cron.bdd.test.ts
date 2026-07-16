@@ -167,6 +167,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
       {
         sessionId: "session-bdd-held",
         lastCompletedAt: new Date(now()).toISOString(),
+        workspaceCaches: [{ profile: "vm0/default" }],
       },
     ];
 

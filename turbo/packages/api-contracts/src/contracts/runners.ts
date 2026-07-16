@@ -203,6 +203,14 @@ export const heldSessionStateSchema = z.object({
       historyGenerationRunId: z.uuid().optional(),
     })
     .optional(),
+  workspaceCaches: z
+    .array(
+      z.object({
+        profile: z.string(),
+      }),
+    )
+    .max(8)
+    .optional(),
 });
 
 /**
@@ -607,20 +615,38 @@ export const runnersBuiltinFirewallsResolveContract = c.router({
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
-export const heartbeatBodySchema = z.object({
-  runnerId: z.uuid(),
-  runnerName: z.string(),
-  group: runnerGroupSchema,
-  totalVcpu: z.number().int().nonnegative(),
-  totalMemoryMb: z.number().int().nonnegative(),
-  maxConcurrent: z.number().int().nonnegative(),
-  allocatedVcpu: z.number().int().nonnegative(),
-  allocatedMemoryMb: z.number().int().nonnegative(),
-  runningCount: z.number().int().nonnegative(),
-  admittableProfiles: runnerProfileListSchema,
-  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-  mode: z.enum(["starting", "running", "draining", "stopping"]),
-});
+export const heartbeatBodySchema = z
+  .object({
+    runnerId: z.uuid(),
+    runnerName: z.string(),
+    group: runnerGroupSchema,
+    totalVcpu: z.number().int().nonnegative(),
+    totalMemoryMb: z.number().int().nonnegative(),
+    maxConcurrent: z.number().int().nonnegative(),
+    allocatedVcpu: z.number().int().nonnegative(),
+    allocatedMemoryMb: z.number().int().nonnegative(),
+    runningCount: z.number().int().nonnegative(),
+    admittableProfiles: runnerProfileListSchema,
+    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+    mode: z.enum(["starting", "running", "draining", "stopping"]),
+  })
+  .superRefine((heartbeat, ctx) => {
+    const workspaceCacheCount = heartbeat.heldSessionStates.reduce(
+      (count, state) => {
+        return count + (state.workspaceCaches?.length ?? 0);
+      },
+      0,
+    );
+    if (workspaceCacheCount <= 1024) {
+      return;
+    }
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["heldSessionStates"],
+      message: "heldSessionStates may contain at most 1024 workspace caches",
+    });
+  });
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat

@@ -331,6 +331,13 @@ function canonicalizeHeldSessionStates(
             },
           }
         : {}),
+      ...(state.workspaceCaches
+        ? {
+            workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
+              return { profile: workspaceCache.profile };
+            }),
+          }
+        : {}),
     };
   });
 }
