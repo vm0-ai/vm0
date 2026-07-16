@@ -16,6 +16,7 @@ import {
   connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
+  type ConnectorAuthMethodRuntimeConfig,
   type ConnectorAuthMethodId,
   type ConnectorAuthMethodIds,
   type ConnectorAuthCodeGrantAuthMethodId,
@@ -87,11 +88,16 @@ import {
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorAuthCodeAuthorizationUrl,
+  buildConnectorAuthCodeAuthorizationUrlWithMethod,
+  buildConnectorOpenIdAuthAuthorizationUrlWithMethod,
   getConnectorAuthProviderRegistryCapabilities,
   pollConnectorDeviceAuthorization,
   refreshConnectorAuthProviderAccessToken,
+  refreshConnectorAuthProviderAccessTokenWithMethod,
   revokeConnectorAuthMethodAccessToken,
+  revokeConnectorAuthMethodAccessTokenWithMethod,
   startConnectorDeviceAuthorization,
+  startConnectorDeviceAuthorizationWithMethod,
   type ConnectorAuthProviderRegistryCapability,
 } from "../auth-providers/connector-auth";
 import type { ConnectorAuthProviderRefreshArgs } from "../auth-providers/types";
@@ -939,6 +945,235 @@ describe("connector selected auth method capability checks", () => {
     for (const [ref, capability] of expectedCapabilities) {
       expect(actualCapabilities.get(ref)).toStrictEqual(capability);
     }
+  });
+
+  it("passes supplied grant scopes through the explicit provider path", async () => {
+    const method = getConnectorAuthMethod("test-oauth", "api");
+    const selectedMethod = {
+      ...method,
+      grant: {
+        ...method.grant,
+        scopes: ["catalog.read", "catalog.write"],
+      },
+    } satisfies ConnectorAuthMethodRuntimeConfig;
+    const authClient = resolveConnectorAuthClientForMethod(
+      "test-oauth",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    if (!authClient) {
+      throw new Error("Expected test-oauth API auth client");
+    }
+
+    const result = await buildConnectorAuthCodeAuthorizationUrlWithMethod({
+      connectorRef: "test-oauth",
+      authMethodId: "api",
+      method: selectedMethod,
+      authClient,
+      redirectUri: "https://app.test/callback",
+      state: "catalog-state",
+    });
+    const url = new URL(typeof result === "string" ? result : result.url);
+
+    expect(url.searchParams.get("scope")).toBe("catalog.read catalog.write");
+  });
+
+  it("passes supplied device option defaults through the explicit provider path", async () => {
+    server.use(
+      http.post(
+        /\/api\/test\/oauth-provider\/device\/code$/,
+        async ({ request }) => {
+          const body = new URLSearchParams(await request.text());
+          expect(body.get("mode")).toBe("live");
+          return HttpResponse.json({
+            device_code: "catalog-device-code",
+            user_code: "CATALOG-DEVICE",
+            verification_uri: "https://oauth-device.test/device",
+            expires_in: 600,
+            interval: 0,
+          });
+        },
+      ),
+    );
+    const method = getConnectorAuthMethod("test-oauth-device", "api");
+    const selectedMethod = {
+      ...method,
+      grant: {
+        ...method.grant,
+        startOptions: {
+          ...method.grant.startOptions,
+          mode: {
+            ...method.grant.startOptions.mode,
+            defaultValue: "live",
+          },
+        },
+      },
+    } satisfies ConnectorAuthMethodRuntimeConfig;
+    const authClient = resolveConnectorAuthClientForMethod(
+      "test-oauth-device",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    if (!authClient) {
+      throw new Error("Expected test-oauth-device API auth client");
+    }
+
+    await expect(
+      startConnectorDeviceAuthorizationWithMethod({
+        connectorRef: "test-oauth-device",
+        authMethodId: "api",
+        method: selectedMethod,
+        authClient,
+        options: {},
+      }),
+    ).resolves.toMatchObject({ deviceCode: "catalog-device-code" });
+  });
+
+  it("rejects unknown identities and wrong operation handlers", async () => {
+    const method = getConnectorAuthMethod("test-oauth", "api");
+    const authClient = resolveConnectorAuthClientForMethod(
+      "test-oauth",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    if (!authClient) {
+      throw new Error("Expected test-oauth API auth client");
+    }
+
+    await expect(
+      buildConnectorAuthCodeAuthorizationUrlWithMethod({
+        connectorRef: "catalog-only-connector",
+        authMethodId: "api",
+        method,
+        authClient,
+        redirectUri: "https://app.test/callback",
+        state: "catalog-state",
+      }),
+    ).rejects.toThrow(
+      "Missing auth provider registration for catalog-only-connector:api",
+    );
+    await expect(
+      buildConnectorOpenIdAuthAuthorizationUrlWithMethod({
+        connectorRef: "test-oauth",
+        authMethodId: "api",
+        method,
+        returnTo: "https://app.test/callback",
+        realm: "https://app.test",
+        state: "catalog-state",
+      }),
+    ).rejects.toThrow("Missing openid-auth grant provider for test-oauth:api");
+  });
+
+  it("rejects grant, access, and revoke contract mismatches before side effects", async () => {
+    const authCodeMethod = getConnectorAuthMethod("test-oauth", "api");
+    const authClient = resolveConnectorAuthClientForMethod(
+      "test-oauth",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    if (!authClient) {
+      throw new Error("Expected test-oauth API auth client");
+    }
+    const grantMismatch = {
+      ...authCodeMethod,
+      grant: {
+        ...authCodeMethod.grant,
+        outputs: {
+          ...authCodeMethod.grant.outputs,
+          unexpectedToken: "$secrets.UNEXPECTED_TOKEN",
+        },
+      },
+    } satisfies ConnectorAuthMethodRuntimeConfig;
+    await expect(
+      buildConnectorAuthCodeAuthorizationUrlWithMethod({
+        connectorRef: "test-oauth",
+        authMethodId: "api",
+        method: grantMismatch,
+        authClient,
+        redirectUri: "https://app.test/callback",
+        state: "catalog-state",
+      }),
+    ).rejects.toThrow("Auth provider contract mismatch for test-oauth:api");
+
+    const refreshMethod = getConnectorAuthMethod("test-oauth", "api-token");
+    const accessMismatch = {
+      ...refreshMethod,
+      access: {
+        ...refreshMethod.access,
+        outputs: {
+          ...refreshMethod.access.outputs,
+          unexpectedToken: "$secrets.UNEXPECTED_TOKEN",
+        },
+      },
+    } satisfies ConnectorAuthMethodRuntimeConfig;
+    await expect(
+      refreshConnectorAuthProviderAccessTokenWithMethod({
+        connectorRef: "test-oauth",
+        authMethodId: "api-token",
+        method: accessMismatch,
+        inputs: {
+          inputSecret: "secret-input",
+          inputVariable: "variable-input",
+        },
+        signal: testRefreshSignal(),
+      }),
+    ).rejects.toThrow(
+      "Auth provider contract mismatch for test-oauth:api-token",
+    );
+
+    const revokeMethod = getConnectorAuthMethod("github", "oauth");
+    const revokeMismatch = {
+      ...revokeMethod,
+      revoke: {
+        ...revokeMethod.revoke,
+        inputs: {
+          ...revokeMethod.revoke.inputs,
+          unexpectedToken: "$secrets.UNEXPECTED_TOKEN",
+        },
+      },
+    } satisfies ConnectorAuthMethodRuntimeConfig;
+    let loadedInputs = false;
+    await expect(
+      revokeConnectorAuthMethodAccessTokenWithMethod({
+        connectorRef: "github",
+        authMethodId: "oauth",
+        method: revokeMismatch,
+        readEnv: () => {
+          return "configured";
+        },
+        signal: testRefreshSignal(),
+        loadInputs: () => {
+          loadedInputs = true;
+          return { accessToken: "github-token" };
+        },
+      }),
+    ).rejects.toThrow("Auth provider contract mismatch for github:oauth");
+    expect(loadedInputs).toBe(false);
+  });
+
+  it("rejects undeclared provider outputs", async () => {
+    await expect(
+      refreshConnectorAuthProviderAccessTokenWithMethod({
+        connectorRef: "test-oauth",
+        authMethodId: "api-token",
+        method: getConnectorAuthMethod("test-oauth", "api-token"),
+        inputs: {
+          inputSecret: "undeclared-output",
+          inputVariable: "variable-input",
+        },
+        signal: testRefreshSignal(),
+      }),
+    ).rejects.toThrow(
+      "test-oauth connector auth method api-token returned undeclared refresh output unexpectedToken",
+    );
   });
 
   it("matches exactly the auth methods that declare refresh-token access", () => {
