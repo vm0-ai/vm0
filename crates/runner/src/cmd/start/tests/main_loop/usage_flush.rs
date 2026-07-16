@@ -79,10 +79,15 @@ handle_flush_request() {
 }
 mkfifo "$fifo"
 exec 3<>"$fifo"
-trap handle_flush_request USR1
+# Match the addon lifecycle: the signal handler only wakes the worker, which
+# performs file I/O outside the trap and coalesces repeated requests naturally.
+trap 'printf "\n" >&3' USR1
 trap 'exit 0' TERM
 echo ready
-while true; do read -r _ <&3 || true; done
+while true; do
+  read -r _ <&3 || true
+  handle_flush_request
+done
 "#,
     )
     .unwrap();
