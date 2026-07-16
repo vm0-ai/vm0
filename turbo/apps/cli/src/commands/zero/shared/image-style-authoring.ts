@@ -36,11 +36,10 @@ interface StyledImageCompilationPacket {
 }
 
 function formatStyleSource(source: RegistryEntry["source"]): readonly string[] {
-  if (source.repo && source.ref) {
+  if ("repo" in source) {
     return [
       `- Repository: \`${source.repo}@${source.ref}\``,
       `- Path: \`${source.path}\``,
-      `- SKILL.md: \`https://raw.githubusercontent.com/${source.repo}/${source.ref}/${source.path}/SKILL.md\``,
     ];
   }
   return [`- Path: \`${source.path}\``];

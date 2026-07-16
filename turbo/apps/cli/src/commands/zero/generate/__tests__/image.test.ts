@@ -305,9 +305,6 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("## Style Source");
     expect(stdout).toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain("ink-storefront");
-    expect(stdout).toContain(
-      "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/illustration-template/ink-storefront/SKILL.md",
-    );
     expect(stdout).toContain("## Required Workflow");
     expect(stdout).toContain("If unavailable, stop without generating");
     expect(stdout).toContain("required model inputs");
