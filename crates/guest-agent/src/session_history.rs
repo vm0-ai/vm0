@@ -130,19 +130,14 @@ pub(crate) struct PreparedSessionHistorySidecar {
     source: PreparedSessionHistorySidecarSource,
 }
 
-enum PreparedSessionHistorySidecarSource {
+pub(crate) enum PreparedSessionHistorySidecarSource {
     Exportable(SessionHistoryCheckpointSource),
-    RawTooLarge { max_bytes: u64 },
+    RawTooLarge,
 }
 
 impl PreparedSessionHistorySidecar {
-    pub(crate) fn into_source(self) -> Result<SessionHistoryCheckpointSource, AgentError> {
-        match self.source {
-            PreparedSessionHistorySidecarSource::Exportable(source) => Ok(source),
-            PreparedSessionHistorySidecarSource::RawTooLarge { max_bytes } => {
-                Err(session_history_exceeds_max_error(max_bytes))
-            }
-        }
+    pub(crate) fn into_source(self) -> PreparedSessionHistorySidecarSource {
+        self.source
     }
 }
 
@@ -902,9 +897,7 @@ fn prepare_session_history_sidecar_reader(
         Some(raw_bytes) => PreparedSessionHistorySidecarSource::Exportable(
             SessionHistoryCheckpointSource::Decoded(raw_bytes),
         ),
-        None => PreparedSessionHistorySidecarSource::RawTooLarge {
-            max_bytes: max_sidecar_bytes,
-        },
+        None => PreparedSessionHistorySidecarSource::RawTooLarge,
     };
     Ok(PreparedSessionHistorySidecar {
         digest: SessionHistoryDigest {
@@ -1088,10 +1081,17 @@ mod tests {
             history.len() as u64,
         )
         .unwrap();
-        match prepared.into_source().unwrap() {
-            SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
-            SessionHistoryCheckpointSource::CodexZstd { .. } => {
+        match prepared.into_source() {
+            PreparedSessionHistorySidecarSource::Exportable(
+                SessionHistoryCheckpointSource::Decoded(bytes),
+            ) => assert_eq!(bytes, history),
+            PreparedSessionHistorySidecarSource::Exportable(
+                SessionHistoryCheckpointSource::CodexZstd { .. },
+            ) => {
                 panic!("literal history must use the raw representation")
+            }
+            PreparedSessionHistorySidecarSource::RawTooLarge => {
+                panic!("literal history at the export limit must remain exportable")
             }
         }
 
@@ -1107,11 +1107,10 @@ mod tests {
             prepared.digest.sha256_hex,
             hex::encode(Sha256::digest(history))
         );
-        let error = match prepared.into_source() {
-            Ok(_) => panic!("raw body above the export limit must not be exportable"),
-            Err(error) => error,
-        };
-        assert_over_limit(error, (history.len() - 1) as u64);
+        assert!(matches!(
+            prepared.into_source(),
+            PreparedSessionHistorySidecarSource::RawTooLarge
+        ));
 
         let result = prepare_session_history_sidecar_from_payload_bounded(
             path.to_str().unwrap(),
@@ -1150,10 +1149,17 @@ mod tests {
             prepared.digest.sha256_hex,
             hex::encode(Sha256::digest(history))
         );
-        match prepared.into_source().unwrap() {
-            SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
-            SessionHistoryCheckpointSource::CodexZstd { .. } => {
+        match prepared.into_source() {
+            PreparedSessionHistorySidecarSource::Exportable(
+                SessionHistoryCheckpointSource::Decoded(bytes),
+            ) => assert_eq!(bytes, history),
+            PreparedSessionHistorySidecarSource::Exportable(
+                SessionHistoryCheckpointSource::CodexZstd { .. },
+            ) => {
                 panic!("encoded body above the export limit must fall back to raw")
+            }
+            PreparedSessionHistorySidecarSource::RawTooLarge => {
+                panic!("decoded body within the export limit must remain exportable")
             }
         }
     }

@@ -592,6 +592,7 @@ async fn verify_final_identity_metadata(
         timeout: SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT,
         env: &env,
         sudo: false,
+        expected_exit_codes: &[],
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
     };
@@ -1810,6 +1811,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             timeout: Duration::from_secs(5),
             env: &[],
             sudo: true,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
         };

@@ -35,8 +35,8 @@ pub struct RemoteExecCall {
 /// Captured `exec` request fields recorded for test assertions.
 ///
 /// The record intentionally keeps environment variable names but not their
-/// values. Stdin bytes and output limits are captured because downstream tests
-/// assert those request properties directly.
+/// values. Expected exits, stdin bytes, and output limits are captured because
+/// downstream tests assert those request properties directly.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecCall {
     /// Command string passed to `ExecRequest.cmd`.
@@ -49,6 +49,8 @@ pub struct ExecCall {
     pub env_keys: Vec<String>,
     /// Whether the exec request was made with sudo privileges.
     pub sudo: bool,
+    /// Additional expected exit codes supplied to the exec request.
+    pub expected_exit_codes: Vec<i32>,
     /// Stdin bytes supplied to the exec request, when present.
     pub stdin_bytes: Option<Vec<u8>>,
     /// Output limits supplied to the exec request.

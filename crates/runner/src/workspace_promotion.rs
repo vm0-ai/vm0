@@ -4,9 +4,10 @@ use std::time::Duration;
 
 use futures_util::FutureExt;
 use guest_contracts::session_history_identity::{
-    SESSION_HISTORY_SIDECAR_MAX_BYTES, SessionHistorySidecarExportMetadata,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE, SESSION_HISTORY_SIDECAR_MAX_BYTES,
+    SessionHistorySidecarExportMetadata,
 };
-use sandbox::{CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
+use sandbox::{CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, Sandbox};
 use shell_quote::quote_shell_arg;
 use tokio::fs;
 use tracing::warn;
@@ -22,6 +23,8 @@ use crate::workspace_mount::freeze_workspace_drive;
 const SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_HISTORY_SIDECAR_COPY_TIMEOUT: Duration = Duration::from_secs(30);
 const SESSION_HISTORY_SIDECAR_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
+const SESSION_HISTORY_SIDECAR_EXPORT_EXPECTED_EXIT_CODES: &[i32] =
+    &[SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE];
 
 enum WorkspacePromotionAction {
     Promoted,
@@ -243,6 +246,7 @@ async fn export_session_history_sidecar(
         timeout: SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT,
         env: &env,
         sudo: false,
+        expected_exit_codes: SESSION_HISTORY_SIDECAR_EXPORT_EXPECTED_EXIT_CODES,
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
     };
@@ -266,6 +270,16 @@ async fn export_session_history_sidecar(
             return None;
         }
     };
+    if matches!(
+        result.termination,
+        ExecTermination::Exited {
+            exit_code: SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE
+        }
+    ) {
+        cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
+            .await;
+        return None;
+    }
     if !helper_exec_succeeded(&result) {
         warn!(
             run_id = %promotion.run_id(),
@@ -378,6 +392,7 @@ async fn cleanup_guest_session_history_sidecar_export(
         timeout: SESSION_HISTORY_SIDECAR_CLEANUP_TIMEOUT,
         env: &[],
         sudo: false,
+        expected_exit_codes: &[],
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
     };
