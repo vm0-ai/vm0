@@ -410,6 +410,30 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn guest_dns_readiness_respects_total_deadline() {
+        let (host, mut guest) = setup_host_and_guest().await;
+        let policy = ReadinessPolicy {
+            total_timeout: Duration::from_millis(50),
+            max_attempts: 3,
+        };
+        let readiness =
+            async move { wait_for_guest_dns_readiness_with_policy(&host, policy).await };
+        let task = tokio::spawn(readiness);
+        let request = read_message(&mut guest).await;
+        assert_readiness_request(&request);
+
+        let error = task.await.unwrap().unwrap_err();
+
+        assert_eq!(error.attempts, 1);
+        assert!(matches!(
+            error.last_failure,
+            GuestDnsReadinessFailure::Deadline
+                | GuestDnsReadinessFailure::Transport(io::ErrorKind::TimedOut)
+        ));
+        assert!(error.elapsed < Duration::from_millis(500));
+    }
+
     #[test]
     fn guest_dns_readiness_retries_only_proven_guest_terminal_failures() {
         assert!(GuestDnsReadinessFailure::TimedOut.retryable());
