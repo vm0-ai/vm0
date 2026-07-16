@@ -808,8 +808,9 @@ async def request(flow: http.HTTPFlow) -> None:
     `request_classification.classification_for_request()` reuses an intentionally
     cached header-phase classification when present; otherwise it delegates to
     `request_classification.classify_request()`, which owns the canonical decision
-    order. This hook dispatches that result and revalidates firewall allows against
-    the current `publicDestination` before policy allow or credential injection.
+    order. This hook dispatches the result. For firewall allows, it revalidates any
+    `publicDestination` constraint against the current runtime destination before
+    allowing traffic or injecting credentials.
     """
     connector_intent.capture_and_strip(flow)
 
