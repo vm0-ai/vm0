@@ -50,19 +50,16 @@ async function onboardAdmin(
     orgState.slug = options.slug;
   }
   api.mockClerkOrg(admin, orgState);
-  const setup = await api.setupOnboarding(admin, {
+  const bootstrap = await api.bootstrapOnboarding(admin, {
     displayName: "BDD User Config Agent",
-    workspaceName: "BDD User Config Workspace",
     sound: "calm",
-    timezone: "UTC",
-    role: "engineering",
   });
-  if (setup.status !== 200 && setup.status !== 409) {
+  if (bootstrap.status !== 200) {
     throw new Error(
-      `Expected onboarding setup to succeed, got ${setup.status}`,
+      `Expected onboarding bootstrap to succeed, got ${bootstrap.status}`,
     );
   }
-  return setup.body.agentId;
+  return bootstrap.body.agentId;
 }
 
 describe("AUTH-03 user config CRUD error boundaries", () => {

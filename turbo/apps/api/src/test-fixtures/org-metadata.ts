@@ -9,8 +9,10 @@
  * production data and load-bearing for voice-io quota limits — has no
  * creation path at all. Exact credit balances (e.g. 0 or 1000) are equally
  * unreachable because product grants come in fixed subscription amounts.
- * This module is the narrow test-boundary exception: it only upserts an
- * org's tier and credit balance.
+ * The legacy onboarding-payment-pending state also has no write path after
+ * removing the retired onboarding setup endpoint, but billing must continue
+ * reading existing rows. This module is the narrow test-boundary exception
+ * for those persisted states.
  */
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -54,4 +56,18 @@ export async function expireAtomGrantFixture(values: {
     .update(creditExpiresRecord)
     .set({ expiresAt: values.expiredAt })
     .where(eq(creditExpiresRecord.orgId, values.orgId));
+}
+
+export async function setOnboardingPaymentPendingFixture(values: {
+  readonly orgId: string;
+  readonly onboardingPaymentPending: boolean;
+}): Promise<void> {
+  await createStore()
+    .set(writeDb$)
+    .update(orgMetadata)
+    .set({
+      onboardingPaymentPending: values.onboardingPaymentPending,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(orgMetadata.orgId, values.orgId));
 }

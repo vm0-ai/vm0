@@ -5,11 +5,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { fetch$ } from "../fetch.ts";
 import { zeroClient$ } from "../api-client.ts";
-import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../zero-page/settings/org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "../zero-page/settings/org-manage-dialog.ts";
+import { setBillingSubPage$ } from "../zero-page/settings/workspace-settings-state.ts";
+import { openSettingsDialogAt$ } from "../zero-page/settings/settings-dialog.ts";
 import { logger } from "../log.ts";
 import {
   bestEffort,
@@ -453,9 +450,8 @@ export const openAudioInputQuotaRecovery$ = command(
       id: AUDIO_INPUT_QUOTA_TOAST_ID,
     });
     set(refreshAudioInputQuota$);
-    set(setActiveOrgManageTab$, "billing");
     set(setBillingSubPage$, true);
-    await set(setOrgManageDialogOpen$, true, signal);
+    await set(openSettingsDialogAt$, "billing", signal);
   },
 );
 

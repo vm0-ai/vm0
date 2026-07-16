@@ -1419,7 +1419,7 @@ describe("CHAT-02: admission without spendable credits", () => {
   it("blocks admission for model-first sends through visible chat messages", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD pro-suspend admission agent",
     });
     const agent = await bdd.createAgent(actor, {
@@ -3649,6 +3649,129 @@ describe("CHAT-02: shared user message queue", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to remain drainable");
     }
+    await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
+
+  it("publishes the claim run-created signal when the message-updated publish fails", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    let failedMessageUpdatedPublish = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        typeof topic === "string" &&
+        topic.startsWith("chatThreadMessageUpdated:") &&
+        !failedMessageUpdatedPublish
+      ) {
+        failedMessageUpdatedPublish = true;
+        return Promise.reject(new Error("message updated publication failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "claim signals survive a failed publish",
+        clientMessageId: randomUUID(),
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected an idle-thread queue-first send to dispatch");
+    }
+    const threadId = sent.body.threadId;
+
+    await expect
+      .poll(() => {
+        return failedMessageUpdatedPublish;
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
+          return topic === `chatThreadRunCreated:${threadId}`;
+        });
+      })
+      .toBe(true);
+
+    await cancelChatRun(actor, sent.body.runId);
+  }, 90_000);
+
+  it("publishes the drain run-created signal when the message-updated publish fails", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "message updated publication failure anchor",
+    });
+
+    const queuedMessageId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queued send drains despite a failed message-updated publish",
+        clientMessageId: queuedMessageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({
+      runId: null,
+      threadId: anchor.threadId,
+    });
+
+    context.mocks.ably.publish.mockClear();
+    let failedMessageUpdatedPublish = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        typeof topic === "string" &&
+        topic.startsWith("chatThreadMessageUpdated:") &&
+        !failedMessageUpdatedPublish
+      ) {
+        failedMessageUpdatedPublish = true;
+        return Promise.reject(new Error("message updated publication failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await cancelChatRun(actor, anchor.runId);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.id === queuedMessageId && typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.id === queuedMessageId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the queued message to be drained");
+    }
+    // The drain publishes are scheduled side effects, so they can land after
+    // the message row is already observable as drained. Poll instead of
+    // asserting synchronously.
+    await expect
+      .poll(() => {
+        return failedMessageUpdatedPublish;
+      })
+      .toBe(true);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
+          return topic === `chatThreadRunCreated:${anchor.threadId}`;
+        });
+      })
+      .toBe(true);
+
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 

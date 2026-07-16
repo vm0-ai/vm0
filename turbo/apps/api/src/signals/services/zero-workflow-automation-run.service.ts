@@ -148,7 +148,6 @@ function buildWorkflowAutomationCallbacks(
       secret: generateCallbackSecret(),
       payload: {
         automationId: automation.id,
-        triggerId: automation.id,
       },
     });
   } else {
@@ -157,7 +156,6 @@ function buildWorkflowAutomationCallbacks(
       secret: generateCallbackSecret(),
       payload: {
         automationId: automation.id,
-        triggerId: automation.id,
         timezone: automation.timezone,
         ...(automation.cronExpression
           ? { cronExpression: automation.cronExpression }

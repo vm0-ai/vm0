@@ -1,8 +1,8 @@
 import {
   type ConnectorAuthCodeGrantAuthMethodId,
   type AuthCodeGrantConnectorType,
-  connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
+  type ConnectorAuthMethodRuntimeConfig,
   type ConnectorType,
   type ConnectorDeviceAuthGrantAuthMethodId,
   type ConnectorExternalCodeGrantAuthMethodId,
@@ -14,27 +14,27 @@ import {
   type OpenIdAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
-  type ConnectorAuthMethodConfig,
+  type ConnectorAuthCodeGrantConfig,
+  type ConnectorExternalCodeGrantConfig,
+  type ConnectorOpenIdAuthGrantConfig,
   type ConnectorRefreshInputValues,
-  type ConnectorRevokeInputValues,
   type RefreshTokenAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  connectorAuthClientIdentityForMethod,
-  connectorAuthMethodRefHasRevokeKind,
+  connectorAuthClientIdentity,
+  connectorAuthMethodAccessMetadata,
+  connectorGrantScopes,
   getConnectorAuthMethod,
-  getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodAuthCodeGrantConfig,
-  getConnectorAuthMethodOpenIdAuthGrantConfig,
-  getConnectorAuthMethodExternalCodeGrantConfig,
-  getConnectorAuthMethodGrantScopes,
   isStaticConnectorAuthClient,
-  parseConnectorDeviceAuthStartOptions,
-  resolveConnectorAuthClientForMethod,
+  parseConnectorDeviceAuthStartOptionsConfig,
+  resolveConnectorAuthClient,
+  type ConnectorAuthClient,
+  type ConnectorAuthClientIdentity,
   type ConnectorAuthClientForMethod,
   type ConnectorResolvedAuthMethodClientByGrantKind,
   type ConnectorEnvReader,
+  type StaticConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeConnectorAuthProvider,
@@ -156,30 +156,6 @@ export type ConnectorAuthProviderAccessTokenRevokeResult =
   | { readonly status: "revoked" }
   | { readonly status: "unsupported" };
 
-type ConnectorAuthCodeGrantProvider<
-  Type extends AuthCodeGrantConnectorType,
-  Method extends ConnectorAuthCodeGrantAuthMethodId<Type> =
-    ConnectorAuthCodeGrantAuthMethodId<Type>,
-> = AuthCodeConnectorAuthProvider<Type, Method>["grant"];
-
-type ConnectorDeviceAuthGrantProvider<
-  Type extends DeviceAuthGrantConnectorType,
-  Method extends ConnectorDeviceAuthGrantAuthMethodId<Type> =
-    ConnectorDeviceAuthGrantAuthMethodId<Type>,
-> = DeviceAuthConnectorAuthProvider<Type, Method>["grant"];
-
-type ConnectorOpenIdAuthGrantProvider<
-  Type extends OpenIdAuthGrantConnectorType,
-  Method extends ConnectorOpenIdAuthGrantAuthMethodId<Type> =
-    ConnectorOpenIdAuthGrantAuthMethodId<Type>,
-> = OpenIdAuthConnectorAuthProvider<Type, Method>["grant"];
-
-type ConnectorExternalCodeGrantProvider<
-  Type extends ExternalCodeGrantConnectorType,
-  Method extends ConnectorExternalCodeGrantAuthMethodId<Type> =
-    ConnectorExternalCodeGrantAuthMethodId<Type>,
-> = ExternalCodeConnectorAuthProvider<Type, Method>["grant"];
-
 type ConnectorAuthMethodIdsWithoutProviderGrant<Type extends ConnectorType> =
   Exclude<
     ConnectorAuthMethodId,
@@ -283,20 +259,14 @@ type RuntimeAuthProviderRegistration<
   readonly entry: RuntimeAuthProviderEntry;
 };
 
-type RuntimeAuthProviderRegistry = Readonly<
-  Partial<
-    Record<
-      ConnectorType,
-      Readonly<Partial<Record<ConnectorAuthMethodId, RuntimeAuthProviderEntry>>>
-    >
-  >
->;
+type PreparedRuntimeAuthProviderRegistration =
+  RuntimeAuthProviderRegistration & {
+    readonly capability: ConnectorAuthProviderRegistrationCapability;
+  };
 
-type MutableRuntimeAuthProviderRegistry = Partial<
-  Record<
-    ConnectorType,
-    Partial<Record<ConnectorAuthMethodId, RuntimeAuthProviderEntry>>
-  >
+type RuntimeAuthProviderRegistry = ReadonlyMap<
+  string,
+  PreparedRuntimeAuthProviderRegistration
 >;
 
 export type ConnectorAuthProviderRegistryCapability = {
@@ -342,19 +312,19 @@ export type ConnectorAuthProviderClientContract =
 export interface ConnectorAuthProviderMethodContract {
   readonly client: ConnectorAuthProviderClientContract;
   readonly grant: {
-    readonly kind: ConnectorAuthMethodConfig["grant"]["kind"];
+    readonly kind: ConnectorAuthMethodRuntimeConfig["grant"]["kind"];
     readonly callbackOrigin: "web" | "api" | null;
     readonly outputNames: readonly string[];
     readonly startOptionNames: readonly string[];
   };
   readonly access: {
-    readonly kind: ConnectorAuthMethodConfig["access"]["kind"];
+    readonly kind: ConnectorAuthMethodRuntimeConfig["access"]["kind"];
     readonly inputNames: readonly string[];
     readonly outputNames: readonly string[];
     readonly platformSecrets: readonly string[];
   };
   readonly revoke: {
-    readonly kind: ConnectorAuthMethodConfig["revoke"]["kind"];
+    readonly kind: ConnectorAuthMethodRuntimeConfig["revoke"]["kind"];
     readonly inputNames: readonly string[];
   };
 }
@@ -372,7 +342,7 @@ function compareCapabilityStrings(left: string, right: string): number {
 }
 
 function connectorAuthProviderClientContract(
-  method: ConnectorAuthMethodConfig,
+  method: ConnectorAuthMethodRuntimeConfig,
 ): ConnectorAuthProviderClientContract {
   const client = method.client;
   if (client === undefined) {
@@ -396,7 +366,7 @@ function connectorAuthProviderClientContract(
 }
 
 function connectorAuthProviderMethodContract(
-  method: ConnectorAuthMethodConfig,
+  method: ConnectorAuthMethodRuntimeConfig,
 ): ConnectorAuthProviderMethodContract {
   const callbackOrigin =
     method.grant.kind === "auth-code"
@@ -457,7 +427,7 @@ function connectorAuthProviderMethodContract(
 }
 
 function connectorAuthProviderRequiredConfigurationNames(
-  method: ConnectorAuthMethodConfig,
+  method: ConnectorAuthMethodRuntimeConfig,
 ): readonly string[] {
   const names = new Set<string>();
   const client = method.client;
@@ -475,6 +445,38 @@ function connectorAuthProviderRequiredConfigurationNames(
   return [...names].sort(compareCapabilityStrings);
 }
 
+function connectorAuthProviderRegistryCapability(
+  entry: RuntimeAuthProviderEntry,
+): ConnectorAuthProviderRegistryCapability {
+  return {
+    ...(entry.grant === undefined ? {} : { grant: entry.grant.kind }),
+    ...(entry.access === undefined ? {} : { access: entry.access.kind }),
+    ...(entry.revoke === undefined ? {} : { revoke: entry.revoke.kind }),
+  };
+}
+
+function connectorAuthProviderRegistrationCapability(
+  registration: RuntimeAuthProviderRegistration,
+): ConnectorAuthProviderRegistrationCapability {
+  const method = getConnectorAuthMethod(
+    registration.type,
+    registration.authMethod,
+  );
+  if (method === undefined) {
+    throw new Error(
+      `Missing auth method configuration for ${registration.type}:${registration.authMethod}`,
+    );
+  }
+  return {
+    connectorRef: registration.type,
+    authMethodId: registration.authMethod,
+    handlers: connectorAuthProviderRegistryCapability(registration.entry),
+    contract: connectorAuthProviderMethodContract(method),
+    requiredConfigurationNames:
+      connectorAuthProviderRequiredConfigurationNames(method),
+  };
+}
+
 type MutableConnectorAuthProviderRegistryCapabilities = Partial<
   Record<
     ConnectorType,
@@ -483,14 +485,6 @@ type MutableConnectorAuthProviderRegistryCapabilities = Partial<
     >
   >
 >;
-
-type TokenRevokeAuthMethodRef = {
-  readonly type: TokenRevokeConnectorType;
-  readonly authMethod: ConnectorAuthMethodIdsByRevokeKind<
-    TokenRevokeConnectorType,
-    "token-revoke"
-  >;
-};
 
 function connectorAuthProviderRegistryEntry<
   Type extends ConnectorType,
@@ -506,31 +500,45 @@ function connectorAuthProviderRegistryEntry<
 function buildRuntimeProviderRegistry(
   registrations: readonly RuntimeAuthProviderRegistration[],
 ): RuntimeAuthProviderRegistry {
-  const registry: MutableRuntimeAuthProviderRegistry = {};
+  const registry = new Map<string, PreparedRuntimeAuthProviderRegistration>();
   for (const registration of registrations) {
-    const methodEntries = registry[registration.type] ?? {};
-    if (methodEntries[registration.authMethod] !== undefined) {
+    const key = connectorAuthProviderRegistrationKey(
+      registration.type,
+      registration.authMethod,
+    );
+    if (registry.has(key)) {
       throw new Error(
         `Duplicate auth provider registration for ${registration.type}:${registration.authMethod}`,
       );
     }
-    methodEntries[registration.authMethod] = registration.entry;
-    registry[registration.type] = methodEntries;
+    registry.set(key, {
+      ...registration,
+      capability: connectorAuthProviderRegistrationCapability(registration),
+    });
   }
   return registry;
 }
 
-function getRuntimeAuthProviderEntry(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): RuntimeAuthProviderEntry {
-  const entry = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type]?.[authMethod];
-  if (entry === undefined) {
+function connectorAuthProviderRegistrationKey(
+  connectorRef: string,
+  authMethodId: string,
+): string {
+  return `${connectorRef}\0${authMethodId}`;
+}
+
+function getRuntimeAuthProviderRegistration(
+  connectorRef: string,
+  authMethodId: string,
+): PreparedRuntimeAuthProviderRegistration {
+  const registration = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY.get(
+    connectorAuthProviderRegistrationKey(connectorRef, authMethodId),
+  );
+  if (registration === undefined) {
     throw new Error(
-      `Missing auth provider registration for ${type}:${authMethod}`,
+      `Missing auth provider registration for ${connectorRef}:${authMethodId}`,
     );
   }
-  return entry;
+  return registration;
 }
 
 function authCodeProviderEntry<
@@ -711,111 +719,203 @@ function refreshProviderEntry<
   });
 }
 
-function connectorRefreshTokenAccessProviderFor<
-  T extends RefreshTokenAccessConnectorType,
-  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
->(type: T, authMethod: Method): RefreshTokenAccessProvider<T, Method> {
-  const { access } = getRuntimeAuthProviderEntry(type, authMethod);
-  if (access?.kind !== "refresh-token") {
-    throw new Error(
-      `Missing refresh-token access provider for ${type}:${authMethod}`,
-    );
-  }
-  return access as RefreshTokenAccessProvider<T, Method>;
+export interface ConnectorAuthProviderMethodSelection {
+  readonly connectorRef: string;
+  readonly authMethodId: string;
+  readonly method: ConnectorAuthMethodRuntimeConfig;
 }
 
-function connectorAuthCodeGrantProviderFor<
-  T extends AuthCodeGrantConnectorType,
-  Method extends ConnectorAuthCodeGrantAuthMethodId<T>,
->(type: T, authMethod: Method): ConnectorAuthCodeGrantProvider<T, Method> {
-  const { grant } = getRuntimeAuthProviderEntry(type, authMethod);
+function assertConnectorAuthProviderMethodContract(
+  selection: ConnectorAuthProviderMethodSelection,
+  registration: PreparedRuntimeAuthProviderRegistration,
+): void {
+  if (
+    JSON.stringify(connectorAuthProviderMethodContract(selection.method)) !==
+    JSON.stringify(registration.capability.contract)
+  ) {
+    throw new Error(
+      `Auth provider contract mismatch for ${selection.connectorRef}:${selection.authMethodId}`,
+    );
+  }
+}
+
+function connectorAuthProviderRegistrationFor(
+  selection: ConnectorAuthProviderMethodSelection,
+): PreparedRuntimeAuthProviderRegistration {
+  const registration = getRuntimeAuthProviderRegistration(
+    selection.connectorRef,
+    selection.authMethodId,
+  );
+  assertConnectorAuthProviderMethodContract(selection, registration);
+  return registration;
+}
+
+function connectorAuthCodeGrantProviderFor(
+  selection: ConnectorAuthProviderMethodSelection,
+): RuntimeAuthCodeGrantProvider {
+  const registration = connectorAuthProviderRegistrationFor(selection);
+  const { grant } = registration.entry;
   if (grant?.kind !== "auth-code") {
     throw new Error(
-      `Missing auth-code grant provider for ${type}:${authMethod}`,
+      `Missing auth-code grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  return grant as ConnectorAuthCodeGrantProvider<T, Method>;
+  return grant;
 }
 
-function connectorDeviceAuthGrantProviderFor<
-  T extends DeviceAuthGrantConnectorType,
-  Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
->(type: T, authMethod: Method): ConnectorDeviceAuthGrantProvider<T, Method> {
-  const { grant } = getRuntimeAuthProviderEntry(type, authMethod);
+function connectorDeviceAuthGrantProviderFor(
+  selection: ConnectorAuthProviderMethodSelection,
+): RuntimeDeviceAuthGrantProvider {
+  const registration = connectorAuthProviderRegistrationFor(selection);
+  const { grant } = registration.entry;
   if (grant?.kind !== "device-auth") {
     throw new Error(
-      `Missing device-auth grant provider for ${type}:${authMethod}`,
+      `Missing device-auth grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  return grant as ConnectorDeviceAuthGrantProvider<T, Method>;
+  return grant;
 }
 
-function connectorOpenIdAuthGrantProviderFor<
-  T extends OpenIdAuthGrantConnectorType,
-  Method extends ConnectorOpenIdAuthGrantAuthMethodId<T>,
->(type: T, authMethod: Method): ConnectorOpenIdAuthGrantProvider<T, Method> {
-  const { grant } = getRuntimeAuthProviderEntry(type, authMethod);
+function connectorOpenIdAuthGrantProviderFor(
+  selection: ConnectorAuthProviderMethodSelection,
+): RuntimeOpenIdAuthGrantProvider {
+  const registration = connectorAuthProviderRegistrationFor(selection);
+  const { grant } = registration.entry;
   if (grant?.kind !== "openid-auth") {
     throw new Error(
-      `Missing openid-auth grant provider for ${type}:${authMethod}`,
+      `Missing openid-auth grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  return grant as ConnectorOpenIdAuthGrantProvider<T, Method>;
+  return grant;
 }
 
-function connectorExternalCodeGrantProviderFor<
-  T extends ExternalCodeGrantConnectorType,
-  Method extends ConnectorExternalCodeGrantAuthMethodId<T>,
->(type: T, authMethod: Method): ConnectorExternalCodeGrantProvider<T, Method> {
-  const { grant } = getRuntimeAuthProviderEntry(type, authMethod);
+function connectorExternalCodeGrantProviderFor(
+  selection: ConnectorAuthProviderMethodSelection,
+): RuntimeExternalCodeGrantProvider {
+  const registration = connectorAuthProviderRegistrationFor(selection);
+  const { grant } = registration.entry;
   if (grant?.kind !== "external-code") {
     throw new Error(
-      `Missing external-code grant provider for ${type}:${authMethod}`,
+      `Missing external-code grant provider for ${selection.connectorRef}:${selection.authMethodId}`,
     );
   }
-  return grant as ConnectorExternalCodeGrantProvider<T, Method>;
+  return grant;
 }
 
-async function revokeTokenRevokeConnectorAccessToken<
-  T extends TokenRevokeConnectorType,
-  Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
->(args: {
-  readonly type: T;
-  readonly authMethod: Method;
-  readonly readEnv: ConnectorEnvReader;
-  readonly signal: AbortSignal;
-  readonly loadInputs: () =>
-    | ConnectorRevokeInputValues<T, Method>
-    | Promise<ConnectorRevokeInputValues<T, Method>>;
-}): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
-  const revoke = connectorTokenRevokeProviderFor(args.type, args.authMethod);
-
-  const authClient = resolveConnectorAuthClientForMethod(
-    args.type,
-    args.authMethod,
-    args.readEnv,
-  );
-  if (!authClient || !isStaticConnectorAuthClient(authClient)) {
-    return { status: "unsupported" };
+function connectorRefreshTokenAccessProviderFor(
+  selection: ConnectorAuthProviderMethodSelection,
+): RuntimeRefreshTokenAccessProvider {
+  const registration = connectorAuthProviderRegistrationFor(selection);
+  const { access } = registration.entry;
+  if (access?.kind !== "refresh-token") {
+    throw new Error(
+      `Missing refresh-token access provider for ${selection.connectorRef}:${selection.authMethodId}`,
+    );
   }
-
-  await revoke.revokeToken({
-    authClient,
-    inputs: await args.loadInputs(),
-    signal: args.signal,
-  });
-  return { status: "revoked" };
+  return access;
 }
 
-function connectorTokenRevokeProviderFor<
-  T extends TokenRevokeConnectorType,
-  Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
->(type: T, authMethod: Method): TokenRevokeProvider<T, Method> {
-  const { revoke } = getRuntimeAuthProviderEntry(type, authMethod);
+function connectorTokenRevokeProviderFor(
+  selection: ConnectorAuthProviderMethodSelection,
+): RuntimeTokenRevokeProvider {
+  const registration = connectorAuthProviderRegistrationFor(selection);
+  const { revoke } = registration.entry;
   if (revoke?.kind !== "token-revoke") {
-    throw new Error(`Missing token-revoke provider for ${type}:${authMethod}`);
+    throw new Error(
+      `Missing token-revoke provider for ${selection.connectorRef}:${selection.authMethodId}`,
+    );
   }
-  return revoke as TokenRevokeProvider<T, Method>;
+  return revoke;
+}
+
+function invokeRuntimeProvider<Args, Result>(
+  handler: (args: never) => Result,
+  args: Args,
+): Result {
+  // Typed registry builders establish the handler/method relation. Exact
+  // runtime contract validation restores it after the open-key lookup.
+  return (handler as (input: Args) => Result)(args);
+}
+
+function assertConnectorAuthClientMatchesMethod(args: {
+  readonly selection: ConnectorAuthProviderMethodSelection;
+  readonly authClient: ConnectorAuthClient;
+}): void {
+  const client = args.selection.method.client;
+  if (client === undefined) {
+    throw new Error(
+      `Missing auth client configuration for ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+    );
+  }
+  if (
+    client.clientRegistration !== args.authClient.clientRegistration ||
+    client.clientType !== args.authClient.clientType
+  ) {
+    throw new Error(
+      `Auth client does not match ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+    );
+  }
+  if (
+    client.clientRegistration === "static" &&
+    "clientId" in client &&
+    (args.authClient.clientRegistration !== "static" ||
+      client.clientId !== args.authClient.clientId)
+  ) {
+    throw new Error(
+      `Auth client does not match ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+    );
+  }
+  if (
+    client.clientRegistration === "static" &&
+    client.clientType === "confidential" &&
+    "clientSecret" in client &&
+    (args.authClient.clientRegistration !== "static" ||
+      args.authClient.clientType !== "confidential" ||
+      client.clientSecret !== args.authClient.clientSecret)
+  ) {
+    throw new Error(
+      `Auth client does not match ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+    );
+  }
+}
+
+function assertDeclaredProviderOutputs(args: {
+  readonly selection: ConnectorAuthProviderMethodSelection;
+  readonly operation: "grant" | "refresh";
+  readonly declaredOutputNames: readonly string[];
+  readonly outputs: Readonly<Record<string, string | null | undefined>>;
+}): void {
+  const declaredOutputs = new Set(args.declaredOutputNames);
+  for (const outputName of Object.keys(args.outputs)) {
+    if (!declaredOutputs.has(outputName)) {
+      throw new Error(
+        `${args.selection.connectorRef} connector auth method ${args.selection.authMethodId} returned undeclared ${args.operation} output ${outputName}`,
+      );
+    }
+  }
+}
+
+function assertDeclaredProviderInputs(args: {
+  readonly selection: ConnectorAuthProviderMethodSelection;
+  readonly operation: "refresh" | "revoke";
+  readonly declaredInputNames: readonly string[];
+  readonly inputs: Readonly<Record<string, string>>;
+}): void {
+  const declaredInputs = new Set(args.declaredInputNames);
+  for (const inputName of Object.keys(args.inputs)) {
+    if (!declaredInputs.has(inputName)) {
+      throw new Error(
+        `${args.selection.connectorRef} connector auth method ${args.selection.authMethodId} received undeclared ${args.operation} input ${inputName}`,
+      );
+    }
+  }
+  for (const inputName of declaredInputs) {
+    if (!Object.hasOwn(args.inputs, inputName)) {
+      throw new Error(
+        `${args.selection.connectorRef} connector auth method ${args.selection.authMethodId} is missing ${args.operation} input ${inputName}`,
+      );
+    }
+  }
 }
 
 const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
@@ -950,17 +1050,8 @@ export function getConnectorAuthProviderRegistryCapabilities(): ConnectorAuthPro
   const capabilities: MutableConnectorAuthProviderRegistryCapabilities = {};
   for (const registration of CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES) {
     const methodCapabilities = capabilities[registration.type] ?? {};
-    methodCapabilities[registration.authMethod] = {
-      ...(registration.entry.grant === undefined
-        ? {}
-        : { grant: registration.entry.grant.kind }),
-      ...(registration.entry.access === undefined
-        ? {}
-        : { access: registration.entry.access.kind }),
-      ...(registration.entry.revoke === undefined
-        ? {}
-        : { revoke: registration.entry.revoke.kind }),
-    };
+    methodCapabilities[registration.authMethod] =
+      connectorAuthProviderRegistryCapability(registration.entry);
     capabilities[registration.type] = methodCapabilities;
   }
   return capabilities;
@@ -968,33 +1059,12 @@ export function getConnectorAuthProviderRegistryCapabilities(): ConnectorAuthPro
 
 export function getConnectorAuthProviderRegistrationCapabilities(): readonly ConnectorAuthProviderRegistrationCapability[] {
   return CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES.map((registration) => {
-    const method = getConnectorAuthMethod(
-      registration.type,
-      registration.authMethod,
+    return structuredClone(
+      getRuntimeAuthProviderRegistration(
+        registration.type,
+        registration.authMethod,
+      ).capability,
     );
-    if (method === undefined) {
-      throw new Error(
-        `Missing auth method configuration for ${registration.type}:${registration.authMethod}`,
-      );
-    }
-    return {
-      connectorRef: registration.type,
-      authMethodId: registration.authMethod,
-      handlers: {
-        ...(registration.entry.grant === undefined
-          ? {}
-          : { grant: registration.entry.grant.kind }),
-        ...(registration.entry.access === undefined
-          ? {}
-          : { access: registration.entry.access.kind }),
-        ...(registration.entry.revoke === undefined
-          ? {}
-          : { revoke: registration.entry.revoke.kind }),
-      },
-      contract: connectorAuthProviderMethodContract(method),
-      requiredConfigurationNames:
-        connectorAuthProviderRequiredConfigurationNames(method),
-    };
   }).sort((left, right) => {
     return (
       compareCapabilityStrings(left.connectorRef, right.connectorRef) ||
@@ -1111,6 +1181,448 @@ type ConnectorRefreshTokenAccessDynamicCallArgs = {
   }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
 }[RefreshTokenAccessConnectorType];
 
+interface RuntimeAuthCodeAuthorizeArgs {
+  readonly authClient: ConnectorAuthClientIdentity;
+  readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
+  readonly redirectUri: string;
+  readonly state: string;
+}
+
+interface RuntimeAuthCodeExchangeArgs {
+  readonly authClient: ConnectorAuthClient;
+  readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
+  readonly code: string;
+  readonly redirectUri: string;
+  readonly state: string | undefined;
+  readonly codeVerifier: string | undefined;
+  readonly oauthContext: string | undefined;
+}
+
+interface RuntimeOpenIdAuthorizeArgs {
+  readonly openIdAuthGrant: ConnectorOpenIdAuthGrantConfig;
+  readonly returnTo: string;
+  readonly realm: string;
+  readonly state: string;
+}
+
+interface RuntimeOpenIdVerifyArgs {
+  readonly openIdAuthGrant: ConnectorOpenIdAuthGrantConfig;
+  readonly callbackParams: Readonly<Record<string, string>>;
+  readonly expectedReturnTo: string;
+  readonly expectedRealm: string;
+  readonly signal: AbortSignal;
+}
+
+interface RuntimeExternalCodeStartArgs {
+  readonly authClient: ConnectorAuthClientIdentity;
+  readonly externalCodeGrant: ConnectorExternalCodeGrantConfig;
+}
+
+interface RuntimeExternalCodeCompleteArgs {
+  readonly authClient: ConnectorAuthClient;
+  readonly externalCodeGrant: ConnectorExternalCodeGrantConfig;
+  readonly code: string;
+  readonly providerState: string;
+  readonly signal: AbortSignal;
+}
+
+interface RuntimeDeviceAuthorizationStartArgs {
+  readonly authClient: ConnectorAuthClientIdentity;
+  readonly scopes: readonly string[];
+  readonly options: ConnectorDeviceAuthStartOptions;
+}
+
+interface RuntimeDeviceAuthorizationPollArgs {
+  readonly authClient: ConnectorAuthClient;
+  readonly deviceCode: string;
+  readonly pollState?: string;
+}
+
+interface RuntimeRefreshTokenAccessArgs {
+  readonly authClient?: ConnectorAuthClient;
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}
+
+interface RuntimeTokenRevokeArgs {
+  readonly authClient: StaticConnectorAuthClient;
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}
+
+function getStaticConnectorAuthProviderMethod(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthMethodRuntimeConfig {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (method === undefined) {
+    throw new Error(
+      `Missing auth method configuration for ${type}:${authMethod}`,
+    );
+  }
+  return method;
+}
+
+function assertGrantOutputs(args: {
+  readonly selection: ConnectorAuthProviderMethodSelection;
+  readonly result: ConnectorAuthProviderGrantResult;
+}): void {
+  const { grant } = args.selection.method;
+  if (
+    grant.kind !== "auth-code" &&
+    grant.kind !== "openid-auth" &&
+    grant.kind !== "external-code" &&
+    grant.kind !== "device-auth"
+  ) {
+    throw new Error(
+      `Provider-backed grant required for ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+    );
+  }
+  assertDeclaredProviderOutputs({
+    selection: args.selection,
+    operation: "grant",
+    declaredOutputNames: Object.keys(grant.outputs),
+    outputs: args.result.outputs,
+  });
+}
+
+function assertOptionalConnectorAuthClientMatchesMethod(args: {
+  readonly selection: ConnectorAuthProviderMethodSelection;
+  readonly authClient: ConnectorAuthClient | undefined;
+}): void {
+  if (args.selection.method.client === undefined) {
+    if (args.authClient !== undefined) {
+      throw new Error(
+        `Unexpected auth client for ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+      );
+    }
+    return;
+  }
+  if (args.authClient === undefined) {
+    throw new Error(
+      `Missing auth client for ${args.selection.connectorRef}:${args.selection.authMethodId}`,
+    );
+  }
+  assertConnectorAuthClientMatchesMethod({
+    selection: args.selection,
+    authClient: args.authClient,
+  });
+}
+
+export async function buildConnectorAuthCodeAuthorizationUrlWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly authClient: ConnectorAuthClient;
+    readonly redirectUri: string;
+    readonly state: string;
+  },
+): Promise<string | AuthUrlResult> {
+  const provider = connectorAuthCodeGrantProviderFor(args);
+  if (args.method.grant.kind !== "auth-code") {
+    throw new Error(
+      `Auth-code grant required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  assertConnectorAuthClientMatchesMethod({
+    selection: args,
+    authClient: args.authClient,
+  });
+  return await invokeRuntimeProvider<
+    RuntimeAuthCodeAuthorizeArgs,
+    string | AuthUrlResult | Promise<string | AuthUrlResult>
+  >(provider.buildAuthUrl, {
+    authClient: connectorAuthClientIdentity(args.authClient),
+    authCodeGrant: args.method.grant,
+    redirectUri: args.redirectUri,
+    state: args.state,
+  });
+}
+
+export async function buildConnectorOpenIdAuthAuthorizationUrlWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly returnTo: string;
+    readonly realm: string;
+    readonly state: string;
+  },
+): Promise<string | AuthUrlResult> {
+  const provider = connectorOpenIdAuthGrantProviderFor(args);
+  if (args.method.grant.kind !== "openid-auth") {
+    throw new Error(
+      `OpenID grant required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  return await invokeRuntimeProvider<
+    RuntimeOpenIdAuthorizeArgs,
+    string | AuthUrlResult | Promise<string | AuthUrlResult>
+  >(provider.buildAuthUrl, {
+    openIdAuthGrant: args.method.grant,
+    returnTo: args.returnTo,
+    realm: args.realm,
+    state: args.state,
+  });
+}
+
+export async function exchangeConnectorAuthCodeWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly authClient: ConnectorAuthClient;
+    readonly code: string;
+    readonly redirectUri: string;
+    readonly state: string | undefined;
+    readonly codeVerifier: string | undefined;
+    readonly oauthContext: string | undefined;
+  },
+): Promise<ConnectorAuthProviderGrantResult> {
+  const provider = connectorAuthCodeGrantProviderFor(args);
+  if (args.method.grant.kind !== "auth-code") {
+    throw new Error(
+      `Auth-code grant required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  assertConnectorAuthClientMatchesMethod({
+    selection: args,
+    authClient: args.authClient,
+  });
+  const result = await invokeRuntimeProvider<
+    RuntimeAuthCodeExchangeArgs,
+    Promise<ConnectorAuthProviderGrantResult>
+  >(provider.exchangeCode, {
+    authClient: args.authClient,
+    authCodeGrant: args.method.grant,
+    code: args.code,
+    redirectUri: args.redirectUri,
+    state: args.state,
+    codeVerifier: args.codeVerifier,
+    oauthContext: args.oauthContext,
+  });
+  assertGrantOutputs({ selection: args, result });
+  return result;
+}
+
+export async function verifyConnectorOpenIdAuthCallbackWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly callbackParams: Readonly<Record<string, string>>;
+    readonly expectedReturnTo: string;
+    readonly expectedRealm: string;
+    readonly signal: AbortSignal;
+  },
+): Promise<ConnectorAuthProviderGrantResult> {
+  const provider = connectorOpenIdAuthGrantProviderFor(args);
+  if (args.method.grant.kind !== "openid-auth") {
+    throw new Error(
+      `OpenID grant required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  const result = await invokeRuntimeProvider<
+    RuntimeOpenIdVerifyArgs,
+    Promise<ConnectorAuthProviderGrantResult>
+  >(provider.verifyCallback, {
+    openIdAuthGrant: args.method.grant,
+    callbackParams: args.callbackParams,
+    expectedReturnTo: args.expectedReturnTo,
+    expectedRealm: args.expectedRealm,
+    signal: args.signal,
+  });
+  assertGrantOutputs({ selection: args, result });
+  return result;
+}
+
+export async function startConnectorExternalCodeAuthorizationWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly authClient: ConnectorAuthClient;
+  },
+): Promise<ExternalCodeAuthorizationStartResult> {
+  const provider = connectorExternalCodeGrantProviderFor(args);
+  if (args.method.grant.kind !== "external-code") {
+    throw new Error(
+      `External-code grant required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  assertConnectorAuthClientMatchesMethod({
+    selection: args,
+    authClient: args.authClient,
+  });
+  return await invokeRuntimeProvider<
+    RuntimeExternalCodeStartArgs,
+    Promise<ExternalCodeAuthorizationStartResult>
+  >(provider.startExternalCodeAuthorization, {
+    authClient: connectorAuthClientIdentity(args.authClient),
+    externalCodeGrant: args.method.grant,
+  });
+}
+
+export async function completeConnectorExternalCodeAuthorizationWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly authClient: ConnectorAuthClient;
+    readonly code: string;
+    readonly providerState: string;
+    readonly signal: AbortSignal;
+  },
+): Promise<ConnectorAuthProviderGrantResult> {
+  const provider = connectorExternalCodeGrantProviderFor(args);
+  if (args.method.grant.kind !== "external-code") {
+    throw new Error(
+      `External-code grant required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  assertConnectorAuthClientMatchesMethod({
+    selection: args,
+    authClient: args.authClient,
+  });
+  const result = await invokeRuntimeProvider<
+    RuntimeExternalCodeCompleteArgs,
+    Promise<ConnectorAuthProviderGrantResult>
+  >(provider.completeExternalCodeAuthorization, {
+    authClient: args.authClient,
+    externalCodeGrant: args.method.grant,
+    code: args.code,
+    providerState: args.providerState,
+    signal: args.signal,
+  });
+  assertGrantOutputs({ selection: args, result });
+  return result;
+}
+
+export async function startConnectorDeviceAuthorizationWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly authClient: ConnectorAuthClient;
+    readonly options: ConnectorDeviceAuthStartOptions;
+  },
+): Promise<OAuthDeviceAuthStartResult> {
+  const provider = connectorDeviceAuthGrantProviderFor(args);
+  if (args.method.grant.kind !== "device-auth") {
+    throw new Error(
+      `Device-auth grant required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  assertConnectorAuthClientMatchesMethod({
+    selection: args,
+    authClient: args.authClient,
+  });
+  const startOptionsResult = parseConnectorDeviceAuthStartOptionsConfig({
+    connectorRef: args.connectorRef,
+    authMethodId: args.authMethodId,
+    startOptions: args.method.grant.startOptions,
+    options: args.options,
+  });
+  if (!startOptionsResult.success) {
+    throw new Error(startOptionsResult.message);
+  }
+  return await invokeRuntimeProvider<
+    RuntimeDeviceAuthorizationStartArgs,
+    Promise<OAuthDeviceAuthStartResult>
+  >(provider.startDeviceAuth, {
+    authClient: connectorAuthClientIdentity(args.authClient),
+    scopes: connectorGrantScopes(args.method.grant),
+    options: startOptionsResult.options,
+  });
+}
+
+export async function pollConnectorDeviceAuthorizationWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly authClient: ConnectorAuthClient;
+    readonly deviceCode: string;
+    readonly pollState?: string;
+  },
+): Promise<OAuthDeviceAuthPollResultBase> {
+  const provider = connectorDeviceAuthGrantProviderFor(args);
+  if (args.method.grant.kind !== "device-auth") {
+    throw new Error(
+      `Device-auth grant required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  assertConnectorAuthClientMatchesMethod({
+    selection: args,
+    authClient: args.authClient,
+  });
+  const result = await invokeRuntimeProvider<
+    RuntimeDeviceAuthorizationPollArgs,
+    Promise<OAuthDeviceAuthPollResultBase>
+  >(provider.pollDeviceAuth, {
+    authClient: args.authClient,
+    deviceCode: args.deviceCode,
+    ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
+  });
+  if (result.status === "complete") {
+    assertGrantOutputs({ selection: args, result: result.token });
+  }
+  return result;
+}
+
+export async function refreshConnectorAuthProviderAccessTokenWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly authClient?: ConnectorAuthClient;
+    readonly inputs: Readonly<Record<string, string>>;
+    readonly signal: AbortSignal;
+  },
+): Promise<ConnectorAuthProviderRefreshResultBase> {
+  const access = connectorRefreshTokenAccessProviderFor(args);
+  const accessMetadata = connectorAuthMethodAccessMetadata(args.method);
+  if (accessMetadata.kind !== "refresh-token") {
+    throw new Error(
+      `Refresh-token access required for ${args.connectorRef}:${args.authMethodId}`,
+    );
+  }
+  assertOptionalConnectorAuthClientMatchesMethod({
+    selection: args,
+    authClient: args.authClient,
+  });
+  assertDeclaredProviderInputs({
+    selection: args,
+    operation: "refresh",
+    declaredInputNames: Object.keys(accessMetadata.inputs),
+    inputs: args.inputs,
+  });
+  const result = await invokeRuntimeProvider<
+    RuntimeRefreshTokenAccessArgs,
+    Promise<ConnectorAuthProviderRefreshResultBase>
+  >(access.refresh, {
+    ...(args.authClient === undefined ? {} : { authClient: args.authClient }),
+    inputs: args.inputs,
+    signal: args.signal,
+  });
+  assertDeclaredProviderOutputs({
+    selection: args,
+    operation: "refresh",
+    declaredOutputNames: Object.keys(accessMetadata.outputs),
+    outputs: result.outputs,
+  });
+  return result;
+}
+
+export async function revokeConnectorAuthMethodAccessTokenWithMethod(
+  args: ConnectorAuthProviderMethodSelection & {
+    readonly readEnv: ConnectorEnvReader;
+    readonly signal: AbortSignal;
+    readonly loadInputs: () =>
+      | Readonly<Record<string, string>>
+      | Promise<Readonly<Record<string, string>>>;
+  },
+): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
+  if (args.method.revoke.kind !== "token-revoke") {
+    return { status: "unsupported" };
+  }
+  const revoke = connectorTokenRevokeProviderFor(args);
+  const clientConfig = args.method.client;
+  if (clientConfig === undefined) {
+    return { status: "unsupported" };
+  }
+  const authClient = resolveConnectorAuthClient(clientConfig, args.readEnv);
+  if (!authClient || !isStaticConnectorAuthClient(authClient)) {
+    return { status: "unsupported" };
+  }
+  const inputs = await args.loadInputs();
+  assertDeclaredProviderInputs({
+    selection: args,
+    operation: "revoke",
+    declaredInputNames: Object.keys(args.method.revoke.inputs),
+    inputs,
+  });
+  await invokeRuntimeProvider<RuntimeTokenRevokeArgs, Promise<void>>(
+    revoke.revokeToken,
+    { authClient, inputs, signal: args.signal },
+  );
+  return { status: "revoked" };
+}
+
 export function buildConnectorAuthCodeAuthorizationUrl<
   T extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<T>,
@@ -1134,17 +1646,11 @@ export async function buildConnectorAuthCodeAuthorizationUrl<
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<string | AuthUrlResult> {
-  const provider = connectorAuthCodeGrantProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  const authCodeGrant = getConnectorAuthMethodAuthCodeGrantConfig(
-    args.type,
-    args.authMethod,
-  );
-  return await provider.buildAuthUrl({
-    authClient: connectorAuthClientIdentityForMethod(args.authClient),
-    authCodeGrant,
+  return await buildConnectorAuthCodeAuthorizationUrlWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
+    authClient: args.authClient,
     redirectUri: args.redirectUri,
     state: args.state,
   });
@@ -1173,16 +1679,10 @@ export async function buildConnectorOpenIdAuthAuthorizationUrl<
   readonly realm: string;
   readonly state: string;
 }): Promise<string | AuthUrlResult> {
-  const provider = connectorOpenIdAuthGrantProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  const openIdAuthGrant = getConnectorAuthMethodOpenIdAuthGrantConfig(
-    args.type,
-    args.authMethod,
-  );
-  return await provider.buildAuthUrl({
-    openIdAuthGrant,
+  return await buildConnectorOpenIdAuthAuthorizationUrlWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
     returnTo: args.returnTo,
     realm: args.realm,
     state: args.state,
@@ -1218,23 +1718,17 @@ export async function exchangeConnectorAuthCode<
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
 }): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>> {
-  const provider = connectorAuthCodeGrantProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  const authCodeGrant = getConnectorAuthMethodAuthCodeGrantConfig(
-    args.type,
-    args.authMethod,
-  );
-  return await provider.exchangeCode({
+  return (await exchangeConnectorAuthCodeWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
     authClient: args.authClient,
-    authCodeGrant,
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
     codeVerifier: args.codeVerifier,
     oauthContext: args.oauthContext,
-  });
+  })) as ConnectorAuthProviderGrantResultForMethod<T, Method>;
 }
 
 export function verifyConnectorOpenIdAuthCallback<
@@ -1262,21 +1756,15 @@ export async function verifyConnectorOpenIdAuthCallback<
   readonly expectedRealm: string;
   readonly signal: AbortSignal;
 }): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>> {
-  const provider = connectorOpenIdAuthGrantProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  const openIdAuthGrant = getConnectorAuthMethodOpenIdAuthGrantConfig(
-    args.type,
-    args.authMethod,
-  );
-  return await provider.verifyCallback({
-    openIdAuthGrant,
+  return (await verifyConnectorOpenIdAuthCallbackWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
     callbackParams: args.callbackParams,
     expectedReturnTo: args.expectedReturnTo,
     expectedRealm: args.expectedRealm,
     signal: args.signal,
-  });
+  })) as ConnectorAuthProviderGrantResultForMethod<T, Method>;
 }
 
 export function startConnectorExternalCodeAuthorization<
@@ -1298,17 +1786,11 @@ export async function startConnectorExternalCodeAuthorization<
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
 }): Promise<ExternalCodeAuthorizationStartResult> {
-  const provider = connectorExternalCodeGrantProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  const externalCodeGrant = getConnectorAuthMethodExternalCodeGrantConfig(
-    args.type,
-    args.authMethod,
-  );
-  return await provider.startExternalCodeAuthorization({
-    authClient: connectorAuthClientIdentityForMethod(args.authClient),
-    externalCodeGrant,
+  return await startConnectorExternalCodeAuthorizationWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
+    authClient: args.authClient,
   });
 }
 
@@ -1337,21 +1819,15 @@ export async function completeConnectorExternalCodeAuthorization<
   readonly providerState: string;
   readonly signal: AbortSignal;
 }): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>> {
-  const provider = connectorExternalCodeGrantProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  const externalCodeGrant = getConnectorAuthMethodExternalCodeGrantConfig(
-    args.type,
-    args.authMethod,
-  );
-  return await provider.completeExternalCodeAuthorization({
+  return (await completeConnectorExternalCodeAuthorizationWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
     authClient: args.authClient,
-    externalCodeGrant,
     code: args.code,
     providerState: args.providerState,
     signal: args.signal,
-  });
+  })) as ConnectorAuthProviderGrantResultForMethod<T, Method>;
 }
 
 export function startConnectorDeviceAuthorization<
@@ -1375,22 +1851,12 @@ export async function startConnectorDeviceAuthorization<
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
   readonly options: ConnectorDeviceAuthStartOptions;
 }): Promise<OAuthDeviceAuthStartResult> {
-  const provider = connectorDeviceAuthGrantProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  const startOptionsResult = parseConnectorDeviceAuthStartOptions({
-    type: args.type,
-    authMethod: args.authMethod,
+  return await startConnectorDeviceAuthorizationWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
+    authClient: args.authClient,
     options: args.options,
-  });
-  if (!startOptionsResult.success) {
-    throw new Error(startOptionsResult.message);
-  }
-  return await provider.startDeviceAuth({
-    authClient: connectorAuthClientIdentityForMethod(args.authClient),
-    scopes: getConnectorAuthMethodGrantScopes(args.type, args.authMethod),
-    options: startOptionsResult.options,
   });
 }
 
@@ -1417,15 +1883,14 @@ export async function pollConnectorDeviceAuthorization<
   readonly deviceCode: string;
   readonly pollState?: string;
 }): Promise<OAuthDeviceAuthPollResult<T, Method>> {
-  const provider = connectorDeviceAuthGrantProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  return await provider.pollDeviceAuth({
+  return (await pollConnectorDeviceAuthorizationWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
     authClient: args.authClient,
     deviceCode: args.deviceCode,
     ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
-  });
+  })) as OAuthDeviceAuthPollResult<T, Method>;
 }
 
 export function refreshConnectorAuthProviderAccessToken<
@@ -1440,24 +1905,14 @@ export function refreshConnectorAuthProviderAccessToken(
 export async function refreshConnectorAuthProviderAccessToken(
   args: ConnectorRefreshTokenAccessDynamicCallArgs,
 ): Promise<ConnectorAuthProviderRefreshResultBase> {
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(
-    args.type,
-    args.authMethod,
-  );
-  const access = connectorRefreshTokenAccessProviderFor(
-    args.type,
-    args.authMethod,
-  );
-  const result = await access.refresh(args);
-  const declaredOutputs = new Set(Object.keys(accessMetadata.outputs));
-  for (const outputName of Object.keys(result.outputs)) {
-    if (!declaredOutputs.has(outputName)) {
-      throw new Error(
-        `${args.type} connector auth method ${args.authMethod} returned undeclared refresh output ${outputName}`,
-      );
-    }
-  }
-  return result;
+  return await refreshConnectorAuthProviderAccessTokenWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method: getStaticConnectorAuthProviderMethod(args.type, args.authMethod),
+    ...("authClient" in args ? { authClient: args.authClient } : {}),
+    inputs: args.inputs,
+    signal: args.signal,
+  });
 }
 
 export async function revokeConnectorAuthMethodAccessToken(args: {
@@ -1469,26 +1924,14 @@ export async function revokeConnectorAuthMethodAccessToken(args: {
     | Readonly<Record<string, string>>
     | Promise<Readonly<Record<string, string>>>;
 }): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
-  const parsedAuthMethod = connectorAuthMethodIdSchema.safeParse(
-    args.authMethod,
-  );
-  if (!parsedAuthMethod.success) {
+  const method = getConnectorAuthMethod(args.type, args.authMethod);
+  if (method === undefined) {
     return { status: "unsupported" };
   }
-
-  const authMethodRef = {
-    type: args.type,
-    authMethod: parsedAuthMethod.data,
-  };
-  if (!connectorAuthMethodRefHasRevokeKind(authMethodRef, "token-revoke")) {
-    return { status: "unsupported" };
-  }
-  // The guard above is the runtime source of truth for dynamic revoke refs.
-  const tokenRevokeAuthMethodRef = authMethodRef as TokenRevokeAuthMethodRef;
-
-  return await revokeTokenRevokeConnectorAccessToken({
-    type: tokenRevokeAuthMethodRef.type,
-    authMethod: tokenRevokeAuthMethodRef.authMethod,
+  return await revokeConnectorAuthMethodAccessTokenWithMethod({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    method,
     readEnv: args.readEnv,
     signal: args.signal,
     loadInputs: args.loadInputs,

@@ -290,6 +290,27 @@ function PendingInvitationsBadge() {
   );
 }
 
+export function ZeroOrgSwitcherCompact() {
+  const currentOrg = useLastResolved(currentOrgInfo$);
+  const orgName = currentOrg?.name ?? "Organization";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Switch workspace"
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+        >
+          <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
+          <PendingInvitationsBadge />
+        </button>
+      </DropdownMenuTrigger>
+      <OrgDropdownContent />
+    </DropdownMenu>
+  );
+}
+
 export function ZeroOrgSwitcher() {
   const currentOrg = useLastResolved(currentOrgInfo$);
   const orgName = currentOrg?.name ?? "Organization";

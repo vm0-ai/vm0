@@ -19,31 +19,10 @@ import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { accept } from "../../../lib/accept.ts";
 
-// ---------------------------------------------------------------------------
-// org-manage-dialog: active tab
-// ---------------------------------------------------------------------------
-
-export type OrgManageTab =
-  | "general"
-  | "providers"
-  | "members"
-  | "billing"
-  | "usage"
-  | "invoices";
-
-const internalActiveTab$ = state<OrgManageTab>("general");
 const internalBillingScrollTarget$ = state<"buy-credits" | null>(null);
-
-export const orgManageTab$ = computed((get) => {
-  return get(internalActiveTab$);
-});
 
 export const billingScrollTarget$ = computed((get) => {
   return get(internalBillingScrollTarget$);
-});
-
-export const setActiveOrgManageTab$ = command(({ set }, tab: OrgManageTab) => {
-  set(internalActiveTab$, tab);
 });
 
 export const setBillingScrollTarget$ = command(
@@ -53,7 +32,7 @@ export const setBillingScrollTarget$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// org-general-tab: ProfileSection
+// Workspace profile
 // ---------------------------------------------------------------------------
 
 const internalProfileName$ = state("");
@@ -146,7 +125,7 @@ export const initProfileName$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// org-general-tab: DangerZoneSection
+// Workspace danger zone
 // ---------------------------------------------------------------------------
 
 const internalDeleteConfirm$ = state("");
@@ -160,7 +139,7 @@ export const setDeleteConfirm$ = command(({ set }, value: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// org-billing-tab: sub-page
+// Billing sub-page
 // ---------------------------------------------------------------------------
 
 const internalBillingSubPage$ = state(false);
@@ -173,13 +152,8 @@ export const setBillingSubPage$ = command(({ set }, value: boolean) => {
   set(internalBillingSubPage$, value);
 });
 
-export const openBillingPlans$ = command(({ set }) => {
-  set(internalActiveTab$, "billing");
-  set(internalBillingSubPage$, true);
-});
-
 // ---------------------------------------------------------------------------
-// org-members-tab
+// Workspace members
 // ---------------------------------------------------------------------------
 
 const internalMemberSearch$ = state("");
@@ -213,7 +187,7 @@ export const setInviteTouched$ = command(({ set }, value: boolean) => {
 });
 
 // ---------------------------------------------------------------------------
-// org-members-tab: InviteDialog
+// Workspace member invitation
 // ---------------------------------------------------------------------------
 
 const internalInviteDialogOpen$ = state(false);

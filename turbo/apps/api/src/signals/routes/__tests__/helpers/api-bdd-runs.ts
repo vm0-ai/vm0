@@ -10,7 +10,6 @@ import {
   composesMainContract,
   type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
-import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
@@ -76,12 +75,11 @@ import { zeroApiKeysRoutes } from "../../zero-api-keys";
 import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
-import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
-import type { ApiTestUser } from "./api-bdd";
+import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
@@ -140,7 +138,6 @@ const runRoutes = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronSummarizeMemoryRoutes,
   ...cronTelegramCleanupRoutes,
-  ...zeroOnboardingSetupRoutes,
   ...runnersRoutes,
   ...agentRunsCreateRoutes,
   ...agentRunsReadRoutes,
@@ -314,13 +311,9 @@ export function createRunsApi(context: TestContext) {
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
       const tier = options.tier ?? "pro";
 
-      await accept(
-        runApp(context)(onboardingSetupContract).setup({
-          headers: authenticate(context, actor),
-          body: { displayName: "BDD Entitled Agent" },
-        }),
-        [200, 409],
-      );
+      await createBddApi(context).bootstrapOnboarding(actor, {
+        displayName: "BDD Entitled Agent",
+      });
 
       const suffix = randomUUID().slice(0, 8);
       const customerId = options.customerId ?? `cus_bdd_${suffix}`;

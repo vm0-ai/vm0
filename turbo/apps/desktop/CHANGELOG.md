@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.45](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.44...desktop-v0.27.45) (2026-07-16)
+
+
+### Performance Improvements
+
+* **computer-use:** add adaptive desktop command polling ([#21845](https://github.com/vm0-ai/vm0/issues/21845)) ([148e6a9](https://github.com/vm0-ai/vm0/commit/148e6a978ef33d176831f6057d1724bc5d84ceba))
+
 ## [0.27.44](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.43...desktop-v0.27.44) (2026-07-16)
 
 

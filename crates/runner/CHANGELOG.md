@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.145.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.5...runner-rs-v0.145.6) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** contain supervised run descendants ([#21780](https://github.com/vm0-ai/vm0/issues/21780)) ([23e961c](https://github.com/vm0-ai/vm0/commit/23e961ce1b30f45ec9786e30289d870f5f436762))
+
 ## [0.145.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.4...runner-rs-v0.145.5) (2026-07-16)
 
 

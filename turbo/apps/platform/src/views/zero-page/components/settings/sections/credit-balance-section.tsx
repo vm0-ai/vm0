@@ -8,7 +8,7 @@ import {
 } from "../../preferences/personal-usage-record.tsx";
 import { isOrgAdmin$ } from "../../../../../signals/org.ts";
 import { setSettingsActiveSection$ } from "../../../../../signals/zero-page/settings/settings-dialog.ts";
-import { setBillingSubPage$ } from "../../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setBillingSubPage$ } from "../../../../../signals/zero-page/settings/workspace-settings-state.ts";
 import {
   creditBalanceTab$,
   myUsageRange$,

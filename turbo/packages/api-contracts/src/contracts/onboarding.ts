@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
-import { connectorCatalogRefSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -45,31 +44,6 @@ export const onboardingStatusContract = c.router({
   },
 });
 
-export const onboardingSetupContract = c.router({
-  setup: {
-    method: "POST",
-    path: "/api/zero/onboarding/setup",
-    headers: authHeadersSchema,
-    body: z.object({
-      displayName: z.string(),
-      workspaceName: z.string().optional(),
-      sound: z.string().optional(),
-      avatarUrl: z.string().optional(),
-      selectedConnectors: z.array(connectorCatalogRefSchema).optional(),
-      timezone: z.string().optional(),
-      role: z.string().optional(),
-    }),
-    responses: {
-      200: z.object({ agentId: z.string() }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      409: z.object({ agentId: z.string() }),
-      422: apiErrorSchema,
-    },
-    summary: "Complete admin onboarding in a single request",
-  },
-});
-
 export const onboardingCompleteContract = c.router({
   complete: {
     method: "POST",
@@ -90,5 +64,4 @@ export const onboardingCompleteContract = c.router({
 });
 
 export type OnboardingStatusContract = typeof onboardingStatusContract;
-export type OnboardingSetupContract = typeof onboardingSetupContract;
 export type OnboardingCompleteContract = typeof onboardingCompleteContract;

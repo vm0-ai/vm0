@@ -5,7 +5,11 @@ import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usag
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { formatSubscriptionUsageReset } from "../subscription-usage-format.ts";
 
@@ -193,6 +197,13 @@ describe("organization usage settings", () => {
     click(screen.getByTestId("credit-grants-toggle"));
     expect(screen.getByText("March Pro credits")).toBeInTheDocument();
 
+    const teamUsageTab = queryAllByRoleFast("tab").find((element) => {
+      return element.textContent === "Team usage";
+    });
+    if (!teamUsageTab) {
+      throw new Error("Team usage tab not found");
+    }
+    click(teamUsageTab);
     await waitFor(() => {
       expect(screen.getByText("Alice Admin")).toBeInTheDocument();
       expect(screen.getByText("bob@example.com")).toBeInTheDocument();

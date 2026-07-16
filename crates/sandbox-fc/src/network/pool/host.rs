@@ -297,21 +297,44 @@ async fn setup_namespace_routing(
     Ok(())
 }
 
-/// Add host-side iptables rules for forwarding (connectivity only, no proxy).
+/// Add host-side source validation and forwarding rules.
+///
+/// The raw PREROUTING guard establishes the namespace's peer IP as a trusted
+/// identity before conntrack and NAT redirects can attribute the packet. This
+/// must remain independent of host reverse-path-filter configuration.
 async fn setup_host_iptables(
     name: &str,
     host_device: &str,
     peer_ip: &str,
     default_iface: &str,
 ) -> Result<()> {
-    let src = format!("{peer_ip}/30");
+    let peer = format!("{peer_ip}/32");
+    exec_iptables(&[
+        "-t",
+        "raw",
+        "-I",
+        "PREROUTING",
+        "1",
+        "-i",
+        host_device,
+        "!",
+        "-s",
+        &peer,
+        "-m",
+        "comment",
+        "--comment",
+        name,
+        "-j",
+        "DROP",
+    ])
+    .await?;
     exec_iptables(&[
         "-t",
         "nat",
         "-A",
         "POSTROUTING",
         "-s",
-        &src,
+        &peer,
         "-o",
         default_iface,
         "-j",
@@ -327,6 +350,8 @@ async fn setup_host_iptables(
         "FORWARD",
         "-i",
         host_device,
+        "-s",
+        &peer,
         "-o",
         default_iface,
         "-j",
@@ -344,6 +369,8 @@ async fn setup_host_iptables(
         default_iface,
         "-o",
         host_device,
+        "-d",
+        &peer,
         "-m",
         "state",
         "--state",
@@ -368,13 +395,25 @@ async fn setup_host_iptables(
 /// proxy, all TCP traffic keeps the existing mitmproxy behavior.
 async fn add_proxy_redirect_rule(
     name: &str,
+    host_device: &str,
     peer_ip: &str,
     proxy_port: u16,
     dns_proxy_enabled: bool,
 ) -> Result<()> {
-    let src = format!("{peer_ip}/30");
+    let src = format!("{peer_ip}/32");
     let port_str = proxy_port.to_string();
-    let mut args: Vec<&str> = vec!["-t", "nat", "-A", "PREROUTING", "-s", &src, "-p", "tcp"];
+    let mut args: Vec<&str> = vec![
+        "-t",
+        "nat",
+        "-A",
+        "PREROUTING",
+        "-i",
+        host_device,
+        "-s",
+        &src,
+        "-p",
+        "tcp",
+    ];
     if dns_proxy_enabled {
         args.extend(["-m", "multiport", "!", "--dports", "53,853"]);
     }
@@ -402,13 +441,15 @@ async fn add_proxy_redirect_rule(
 /// the ACCEPT rules from [`setup_host_iptables`] are already in the chain.
 /// LOG is a non-terminating target (packet continues to the next rule),
 /// so it must come before ACCEPT to fire.
-async fn add_non_tcp_log_rule(name: &str, peer_ip: &str) -> Result<()> {
-    let src = format!("{peer_ip}/30");
+async fn add_non_tcp_log_rule(name: &str, host_device: &str, peer_ip: &str) -> Result<()> {
+    let src = format!("{peer_ip}/32");
     let prefix = format!("VM0:{peer_ip}:");
     exec_iptables(&[
         "-I",
         "FORWARD",
         "1",
+        "-i",
+        host_device,
         "-s",
         &src,
         "!",
@@ -442,8 +483,13 @@ async fn add_non_tcp_log_rule(name: &str, peer_ip: &str) -> Result<()> {
 /// preserving the original source IP (peer veth) for per-VM log routing. TCP
 /// support covers explicit DNS-over-TCP and fallback after truncated UDP
 /// responses.
-async fn add_dns_redirect_rules(name: &str, peer_ip: &str, dns_port: u16) -> Result<()> {
-    let src = format!("{peer_ip}/30");
+async fn add_dns_redirect_rules(
+    name: &str,
+    host_device: &str,
+    peer_ip: &str,
+    dns_port: u16,
+) -> Result<()> {
+    let src = format!("{peer_ip}/32");
     let port_str = dns_port.to_string();
     for protocol in ["udp", "tcp"] {
         exec_iptables(&[
@@ -451,6 +497,8 @@ async fn add_dns_redirect_rules(name: &str, peer_ip: &str, dns_port: u16) -> Res
             "nat",
             "-A",
             "PREROUTING",
+            "-i",
+            host_device,
             "-s",
             &src,
             "-p",
@@ -475,13 +523,15 @@ async fn add_dns_redirect_rules(name: &str, peer_ip: &str, dns_port: u16) -> Res
 ///
 /// Blocks UDP/TCP 53 and TCP 853 (DNS over TLS) in FORWARD chain.
 /// DNS over HTTPS (TCP 443) is handled by mitmproxy at HTTP level.
-async fn add_dns_drop_rules(name: &str, peer_ip: &str) -> Result<()> {
-    let src = format!("{peer_ip}/30");
+async fn add_dns_drop_rules(name: &str, host_device: &str, peer_ip: &str) -> Result<()> {
+    let src = format!("{peer_ip}/32");
     for (protocol, port) in [("udp", "53"), ("tcp", "53"), ("tcp", "853")] {
         exec_iptables(&[
             "-I",
             "FORWARD",
             "1",
+            "-i",
+            host_device,
             "-s",
             &src,
             "-p",
@@ -514,11 +564,13 @@ pub(super) async fn get_default_interface() -> Result<String> {
 
 /// Delete IPv4 iptables rules that contain `comment`.
 async fn delete_iptables_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
-    let (nat, filter) = tokio::join!(
+    let (raw, nat, filter) = tokio::join!(
+        delete_firewall_rules_from_table("iptables", "iptables-save", "raw", comment),
         delete_firewall_rules_from_table("iptables", "iptables-save", "nat", comment),
         delete_firewall_rules_from_table("iptables", "iptables-save", "filter", comment),
     );
-    if matches!(nat, NamespaceDeleteOutcome::Deleted)
+    if matches!(raw, NamespaceDeleteOutcome::Deleted)
+        && matches!(nat, NamespaceDeleteOutcome::Deleted)
         && matches!(filter, NamespaceDeleteOutcome::Deleted)
     {
         NamespaceDeleteOutcome::Deleted
@@ -610,10 +662,10 @@ async fn delete_namespace_link_and_netns(
 
 /// Flush conntrack entries for a given IP address.
 ///
-/// Namespaces are reused between VMs with the same peer IP. Without
-/// flushing, stale conntrack entries from a previous VM can cause the
-/// stateful iptables rule (`-m state --state RELATED,ESTABLISHED`) to
-/// misroute or silently drop return packets for a new VM.
+/// Peer IPs are reused across VM attachments and runner lifecycles. Without
+/// flushing, stale conntrack entries from a previous owner can cause the
+/// stateful iptables rule (`-m state --state RELATED,ESTABLISHED`) or a NAT
+/// redirect to misroute or silently drop packets for the next owner.
 async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
     let src_args = ["-D", "-s", peer_ip];
     let dst_args = ["-D", "-d", peer_ip];
@@ -627,7 +679,7 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
         {
             warn!(
                 peer_ip,
-                "conntrack command not found; reusing namespace without conntrack flush"
+                "conntrack command not found; proceeding without conntrack reset"
             );
         }
         ConntrackFlushOutcome::Trusted
@@ -636,7 +688,7 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
             peer_ip,
             src = ?src,
             dst = ?dst,
-            "conntrack flush failed or timed out; namespace will not be reused"
+            "conntrack reset failed or timed out; peer network state is untrusted"
         );
         ConntrackFlushOutcome::Untrusted
     }
@@ -747,26 +799,33 @@ pub(super) async fn create_single_namespace(
     match result {
         Ok(()) => {
             if let Some(port) = proxy_port {
-                if let Err(e) =
-                    add_proxy_redirect_rule(&ns_name, &peer_ip, port, dns_port.is_some()).await
+                if let Err(e) = add_proxy_redirect_rule(
+                    &ns_name,
+                    &host_device,
+                    &peer_ip,
+                    port,
+                    dns_port.is_some(),
+                )
+                .await
                 {
                     error!(name = %ns_name, error = %e, "failed to add proxy rules, cleaning up");
                     delete_namespace_resources(&ns_name, &host_device).await;
                     return Err(e);
                 }
-                if let Err(e) = add_non_tcp_log_rule(&ns_name, &peer_ip).await {
+                if let Err(e) = add_non_tcp_log_rule(&ns_name, &host_device, &peer_ip).await {
                     error!(name = %ns_name, error = %e, "failed to add non-TCP log rule, cleaning up");
                     delete_namespace_resources(&ns_name, &host_device).await;
                     return Err(e);
                 }
             }
             if let Some(port) = dns_port {
-                if let Err(e) = add_dns_redirect_rules(&ns_name, &peer_ip, port).await {
+                if let Err(e) = add_dns_redirect_rules(&ns_name, &host_device, &peer_ip, port).await
+                {
                     error!(name = %ns_name, error = %e, "failed to add DNS redirect rules, cleaning up");
                     delete_namespace_resources(&ns_name, &host_device).await;
                     return Err(e);
                 }
-                if let Err(e) = add_dns_drop_rules(&ns_name, &peer_ip).await {
+                if let Err(e) = add_dns_drop_rules(&ns_name, &host_device, &peer_ip).await {
                     error!(name = %ns_name, error = %e, "failed to add DNS drop rules, cleaning up");
                     delete_namespace_resources(&ns_name, &host_device).await;
                     return Err(e);

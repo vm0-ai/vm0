@@ -2041,22 +2041,55 @@ async function publishAutoSentQueuedRunSignals(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
-      await publishChatThreadMessageUpdated(
-        args.userId,
-        args.threadId,
-        args.claim.messageId,
+      // Each publish is independently best-effort: one failed Ably publish
+      // must not drop the remaining signals, or the client can be left with
+      // a stale queued row it can only heal via subscribe-time catchup.
+      await tapError(
+        publishChatThreadMessageUpdated(
+          args.userId,
+          args.threadId,
+          args.claim.messageId,
+        ),
+        (error) => {
+          log.warn("Failed to publish auto-sent queued message updated", {
+            threadId: args.threadId,
+            messageId: args.claim.messageId,
+            error,
+          });
+        },
       );
       if (args.runStatus === "queued") {
-        await publishUserSignal(
-          [args.userId],
-          `chatThreadMessageCreated:${args.threadId}`,
+        await tapError(
+          publishUserSignal(
+            [args.userId],
+            `chatThreadMessageCreated:${args.threadId}`,
+          ),
+          (error) => {
+            log.warn("Failed to publish auto-sent queued message created", {
+              threadId: args.threadId,
+              error,
+            });
+          },
         );
       }
-      await publishUserSignal(
-        [args.userId],
-        `chatThreadRunCreated:${args.threadId}`,
+      await tapError(
+        publishUserSignal(
+          [args.userId],
+          `chatThreadRunCreated:${args.threadId}`,
+        ),
+        (error) => {
+          log.warn("Failed to publish auto-sent queued run created", {
+            threadId: args.threadId,
+            error,
+          });
+        },
       );
-      await publishThreadListChanged(args.userId);
+      await tapError(publishThreadListChanged(args.userId), (error) => {
+        log.warn("Failed to publish auto-sent queued thread list changed", {
+          threadId: args.threadId,
+          error,
+        });
+      });
     },
   );
 }

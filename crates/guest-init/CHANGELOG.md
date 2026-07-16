@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.114](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.113...guest-init-v0.16.114) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** contain supervised run descendants ([#21780](https://github.com/vm0-ai/vm0/issues/21780)) ([23e961c](https://github.com/vm0-ai/vm0/commit/23e961ce1b30f45ec9786e30289d870f5f436762))
+
 ## [0.16.113](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.112...guest-init-v0.16.113) (2026-07-16)
 
 

@@ -272,7 +272,7 @@ export type ConnectorRevokeConfig =
       readonly revokePreviousOnReplace?: boolean;
     };
 
-interface ConnectorAuthMethodConfigBase {
+interface ConnectorAuthMethodDisplayConfig {
   label: string;
   helpText?: string;
   /** When false, this auth method is unavailable for new connector actions. */
@@ -281,6 +281,9 @@ interface ConnectorAuthMethodConfigBase {
   featureFlag?: FeatureSwitchKey;
   /** When false, feature-gated UI surfaces should not add an experimental label. */
   showExperimentalLabel?: boolean;
+}
+
+interface ConnectorAuthMethodRuntimeConfigBase {
   /**
    * Connector-scoped storage names owned by this auth method.
    *
@@ -291,10 +294,12 @@ interface ConnectorAuthMethodConfigBase {
 }
 
 /**
- * Auth method configuration for user-selectable connector connection flows.
+ * Normalized auth method configuration used to materialize and execute a
+ * connector connection lifecycle. External catalogs produce this shape by
+ * joining their accepted public and private method data.
  */
-export type ConnectorAuthMethodConfig =
-  | (ConnectorAuthMethodConfigBase & {
+export type ConnectorAuthMethodRuntimeConfig =
+  | (ConnectorAuthMethodRuntimeConfigBase & {
       readonly client?: never;
       readonly grant: ConnectorNoAuthGrantConfig;
       readonly access: ConnectorNoAccessConfig;
@@ -303,36 +308,42 @@ export type ConnectorAuthMethodConfig =
         { readonly kind: "none" }
       >;
     })
-  | (ConnectorAuthMethodConfigBase & {
+  | (ConnectorAuthMethodRuntimeConfigBase & {
       readonly client: ConnectorAuthClientConfig;
       readonly grant: ConnectorAuthCodeGrantConfig;
       readonly access: ConnectorAccessConfig;
       readonly revoke: ConnectorRevokeConfig;
     })
-  | (ConnectorAuthMethodConfigBase & {
+  | (ConnectorAuthMethodRuntimeConfigBase & {
       readonly client?: ConnectorAuthClientConfig;
       readonly grant: ConnectorOpenIdAuthGrantConfig;
       readonly access: ConnectorAccessConfig;
       readonly revoke: ConnectorRevokeConfig;
     })
-  | (ConnectorAuthMethodConfigBase & {
+  | (ConnectorAuthMethodRuntimeConfigBase & {
       readonly client: ConnectorAuthClientConfig;
       readonly grant: ConnectorExternalCodeGrantConfig;
       readonly access: ConnectorAccessConfig;
       readonly revoke: ConnectorRevokeConfig;
     })
-  | (ConnectorAuthMethodConfigBase & {
+  | (ConnectorAuthMethodRuntimeConfigBase & {
       readonly client: PublicConnectorAuthClientConfig;
       readonly grant: ConnectorDeviceAuthGrantConfig;
       readonly access: ConnectorAccessConfig;
       readonly revoke: ConnectorRevokeConfig;
     })
-  | (ConnectorAuthMethodConfigBase & {
+  | (ConnectorAuthMethodRuntimeConfigBase & {
       readonly client?: ConnectorAuthClientConfig;
       readonly grant: ConnectorManualGrantConfig | ConnectorManagedGrantConfig;
       readonly access: ConnectorAccessConfig;
       readonly revoke: ConnectorRevokeConfig;
     });
+
+/**
+ * Auth method configuration for user-selectable connector connection flows.
+ */
+export type ConnectorAuthMethodConfig = ConnectorAuthMethodRuntimeConfig &
+  ConnectorAuthMethodDisplayConfig;
 
 /**
  * Connector auth method ids exposed as configured connection flows.

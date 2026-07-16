@@ -4,22 +4,22 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 import {
-  orgManageDialogOpen$,
-  setOrgManageDialogOpen$,
-} from "../../signals/zero-page/settings/org-manage-dialog.ts";
-import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
+  settingsDialogOpen$,
+  setSettingsDialogOpen$,
+} from "../../signals/zero-page/settings/settings-dialog.ts";
+import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { Link } from "../router/link.tsx";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const dialogOpen = useGet(orgManageDialogOpen$);
-  const setDialogOpen = useSet(setOrgManageDialogOpen$);
+  const dialogOpen = useGet(settingsDialogOpen$);
+  const setDialogOpen = useSet(setSettingsDialogOpen$);
   const pageSignal = useGet(pageSignal$);
 
   return (
     <div className="zero-app zero-viewport-shell flex w-full bg-background">
-      <OrgManageDialog
+      <SettingsDialog
         open={dialogOpen}
         onOpenChange={(open) => {
           detach(setDialogOpen(open, pageSignal), Reason.DomCallback);

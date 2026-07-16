@@ -172,9 +172,16 @@ function mockAdminOrg(): void {
   });
 }
 
-function billingStatus(tier: string): BillingStatusResponse {
+function billingStatus(
+  tier: string,
+  modelCapabilities?: {
+    readonly supportByok?: boolean;
+    readonly restrictedVm0Models?: boolean;
+  },
+): BillingStatusResponse {
   return {
     tier,
+    ...modelCapabilities,
     credits: 20_000,
     onboardingPaymentPending: false,
     subscriptionStatus: null,
@@ -194,9 +201,12 @@ function billingStatus(tier: string): BillingStatusResponse {
   };
 }
 
-function mockBillingTier(tier: string): void {
+function mockBillingCapabilities(modelCapabilities: {
+  readonly supportByok: boolean;
+  readonly restrictedVm0Models: boolean;
+}): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-    return respond(200, billingStatus(tier));
+    return respond(200, billingStatus("pro", modelCapabilities));
   });
 }
 
@@ -220,10 +230,10 @@ async function openProvidersTab(options?: {
         : { [FeatureSwitchKey.Vm0Model]: options.vm0ModelEnabled },
   });
   await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Models Configuration" }),
+      screen.getByRole("dialog", { name: "Settings" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
   });
 }
 
@@ -328,7 +338,10 @@ describe("organization model providers settings", () => {
 
   it("lets limited-free-1 workspaces add VM0 Model without upgrading", async () => {
     mockAdminOrg();
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({
+      supportByok: false,
+      restrictedVm0Models: true,
+    });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
@@ -493,7 +506,7 @@ describe("organization model providers settings", () => {
 
   it("opens compare plans when selecting a limited-free-1 default Pro model", async () => {
     mockAdminOrg();
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
@@ -522,7 +535,7 @@ describe("organization model providers settings", () => {
 
   it("starts pro checkout when adding a limited-free-1 Pro model", async () => {
     mockAdminOrg();
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
     mockProCheckout();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
@@ -554,6 +567,64 @@ describe("organization model providers settings", () => {
         "https://checkout.stripe.com/test-upgrade?tier=pro",
       );
     });
+  });
+
+  it("opens compare plans when BYOK is unsupported", async () => {
+    mockAdminOrg();
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "kimi-k2.7-code",
+        "Kimi K2.7 Code",
+        true,
+      ),
+    ]);
+    await openModelSettings();
+
+    click(buttonByText("Add model"));
+    await selectDialogModel("GLM-5.2");
+
+    const apiKeyRoute = screen.getByRole("radio", {
+      name: /API key\s+Pro/u,
+    });
+    click(apiKeyRoute);
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("preserves limited-free restrictions with a legacy billing response", async () => {
+    mockAdminOrg();
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("limited-free-1"));
+    });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "kimi-k2.7-code",
+        "Kimi K2.7 Code",
+        true,
+      ),
+    ]);
+    await openModelSettings();
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: /GPT 5\.5\s+Pro/u }));
+    expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
+
+    await selectDialogModel("GLM-5.2");
+    expect(buttonByText("Add model", dialog)).toBeInTheDocument();
+    click(screen.getByRole("radio", { name: /API key\s+Pro/u }));
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("reassigns the workspace default model when deleting the default route", async () => {

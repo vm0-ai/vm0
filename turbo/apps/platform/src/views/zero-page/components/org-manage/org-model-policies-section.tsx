@@ -39,7 +39,6 @@ import {
   SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
-  isLimitedFree1RestrictedRunModel,
   type ModelProviderFeatureStates,
   type ModelProviderResponse,
   type ModelProviderType,
@@ -71,12 +70,15 @@ import {
   type ModelPolicyRouteKind,
 } from "../../../../signals/zero-page/settings/org-model-policy-dialog.ts";
 import { reloadPersonalModelProvider$ } from "../../../../signals/zero-page/model-first-personal-oauth.ts";
+import { startCheckout$ } from "../../../../signals/zero-page/billing.ts";
 import {
-  billingStatusAsync$,
-  startCheckout$,
-} from "../../../../signals/zero-page/billing.ts";
+  DEFAULT_MODEL_PLAN_CAPABILITIES,
+  modelAllowedForPlan,
+  modelPlanCapabilities$,
+  modelPolicyAllowedForPlan,
+  type ModelPlanCapabilities,
+} from "../../../../signals/zero-page/model-plan-capabilities.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import { openBillingPlans$ } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { openSettingsBillingPlans$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import {
   hasTokenInputValue,
@@ -261,23 +263,16 @@ function makePolicyDefault(
   });
 }
 
-function modelAllowedForTier(
-  model: SupportedRunModel,
-  limitedFree1: boolean,
-): boolean {
-  return !limitedFree1 || !isLimitedFree1RestrictedRunModel(model);
-}
-
-function filterPolicyUpdatesForTier(
+function filterPolicyUpdatesForPlan(
   policies: UpdateOrgModelPolicy[],
-  limitedFree1: boolean,
+  modelCapabilities: ModelPlanCapabilities,
 ): UpdateOrgModelPolicy[] {
-  if (!limitedFree1) {
+  if (modelCapabilities.supportByok && !modelCapabilities.restrictedVm0Models) {
     return policies;
   }
 
   const allowed = policies.filter((policy) => {
-    return modelAllowedForTier(policy.model, true);
+    return modelPolicyAllowedForPlan(policy, modelCapabilities);
   });
   if (
     allowed.some((policy) => {
@@ -303,14 +298,14 @@ function DefaultModelRow({
   policies,
   workspaceDefaultModel,
   disabled,
-  limitedFree1,
+  modelCapabilities,
   onChange,
   onUpgrade,
 }: {
   policies: OrgModelPolicy[];
   workspaceDefaultModel: SupportedRunModel | null;
   disabled: boolean;
-  limitedFree1: boolean;
+  modelCapabilities: ModelPlanCapabilities;
   onChange: (model: SupportedRunModel) => void;
   onUpgrade: () => void;
 }) {
@@ -344,7 +339,13 @@ function DefaultModelRow({
           value={currentDefault}
           onValueChange={(value) => {
             const model = value as SupportedRunModel;
-            if (limitedFree1 && isLimitedFree1RestrictedRunModel(model)) {
+            const policy = selectItems.find((item) => {
+              return item.model === model;
+            });
+            if (
+              policy !== undefined &&
+              !modelPolicyAllowedForPlan(policy, modelCapabilities)
+            ) {
               onUpgrade();
               return;
             }
@@ -361,9 +362,9 @@ function DefaultModelRow({
           <SelectContent>
             {selectItems.map((policy) => {
               const iconType = getModelIconType(policy.model);
-              const restricted = !modelAllowedForTier(
-                policy.model,
-                limitedFree1,
+              const restricted = !modelPolicyAllowedForPlan(
+                policy,
+                modelCapabilities,
               );
               return (
                 <SelectItem key={policy.id} value={policy.model}>
@@ -615,12 +616,14 @@ function PolicyRow({
 function RouteChoiceButton({
   active,
   disabled = false,
+  pro = false,
   title,
   description,
   onClick,
 }: {
   active: boolean;
   disabled?: boolean;
+  pro?: boolean;
   title: string;
   description: string;
   onClick: () => void;
@@ -644,7 +647,10 @@ function RouteChoiceButton({
         disabled && "cursor-not-allowed opacity-50",
       )}
     >
-      <span className="text-sm font-medium text-foreground">{title}</span>
+      <span className="flex w-full items-center justify-between gap-2 text-sm font-medium text-foreground">
+        <span className="whitespace-nowrap">{title}</span>
+        {pro && <ProBadge />}
+      </span>
       <span className="text-[13px] text-muted-foreground">{description}</span>
     </button>
   );
@@ -835,11 +841,9 @@ function buildPolicyUpdate(params: {
 
 function modelRequiresProUpgrade(
   model: SupportedRunModel | null,
-  limitedFree1: boolean,
+  modelCapabilities: ModelPlanCapabilities,
 ): boolean {
-  return (
-    model !== null && limitedFree1 && isLimitedFree1RestrictedRunModel(model)
-  );
+  return model !== null && !modelAllowedForPlan(model, modelCapabilities);
 }
 
 function getDialogPrimaryLabel(params: {
@@ -929,7 +933,8 @@ function ModelPolicyRouteDialog({
   providers,
   featureStates,
   saving,
-  limitedFree1,
+  modelCapabilities,
+  onUpgrade,
   onSubmit,
 }: {
   policies: OrgModelPolicy[];
@@ -937,7 +942,8 @@ function ModelPolicyRouteDialog({
   providers: ModelProviderResponse[];
   featureStates: ModelProviderFeatureStates;
   saving: boolean;
-  limitedFree1: boolean;
+  modelCapabilities: ModelPlanCapabilities;
+  onUpgrade: () => void;
   onSubmit: (next: UpdateOrgModelPolicy[]) => void;
 }) {
   const dialog = useGet(modelPolicyDialogState$);
@@ -960,10 +966,13 @@ function ModelPolicyRouteDialog({
   const busy = saving || inlineSaving || checkoutLoading;
   const firstAllowedModel =
     addableModels.find((model) => {
-      return modelAllowedForTier(model, limitedFree1);
+      return modelAllowedForPlan(model, modelCapabilities);
     }) ?? null;
   const selectedModel = dialog.model ?? firstAllowedModel ?? null;
-  const upgradeRequired = modelRequiresProUpgrade(selectedModel, limitedFree1);
+  const upgradeRequired = modelRequiresProUpgrade(
+    selectedModel,
+    modelCapabilities,
+  );
   const apiTypes = selectedModel
     ? getApiProviderTypes(selectedModel, featureStates)
     : [];
@@ -991,6 +1000,10 @@ function ModelPolicyRouteDialog({
     routeProvider === null;
 
   const chooseRoute = (routeKind: ModelPolicyRouteKind) => {
+    if (!modelCapabilities.supportByok && routeKind !== "built-in") {
+      onUpgrade();
+      return;
+    }
     setRoute({
       routeKind,
       providerType: getDefaultProviderTypeForRoute({
@@ -1080,7 +1093,7 @@ function ModelPolicyRouteDialog({
         }
       }}
     >
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {dialog.mode === "add" ? "Add model" : "Edit model"}
@@ -1115,7 +1128,10 @@ function ModelPolicyRouteDialog({
               <SelectContent>
                 {addableModels.map((model) => {
                   const iconType = getModelIconType(model);
-                  const restricted = !modelAllowedForTier(model, limitedFree1);
+                  const restricted = !modelAllowedForPlan(
+                    model,
+                    modelCapabilities,
+                  );
                   return (
                     <SelectItem key={model} value={model}>
                       <div className="flex w-full min-w-0 items-center gap-2">
@@ -1145,7 +1161,7 @@ function ModelPolicyRouteDialog({
               <div
                 role="radiogroup"
                 aria-label="Provided by"
-                className="grid grid-cols-1 gap-3 sm:grid-cols-3"
+                className="grid grid-cols-1 gap-3 md:grid-cols-3"
               >
                 <RouteChoiceButton
                   active={dialog.routeKind === "built-in"}
@@ -1158,6 +1174,7 @@ function ModelPolicyRouteDialog({
                 <RouteChoiceButton
                   active={dialog.routeKind === "api-key"}
                   disabled={apiTypes.length === 0}
+                  pro={!modelCapabilities.supportByok}
                   title="API key"
                   description="A shared workspace key. Best when the team bills through one account."
                   onClick={() => {
@@ -1167,6 +1184,7 @@ function ModelPolicyRouteDialog({
                 {oauthTypes.length > 0 && (
                   <RouteChoiceButton
                     active={dialog.routeKind === "oauth"}
+                    pro={!modelCapabilities.supportByok}
                     title={getOAuthRouteCopy(oauthTypes).title}
                     description={getOAuthRouteCopy(oauthTypes).description}
                     onClick={() => {
@@ -1218,13 +1236,12 @@ export function OrgModelPoliciesSection() {
   const lastPolicies = useLastResolved(orgModelPolicies$);
   const providersLoadable = useLoadable(orgConfiguredProviders$);
   const lastProviders = useLastResolved(orgConfiguredProviders$);
-  const billingLoadable = useLoadable(billingStatusAsync$);
-  const lastBilling = useLastResolved(billingStatusAsync$);
+  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
+  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
   const featureStates = useGet(featureSwitch$);
   const pageSignal = useGet(pageSignal$);
   const openAddModelDialog = useSet(openAddModelPolicyDialog$);
   const openEditModelDialog = useSet(openEditModelPolicyDialog$);
-  const openOrgBillingPlans = useSet(openBillingPlans$);
   const openSettingsBillingPlans = useSet(openSettingsBillingPlans$);
   const reloadPersonalModelProvider = useSet(reloadPersonalModelProvider$);
   const [updateLoadable, updatePolicies] = useLoadableSet(
@@ -1240,15 +1257,18 @@ export function OrgModelPoliciesSection() {
       : (lastProviders ?? []);
   const providersReady =
     providersLoadable.state === "hasData" || lastProviders !== undefined;
-  const billing =
-    billingLoadable.state === "hasData" ? billingLoadable.data : lastBilling;
-  const billingReady =
-    billingLoadable.state === "hasData" || lastBilling !== undefined;
+  const modelCapabilities =
+    modelCapabilitiesLoadable.state === "hasData"
+      ? modelCapabilitiesLoadable.data
+      : (lastModelCapabilities ?? DEFAULT_MODEL_PLAN_CAPABILITIES);
+  const modelCapabilitiesReady =
+    modelCapabilitiesLoadable.state === "hasData" ||
+    lastModelCapabilities !== undefined;
 
   if (
     (!data && policiesLoadable.state === "loading") ||
     (!providersReady && providersLoadable.state === "loading") ||
-    (!billingReady && billingLoadable.state === "loading")
+    (!modelCapabilitiesReady && modelCapabilitiesLoadable.state === "loading")
   ) {
     return <ModelPoliciesSkeleton />;
   }
@@ -1257,7 +1277,6 @@ export function OrgModelPoliciesSection() {
     return null;
   }
 
-  const limitedFree1 = billing?.tier === "limited-free-1";
   const policies = data.policies;
   const visiblePolicies = policies.filter((policy) => {
     return SUPPORTED_RUN_MODELS.includes(policy.model);
@@ -1281,7 +1300,7 @@ export function OrgModelPoliciesSection() {
     detach(
       (async () => {
         await updatePolicies(
-          { policies: filterPolicyUpdatesForTier(next, limitedFree1) },
+          { policies: filterPolicyUpdatesForPlan(next, modelCapabilities) },
           pageSignal,
         );
         pageSignal.throwIfAborted();
@@ -1292,7 +1311,6 @@ export function OrgModelPoliciesSection() {
   };
   const openComparePlans = () => {
     openSettingsBillingPlans();
-    openOrgBillingPlans();
   };
   const handleDefaultModelChange = (model: SupportedRunModel) => {
     if (saving || model === data.workspaceDefaultModel) {
@@ -1306,7 +1324,7 @@ export function OrgModelPoliciesSection() {
     }
     const initialModel =
       addableModels.find((model) => {
-        return modelAllowedForTier(model, limitedFree1);
+        return modelAllowedForPlan(model, modelCapabilities);
       }) ??
       addableModels[0] ??
       null;
@@ -1342,7 +1360,7 @@ export function OrgModelPoliciesSection() {
         policies={visiblePolicies}
         workspaceDefaultModel={data.workspaceDefaultModel}
         disabled={saving}
-        limitedFree1={limitedFree1}
+        modelCapabilities={modelCapabilities}
         onChange={handleDefaultModelChange}
         onUpgrade={openComparePlans}
       />
@@ -1372,7 +1390,8 @@ export function OrgModelPoliciesSection() {
         providers={providers}
         featureStates={featureStates}
         saving={saving}
-        limitedFree1={limitedFree1}
+        modelCapabilities={modelCapabilities}
+        onUpgrade={openComparePlans}
         onSubmit={submit}
       />
     </section>
