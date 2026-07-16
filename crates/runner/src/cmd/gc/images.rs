@@ -27,7 +27,7 @@ struct GcCandidate {
     rootfs_idx: usize,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy)]
 enum SnapshotDisposition {
     Keep,
     Delete,
