@@ -166,6 +166,14 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
     assert_eq!(env.handle.heartbeat_count(), 1);
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 
+    // Flip again without notifying or adding another trigger. The follow-up
+    // must sample mode when the active send completes, not retain the mode
+    // observed by the trigger that marked it dirty.
+    env.mode_tx.send_if_modified(|mode| {
+        *mode = RunnerMode::Running;
+        false
+    });
+
     env.handle.unblock_heartbeats();
     assert!(
         env.handle
@@ -188,7 +196,7 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
             .unwrap_or_else(|error| error.into_inner());
         assert_eq!(heartbeats.len(), 2);
         assert_eq!(heartbeats[0].mode, "running");
-        assert_eq!(heartbeats[1].mode, "draining");
+        assert_eq!(heartbeats[1].mode, "running");
         assert_eq!(heartbeats[1].running_count, 1);
     }
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
