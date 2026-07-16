@@ -4,12 +4,9 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
-import type { Editor, NodeViewRenderer } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import type { NodeView } from "@tiptap/pm/view";
-import { createRoot } from "react-dom/client";
-import { IconQuote, IconX } from "@tabler/icons-react";
-import { cn, Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
+import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
 import { composerChatThreadSuggestionsEnabled$ } from "../../signals/zero-page/composer-chat-thread-suggestions.ts";
@@ -27,7 +24,6 @@ import {
   type ComposerSlashWorkflow,
 } from "./slash-workflow.tsx";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
-import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 
 function isMacKeyboard(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -160,159 +156,6 @@ function WorkflowComposerPlaceholder({
   );
 }
 
-interface FeedbackNodeViewAttributes {
-  readonly quote: string;
-  readonly showDivider: boolean;
-  readonly fill: boolean;
-}
-
-function feedbackNodeViewAttributes(
-  node: ProseMirrorNode,
-): FeedbackNodeViewAttributes {
-  const quote: unknown = node.attrs.quote;
-  const showDivider: unknown = node.attrs.showDivider;
-  const fill: unknown = node.attrs.fill;
-  if (
-    typeof quote !== "string" ||
-    typeof showDivider !== "boolean" ||
-    typeof fill !== "boolean"
-  ) {
-    throw new Error("Feedback item node attributes are invalid");
-  }
-  return { quote, showDivider, fill };
-}
-
-function ComposerFeedbackQuote({
-  quote,
-  onRemove,
-}: {
-  readonly quote: string;
-  readonly onRemove: () => void;
-}) {
-  return (
-    <div className="flex" contentEditable={false}>
-      <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted">
-          <IconQuote
-            size={12}
-            stroke={1.5}
-            className="-scale-x-100 text-muted-foreground"
-          />
-        </span>
-        <span className="min-w-0 truncate text-xs font-medium">{quote}</span>
-        <button
-          type="button"
-          onMouseDown={(event) => {
-            event.preventDefault();
-          }}
-          onClick={onRemove}
-          aria-label="Remove feedback"
-          title="Remove feedback"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <IconX size={14} stroke={1.8} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function deleteFeedbackNode(
-  getPos: () => number | undefined,
-  node: ProseMirrorNode,
-  editor: Editor,
-): void {
-  const position = getPos();
-  if (typeof position !== "number") {
-    return;
-  }
-  editor.view.dispatch(
-    editor.state.tr.delete(position, position + node.nodeSize),
-  );
-}
-
-const feedbackItemNodeViewRenderer: NodeViewRenderer = (props) => {
-  const dom = document.createElement("div");
-  dom.dataset.feedbackItem = "";
-  const quoteDom = document.createElement("div");
-  const quoteRoot = createRoot(quoteDom);
-  const noteDom = document.createElement("div");
-  const placeholderDom = document.createElement("span");
-  placeholderDom.className =
-    "pointer-events-none absolute left-1 top-1 text-[0.9375rem] " +
-    "leading-snug text-muted-foreground/40";
-  placeholderDom.textContent = "What should change about this?";
-  placeholderDom.setAttribute("aria-hidden", "true");
-  const contentDOM = document.createElement("div");
-  contentDOM.dataset.feedbackNote = "";
-  contentDOM.setAttribute("role", "textbox");
-  contentDOM.setAttribute("aria-label", "What should change about this?");
-  contentDOM.setAttribute("aria-multiline", "true");
-  noteDom.append(placeholderDom, contentDOM);
-  dom.append(quoteDom, noteDom);
-
-  let currentNode = props.node;
-  function render(node: ProseMirrorNode): void {
-    const { quote, showDivider, fill } = feedbackNodeViewAttributes(node);
-    dom.className = cn(
-      "flex flex-col gap-1.5 pb-1.5",
-      showDivider && "border-t border-dashed border-border/60 pt-1.5",
-    );
-    noteDom.className = cn("relative", fill && "min-h-[96px]");
-    placeholderDom.hidden = node.textContent.length > 0;
-    contentDOM.className = cn(
-      "relative w-full px-1 py-1 text-[0.9375rem] leading-snug text-foreground outline-none [&_p]:m-0",
-      fill && "min-h-[96px]",
-    );
-    quoteRoot.render(
-      <ComposerFeedbackQuote
-        quote={quote}
-        onRemove={() => {
-          queueMicrotask(() => {
-            deleteFeedbackNode(props.getPos, currentNode, props.editor);
-          });
-        }}
-      />,
-    );
-  }
-  render(currentNode);
-
-  const nodeView: NodeView = {
-    dom,
-    contentDOM,
-    update(node) {
-      if (node.type !== currentNode.type) {
-        return false;
-      }
-      currentNode = node;
-      render(node);
-      return true;
-    },
-    stopEvent(event) {
-      return (
-        event.target instanceof globalThis.Node &&
-        quoteDom.contains(event.target)
-      );
-    },
-    ignoreMutation(mutation) {
-      return (
-        mutation.type !== "selection" && !contentDOM.contains(mutation.target)
-      );
-    },
-    destroy() {
-      queueMicrotask(() => {
-        quoteRoot.unmount();
-      });
-    },
-  };
-  return nodeView;
-};
-
-export interface TiptapWorkflowComposerFeedback {
-  readonly items: readonly FeedbackItem[];
-  readonly onItemsChange: (items: readonly FeedbackItem[]) => void;
-}
-
 export interface TiptapWorkflowComposerProps {
   readonly composer: WorkflowComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
@@ -321,7 +164,7 @@ export interface TiptapWorkflowComposerProps {
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
   readonly singleLineOnMobile: boolean;
-  readonly feedback: TiptapWorkflowComposerFeedback | null;
+  readonly feedbackActive: boolean;
 }
 
 interface ComposerKeyDownContext {
@@ -543,7 +386,7 @@ export function TiptapWorkflowComposer({
   onKeyDown,
   onPaste,
   singleLineOnMobile,
-  feedback,
+  feedbackActive,
 }: TiptapWorkflowComposerProps) {
   const suggestionMenu = useComposerSuggestionMenu({
     composer,
@@ -552,10 +395,6 @@ export function TiptapWorkflowComposer({
   });
   const setWorkflowNames = useSet(composer.setWorkflowNames$);
   const setEventHandlers = useSet(composer.setEventHandlers$);
-  const setFeedbackItems = useSet(composer.setFeedbackItems$);
-  const setFeedbackNodeViewRenderer = useSet(
-    composer.setFeedbackNodeViewRenderer$,
-  );
   const containerRefSignal = singleLineOnMobile
     ? composer.setCompactContainerRef$
     : autoFocus
@@ -606,15 +445,10 @@ export function TiptapWorkflowComposer({
         hidden
         ref={(element) => {
           if (element) {
-            setFeedbackNodeViewRenderer(feedbackItemNodeViewRenderer);
-            setFeedbackItems(feedback?.items ?? null);
             setWorkflowNames(suggestionMenu.workflowNames);
             setEventHandlers({
               onInput: () => {
                 onDraftChange?.();
-              },
-              onFeedbackItemsChange: (items) => {
-                feedback?.onItemsChange(items);
               },
               onKeyDown: suggestionMenu.handleKeyDown,
               onPaste: handlePaste,
@@ -628,7 +462,7 @@ export function TiptapWorkflowComposer({
         <WorkflowComposerPlaceholder
           composer={composer}
           sending={sending}
-          feedbackActive={feedback !== null}
+          feedbackActive={feedbackActive}
         />
         <div ref={setContainerRef} />
       </div>

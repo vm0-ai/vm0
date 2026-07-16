@@ -284,14 +284,6 @@ import {
 } from "./zero-chat-composer.tsx";
 import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
-  feedbackItemsValue$,
-  feedbackThreadIdValue$,
-  feedbackSendCountValue$,
-  replaceFeedbackItems$,
-  submitFeedback$,
-  dismissFeedback$,
-} from "../../signals/zero-page/chat-feedback.ts";
-import {
   computerUseHosts$,
   selectedComputerUseHostId as resolveSelectedComputerUseHostId,
   visibleComputerUseHosts,
@@ -3255,7 +3247,7 @@ function buildCompletedWorkFolding(
   const visibleMessages: EnrichedChatMessage[] = [];
   const folds: CompletedWorkFold[] = [];
 
-  for (let index = 0; index < messages.length; ) {
+  for (let index = 0; index < messages.length;) {
     const runId = messages[index]!.runId;
     if (runId === undefined) {
       visibleMessages.push(messages[index]!);
@@ -3669,7 +3661,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         </div>
       </div>
 
-      <ChatFeedbackSelection />
+      <ChatFeedbackSelection feedback={thread.workflowComposer.feedback} />
     </>
   );
 }
@@ -4154,31 +4146,21 @@ function useChatThreadComputerUse(
   };
 }
 
-// Bridges the global inline-feedback signals to the composer's `feedback` prop.
-// Returns undefined when no feedback is drafted in this thread, so the shared
-// TipTap document represents the normal draft.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
   sendFeedback: (prompt: string) => Promise<boolean>,
 ): ComposerFeedback | undefined {
-  const items = useGet(feedbackItemsValue$);
-  const feedbackThreadId = useGet(feedbackThreadIdValue$);
-  const sendCount = useGet(feedbackSendCountValue$);
-  const replaceItems = useSet(replaceFeedbackItems$);
-  const compose = useSet(submitFeedback$);
-  const dismiss = useSet(dismissFeedback$);
+  const feedback = thread.workflowComposer.feedback;
+  const active = useGet(feedback.active$);
+  const sendCount = useGet(feedback.sendCount$);
+  const compose = useSet(feedback.submitFeedback$);
+  const dismiss = useSet(feedback.dismissFeedback$);
 
-  // Feedback is owned by the thread it was drafted in; other threads keep their
-  // own composer textarea so a draft never bleeds across chats.
-  if (feedbackThreadId !== thread.threadId) {
+  if (!active) {
     return undefined;
   }
   return {
-    items,
     sendCount,
-    onItemsChange: (nextItems) => {
-      replaceItems(nextItems);
-    },
     onSubmit: () => {
       const prompt = compose();
       if (prompt === null) {

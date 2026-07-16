@@ -230,6 +230,8 @@ describe("chat inline feedback", () => {
     });
 
     const composerEditor = await findComposerEditor();
+    await user.click(composerEditor);
+    await user.keyboard("Mention the dates before the risk summary.");
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
 
@@ -253,7 +255,6 @@ describe("chat inline feedback", () => {
 
     const feedbackComment = await findFeedbackNote();
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
-    await user.keyboard("Mention the dates before the risk summary.");
     expect(feedbackComment).toHaveTextContent(
       "Mention the dates before the risk summary.",
     );

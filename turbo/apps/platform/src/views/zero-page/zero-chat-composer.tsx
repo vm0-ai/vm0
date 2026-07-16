@@ -229,7 +229,6 @@ import {
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
-import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 
@@ -356,10 +355,8 @@ export interface ZeroChatComposerProps {
 }
 
 export interface ComposerFeedback {
-  items: readonly FeedbackItem[];
   /** Fragments carrying a non-empty note — what Send will dispatch. */
   sendCount: number;
-  onItemsChange: (items: readonly FeedbackItem[]) => void;
   onSubmit: () => void;
   onDismiss: () => void;
 }
@@ -1521,8 +1518,7 @@ interface TemplatePreviewPrewarmCache {
 function templatePreviewPrewarmCache(): TemplatePreviewPrewarmCache {
   const cacheKey = "vm0TemplatePreviewPrewarmCache";
   const existingCache = Reflect.get(globalThis, cacheKey) as
-    | TemplatePreviewPrewarmCache
-    | undefined;
+    TemplatePreviewPrewarmCache | undefined;
   if (existingCache !== undefined) {
     return existingCache;
   }
@@ -2287,8 +2283,7 @@ interface PresentationTemplateHtmlPreviewCache {
 function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreviewCache {
   const cacheKey = "vm0PresentationTemplateHtmlPreviewCache";
   const existingCache = Reflect.get(globalThis, cacheKey) as
-    | PresentationTemplateHtmlPreviewCache
-    | undefined;
+    PresentationTemplateHtmlPreviewCache | undefined;
   if (existingCache !== undefined) {
     existingCache.pendingSlideAnimationFrames ??= new Map<string, number>();
     existingCache.pendingSlideIndexes ??= new Map<string, number>();
@@ -2436,8 +2431,7 @@ interface PresentationTemplateThumbnailCache {
 function presentationTemplateThumbnailCache(): PresentationTemplateThumbnailCache {
   const cacheKey = "vm0PresentationTemplateThumbnailCache";
   const existingCache = Reflect.get(globalThis, cacheKey) as
-    | PresentationTemplateThumbnailCache
-    | undefined;
+    PresentationTemplateThumbnailCache | undefined;
   if (existingCache !== undefined) {
     return existingCache;
   }
@@ -3846,8 +3840,7 @@ interface IllustrationPreviewImageCache {
 function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
   const cacheKey = "vm0IllustrationPreviewImageDecodeCache";
   const existingCache = Reflect.get(globalThis, cacheKey) as
-    | IllustrationPreviewImageCache
-    | undefined;
+    IllustrationPreviewImageCache | undefined;
   if (existingCache !== undefined) {
     return existingCache;
   }
@@ -6653,8 +6646,7 @@ function useResolvedComposerSignals(
   draft: DraftSignals,
   composerFileInputProp$: Computed<HTMLElement | null> | undefined,
   setComposerFileInputProp$:
-    | Command<(() => void) | undefined, [HTMLElement | null]>
-    | undefined,
+    Command<(() => void) | undefined, [HTMLElement | null]> | undefined,
 ) {
   const attachments = useGet(draft.attachments$);
   const attachmentUploadsState = useLoadableState(
@@ -6757,7 +6749,7 @@ function ComposerInputSlot({
   return (
     <TiptapWorkflowComposer
       composer={composer}
-      feedback={feedback}
+      feedbackActive={feedback !== null}
       onDraftChange={onDraftChange}
       sending={sending}
       autoFocus={autoFocus}
@@ -6788,10 +6780,7 @@ function resolveKeyboardSendAction({
 function resolveActiveFeedback(
   feedback: ComposerFeedback | undefined,
 ): ComposerFeedback | null {
-  if (feedback && feedback.items.length > 0) {
-    return feedback;
-  }
-  return null;
+  return feedback ?? null;
 }
 
 // Stop while an empty composer is mid-run; otherwise Send. In feedback mode the

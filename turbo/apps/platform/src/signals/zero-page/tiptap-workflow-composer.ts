@@ -6,20 +6,18 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import {
-  Editor,
-  Extension,
-  Node,
-  type JSONContent,
-  type NodeViewRenderer,
-} from "@tiptap/core";
+import { Editor, Extension, Node, type JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { onRef } from "../utils.ts";
 import type { DraftSignals } from "./chat-draft.ts";
-import type { FeedbackItem } from "./chat-feedback.ts";
+import {
+  createFeedbackSignals,
+  type FeedbackItem,
+  type FeedbackSignals,
+} from "./chat-feedback.ts";
 import {
   findActiveChatThreadSuggestionRange,
   type ChatThreadSuggestionRange,
@@ -93,13 +91,11 @@ export interface WorkflowComposerSignals {
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
-  readonly setFeedbackItems$: Command<void, [readonly FeedbackItem[] | null]>;
-  readonly setFeedbackNodeViewRenderer$: Command<void, [NodeViewRenderer]>;
+  readonly feedback: FeedbackSignals;
 }
 
 export interface WorkflowComposerEventHandlers {
   readonly onInput: () => void;
-  readonly onFeedbackItemsChange: (items: readonly FeedbackItem[]) => void;
   readonly onKeyDown: (event: KeyboardEvent) => boolean;
   readonly onPaste: (
     event: ClipboardEvent,
@@ -132,6 +128,133 @@ function feedbackItemNodeAttributes(
     throw new Error("Feedback item node attributes are invalid");
   }
   return { feedbackId, quote, showDivider, fill };
+}
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+function createFeedbackIcon(
+  size: number,
+  strokeWidth: number,
+  paths: readonly string[],
+): SVGSVGElement {
+  const icon = document.createElementNS(SVG_NAMESPACE, "svg");
+  icon.setAttribute("width", String(size));
+  icon.setAttribute("height", String(size));
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", String(strokeWidth));
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.setAttribute("aria-hidden", "true");
+  for (const pathData of paths) {
+    const path = document.createElementNS(SVG_NAMESPACE, "path");
+    path.setAttribute("d", pathData);
+    icon.append(path);
+  }
+  return icon;
+}
+
+function createFeedbackItemNodeView(
+  node: ProseMirrorNode,
+  removeFeedback: (id: number) => void,
+): NodeView {
+  const dom = document.createElement("div");
+  dom.dataset.feedbackItem = "";
+
+  const quoteDom = document.createElement("div");
+  quoteDom.className = "flex";
+  quoteDom.contentEditable = "false";
+  const quoteChip = document.createElement("div");
+  quoteChip.className =
+    "inline-flex h-8 max-w-full items-center gap-2 rounded-lg border " +
+    "border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground " +
+    "shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
+  const quoteIconContainer = document.createElement("span");
+  quoteIconContainer.className =
+    "flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted";
+  const quoteIcon = createFeedbackIcon(12, 1.5, [
+    "M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
+    "M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
+  ]);
+  quoteIcon.setAttribute("class", "-scale-x-100 text-muted-foreground");
+  quoteIconContainer.append(quoteIcon);
+  const quoteText = document.createElement("span");
+  quoteText.className = "min-w-0 truncate text-xs font-medium";
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className =
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md " +
+    "text-muted-foreground/70 transition-colors hover:bg-muted " +
+    "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
+    "focus-visible:ring-ring";
+  removeButton.setAttribute("aria-label", "Remove feedback");
+  removeButton.title = "Remove feedback";
+  removeButton.append(
+    createFeedbackIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
+  );
+  quoteChip.append(quoteIconContainer, quoteText, removeButton);
+  quoteDom.append(quoteChip);
+
+  const noteDom = document.createElement("div");
+  const placeholderDom = document.createElement("span");
+  placeholderDom.className =
+    "pointer-events-none absolute left-1 top-1 text-[0.9375rem] " +
+    "leading-snug text-muted-foreground/40";
+  placeholderDom.textContent = "What should change about this?";
+  placeholderDom.setAttribute("aria-hidden", "true");
+  const contentDOM = document.createElement("div");
+  contentDOM.dataset.feedbackNote = "";
+  contentDOM.setAttribute("role", "textbox");
+  contentDOM.setAttribute("aria-label", "What should change about this?");
+  contentDOM.setAttribute("aria-multiline", "true");
+  noteDom.append(placeholderDom, contentDOM);
+  dom.append(quoteDom, noteDom);
+
+  let currentNode = node;
+  function render(nextNode: ProseMirrorNode): void {
+    const { quote, showDivider, fill } = feedbackItemNodeAttributes(nextNode);
+    dom.className = `flex flex-col gap-1.5 pb-1.5${
+      showDivider ? " border-t border-dashed border-border/60 pt-1.5" : ""
+    }`;
+    noteDom.className = `relative${fill ? " min-h-[96px]" : ""}`;
+    placeholderDom.hidden = nextNode.textContent.length > 0;
+    contentDOM.className =
+      "relative w-full px-1 py-1 text-[0.9375rem] leading-snug " +
+      `text-foreground outline-none [&_p]:m-0${fill ? " min-h-[96px]" : ""}`;
+    quoteText.textContent = quote;
+  }
+  removeButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  removeButton.addEventListener("click", () => {
+    removeFeedback(feedbackItemNodeAttributes(currentNode).feedbackId);
+  });
+  render(currentNode);
+
+  return {
+    dom,
+    contentDOM,
+    update(nextNode) {
+      if (nextNode.type !== currentNode.type) {
+        return false;
+      }
+      currentNode = nextNode;
+      render(nextNode);
+      return true;
+    },
+    stopEvent(event) {
+      return (
+        event.target instanceof globalThis.Node &&
+        quoteDom.contains(event.target)
+      );
+    },
+    ignoreMutation(mutation) {
+      return (
+        mutation.type !== "selection" && !contentDOM.contains(mutation.target)
+      );
+    },
+  };
 }
 
 function feedbackNoteContent(note: string): JSONContent[] {
@@ -325,8 +448,8 @@ interface WorkflowComposerRuntime {
   focus(editor: Editor): void;
   blur(): void;
   input(): void;
-  feedbackItemsChange(items: readonly FeedbackItem[]): void;
-  feedbackNodeViewRenderer: NodeViewRenderer;
+  replaceFeedbackItems(items: readonly FeedbackItem[]): void;
+  removeFeedback(id: number): void;
   keyDown(event: KeyboardEvent): boolean;
   paste(event: ClipboardEvent, currentTarget: HTMLElement): boolean;
 }
@@ -356,8 +479,10 @@ function createFeedbackItemNode(
       return ["div", { ...HTMLAttributes, "data-feedback-item": "" }, 0];
     },
     addNodeView() {
-      return (props) => {
-        return runtime.feedbackNodeViewRenderer(props);
+      return ({ node }) => {
+        return createFeedbackItemNodeView(node, (id) => {
+          runtime.removeFeedback(id);
+        });
       };
     },
   });
@@ -419,7 +544,7 @@ function createMountEditorCommand({
   caretIndex$,
   editorFocusedState$,
   selectedSuggestionIndexState$,
-  feedbackActiveState$,
+  feedback,
   autoFocus,
   singleLineOnMobile,
 }: {
@@ -429,15 +554,15 @@ function createMountEditorCommand({
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
-  feedbackActiveState$: State<boolean>;
+  feedback: FeedbackSignals;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }) {
   return onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
-        if (get(feedbackActiveState$)) {
-          runtime.feedbackItemsChange(
+        if (get(feedback.active$)) {
+          runtime.replaceFeedbackItems(
             feedbackItemsFromWorkflowComposer(updatedEditor),
           );
         } else {
@@ -457,6 +582,12 @@ function createMountEditorCommand({
       runtime.blur = () => {
         set(editorFocusedState$, false);
       };
+      runtime.replaceFeedbackItems = (items) => {
+        set(feedback.replaceFromEditor$, items);
+      };
+      runtime.removeFeedback = (id) => {
+        set(feedback.removeFeedback$, id);
+      };
       editor.setOptions({
         editorProps: {
           attributes: {
@@ -474,7 +605,7 @@ function createMountEditorCommand({
         },
       });
       const input = get(draft.input$);
-      if (!get(feedbackActiveState$)) {
+      if (!get(feedback.active$)) {
         setWorkflowComposerDocument(
           editor,
           editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(input)),
@@ -483,7 +614,7 @@ function createMountEditorCommand({
       editor.mount(element);
       set(draft.setInputSyncTarget$, {
         syncInput(value: string) {
-          if (!get(feedbackActiveState$)) {
+          if (!get(feedback.active$)) {
             setWorkflowComposerDocument(
               editor,
               editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value)),
@@ -500,7 +631,8 @@ function createMountEditorCommand({
         runtime.focus = () => {};
         runtime.blur = () => {};
         runtime.input = () => {};
-        runtime.feedbackItemsChange = () => {};
+        runtime.replaceFeedbackItems = () => {};
+        runtime.removeFeedback = () => {};
         runtime.keyDown = () => {
           return false;
         };
@@ -574,10 +706,8 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     focus(_editor: Editor): void {},
     blur(): void {},
     input(): void {},
-    feedbackItemsChange(_items: readonly FeedbackItem[]): void {},
-    feedbackNodeViewRenderer() {
-      throw new Error("Feedback item node view renderer is unavailable");
-    },
+    replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
+    removeFeedback(_id: number): void {},
     keyDown(_event: KeyboardEvent): boolean {
       return false;
     },
@@ -589,26 +719,44 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
 
 export function createWorkflowComposerSignals(
   draft: DraftSignals,
+  threadId?: string,
 ): WorkflowComposerSignals {
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
   const selectedSuggestionIndexState$ = state(0);
-  const feedbackActiveState$ = state(false);
   const runtime = createWorkflowComposerRuntime();
 
   const editor = createWorkflowEditor(runtime);
+  const feedback = createFeedbackSignals(threadId ?? "", draft, {
+    replaceItems(items, draftValue, focusNewest) {
+      const activeItems = items && items.length > 0 ? items : null;
+      const currentFeedbackCount =
+        feedbackItemsFromWorkflowComposer(editor).length;
+      const shouldFocusNewest =
+        activeItems !== null &&
+        focusNewest &&
+        activeItems.length > currentFeedbackCount;
+      const document = activeItems
+        ? feedbackItemsToWorkflowComposerDoc(editor, activeItems)
+        : editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(draftValue));
+      const changed = setWorkflowComposerDocument(editor, document);
+      if (changed && shouldFocusNewest && editor.isInitialized) {
+        editor.commands.focus("end");
+      }
+    },
+  });
 
   const selectedSuggestionIndex$ = computed((get) => {
     return get(selectedSuggestionIndexState$);
   });
   const activeSlashRange$ = computed((get) => {
-    if (get(feedbackActiveState$) || !get(editorFocusedState$)) {
+    if (get(feedback.active$) || !get(editorFocusedState$)) {
       return null;
     }
     return findActiveSlashWorkflowRange(get(draft.input$), get(caretIndex$));
   });
   const activeChatThreadSuggestionRange$ = computed((get) => {
-    if (get(feedbackActiveState$) || !get(editorFocusedState$)) {
+    if (get(feedback.active$) || !get(editorFocusedState$)) {
       return null;
     }
     return findActiveChatThreadSuggestionRange(
@@ -637,34 +785,8 @@ export function createWorkflowComposerSignals(
   const setEventHandlers$ = command(
     (_context, handlers: WorkflowComposerEventHandlers) => {
       runtime.input = handlers.onInput;
-      runtime.feedbackItemsChange = handlers.onFeedbackItemsChange;
       runtime.keyDown = handlers.onKeyDown;
       runtime.paste = handlers.onPaste;
-    },
-  );
-  const setFeedbackItems$ = command(
-    ({ get, set }, items: readonly FeedbackItem[] | null) => {
-      const feedbackActive = items !== null && items.length > 0;
-      const currentFeedbackCount =
-        feedbackItemsFromWorkflowComposer(editor).length;
-      const shouldFocusNewest =
-        feedbackActive &&
-        (!get(feedbackActiveState$) || items.length > currentFeedbackCount);
-      set(feedbackActiveState$, feedbackActive);
-      const document = feedbackActive
-        ? feedbackItemsToWorkflowComposerDoc(editor, items)
-        : editor.schema.nodeFromJSON(
-            valueToWorkflowComposerDoc(get(draft.input$)),
-          );
-      const changed = setWorkflowComposerDocument(editor, document);
-      if (changed && shouldFocusNewest && editor.isInitialized) {
-        editor.commands.focus("end");
-      }
-    },
-  );
-  const setFeedbackNodeViewRenderer$ = command(
-    (_context, renderer: NodeViewRenderer) => {
-      runtime.feedbackNodeViewRenderer = renderer;
     },
   );
   const mountEditor = (autoFocus: boolean, singleLineOnMobile: boolean) => {
@@ -675,7 +797,7 @@ export function createWorkflowComposerSignals(
       caretIndex$,
       editorFocusedState$,
       selectedSuggestionIndexState$,
-      feedbackActiveState$,
+      feedback,
       autoFocus,
       singleLineOnMobile,
     });
@@ -708,7 +830,6 @@ export function createWorkflowComposerSignals(
     insertWorkflow$,
     insertChatThread$,
     setEventHandlers$,
-    setFeedbackItems$,
-    setFeedbackNodeViewRenderer$,
+    feedback,
   };
 }
