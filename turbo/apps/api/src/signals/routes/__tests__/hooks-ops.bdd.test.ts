@@ -203,7 +203,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.AgentUnreadIndicators]: true,
-            [FeatureSwitchKey.AgentUnreadIndicators]: true,
             [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
             [FeatureSwitchKey.MobileUnreadChatThreadShortcuts]: true,
             [FeatureSwitchKey.Dummy]: false,
@@ -212,9 +211,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       }),
       [200],
     );
-    expect(
-      ownerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeTruthy();
     expect(
       ownerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
     ).toBeTruthy();
@@ -236,9 +232,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       peerRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
     ).toBeTruthy();
     expect(
-      peerRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeTruthy();
-    expect(
       peerRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeTruthy();
     expect(
@@ -250,9 +243,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(outsider) }),
       [200],
     );
-    expect(
-      outsiderRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeUndefined();
     expect(
       outsiderRead.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
     ).toBeUndefined();
@@ -271,16 +261,12 @@ describe("OPS-01: feature switches and report-error routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.AgentUnreadIndicators]: false,
-            [FeatureSwitchKey.AgentUnreadIndicators]: false,
             [FeatureSwitchKey.ChatThreadUnifiedSearch]: false,
           },
         },
       }),
       [200],
     );
-    expect(
-      peerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeFalsy();
     expect(
       peerUpdate.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
     ).toBeFalsy();
@@ -298,11 +284,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(owner) }),
       [200],
     );
-    expect(
-      ownerReadAfterPeerUpdate.body.switches[
-        FeatureSwitchKey.AgentUnreadIndicators
-      ],
-    ).toBeFalsy();
     expect(
       ownerReadAfterPeerUpdate.body.switches[
         FeatureSwitchKey.AgentUnreadIndicators
@@ -332,9 +313,6 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(peer) }),
       [200],
     );
-    expect(
-      peerReadAfterDelete.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
-    ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.AgentUnreadIndicators],
     ).toBeUndefined();

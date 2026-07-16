@@ -56,8 +56,8 @@ const log = logger("api:notion-workflow-event");
 const NOTION_ACCESS_TOKEN_SECRET = "NOTION_ACCESS_TOKEN";
 const NOTION_REFRESH_TOKEN_SECRET = "NOTION_REFRESH_TOKEN";
 const CONNECTOR_SECRET_TYPE = "connector";
-export const NOTION_API_BASE = "https://api.notion.com/v1";
-export const NOTION_VERSION = "2026-03-11";
+const NOTION_API_BASE = "https://api.notion.com/v1";
+const NOTION_VERSION = "2026-03-11";
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const NOTION_CHILD_PAGE_SETTLE_MS = 15 * 60 * 1000;
 const NOTION_PENDING_RETRY_MS = 5 * 60 * 1000;
@@ -388,7 +388,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function notionTitleFromProperties(
+function notionTitleFromProperties(
   properties: Record<string, unknown> | undefined,
 ): string | null {
   for (const property of Object.values(properties ?? {})) {
@@ -464,7 +464,7 @@ function notionPageParentDataSourceId(page: NotionPageResponse): string | null {
     : null;
 }
 
-export function pageIsUsable(page: NotionPageResponse): boolean {
+function pageIsUsable(page: NotionPageResponse): boolean {
   return page.archived !== true && page.in_trash !== true;
 }
 
@@ -653,7 +653,7 @@ async function refreshNotionAccessToken(args: {
   };
 }
 
-export async function resolveNotionAccess(args: {
+async function resolveNotionAccess(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;

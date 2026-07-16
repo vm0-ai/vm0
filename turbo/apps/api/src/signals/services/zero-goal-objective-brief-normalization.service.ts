@@ -1,5 +1,5 @@
 const OBJECTIVE_BRIEF_MAX_CHARS = 140;
-export const DEFAULT_GOAL_OBJECTIVE_BRIEF = "Untitled goal";
+const DEFAULT_GOAL_OBJECTIVE_BRIEF = "Untitled goal";
 
 function stripMarkdown(text: string): string {
   return text

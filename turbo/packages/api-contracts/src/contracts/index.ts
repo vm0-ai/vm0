@@ -1218,11 +1218,7 @@ export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,
 } from "./zero-feature-switches";
-export {
-  zeroMemoryContract,
-  type MemoryDetailResponse,
-  type ZeroMemoryContract,
-} from "./zero-memory";
+export { zeroMemoryContract, type ZeroMemoryContract } from "./zero-memory";
 export {
   zeroMemoryDevRefreshContract,
   type MemoryDevRefreshResponse,
