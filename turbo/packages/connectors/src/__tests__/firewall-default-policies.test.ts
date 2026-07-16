@@ -123,10 +123,13 @@ describe("getDefaultFirewallPolicies", () => {
 
     expect(policy.policies["apps.read"]).toBe("allow");
     expect(policy.policies["files.read"]).toBe("allow");
+    expect(policy.policies["presentations.read"]).toBe("allow");
     expect(policy.policies["files.write"]).toBe("deny");
     expect(policy.policies["files.delete"]).toBe("deny");
     expect(policy.policies["files.share"]).toBe("deny");
     expect(policy.policies["channels.write"]).toBe("deny");
+    expect(policy.policies["presentations.create"]).toBe("deny");
+    expect(policy.policies["presentations.write"]).toBe("deny");
     expect(policy.unknownPolicy).toBe("deny");
   });
 

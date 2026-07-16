@@ -286,6 +286,8 @@ describe("Google Drive firewall permissions", () => {
 
     expect(names).toContain("apps.read");
     expect(names).toContain("files.write");
+    expect(names).toContain("presentations.read");
+    expect(names).toContain("presentations.write");
     expect(names).not.toContain("drive.apps.readonly");
     expect(names).not.toContain("drive.file");
     expect(
@@ -316,6 +318,24 @@ describe("Google Drive firewall permissions", () => {
       "GET /v3/apps/{appId}",
     ]);
     expect(appsReadRules).not.toContain("POST /v2/files");
+  });
+
+  it("keeps Google Slides reads and writes in separate permissions", async () => {
+    const firewall = await loadRequiredConnectorFirewall("google-drive");
+    const rules = rulesByPermission(firewall);
+
+    expect(rules.get("presentations.read")).toEqual(
+      new Set([
+        "https://slides.googleapis.com GET /v1/presentations/{presentationsId}",
+        "https://slides.googleapis.com GET /v1/presentations/{presentationId}/pages/{pageObjectId}",
+        "https://slides.googleapis.com GET /v1/presentations/{presentationId}/pages/{pageObjectId}/thumbnail",
+      ]),
+    );
+    expect(rules.get("presentations.write")).toEqual(
+      new Set([
+        "https://slides.googleapis.com POST /v1/presentations/{presentationId}:batchUpdate",
+      ]),
+    );
   });
 });
 
