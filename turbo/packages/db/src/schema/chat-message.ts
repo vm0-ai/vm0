@@ -11,7 +11,6 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
-import { agentRuns } from "./agent-run";
 import type {
   ChatMessageAttachFileMetadataList,
   ChatMessageAttachFiles,
@@ -78,25 +77,16 @@ export const chatMessages = pgTable(
         { onDelete: "cascade" },
       )
       .notNull(),
-    runId: uuid("run_id").references(
-      () => {
-        return agentRuns.id;
-      },
-      { onDelete: "set null" },
-    ),
+    // Historical run references remain after the corresponding run is deleted.
+    runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
     revokesMessageId: uuid("revokes_message_id").references(
       (): AnyPgColumn => {
         return chatMessages.id;
       },
-      { onDelete: "set null" },
+      { onDelete: "no action" },
     ),
-    interruptsRunId: uuid("interrupts_run_id").references(
-      () => {
-        return agentRuns.id;
-      },
-      { onDelete: "set null" },
-    ),
+    interruptsRunId: uuid("interrupts_run_id"),
     // Stable grouping key for repeated automation/workflow/goal-triggered
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
