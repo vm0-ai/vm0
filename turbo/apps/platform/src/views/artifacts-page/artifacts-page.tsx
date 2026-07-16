@@ -675,7 +675,12 @@ function ArtifactCardActions({
               onStartChat(item);
             }}
           >
-            <IconMessagePlus size={14} stroke={1.7} aria-hidden />
+            <IconMessagePlus
+              size={14}
+              stroke={1.7}
+              className="text-muted-foreground"
+              aria-hidden
+            />
             Ask about it
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -683,7 +688,12 @@ function ArtifactCardActions({
               onOpenChat(item.threadId);
             }}
           >
-            <IconHistory size={14} stroke={1.7} aria-hidden />
+            <IconHistory
+              size={14}
+              stroke={1.7}
+              className="text-muted-foreground"
+              aria-hidden
+            />
             View creation chat
           </DropdownMenuItem>
           {isZipArtifact(item) ? (
@@ -696,7 +706,12 @@ function ArtifactCardActions({
                 );
               }}
             >
-              <IconDownload size={14} stroke={1.7} aria-hidden />
+              <IconDownload
+                size={14}
+                stroke={1.7}
+                className="text-muted-foreground"
+                aria-hidden
+              />
               Download
             </DropdownMenuItem>
           ) : (
@@ -707,7 +722,12 @@ function ArtifactCardActions({
                 rel="noreferrer"
                 aria-label={`Open preview for ${item.filename}`}
               >
-                <IconExternalLink size={14} stroke={1.7} aria-hidden />
+                <IconExternalLink
+                  size={14}
+                  stroke={1.7}
+                  className="text-muted-foreground"
+                  aria-hidden
+                />
                 Open a new tab
               </a>
             </DropdownMenuItem>
