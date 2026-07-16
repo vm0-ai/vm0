@@ -1324,6 +1324,28 @@ where
     F: Future<Output = Result<NetnsInfo>>,
 {
     let namespace = create.await?;
+
+    // Pool indices make the peer IP unique to this namespace lifecycle, so no
+    // live workload can legitimately own matching host conntrack entries here.
+    // Clear leftovers before the namespace readiness probe or a restored guest
+    // can reuse a tuple that still points at a previous runner's REDIRECT port.
+    if !(ops.flush_conntrack)(namespace.peer_ip.clone())
+        .await
+        .is_trusted()
+    {
+        let error = NetworkError::ConntrackReset {
+            namespace: namespace.name.clone(),
+            peer_ip: namespace.peer_ip.clone(),
+        };
+        delete_namespaces_with_ops(ops, vec![namespace]).await;
+        return Err(error);
+    }
+    info!(
+        name = %namespace.name,
+        peer_ip = %namespace.peer_ip,
+        "namespace conntrack reset completed before readiness"
+    );
+
     let Some((probe, timeout)) = readiness else {
         return Ok(namespace);
     };
@@ -1517,6 +1539,76 @@ mod tests {
             flush_count,
             delete_count,
         }
+    }
+
+    #[tokio::test]
+    async fn new_namespace_resets_conntrack_before_dns_readiness() {
+        let phase = Arc::new(AtomicUsize::new(0));
+        let phase_for_flush = Arc::clone(&phase);
+        let phase_for_probe = Arc::clone(&phase);
+        let ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(move |peer_ip| {
+                let phase = Arc::clone(&phase_for_flush);
+                Box::pin(async move {
+                    assert_eq!(peer_ip, "10.200.0.2");
+                    assert_eq!(phase.fetch_add(1, Ordering::SeqCst), 0);
+                    ConntrackFlushOutcome::Trusted
+                })
+            }),
+            delete_namespace: Arc::new(|_| Box::pin(async { NamespaceDeleteOutcome::Deleted })),
+        };
+        let probe = probe_for_test(move |namespace| {
+            let phase = Arc::clone(&phase_for_probe);
+            async move {
+                assert_eq!(namespace, "vm0-ns-test-00");
+                assert_eq!(phase.fetch_add(1, Ordering::SeqCst), 1);
+                Ok(1)
+            }
+        });
+
+        let namespace = create_namespace_with_readiness(
+            async { Ok(test_info("vm0-ns-test-00")) },
+            Some((probe, Duration::from_secs(1))),
+            ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(namespace.name, "vm0-ns-test-00");
+        assert_eq!(phase.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn untrusted_creation_conntrack_reset_deletes_namespace_before_readiness() {
+        let lifecycle = untrusted_flush_counted_deleted_lifecycle();
+        let probe_count = Arc::new(AtomicUsize::new(0));
+        let probe_count_for_probe = Arc::clone(&probe_count);
+        let probe = probe_for_test(move |_| {
+            let probe_count = Arc::clone(&probe_count_for_probe);
+            async move {
+                probe_count.fetch_add(1, Ordering::SeqCst);
+                Ok(1)
+            }
+        });
+
+        let error = create_namespace_with_readiness(
+            async { Ok(test_info("vm0-ns-test-00")) },
+            Some((probe, Duration::from_secs(1))),
+            lifecycle.ops,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            NetworkError::ConntrackReset {
+                namespace,
+                peer_ip,
+            } if namespace == "vm0-ns-test-00" && peer_ip == "10.200.0.2"
+        ));
+        assert_eq!(lifecycle.flush_count.load(Ordering::SeqCst), 1);
+        assert_eq!(lifecycle.delete_count.load(Ordering::SeqCst), 1);
+        assert_eq!(probe_count.load(Ordering::SeqCst), 0);
     }
 
     fn blocking_trusted_flush_lifecycle() -> BlockingFlushLifecycle {
