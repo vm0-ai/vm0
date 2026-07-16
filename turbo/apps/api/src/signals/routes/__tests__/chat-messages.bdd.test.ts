@@ -3552,11 +3552,14 @@ describe("CHAT-02: shared user message queue", () => {
       },
       [201],
     );
+    let sendSettled = false;
     const sendOutcome = send.then(
       (value) => {
+        sendSettled = true;
         return { ok: true as const, value };
       },
       (error: unknown) => {
+        sendSettled = true;
         return { ok: false as const, error };
       },
     );
@@ -3569,19 +3572,11 @@ describe("CHAT-02: shared user message queue", () => {
 
     await publicationStarted.promise;
     await expect
-      .poll(async () => {
-        const runList = await api.listAgentRuns(actor, {
-          status: "queued,pending,running,completed,failed,timeout,cancelled",
-          limit: 100,
-        });
-        return runList.runs.some((run) => {
-          return run.prompt === prompt;
-        });
+      .poll(() => {
+        return sendSettled;
       })
-      .toBe(true);
+      .toBeTruthy();
     expect(releasePublication.settled()).toBeFalsy();
-
-    releasePublication.resolve(undefined);
     const outcome = await sendOutcome;
     if (!outcome.ok) {
       throw outcome.error;
@@ -3597,12 +3592,25 @@ describe("CHAT-02: shared user message queue", () => {
       prompt,
     );
 
+    await expect
+      .poll(async () => {
+        const runList = await api.listAgentRuns(actor, {
+          status: "queued,pending,running,completed,failed,timeout,cancelled",
+          limit: 100,
+        });
+        return runList.runs.some((run) => {
+          return run.prompt === prompt;
+        });
+      })
+      .toBe(true);
+
     const threadListPublishes = context.mocks.ably.publish.mock.calls.filter(
       ([topic]) => {
         return topic === "threadListChanged";
       },
     );
     expect(threadListPublishes).toHaveLength(1);
+    releasePublication.resolve(undefined);
     await cancelChatRun(actor, sent.body.runId);
   }, 90_000);
 
