@@ -203,9 +203,11 @@ describe("chat message action cards", () => {
     const messageId = "c0000000-0000-4000-a000-000000000011";
     const mailDraftId = "c0000000-0000-4000-a000-000000000012";
     const createdAt = "2026-07-14T10:00:00.000Z";
+    let draftRequests = 0;
     let sentBody: unknown = null;
 
     context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      draftRequests += 1;
       return respond(200, {
         mailDraftId,
         mailDraft: {
@@ -301,6 +303,7 @@ describe("chat message action cards", () => {
     expect(within(card).getByRole("textbox", { name: "From" })).toHaveAttribute(
       "readonly",
     );
+    expect(draftRequests).toBe(1);
   });
 
   it("lets users authorize connectors and confirm permissions from assistant messages", async () => {

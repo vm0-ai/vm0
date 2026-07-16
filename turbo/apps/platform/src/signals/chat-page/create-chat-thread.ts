@@ -116,7 +116,10 @@ import type {
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
-import { createMailDraftLoaderSignals } from "./mail-draft.ts";
+import {
+  createMailDraftLoaderSignals,
+  type MailDraftResource,
+} from "./mail-draft.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -904,7 +907,6 @@ function createAgentInfoSignals(
 // ---------------------------------------------------------------------------
 
 function createThreadUIState() {
-  const mailDrafts = createMailDraftLoaderSignals();
   // Timeline expansion
   const internalExpandedIds$ = state(new Set<string>());
 
@@ -957,7 +959,6 @@ function createThreadUIState() {
   );
 
   return {
-    mailDrafts,
     timelineExpandedIds$,
     toggleTimelineExpanded$,
     copiedMessageId$,
@@ -1233,9 +1234,12 @@ function setLatestUsageForRun(
 
 function createRenderedChatGroups(
   semanticMessages$: Computed<SemanticChatMessage[]>,
+  mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>,
 ) {
-  const transcriptMessages$ =
-    createTranscriptMessagesComputed(semanticMessages$);
+  const transcriptMessages$ = createTranscriptMessagesComputed(
+    semanticMessages$,
+    mailDraftById$,
+  );
 
   const allRenderedChatGroups$ = computed(
     async (get): Promise<GroupedChatMessageGroup[]> => {
@@ -1322,6 +1326,7 @@ function mergeServerMessages(
 function createWritePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
+  registerMailDraftMessages$: Command<void, [readonly PagedChatMessage[]]>,
 ) {
   return command(
     async (
@@ -1343,6 +1348,7 @@ function createWritePersistentMessages(
       for (const _ of newlyCompletedRunIds) {
         captureTaskCompletedSuccessfully();
       }
+      set(registerMailDraftMessages$, msgs);
       set(persistentMessages$, (prev) => {
         return mergeServerMessages([prev, msgs]);
       });
@@ -1401,14 +1407,29 @@ function createRawMessagesComputed({
 
 function createTranscriptMessagesComputed(
   semanticMessages$: Computed<SemanticChatMessage[]>,
+  mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
   return computed((get): Promise<EnrichedChatMessage[]> => {
+    const mailDraftById = get(mailDraftById$);
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
         const { message, isQueued, isOptimisticRun } = entry;
         const { blocks } = parseBodyRenderBlocks(message.content ?? "", {
           previews: message.role === "assistant",
         });
+        let mailDraftResource: EnrichedChatMessage["mailDraftResource"] = null;
+        if (message.mailDraftId !== undefined) {
+          const mailDraft$ = mailDraftById.get(message.mailDraftId);
+          if (mailDraft$ === undefined) {
+            throw new Error(
+              `Mail draft resource was not registered: ${message.mailDraftId}`,
+            );
+          }
+          mailDraftResource = {
+            mailDraftId: message.mailDraftId,
+            mailDraft$,
+          };
+        }
         if (message.role !== "assistant") {
           return {
             ...message,
@@ -1416,6 +1437,7 @@ function createTranscriptMessagesComputed(
             blocks: enrichBlocksWithTextPreviews(blocks),
             isQueued,
             isOptimisticRun,
+            mailDraftResource,
           };
         }
         return {
@@ -1424,6 +1446,7 @@ function createTranscriptMessagesComputed(
           blocks: enrichBlocksWithTextPreviews(blocks),
           isQueued,
           isOptimisticRun: false,
+          mailDraftResource,
         };
       }),
     );
@@ -2151,6 +2174,7 @@ function createActiveGoalObjectiveComputed(
 }
 
 function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
+  const mailDrafts = createMailDraftLoaderSignals();
   const persistentChatMessages$ = state<PagedChatMessage[]>([]);
   const hasReachedOldestMessage$ = state(false);
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
@@ -2174,15 +2198,20 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
   // because goal markers are control rows, not transcript rows.
   const activeGoalObjective$ = createActiveGoalObjectiveComputed(rawMessages$);
 
-  const renderedMessages = createRenderedChatGroups(semanticMessages$);
+  const renderedMessages = createRenderedChatGroups(
+    semanticMessages$,
+    mailDrafts.mailDraftById$,
+  );
 
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
     persistentChatMessages$,
+    mailDrafts.registerMailDraftMessages$,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
+      set(mailDrafts.registerMailDraftMessages$, messages);
       set(persistentChatMessages$, (previous) => {
         return mergeServerMessages([messages, previous]);
       });

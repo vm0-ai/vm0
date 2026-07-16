@@ -6610,7 +6610,6 @@ function PagedAssistantGroup({
       <PagedAssistantMessageItem
         key={message.id}
         message={message}
-        thread={thread}
         compactTop={compactTop}
       />
     );
@@ -6660,11 +6659,9 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({
   message,
-  thread,
   compactTop = false,
 }: {
   message: EnrichedChatMessage;
-  thread: ChatThreadSignals;
   compactTop?: boolean;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6672,7 +6669,8 @@ function PagedAssistantMessageItem({
     openImageLightbox(url);
   };
 
-  if (message.mailDraftId) {
+  if (message.mailDraftResource) {
+    const { mailDraftId, mailDraft$ } = message.mailDraftResource;
     return (
       <div
         className={cn(
@@ -6681,9 +6679,9 @@ function PagedAssistantMessageItem({
         )}
       >
         <MailDraftCard
-          key={message.mailDraftId}
-          mailDraftId={message.mailDraftId}
-          mailDraft$={thread.mailDrafts.byId(message.mailDraftId)}
+          key={mailDraftId}
+          mailDraftId={mailDraftId}
+          mailDraft$={mailDraft$}
         />
       </div>
     );
