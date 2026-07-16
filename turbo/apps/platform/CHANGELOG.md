@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.603.1](https://github.com/vm0-ai/vm0/compare/app-v0.603.0...app-v0.603.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **chat:** restore append-only queued message claims ([#21883](https://github.com/vm0-ai/vm0/issues/21883)) ([c4ba9fd](https://github.com/vm0-ai/vm0/commit/c4ba9fd85a3010950cd95cc2be0db75fc2997472))
+* hide connectors filter on mobile layouts ([#21806](https://github.com/vm0-ai/vm0/issues/21806)) ([4d20c3d](https://github.com/vm0-ai/vm0/commit/4d20c3dbe732fdadfecf2f6902da1004c9cfce41))
+
+
+### Refactoring
+
+* **mail:** store email drafts outside chat messages ([#21887](https://github.com/vm0-ai/vm0/issues/21887)) ([b269ede](https://github.com/vm0-ai/vm0/commit/b269edec386afe0413eddb62bfc90c046a91be89))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.1
+    * @vm0/core bumped to 8.438.1
+
 ## [0.603.0](https://github.com/vm0-ai/vm0/compare/app-v0.602.5...app-v0.603.0) (2026-07-16)
 
 
