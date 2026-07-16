@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 
 // ---------------------------------------------------------------------------
 // JobPermissionsTab UI state
@@ -14,6 +15,16 @@ export const setPermConnectorType$ = command(
     set(internalConnectorType$, type);
   },
 );
+
+export const agentPermissionMetadata$ = computed(async (get) => {
+  const connectorType = get(permConnectorType$);
+  if (!connectorType) {
+    return null;
+  }
+  return await get(
+    firewallPermissionMetadataByConnector({ connectorRef: connectorType }),
+  );
+});
 
 const internalPermSearch$ = state("");
 export const permSearch$ = computed((get) => {

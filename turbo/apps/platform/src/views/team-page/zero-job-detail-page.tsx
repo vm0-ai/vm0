@@ -90,7 +90,7 @@ import { noConnectorImg } from "../zero-page/platform-assets.ts";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
 import {
   applyUserPermissionGrants$,
-  userPermissionGrantsByAgent,
+  currentAgentUserPermissionGrants$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   allConnectorTypes$,
@@ -100,13 +100,14 @@ import {
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import {
-  agentVisibleWorkflows$,
+  currentAgentVisibleWorkflows$,
   allWorkflowAutomationEntries$,
   copyWorkflow$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   permConnectorType$,
+  agentPermissionMetadata$,
   setPermConnectorType$,
   permSearch$,
   setPermSearch$,
@@ -658,6 +659,7 @@ export function AgentPermissionsDrawer({
       targetKind={targetKind}
       connectorType={connectorType}
       connectorLabel={connectorLabel}
+      metadata$={agentPermissionMetadata$}
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
@@ -694,11 +696,7 @@ function JobPermissionsTab({
   const deauthorizeFn = useSet(deauthorizeAgentConnector$);
   const saveConnectors = useSet(saveAgentConnectors$);
   const pageSignal = useGet(pageSignal$);
-  const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByAgent({
-      agentId,
-    }),
-  );
+  const userGrantsLoadable = useLoadable(currentAgentUserPermissionGrants$);
   const userGrants =
     userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
   useUserPermissionGrantExpiryTick(userGrants);
@@ -867,8 +865,8 @@ function JobInstructionsTab() {
   );
 }
 
-function AgentWorkflowsTab({ agentId }: { readonly agentId: string }) {
-  const workflowsLoadable = useLastLoadable(agentVisibleWorkflows$(agentId));
+function AgentWorkflowsTab() {
+  const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
   const automationEntriesLoadable = useLastLoadable(
     allWorkflowAutomationEntries$,
   );
@@ -1016,7 +1014,7 @@ function AgentProfileSettings({
   onDelete: () => Promise<void>;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const workflowsLoadable = useLastLoadable(agentVisibleWorkflows$(agentId));
+  const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
   const agentsLoadable = useLoadable(agents$);
   const [, copyWorkflow] = useLoadableSet(copyWorkflow$);
 
@@ -1103,7 +1101,7 @@ function AgentTabContent({
       return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
     }
     case "workflows": {
-      return <AgentWorkflowsTab agentId={agentId} />;
+      return <AgentWorkflowsTab />;
     }
     case "profile": {
       return (

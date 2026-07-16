@@ -77,7 +77,7 @@ import { ConnectorPermissionDialog } from "./components/settings/connector-permi
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
 import {
   closeConnectorAccessManagement$,
-  connectorAuthorizedAgents,
+  connectorAuthorizedAgentsByType$,
   managedConnectorAccessType$,
   setManagedConnectorAccessType$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
@@ -555,11 +555,14 @@ function ConnectorAccessButton({
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
-  const agentsLoadable = useLastLoadable(
-    connectorAuthorizedAgents({ connectorType }),
+  const agentsByTypeLoadable = useLastLoadable(
+    connectorAuthorizedAgentsByType$,
   );
-  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const loading = agentsLoadable.state === "loading";
+  const agents =
+    agentsByTypeLoadable.state === "hasData"
+      ? (agentsByTypeLoadable.data.get(connectorType) ?? [])
+      : [];
+  const loading = agentsByTypeLoadable.state === "loading";
   const visibleNames = agents
     .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
     .map((agent) => {

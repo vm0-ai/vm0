@@ -13,6 +13,8 @@ import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-compo
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
+import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
+import type { WorkflowQueueSignals } from "./workflow-queue.ts";
 
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
@@ -110,6 +112,9 @@ export interface ChatThreadSignals {
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
+  // -- Thread-owned automation resources -----------------------------------
+  headerAutomations: HeaderAutomationSignals;
+  workflowQueue: WorkflowQueueSignals;
   // -- Per-thread UI state --------------------------------------------------
   timelineExpandedIds$: Computed<Set<string>>;
   toggleTimelineExpanded$: Command<void, [string]>;
