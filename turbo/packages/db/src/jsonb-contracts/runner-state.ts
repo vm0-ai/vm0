@@ -11,6 +11,7 @@ export interface RunnerHeldSessionState {
   };
   readonly workspaceCaches?: readonly {
     readonly profile: string;
+    readonly workspaceAffinityVersion?: 1;
   }[];
 }
 

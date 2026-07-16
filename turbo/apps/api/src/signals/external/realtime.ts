@@ -1,4 +1,5 @@
 import Ably from "ably";
+import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
@@ -277,6 +278,7 @@ export async function publishRunnerJobNotification(
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationAffinityProtectedUntil: string | null;
     readonly affinityProtectedUntil: string | null;
+    readonly sessionAffinityResource: SessionAffinityResource | null;
     readonly historyGenerationRunId: string | undefined;
   },
 ): Promise<boolean> {
@@ -291,6 +293,9 @@ export async function publishRunnerJobNotification(
           : {}),
         ...(metadata?.affinityProtectedUntil
           ? { affinityProtectedUntil: metadata.affinityProtectedUntil }
+          : {}),
+        ...(metadata?.sessionAffinityResource
+          ? { sessionAffinityResource: metadata.sessionAffinityResource }
           : {}),
         ...(metadata?.historyGenerationAffinityProtectedUntil
           ? {

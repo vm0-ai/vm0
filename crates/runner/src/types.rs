@@ -13,6 +13,7 @@ use crate::ids::RunId;
 pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_SESSION: usize = 8;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_HEARTBEAT: usize = 1024;
+pub(crate) const WORKSPACE_AFFINITY_VERSION: u8 = 1;
 
 fn is_false(value: &bool) -> bool {
     !*value
@@ -42,6 +43,24 @@ pub struct Job {
     pub history_generation_affinity_protected_until: Option<String>,
     #[serde(default)]
     pub affinity_protected_until: Option<String>,
+    #[serde(default)]
+    pub session_affinity_resource: Option<SessionAffinityResource>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SessionAffinityResource {
+    ReusableSandbox,
+    WorkspaceCache,
+}
+
+impl SessionAffinityResource {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::ReusableSandbox => "reusableSandbox",
+            Self::WorkspaceCache => "workspaceCache",
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1247,6 +1266,8 @@ pub struct ReusableSandboxState {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceCacheState {
     pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_affinity_version: Option<u8>,
 }
 
 /// Runner state snapshot sent to the server via heartbeat.
@@ -1353,7 +1374,8 @@ mod tests {
         let json = json!({
             "job": {
                 "runId": "550e8400-e29b-41d4-a716-446655440000",
-                "experimentalProfile": "browser"
+                "experimentalProfile": "browser",
+                "sessionAffinityResource": "workspaceCache"
             }
         });
         let resp: PollResponse = serde_json::from_value(json).unwrap();
@@ -1365,6 +1387,10 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(job.experimental_profile.as_deref(), Some("browser"));
+        assert_eq!(
+            job.session_affinity_resource,
+            Some(SessionAffinityResource::WorkspaceCache)
+        );
     }
 
     #[test]
@@ -1381,6 +1407,7 @@ mod tests {
         });
         let job: Job = serde_json::from_value(json).unwrap();
         assert!(job.experimental_profile.is_none());
+        assert!(job.session_affinity_resource.is_none());
     }
 
     #[test]
@@ -1969,6 +1996,7 @@ mod tests {
                 }),
                 workspace_caches: vec![WorkspaceCacheState {
                     profile: "vm0/large".into(),
+                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
                 }],
             }],
             mode: "running".into(),
@@ -1994,7 +2022,10 @@ mod tests {
                     "profile": "vm0/default",
                     "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
                 },
-                "workspaceCaches": [{ "profile": "vm0/large" }]
+                "workspaceCaches": [{
+                    "profile": "vm0/large",
+                    "workspaceAffinityVersion": 1
+                }]
             }])
         );
         assert_eq!(json["mode"], "running");

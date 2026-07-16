@@ -37,7 +37,8 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::paths::short_digest;
 use crate::provider::{
-    ClaimedJob, JobCandidate, PreLocalAdmissionOutcome, SessionHistoryGenerationLocalAvailability,
+    ClaimedJob, JobCandidate, LocalAdmissionResourceKind, PreLocalAdmissionOutcome,
+    SessionAffinityLocalResource, SessionHistoryGenerationLocalAvailability,
     SessionHistoryGenerationRelationship,
 };
 use crate::resource_budget::{BudgetLease, ResourceBudget};
@@ -46,7 +47,10 @@ use crate::restored_session_identity::{
 };
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
-use crate::types::{ExecutionContext, HeldSessionState, SandboxReuseResult};
+use crate::types::{
+    ExecutionContext, HeldSessionState, SandboxReuseResult, SessionAffinityResource,
+    WORKSPACE_AFFINITY_VERSION,
+};
 
 pub(super) struct DiscoveredJob {
     pub(super) candidate: JobCandidate,
@@ -77,6 +81,13 @@ enum LocalAdmissionResource {
 }
 
 impl LocalAdmissionResource {
+    fn kind(&self) -> LocalAdmissionResourceKind {
+        match self {
+            Self::Fresh(_) => LocalAdmissionResourceKind::Fresh,
+            Self::Reusable(_) => LocalAdmissionResourceKind::ReusableSandbox,
+        }
+    }
+
     fn session_history_generation_relationship(
         &self,
         target_generation_run_id: Option<RunId>,
@@ -127,7 +138,7 @@ struct AdmittedClaim {
 
 struct PreparedAffinityCandidate {
     candidate: JobCandidate,
-    exact_generation_reservation: Option<Box<ReservedIdleSandbox>>,
+    resource: Option<LocalAdmissionResource>,
 }
 
 struct ReuseAdmissionRequest<'a> {
@@ -488,7 +499,7 @@ async fn claim_with_local_admission(
 ) -> Option<AdmittedClaim> {
     let PreparedAffinityCandidate {
         mut candidate,
-        exact_generation_reservation,
+        resource,
     } = prepare_affinity_protected_candidate(
         candidate,
         profile_name,
@@ -502,8 +513,8 @@ async fn claim_with_local_admission(
 
     // Reserve either the exact reusable sandbox or fresh capacity before
     // claiming so a losing claim can restore all local ownership.
-    let resource = match exact_generation_reservation {
-        Some(reservation) => LocalAdmissionResource::Reusable(reservation),
+    let resource = match resource {
+        Some(resource) => resource,
         None => {
             acquire_local_admission_resource(
                 &candidate,
@@ -516,6 +527,7 @@ async fn claim_with_local_admission(
             .await?
         }
     };
+    candidate.set_local_admission_resource(resource.kind());
 
     // Insert cancel token before claiming so provider-side cancel channels
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
@@ -623,10 +635,13 @@ async fn prepare_affinity_protected_candidate(
         )
         .await
         {
+            let mut candidate =
+                candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+            candidate
+                .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
             return Some(PreparedAffinityCandidate {
-                candidate: candidate
-                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
-                exact_generation_reservation: Some(Box::new(reservation)),
+                candidate,
+                resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
             });
         }
 
@@ -648,33 +663,123 @@ async fn prepare_affinity_protected_candidate(
         return Some(PreparedAffinityCandidate {
             candidate: candidate
                 .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
-            exact_generation_reservation: None,
+            resource: None,
         });
     }
     let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
+        if candidate.session_affinity_resource().is_some() {
+            let delay = candidate
+                .affinity_protection_remaining()
+                .unwrap_or_default();
+            info!(
+                run_id = %candidate.run_id(),
+                delay_ms = delay.as_millis(),
+                "resource-class affinity candidate missing session metadata, deferring claim"
+            );
+            ctx.spawn_ctx.provider.defer_poll_after(delay).await;
+            return None;
+        }
         return Some(PreparedAffinityCandidate {
             candidate: candidate
                 .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::MissingSessionMetadata),
-            exact_generation_reservation: None,
+            resource: None,
         });
     };
 
-    let has_reusable = ctx.idle_pool.lock().await.has_reusable(
-        &cli_agent_session_id,
-        profile_name,
-        device_rate_limits,
-    );
-    let held_session_states = current_local_held_session_states(ctx).await;
-    let has_fresh_affinity = ctx.budget.can_afford(job_vcpu, job_memory)
-        && held_session_states
-            .iter()
-            .any(|state| state.session_id == cli_agent_session_id);
-    if has_reusable || has_fresh_affinity {
-        return Some(PreparedAffinityCandidate {
-            candidate: candidate
-                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
-            exact_generation_reservation: None,
-        });
+    match candidate.session_affinity_resource() {
+        Some(SessionAffinityResource::ReusableSandbox) => {
+            if let Some(reservation) = reserve_reusable_idle(
+                &cli_agent_session_id,
+                profile_name,
+                device_rate_limits,
+                None,
+                ctx,
+            )
+            .await
+            {
+                let mut candidate = candidate
+                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                candidate.set_session_affinity_local_resource(
+                    SessionAffinityLocalResource::ReusableSandbox,
+                );
+                return Some(PreparedAffinityCandidate {
+                    candidate,
+                    resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
+                });
+            }
+        }
+        Some(SessionAffinityResource::WorkspaceCache) => {
+            if let Some(reservation) = reserve_reusable_idle(
+                &cli_agent_session_id,
+                profile_name,
+                device_rate_limits,
+                None,
+                ctx,
+            )
+            .await
+            {
+                let mut candidate = candidate
+                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                candidate.set_session_affinity_local_resource(
+                    SessionAffinityLocalResource::ReusableSandbox,
+                );
+                return Some(PreparedAffinityCandidate {
+                    candidate,
+                    resource: Some(LocalAdmissionResource::Reusable(Box::new(reservation))),
+                });
+            }
+
+            let held_session_states = current_local_held_session_states(ctx).await;
+            let has_capable_workspace = held_session_states.iter().any(|state| {
+                state.session_id == cli_agent_session_id
+                    && state.workspace_caches.iter().any(|workspace| {
+                        workspace.profile == profile_name
+                            && workspace.workspace_affinity_version
+                                == Some(WORKSPACE_AFFINITY_VERSION)
+                    })
+            });
+            if has_capable_workspace
+                && let Some(lease) =
+                    ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
+            {
+                let mut candidate = candidate
+                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                candidate.set_session_affinity_local_resource(
+                    SessionAffinityLocalResource::WorkspaceCache,
+                );
+                return Some(PreparedAffinityCandidate {
+                    candidate,
+                    resource: Some(LocalAdmissionResource::Fresh(lease)),
+                });
+            }
+        }
+        None => {
+            // Transitional fallback for API candidates without resource classes.
+            // Remove after the rollout gate tracked by #21871.
+            let has_reusable = ctx.idle_pool.lock().await.has_reusable(
+                &cli_agent_session_id,
+                profile_name,
+                device_rate_limits,
+            );
+            let held_session_states = current_local_held_session_states(ctx).await;
+            let has_fresh_affinity = ctx.budget.can_afford(job_vcpu, job_memory)
+                && held_session_states
+                    .iter()
+                    .any(|state| state.session_id == cli_agent_session_id);
+            if has_reusable || has_fresh_affinity {
+                let mut candidate = candidate
+                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                candidate.set_session_affinity_local_resource(if has_reusable {
+                    SessionAffinityLocalResource::ReusableSandbox
+                } else {
+                    SessionAffinityLocalResource::LegacySession
+                });
+                return Some(PreparedAffinityCandidate {
+                    candidate,
+                    resource: None,
+                });
+            }
+        }
     }
 
     let delay = candidate

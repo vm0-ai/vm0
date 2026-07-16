@@ -13,7 +13,7 @@ use crate::ids::RunId;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{
     HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
-    MAX_WORKSPACE_CACHES_PER_SESSION, WorkspaceCacheState,
+    MAX_WORKSPACE_CACHES_PER_SESSION, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheState,
 };
 
 use super::entry::is_cache_key_name;
@@ -640,6 +640,7 @@ impl SessionWorkspaceCache {
                     reusable_sandbox: None,
                     workspace_caches: vec![WorkspaceCacheState {
                         profile: metadata.profile_name,
+                        workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
                     }],
                 });
             }
@@ -1512,9 +1513,12 @@ pub(crate) fn cap_workspace_held_session_states(
     let mut states: Vec<HeldSessionState> = by_session
         .into_values()
         .map(|mut state| {
-            state
-                .workspace_caches
-                .sort_unstable_by(|a, b| a.profile.cmp(&b.profile));
+            state.workspace_caches.sort_unstable_by(|a, b| {
+                a.profile.cmp(&b.profile).then_with(|| {
+                    b.workspace_affinity_version
+                        .cmp(&a.workspace_affinity_version)
+                })
+            });
             state
                 .workspace_caches
                 .dedup_by(|a, b| a.profile == b.profile);
