@@ -21,6 +21,8 @@ const POOL_ACQUIRE_PATH_ATTRIBUTE = "vm0.db.pool.acquire.path";
 const CONNECTION_LOOKUP_DURATION_ATTRIBUTE =
   "vm0.db.connection.lookup.duration_ms";
 const CONNECTION_LOOKUP_HEDGED_ATTRIBUTE = "vm0.db.connection.lookup.hedged";
+const CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE =
+  "vm0.db.connection.lookup.hedge_budget_unavailable";
 const CONNECTION_LOOKUP_SOURCE_ATTRIBUTE = "vm0.db.connection.lookup.source";
 const CONNECTION_SOCKET_CONNECT_DURATION_ATTRIBUTE =
   "vm0.db.connection.socket_connect.duration_ms";
@@ -30,7 +32,7 @@ const CONNECTION_ATTEMPT_FAILED_COUNT_ATTRIBUTE =
 const CONNECTION_ATTEMPT_TIMEOUT_COUNT_ATTRIBUTE =
   "vm0.db.connection.attempt_timeout_count";
 const CONNECTION_ADDRESS_FAMILY_ATTRIBUTE = "vm0.db.connection.address_family";
-const LOOKUP_HEDGE_DELAY_MS = 250;
+const LOOKUP_HEDGE_DELAY_MS = 150;
 
 type AnyArgs = readonly unknown[];
 type PgQuery = (...args: AnyArgs) => unknown;
@@ -142,12 +144,14 @@ function createHedgedLookup(
     function startSecondaryLookup(): void {
       hedgeDelayController = undefined;
       removePendingHedgeListeners();
-      if (
-        primarySettled ||
-        socket.destroyed ||
-        !socket.connecting ||
-        !claimSecondaryLookup()
-      ) {
+      if (primarySettled || socket.destroyed || !socket.connecting) {
+        return;
+      }
+      if (!claimSecondaryLookup()) {
+        querySpan?.setAttribute(
+          CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE,
+          true,
+        );
         return;
       }
 
