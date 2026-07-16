@@ -3,6 +3,8 @@ import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/mo
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, sql } from "drizzle-orm";
 
@@ -88,6 +90,35 @@ async function existingDefaultAgentId(
   return existing?.id ?? null;
 }
 
+async function upsertBootstrapOwnerMembership(
+  tx: DbTransaction,
+  args: EnsureOrgLimitedFreeBootstrapArgs,
+): Promise<void> {
+  const cachedAt = nowDate();
+  await tx
+    .insert(orgMembersCache)
+    .values({
+      orgId: args.orgId,
+      userId: args.ownerUserId,
+      role: "admin",
+      cachedAt,
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: { role: "admin", cachedAt },
+    });
+
+  await tx
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: args.orgId,
+      userId: args.ownerUserId,
+      createdAt: cachedAt,
+      updatedAt: cachedAt,
+    })
+    .onConflictDoNothing();
+}
+
 async function ensureBootstrapComposeRow(
   tx: DbTransaction,
   args: EnsureOrgLimitedFreeBootstrapArgs,
@@ -133,6 +164,7 @@ async function reserveBootstrapCompose(
   args: EnsureOrgLimitedFreeBootstrapArgs,
 ): Promise<BootstrapReservation> {
   await lockOrgBootstrap(tx, args.orgId);
+  await upsertBootstrapOwnerMembership(tx, args);
 
   const existingAgentId = await existingDefaultAgentId(tx, args.orgId);
   if (existingAgentId) {

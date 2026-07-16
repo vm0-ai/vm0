@@ -55,6 +55,7 @@ pub struct NetnsLease {
     info: NetnsInfo,
     pool_instance_id: u64,
     active: bool,
+    reuse_eligible: bool,
 }
 
 impl NetnsLease {
@@ -63,6 +64,7 @@ impl NetnsLease {
             info,
             pool_instance_id,
             active: true,
+            reuse_eligible: true,
         }
     }
 
@@ -91,6 +93,18 @@ impl NetnsLease {
 
     pub(super) fn pool_instance_id(&self) -> u64 {
         self.pool_instance_id
+    }
+
+    pub(crate) fn mark_non_reusable(&mut self) {
+        self.reuse_eligible = false;
+    }
+
+    pub(crate) fn mark_reusable(&mut self) {
+        self.reuse_eligible = true;
+    }
+
+    pub(super) fn reuse_eligible(&self) -> bool {
+        self.reuse_eligible
     }
 
     pub(super) fn into_info(mut self) -> NetnsInfo {

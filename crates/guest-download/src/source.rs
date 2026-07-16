@@ -9,6 +9,7 @@ use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
+const LOOKUP_ERROR_PREFIX: &str = "failed to lookup address information:";
 
 /// Global HTTP agent with timeout and system certificate verification.
 /// Uses platform verifier to trust system CA certificates (including proxy CA).
@@ -70,6 +71,10 @@ fn classify_http_error(error: &ureq::Error) -> (bool, String) {
             ),
         ),
         ureq::Error::ConnectionFailed => (true, request_error_message("connection")),
+        ureq::Error::Io(error) if error.to_string().starts_with(LOOKUP_ERROR_PREFIX) => (
+            true,
+            "HTTP request error (kind=dns phase=resolve)".to_string(),
+        ),
         ureq::Error::Io(error) => (
             true,
             format!("HTTP request error (kind=io io_kind={:?})", error.kind()),

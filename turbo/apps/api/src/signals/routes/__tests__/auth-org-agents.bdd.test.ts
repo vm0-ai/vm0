@@ -59,19 +59,16 @@ async function onboardAdmin(
     orgState.name = orgName;
   }
   api.mockClerkOrg(admin, orgState);
-  const setup = await api.setupOnboarding(admin, {
+  const bootstrap = await api.bootstrapOnboarding(admin, {
     displayName: options.displayName ?? "BDD Default Agent",
-    workspaceName: options.workspaceName ?? "BDD Workspace",
     sound: "calm",
-    timezone: "UTC",
-    role: "engineering",
   });
-  if (setup.status !== 200 && setup.status !== 409) {
+  if (bootstrap.status !== 200) {
     throw new Error(
-      `Expected onboarding setup to succeed, got ${setup.status}`,
+      `Expected onboarding bootstrap to succeed, got ${bootstrap.status}`,
     );
   }
-  return setup.body.agentId;
+  return bootstrap.body.agentId;
 }
 
 describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
@@ -126,20 +123,20 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expect(defaultAgent.displayName).toBe("BDD Default Agent");
     expect(defaultAgent.avatarUrl).toBe(DEFAULT_AGENT_AVATAR_URL);
 
-    const repeatedSetup = await api.setupOnboarding(admin, {
+    const repeatedBootstrap = await api.bootstrapOnboarding(admin, {
       displayName: "BDD Default Agent Repeated",
-      workspaceName: "BDD Chain Org",
     });
-    if (repeatedSetup.status !== 200 && repeatedSetup.status !== 409) {
+    if (repeatedBootstrap.status !== 200) {
       throw new Error(
-        `Expected repeated onboarding setup to be idempotent, got ${repeatedSetup.status}`,
+        `Expected repeated onboarding bootstrap to be idempotent, got ${repeatedBootstrap.status}`,
       );
     }
-    expect(repeatedSetup.body.agentId).toBe(defaultAgentId);
+    expect(repeatedBootstrap.body.agentId).toBe(defaultAgentId);
 
-    const paidOnboardingBilling = await runsApi.readBillingStatus(admin);
-    expect(paidOnboardingBilling).toMatchObject({
-      onboardingPaymentPending: true,
+    const onboardingBilling = await runsApi.readBillingStatus(admin);
+    expect(onboardingBilling).toMatchObject({
+      tier: "limited-free-1",
+      onboardingPaymentPending: false,
     });
 
     const removedLimitedFreeEndpoint = await api.requestRawJson(
@@ -151,9 +148,9 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     );
     expect(removedLimitedFreeEndpoint.status).toBe(404);
 
-    const afterRepeatedSetup = await api.listAgents(admin);
+    const afterRepeatedBootstrap = await api.listAgents(admin);
     expect(
-      afterRepeatedSetup.filter((agent) => {
+      afterRepeatedBootstrap.filter((agent) => {
         return agent.agentId === defaultAgentId;
       }),
     ).toHaveLength(1);
@@ -657,32 +654,7 @@ describe("ORG-03 onboarding status mapping", () => {
       hasDefaultAgent: true,
     });
 
-    const setup = await api.setupOnboarding(admin, {
-      displayName: "BDD Status Agent",
-      sound: "friendly",
-    });
-    if (setup.status !== 200) {
-      throw new Error(
-        `Expected onboarding setup to succeed, got ${setup.status}`,
-      );
-    }
-    const agentId = setup.body.agentId;
-    expect(agentId).toBe(bootstrappedAgentId);
-
-    const paymentPending = await api.readOnboardingStatus(admin);
-    expect(paymentPending).toStrictEqual({
-      needsOnboarding: false,
-      onboardingComplete: true,
-      isAdmin: true,
-      hasOrg: true,
-      hasDefaultAgent: true,
-      defaultAgentId: agentId,
-      defaultAgentMetadata: {
-        displayName: "Zero",
-        sound: "professional",
-        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
-      },
-    });
+    const agentId = bootstrappedAgentId;
 
     await runsApi.grantProEntitlement(admin);
     const entitled = await api.readOnboardingStatus(admin);

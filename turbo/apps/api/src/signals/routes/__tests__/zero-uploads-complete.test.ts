@@ -238,7 +238,7 @@ describe("POST /api/zero/uploads/complete", () => {
 
   it("rejects suspended orgs before completing the upload", async () => {
     const actor = bdd.user();
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD suspended upload completion",
     });
     await seedOrgMetadata({

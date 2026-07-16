@@ -1631,7 +1631,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     // "not_accessible" status is covered by the hidden-private-default
     // journey in this describe.
     const onboarded = bdd.user();
-    await bdd.setupOnboarding(onboarded, {
+    await bdd.bootstrapOnboarding(onboarded, {
       displayName: "BDD Slack Deleted Agent",
     });
     const status = await bdd.readOnboardingStatus(onboarded);
@@ -1666,7 +1666,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     integrations.configureSlackAppMocks();
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD Slack Default Agent",
     });
     const status = await bdd.readOnboardingStatus(actor);
@@ -1822,7 +1822,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     integrations.configureSlackAppMocks();
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD Slack Login Agent",
     });
     const { teamId } = await integrations.installSlackWorkspace(actor);
@@ -1858,7 +1858,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       errors: { agent_select_block: "Please choose an agent." },
     });
 
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD Slack Picker Default",
     });
     const status = await bdd.readOnboardingStatus(actor);
@@ -2147,7 +2147,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     integrations.configureSlackAppMocks();
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD Slack Home Agent",
     });
     const slackUserId = uniqueSlackUserId();
@@ -2312,7 +2312,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     integrations.configureSlackAppMocks();
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "BDD Slack Failing Default",
     });
     if (!actor.orgId) {

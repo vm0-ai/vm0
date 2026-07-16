@@ -7,7 +7,6 @@ import JSZip from "jszip";
 import {
   createDeferredPromise,
   jsonParseOr,
-  tapError,
   withCleanup,
 } from "../../signals/utils.ts";
 import {
@@ -21,6 +20,9 @@ import {
 } from "./presentation-html-edit-protocol.ts";
 
 const EXPORT_FONT_READY_TIMEOUT_MS = 800;
+const EXPORT_IMAGE_READY_TIMEOUT_MS = 15_000;
+const EXPORT_RESOURCE_FETCH_CONCURRENCY = 4;
+const EXPORT_RESOURCE_FETCH_TIMEOUT_MS = 15_000;
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const CONTENT_TYPES_PATH = "[Content_Types].xml";
 const PRESENTATION_PATH = "ppt/presentation.xml";
@@ -148,9 +150,16 @@ function resolvedFetchableResourceUrl(
     : null;
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
+function blobToDataUrl(blob: Blob, signal: AbortSignal): Promise<string> {
+  signal.throwIfAborted();
   const reader = new FileReader();
-  const deferred = createDeferredPromise<string>(AbortSignal.any([]));
+  const deferred = createDeferredPromise<string>(signal);
+  const abortReader = () => {
+    if (reader.readyState === reader.LOADING) {
+      reader.abort();
+    }
+  };
+  signal.addEventListener("abort", abortReader, { once: true });
   reader.addEventListener(
     "load",
     () => {
@@ -170,51 +179,102 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     { once: true },
   );
   reader.readAsDataURL(blob);
-  return deferred.promise;
+  return withCleanup(deferred.promise, () => {
+    signal.removeEventListener("abort", abortReader);
+  });
 }
 
 async function fetchResourceAsDataUrl(
   url: string,
   signal: AbortSignal,
-): Promise<string | null> {
-  const response = await tapError(
-    fetch(readableAttachmentResourceUrl(url), {
-      cache: "reload",
-      mode: "cors",
-      signal,
-    }),
-  );
-  signal.throwIfAborted();
-  if (!response?.ok) {
-    return null;
+): Promise<string> {
+  const fetchSignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(EXPORT_RESOURCE_FETCH_TIMEOUT_MS),
+  ]);
+  const response = await fetch(readableAttachmentResourceUrl(url), {
+    cache: "reload",
+    mode: "cors",
+    signal: fetchSignal,
+  });
+  if (!response.ok) {
+    throw new Error(`Presentation resource fetch failed (${response.status})`);
   }
-  const dataUrl = await tapError(blobToDataUrl(await response.blob()));
-  signal.throwIfAborted();
-  return dataUrl ?? null;
+  return blobToDataUrl(await response.blob(), fetchSignal);
 }
 
-type ResourceDataUrlCache = Map<string, Promise<string | null>>;
+function sameOriginResourceUrl(url: string, baseUrl: string): boolean {
+  return new URL(url).origin === new URL(baseUrl).origin;
+}
 
-function cachedResourceDataUrl(
-  cache: ResourceDataUrlCache,
-  url: string,
+const CSS_URL_PATTERN = /url\(\s*(?:"([^"]+)"|'([^']+)'|([^'")]+))\s*\)/g;
+
+function addCssResourceUrls(
+  urls: Set<string>,
+  cssText: string,
+  baseUrl: string,
+): void {
+  for (const match of cssText.matchAll(CSS_URL_PATTERN)) {
+    const rawUrl = match[1] ?? match[2] ?? match[3];
+    if (rawUrl === undefined) {
+      continue;
+    }
+    const url = resolvedFetchableResourceUrl(rawUrl, baseUrl);
+    if (url) {
+      urls.add(url);
+    }
+  }
+}
+
+function exportResourceUrls(doc: Document, baseUrl: string): string[] {
+  const urls = new Set<string>();
+  for (const image of doc.querySelectorAll("img")) {
+    const src = image.getAttribute("src");
+    const url = src ? resolvedFetchableResourceUrl(src, baseUrl) : null;
+    if (url) {
+      urls.add(url);
+    }
+  }
+  for (const element of doc.querySelectorAll("[style]")) {
+    addCssResourceUrls(urls, element.getAttribute("style") ?? "", baseUrl);
+  }
+  for (const style of doc.querySelectorAll("style")) {
+    addCssResourceUrls(urls, style.textContent ?? "", baseUrl);
+  }
+  return Array.from(urls).filter((url) => {
+    return sameOriginResourceUrl(url, baseUrl);
+  });
+}
+
+async function fetchExportResourceDataUrls(
+  urls: readonly string[],
   signal: AbortSignal,
-): Promise<string | null> {
-  const cached = cache.get(url);
-  if (cached) {
-    return cached;
+): Promise<ReadonlyMap<string, string>> {
+  const dataUrls = new Map<string, string>();
+  for (
+    let index = 0;
+    index < urls.length;
+    index += EXPORT_RESOURCE_FETCH_CONCURRENCY
+  ) {
+    signal.throwIfAborted();
+    const batch = urls.slice(index, index + EXPORT_RESOURCE_FETCH_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (url) => {
+        return { dataUrl: await fetchResourceAsDataUrl(url, signal), url };
+      }),
+    );
+    for (const result of results) {
+      dataUrls.set(result.url, result.dataUrl);
+    }
   }
-  const dataUrl = fetchResourceAsDataUrl(url, signal);
-  cache.set(url, dataUrl);
-  return dataUrl;
+  return dataUrls;
 }
 
-async function inlineImageSrc(
+function resolveImageSrc(
   image: HTMLImageElement,
   baseUrl: string,
-  cache: ResourceDataUrlCache,
-  signal: AbortSignal,
-): Promise<void> {
+  dataUrls: ReadonlyMap<string, string>,
+): void {
   const src = image.getAttribute("src");
   if (!src) {
     return;
@@ -223,21 +283,15 @@ async function inlineImageSrc(
   if (!url) {
     return;
   }
-  const dataUrl = await cachedResourceDataUrl(cache, url, signal);
-  if (dataUrl) {
-    image.src = dataUrl;
-  }
+  image.setAttribute("src", dataUrls.get(url) ?? url);
 }
 
-const CSS_URL_PATTERN = /url\(\s*(?:"([^"]+)"|'([^']+)'|([^'")]+))\s*\)/g;
-
-async function inlineCssResourceUrls(
+function resolveCssResourceUrls(
   cssText: string,
   baseUrl: string,
-  cache: ResourceDataUrlCache,
-  signal: AbortSignal,
-): Promise<string> {
-  let inlinedCssText = "";
+  dataUrls: ReadonlyMap<string, string>,
+): string {
+  let resolvedCssText = "";
   let previousIndex = 0;
   for (const match of cssText.matchAll(CSS_URL_PATTERN)) {
     const matchedText = match[0];
@@ -247,24 +301,21 @@ async function inlineCssResourceUrls(
       continue;
     }
 
-    inlinedCssText += cssText.slice(previousIndex, matchIndex);
+    resolvedCssText += cssText.slice(previousIndex, matchIndex);
     previousIndex = matchIndex + matchedText.length;
 
     const url = resolvedFetchableResourceUrl(rawUrl, baseUrl);
-    const dataUrl = url
-      ? await cachedResourceDataUrl(cache, url, signal)
-      : null;
-    inlinedCssText += dataUrl ? `url("${dataUrl}")` : matchedText;
+    const resolvedUrl = url ? (dataUrls.get(url) ?? url) : null;
+    resolvedCssText += resolvedUrl ? `url("${resolvedUrl}")` : matchedText;
   }
-  return inlinedCssText + cssText.slice(previousIndex);
+  return resolvedCssText + cssText.slice(previousIndex);
 }
 
-async function inlineCssAttributeImages(
+function resolveCssAttributeResourceUrls(
   doc: Document,
   baseUrl: string,
-  cache: ResourceDataUrlCache,
-  signal: AbortSignal,
-): Promise<void> {
+  dataUrls: ReadonlyMap<string, string>,
+): void {
   for (const element of doc.querySelectorAll("[style]")) {
     const style = element.getAttribute("style");
     if (!style) {
@@ -272,42 +323,41 @@ async function inlineCssAttributeImages(
     }
     element.setAttribute(
       "style",
-      await inlineCssResourceUrls(style, baseUrl, cache, signal),
+      resolveCssResourceUrls(style, baseUrl, dataUrls),
     );
   }
 }
 
-async function inlineStyleElementImages(
+function resolveStyleElementResourceUrls(
   doc: Document,
   baseUrl: string,
-  cache: ResourceDataUrlCache,
-  signal: AbortSignal,
-): Promise<void> {
+  dataUrls: ReadonlyMap<string, string>,
+): void {
   for (const style of doc.querySelectorAll("style")) {
-    style.textContent = await inlineCssResourceUrls(
+    style.textContent = resolveCssResourceUrls(
       style.textContent ?? "",
       baseUrl,
-      cache,
-      signal,
+      dataUrls,
     );
   }
 }
 
-async function inlineFetchableImages(
+async function prepareExportResourceUrls(
   doc: Document,
   baseUrl: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const cache: ResourceDataUrlCache = new Map();
-  await Promise.all([
-    Promise.all(
-      Array.from(doc.querySelectorAll("img")).map(async (image) => {
-        await inlineImageSrc(image, baseUrl, cache, signal);
-      }),
-    ),
-    inlineCssAttributeImages(doc, baseUrl, cache, signal),
-    inlineStyleElementImages(doc, baseUrl, cache, signal),
-  ]);
+  // The export frame has an opaque sandbox origin, so hosted-site assets must be
+  // read by the parent and inlined. Cross-origin CORS assets remain URL-backed.
+  const dataUrls = await fetchExportResourceDataUrls(
+    exportResourceUrls(doc, baseUrl),
+    signal,
+  );
+  for (const image of doc.querySelectorAll("img")) {
+    resolveImageSrc(image, baseUrl, dataUrls);
+  }
+  resolveCssAttributeResourceUrls(doc, baseUrl, dataUrls);
+  resolveStyleElementResourceUrls(doc, baseUrl, dataUrls);
 }
 
 function createExportBootstrapScript(options: DomToPptxOptions): string {
@@ -318,6 +368,7 @@ function createExportBootstrapScript(options: DomToPptxOptions): string {
   const slideSelectors = ${JSON.stringify(SLIDE_SELECTORS)};
   const activeSlideClassNames = ${JSON.stringify(PRESENTATION_ACTIVE_SLIDE_CLASS_NAMES)};
   const fontReadyTimeoutMs = ${JSON.stringify(EXPORT_FONT_READY_TIMEOUT_MS)};
+  const imageReadyTimeoutMs = ${JSON.stringify(EXPORT_IMAGE_READY_TIMEOUT_MS)};
 
   const post = (message) => {
     window.parent.postMessage({
@@ -749,6 +800,22 @@ function createExportComplexBackgroundMaterializationScript(): string {
 
 function createExportImageWaitScript(): string {
   return `
+  const withTimeout = (promise, timeoutMs, message) => {
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+      promise.then(
+        (value) => {
+          window.clearTimeout(timeout);
+          resolve(value);
+        },
+        (error) => {
+          window.clearTimeout(timeout);
+          reject(error);
+        },
+      );
+    });
+  };
+
   const waitForImages = async (nodes) => {
     const images = nodes.flatMap((node) => {
       const nested = Array.from(node.querySelectorAll("img"));
@@ -756,18 +823,24 @@ function createExportImageWaitScript(): string {
     });
 
     await Promise.all(
-      images.map(async (image) => {
+      images.map((image) => {
         if (image.complete && image.naturalWidth > 0) {
-          return;
+          return Promise.resolve();
         }
+        let ready;
         if (typeof image.decode === "function") {
-          await settle(image.decode());
-          return;
+          ready = settle(image.decode());
+        } else {
+          ready = new Promise((resolve) => {
+            image.addEventListener("load", resolve, { once: true });
+            image.addEventListener("error", resolve, { once: true });
+          });
         }
-        await new Promise((resolve) => {
-          image.addEventListener("load", resolve, { once: true });
-          image.addEventListener("error", resolve, { once: true });
-        });
+        return withTimeout(
+          ready,
+          imageReadyTimeoutMs,
+          "Presentation image did not load before export",
+        );
       }),
     );
   };
@@ -1026,7 +1099,7 @@ async function htmlWithExportScript(
   signal: AbortSignal,
 ): Promise<string> {
   materializePresentationThemeSwitcherDefaults(doc);
-  await inlineFetchableImages(doc, baseUrl, signal);
+  await prepareExportResourceUrls(doc, baseUrl, signal);
   for (const script of doc.querySelectorAll("script")) {
     script.remove();
   }

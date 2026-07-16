@@ -71,6 +71,8 @@ const usageAllowanceSchema = z.object({
 
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
+  supportByok: z.boolean().optional(),
+  restrictedVm0Models: z.boolean().optional(),
   credits: z.number(),
   onboardingPaymentPending: z.boolean(),
   subscriptionStatus: z.string().nullable(),

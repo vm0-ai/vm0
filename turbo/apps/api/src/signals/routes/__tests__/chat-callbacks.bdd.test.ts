@@ -2993,7 +2993,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         orgRole: "admin",
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: http://localhost:3002/?settings=providers",
+      "Claude Code could not authenticate with the configured Anthropic API key. Update or replace the API key in Model Providers, then retry.\n\nOpen Model Providers: http://localhost:3002/?settings=model",
     );
     await expect(
       failAndReadError({
@@ -3001,7 +3001,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         orgRole: "member",
       }),
     ).resolves.toBe(
-      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: http://localhost:3002/?settings=providers",
+      "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.\n\nShare with an admin: http://localhost:3002/?settings=model",
     );
   }, 90_000);
 });

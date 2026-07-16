@@ -55,6 +55,10 @@ pub enum NetworkError {
     #[error(transparent)]
     DnsReadiness(#[from] DnsReadinessError),
 
+    /// Stale conntrack state could not be cleared before admitting a new namespace.
+    #[error("failed to reset conntrack before admitting namespace {namespace} (peer {peer_ip})")]
+    ConntrackReset { namespace: String, peer_ip: String },
+
     /// A namespace lease failed validation against the pool's current ownership state.
     #[error("invalid namespace lease: {0}")]
     InvalidLease(String),

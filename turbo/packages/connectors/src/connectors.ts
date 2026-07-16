@@ -340,6 +340,7 @@ export type {
   ConnectorAuthCodeCallbackOrigin,
   ConnectorAuthCodeGrantConfig,
   ConnectorAuthMethodConfig,
+  ConnectorAuthMethodRuntimeConfig,
   ConnectorAuthMethodId,
   ConnectorConfig,
   ConnectorDeviceAuthGrantConfig,

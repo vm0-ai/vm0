@@ -49,7 +49,7 @@ function buildReportableErrorMessage(runId: string): string {
 
 function buildModelProvidersUrl(): string {
   const appUrl = env("APP_URL").replace(/\/$/u, "");
-  return `${appUrl}/?settings=providers`;
+  return `${appUrl}/?settings=model`;
 }
 
 function buildPersonalModelProvidersUrl(): string {

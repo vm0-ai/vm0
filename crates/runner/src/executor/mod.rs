@@ -66,16 +66,17 @@ const JOB_TIMEOUT_EXIT_CODE: i32 = 124;
 /// Extra time for the host to receive guest timeout terminal proof.
 ///
 /// The guest process still receives `JOB_TIMEOUT` as its runtime budget. This
-/// grace covers vsock-guest's 5s stdout/stderr drain deadline after timeout
-/// process-tree kill, plus normal scheduling overhead before it sends the
-/// terminal `TimedOut` result.
+/// grace covers vsock-guest's bounded supervised-process cleanup, its 5s
+/// stdout/stderr drain deadline, and normal scheduling overhead before it sends
+/// the terminal `TimedOut` result.
 const JOB_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Maximum time to spend writing the guest cancel frame after a user cancel.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Grace period for the guest to report a terminal status after cancel is sent.
-/// This covers vsock-guest's 5s stdout/stderr drain deadline after it kills
-/// the cancelled process.
-const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(6);
+/// This covers vsock-guest's bounded supervised-process cleanup (500ms TERM
+/// grace, 1s cgroup.kill empty wait, and 250ms cgroup removal), its 5s
+/// stdout/stderr drain deadline, and normal scheduling overhead.
+const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(8);
 const PROCESS_CANCEL_TIMEOUTS: ProcessCancelTimeouts = ProcessCancelTimeouts {
     write: PROCESS_CANCEL_WRITE_TIMEOUT,
     terminal_grace: PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT,

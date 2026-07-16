@@ -187,7 +187,9 @@ function mockBillingStory(): void {
 async function openBillingTab(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=billing" });
   await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Settings" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Billing" }),
     ).toBeInTheDocument();
