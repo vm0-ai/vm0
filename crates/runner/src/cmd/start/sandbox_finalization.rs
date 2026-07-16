@@ -1568,6 +1568,7 @@ mod tests {
         context.exit_code = 1;
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
+        let held_session_snapshot = context.held_session_snapshot.clone();
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(sandbox),
@@ -1590,6 +1591,13 @@ mod tests {
         assert_eq!(overrides.destroy_call_count(), 1);
         assert!(cache.held_session_states().await.is_empty());
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        assert!(
+            held_session_snapshot
+                .current_held_session_states(Vec::new(), &active_sessions, None)
+                .is_empty(),
+            "failed post-freeze stop must not advertise session affinity"
+        );
     }
 
     #[tokio::test]

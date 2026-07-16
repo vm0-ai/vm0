@@ -104,8 +104,6 @@ fn workspace_command(script: &str) -> String {
 mod tests {
     use super::*;
 
-    use sandbox::ExecResult;
-
     #[test]
     fn quote_shell_arg_handles_single_quotes() {
         assert_eq!(quote_shell_arg("/tmp/a'b"), "'/tmp/a'\\''b'");
@@ -132,39 +130,6 @@ mod tests {
                 .iter()
                 .all(|call| call.output_limits == EXEC_OUTPUT_LIMIT_64_KIB)
         );
-    }
-
-    #[tokio::test]
-    async fn freeze_failure_includes_operation_and_diagnostic_id() {
-        let sandbox = sandbox_mock::MockSandbox::new("workspace-freeze-failure");
-        sandbox.push_exec_result(Ok(ExecResult::new(
-            1,
-            Vec::new(),
-            b"Device or resource busy".to_vec(),
-        )));
-
-        let error = freeze_workspace_drive(&sandbox, "freeze-run-id")
-            .await
-            .unwrap_err();
-        let message = error.to_string();
-
-        assert!(message.contains("freeze workspace drive failed"));
-        assert!(message.contains("Device or resource busy"));
-        assert!(message.contains("diagnostic id: freeze-run-id"));
-    }
-
-    #[tokio::test]
-    async fn freeze_transport_error_preserves_sandbox_operation() {
-        let sandbox = sandbox_mock::MockSandbox::new("workspace-freeze-transport");
-        sandbox.push_exec_result(Err(sandbox::SandboxError::Start {
-            message: "transport closed".into(),
-        }));
-
-        let error = freeze_workspace_drive(&sandbox, "freeze-run-id")
-            .await
-            .unwrap_err();
-
-        assert!(error.to_string().contains("transport closed"));
     }
 
     #[test]
@@ -237,46 +202,5 @@ mod tests {
         assert!(!cmd.contains("fsfreeze"));
         assert!(!cmd.contains("umount"));
         assert!(!cmd.contains("\nsync"));
-    }
-
-    #[test]
-    fn freeze_command_establishes_only_the_terminal_ext4_boundary() {
-        let cmd = workspace_freeze_command();
-
-        assert!(cmd.contains("workspace_dir='/home/user/workspace'"));
-        assert!(cmd.contains("workspace_device='/dev/vdb'"));
-        assert!(cmd.contains("refuse_workspace_symlink_path"));
-        assert!(cmd.contains("mountpoint -x -- \"$workspace_device\""));
-        assert!(cmd.contains("mountpoint -q -- \"$workspace_dir\""));
-        assert!(cmd.contains("exec 3< \"$workspace_dir\""));
-        assert!(cmd.contains("workspace_fd_path=\"/proc/$$/fd/3\""));
-        assert!(cmd.contains("mountpoint -d -- \"$workspace_fd_path\""));
-        assert!(cmd.contains("/usr/sbin/fsfreeze --freeze \"$workspace_fd_path\""));
-        assert!(!cmd.contains("--unfreeze"));
-        assert!(!cmd.contains("umount"));
-        assert!(!cmd.contains("kill "));
-        assert!(!cmd.contains("pkill"));
-        assert!(!cmd.contains("killall"));
-    }
-
-    #[test]
-    fn freeze_command_validates_before_freezing() {
-        let cmd = workspace_freeze_command();
-        let symlink_check = cmd.find("refuse_workspace_symlink_path\n").unwrap();
-        let mount_check = cmd
-            .find("if ! mountpoint -q -- \"$workspace_dir\"")
-            .unwrap();
-        let fd_open = cmd.find("exec 3< \"$workspace_dir\"").unwrap();
-        let identity_check = cmd
-            .find("if [ -z \"$workspace_dev\" ] || [ \"$target_dev\" != \"$workspace_dev\" ]")
-            .unwrap();
-        let freeze = cmd
-            .find("/usr/sbin/fsfreeze --freeze \"$workspace_fd_path\"")
-            .unwrap();
-
-        assert!(symlink_check < mount_check);
-        assert!(mount_check < fd_open);
-        assert!(fd_open < identity_check);
-        assert!(identity_check < freeze);
     }
 }

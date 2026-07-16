@@ -269,7 +269,19 @@ async fn parked_workspace_promotion_unparks_and_freezes_before_publish() {
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
     assert!(exec_calls[0].sudo);
-    assert!(exec_calls[0].cmd.contains("fsfreeze --freeze"));
+    let freeze_command = &exec_calls[0].cmd;
+    assert!(freeze_command.contains("workspace_dir='/home/user/workspace'"));
+    assert!(freeze_command.contains("workspace_device='/dev/vdb'"));
+    assert!(freeze_command.contains("refuse_workspace_symlink_path"));
+    assert!(freeze_command.contains("mountpoint -q -- \"$workspace_dir\""));
+    assert!(freeze_command.contains("exec 3< \"$workspace_dir\""));
+    assert!(freeze_command.contains("mountpoint -d -- \"$workspace_fd_path\""));
+    assert!(freeze_command.contains("fsfreeze --freeze \"$workspace_fd_path\""));
+    assert!(!freeze_command.contains("--unfreeze"));
+    assert!(!freeze_command.contains("umount"));
+    assert!(!freeze_command.contains("kill "));
+    assert!(!freeze_command.contains("pkill"));
+    assert!(!freeze_command.contains("killall"));
     assert!(
         fixture.cache.held_session_states().await.is_empty(),
         "a frozen image must not be published before the caller stops the sandbox"
@@ -704,17 +716,27 @@ async fn parked_workspace_promotion_guest_freeze_failure_skips_cache() {
     });
     let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let prepared = prepare_workspace_image_from_parked_sandbox(
+    let (prepared, events) = capture_promotion_events(prepare_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
         Some(fixture.promotion),
         "test",
-    )
+    ))
     .await;
 
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.exec_calls().len(), 1);
     assert!(fixture.cache.held_session_states().await.is_empty());
+    let event = captured_event(
+        &events,
+        "workspace image cache promotion skipped because guest freeze failed",
+    );
+    assert!(
+        event
+            .fields
+            .get("error")
+            .is_some_and(|error| error.contains("not mounted"))
+    );
 }
 
 #[tokio::test]
