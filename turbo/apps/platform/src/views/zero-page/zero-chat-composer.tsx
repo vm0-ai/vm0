@@ -155,6 +155,7 @@ import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   codexFastModeEnabled$,
   composerUploadPopoverEnabled$,
+  composerConnectorPermissionsEnabled$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
 import {
@@ -6327,14 +6328,16 @@ function ConnectorsPopoverButton({
   const setSortOrder = useSet(setPopoverSortOrder$);
   const downloadDialogOpen = useGet(computerUseDownloadDialogOpen$);
   const setDownloadDialogOpen = useSet(setComputerUseDownloadDialogOpen$);
+  const permissionEntryEnabled = useGet(composerConnectorPermissionsEnabled$);
   const permissionConnectorType = useGet(composerPermissionConnector$);
   const setPermissionConnectorType = useSet(setComposerPermissionConnector$);
   const showSearch = agentConnectors.length > 20;
-  const permissionConnector = permissionConnectorType
-    ? agentConnectors.find((c) => {
-        return c.type === permissionConnectorType;
-      })
-    : undefined;
+  const permissionConnector =
+    permissionEntryEnabled && permissionConnectorType
+      ? agentConnectors.find((c) => {
+          return c.type === permissionConnectorType;
+        })
+      : undefined;
 
   // Use snapshot order if available, otherwise preserve catalog order.
   const sorted = sortOrder
@@ -6446,20 +6449,26 @@ function ConnectorsPopoverButton({
                       <span className="text-sm flex-1 truncate text-foreground">
                         {item.label}
                       </span>
-                      {agentId && item.authorized && item.hasPermissions && (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setPermissionConnectorType(item.type);
-                          }}
-                          aria-label={`Configure ${item.label} permissions`}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        >
-                          <IconAdjustmentsHorizontal size={15} stroke={1.5} />
-                        </button>
-                      )}
+                      {permissionEntryEnabled &&
+                        agentId &&
+                        item.authorized &&
+                        item.hasPermissions && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setPermissionConnectorType(item.type);
+                            }}
+                            aria-label={`Configure ${item.label} permissions`}
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            <IconAdjustmentsHorizontal
+                              size={15}
+                              stroke={1.5}
+                            />
+                          </button>
+                        )}
                       <LoadingSwitch
                         checked={item.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
