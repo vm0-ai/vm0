@@ -9,7 +9,6 @@ import {
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { writeToClipboard } from "./clipboard.ts";
-import type { DraftSignals } from "./chat-draft.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 
 // Assistant message bubbles carry this class in the chat thread. Text selected
@@ -50,23 +49,17 @@ export interface FeedbackItem {
 }
 
 export interface FeedbackEditorAdapter {
-  replaceItems(
-    items: readonly FeedbackItem[] | null,
-    draftValue: string,
-    focusNewest: boolean,
-  ): void;
+  insertItem(item: FeedbackItem): void;
+  removeItem(id: number): void;
 }
 
 export interface FeedbackSignals {
   readonly items$: Computed<readonly FeedbackItem[]>;
   readonly active$: Computed<boolean>;
-  readonly sendCount$: Computed<number>;
   readonly selection$: Computed<FeedbackSelection | null>;
   readonly startFeedback$: Command<void, []>;
   readonly replaceFromEditor$: Command<void, [readonly FeedbackItem[]]>;
   readonly removeFeedback$: Command<void, [number]>;
-  readonly dismissFeedback$: Command<void, []>;
-  readonly submitFeedback$: Command<string | null, []>;
   readonly closeSelectionToolbar$: Command<void, []>;
   readonly copySelection$: Command<Promise<void>, [AbortSignal]>;
   readonly setSelectionListenersRef$: Command<
@@ -261,7 +254,7 @@ function readFeedbackSelection(): FeedbackSelection | null {
 
 // Compose every noted fragment into a single follow-up turn, each passage
 // quoted above the note that belongs to it.
-function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
+export function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
   const blocks = items.map((item) => {
     const quoted = item.quote
       .split("\n")
@@ -366,13 +359,11 @@ function createFeedbackSelectionState(threadId: string) {
 
 function createFeedbackItemSignals({
   threadId,
-  draft,
   editor,
   selectionState$,
   closeSelectionToolbar$,
 }: {
   threadId: string;
-  draft: DraftSignals;
   editor: FeedbackEditorAdapter;
   selectionState$: State<FeedbackSelection | null>;
   closeSelectionToolbar$: Command<void, []>;
@@ -385,11 +376,6 @@ function createFeedbackItemSignals({
   });
   const active$ = computed((get) => {
     return get(itemsState$).length > 0;
-  });
-  const sendCount$ = computed((get) => {
-    return get(itemsState$).filter((item) => {
-      return item.note.trim().length > 0;
-    }).length;
   });
   const replaceFromEditor$ = command(
     ({ get, set }, items: readonly FeedbackItem[]) => {
@@ -406,9 +392,6 @@ function createFeedbackItemSignals({
       set(rangesState$, ranges);
       set(setFeedbackHighlight$, threadId, ranges);
       set(itemsState$, items);
-      if (items.length === 0) {
-        editor.replaceItems(null, get(draft.input$), false);
-      }
     },
   );
   const startFeedback$ = command(({ get, set }) => {
@@ -416,14 +399,9 @@ function createFeedbackItemSignals({
     if (!selection) {
       return;
     }
-    const existing = get(itemsState$);
-    const pending = existing.length === 0 ? get(draft.input$) : "";
-    const note = pending.trim().length > 0 ? pending : "";
-    if (note) {
-      set(draft.setInput$, "");
-    }
     const id = get(nextIdState$);
-    const items = [...existing, { id, quote: selection.text, note }];
+    const item = { id, quote: selection.text, note: "" };
+    const items = [...get(itemsState$), item];
     set(nextIdState$, id + 1);
     set(itemsState$, items);
     const ranges = new Map<number, Range>(get(rangesState$));
@@ -432,7 +410,7 @@ function createFeedbackItemSignals({
     }
     set(rangesState$, ranges);
     set(setFeedbackHighlight$, threadId, ranges);
-    editor.replaceItems(items, get(draft.input$), true);
+    editor.insertItem(item);
     set(closeSelectionToolbar$);
   });
   const removeFeedback$ = command(({ get, set }, id: number) => {
@@ -444,40 +422,14 @@ function createFeedbackItemSignals({
     set(rangesState$, ranges);
     set(setFeedbackHighlight$, threadId, ranges);
     set(itemsState$, items);
-    editor.replaceItems(
-      items.length > 0 ? items : null,
-      get(draft.input$),
-      false,
-    );
-  });
-  const dismissFeedback$ = command(({ get, set }) => {
-    set(closeSelectionToolbar$);
-    const ranges = new Map<number, Range>();
-    set(rangesState$, ranges);
-    set(setFeedbackHighlight$, threadId, ranges);
-    set(itemsState$, []);
-    editor.replaceItems(null, get(draft.input$), false);
-  });
-  const submitFeedback$ = command(({ get, set }): string | null => {
-    const noted = get(itemsState$).filter((item) => {
-      return item.note.trim().length > 0;
-    });
-    if (noted.length === 0) {
-      return null;
-    }
-    const prompt = formatFeedbackPrompt(noted);
-    set(dismissFeedback$);
-    return prompt;
+    editor.removeItem(id);
   });
   return {
     items$,
     active$,
-    sendCount$,
     startFeedback$,
     replaceFromEditor$,
     removeFeedback$,
-    dismissFeedback$,
-    submitFeedback$,
   };
 }
 
@@ -708,13 +660,11 @@ function createSelectionListenersRef({
 
 export function createFeedbackSignals(
   threadId: string,
-  draft: DraftSignals,
   editor: FeedbackEditorAdapter,
 ): FeedbackSignals {
   const selection = createFeedbackSelectionState(threadId);
   const items = createFeedbackItemSignals({
     threadId,
-    draft,
     editor,
     selectionState$: selection.selectionState$,
     closeSelectionToolbar$: selection.closeSelectionToolbar$,

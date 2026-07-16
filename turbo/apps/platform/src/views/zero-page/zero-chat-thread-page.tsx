@@ -270,7 +270,6 @@ import {
   useZeroChatComposer,
   type ZeroChatComposerProps,
   type QueuedComposerItem,
-  type ComposerFeedback,
 } from "./zero-chat-composer.tsx";
 import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
 import {
@@ -4072,20 +4071,9 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleFeedbackSend = (text: string): Promise<boolean> => {
-    return send(
-      text,
-      {
-        includeDraftAttachments: true,
-      },
-      rootSignal,
-    );
-  };
-
   return {
     handleSend,
     handleQueue,
-    handleFeedbackSend,
     submissionLoading:
       sendLoadable.state === "loading" || queueLoadable.state === "loading",
     templatePicker: {
@@ -4142,34 +4130,6 @@ function useChatThreadComputerUse(
       selectedHostId: selectedComputerUseHostId,
       onChange: handleComputerUseHostChange,
       downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-    },
-  };
-}
-
-function useChatThreadComposerFeedback(
-  thread: ChatThreadSignals,
-  sendFeedback: (prompt: string) => Promise<boolean>,
-): ComposerFeedback | undefined {
-  const feedback = thread.workflowComposer.feedback;
-  const active = useGet(feedback.active$);
-  const sendCount = useGet(feedback.sendCount$);
-  const compose = useSet(feedback.submitFeedback$);
-  const dismiss = useSet(feedback.dismissFeedback$);
-
-  if (!active) {
-    return undefined;
-  }
-  return {
-    sendCount,
-    onSubmit: () => {
-      const prompt = compose();
-      if (prompt === null) {
-        return;
-      }
-      detach(sendFeedback(prompt), Reason.DomCallback);
-    },
-    onDismiss: () => {
-      dismiss();
     },
   };
 }
@@ -4279,17 +4239,12 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   );
   const { modelPicker, modelPickerLoading, submitBlockerProps } =
     useChatComposerModel(thread, pageSignal);
-  const {
-    handleSend,
-    handleQueue,
-    handleFeedbackSend,
-    submissionLoading,
-    templatePicker,
-  } = useChatThreadComposerSendState({
-    thread,
-    computerUseHostIdForSend,
-    clearComputerUseHostOverride,
-  });
+  const { handleSend, handleQueue, submissionLoading, templatePicker } =
+    useChatThreadComposerSendState({
+      thread,
+      computerUseHostIdForSend,
+      clearComputerUseHostOverride,
+    });
   const skeletonVisible = hasMessagesResolved === undefined;
   const composerSending = sendButtonStatus === "sending";
   const queueWhileSending = canQueueMessage({ sending: composerSending });
@@ -4298,7 +4253,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const feedback = useChatThreadComposerFeedback(thread, handleFeedbackSend);
   const workflowPrompt = useChatThreadComposerWorkflowPrompt({
     thread,
     pageSignal,
@@ -4338,7 +4292,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     onRemoveQueuedItem,
     activeGoal,
     onCancelActiveGoal,
-    feedback,
   };
   const composer = useZeroChatComposer(composerOptions);
 
