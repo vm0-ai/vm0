@@ -151,6 +151,9 @@ function reconstructedAuthMethod(args: {
     label: args.publicMethod.label,
     description: args.publicMethod.description,
     defaultVisible: args.publicMethod.defaultVisible,
+    ...(args.publicMethod.featureSwitch === null
+      ? {}
+      : { featureSwitch: args.publicMethod.featureSwitch }),
     ...(args.privateMethod.client === undefined
       ? {}
       : { client: args.privateMethod.client }),

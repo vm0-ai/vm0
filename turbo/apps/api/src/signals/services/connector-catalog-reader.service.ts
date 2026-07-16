@@ -41,20 +41,45 @@ import {
   getFirewallPermissionSummary,
   loadFirewallPermissionMetadata,
 } from "@vm0/connectors/firewall-metadata";
+import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
+import { waitUntil } from "../context/wait-until";
+import type { ReadonlyDb } from "../external/db";
+import { isAbortError, settle } from "../utils";
 import {
   getPublicDeviceAuthStartOptionDescriptors,
   getPublicManualGrantFieldDescriptors,
 } from "./connector-catalog-form-fields.service";
+import {
+  ExternalConnectorCatalogUnavailableError,
+  getExternalPublicConnectorCatalogDetail,
+  getExternalPublicConnectorCatalogPermissionDetail,
+  listExternalPublicConnectorCatalog,
+  listExternalPublicConnectorCatalogStatus,
+  searchExternalConnectorCatalog,
+  type ConnectorCatalogReferenceMetadata,
+  type ConnectorCatalogStatusRead,
+  type ExternalConnectorCatalogDiagnostics,
+  type ExternalConnectorCatalogRead,
+} from "./connector-catalog-external-reader.service";
 
-interface ConnectorCatalogSearchArgs {
-  readonly keyword: string | undefined;
+const log = logger("connector-catalog:shadow");
+
+export function isConnectorCatalogUnavailableError(error: unknown): boolean {
+  return error instanceof ExternalConnectorCatalogUnavailableError;
+}
+
+interface StaticConnectorCatalogReadArgs {
   readonly featureStates: ConnectorFeatureStates;
   readonly apiAuthMethodPolicy?: ApiAuthMethodPolicy;
 }
 
-interface ConnectorCatalogReadArgs {
-  readonly featureStates: ConnectorFeatureStates;
-  readonly apiAuthMethodPolicy?: ApiAuthMethodPolicy;
+interface ConnectorCatalogReadArgs extends StaticConnectorCatalogReadArgs {
+  readonly db: ReadonlyDb;
+}
+
+interface ConnectorCatalogSearchArgs extends ConnectorCatalogReadArgs {
+  readonly keyword: string | undefined;
 }
 
 interface ConnectorCatalogConnectorReadArgs extends ConnectorCatalogReadArgs {
@@ -65,15 +90,32 @@ function isConnectorType(connectorRef: string): connectorRef is ConnectorType {
   return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, connectorRef);
 }
 
-export function getPublicConnectorCatalogIcon(
+function getStaticPublicConnectorCatalogIcon(
   connectorRef: ConnectorType,
 ): PublicConnectorCatalogIcon {
   return getStaticConnectorIconMetadata(connectorRef);
 }
 
+function listStaticConnectorCatalogReferenceMetadata(
+  connectorRefs: readonly string[],
+): readonly ConnectorCatalogReferenceMetadata[] {
+  const requestedRefs = new Set(connectorRefs);
+  return CONNECTOR_TYPE_KEYS.flatMap((connectorRef) => {
+    return requestedRefs.has(connectorRef)
+      ? [
+          {
+            connectorRef,
+            label: CONNECTOR_TYPES[connectorRef].label,
+            icon: getStaticPublicConnectorCatalogIcon(connectorRef),
+          },
+        ]
+      : [];
+  });
+}
+
 function availableAuthMethodsForCatalog(
   type: ConnectorType,
-  args: ConnectorCatalogReadArgs,
+  args: StaticConnectorCatalogReadArgs,
 ): ConnectorAuthMethodId[] {
   return getAvailableConnectorAuthMethodIds(type, args.featureStates, {
     apiAuthMethodPolicy: args.apiAuthMethodPolicy ?? "include",
@@ -210,7 +252,7 @@ function connectorCatalogItem(
     connectorRef: type,
     label: config.label,
     description: config.helpText,
-    icon: getPublicConnectorCatalogIcon(type),
+    icon: getStaticPublicConnectorCatalogIcon(type),
     category: config.category,
     generation: [...getConnectorGenerationTypes(type)],
     tags: [...getConnectorTags(type)],
@@ -320,8 +362,10 @@ function connectorCatalogStatusItem(args: {
   };
 }
 
-export function searchConnectorCatalog(
-  args: ConnectorCatalogSearchArgs,
+function searchStaticConnectorCatalog(
+  args: StaticConnectorCatalogReadArgs & {
+    readonly keyword: string | undefined;
+  },
 ): Promise<ConnectorSearchItem[]> {
   const keyword = args.keyword?.toLowerCase();
 
@@ -364,8 +408,8 @@ export function searchConnectorCatalog(
   return Promise.resolve(connectors);
 }
 
-export function listPublicConnectorCatalog(
-  args: ConnectorCatalogReadArgs,
+function listStaticPublicConnectorCatalog(
+  args: StaticConnectorCatalogReadArgs,
 ): Promise<PublicConnectorCatalogListResponse> {
   const connectors = CONNECTOR_TYPE_KEYS.flatMap((type) => {
     const authMethods = availableAuthMethodsForCatalog(type, args);
@@ -381,8 +425,8 @@ export function listPublicConnectorCatalog(
   });
 }
 
-export function listPublicConnectorCatalogStatus(
-  args: ConnectorCatalogReadArgs & {
+function listStaticPublicConnectorCatalogStatus(
+  args: StaticConnectorCatalogReadArgs & {
     readonly connectors: readonly ConnectorResponse[];
   },
 ): Promise<PublicConnectorCatalogStatusResponse> {
@@ -411,8 +455,10 @@ export function listPublicConnectorCatalogStatus(
   });
 }
 
-export function getPublicConnectorCatalogDetail(
-  args: ConnectorCatalogConnectorReadArgs,
+export function getStaticPublicConnectorCatalogDetail(
+  args: StaticConnectorCatalogReadArgs & {
+    readonly connectorRef: string;
+  },
 ): Promise<PublicConnectorCatalogDetail | null> {
   if (!isConnectorType(args.connectorRef)) {
     return Promise.resolve(null);
@@ -432,7 +478,7 @@ export function getPublicConnectorCatalogDetail(
  * Action resolution uses this view to distinguish an unknown catalog identity
  * from a known connector or method that is unavailable to the current user.
  */
-export function getConnectorCatalogResolutionDetail(
+export function getStaticConnectorCatalogResolutionDetail(
   connectorRef: string,
 ): Promise<PublicConnectorCatalogDetail | null> {
   if (!isConnectorType(connectorRef)) {
@@ -446,8 +492,10 @@ export function getConnectorCatalogResolutionDetail(
   );
 }
 
-export async function getPublicConnectorCatalogPermissionDetail(
-  args: ConnectorCatalogConnectorReadArgs,
+async function getStaticPublicConnectorCatalogPermissionDetail(
+  args: StaticConnectorCatalogReadArgs & {
+    readonly connectorRef: string;
+  },
 ): Promise<PublicConnectorCatalogPermissionDetail | null> {
   if (!isConnectorType(args.connectorRef)) {
     return null;
@@ -465,7 +513,7 @@ export async function getPublicConnectorCatalogPermissionDetail(
   return {
     connectorRef: args.connectorRef,
     label: metadata.label,
-    icon: getPublicConnectorCatalogIcon(args.connectorRef),
+    icon: getStaticPublicConnectorCatalogIcon(args.connectorRef),
     permissionCount: metadata.permissionCount,
     permissions: metadata.permissions.map((permission) => {
       return {
@@ -497,4 +545,439 @@ export async function getPublicConnectorCatalogPermissionDetail(
       unknownPolicy: metadata.defaultPolicy.unknownPolicy,
     },
   };
+}
+
+type ConnectorCatalogShadowOperation =
+  | "detail"
+  | "list"
+  | "permissions"
+  | "search"
+  | "status";
+
+interface ConnectorCatalogShadowItem {
+  readonly connectorRef: string;
+  readonly authMethodCount: number;
+  readonly value: unknown;
+}
+
+interface ConnectorCatalogShadowProjection {
+  readonly items: readonly ConnectorCatalogShadowItem[];
+  readonly metadata?: unknown;
+}
+
+function isApprovedStaticOnlyConnectorRef(connectorRef: string): boolean {
+  return connectorRef === "test-oauth" || connectorRef === "test-oauth-device";
+}
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      return canonicalValue(item);
+    });
+  }
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => {
+        return left < right ? -1 : left > right ? 1 : 0;
+      })
+      .map(([key, entry]) => {
+        return [key, canonicalValue(entry)];
+      }),
+  );
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonicalValue(value));
+}
+
+function normalizeProjectionItemOrder(
+  projection: ConnectorCatalogShadowProjection,
+): ConnectorCatalogShadowProjection {
+  return {
+    ...projection,
+    items: [...projection.items].sort((left, right) => {
+      return left.connectorRef < right.connectorRef
+        ? -1
+        : left.connectorRef > right.connectorRef
+          ? 1
+          : 0;
+    }),
+  };
+}
+
+function shadowItemMap(
+  projection: ConnectorCatalogShadowProjection,
+): ReadonlyMap<string, ConnectorCatalogShadowItem> {
+  return new Map(
+    projection.items.map((item) => {
+      return [item.connectorRef, item];
+    }),
+  );
+}
+
+function logShadowComparison(args: {
+  readonly operation: ConnectorCatalogShadowOperation;
+  readonly staticProjection: ConnectorCatalogShadowProjection;
+  readonly externalProjection: ConnectorCatalogShadowProjection;
+  readonly diagnostics: ExternalConnectorCatalogDiagnostics;
+}): void {
+  const staticItems = shadowItemMap(args.staticProjection);
+  const externalItems = shadowItemMap(args.externalProjection);
+  let approvedStaticOnlyConnectorCount = 0;
+  let staticOnlyConnectorCount = 0;
+  let externalOnlyConnectorCount = 0;
+  let semanticMismatchConnectorCount = 0;
+  for (const [connectorRef, item] of staticItems) {
+    const externalItem = externalItems.get(connectorRef);
+    if (!externalItem) {
+      if (isApprovedStaticOnlyConnectorRef(connectorRef)) {
+        approvedStaticOnlyConnectorCount += 1;
+      } else {
+        staticOnlyConnectorCount += 1;
+      }
+      continue;
+    }
+    if (canonicalJson(item.value) !== canonicalJson(externalItem.value)) {
+      semanticMismatchConnectorCount += 1;
+    }
+  }
+  for (const connectorRef of externalItems.keys()) {
+    if (!staticItems.has(connectorRef)) {
+      externalOnlyConnectorCount += 1;
+    }
+  }
+  const exactMatch =
+    canonicalJson(args.staticProjection) ===
+    canonicalJson(args.externalProjection);
+  const normalizedMatch =
+    canonicalJson(normalizeProjectionItemOrder(args.staticProjection)) ===
+    canonicalJson(normalizeProjectionItemOrder(args.externalProjection));
+  const staticAuthMethodCount = args.staticProjection.items.reduce(
+    (count, item) => {
+      return count + item.authMethodCount;
+    },
+    0,
+  );
+  const externalAuthMethodCount = args.externalProjection.items.reduce(
+    (count, item) => {
+      return count + item.authMethodCount;
+    },
+    0,
+  );
+
+  log.debug("Connector catalog shadow comparison completed", {
+    type: "connector_catalog_shadow_comparison",
+    operation: args.operation,
+    outcome: exactMatch ? "match" : "difference",
+    sourceId: args.diagnostics.sourceId,
+    schemaVersion: args.diagnostics.schemaVersion,
+    catalogVersion: args.diagnostics.catalogVersion,
+    integrityDigest: args.diagnostics.integrityDigest,
+    capabilityDigest: args.diagnostics.capabilityDigest,
+    rawConnectorCount: args.diagnostics.rawConnectorCount,
+    rawAuthMethodCount: args.diagnostics.rawAuthMethodCount,
+    compatibilityFilteredMethodCount:
+      args.diagnostics.compatibilityFilteredMethodCount,
+    compatibilityReasonCounts: args.diagnostics.compatibilityReasonCounts,
+    defaultHiddenMethodCount: args.diagnostics.defaultHiddenMethodCount,
+    rolloutFilteredMethodCount: args.diagnostics.rolloutFilteredMethodCount,
+    surfacePolicyFilteredMethodCount:
+      args.diagnostics.surfacePolicyFilteredMethodCount,
+    removedConnectorCount: args.diagnostics.removedConnectorCount,
+    staticConnectorCount: staticItems.size,
+    externalConnectorCount: externalItems.size,
+    staticAuthMethodCount,
+    externalAuthMethodCount,
+    approvedStaticOnlyConnectorCount,
+    staticOnlyConnectorCount,
+    externalOnlyConnectorCount,
+    semanticMismatchConnectorCount,
+    metadataMismatch:
+      canonicalJson(args.staticProjection.metadata) !==
+      canonicalJson(args.externalProjection.metadata),
+    orderOnlyDifference: !exactMatch && normalizedMatch,
+  });
+}
+
+async function runShadowComparison<T>(args: {
+  readonly operation: ConnectorCatalogShadowOperation;
+  readonly staticProjection: ConnectorCatalogShadowProjection;
+  readonly externalRead: () => Promise<ExternalConnectorCatalogRead<T>>;
+  readonly project: (value: T) => ConnectorCatalogShadowProjection;
+}): Promise<void> {
+  const result = await settle(args.externalRead());
+  if (!result.ok) {
+    if (isAbortError(result.error)) {
+      throw result.error;
+    }
+    log.warn("Connector catalog shadow comparison unavailable", {
+      type: "connector_catalog_shadow_comparison",
+      operation: args.operation,
+      outcome:
+        result.error instanceof ExternalConnectorCatalogUnavailableError
+          ? "unavailable"
+          : "error",
+    });
+    return;
+  }
+  logShadowComparison({
+    operation: args.operation,
+    staticProjection: args.staticProjection,
+    externalProjection: args.project(result.value.value),
+    diagnostics: result.value.diagnostics,
+  });
+}
+
+function scheduleShadowComparison<T>(args: {
+  readonly operation: ConnectorCatalogShadowOperation;
+  readonly staticValue: T;
+  readonly externalRead: () => Promise<ExternalConnectorCatalogRead<T>>;
+  readonly project: (value: T) => ConnectorCatalogShadowProjection;
+}): void {
+  waitUntil(
+    runShadowComparison({
+      operation: args.operation,
+      staticProjection: args.project(args.staticValue),
+      externalRead: args.externalRead,
+      project: args.project,
+    }),
+  );
+}
+
+async function readSelectedCatalog<T>(args: {
+  readonly operation: ConnectorCatalogShadowOperation;
+  readonly staticRead: () => Promise<T>;
+  readonly externalRead: () => Promise<ExternalConnectorCatalogRead<T>>;
+  readonly project: (value: T) => ConnectorCatalogShadowProjection;
+}): Promise<T> {
+  const sourceMode = env("CONNECTOR_CATALOG_SOURCE_MODE");
+  if (sourceMode === "static") {
+    return await args.staticRead();
+  }
+  if (sourceMode === "external") {
+    return (await args.externalRead()).value;
+  }
+
+  const staticValue = await args.staticRead();
+  scheduleShadowComparison({
+    operation: args.operation,
+    staticValue,
+    externalRead: args.externalRead,
+    project: args.project,
+  });
+  return staticValue;
+}
+
+function itemShadowProjection(
+  connectors: readonly PublicConnectorCatalogItem[],
+  metadata: PublicConnectorCatalogListResponse["categoryMetadata"],
+): ConnectorCatalogShadowProjection {
+  return {
+    items: connectors.map((connector) => {
+      return {
+        connectorRef: connector.connectorRef,
+        authMethodCount: connector.authMethods.length,
+        value: connector,
+      };
+    }),
+    metadata,
+  };
+}
+
+function listShadowProjection(
+  value: PublicConnectorCatalogListResponse,
+): ConnectorCatalogShadowProjection {
+  return itemShadowProjection(value.connectors, value.categoryMetadata);
+}
+
+function statusShadowProjection(
+  value: ConnectorCatalogStatusRead,
+): ConnectorCatalogShadowProjection {
+  const projection = itemShadowProjection(
+    value.status.connectors.map((connector) => {
+      return {
+        connectorRef: connector.connectorRef,
+        label: connector.label,
+        description: connector.description,
+        icon: connector.icon,
+        category: connector.category,
+        generation: connector.generation,
+        tags: connector.tags,
+        authMethods: connector.authMethods,
+        permissionSummary: connector.permissionSummary,
+      };
+    }),
+    value.status.categoryMetadata,
+  );
+  return {
+    ...projection,
+    metadata: {
+      categoryMetadata: value.status.categoryMetadata,
+      referenceMetadata: value.referenceMetadata,
+    },
+  };
+}
+
+function detailShadowProjection(
+  value: PublicConnectorCatalogDetail | null,
+): ConnectorCatalogShadowProjection {
+  return {
+    items: value
+      ? [
+          {
+            connectorRef: value.connectorRef,
+            authMethodCount: value.authMethods.length,
+            value,
+          },
+        ]
+      : [],
+  };
+}
+
+function permissionShadowProjection(
+  value: PublicConnectorCatalogPermissionDetail | null,
+): ConnectorCatalogShadowProjection {
+  return {
+    items: value
+      ? [
+          {
+            connectorRef: value.connectorRef,
+            authMethodCount: 0,
+            value,
+          },
+        ]
+      : [],
+  };
+}
+
+function searchShadowProjection(
+  value: readonly ConnectorSearchItem[],
+): ConnectorCatalogShadowProjection {
+  return {
+    items: value.map((connector) => {
+      return {
+        connectorRef: connector.id,
+        authMethodCount: connector.authMethods.length,
+        value: connector,
+      };
+    }),
+  };
+}
+
+export async function searchConnectorCatalog(
+  args: ConnectorCatalogSearchArgs,
+): Promise<ConnectorSearchItem[]> {
+  return await readSelectedCatalog({
+    operation: "search",
+    staticRead: async () => {
+      return await searchStaticConnectorCatalog(args);
+    },
+    externalRead: async () => {
+      return await searchExternalConnectorCatalog({
+        db: args.db,
+        keyword: args.keyword,
+        featureStates: args.featureStates,
+      });
+    },
+    project: searchShadowProjection,
+  });
+}
+
+export async function listPublicConnectorCatalog(
+  args: ConnectorCatalogReadArgs,
+): Promise<PublicConnectorCatalogListResponse> {
+  return await readSelectedCatalog({
+    operation: "list",
+    staticRead: async () => {
+      return await listStaticPublicConnectorCatalog(args);
+    },
+    externalRead: async () => {
+      return await listExternalPublicConnectorCatalog({
+        db: args.db,
+        featureStates: args.featureStates,
+      });
+    },
+    project: listShadowProjection,
+  });
+}
+
+export async function readPublicConnectorCatalogStatus(
+  args: ConnectorCatalogReadArgs & {
+    readonly connectors: readonly ConnectorResponse[];
+    readonly referenceConnectorRefs: readonly string[];
+  },
+): Promise<ConnectorCatalogStatusRead> {
+  return await readSelectedCatalog({
+    operation: "status",
+    staticRead: async () => {
+      return {
+        status: await listStaticPublicConnectorCatalogStatus(args),
+        referenceMetadata: listStaticConnectorCatalogReferenceMetadata(
+          args.referenceConnectorRefs,
+        ),
+      };
+    },
+    externalRead: async () => {
+      return await listExternalPublicConnectorCatalogStatus({
+        db: args.db,
+        featureStates: args.featureStates,
+        connectors: args.connectors,
+        referenceConnectorRefs: args.referenceConnectorRefs,
+      });
+    },
+    project: statusShadowProjection,
+  });
+}
+
+export async function listPublicConnectorCatalogStatus(
+  args: ConnectorCatalogReadArgs & {
+    readonly connectors: readonly ConnectorResponse[];
+  },
+): Promise<PublicConnectorCatalogStatusResponse> {
+  const read = await readPublicConnectorCatalogStatus({
+    ...args,
+    referenceConnectorRefs: [],
+  });
+  return read.status;
+}
+
+export async function getPublicConnectorCatalogDetail(
+  args: ConnectorCatalogConnectorReadArgs,
+): Promise<PublicConnectorCatalogDetail | null> {
+  return await readSelectedCatalog({
+    operation: "detail",
+    staticRead: async () => {
+      return await getStaticPublicConnectorCatalogDetail(args);
+    },
+    externalRead: async () => {
+      return await getExternalPublicConnectorCatalogDetail({
+        db: args.db,
+        connectorRef: args.connectorRef,
+        featureStates: args.featureStates,
+      });
+    },
+    project: detailShadowProjection,
+  });
+}
+
+export async function getPublicConnectorCatalogPermissionDetail(
+  args: ConnectorCatalogConnectorReadArgs,
+): Promise<PublicConnectorCatalogPermissionDetail | null> {
+  return await readSelectedCatalog({
+    operation: "permissions",
+    staticRead: async () => {
+      return await getStaticPublicConnectorCatalogPermissionDetail(args);
+    },
+    externalRead: async () => {
+      return await getExternalPublicConnectorCatalogPermissionDetail({
+        db: args.db,
+        connectorRef: args.connectorRef,
+        featureStates: args.featureStates,
+      });
+    },
+    project: permissionShadowProjection,
+  });
 }

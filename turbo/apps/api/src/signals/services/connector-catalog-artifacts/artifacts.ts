@@ -18,6 +18,7 @@ import {
   catalogSourceSchema,
   connectorAuthMethodIdSchema,
   connectorAuthMethodSourceSchema,
+  connectorFeatureSwitchKeySchema,
   connectorStaticIconPathSchema,
   connectorValueRefSchema,
   internalOptionNameSchema,
@@ -143,6 +144,7 @@ const publicAuthMethodSchema = z
     label: z.string().min(1),
     description: z.string().min(1).nullable(),
     defaultVisible: z.boolean(),
+    featureSwitch: connectorFeatureSwitchKeySchema.nullable(),
     grantKind: z.enum([
       "manual",
       "auth-code",
