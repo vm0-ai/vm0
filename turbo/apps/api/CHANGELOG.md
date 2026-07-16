@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.279.4](https://github.com/vm0-ai/vm0/compare/api-v1.279.3...api-v1.279.4) (2026-07-16)
+
+
+### Performance Improvements
+
+* **api:** hedge slow postgres dns lookups ([#21774](https://github.com/vm0-ai/vm0/issues/21774)) ([cbac131](https://github.com/vm0-ai/vm0/commit/cbac1311fc79a065f644ecc01df4ce7e1fed606e))
+
 ## [1.279.3](https://github.com/vm0-ai/vm0/compare/api-v1.279.2...api-v1.279.3) (2026-07-16)
 
 

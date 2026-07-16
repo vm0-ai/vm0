@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.145.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.2...runner-rs-v0.145.3) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** fail closed on incomplete image gc scans ([#21749](https://github.com/vm0-ai/vm0/issues/21749)) ([df65c9c](https://github.com/vm0-ai/vm0/commit/df65c9c846856e3ec8956b98bf6229f832841872))
+* **runner:** protect sidecar staging from cache gc ([#21768](https://github.com/vm0-ai/vm0/issues/21768)) ([8cb2c6e](https://github.com/vm0-ai/vm0/commit/8cb2c6edd019ec693de467a2e592fa7820fd0645))
+
 ## [0.145.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.1...runner-rs-v0.145.2) (2026-07-16)
 
 
