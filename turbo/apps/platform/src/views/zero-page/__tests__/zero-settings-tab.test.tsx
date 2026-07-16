@@ -11,12 +11,16 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
 
 const AGENT_ID = "a0000000-0000-4000-a000-000000000020";
+const SECOND_AGENT_ID = "a0000000-0000-4000-a000-000000000021";
 const AVATAR_SVG_PRELOAD_CACHE_KEY = "vm0AvatarSvgPreloadCache";
 const PAGE_LOAD_TIMEOUT_MS = 5000;
 
@@ -152,6 +156,16 @@ function findAgentNameInput(): Promise<HTMLElement> {
   });
 }
 
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
+}
+
 function prepareAgentProfile(): void {
   let detail: ZeroAgentResponse = {
     agentId: AGENT_ID,
@@ -200,6 +214,70 @@ function prepareAgentProfile(): void {
       return respond(200, detail);
     },
   );
+  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+    return respond(200, { content: null, filename: null });
+  });
+}
+
+function prepareMatchingAgentProfiles(): void {
+  const details: Record<string, ZeroAgentResponse> = {
+    [AGENT_ID]: {
+      agentId: AGENT_ID,
+      ownerId: "test-user-123",
+      description: "A shared description",
+      displayName: "Shared Agent",
+      sound: "professional",
+      avatarUrl: "preset:0",
+      visibility: "public",
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+    },
+    [SECOND_AGENT_ID]: {
+      agentId: SECOND_AGENT_ID,
+      ownerId: "test-user-123",
+      description: "A shared description",
+      displayName: "Shared Agent",
+      sound: "professional",
+      avatarUrl: "preset:0",
+      visibility: "public",
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+    },
+  };
+
+  context.mocks.data.team([
+    {
+      id: AGENT_ID,
+      ownerId: "test-user-123",
+      displayName: "Shared Agent",
+      description: "A shared description",
+      sound: "professional",
+      avatarUrl: "preset:0",
+      visibility: "public",
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: SECOND_AGENT_ID,
+      ownerId: "test-user-123",
+      displayName: "Shared Agent",
+      description: "A shared description",
+      sound: "professional",
+      avatarUrl: "preset:0",
+      visibility: "public",
+      headVersionId: "version_2",
+      updatedAt: "2024-01-02T00:00:00Z",
+    },
+  ]);
+  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
+    const detail = details[params.id];
+    if (!detail) {
+      throw new Error(`Unexpected agent detail request: ${params.id}`);
+    }
+    return respond(200, detail);
+  });
   context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
     return respond(200, { content: null, filename: null });
   });
@@ -351,6 +429,54 @@ describe("zero settings tab", () => {
 
     await waitFor(() => {
       expect(screen.queryAllByText("Give your agent a face")).toHaveLength(0);
+    });
+  });
+
+  it("keeps profile drafts within the active agent", async () => {
+    prepareMatchingAgentProfiles();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+
+    await fill(
+      await screen.findByDisplayValue("Shared Agent", undefined, {
+        timeout: PAGE_LOAD_TIMEOUT_MS,
+      }),
+      "Unsaved Agent",
+    );
+
+    click(tabByText("Instructions"));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+    });
+    click(tabByText("Profile"));
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Unsaved Agent")).toBeInTheDocument();
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
+      pathParams: { agentId: SECOND_AGENT_ID },
+      searchParams: new URLSearchParams("tab=profile"),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Shared Agent")).toBeInTheDocument();
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.agentDetail, {
+      pathParams: { agentId: AGENT_ID },
+      searchParams: new URLSearchParams("tab=profile"),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Shared Agent")).toBeInTheDocument();
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
     });
   });
 

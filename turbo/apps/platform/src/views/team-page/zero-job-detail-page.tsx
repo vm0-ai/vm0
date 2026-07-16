@@ -1049,7 +1049,8 @@ function AgentProfileSettings({
 
   return (
     <ZeroSettingsTab
-      key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${visibility}`}
+      key={agentId}
+      agentId={agentId}
       displayName={displayName}
       description={description}
       sound={resolvedSound}
