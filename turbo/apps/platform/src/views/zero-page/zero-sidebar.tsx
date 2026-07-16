@@ -72,14 +72,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     icon: IconUsers as NavIcon,
   },
   {
-    id: "artifacts",
-    activeKeys: ["artifacts"],
-    pathname: "/artifacts",
-    label: "Artifacts",
-    icon: IconPackage as NavIcon,
-    featureGate: FeatureSwitchKey.Artifacts,
-  },
-  {
     id: "workflows",
     activeKeys: [
       "workflows",
@@ -98,6 +90,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/connectors",
     label: "Connectors",
     icon: IconPlug as NavIcon,
+  },
+  {
+    id: "artifacts",
+    activeKeys: ["artifacts"],
+    pathname: "/artifacts",
+    label: "Artifacts",
+    icon: IconPackage as NavIcon,
+    featureGate: FeatureSwitchKey.Artifacts,
   },
   {
     id: "activities",

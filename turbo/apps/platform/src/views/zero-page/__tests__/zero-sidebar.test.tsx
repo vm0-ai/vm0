@@ -2259,12 +2259,13 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("shows workflows in the sidebar manage navigation", async () => {
+  it("orders artifacts after connectors in the manage navigation", async () => {
     prepareDefaultAgent();
 
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.Artifacts]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2274,8 +2275,13 @@ describe("zero sidebar", () => {
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
     const workflows = within(nav).getByText("Workflows");
     const connectors = within(nav).getByText("Connectors");
+    const artifacts = within(nav).getByText("Artifacts");
     expect(
       workflows.compareDocumentPosition(connectors) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      connectors.compareDocumentPosition(artifacts) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
