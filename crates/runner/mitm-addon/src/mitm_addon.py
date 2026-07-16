@@ -1399,7 +1399,9 @@ def done():
     usage executor and JSONL writer. Auth.base forwarding does not need to
     finish running work during shutdown, so its worker shutdown stops new
     forwards and best-effort closes active upstream sockets without waiting for
-    slow upstream responses.
+    slow upstream responses. JSONL writer shutdown is also bounded and
+    best-effort; if it times out, process shutdown continues with accepted log
+    entries possibly still pending.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
