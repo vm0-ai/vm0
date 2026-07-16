@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.2...guest-agent-v0.53.3) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** contain supervised run descendants ([#21780](https://github.com/vm0-ai/vm0/issues/21780)) ([23e961c](https://github.com/vm0-ai/vm0/commit/23e961ce1b30f45ec9786e30289d870f5f436762))
+
 ## [0.53.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.1...guest-agent-v0.53.2) (2026-07-16)
 
 
