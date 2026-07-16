@@ -13,14 +13,14 @@ fn discovered_base_dirs(leases: &[DeadRunnerBaseDirLease]) -> Vec<PathBuf> {
 }
 
 fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<DeadRunnerBaseDirLease> {
-    discover_dead_runner_base_dir_lock_candidates(locks_dir)
+    discover_initially_free_base_dir_lock_candidates(locks_dir)
         .into_iter()
         .filter_map(acquire_dead_runner_base_dir_lease)
         .collect()
 }
 
 fn discover_base_dir_lock_candidates(home: &HomePaths) -> Vec<DeadRunnerBaseDirLockCandidate> {
-    discover_dead_runner_base_dir_lock_candidates(&home.locks_dir())
+    discover_initially_free_base_dir_lock_candidates(&home.locks_dir())
 }
 
 fn write_base_dir_lock(home: &HomePaths, base_dir: &Path) -> PathBuf {
@@ -144,7 +144,7 @@ fn discover_dead_runner_base_dirs_keeps_lock_guard_alive() {
 }
 
 #[test]
-fn discover_base_dir_lock_candidates_does_not_hold_locks() {
+fn discover_initially_free_base_dir_lock_candidates_drops_probe_guards() {
     let dir = tempfile::tempdir().unwrap();
     let home = test_home(dir.path());
     let locks_dir = home.locks_dir();
@@ -155,9 +155,100 @@ fn discover_base_dir_lock_candidates_does_not_hold_locks() {
     let candidates = discover_base_dir_lock_candidates(&home);
     assert_eq!(candidates.len(), 1);
     match probe_existing_lock(&lock_path) {
-        ExistingLockProbe::Free(_) => {}
-        _ => panic!("candidate discovery must not hold base-dir locks"),
+        ExistingLockProbe::Free(lock_guard) => drop(lock_guard),
+        _ => panic!("initial candidate discovery must drop free probe guards"),
     }
+}
+
+#[tokio::test]
+async fn gc_workspace_orphans_excludes_candidate_held_during_initial_discovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let base_dir = dir.path().join("runner-data");
+    let workspace = base_dir.join("workspaces").join("run-old");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(workspace.join("cow.img"), b"data").unwrap();
+    set_mtime(&workspace, old_gc_time());
+
+    let lock_path = write_base_dir_lock(&home, &base_dir);
+    let lock_file = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .unwrap();
+    let held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+    let candidates = discover_base_dir_lock_candidates(&home);
+    assert!(
+        candidates.is_empty(),
+        "a base dir held at initial discovery must be excluded for the pass"
+    );
+
+    drop(held_lock);
+    match probe_existing_lock(&lock_path) {
+        ExistingLockProbe::Free(lock_guard) => drop(lock_guard),
+        _ => panic!("the simulated runner lock should now be free"),
+    }
+
+    let summary = gc_workspace_orphans_with_candidates(
+        candidates,
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(summary.workspaces_cleaned, 0);
+    assert_eq!(summary.base_dir_locks_removed, 0);
+    assert!(workspace.exists(), "the old workspace must remain");
+    assert!(lock_path.exists(), "the retry lock must remain");
+}
+
+#[tokio::test]
+async fn gc_workspace_orphans_preserves_workspace_created_after_pass_reference() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = test_home(dir.path());
+    std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+    let workspace_age_reference = old_gc_time();
+    let base_dir = dir.path().join("runner-data");
+    let lock_path = write_base_dir_lock(&home, &base_dir);
+
+    let candidates = discover_base_dir_lock_candidates(&home);
+    assert_eq!(candidates.len(), 1);
+    match probe_existing_lock(&lock_path) {
+        ExistingLockProbe::Free(lock_guard) => drop(lock_guard),
+        _ => panic!("initial candidate discovery must not retain the lock"),
+    }
+
+    let workspace = base_dir.join("workspaces").join("run-new");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(workspace.join("cow.img"), b"data").unwrap();
+    set_mtime(&workspace, workspace_age_reference + Duration::from_secs(1));
+
+    let summary = gc_workspace_orphans_with_candidates(
+        candidates,
+        &[],
+        &HashSet::new(),
+        false,
+        workspace_age_reference,
+        false,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(summary.workspaces_cleaned, 0);
+    assert_eq!(summary.base_dir_locks_removed, 0);
+    assert!(
+        workspace.exists(),
+        "the post-boundary workspace must remain"
+    );
+    assert!(lock_path.exists(), "the retry lock must remain");
 }
 
 #[tokio::test]
@@ -173,10 +264,16 @@ async fn gc_workspace_orphans_does_not_recreate_missing_candidate_lock() {
     assert_eq!(candidates.len(), 1);
     std::fs::remove_file(&lock_path).unwrap();
 
-    let summary =
-        gc_workspace_orphans_with_candidates(candidates, &[], &HashSet::new(), false, true)
-            .await
-            .unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        candidates,
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        true,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.base_dir_locks_removed, 0);
@@ -297,6 +394,7 @@ async fn gc_workspace_orphans_skips_when_incomplete_firecracker_unattributed() {
         &firecrackers,
         &HashSet::new(),
         true,
+        SystemTime::now(),
         false,
     )
     .await
@@ -326,10 +424,16 @@ async fn gc_workspace_orphans_skips_when_process_discovery_incomplete() {
     let lock_path = write_base_dir_lock(&home, &base_dir);
 
     let candidates = discover_base_dir_lock_candidates(&home);
-    let summary =
-        gc_workspace_orphans_with_candidates(candidates, &[], &HashSet::new(), true, false)
-            .await
-            .unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        candidates,
+        &[],
+        &HashSet::new(),
+        true,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.base_dir_locks_removed, 0);
@@ -361,6 +465,7 @@ async fn gc_workspace_orphans_cleans_when_incomplete_firecracker_is_live_runner_
         &firecrackers,
         &HashSet::new(),
         false,
+        SystemTime::now(),
         false,
     )
     .await
@@ -400,6 +505,7 @@ async fn gc_workspace_orphans_preserves_known_live_firecracker_workspace() {
         &firecrackers,
         &HashSet::new(),
         false,
+        SystemTime::now(),
         false,
     )
     .await
@@ -433,10 +539,16 @@ async fn gc_workspace_orphans_preserves_live_runner_base_dir_candidate() {
 
     let candidates = discover_base_dir_lock_candidates(&home);
     let live_runner_base_dirs = HashSet::from([base_dir.clone()]);
-    let summary =
-        gc_workspace_orphans_with_candidates(candidates, &[], &live_runner_base_dirs, false, false)
-            .await
-            .unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        candidates,
+        &[],
+        &live_runner_base_dirs,
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.base_dir_locks_removed, 0);
@@ -471,10 +583,16 @@ async fn base_dir_lock_cleanup_removes_missing_or_empty_base_dir_lock() {
     std::fs::write(&relative_content_lock, "relative-runner-data").unwrap();
 
     let candidates = discover_base_dir_lock_candidates(&home);
-    let summary =
-        gc_workspace_orphans_with_candidates(candidates, &[], &HashSet::new(), false, false)
-            .await
-            .unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        candidates,
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.base_dir_locks_removed, 4);
@@ -510,10 +628,16 @@ async fn base_dir_lock_cleanup_preserves_recent_workspace_retry_metadata() {
     let lock_path = write_base_dir_lock(&home, &base_dir);
 
     let candidates = discover_base_dir_lock_candidates(&home);
-    let summary =
-        gc_workspace_orphans_with_candidates(candidates, &[], &HashSet::new(), false, false)
-            .await
-            .unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        candidates,
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.base_dir_locks_removed, 0);
