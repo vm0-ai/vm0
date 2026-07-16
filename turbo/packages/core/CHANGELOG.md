@@ -1,5 +1,27 @@
 # Changelog
 
+## [8.438.0](https://github.com/vm0-ai/vm0/compare/core-v8.437.3...core-v8.438.0) (2026-07-16)
+
+
+### Features
+
+* add slack-style three-column navigation behind a feature switch ([#21855](https://github.com/vm0-ai/vm0/issues/21855)) ([3f3bc98](https://github.com/vm0-ai/vm0/commit/3f3bc984de5f20f7d5c637203f39429d8c5bfa20))
+* enable the artifacts page for all users ([#21821](https://github.com/vm0-ai/vm0/issues/21821)) ([3aad765](https://github.com/vm0-ai/vm0/commit/3aad765023952aa2dc4bd8eb351dec756a0c9750))
+* enable workflow queue for all orgs ([#21853](https://github.com/vm0-ai/vm0/issues/21853)) ([5076e79](https://github.com/vm0-ai/vm0/commit/5076e79781786049aa346dcd908661388dbe7a3a))
+
+
+### Refactoring
+
+* **api:** remove unused onboarding setup endpoint ([#21843](https://github.com/vm0-ai/vm0/issues/21843)) ([7cbf7b8](https://github.com/vm0-ai/vm0/commit/7cbf7b8b5423b7a681c60f919862275e863d1c6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.0
+    * @vm0/connectors bumped to 1.169.0
+
 ## [8.437.3](https://github.com/vm0-ai/vm0/compare/core-v8.437.2...core-v8.437.3) (2026-07-16)
 
 
