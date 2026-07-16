@@ -12,9 +12,6 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatModelFamilySessionContinuity, {}),
-    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -147,9 +144,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
-    expect(
-      staffOrgStates[FeatureSwitchKey.ChatModelFamilySessionContinuity],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
@@ -187,9 +181,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.ChatModelFamilySessionContinuity],
-    ).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,

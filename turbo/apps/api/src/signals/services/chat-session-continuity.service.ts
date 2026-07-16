@@ -19,7 +19,6 @@ function chatSessionModelFamily(model: string): string {
 export function shouldStartNewChatSession(args: {
   readonly latestModel: string | null | undefined;
   readonly nextModel: string | null;
-  readonly preserveModelFamilySession: boolean;
 }): boolean {
   if (
     args.latestModel === undefined ||
@@ -27,10 +26,6 @@ export function shouldStartNewChatSession(args: {
     args.nextModel === null
   ) {
     return false;
-  }
-
-  if (!args.preserveModelFamilySession) {
-    return args.latestModel !== args.nextModel;
   }
 
   return (

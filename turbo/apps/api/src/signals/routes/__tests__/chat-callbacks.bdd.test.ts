@@ -3337,18 +3337,10 @@ describe("CHAT-02: auto-send after failures", () => {
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
-  it("starts a fresh session with prior web context when family continuity is disabled, without regenerating an existing title", async () => {
+  it("preserves the CLI session across same-family queued model switches without regenerating an existing title", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected entitled actor to belong to an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatModelFamilySessionContinuity]: false },
-    );
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-4-6",
@@ -3440,18 +3432,9 @@ describe("CHAT-02: auto-send across a model switch", () => {
 
     const autoContext = await waitForRunContext(actor, claimed.runId);
     const appended = autoContext.body.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
-    expect(appended).toContain(`- RUN_ID: ${second.runId}`);
-    expect(appended).toContain(
-      `- LOG_COMMAND: zero logs ${second.runId} --all`,
-    );
-    expect(appended).toContain("User: And stringify?");
-    expect(appended).toContain("Assistant: Use JSON.stringify(value).");
-    expect(appended).toContain("...[truncated]");
+    expect(appended).not.toContain("# Web Chat Run Context");
     expect(appended).not.toContain("# Incomplete Rounds Context");
-    // Fresh session: the queued model pin differs from the completed run's
-    // model, so the auto-send run resumes no CLI session.
-    expect(autoContext.body.sessionId).toBeNull();
+    expect(autoContext.body.sessionId).toBe(`bdd-cli-${second.runId}`);
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
     );
