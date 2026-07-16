@@ -305,10 +305,20 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("## Style Source");
     expect(stdout).toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain("ink-storefront");
-    expect(stdout).toContain("## Required Workflow");
+    expect(stdout).toContain("## Prompt Compiler Task");
     expect(stdout).toContain("If unavailable, stop without generating");
-    expect(stdout).toContain("required model inputs");
+    expect(stdout).toContain("references, examples, and templates");
+    expect(stdout).toContain(
+      "Return only the compiled prompt text when preparing the next command",
+    );
+    expect(stdout).toContain("## Artifact Output Model");
     expect(stdout).toContain("## Requested Parameters");
+    expect(stdout.indexOf("## Prompt Compiler Task")).toBeLessThan(
+      stdout.indexOf("## Artifact Output Model"),
+    );
+    expect(stdout.indexOf("## Artifact Output Model")).toBeLessThan(
+      stdout.indexOf("## Requested Parameters"),
+    );
     expect(stdout).toContain("Requested size: 1024x1024");
     expect(stdout).toContain("Source image URLs: none");
     expect(stdout).toContain("## Image Authoring Rules");
