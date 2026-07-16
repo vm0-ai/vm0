@@ -1423,7 +1423,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     if transitioned {
                         // Live observability: fire an immediate "stopping"
                         // heartbeat before teardown removes the runner.
-                        heartbeat.flush(RunnerMode::Stopping).await;
+                        heartbeat.flush(RunnerMode::Stopping).await?;
                     }
                     continue;
                 }
@@ -1537,7 +1537,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // The active heartbeat future is pinned in the controller so
             // network and state-refresh waits yield to every other reactor
             // branch instead of being awaited by a trigger handler.
-            _ = heartbeat.wait_for_send(), if heartbeat_sending => {
+            result = heartbeat.wait_for_send(), if heartbeat_sending => {
+                result?;
                 let live_mode = *mode_rx.borrow();
                 heartbeat.finish_send(live_mode);
             }

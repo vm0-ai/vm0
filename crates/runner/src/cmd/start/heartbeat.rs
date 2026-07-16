@@ -7,6 +7,7 @@ use tracing::{debug, info};
 
 use super::active_sessions::{ActiveCliAgentSessions, active_cli_agent_session_ids};
 use crate::config::ProfileConfig;
+use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::IdlePool;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
@@ -99,12 +100,12 @@ impl<'a> HeartbeatController<'a> {
     }
 
     /// Wait for the stored future from an enabled `tokio::select!` branch.
-    pub(super) async fn wait_for_send(&mut self) {
-        debug_assert!(self.in_flight.is_some());
-        match &mut self.in_flight {
-            Some(send) => send.await,
-            None => std::future::pending().await,
-        }
+    pub(super) async fn wait_for_send(&mut self) -> RunnerResult<()> {
+        let send = self.in_flight.as_mut().ok_or_else(|| {
+            RunnerError::Internal("heartbeat wait requires an active send".to_string())
+        })?;
+        send.await;
+        Ok(())
     }
 
     /// Clear a completed send and start one live-state follow-up when dirty.
@@ -120,10 +121,10 @@ impl<'a> HeartbeatController<'a> {
     ///
     /// Natural stopping uses this to replace all ordinary pending work with a
     /// single `Stopping` heartbeat before teardown.
-    pub(super) async fn flush(&mut self, mode: RunnerMode) {
+    pub(super) async fn flush(&mut self, mode: RunnerMode) -> RunnerResult<()> {
         self.request(mode);
         loop {
-            self.wait_for_send().await;
+            self.wait_for_send().await?;
             self.in_flight = None;
             if std::mem::take(&mut self.pending) {
                 self.start(mode);
@@ -131,6 +132,7 @@ impl<'a> HeartbeatController<'a> {
                 break;
             }
         }
+        Ok(())
     }
 
     /// Finish only the active send and discard ordinary coalesced work.
