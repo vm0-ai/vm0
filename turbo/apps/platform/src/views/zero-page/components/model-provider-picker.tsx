@@ -26,7 +26,6 @@ import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
   isCodexFastModeModel,
-  isLimitedFree1RestrictedRunModel,
   isSupportedRunModel,
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderType,
@@ -36,11 +35,16 @@ import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
 import {
-  billingStatusAsync$,
-  limitedFree1$,
-} from "../../../signals/zero-page/billing";
-import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog";
-import { openBillingPlans$ } from "../../../signals/zero-page/settings/org-manage-tabs-state";
+  DEFAULT_MODEL_PLAN_CAPABILITIES,
+  modelAllowedForPlan,
+  modelPlanCapabilities$,
+  modelPolicyAllowedForPlan,
+  type ModelPlanCapabilities,
+} from "../../../signals/zero-page/model-plan-capabilities";
+import {
+  openSettingsBillingPlans$,
+  setSettingsDialogOpen$,
+} from "../../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../signals/page-signal";
 import { resolveExplicitModelSelection$ } from "../../../signals/zero-page/model-default-selection";
 import { detach, Reason } from "../../../signals/utils";
@@ -241,34 +245,33 @@ function resolveModelFirstDefault(
   );
 }
 
-function modelSelectionAllowedForTier(
-  limitedFree1: boolean,
-  selectedModel: string | null | undefined,
-): boolean {
-  return (
-    !limitedFree1 || !isLimitedFree1RestrictedRunModel(selectedModel ?? null)
-  );
-}
-
-function selectablePoliciesForTier(
+function selectablePoliciesForPlan(
   policies: OrgModelPolicy[],
-  limitedFree1: boolean,
+  modelCapabilities: ModelPlanCapabilities,
 ): OrgModelPolicy[] {
-  if (!limitedFree1) {
+  if (modelCapabilities.supportByok && !modelCapabilities.restrictedVm0Models) {
     return policies;
   }
   return policies.filter((policy) => {
-    return !isLimitedFree1RestrictedRunModel(policy.model);
+    return modelPolicyAllowedForPlan(policy, modelCapabilities);
   });
 }
 
 function selectionAllowedValue(
   value: ModelProviderSelection | null,
-  limitedFree1: boolean,
+  policies: OrgModelPolicy[],
+  modelCapabilities: ModelPlanCapabilities,
 ): ModelProviderSelection | null {
-  return modelSelectionAllowedForTier(limitedFree1, value?.selectedModel)
-    ? value
-    : null;
+  if (!value) {
+    return null;
+  }
+  const policy = policies.find((candidate) => {
+    return candidate.model === value.selectedModel;
+  });
+  const allowed = policy
+    ? modelPolicyAllowedForPlan(policy, modelCapabilities)
+    : modelAllowedForPlan(value.selectedModel, modelCapabilities);
+  return allowed ? value : null;
 }
 
 function codexFastModeAvailableForModel(
@@ -413,12 +416,12 @@ function modelFirstSelectionFromRaw(
 
 function ModelFirstPolicyRowContent({
   policy,
-  limitedFree1,
+  modelCapabilities,
   selected = false,
   showSelectedIndicator = false,
 }: {
   policy: OrgModelPolicy;
-  limitedFree1: boolean;
+  modelCapabilities: ModelPlanCapabilities;
   selected?: boolean;
   showSelectedIndicator?: boolean;
 }) {
@@ -427,7 +430,7 @@ function ModelFirstPolicyRowContent({
     policy.defaultProviderType === "vm0"
       ? getVm0ModelPriceTier(policy.model)
       : undefined;
-  const restricted = !modelSelectionAllowedForTier(limitedFree1, policy.model);
+  const restricted = !modelPolicyAllowedForPlan(policy, modelCapabilities);
   return (
     <span className="flex w-full min-w-0 items-center gap-2">
       {iconType && <ProviderIcon type={iconType} size={16} />}
@@ -451,10 +454,10 @@ function ModelFirstPolicyRowContent({
 
 function ModelFirstPolicyRow({
   policy,
-  limitedFree1,
+  modelCapabilities,
 }: {
   policy: OrgModelPolicy;
-  limitedFree1: boolean;
+  modelCapabilities: ModelPlanCapabilities;
 }) {
   return (
     <SelectItem
@@ -462,7 +465,10 @@ function ModelFirstPolicyRow({
       value={policy.model}
       disabled={policy.routeStatus !== "valid"}
     >
-      <ModelFirstPolicyRowContent policy={policy} limitedFree1={limitedFree1} />
+      <ModelFirstPolicyRowContent
+        policy={policy}
+        modelCapabilities={modelCapabilities}
+      />
     </SelectItem>
   );
 }
@@ -470,12 +476,12 @@ function ModelFirstPolicyRow({
 function ModelFirstPolicyItems({
   policies,
   explicitSelectedModel,
-  limitedFree1,
+  modelCapabilities,
   showSeparator = true,
 }: {
   policies: OrgModelPolicy[];
   explicitSelectedModel: string | null;
-  limitedFree1: boolean;
+  modelCapabilities: ModelPlanCapabilities;
   showSeparator?: boolean;
 }) {
   const hasExplicitSelectedPolicy =
@@ -512,7 +518,7 @@ function ModelFirstPolicyItems({
               <ModelFirstPolicyRow
                 key={policy.id}
                 policy={policy}
-                limitedFree1={limitedFree1}
+                modelCapabilities={modelCapabilities}
               />
             );
           })}
@@ -624,7 +630,7 @@ function ModelFirstModelPickerContent({
   placeholder,
   policies,
   selectableValue,
-  limitedFree1,
+  modelCapabilities,
   codexFastModeAvailable,
   selectedModel,
   codexServiceTier,
@@ -634,7 +640,7 @@ function ModelFirstModelPickerContent({
   placeholder: string;
   policies: OrgModelPolicy[];
   selectableValue: ModelProviderSelection | null;
-  limitedFree1: boolean;
+  modelCapabilities: ModelPlanCapabilities;
   codexFastModeAvailable: boolean;
   selectedModel: string | null;
   codexServiceTier: CodexServiceTier | undefined;
@@ -667,7 +673,7 @@ function ModelFirstModelPickerContent({
           <ModelFirstPolicyItems
             policies={policies}
             explicitSelectedModel={selectableValue?.selectedModel ?? null}
-            limitedFree1={limitedFree1}
+            modelCapabilities={modelCapabilities}
             showSeparator={false}
           />
         </div>
@@ -698,7 +704,7 @@ function resolveModelFirstModelPickerState({
   value,
   userPreference,
   policyResponse,
-  limitedFree1,
+  modelCapabilities,
   resolveDefaultSelection,
   codexFastModeEnabled,
   placeholder,
@@ -706,14 +712,21 @@ function resolveModelFirstModelPickerState({
   value: ModelProviderSelection | null;
   userPreference: { selectedModel: string | null } | null | undefined;
   policyResponse: { policies: OrgModelPolicy[] } | null | undefined;
-  limitedFree1: boolean;
+  modelCapabilities: ModelPlanCapabilities;
   resolveDefaultSelection: boolean;
   codexFastModeEnabled: boolean;
   placeholder: string;
 }): ModelFirstModelPickerState {
   const policies = policyResponse?.policies ?? [];
-  const selectablePolicies = selectablePoliciesForTier(policies, limitedFree1);
-  const selectableValue = selectionAllowedValue(value, limitedFree1);
+  const selectablePolicies = selectablePoliciesForPlan(
+    policies,
+    modelCapabilities,
+  );
+  const selectableValue = selectionAllowedValue(
+    value,
+    policies,
+    modelCapabilities,
+  );
   const resolved = resolveDefaultSelection
     ? resolveModelFirstDefault(
         selectableValue,
@@ -750,7 +763,7 @@ function ModelFirstSelectPicker({
   placeholder,
   triggerClassName,
   mobileIconTrigger,
-  limitedFree1,
+  modelCapabilities,
   open,
   onOpenChange,
   onValueChange,
@@ -761,7 +774,7 @@ function ModelFirstSelectPicker({
   placeholder: string;
   triggerClassName: string | undefined;
   mobileIconTrigger: boolean;
-  limitedFree1: boolean;
+  modelCapabilities: ModelPlanCapabilities;
   open: boolean | undefined;
   onOpenChange: ((open: boolean) => void) | undefined;
   onValueChange: (raw: string) => void;
@@ -794,7 +807,7 @@ function ModelFirstSelectPicker({
             placeholder={placeholder}
             policies={state.policies}
             selectableValue={state.selectableValue}
-            limitedFree1={limitedFree1}
+            modelCapabilities={modelCapabilities}
             codexFastModeAvailable={state.codexFastModeAvailable}
             selectedModel={state.selectedModel}
             codexServiceTier={state.codexServiceTier}
@@ -826,20 +839,22 @@ function SubscribedModelFirstModelPicker({
   resolveDefaultSelection: boolean;
 }) {
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
-  const billingLoadable = useLoadable(billingStatusAsync$);
-  const openBillingPlans = useSet(openBillingPlans$);
-  const openOrgManage = useSet(setOrgManageDialogOpen$);
+  const modelCapabilitiesLoadable = useLoadable(modelPlanCapabilities$);
+  const lastModelCapabilities = useLastResolved(modelPlanCapabilities$);
+  const openBillingPlans = useSet(openSettingsBillingPlans$);
+  const openSettings = useSet(setSettingsDialogOpen$);
   const pageSignal = useGet(pageSignal$);
   const policyResponse =
     policiesLoadable.state === "hasData" ? policiesLoadable.data : undefined;
-  const limitedFree1 =
-    billingLoadable.state === "hasData" &&
-    billingLoadable.data.tier === "limited-free-1";
+  const modelCapabilities =
+    modelCapabilitiesLoadable.state === "hasData"
+      ? modelCapabilitiesLoadable.data
+      : (lastModelCapabilities ?? DEFAULT_MODEL_PLAN_CAPABILITIES);
   const state = resolveModelFirstModelPickerState({
     value,
     userPreference,
     policyResponse,
-    limitedFree1,
+    modelCapabilities,
     resolveDefaultSelection,
     codexFastModeEnabled,
     placeholder,
@@ -861,17 +876,22 @@ function SubscribedModelFirstModelPicker({
 
   const openComparePlans = () => {
     openBillingPlans();
-    detach(openOrgManage(true, pageSignal), Reason.DomCallback);
+    detach(openSettings(true, pageSignal), Reason.DomCallback);
   };
 
   const handleRawValueChange = (raw: string) => {
-    if (
-      raw !== INHERIT_SENTINEL &&
-      limitedFree1 &&
-      isLimitedFree1RestrictedRunModel(raw)
-    ) {
-      openComparePlans();
-      return;
+    if (raw !== INHERIT_SENTINEL) {
+      const policy = state.policies.find((candidate) => {
+        return candidate.model === raw;
+      });
+      if (
+        !modelAllowedForPlan(raw, modelCapabilities) ||
+        (policy !== undefined &&
+          !modelPolicyAllowedForPlan(policy, modelCapabilities))
+      ) {
+        openComparePlans();
+        return;
+      }
     }
     onChange(
       selectionWithCodexServiceTier(
@@ -889,7 +909,7 @@ function SubscribedModelFirstModelPicker({
       placeholder={placeholder}
       triggerClassName={triggerClassName}
       mobileIconTrigger={mobileIconTrigger}
-      limitedFree1={limitedFree1}
+      modelCapabilities={modelCapabilities}
       open={open}
       onOpenChange={onOpenChange}
       onValueChange={handleRawValueChange}
@@ -991,7 +1011,8 @@ function SubscribedExplicitModelFirstModelPickerContent({
   onChange: (value: ModelProviderSelection | null) => void;
 }) {
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
-  const limitedFree1 = useLastResolved(limitedFree1$) ?? false;
+  const modelCapabilities =
+    useLastResolved(modelPlanCapabilities$) ?? DEFAULT_MODEL_PLAN_CAPABILITIES;
   if (policiesLoadable.state === "loading") {
     return (
       <LoadingModelFirstModelPickerContent
@@ -1012,7 +1033,7 @@ function SubscribedExplicitModelFirstModelPickerContent({
     value,
     userPreference: null,
     policyResponse: policiesLoadable.data,
-    limitedFree1: false,
+    modelCapabilities: DEFAULT_MODEL_PLAN_CAPABILITIES,
     resolveDefaultSelection: false,
     codexFastModeEnabled,
     placeholder,
@@ -1023,8 +1044,12 @@ function SubscribedExplicitModelFirstModelPickerContent({
       placeholder={placeholder}
       policies={state.policies}
       selectableValue={state.selectableValue}
-      limitedFree1={limitedFree1}
-      codexFastModeAvailable={!limitedFree1 && state.codexFastModeAvailable}
+      modelCapabilities={modelCapabilities}
+      codexFastModeAvailable={
+        modelCapabilities.supportByok &&
+        !modelCapabilities.restrictedVm0Models &&
+        state.codexFastModeAvailable
+      }
       selectedModel={state.selectedModel}
       codexServiceTier={state.codexServiceTier}
       onChange={onChange}
@@ -1040,8 +1065,8 @@ function EnabledExplicitModelFirstModelPicker(
   },
 ) {
   const resolveSelection = useSet(resolveExplicitModelSelection$);
-  const openBillingPlans = useSet(openBillingPlans$);
-  const openOrgManage = useSet(setOrgManageDialogOpen$);
+  const openBillingPlans = useSet(openSettingsBillingPlans$);
+  const openSettings = useSet(setSettingsDialogOpen$);
   const pageSignal = useGet(pageSignal$);
   const state = resolveExplicitModelFirstModelPickerState({
     value: props.value,
@@ -1061,7 +1086,7 @@ function EnabledExplicitModelFirstModelPicker(
         );
         if (result.kind === "compare-plans") {
           openBillingPlans();
-          await openOrgManage(true, pageSignal);
+          await openSettings(true, pageSignal);
           return;
         }
         props.onChange(result.selection);
@@ -1085,7 +1110,7 @@ function EnabledExplicitModelFirstModelPicker(
       placeholder={props.placeholder}
       triggerClassName={props.triggerClassName}
       mobileIconTrigger={props.mobileIconTrigger}
-      limitedFree1={false}
+      modelCapabilities={DEFAULT_MODEL_PLAN_CAPABILITIES}
       open={props.open}
       onOpenChange={props.onOpenChange}
       onValueChange={handleRawValueChange}

@@ -1,16 +1,18 @@
 import { command, computed, state } from "ccstate";
-import {
-  isLimitedFree1RestrictedRunModel,
-  type ModelProviderResponse,
-  type ModelProviderType,
-  type OrgModelPoliciesResponse,
+import type {
+  ModelProviderResponse,
+  ModelProviderType,
+  OrgModelPoliciesResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import {
   personalModelProviders$,
   reloadPersonalModelProviders$,
 } from "../external/personal-model-providers.ts";
-import { limitedFree1$ } from "./billing.ts";
+import {
+  modelPlanCapabilities$,
+  modelPolicyAllowedForPlan,
+} from "./model-plan-capabilities.ts";
 
 export type PersonalOauthProviderType =
   | "claude-code-oauth-token"
@@ -102,9 +104,9 @@ export const selectedModelAvailable$ = command(
     selectedModel: string,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const [policies, limitedFree1] = await Promise.all([
+    const [policies, modelCapabilities] = await Promise.all([
       get(orgModelPolicies$),
-      get(limitedFree1$),
+      get(modelPlanCapabilities$),
     ]);
     signal.throwIfAborted();
     const policy = policies.policies.find((candidate) => {
@@ -113,11 +115,7 @@ export const selectedModelAvailable$ = command(
     if (policy === undefined || policy.routeStatus !== "valid") {
       return false;
     }
-    if (
-      limitedFree1 &&
-      (policy.defaultProviderType !== "vm0" ||
-        isLimitedFree1RestrictedRunModel(selectedModel))
-    ) {
+    if (!modelPolicyAllowedForPlan(policy, modelCapabilities)) {
       return false;
     }
     if (

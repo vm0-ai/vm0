@@ -73,7 +73,7 @@ import {
   revokeInvitation$,
   acceptRequest$,
   rejectRequest$,
-} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+} from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
 
 const ROW_GRID = "grid grid-cols-[1fr_6rem_5.5rem_2rem] gap-x-4 items-center";
 

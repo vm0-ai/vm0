@@ -3,6 +3,7 @@ import {
   CONNECTOR_TYPES,
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodConfig,
+  type ConnectorAuthMethodRuntimeConfig,
   type ConnectorAuthMethodId,
   type ConnectorAuthCodeGrantAuthMethodId,
   type ConnectorDeviceAuthGrantAuthMethodId,
@@ -678,6 +679,12 @@ export function getConnectorAuthMethodAccessMetadata(
     return undefined;
   }
 
+  return connectorAuthMethodAccessMetadata(method);
+}
+
+export function connectorAuthMethodAccessMetadata(
+  method: ConnectorAuthMethodRuntimeConfig,
+): ConnectorAuthMethodAccessMetadata {
   switch (method.access.kind) {
     case "static": {
       return {
@@ -721,6 +728,12 @@ export function getConnectorAuthMethodGrantMetadata(
     return undefined;
   }
 
+  return connectorAuthMethodGrantMetadata(method);
+}
+
+export function connectorAuthMethodGrantMetadata(
+  method: ConnectorAuthMethodRuntimeConfig,
+): ConnectorAuthMethodGrantMetadata {
   switch (method.grant.kind) {
     case "auth-code":
     case "openid-auth":
@@ -766,6 +779,12 @@ export function getConnectorAuthMethodRevokeMetadata(
     return undefined;
   }
 
+  return connectorAuthMethodRevokeMetadata(method);
+}
+
+export function connectorAuthMethodRevokeMetadata(
+  method: ConnectorAuthMethodRuntimeConfig,
+): ConnectorAuthMethodRevokeMetadata {
   switch (method.revoke.kind) {
     case "token-revoke":
       return {
@@ -909,6 +928,13 @@ export function getConnectorAuthMethodRuntimeMetadata(
   if (!method) {
     return undefined;
   }
+
+  return connectorAuthMethodRuntimeMetadata(method);
+}
+
+export function connectorAuthMethodRuntimeMetadata(
+  method: ConnectorAuthMethodRuntimeConfig,
+): ConnectorAuthMethodRuntimeMetadata {
   const platformSecrets = connectorAccessPlatformSecrets(method.access);
   return {
     storage: {
@@ -1149,8 +1175,8 @@ export type ConnectorDeviceAuthStartOptionsParseResult =
     };
 
 function parseConnectorDeviceAuthStartOption(args: {
-  readonly type: ConnectorType;
-  readonly authMethod: string;
+  readonly connectorRef: string;
+  readonly authMethodId: string;
   readonly optionName: string;
   readonly config: ConnectorDeviceAuthStartOptionConfig;
   readonly requestedValue: string | undefined;
@@ -1160,7 +1186,7 @@ function parseConnectorDeviceAuthStartOption(args: {
     if (args.config.required) {
       return {
         success: false,
-        message: `${args.type} ${args.authMethod} device-auth start option ${args.optionName} is required`,
+        message: `${args.connectorRef} ${args.authMethodId} device-auth start option ${args.optionName} is required`,
       };
     }
     return { success: true, options: {} };
@@ -1175,7 +1201,7 @@ function parseConnectorDeviceAuthStartOption(args: {
       ) {
         return {
           success: false,
-          message: `${args.type} ${args.authMethod} device-auth start option ${args.optionName} must be one of: ${args.config.options
+          message: `${args.connectorRef} ${args.authMethodId} device-auth start option ${args.optionName} must be one of: ${args.config.options
             .map((option) => {
               return option.value;
             })
@@ -1202,10 +1228,24 @@ export function parseConnectorDeviceAuthStartOptions(args: {
   readonly authMethod: string;
   readonly options: ConnectorDeviceAuthStartOptions | undefined;
 }): ConnectorDeviceAuthStartOptionsParseResult {
-  const configuredOptions = getConnectorAuthMethodDeviceAuthStartOptionsConfig(
-    args.type,
-    args.authMethod,
-  );
+  return parseConnectorDeviceAuthStartOptionsConfig({
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    startOptions: getConnectorAuthMethodDeviceAuthStartOptionsConfig(
+      args.type,
+      args.authMethod,
+    ),
+    options: args.options,
+  });
+}
+
+export function parseConnectorDeviceAuthStartOptionsConfig(args: {
+  readonly connectorRef: string;
+  readonly authMethodId: string;
+  readonly startOptions: ConnectorDeviceAuthStartOptionsConfig | undefined;
+  readonly options: ConnectorDeviceAuthStartOptions | undefined;
+}): ConnectorDeviceAuthStartOptionsParseResult {
+  const configuredOptions = args.startOptions;
   const requestedOptionKeys = Object.keys(args.options ?? {});
 
   if (!configuredOptions || Object.keys(configuredOptions).length === 0) {
@@ -1214,7 +1254,7 @@ export function parseConnectorDeviceAuthStartOptions(args: {
     }
     return {
       success: false,
-      message: `${args.type} ${args.authMethod} device-auth start options are not supported: ${requestedOptionKeys.join(", ")}`,
+      message: `${args.connectorRef} ${args.authMethodId} device-auth start options are not supported: ${requestedOptionKeys.join(", ")}`,
     };
   }
 
@@ -1222,7 +1262,7 @@ export function parseConnectorDeviceAuthStartOptions(args: {
     if (!Object.hasOwn(configuredOptions, optionName)) {
       return {
         success: false,
-        message: `${args.type} ${args.authMethod} device-auth start option ${optionName} is not supported`,
+        message: `${args.connectorRef} ${args.authMethodId} device-auth start option ${optionName} is not supported`,
       };
     }
   }
@@ -1230,8 +1270,8 @@ export function parseConnectorDeviceAuthStartOptions(args: {
   const normalizedOptions: Record<string, string> = {};
   for (const [optionName, config] of Object.entries(configuredOptions)) {
     const parsedOption = parseConnectorDeviceAuthStartOption({
-      type: args.type,
-      authMethod: args.authMethod,
+      connectorRef: args.connectorRef,
+      authMethodId: args.authMethodId,
       optionName,
       config,
       requestedValue: connectorDeviceAuthStartOptionValue(
@@ -1252,7 +1292,7 @@ export function parseConnectorDeviceAuthStartOptions(args: {
   return { success: true, options: normalizedOptions };
 }
 
-function connectorGrantScopes(
+export function connectorGrantScopes(
   grant: ConnectorGrantConfig | undefined,
 ): readonly string[] {
   switch (grant?.kind) {

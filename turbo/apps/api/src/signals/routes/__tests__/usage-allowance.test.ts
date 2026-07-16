@@ -78,7 +78,9 @@ async function vm0AllowanceActor(args: {
   }
   bdd.acceptAgentStorageWrites();
   api.configureRunnerGroup();
-  await bdd.setupOnboarding(actor, { displayName: "Usage allowance agent" });
+  await bdd.bootstrapOnboarding(actor, {
+    displayName: "Usage allowance agent",
+  });
   await seedOrgMetadata({ orgId, tier: "pro", credits: args.credits });
   if (args.allowance) {
     await seedAllowanceEntitlement(actor, orgId, args.allowance);

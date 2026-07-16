@@ -323,9 +323,16 @@ function mockOrgModelRoutes(defaultSelectedModel: string): void {
   ]);
 }
 
-function billingStatus(tier: string): BillingStatusResponse {
+function billingStatus(
+  tier: string,
+  modelCapabilities?: {
+    readonly supportByok?: boolean;
+    readonly restrictedVm0Models?: boolean;
+  },
+): BillingStatusResponse {
   return {
     tier,
+    ...modelCapabilities,
     credits: 20_000,
     onboardingPaymentPending: false,
     subscriptionStatus: null,
@@ -345,9 +352,15 @@ function billingStatus(tier: string): BillingStatusResponse {
   };
 }
 
-function mockBillingTier(tier: string): void {
+function mockBillingCapabilities(
+  modelCapabilities: {
+    readonly supportByok: boolean;
+    readonly restrictedVm0Models: boolean;
+  },
+  tier = "pro",
+): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-    return respond(200, billingStatus(tier));
+    return respond(200, billingStatus(tier, modelCapabilities));
   });
 }
 
@@ -2422,7 +2435,7 @@ describe("chat composer models", () => {
 
   it("opens compare plans from limited-free-1 Pro composer model items", async () => {
     const user = userEvent.setup({ delay: null });
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000701",
@@ -2453,6 +2466,40 @@ describe("chat composer models", () => {
     await expect(
       screen.findByRole("heading", { name: "Compare plans" }),
     ).resolves.toBeInTheDocument();
+  });
+
+  it("keeps VM0 Model available when VM0 models and BYOK are restricted", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000703",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000704",
+        model: "vm0-model",
+        modelLabel: "VM0 Model",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+    ]);
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await expectComposerModel("Kimi K2.7 Code");
+    await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
+    await user.click(await screen.findByRole("option", { name: /VM0 Model/u }));
+
+    await expectComposerModel("VM0 Model");
+    expect(
+      screen.queryByRole("heading", { name: "Compare plans" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the model picker directly to options and labels BYOK routes", async () => {
@@ -2500,6 +2547,67 @@ describe("chat composer models", () => {
     await user.keyboard("{Escape}");
     expect(modelPicker).toHaveFocus();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("restores personal models when billing refreshes after realtime subscribes", async () => {
+    const user = userEvent.setup({ delay: null });
+    let billingRequestCount = 0;
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      billingRequestCount += 1;
+      return respond(
+        200,
+        billingRequestCount === 1
+          ? billingStatus("limited-free-1", {
+              supportByok: false,
+              restrictedVm0Models: true,
+            })
+          : billingStatus("pro", {
+              supportByok: true,
+              restrictedVm0Models: false,
+            }),
+      );
+    });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000305",
+        model: "kimi-k2.7-code",
+        modelLabel: "Kimi K2.7 Code",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000306",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000307",
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+      }),
+    ]);
+    mockAgent();
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      expect(billingRequestCount).toBeGreaterThanOrEqual(2);
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await expect(
+      screen.findByRole("option", { name: /GPT 5\.5/ }),
+    ).resolves.toBeInTheDocument();
   });
 
   it("keeps loaded thread model options visible when billing refresh fails", async () => {
@@ -2567,7 +2675,7 @@ describe("chat composer models", () => {
   it("blocks a hydrated restricted model for limited-free-1 before sending", async () => {
     const user = userEvent.setup({ delay: null });
     let runCreateCount = 0;
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000307",
@@ -2602,7 +2710,7 @@ describe("chat composer models", () => {
   it("blocks a hydrated BYOK model for limited-free-1 before sending", async () => {
     const user = userEvent.setup({ delay: null });
     let runCreateCount = 0;
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000309",
@@ -2918,6 +3026,10 @@ describe("chat composer models", () => {
 
   it("opens reconnect login for a stale personal Codex routed model", async () => {
     const user = userEvent.setup({ delay: null });
+    mockBillingCapabilities(
+      { supportByok: true, restrictedVm0Models: false },
+      "limited-free-1",
+    );
     context.mocks.browser.open(null);
     context.mocks.browser.clipboardWriteText();
     context.mocks.data.orgModelPolicies([
