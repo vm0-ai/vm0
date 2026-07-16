@@ -18,8 +18,8 @@ import {
   setLoop,
   withCleanup,
 } from "../utils.ts";
-import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
-import { createWorkflowQueueChangedHandler as workflowQueueHandler } from "./workflow-queue.ts";
+import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
+import { createWorkflowQueueSignals } from "./workflow-queue.ts";
 import {
   createScrollSignals,
   type PrependScrollCompensationToken,
@@ -33,6 +33,7 @@ import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
+  ATTACH_ONLY_PLACEHOLDER,
 } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatMessage$,
@@ -83,6 +84,7 @@ import {
 import {
   enrichBlocksWithTextPreviews,
   parseBodyRenderBlocks,
+  type BodyRenderBlock,
 } from "./parse-body-blocks.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
@@ -105,6 +107,8 @@ import {
 } from "../zero-page/model-first-personal-oauth.ts";
 import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/codex-device-auth.ts";
+import { userPermissionGrantsByAgent } from "../permission-allow/permission-allow-signals.ts";
+import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 
 import type {
   ChatThreadSignals,
@@ -902,6 +906,18 @@ function createAgentInfoSignals(
   return { agentId$, agentDisplayName$, agentPinned$ };
 }
 
+function createThreadOwnedSignals(
+  threadId: string,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
+) {
+  return {
+    ...createAgentInfoSignals(threadMeta$),
+    headerAutomations: createHeaderAutomationSignals(threadId),
+    workflowQueue: createWorkflowQueueSignals(threadId),
+    ...createThreadUIState(),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Sub-factory: per-thread UI state (timeline expansion, copy)
 // ---------------------------------------------------------------------------
@@ -1414,9 +1430,13 @@ function createTranscriptMessagesComputed(
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
         const { message, isQueued, isOptimisticRun } = entry;
-        const { blocks } = parseBodyRenderBlocks(message.content ?? "", {
+        const content = chatMessageBodyContent(message);
+        const { blocks } = parseBodyRenderBlocks(content, {
           previews: message.role === "assistant",
         });
+        const enrichedBlocks = enrichBlocksWithPermissionActionResources(
+          enrichBlocksWithTextPreviews(blocks),
+        );
         let mailDraftResource: EnrichedChatMessage["mailDraftResource"] = null;
         if (message.mailDraftId !== undefined) {
           const mailDraft$ = mailDraftById.get(message.mailDraftId);
@@ -1434,7 +1454,7 @@ function createTranscriptMessagesComputed(
           return {
             ...message,
             role: "user" as const,
-            blocks: enrichBlocksWithTextPreviews(blocks),
+            blocks: enrichedBlocks,
             isQueued,
             isOptimisticRun,
             mailDraftResource,
@@ -1443,13 +1463,51 @@ function createTranscriptMessagesComputed(
         return {
           ...message,
           role: "assistant" as const,
-          blocks: enrichBlocksWithTextPreviews(blocks),
+          blocks: enrichedBlocks,
           isQueued,
           isOptimisticRun: false,
           mailDraftResource,
         };
       }),
     );
+  });
+}
+
+function chatMessageBodyContent(message: PagedChatMessage): string {
+  if (message.role === "assistant") {
+    return message.content ?? "";
+  }
+  const content = (message.content ?? "").replace(
+    /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
+    "",
+  );
+  if (
+    message.attachFiles &&
+    message.attachFiles.length > 0 &&
+    content.trim() === ATTACH_ONLY_PLACEHOLDER
+  ) {
+    return "";
+  }
+  return content.trim();
+}
+
+function enrichBlocksWithPermissionActionResources(
+  blocks: BodyRenderBlock[],
+): BodyRenderBlock[] {
+  return blocks.map((block) => {
+    if (block.type !== "permission-action") {
+      return block;
+    }
+    return {
+      ...block,
+      resource: {
+        agent$: agentById(block.agentId),
+        grants$: userPermissionGrantsByAgent({ agentId: block.agentId }),
+        metadata$: firewallPermissionMetadataByConnector({
+          connectorRef: block.connectorRef,
+        }),
+      },
+    };
   });
 }
 
@@ -2417,6 +2475,10 @@ interface RunTrackingDeps {
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   autoScroll$: Command<void, []>;
+  automationSignals: Pick<
+    ChatThreadSignals,
+    "headerAutomations" | "workflowQueue"
+  >;
   dataSource: ChatThreadRemote;
 }
 
@@ -2611,6 +2673,7 @@ function createRunTracking({
   fetchUpdatedMessage$,
   reloadArtifacts$,
   autoScroll$,
+  automationSignals,
   dataSource,
 }: RunTrackingDeps) {
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
@@ -2692,8 +2755,7 @@ function createRunTracking({
     });
 
     const onAutomationsChanged$ = command(({ set }) => {
-      L.debug("onAutomationsChanged$ fired", { threadId });
-      set(reloadHeaderAutomationMenu$);
+      set(automationSignals.headerAutomations.reload$);
       return false;
     });
 
@@ -2709,7 +2771,6 @@ function createRunTracking({
       return false;
     });
 
-    L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
     const subscriptionSignal = subscriptionScope.signal;
 
@@ -2728,7 +2789,8 @@ function createRunTracking({
               onAutomationsChanged$,
               onArtifactsChanged$,
               onWorkflowsChanged$,
-              onWorkflowQueueChanged$: workflowQueueHandler(threadId),
+              onWorkflowQueueChanged$:
+                automationSignals.workflowQueue.handleChanged$,
               onSubscribed$,
             },
           },
@@ -3887,8 +3949,7 @@ export function createChatThreadSignals(
   const { containerEl$, setContainerRef$ } = createContainerRef();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
-  const agentInfo = createAgentInfoSignals(threadMeta$);
-  const threadUi = createThreadUIState();
+  const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
   const messages = createChatThreadMessagePipeline({
     threadId,
     dataSource,
@@ -3911,6 +3972,7 @@ export function createChatThreadSignals(
     fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
     reloadArtifacts$: artifact.reloadArtifacts$,
     autoScroll$: scrollSignals.autoScroll$,
+    automationSignals: threadOwned,
     dataSource,
   });
   const messageActions = createThreadMessageActions({
@@ -3952,8 +4014,7 @@ export function createChatThreadSignals(
     workflowComposer,
     composerFileInput$,
     setComposerFileInput$,
-    ...agentInfo,
-    ...threadUi,
+    ...threadOwned,
     focusInput$: workflowComposer.focus$,
     queueDraftSync$,
     latestChatMessageId$: messages.latestChatMessageId$,

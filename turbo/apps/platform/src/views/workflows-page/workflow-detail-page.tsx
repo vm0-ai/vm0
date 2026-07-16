@@ -151,7 +151,7 @@ import {
   workflowAutomationPickerCategory$,
   workflowAutomationPickerOpen$,
   workflowFileDraft$,
-  workflowDetail,
+  currentWorkflowDetail$,
   type WorkflowCopyFormState,
   type WorkflowCronFields,
   type WorkflowCronFrequency,
@@ -353,15 +353,11 @@ export function WorkflowDetailPage() {
     return null;
   }
 
-  return <WorkflowDetailContent workflowId={workflowId} />;
+  return <WorkflowDetailContent />;
 }
 
-function WorkflowDetailContent({
-  workflowId,
-}: {
-  readonly workflowId: string;
-}) {
-  const detail$ = workflowDetail(workflowId);
+function WorkflowDetailContent() {
+  const detail$ = currentWorkflowDetail$;
   const detailLoadable = useLoadable(detail$);
   const lastResolvedDetail = useLastResolved(detail$);
   const detail =

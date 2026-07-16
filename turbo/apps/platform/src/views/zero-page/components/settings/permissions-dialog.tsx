@@ -1,6 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
+import type { Computed } from "ccstate";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
@@ -94,7 +95,6 @@ import {
 } from "./permission-policy-toggle.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
 
 interface ConnectorPermission {
   name: string;
@@ -106,6 +106,7 @@ interface PermissionsDrawerProps {
   targetKind?: "agent" | "workflow";
   connectorType: ConnectorType;
   connectorLabel: string;
+  metadata$: Computed<Promise<PublicConnectorCatalogPermissionDetail | null>>;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
@@ -1544,11 +1545,7 @@ function PermissionsContent({
   readonly surface: PermissionsSurface;
   readonly onClose: () => void;
 }) {
-  const metadataLoadable = useLoadable(
-    firewallPermissionMetadataByConnector({
-      connectorRef: props.connectorType,
-    }),
-  );
+  const metadataLoadable = useLoadable(props.metadata$);
   const loadedMetadata =
     metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
   const loadedInitialState = loadedMetadata

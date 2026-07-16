@@ -15,7 +15,6 @@ import type {
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
 import {
   findPermissionInMetadata,
   permissionAllowAction$,
@@ -26,6 +25,7 @@ import {
   permissionAllowPermission$,
   permissionAllowRef$,
   permissionAllowUserPermissionGrants$,
+  permissionAllowFirewallPermissionMetadata$,
   resolveUserPermissionGrantPolicy,
   type Permission,
   applyUserPermissionGrant$,
@@ -444,7 +444,7 @@ function PermissionAllowDoctorPage({
   const userLoadable = useLastLoadable(user$);
   const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
   const metadataLoadable = useLoadable(
-    firewallPermissionMetadataByConnector({ connectorRef: ref }),
+    permissionAllowFirewallPermissionMetadata$,
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
   const grants = grantsLoadable.state === "hasData" ? grantsLoadable.data : [];
