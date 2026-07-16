@@ -223,6 +223,27 @@ function presentationHtml(): string {
 </html>`;
 }
 
+function selectionOverlayPresentationHtml(): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <title>Selection overlay</title>
+  </head>
+  <body>
+    <section data-vm0-slide data-slide-id="slide-intro">
+      <figure style="opacity: 0.15; filter: saturate(0.5); transform: rotate(-15deg)">
+        <svg viewBox="0 0 100 100" aria-label="Decoration">
+          <path d="M10 10h80v80H10z" />
+        </svg>
+      </figure>
+      <article style="border: 2px solid #ff7a59">
+        <h1>Header group</h1>
+      </article>
+    </section>
+  </body>
+</html>`;
+}
+
 function clampedPresentationHtml(): string {
   return `<!doctype html>
 <html>
@@ -867,7 +888,12 @@ function mockIntersectionObserver(): { triggerAll: () => void } {
 
 function mockElementBox(
   element: HTMLElement,
-  { height, width }: { height: number; width: number },
+  {
+    height,
+    left = 0,
+    top = 0,
+    width,
+  }: { height: number; left?: number; top?: number; width: number },
 ) {
   Object.defineProperties(element, {
     clientHeight: {
@@ -891,17 +917,17 @@ function mockElementBox(
     configurable: true,
     value: () => {
       return {
-        bottom: height,
+        bottom: top + height,
         height,
-        left: 0,
-        right: width,
+        left,
+        right: left + width,
         toJSON: () => {
           return {};
         },
-        top: 0,
+        top,
         width,
-        x: 0,
-        y: 0,
+        x: left,
+        y: top,
       };
     },
   });
@@ -945,6 +971,16 @@ function generatedPresentationPreviewHtml(
     throw new Error("Generated presentation preview blob not found");
   }
   return previewBlob.text();
+}
+
+async function installGeneratedPresentationPreviewDocument(
+  frame: HTMLIFrameElement,
+  blobForUrl: (url: string) => Blob | null,
+): Promise<Document> {
+  return installPresentationPreviewDocumentFromHtml(
+    frame,
+    await generatedPresentationPreviewHtml(frame, blobForUrl),
+  );
 }
 
 interface ExecutedOffsetRuntimePreview {
@@ -1058,6 +1094,21 @@ async function installExecutedOffsetRuntimePreview(
       })();
     `);
     const resizedTranslate = title.dataset.vm0TestTranslate ?? "";
+
+    page.evaluate(`
+      window.__vm0TestLayoutWidth = 1000;
+      window.dispatchEvent(new Event("resize"));
+    `);
+    await page.waitUntilComplete();
+    page.evaluate(`
+      (() => {
+        const title = document.querySelector('[data-vm0-element-id="clamped-title"]');
+        const authored = document.querySelector('[data-vm0-element-id="authored-translate"]');
+        title.style.setProperty("translate", title.style.translate);
+        title.removeAttribute("data-vm0-test-translate");
+        authored.removeAttribute("data-vm0-test-translate");
+      })();
+    `);
 
     return {
       authoredRuntimeApplied,
@@ -3179,6 +3230,305 @@ ${openFencedHostedSiteUrl}`,
     });
   });
 
+  it("keeps legacy text editing and does not write movement geometry when dragging is disabled", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/non-draggable-quarterly-roadmap.html";
+    const browser = context.mocks.browser.blobDownload();
+    let redeployedHtml: string | null = null;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ body, respond }) => {
+        redeployedHtml = body.html;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "non-draggable-quarterly-roadmap",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="title"]',
+    );
+    if (!(title instanceof HTMLElement)) {
+      throw new Error("Presentation preview title not found");
+    }
+    expect(
+      previewDocument.querySelector("[data-vm0-editor-move-id]"),
+    ).toBeNull();
+    fireEvent.load(previewFrame);
+
+    expect(title.getAttribute("contenteditable")).toBe("true");
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 6,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 6,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 6,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("");
+    expect(title.dataset.vm0EditorSelected).toBeUndefined();
+    expect(
+      previewDocument.querySelector("[data-vm0-editor-selection-overlay]"),
+    ).toBeNull();
+
+    title.textContent = "Updated without movement";
+    fireEvent.input(title);
+    fireEvent.blur(title);
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+    const redeployedDocument = new DOMParser().parseFromString(
+      redeployedHtml ?? "",
+      "text/html",
+    );
+    expect(
+      redeployedDocument.querySelector('[data-vm0-edit-id="title"]')
+        ?.textContent,
+    ).toBe("Updated without movement");
+    expect(
+      redeployedDocument.querySelector("[data-vm0-element-id]"),
+    ).toBeNull();
+    expect(redeployedDocument.querySelector("[data-vm0-offset-x]")).toBeNull();
+    expect(redeployedDocument.querySelector("[data-vm0-offset-y]")).toBeNull();
+    expect(
+      redeployedDocument.querySelector(
+        'script[id="vm0-presentation-element-offset-runtime"]',
+      ),
+    ).toBeNull();
+    expect(
+      JSON.parse(
+        redeployedDocument.getElementById("vm0-deck-metadata")?.textContent ??
+          "{}",
+      ),
+    ).toMatchObject({ editProtocolVersion: 1 });
+    toast.dismiss();
+  });
+
+  it("selects, text-edits, drags, and redeploys presentation objects", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/draggable-quarterly-roadmap.html";
+    const html = presentationHtml();
+    const browser = context.mocks.browser.blobDownload();
+    let redeployedHtml: string | null = null;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ body, respond }) => {
+        redeployedHtml = body.html;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "draggable-quarterly-roadmap",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, html, {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const slide = previewDocument.querySelector(
+      '[data-vm0-editor-stage] > [data-slide-id="slide-intro"]',
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="title"]',
+    );
+    const summary = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="summary"]',
+    );
+    if (
+      !(slide instanceof HTMLElement) ||
+      !(title instanceof HTMLElement) ||
+      !(summary instanceof HTMLElement)
+    ) {
+      throw new Error("Presentation preview objects not found");
+    }
+    mockElementBox(slide, { height: 600, width: 1000 });
+    mockElementBox(title, {
+      height: 80,
+      left: 100,
+      top: 100,
+      width: 200,
+    });
+    mockElementBox(summary, {
+      height: 60,
+      left: 100,
+      top: 220,
+      width: 400,
+    });
+    fireEvent.load(previewFrame);
+
+    expect(title.getAttribute("contenteditable")).toBe("false");
+    fireEvent.click(title);
+    expect(title.dataset.vm0EditorSelected).toBe("true");
+    expect(title.getAttribute("contenteditable")).toBe("false");
+
+    fireEvent.doubleClick(title);
+    expect(title.getAttribute("contenteditable")).toBe("true");
+    title.textContent = "Updated quarterly roadmap";
+    fireEvent.input(title);
+    fireEvent.doubleClick(summary);
+    expect(title.getAttribute("contenteditable")).toBe("false");
+    expect(summary.getAttribute("contenteditable")).toBe("true");
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 13,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 13,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 13,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("");
+
+    fireEvent.blur(summary);
+    expect(summary.getAttribute("contenteditable")).toBe("false");
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 7,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 7,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 7,
+    });
+
+    expect(title.style.getPropertyValue("translate")).toBe("100px 60px");
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+    const redeployedDocument = new DOMParser().parseFromString(
+      redeployedHtml ?? "",
+      "text/html",
+    );
+    const movedTitle = redeployedDocument.querySelector<HTMLElement>(
+      '[data-slide-id="slide-intro"] > h1',
+    );
+    expect(movedTitle?.textContent).toBe("Updated quarterly roadmap");
+    expect(movedTitle?.dataset.vm0ElementId).toMatch(/^vm0-generated:/u);
+    expect(Number(movedTitle?.dataset.vm0OffsetX)).toBeCloseTo(0.1);
+    expect(Number(movedTitle?.dataset.vm0OffsetY)).toBeCloseTo(0.1);
+    expect(
+      redeployedDocument.querySelectorAll(
+        'script[id="vm0-presentation-element-offset-runtime"]',
+      ),
+    ).toHaveLength(1);
+    expect(
+      JSON.parse(
+        redeployedDocument.getElementById("vm0-deck-metadata")?.textContent ??
+          "{}",
+      ),
+    ).toMatchObject({ editProtocolVersion: 2 });
+    toast.dismiss();
+  });
+
   it("applies responsive offsets in the generated presentation preview", async () => {
     const presentationUrl =
       "https://deck.sites.vm7.io/clamped-presentation-preview.html";
@@ -3216,6 +3566,382 @@ ${openFencedHostedSiteUrl}`,
         "script#vm0-presentation-element-offset-runtime",
       ),
     ).toHaveLength(1);
+  });
+
+  it("continues dragging from a runtime-clamped visual position", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/clamped-presentation-drag.html";
+    const browser = context.mocks.browser.blobDownload();
+    let redeployedHtml: string | null = null;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ body, respond }) => {
+        redeployedHtml = body.html;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "clamped-presentation-drag",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(
+      presentationUrl,
+      clampedPresentationHtml(),
+      {
+        featureSwitches: {
+          [FeatureSwitchKey.PresentationElementDragging]: true,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const executedPreview = await installExecutedOffsetRuntimePreview(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    expect(executedPreview.initialTranslate).toBe("0px 0px");
+    expect(executedPreview.resizedTranslate).toBe("1000px 0px");
+    expect(executedPreview.authoredTranslate).toBe("20px 10px");
+    expect(executedPreview.authoredRuntimeApplied).toBeFalsy();
+    const previewDocument = executedPreview.document;
+    const slide = previewDocument.querySelector(
+      '[data-vm0-editor-stage] > [data-slide-id="slide-intro"]',
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-element-id="clamped-title"]',
+    );
+    if (!(slide instanceof HTMLElement) || !(title instanceof HTMLElement)) {
+      throw new Error("Clamped presentation preview objects not found");
+    }
+    mockElementBox(slide, { height: 600, width: 1000 });
+    mockElementBox(title, {
+      height: 80,
+      left: 800,
+      top: 100,
+      width: 200,
+    });
+    fireEvent.load(previewFrame);
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 900,
+      clientY: 140,
+      pointerId: 11,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 800,
+      clientY: 140,
+      pointerId: 11,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("-100px 0px");
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 800,
+      clientY: 140,
+      pointerId: 11,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.getByText("Presentation updated")).toBeInTheDocument();
+    });
+
+    const redeployedDocument = new DOMParser().parseFromString(
+      redeployedHtml ?? "",
+      "text/html",
+    );
+    const movedTitle = redeployedDocument.querySelector<HTMLElement>(
+      '[data-vm0-element-id="clamped-title"]',
+    );
+    expect(Number(movedTitle?.dataset.vm0OffsetX)).toBeCloseTo(-0.1);
+    expect(Number(movedTitle?.dataset.vm0OffsetY)).toBe(0);
+    expect(
+      redeployedDocument.querySelector(
+        "div#vm0-presentation-element-offset-runtime",
+      )?.textContent,
+    ).toContain("Authored ID collision");
+    expect(
+      redeployedDocument.querySelectorAll(
+        "script#vm0-presentation-element-offset-runtime",
+      ),
+    ).toHaveLength(1);
+    toast.dismiss();
+  });
+
+  it("renders consistent selection bounds outside styled presentation objects", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/selection-overlay-presentation.html";
+    const html = selectionOverlayPresentationHtml();
+    const browser = context.mocks.browser.blobDownload();
+    setupPresentationArtifactThread(presentationUrl, html, {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const slide = previewDocument.querySelector(
+      '[data-vm0-editor-stage] > [data-slide-id="slide-intro"]',
+    );
+    const decoration = previewDocument.querySelector<HTMLElement>("figure");
+    const group = previewDocument.querySelector<HTMLElement>("article");
+    const decorationContent = decoration?.querySelector("path");
+    const groupContent = group?.querySelector("h1");
+    if (
+      !(slide instanceof HTMLElement) ||
+      !decoration ||
+      !group ||
+      !decorationContent ||
+      !groupContent
+    ) {
+      throw new Error("Presentation selection objects not found");
+    }
+    mockElementBox(slide, { height: 1080, width: 1920 });
+    mockElementBox(decoration, {
+      height: 280,
+      left: 80,
+      top: 60,
+      width: 300,
+    });
+    mockElementBox(group, {
+      height: 240,
+      left: 100,
+      top: 100,
+      width: 1600,
+    });
+    fireEvent.load(previewFrame);
+
+    fireEvent.click(decorationContent);
+    const overlay = previewDocument.querySelector<HTMLElement>(
+      "[data-vm0-editor-selection-overlay]",
+    );
+    if (!overlay) {
+      throw new Error("Presentation selection overlay not found");
+    }
+    expect(decoration.dataset.vm0EditorSelected).toBe("true");
+    expect(overlay.parentElement).toBe(previewDocument.body);
+    expect(overlay.hidden).toBeFalsy();
+    expect(overlay.style.getPropertyValue("left")).toBe("76px");
+    expect(overlay.style.getPropertyValue("top")).toBe("56px");
+    expect(overlay.style.getPropertyValue("width")).toBe("308px");
+    expect(overlay.style.getPropertyValue("height")).toBe("288px");
+    expect(decoration.style.opacity).toBe("0.15");
+    expect(decoration.style.filter).toBe("saturate(0.5)");
+    expect(decoration.style.transform).toBe("rotate(-15deg)");
+
+    fireEvent.pointerDown(decorationContent, {
+      button: 0,
+      buttons: 1,
+      clientX: 100,
+      clientY: 100,
+      pointerId: 12,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 120,
+      clientY: 110,
+      pointerId: 12,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 120,
+      clientY: 110,
+      pointerId: 12,
+    });
+    expect(decoration.style.getPropertyValue("translate")).toBe("20px 10px");
+
+    fireEvent.click(groupContent);
+    expect(decoration.dataset.vm0EditorSelected).toBeUndefined();
+    expect(group.dataset.vm0EditorSelected).toBe("true");
+    expect(
+      previewDocument.querySelector("[data-vm0-editor-selection-overlay]"),
+    ).toBe(overlay);
+    expect(overlay.style.getPropertyValue("left")).toBe("96px");
+    expect(overlay.style.getPropertyValue("top")).toBe("96px");
+    expect(overlay.style.getPropertyValue("width")).toBe("1608px");
+    expect(overlay.style.getPropertyValue("height")).toBe("248px");
+    expect(group.style.border).toBe("2px solid #ff7a59");
+    expect(
+      previewDocument.querySelectorAll("[data-vm0-editor-selection-overlay]"),
+    ).toHaveLength(1);
+
+    mockElementBox(group, {
+      height: 300,
+      left: 140,
+      top: 180,
+      width: 1500,
+    });
+    group.classList.add("reflowed");
+    await waitFor(() => {
+      expect(overlay.style.getPropertyValue("left")).toBe("136px");
+      expect(overlay.style.getPropertyValue("top")).toBe("176px");
+      expect(overlay.style.getPropertyValue("width")).toBe("1508px");
+      expect(overlay.style.getPropertyValue("height")).toBe("308px");
+    });
+
+    mockElementBox(group, {
+      height: 280,
+      left: 120,
+      top: 160,
+      width: 1520,
+    });
+    fireEvent.resize(window);
+    await waitFor(() => {
+      expect(overlay.style.getPropertyValue("left")).toBe("116px");
+      expect(overlay.style.getPropertyValue("top")).toBe("156px");
+      expect(overlay.style.getPropertyValue("width")).toBe("1528px");
+      expect(overlay.style.getPropertyValue("height")).toBe("288px");
+    });
+
+    fireEvent.click(slide);
+    expect(group.dataset.vm0EditorSelected).toBeUndefined();
+    expect(overlay.hidden).toBeTruthy();
+  });
+
+  it("does not dirty presentation geometry for no-op or cancelled drags", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/cancelled-presentation-drag.html";
+    const html = presentationHtml();
+    const browser = context.mocks.browser.blobDownload();
+    let redeployCalled = false;
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ respond }) => {
+        redeployCalled = true;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "cancelled-presentation-drag",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl, html, {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationElementDragging]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    const slide = previewDocument.querySelector(
+      '[data-vm0-editor-stage] > [data-slide-id="slide-intro"]',
+    );
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="title"]',
+    );
+    if (!(slide instanceof HTMLElement) || !(title instanceof HTMLElement)) {
+      throw new Error("Presentation preview objects not found");
+    }
+    mockElementBox(slide, { height: 600, width: 1000 });
+    mockElementBox(title, {
+      height: 80,
+      left: 100,
+      top: 100,
+      width: 200,
+    });
+    fireEvent.load(previewFrame);
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 9,
+    });
+    fireEvent.pointerUp(previewDocument, {
+      button: 0,
+      buttons: 0,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 9,
+    });
+    expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+
+    fireEvent.pointerDown(title, {
+      button: 0,
+      buttons: 1,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 10,
+    });
+    fireEvent.pointerMove(previewDocument, {
+      buttons: 1,
+      clientX: 250,
+      clientY: 190,
+      pointerId: 10,
+    });
+    expect(title.style.getPropertyValue("translate")).toBe("100px 60px");
+    fireEvent.pointerCancel(previewDocument, {
+      pointerId: 10,
+    });
+
+    expect(title.style.getPropertyValue("translate")).toBe("");
+    expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+    });
+    expect(redeployCalled).toBeFalsy();
   });
 
   it("edits a fallback presentation deck without embedded metadata", async () => {
