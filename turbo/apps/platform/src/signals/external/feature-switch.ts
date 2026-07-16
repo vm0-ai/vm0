@@ -10,10 +10,6 @@ import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
 export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v2";
-export const LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY = "artifactFavorites";
-
-type FeatureSwitchStates = Record<FeatureSwitchKey, boolean> &
-  Partial<Record<typeof LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY, boolean>>;
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
@@ -33,7 +29,7 @@ const apiFeatureSwitchClient$ = computed((get) => {
 });
 
 function applySwitches(
-  result: FeatureSwitchStates,
+  result: Record<FeatureSwitchKey, boolean>,
   overrides: Partial<Record<string, boolean>> | undefined,
   effectiveSwitches: Partial<Record<string, boolean>> | undefined,
 ) {
@@ -54,25 +50,16 @@ function applySwitches(
       notionWorkflowAutomations,
     );
   }
-
-  // Keep the retired key only for the cross-version window where a new
-  // frontend can still receive an explicit disabled state from an old API.
-  // Remove this compatibility path after the previous API version has drained.
-  const artifactFavorites =
-    effectiveSwitches?.[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY];
-  if (artifactFavorites !== undefined) {
-    result[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY] = Boolean(artifactFavorites);
-  }
 }
 
-export const featureSwitch$ = computed((get): FeatureSwitchStates => {
+export const featureSwitch$ = computed((get) => {
   const raw = get(featureSwitchCache$);
   if (!raw) {
     // First-ever load: identity-gated switches start disabled until
     // `reloadFeatureSwitch$` populates the cache.
     return getAllFeatureStates({});
   }
-  return JSON.parse(raw) as FeatureSwitchStates;
+  return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
 
 export const codexFastModeEnabled$ = computed((get): boolean => {
