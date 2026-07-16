@@ -234,6 +234,14 @@ export function getConnectorManualGrantFieldNamesForAuthMethod(
   return fields ? manualGrantFieldNames(fields) : null;
 }
 
+export function connectorAuthMethodManualGrantFieldNames(
+  method: ConnectorAuthMethodRuntimeConfig,
+): ConnectorManualGrantFieldNames | null {
+  return method.grant.kind === "manual"
+    ? manualGrantFieldNames(method.grant.fields)
+    : null;
+}
+
 export function getConnectorManualGrantFieldNames(
   type: ConnectorType,
 ): ConnectorManualGrantFieldNames | null {
@@ -1075,6 +1083,12 @@ export function getConnectorAuthMethodOpenIdAuthCallbackOrigin(
   if (!grant) {
     return undefined;
   }
+  return connectorOpenIdAuthGrantCallbackOrigin(grant);
+}
+
+export function connectorOpenIdAuthGrantCallbackOrigin(
+  grant: ConnectorOpenIdAuthGrantConfig,
+): ConnectorBrowserAuthCallbackOrigin {
   return grant.callbackOrigin ?? "api";
 }
 
@@ -1096,6 +1110,12 @@ export function getConnectorAuthMethodAuthCodeCallbackOrigin(
   if (!grant) {
     return undefined;
   }
+  return connectorAuthCodeGrantCallbackOrigin(grant);
+}
+
+export function connectorAuthCodeGrantCallbackOrigin(
+  grant: ConnectorAuthCodeGrantConfig,
+): ConnectorAuthCodeCallbackOrigin {
   return grant.callbackOrigin ?? DEFAULT_AUTH_CODE_CALLBACK_ORIGIN;
 }
 
@@ -1808,14 +1828,14 @@ export function getConnectorOwnedVariableNames(
   );
 }
 
-function connectorAuthMethodOwnedSecretNames(
-  method: ConnectorAuthMethodConfig | undefined,
+export function connectorAuthMethodOwnedSecretNames(
+  method: ConnectorAuthMethodRuntimeConfig | undefined,
 ): string[] {
   return method ? [...method.storage.secrets] : [];
 }
 
-function connectorAuthMethodOwnedVariableNames(
-  method: ConnectorAuthMethodConfig | undefined,
+export function connectorAuthMethodOwnedVariableNames(
+  method: ConnectorAuthMethodRuntimeConfig | undefined,
 ): string[] {
   return method ? [...method.storage.variables] : [];
 }
@@ -2009,6 +2029,23 @@ export function getConnectorAuthMethodScopeDiff(
 ): ScopeDiff {
   return scopeDiff(
     getConnectorAuthMethodGrantScopes(connectorType, authMethod),
+    storedScopes,
+  );
+}
+
+export function connectorAuthMethodScopeDiff(
+  method: ConnectorAuthMethodRuntimeConfig,
+  storedScopes: string[] | null,
+): ScopeDiff {
+  return scopeDiff(connectorGrantScopes(method.grant), storedScopes);
+}
+
+export function connectorAuthMethodHasRequiredScopes(
+  method: ConnectorAuthMethodRuntimeConfig,
+  storedScopes: string[] | null,
+): boolean {
+  return hasRequiredGrantScopes(
+    connectorGrantScopes(method.grant),
     storedScopes,
   );
 }

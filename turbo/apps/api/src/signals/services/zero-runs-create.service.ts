@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
@@ -568,7 +568,7 @@ async function resolveZeroRunPermissionPolicies(
     readonly orgId: string;
     readonly userId: string;
     readonly agent: ZeroAgentRunRecord;
-    readonly allowedConnectorTypes: readonly ConnectorType[];
+    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
     readonly checkedAt: Date;
   },
   signal: AbortSignal,
@@ -599,7 +599,7 @@ async function loadZeroRunWorkflowPermissionContext(
     readonly orgId: string;
     readonly userId: string;
     readonly agent: ZeroAgentRunRecord;
-    readonly allowedConnectorTypes: readonly ConnectorType[];
+    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
     readonly apiStartTime: number;
     readonly timing: ApiDispatchTimingCollector;
   },
@@ -875,7 +875,7 @@ async function loadZeroRunConnectorScopes(
   },
   signal: AbortSignal,
 ): Promise<{
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
 }> {
   const scope = await loadAgentConnectorScope(db, {
@@ -910,7 +910,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
@@ -990,7 +990,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
@@ -1050,7 +1050,7 @@ interface ZeroRunAfterPreCreateBase {
   readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
 }

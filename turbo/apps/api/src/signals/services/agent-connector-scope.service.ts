@@ -1,7 +1,7 @@
 import {
-  connectorTypeSchema,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+  connectorCatalogRefSchema,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import {
@@ -13,7 +13,7 @@ import { and, eq } from "drizzle-orm";
 import type { ReadonlyDb } from "../external/db";
 
 interface AgentConnectorScope {
-  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
 }
 
@@ -29,7 +29,7 @@ async function loadAgentAllowedConnectorTypes(
     readonly orgId: string;
     readonly agentId: string;
   },
-): Promise<readonly ConnectorType[]> {
+): Promise<readonly ConnectorCatalogRef[]> {
   const rows = await db
     .select({ connectorType: userConnectors.connectorType })
     .from(userConnectors)
@@ -42,7 +42,7 @@ async function loadAgentAllowedConnectorTypes(
     );
 
   return rows.flatMap((row) => {
-    const parsed = connectorTypeSchema.safeParse(row.connectorType);
+    const parsed = connectorCatalogRefSchema.safeParse(row.connectorType);
     return parsed.success ? [parsed.data] : [];
   });
 }

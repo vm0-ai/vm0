@@ -12,21 +12,12 @@ import {
   type ConnectorCatalogRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
-  connectorAuthMethodIdSchema,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
-import {
-  connectorAuthMethodRefHasGrantKind,
-  getConnectorAuthMethod,
-  getConnectorAuthMethodIdsForGrantKind,
-  resolveConnectorResolvedAuthMethodClientByGrantKind,
-  type ConnectorAuthMethodRef,
-  type ConnectorAuthMethodRefByGrantKind,
-  type ConnectorResolvedAuthMethodClientByGrantKind,
+  resolveConnectorAuthClient,
+  type ConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
-  completeConnectorExternalCodeAuthorization,
-  startConnectorExternalCodeAuthorization,
+  completeConnectorExternalCodeAuthorizationWithMethod,
+  startConnectorExternalCodeAuthorizationWithMethod,
   type ConnectorAuthProviderGrantResult,
 } from "@vm0/connectors/auth-providers";
 import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/error";
@@ -48,6 +39,7 @@ import {
   userConnectorActionResolver,
   type ConnectorActionMethodResolution,
   type ConnectorActionResolver,
+  type ResolvedConnectorActionMethod,
 } from "./connector-action-resolver.service";
 import {
   upsertConnectorTokenConnection$,
@@ -68,13 +60,16 @@ const COMPLETING_SESSION_STALE_AFTER_MS = 30 * 60 * 1000;
 
 type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
 
-type ExternalCodeMethodRef = ConnectorAuthMethodRefByGrantKind<"external-code">;
-type ExternalCodeResolvedMethodClient =
-  ConnectorResolvedAuthMethodClientByGrantKind<"external-code">;
-
-type ExternalCodeSessionOwner = ExternalCodeMethodRef & {
+type ExternalCodeSessionOwner = {
+  readonly type: ConnectorCatalogRef;
+  readonly authMethod: ConnectorCatalogAuthMethodId;
   readonly orgId: string;
   readonly userId: string;
+};
+
+type ResolvedExternalCodeClient = {
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly authClient: ConnectorAuthClient;
 };
 
 type CompleteSuccess = {
@@ -162,50 +157,25 @@ function connectorMissingExternalCodeGrantMessage(type: string): string {
   return `${type} connector does not support an external-code grant`;
 }
 
-function resolveExternalCodeMethod(
-  type: ConnectorType,
-  authMethod: string,
-): ExternalCodeMethodRef | ReturnType<typeof badRequestMessage> {
-  const authMethodResult = connectorAuthMethodIdSchema.safeParse(authMethod);
-  if (!authMethodResult.success) {
-    return badRequestMessage(`${type} connector auth method is invalid`);
-  }
-
-  const authMethodRef: ConnectorAuthMethodRef = {
-    type,
-    authMethod: authMethodResult.data,
-  };
-  const method = getConnectorAuthMethod(type, authMethodResult.data);
-  if (!method) {
-    if (
-      getConnectorAuthMethodIdsForGrantKind(type, "external-code").length === 0
-    ) {
-      return badRequestMessage(connectorMissingExternalCodeGrantMessage(type));
-    }
-    return badRequestMessage(
-      `${type} connector does not have ${authMethod} auth method`,
-    );
-  }
-  if (!connectorAuthMethodRefHasGrantKind(authMethodRef, "external-code")) {
-    return badRequestMessage(
-      `${type} ${authMethod} auth method does not use an external-code grant`,
-    );
-  }
-
-  return authMethodRef;
-}
-
 function resolveRequiredAuthClient(
-  method: ExternalCodeMethodRef,
-): ExternalCodeResolvedMethodClient | ReturnType<typeof internalServerError> {
-  const resolvedClient = resolveConnectorResolvedAuthMethodClientByGrantKind(
-    method,
+  resolvedMethod: ResolvedConnectorActionMethod,
+): ResolvedExternalCodeClient | ReturnType<typeof internalServerError> {
+  if (
+    resolvedMethod.method.grant.kind !== "external-code" ||
+    resolvedMethod.method.client === undefined
+  ) {
+    return internalServerError("Connector execution is not configured");
+  }
+  const authClient = resolveConnectorAuthClient(
+    resolvedMethod.method.client,
     optionalEnv,
   );
-  if (!resolvedClient) {
-    return internalServerError(`${method.type} auth client not configured`);
+  if (!authClient) {
+    return internalServerError(
+      `${resolvedMethod.connectorRef} auth client not configured`,
+    );
   }
-  return resolvedClient;
+  return { resolvedMethod, authClient };
 }
 
 async function resolveStoredExternalCodeMethod(args: {
@@ -223,6 +193,7 @@ async function resolveStoredExternalCodeMethod(args: {
     connectorRef: args.connectorRef,
     authMethodId: storedAuthMethod.data,
     expectedGrantKind: "external-code",
+    requireAvailable: true,
   });
   if (!resolved.ok) {
     if (
@@ -233,13 +204,7 @@ async function resolveStoredExternalCodeMethod(args: {
     }
     return internalServerError("Invalid external-code authorization session");
   }
-  const resolvedMethod = resolveExternalCodeMethod(
-    resolved.type,
-    resolved.authMethod,
-  );
-  return "status" in resolvedMethod
-    ? internalServerError("Invalid external-code authorization session")
-    : resolvedMethod;
+  return resolved;
 }
 
 async function lockExternalCodeSessionOwner(
@@ -311,7 +276,7 @@ async function loadOwnedSession(args: {
 
 async function parseEncryptedProviderState(args: {
   readonly session: ExternalCodeSessionRow;
-  readonly method: ExternalCodeMethodRef;
+  readonly method: ResolvedConnectorActionMethod;
 }): Promise<string> {
   const decrypted = await decryptPersistentSecretValue(
     args.session.encryptedProviderState,
@@ -324,8 +289,8 @@ async function parseEncryptedProviderState(args: {
     JSON.parse(decrypted) as unknown,
   );
   if (
-    providerState.connectorType !== args.method.type ||
-    providerState.authMethod !== args.method.authMethod
+    providerState.connectorType !== args.method.connectorRef ||
+    providerState.authMethod !== args.method.authMethodId
   ) {
     throw new Error("External-code provider state connector method mismatch");
   }
@@ -505,7 +470,7 @@ async function markClaimComplete(args: {
 }
 
 async function persistClaimedConnector(
-  args: ExternalCodeMethodRef & {
+  args: ExternalCodeSessionOwner & {
     readonly writeDb: Db;
     readonly orgId: string;
     readonly userId: string;
@@ -622,7 +587,7 @@ const completedExternalCodeSessionResponse$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly session: ExternalCodeSessionRow;
-      readonly method: ExternalCodeMethodRef;
+      readonly method: ResolvedConnectorActionMethod;
     },
     signal: AbortSignal,
   ) => {
@@ -632,8 +597,9 @@ const completedExternalCodeSessionResponse$ = command(
           zeroConnectorByType({
             orgId: args.orgId,
             userId: args.userId,
-            type: args.method.type,
+            type: args.method.connectorRef,
             includeHiddenStoredConnector: true,
+            snapshot: args.method.snapshot,
           }),
         );
       },
@@ -641,7 +607,7 @@ const completedExternalCodeSessionResponse$ = command(
     });
     const error = await set(
       authorizeExternalCodeSessionConnector$,
-      { ...args, connectorType: args.method.type },
+      { ...args, connectorType: args.method.connectorRef },
       signal,
     );
     return error ?? response;
@@ -649,7 +615,7 @@ const completedExternalCodeSessionResponse$ = command(
 );
 
 async function completeClaimedExternalCodeSession(
-  args: ExternalCodeResolvedMethodClient & {
+  args: ResolvedExternalCodeClient & {
     readonly writeDb: Db;
     readonly orgId: string;
     readonly userId: string;
@@ -667,10 +633,13 @@ async function completeClaimedExternalCodeSession(
     (async () => {
       const providerState = await parseEncryptedProviderState({
         session: args.session,
-        method: args,
+        method: args.resolvedMethod,
       });
-      return await completeConnectorExternalCodeAuthorization({
-        ...args,
+      return await completeConnectorExternalCodeAuthorizationWithMethod({
+        connectorRef: args.resolvedMethod.connectorRef,
+        authMethodId: args.resolvedMethod.authMethodId,
+        method: args.resolvedMethod.method,
+        authClient: args.authClient,
         code: args.code,
         providerState,
         signal: args.signal,
@@ -708,7 +677,14 @@ async function completeClaimedExternalCodeSession(
   const commitSignal = new AbortController().signal;
   const persistedConnector = await onRejection(
     persistClaimedConnector({
-      ...args,
+      type: args.resolvedMethod.connectorRef,
+      authMethod: args.resolvedMethod.authMethodId,
+      writeDb: args.writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      session: args.session,
+      claimStartedAt: args.claimStartedAt,
+      persistConnector: args.persistConnector,
       token: providerResult.value,
       signal: commitSignal,
     }),
@@ -788,6 +764,7 @@ export const startConnectorExternalCodeSession$ = command(
       connectorRef: args.type,
       authMethodId: args.authMethod,
       expectedGrantKind: "external-code",
+      requireAvailable: true,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
@@ -796,21 +773,19 @@ export const startConnectorExternalCodeSession$ = command(
         authMethodId: args.authMethod,
       });
     }
-    const resolvedMethod = resolveExternalCodeMethod(
-      resolved.type,
-      resolved.authMethod,
-    );
-    if ("status" in resolvedMethod) {
-      return internalServerError("Connector execution is not configured");
-    }
-
-    const resolvedClient = resolveRequiredAuthClient(resolvedMethod);
+    const resolvedClient = resolveRequiredAuthClient(resolved);
     if ("status" in resolvedClient) {
       return resolvedClient;
     }
 
-    const startResult =
-      await startConnectorExternalCodeAuthorization(resolvedClient);
+    const startResult = await startConnectorExternalCodeAuthorizationWithMethod(
+      {
+        connectorRef: resolved.connectorRef,
+        authMethodId: resolved.authMethodId,
+        method: resolved.method,
+        authClient: resolvedClient.authClient,
+      },
+    );
     signal.throwIfAborted();
 
     const sessionToken = generateSessionToken();
@@ -818,8 +793,8 @@ export const startConnectorExternalCodeSession$ = command(
     const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
     const encryptedProviderState = await encryptPersistentSecretValue(
       JSON.stringify({
-        connectorType: resolvedMethod.type,
-        authMethod: resolvedMethod.authMethod,
+        connectorType: resolved.connectorRef,
+        authMethod: resolved.authMethodId,
         providerState: providerStateWithinLimit(startResult.providerState),
       }),
       {
@@ -831,13 +806,15 @@ export const startConnectorExternalCodeSession$ = command(
 
     const [session] = await set(writeDb$).transaction(async (tx) => {
       await lockExternalCodeSessionOwner({
-        ...resolvedMethod,
+        type: resolved.connectorRef,
+        authMethod: resolved.authMethodId,
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
       });
       await markPendingSessionsSuperseded({
-        ...resolvedMethod,
+        type: resolved.connectorRef,
+        authMethod: resolved.authMethodId,
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
@@ -850,8 +827,8 @@ export const startConnectorExternalCodeSession$ = command(
           userId: args.userId,
           agentId: args.agentId,
           authorizeAgent: connectorAgentAuthorizationRequested(args),
-          connectorType: resolvedMethod.type,
-          authMethod: resolvedMethod.authMethod,
+          connectorType: resolved.connectorRef,
+          authMethod: resolved.authMethodId,
           status: "pending",
           sessionTokenHash: sessionTokenHash(sessionToken),
           encryptedProviderState,
@@ -871,7 +848,7 @@ export const startConnectorExternalCodeSession$ = command(
     const body: ConnectorExternalCodeSessionStartResponse = {
       sessionId: session.id,
       sessionToken,
-      type: resolvedMethod.type,
+      type: resolved.connectorRef,
       status: "pending",
       authorizationUrl: startResult.authorizationUrl,
       expiresIn: startResult.expiresIn,
@@ -983,8 +960,8 @@ export const completeConnectorExternalCodeSession$ = command(
           {
             orgId: args.orgId,
             userId: args.userId,
-            type: resolvedMethod.type,
-            authMethod: resolvedMethod.authMethod,
+            runtimeMethod: resolvedMethod.runtimeMethod,
+            snapshot: resolvedMethod.snapshot,
             outputs: token.outputs,
             userInfo: token.userInfo,
             oauthScopes: token.scopes,
@@ -1001,7 +978,7 @@ export const completeConnectorExternalCodeSession$ = command(
     }
     const authorizationError = await set(
       authorizeExternalCodeSessionConnector$,
-      { ...args, session, connectorType: resolvedMethod.type },
+      { ...args, session, connectorType: resolvedMethod.connectorRef },
       signal,
     );
     return authorizationError ?? response;

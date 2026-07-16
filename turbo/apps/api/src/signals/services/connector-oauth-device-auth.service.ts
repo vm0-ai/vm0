@@ -12,23 +12,12 @@ import {
   type ConnectorCatalogRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
-  connectorAuthMethodIdSchema,
-  type ConnectorType,
-  type DeviceAuthGrantConnectorType,
-} from "@vm0/connectors/connectors";
-import {
-  connectorAuthMethodRefHasGrantKind,
-  getConnectorAuthMethod,
-  getConnectorAuthMethodIdsForGrantKind,
-  parseConnectorDeviceAuthStartOptions,
-  resolveConnectorResolvedAuthMethodClientByGrantKind,
-  type ConnectorResolvedAuthMethodClientByGrantKind,
-  type ConnectorAuthMethodRef,
-  type ConnectorAuthMethodRefByGrantKind,
+  resolveConnectorAuthClient,
+  type ConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
-  pollConnectorDeviceAuthorization,
-  startConnectorDeviceAuthorization,
+  pollConnectorDeviceAuthorizationWithMethod,
+  startConnectorDeviceAuthorizationWithMethod,
 } from "@vm0/connectors/auth-providers";
 import type {
   OAuthDeviceAuthCompleteResultBase,
@@ -52,12 +41,13 @@ import {
   userConnectorActionResolver,
   type ConnectorActionMethodResolution,
   type ConnectorActionResolver,
+  type ResolvedConnectorActionMethod,
 } from "./connector-action-resolver.service";
 import {
   upsertConnectorTokenConnection$,
   zeroConnectorByType,
 } from "./zero-connector-data.service";
-import { normalizeDeviceAuthStartOptions } from "./connector-catalog-form-fields.service";
+import { normalizeDeviceAuthStartOptionsWithMethod } from "./connector-catalog-form-fields.service";
 import {
   authorizeConnectedConnector$,
   connectorAgentAuthorizationRequested,
@@ -98,7 +88,7 @@ function deviceAuthStartResponse(args: {
   readonly sessionToken: string;
   readonly type: ConnectorCatalogRef;
   readonly startResult: Awaited<
-    ReturnType<typeof startConnectorDeviceAuthorization>
+    ReturnType<typeof startConnectorDeviceAuthorizationWithMethod>
   >;
   readonly intervalSeconds: number;
 }): ConnectorOauthDeviceAuthSessionStartResponse {
@@ -139,11 +129,12 @@ function validatedDeviceAuthPollState(
   return pollState;
 }
 
-type DeviceAuthMethodRef = ConnectorAuthMethodRefByGrantKind<"device-auth">;
-type DeviceAuthResolvedMethodClient =
-  ConnectorResolvedAuthMethodClientByGrantKind<"device-auth">;
+type ResolvedDeviceAuthClient = {
+  readonly resolvedMethod: ResolvedConnectorActionMethod;
+  readonly authClient: ConnectorAuthClient;
+};
 
-type PollClaimedSessionArgs = DeviceAuthResolvedMethodClient & {
+type PollClaimedSessionArgs = ResolvedDeviceAuthClient & {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
@@ -155,9 +146,9 @@ type PollClaimedSessionArgs = DeviceAuthResolvedMethodClient & {
   }) => Promise<ConnectorResponse>;
 };
 
-type ResolvedDeviceAuthMethod = DeviceAuthMethodRef;
-
-type DeviceAuthSessionOwner = DeviceAuthMethodRef & {
+type DeviceAuthSessionOwner = {
+  readonly type: ConnectorCatalogRef;
+  readonly authMethod: ConnectorCatalogAuthMethodId;
   readonly orgId: string;
   readonly userId: string;
 };
@@ -294,62 +285,25 @@ function isFreshPollingSession(
   );
 }
 
-function connectorMissingDeviceAuthGrantMessage(type: ConnectorType): string {
-  if (getConnectorAuthMethodIdsForGrantKind(type, "auth-code").length === 0) {
-    return `${type} connector does not use an auth-code or device-auth grant`;
-  }
-  return `${type} connector does not support a device-auth grant`;
-}
-
-function resolveDeviceAuthMethod(
-  type: ConnectorType,
-  authMethod: string,
-): ResolvedDeviceAuthMethod | ReturnType<typeof badRequestMessage> {
-  const authMethodResult = connectorAuthMethodIdSchema.safeParse(authMethod);
-  if (!authMethodResult.success) {
-    return badRequestMessage(`${type} connector auth method is invalid`);
-  }
-
-  const authMethodRef: ConnectorAuthMethodRef = {
-    type,
-    authMethod: authMethodResult.data,
-  };
-  const method = getConnectorAuthMethod(type, authMethodResult.data);
-  if (!method) {
-    if (
-      getConnectorAuthMethodIdsForGrantKind(type, "device-auth").length === 0
-    ) {
-      return badRequestMessage(connectorMissingDeviceAuthGrantMessage(type));
-    }
-    return badRequestMessage(
-      `${type} connector does not have ${authMethod} auth method`,
-    );
-  }
-  if (!connectorAuthMethodRefHasGrantKind(authMethodRef, "device-auth")) {
-    if (
-      getConnectorAuthMethodIdsForGrantKind(type, "device-auth").length === 0
-    ) {
-      return badRequestMessage(connectorMissingDeviceAuthGrantMessage(type));
-    }
-    return badRequestMessage(
-      `${type} ${authMethod} auth method does not use a device-auth grant`,
-    );
-  }
-
-  return authMethodRef;
-}
-
 function resolveRequiredAuthClient(
-  method: DeviceAuthMethodRef,
-): DeviceAuthResolvedMethodClient | ReturnType<typeof internalServerError> {
-  const resolvedClient = resolveConnectorResolvedAuthMethodClientByGrantKind(
-    method,
+  resolvedMethod: ResolvedConnectorActionMethod,
+): ResolvedDeviceAuthClient | ReturnType<typeof internalServerError> {
+  if (
+    resolvedMethod.method.grant.kind !== "device-auth" ||
+    resolvedMethod.method.client === undefined
+  ) {
+    return internalServerError("Connector execution is not configured");
+  }
+  const authClient = resolveConnectorAuthClient(
+    resolvedMethod.method.client,
     optionalEnv,
   );
-  if (!resolvedClient) {
-    return internalServerError(`${method.type} auth client not configured`);
+  if (!authClient) {
+    return internalServerError(
+      `${resolvedMethod.connectorRef} auth client not configured`,
+    );
   }
-  return resolvedClient;
+  return { resolvedMethod, authClient };
 }
 
 async function resolveRequestedDeviceAuthMethod(args: {
@@ -361,17 +315,12 @@ async function resolveRequestedDeviceAuthMethod(args: {
     connectorRef: args.connectorRef,
     authMethodId: args.authMethodId,
     expectedGrantKind: "device-auth",
+    requireAvailable: true,
   });
   if (!resolved.ok) {
     return deviceAuthResolutionError(resolved, args);
   }
-  const resolvedMethod = resolveDeviceAuthMethod(
-    resolved.type,
-    resolved.authMethod,
-  );
-  return "status" in resolvedMethod
-    ? internalServerError("Connector execution is not configured")
-    : resolvedMethod;
+  return resolved;
 }
 
 async function resolveStoredDeviceAuthMethod(args: {
@@ -389,6 +338,7 @@ async function resolveStoredDeviceAuthMethod(args: {
     connectorRef: args.connectorRef,
     authMethodId: storedAuthMethod.data,
     expectedGrantKind: "device-auth",
+    requireAvailable: true,
   });
   if (!resolved.ok) {
     if (
@@ -399,13 +349,7 @@ async function resolveStoredDeviceAuthMethod(args: {
     }
     return internalServerError("Invalid OAuth device authorization session");
   }
-  const resolvedMethod = resolveDeviceAuthMethod(
-    resolved.type,
-    resolved.authMethod,
-  );
-  return "status" in resolvedMethod
-    ? internalServerError("Invalid OAuth device authorization session")
-    : resolvedMethod;
+  return resolved;
 }
 
 async function lockDeviceAuthSessionOwner(
@@ -584,7 +528,7 @@ async function claimSession(args: {
 
 async function parseEncryptedProviderState(args: {
   readonly session: DeviceAuthSessionRow;
-  readonly type: DeviceAuthGrantConnectorType;
+  readonly type: ConnectorCatalogRef;
 }): Promise<EncryptedProviderState> {
   const decrypted = await decryptPersistentSecretValue(
     args.session.encryptedProviderState,
@@ -727,7 +671,7 @@ async function markClaimComplete(args: {
 }
 
 async function completeClaimedSession(
-  args: DeviceAuthMethodRef & {
+  args: DeviceAuthSessionOwner & {
     readonly writeDb: Db;
     readonly orgId: string;
     readonly userId: string;
@@ -822,7 +766,7 @@ const completedDeviceSessionResponse$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly session: DeviceAuthSessionRow;
-      readonly method: ResolvedDeviceAuthMethod;
+      readonly method: ResolvedConnectorActionMethod;
     },
     signal: AbortSignal,
   ) => {
@@ -832,8 +776,9 @@ const completedDeviceSessionResponse$ = command(
           zeroConnectorByType({
             orgId: args.orgId,
             userId: args.userId,
-            type: args.method.type,
+            type: args.method.connectorRef,
             includeHiddenStoredConnector: true,
+            snapshot: args.method.snapshot,
           }),
         );
       },
@@ -841,7 +786,7 @@ const completedDeviceSessionResponse$ = command(
     });
     const error = await set(
       authorizeDeviceSessionConnector$,
-      { ...args, connectorType: args.method.type },
+      { ...args, connectorType: args.method.connectorRef },
       signal,
     );
     return error ?? response;
@@ -853,10 +798,13 @@ async function runClaimedSession(
 ): Promise<PollSuccess> {
   const providerState = await parseEncryptedProviderState({
     session: args.session,
-    type: args.type,
+    type: args.resolvedMethod.connectorRef,
   });
-  const pollResult = await pollConnectorDeviceAuthorization({
-    ...args,
+  const pollResult = await pollConnectorDeviceAuthorizationWithMethod({
+    connectorRef: args.resolvedMethod.connectorRef,
+    authMethodId: args.resolvedMethod.authMethodId,
+    method: args.resolvedMethod.method,
+    authClient: args.authClient,
     deviceCode: providerState.deviceCode,
     ...(providerState.pollState === undefined
       ? {}
@@ -900,7 +848,15 @@ async function runClaimedSession(
   }
 
   return await completeClaimedSession({
-    ...args,
+    type: args.resolvedMethod.connectorRef,
+    authMethod: args.resolvedMethod.authMethodId,
+    writeDb: args.writeDb,
+    orgId: args.orgId,
+    userId: args.userId,
+    session: args.session,
+    claimStartedAt: args.claimStartedAt,
+    signal: args.signal,
+    persistConnector: args.persistConnector,
     result: pollResult,
   });
 }
@@ -972,27 +928,22 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       return resolvedClient;
     }
 
-    const normalizedStartOptions = normalizeDeviceAuthStartOptions({
-      type: resolvedMethod.type,
-      authMethod: resolvedMethod.authMethod,
+    const normalizedStartOptions = normalizeDeviceAuthStartOptionsWithMethod({
+      connectorRef: resolvedMethod.connectorRef,
+      authMethodId: resolvedMethod.authMethodId,
+      method: resolvedMethod.method,
       options: args.options,
     });
     if (!normalizedStartOptions.ok) {
       return badRequestMessage(normalizedStartOptions.message);
     }
 
-    const startOptionsResult = parseConnectorDeviceAuthStartOptions({
-      type: resolvedMethod.type,
-      authMethod: resolvedMethod.authMethod,
-      options: normalizedStartOptions.options,
-    });
-    if (!startOptionsResult.success) {
-      return badRequestMessage(startOptionsResult.message);
-    }
-
-    const startResult = await startConnectorDeviceAuthorization({
-      ...resolvedClient,
-      options: startOptionsResult.options,
+    const startResult = await startConnectorDeviceAuthorizationWithMethod({
+      connectorRef: resolvedMethod.connectorRef,
+      authMethodId: resolvedMethod.authMethodId,
+      method: resolvedMethod.method,
+      authClient: resolvedClient.authClient,
+      options: normalizedStartOptions.options ?? {},
     });
     signal.throwIfAborted();
 
@@ -1004,7 +955,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     const pollState = validatedDeviceAuthPollState(startResult.pollState);
     const encryptedProviderState = await encryptPersistentSecretValue(
       JSON.stringify({
-        connectorType: resolvedMethod.type,
+        connectorType: resolvedMethod.connectorRef,
         deviceCode: startResult.deviceCode,
         ...(pollState === undefined ? {} : { pollState }),
       }),
@@ -1017,13 +968,15 @@ export const startConnectorOauthDeviceAuthSession$ = command(
 
     const [session] = await set(writeDb$).transaction(async (tx) => {
       await lockDeviceAuthSessionOwner({
-        ...resolvedMethod,
+        type: resolvedMethod.connectorRef,
+        authMethod: resolvedMethod.authMethodId,
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
       });
       await markActiveSessionsSuperseded({
-        ...resolvedMethod,
+        type: resolvedMethod.connectorRef,
+        authMethod: resolvedMethod.authMethodId,
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
@@ -1036,8 +989,8 @@ export const startConnectorOauthDeviceAuthSession$ = command(
           userId: args.userId,
           agentId: args.agentId,
           authorizeAgent: connectorAgentAuthorizationRequested(args),
-          connectorType: resolvedMethod.type,
-          authMethod: resolvedMethod.authMethod,
+          connectorType: resolvedMethod.connectorRef,
+          authMethod: resolvedMethod.authMethodId,
           status: "awaiting_user_authorization",
           sessionTokenHash: sessionTokenHash(sessionToken),
           encryptedProviderState,
@@ -1062,7 +1015,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     const body = deviceAuthStartResponse({
       sessionId: session.id,
       sessionToken,
-      type: resolvedMethod.type,
+      type: resolvedMethod.connectorRef,
       startResult,
       intervalSeconds,
     });
@@ -1169,8 +1122,8 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
           {
             orgId: args.orgId,
             userId: args.userId,
-            type: resolvedMethod.type,
-            authMethod: resolvedMethod.authMethod,
+            runtimeMethod: resolvedMethod.runtimeMethod,
+            snapshot: resolvedMethod.snapshot,
             outputs: result.token.outputs,
             userInfo: result.token.userInfo,
             oauthScopes: result.token.scopes,
@@ -1187,7 +1140,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     }
     const authorizationError = await set(
       authorizeDeviceSessionConnector$,
-      { ...args, session, connectorType: resolvedMethod.type },
+      { ...args, session, connectorType: resolvedMethod.connectorRef },
       signal,
     );
     return authorizationError ?? response;

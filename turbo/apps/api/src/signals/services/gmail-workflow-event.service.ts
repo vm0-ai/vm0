@@ -12,13 +12,10 @@ import {
   type GmailNewMessageEventConfig,
   type GmailWorkflowEventConfig,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
-import { connectors } from "@vm0/db/schema/connector";
 import {
   gmailProcessedEvents,
   gmailWatchStates,
 } from "@vm0/db/schema/gmail-event";
-import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
@@ -32,10 +29,14 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
-  decryptStoredSecretValue,
-  encryptStoredSecretValue,
-} from "./crypto.utils";
+  connectorCredentialRuntimeValueRef,
+  loadConnectorCredentialConnection,
+  loadConnectorCredentialValues,
+  markConnectorCredentialNeedsReconnect,
+  refreshConnectorCredentialAccess,
+} from "./connector-credential-runtime.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
@@ -50,9 +51,7 @@ import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automat
 
 const log = logger("api:gmail-workflow-event");
 
-const GMAIL_ACCESS_TOKEN_SECRET = "GMAIL_ACCESS_TOKEN";
-const GMAIL_REFRESH_TOKEN_SECRET = "GMAIL_REFRESH_TOKEN";
-const CONNECTOR_SECRET_TYPE = "connector";
+const GMAIL_ACCESS_TOKEN_ENVIRONMENT_NAME = "GMAIL_TOKEN";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const WATCH_RENEWAL_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -178,23 +177,6 @@ type GmailAccessResult =
   | { readonly kind: "ok"; readonly access: GmailAccess }
   | { readonly kind: "bad_request"; readonly message: string };
 
-interface GmailConnectorAccessRow {
-  readonly id: string;
-  readonly externalEmail: string | null;
-  readonly tokenExpiresAt: Date | null;
-  readonly needsReconnect: boolean;
-}
-
-interface ConnectorSecretRow {
-  readonly name: string;
-  readonly encryptedValue: string;
-}
-
-interface GmailConnectorSecrets {
-  readonly accessSecret: ConnectorSecretRow | null;
-  readonly refreshSecret: ConnectorSecretRow | null;
-}
-
 type EnsureGmailWatchResult =
   | { readonly kind: "ok" }
   | { readonly kind: "bad_request"; readonly message: string };
@@ -277,176 +259,6 @@ function tokenNeedsRefresh(tokenExpiresAt: Date | null, currentTime: Date) {
   );
 }
 
-function tokenExpiresAtFromExpiresIn(
-  expiresIn: number | undefined,
-  currentTime: Date,
-): Date | null {
-  return expiresIn === undefined
-    ? null
-    : new Date(currentTime.getTime() + expiresIn * 1000);
-}
-
-async function loadGmailConnector(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId?: string;
-  readonly signal: AbortSignal;
-}): Promise<GmailConnectorAccessRow | null> {
-  const connectorConditions = [
-    eq(connectors.orgId, args.orgId),
-    eq(connectors.userId, args.userId),
-    eq(connectors.type, "gmail"),
-  ];
-  if (args.connectorId !== undefined) {
-    connectorConditions.push(eq(connectors.id, args.connectorId));
-  }
-
-  const [connector] = await args.db
-    .select({
-      id: connectors.id,
-      externalEmail: connectors.externalEmail,
-      tokenExpiresAt: connectors.tokenExpiresAt,
-      needsReconnect: connectors.needsReconnect,
-    })
-    .from(connectors)
-    .where(and(...connectorConditions))
-    .limit(1);
-  args.signal.throwIfAborted();
-
-  return connector ?? null;
-}
-
-async function loadGmailConnectorSecrets(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<GmailConnectorSecrets> {
-  const secretRows = await args.db
-    .select({
-      name: secretsTable.name,
-      encryptedValue: secretsTable.encryptedValue,
-    })
-    .from(secretsTable)
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, CONNECTOR_SECRET_TYPE),
-      ),
-    );
-  args.signal.throwIfAborted();
-
-  return {
-    accessSecret:
-      secretRows.find((row) => {
-        return row.name === GMAIL_ACCESS_TOKEN_SECRET;
-      }) ?? null,
-    refreshSecret:
-      secretRows.find((row) => {
-        return row.name === GMAIL_REFRESH_TOKEN_SECRET;
-      }) ?? null,
-  };
-}
-
-async function markGmailConnectorNeedsReconnect(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await args.db
-    .update(connectors)
-    .set({ needsReconnect: true, updatedAt: args.currentTime })
-    .where(eq(connectors.id, args.connectorId));
-  args.signal.throwIfAborted();
-}
-
-async function refreshGmailAccessToken(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connector: GmailConnectorAccessRow;
-  readonly refreshSecret: ConnectorSecretRow;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<GmailAccessResult> {
-  const clientId = optionalEnv("GOOGLE_OAUTH_CLIENT_ID");
-  const clientSecret = optionalEnv("GOOGLE_OAUTH_CLIENT_SECRET");
-  if (!clientId || !clientSecret) {
-    return {
-      kind: "bad_request",
-      message: "Google OAuth client env vars are not configured",
-    };
-  }
-
-  const refreshToken = await decryptStoredSecretValue(
-    args.refreshSecret.encryptedValue,
-  );
-  const refreshed = await tapError(
-    refreshGoogleToken(
-      "gmail",
-      clientId,
-      clientSecret,
-      refreshToken,
-      args.signal,
-    ),
-  );
-  args.signal.throwIfAborted();
-  if (!refreshed) {
-    await markGmailConnectorNeedsReconnect({
-      db: args.db,
-      connectorId: args.connector.id,
-      currentTime: args.currentTime,
-      signal: args.signal,
-    });
-    return {
-      kind: "bad_request",
-      message: "Reconnect Gmail before using Gmail event automations",
-    };
-  }
-
-  const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshed.expiresIn,
-    args.currentTime,
-  );
-  await args.db
-    .update(secretsTable)
-    .set({
-      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
-      updatedAt: args.currentTime,
-    })
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, CONNECTOR_SECRET_TYPE),
-        eq(secretsTable.name, GMAIL_ACCESS_TOKEN_SECRET),
-      ),
-    );
-  args.signal.throwIfAborted();
-
-  await args.db
-    .update(connectors)
-    .set({
-      tokenExpiresAt,
-      needsReconnect: false,
-      updatedAt: args.currentTime,
-    })
-    .where(eq(connectors.id, args.connector.id));
-  args.signal.throwIfAborted();
-
-  return {
-    kind: "ok",
-    access: {
-      connectorId: args.connector.id,
-      emailAddress: args.connector.externalEmail,
-      accessToken: refreshed.accessToken,
-    },
-  };
-}
-
 async function resolveGmailAccess(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -455,46 +267,85 @@ async function resolveGmailAccess(args: {
   readonly signal: AbortSignal;
 }): Promise<GmailAccessResult> {
   const currentTime = nowDate();
-  const connector = await loadGmailConnector(args);
-  if (!connector) {
+  const snapshot = await loadConnectorRuntimeSnapshot(args.db);
+  args.signal.throwIfAborted();
+  const loaded = await loadConnectorCredentialConnection({
+    db: args.db,
+    snapshot,
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorRef: "gmail",
+    ...(args.connectorId === undefined
+      ? {}
+      : { connectorId: args.connectorId }),
+  });
+  args.signal.throwIfAborted();
+  if (loaded.kind === "missing") {
     return {
       kind: "bad_request",
       message: "Connect Gmail before adding a Gmail event automation",
     };
   }
-  if (connector.needsReconnect) {
+  if (loaded.kind === "unavailable" || loaded.connection.needsReconnect) {
     return {
       kind: "bad_request",
       message: "Reconnect Gmail before using Gmail event automations",
     };
   }
-
-  const { accessSecret, refreshSecret } = await loadGmailConnectorSecrets(args);
-  if (!accessSecret) {
+  const connection = loaded.connection;
+  const accessTokenValueRef = connectorCredentialRuntimeValueRef(
+    connection,
+    GMAIL_ACCESS_TOKEN_ENVIRONMENT_NAME,
+  );
+  if (accessTokenValueRef === null) {
     return {
       kind: "bad_request",
       message: "Reconnect Gmail before using Gmail event automations",
     };
   }
-
-  if (!tokenNeedsRefresh(connector.tokenExpiresAt, currentTime)) {
+  const values = await loadConnectorCredentialValues({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    valueRefs: [accessTokenValueRef],
+  });
+  args.signal.throwIfAborted();
+  const accessToken = values.get(accessTokenValueRef);
+  if (!accessToken) {
+    return {
+      kind: "bad_request",
+      message: "Reconnect Gmail before using Gmail event automations",
+    };
+  }
+  if (!tokenNeedsRefresh(connection.tokenExpiresAt, currentTime)) {
     return {
       kind: "ok",
       access: {
-        connectorId: connector.id,
-        emailAddress: connector.externalEmail,
-        accessToken: await decryptStoredSecretValue(
-          accessSecret.encryptedValue,
-        ),
+        connectorId: connection.connectorId,
+        emailAddress: connection.externalEmail,
+        accessToken,
       },
     };
   }
-
-  if (!refreshSecret) {
-    await markGmailConnectorNeedsReconnect({
+  const refreshed = await refreshConnectorCredentialAccess({
+    connection,
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    runtimeEnvironmentName: GMAIL_ACCESS_TOKEN_ENVIRONMENT_NAME,
+    signal: args.signal,
+    persist: { db: args.db },
+  });
+  if (refreshed.kind === "configuration-unavailable") {
+    return {
+      kind: "bad_request",
+      message: "Google OAuth client env vars are not configured",
+    };
+  }
+  if (refreshed.kind !== "ok") {
+    await markConnectorCredentialNeedsReconnect({
       db: args.db,
-      connectorId: connector.id,
-      currentTime,
+      connectorId: connection.connectorId,
       signal: args.signal,
     });
     return {
@@ -502,16 +353,14 @@ async function resolveGmailAccess(args: {
       message: "Reconnect Gmail before using Gmail event automations",
     };
   }
-
-  return await refreshGmailAccessToken({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    connector,
-    refreshSecret,
-    currentTime,
-    signal: args.signal,
-  });
+  return {
+    kind: "ok",
+    access: {
+      connectorId: connection.connectorId,
+      emailAddress: connection.externalEmail,
+      accessToken: refreshed.accessToken,
+    },
+  };
 }
 
 async function gmailFetchJson<T>(

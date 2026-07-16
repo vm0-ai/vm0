@@ -1,4 +1,4 @@
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import { connectorCatalogRefSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   agentComposes,
   agentComposeVersions,
@@ -50,6 +50,7 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 
 const L = logger("WebhookClerkCleanup");
 const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
@@ -359,6 +360,8 @@ const revokeOrgConnectorTokens$ = command(
     orgId: string,
     signal: AbortSignal,
   ): Promise<void> => {
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     const rows = await db
       .select({ userId: connectors.userId, type: connectors.type })
       .from(connectors)
@@ -366,7 +369,7 @@ const revokeOrgConnectorTokens$ = command(
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorTypeSchema.safeParse(row.type);
+      const parsed = connectorCatalogRefSchema.safeParse(row.type);
       if (!parsed.success) {
         L.warn("unknown connector type, skipping revocation", {
           orgId,
@@ -377,7 +380,7 @@ const revokeOrgConnectorTokens$ = command(
 
       await set(
         deleteZeroConnectorLocalState$,
-        { orgId, userId: row.userId, type: parsed.data },
+        { orgId, userId: row.userId, type: parsed.data, snapshot },
         signal,
       );
     }
@@ -391,6 +394,8 @@ const revokeUserConnectorTokens$ = command(
     userId: string,
     signal: AbortSignal,
   ): Promise<void> => {
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     const rows = await db
       .select({ orgId: connectors.orgId, type: connectors.type })
       .from(connectors)
@@ -398,7 +403,7 @@ const revokeUserConnectorTokens$ = command(
     signal.throwIfAborted();
 
     for (const row of rows) {
-      const parsed = connectorTypeSchema.safeParse(row.type);
+      const parsed = connectorCatalogRefSchema.safeParse(row.type);
       if (!parsed.success) {
         L.warn("unknown connector type, skipping revocation", {
           userId,
@@ -409,7 +414,7 @@ const revokeUserConnectorTokens$ = command(
 
       await set(
         deleteZeroConnectorLocalState$,
-        { orgId: row.orgId, userId, type: parsed.data },
+        { orgId: row.orgId, userId, type: parsed.data, snapshot },
         signal,
       );
     }

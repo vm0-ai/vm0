@@ -493,6 +493,7 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
     const resolved = await resolver.resolveRef({
       connectorRef,
       requireAvailable: true,
+      requireExecutable: true,
     });
     if (resolved.ok) {
       availableEnabledTypes.push(connectorRef);
@@ -828,6 +829,7 @@ const updateAgentUserConnectorsInner$ = command(
       const resolved = await resolver.resolveRefs({
         connectorRefs: uniqueTypes,
         requireAvailable: true,
+        requireExecutable: true,
       });
       signal.throwIfAborted();
       if (!resolved.ok) {

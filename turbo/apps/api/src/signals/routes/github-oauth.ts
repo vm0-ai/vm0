@@ -3,15 +3,13 @@ import {
   githubOauthContract,
   type GithubOauthConnectQuery,
 } from "@vm0/api-contracts/contracts/github-oauth";
-import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
 import {
-  getConnectorAuthMethodAuthCodeGrantConfig,
-  getConnectorAuthMethodGrantScopes,
-  resolveConnectorAuthClientForMethod,
+  connectorGrantScopes,
+  resolveConnectorAuthClient,
   isStaticConfidentialConnectorAuthClient,
   type StaticConfidentialConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
-import { exchangeConnectorAuthCode } from "@vm0/connectors/auth-providers";
+import { exchangeConnectorAuthCodeWithMethod } from "@vm0/connectors/auth-providers";
 import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,
@@ -25,6 +23,11 @@ import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
+import {
+  userConnectorActionResolver,
+  type ConnectorActionResolver,
+  type ResolvedConnectorActionMethod,
+} from "../services/connector-action-resolver.service";
 import {
   buildGithubOauthState,
   buildGithubUserConnectAuthorizationUrl,
@@ -54,7 +57,7 @@ import {
 } from "./oauth-web-origin";
 
 const REDIRECT_STATUS = 307;
-const GITHUB_CONNECTOR_TYPE = "github" satisfies AuthCodeGrantConnectorType;
+const GITHUB_CONNECTOR_TYPE = "github";
 const GITHUB_APP_SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
 const L = logger("GithubOAuthRoute");
 
@@ -87,13 +90,14 @@ function githubAppSetupCallbackRedirectUri(origin: string): string {
   return `${origin}${GITHUB_APP_SETUP_CALLBACK_PATH}`;
 }
 
-function githubUserOauthClient():
-  | StaticConfidentialConnectorAuthClient
-  | undefined {
-  const authMethod = getGithubOAuthAuthMethod();
-  const authClient = resolveConnectorAuthClientForMethod(
-    GITHUB_CONNECTOR_TYPE,
-    authMethod,
+function githubUserOauthClient(
+  method: ResolvedConnectorActionMethod,
+): StaticConfidentialConnectorAuthClient | undefined {
+  if (method.method.grant.kind !== "auth-code" || !method.method.client) {
+    return undefined;
+  }
+  const authClient = resolveConnectorAuthClient(
+    method.method.client,
     optionalEnv,
   );
   if (!authClient) {
@@ -103,6 +107,19 @@ function githubUserOauthClient():
     return undefined;
   }
   return authClient;
+}
+
+async function resolveGithubOauthMethod(
+  resolver: ConnectorActionResolver,
+  requireAvailable: boolean,
+): Promise<ResolvedConnectorActionMethod | null> {
+  const resolved = await resolver.resolveMethod({
+    connectorRef: GITHUB_CONNECTOR_TYPE,
+    authMethodId: getGithubOAuthAuthMethod(),
+    expectedGrantKind: "auth-code",
+    requireAvailable,
+  });
+  return resolved.ok ? resolved : null;
 }
 
 function githubAppUserOauthCredentials():
@@ -310,9 +327,29 @@ const resolveGithubCallbackAccess$ = command(
   },
 );
 
+async function linkGithubUserWithoutSetupCode(
+  args: GithubSetupUserConnectionArgs,
+  vm0UserId: string,
+  signal: AbortSignal,
+): Promise<GithubSetupUserConnectionResolution> {
+  const githubUserId = await linkGithubVm0User({
+    db: args.db,
+    installRecordId: args.installRecordId,
+    vm0UserId,
+    knownGithubUserId: args.knownGithubUserId,
+    signal,
+  });
+  signal.throwIfAborted();
+  if (githubUserId) {
+    await publishUserSignal([vm0UserId], "github:changed");
+    signal.throwIfAborted();
+  }
+  return { ok: true, connected: githubUserId !== null };
+}
+
 const connectGithubUserAfterSetup$ = command(
   async (
-    { set },
+    { get, set },
     args: GithubSetupUserConnectionArgs,
     signal: AbortSignal,
   ): Promise<GithubSetupUserConnectionResolution> => {
@@ -347,11 +384,23 @@ const connectGithubUserAfterSetup$ = command(
         sendsRedirectUri: false,
       });
 
-      const authMethod = getGithubOAuthAuthMethod();
+      const resolver = await get(
+        userConnectorActionResolver(args.orgId, vm0UserId),
+      );
+      signal.throwIfAborted();
+      const resolvedMethod = await resolveGithubOauthMethod(resolver, true);
+      signal.throwIfAborted();
+      if (!resolvedMethod || resolvedMethod.method.grant.kind !== "auth-code") {
+        return {
+          ok: false,
+          response: worksErrorRedirect("GitHub OAuth is not available"),
+        };
+      }
+      const authCodeGrant = resolvedMethod.method.grant;
       const tokenResult = await settle(
         (async () => {
           const { accessToken, scopes } = await exchangeGitHubCode(
-            getConnectorAuthMethodAuthCodeGrantConfig("github", authMethod),
+            authCodeGrant,
             credentials.clientId,
             credentials.clientSecret,
             code,
@@ -389,17 +438,14 @@ const connectGithubUserAfterSetup$ = command(
         {
           orgId: args.orgId,
           userId: vm0UserId,
-          type: GITHUB_CONNECTOR_TYPE,
-          authMethod,
+          runtimeMethod: resolvedMethod.runtimeMethod,
+          snapshot: resolvedMethod.snapshot,
           outputs: { accessToken },
           userInfo,
           oauthScopes:
             scopes.length > 0
               ? scopes
-              : getConnectorAuthMethodGrantScopes(
-                  GITHUB_CONNECTOR_TYPE,
-                  authMethod,
-                ),
+              : connectorGrantScopes(resolvedMethod.method.grant),
         },
         signal,
       );
@@ -429,21 +475,7 @@ const connectGithubUserAfterSetup$ = command(
       return { ok: true, connected: true };
     }
 
-    const githubUserId = await linkGithubVm0User({
-      db: args.db,
-      installRecordId: args.installRecordId,
-      vm0UserId,
-      knownGithubUserId: args.knownGithubUserId,
-      signal,
-    });
-    signal.throwIfAborted();
-
-    if (githubUserId) {
-      await publishUserSignal([vm0UserId], "github:changed");
-      signal.throwIfAborted();
-    }
-
-    return { ok: true, connected: githubUserId !== null };
+    return await linkGithubUserWithoutSetupCode(args, vm0UserId, signal);
   },
 );
 
@@ -685,11 +717,20 @@ const connectGithubUserOauth$ = command(
 
     const origin = getOAuthWebOrigin(request);
     const db = set(writeDb$);
+    const resolver = await get(userConnectorActionResolver(orgId, auth.userId));
+    signal.throwIfAborted();
+    const resolvedMethod = await resolveGithubOauthMethod(resolver, true);
+    signal.throwIfAborted();
+    if (!resolvedMethod) {
+      return worksErrorRedirect("GitHub OAuth is not available");
+    }
     const authorizationUrl = await buildGithubUserConnectAuthorizationUrl({
       db,
       vm0UserId: auth.userId,
       orgId,
       origin,
+      authMethodId: resolvedMethod.authMethodId,
+      method: resolvedMethod.method,
       readEnv: optionalEnv,
       signal,
     });
@@ -739,17 +780,26 @@ const callbackGithubUserOauth$ = command(
       );
     }
 
-    const authClient = githubUserOauthClient();
+    const resolver = await get(
+      userConnectorActionResolver(state.orgId, state.vm0UserId),
+    );
+    signal.throwIfAborted();
+    const resolvedMethod = await resolveGithubOauthMethod(resolver, true);
+    signal.throwIfAborted();
+    if (!resolvedMethod) {
+      return worksErrorRedirect("GitHub OAuth is not available");
+    }
+    const authClient = githubUserOauthClient(resolvedMethod);
     if (!authClient) {
       return worksErrorRedirect("GitHub OAuth is not configured");
     }
 
-    const authMethod = getGithubOAuthAuthMethod();
     const origin = getOAuthWebOrigin(request);
     const redirectUri = githubUserConnectCallbackRedirectUri(origin);
-    const token = await exchangeConnectorAuthCode({
-      type: "github",
-      authMethod,
+    const token = await exchangeConnectorAuthCodeWithMethod({
+      connectorRef: resolvedMethod.connectorRef,
+      authMethodId: resolvedMethod.authMethodId,
+      method: resolvedMethod.method,
       authClient,
       code: query.code,
       redirectUri,
@@ -774,14 +824,11 @@ const callbackGithubUserOauth$ = command(
       {
         orgId: state.orgId,
         userId: state.vm0UserId,
-        type: GITHUB_CONNECTOR_TYPE,
-        authMethod,
+        runtimeMethod: resolvedMethod.runtimeMethod,
+        snapshot: resolvedMethod.snapshot,
         outputs: token.outputs,
         userInfo: token.userInfo,
-        oauthScopes: getConnectorAuthMethodGrantScopes(
-          GITHUB_CONNECTOR_TYPE,
-          authMethod,
-        ),
+        oauthScopes: connectorGrantScopes(resolvedMethod.method.grant),
         extraConnectorSecrets: token.extraConnectorSecrets,
       },
       signal,

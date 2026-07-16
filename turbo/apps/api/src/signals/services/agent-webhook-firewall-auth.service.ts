@@ -9,30 +9,24 @@ import {
 import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
+  connectorCatalogAuthMethodIdSchema,
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import {
+  connectorAuthMethodAccessMetadata,
+  connectorAuthMethodRuntimeMetadata,
   connectorRefreshMetadataHasRefreshableSecret,
-  getConnectorAuthClientConfigForMethod,
-  getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodRuntimeMetadata,
   getConnectorRuntimeBindingPlatformSecretName,
   getConnectorRuntimeBindingSecretName,
-  resolveConnectorResolvedAuthMethodClientByAccessKind,
-  connectorAuthMethodRefHasAccessKind,
-  type ConnectorResolvedAuthMethodClientByAccessKind,
-  type ConnectorAuthMethodRef,
-  type ConnectorAuthMethodRefByAccessKind,
+  resolveConnectorAuthClient,
   type ConnectorAuthMethodAccessMetadata,
+  type ConnectorAuthClient,
   type ConnectorRefreshTokenInputMetadata,
   type ConnectorAuthMethodRuntimeMetadata,
-  type ConnectorAuthClientForMethod,
   type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-utils";
-import {
-  type ConnectorAuthClientConfigForMethod,
-  type ConnectorAuthMethodIdsByAccessKind,
-  connectorAuthMethodIdSchema,
-  connectorTypeSchema,
-  type RefreshTokenAccessConnectorType,
-} from "@vm0/connectors/connectors";
 import {
   parseBasicAuthTemplates,
   replaceBasicAuthTemplates,
@@ -41,7 +35,7 @@ import {
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
-  refreshConnectorAuthProviderAccessToken,
+  refreshConnectorAuthProviderAccessTokenWithMethod,
   type ProviderEnv,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -88,6 +82,12 @@ import {
   connectorRuntimeCredentialStatusForAccess,
   type ConnectorCredentialStatus,
 } from "./connector-credential-status.service";
+import {
+  getConnectorRuntimeMethod,
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeMethod,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
 
 type AccessSecretSource = SecretConnectorMetadata["sourceType"];
 type StorageSecretSource = Exclude<AccessSecretSource, "platform-secret">;
@@ -392,60 +392,14 @@ type PreparedRefreshTokenContext =
   | ConnectorPreparedRefreshTokenContext
   | ModelProviderPreparedRefreshTokenContext;
 
-type ConnectorRefreshTokenAccessResolvedClient =
-  ConnectorResolvedAuthMethodClientByAccessKind<"refresh-token">;
-
-type ConnectorRefreshTokenAccessMethodRef =
-  ConnectorAuthMethodRefByAccessKind<"refresh-token">;
-
-type ConnectorRefreshTokenAccessClientMethodRef = {
-  readonly [Type in RefreshTokenAccessConnectorType]: {
-    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
-      Type,
-      "refresh-token"
-    >]: [ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
-      ? never
-      : {
-          readonly type: Type;
-          readonly authMethod: Method;
-        };
-  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
-}[RefreshTokenAccessConnectorType];
-
-type ConnectorRefreshTokenAccessNoClientMethodRef = {
-  readonly [Type in RefreshTokenAccessConnectorType]: {
-    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
-      Type,
-      "refresh-token"
-    >]: [ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
-      ? {
-          readonly type: Type;
-          readonly authMethod: Method;
-        }
-      : never;
-  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
-}[RefreshTokenAccessConnectorType];
-
-type ConnectorPreparedRefreshTokenContextFor<
-  Type extends RefreshTokenAccessConnectorType,
-  Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
-> = {
-  readonly sourceType: "connector";
-  readonly type: Type;
-  readonly authMethod: Method;
-  readonly context: RefreshTokenContext;
-} & ([ConnectorAuthClientConfigForMethod<Type, Method>] extends [never]
-  ? unknown
-  : { readonly authClient: ConnectorAuthClientForMethod<Type, Method> });
-
 type ConnectorPreparedRefreshTokenContext = {
-  readonly [Type in RefreshTokenAccessConnectorType]: {
-    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
-      Type,
-      "refresh-token"
-    >]: ConnectorPreparedRefreshTokenContextFor<Type, Method>;
-  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
-}[RefreshTokenAccessConnectorType];
+  readonly sourceType: "connector";
+  readonly connectorRef: ConnectorCatalogRef;
+  readonly authMethodId: ConnectorCatalogAuthMethodId;
+  readonly runtimeMethod: ConnectorRuntimeMethod;
+  readonly authClient?: ConnectorAuthClient;
+  readonly context: RefreshTokenContext;
+};
 
 type ModelProviderPreparedRefreshTokenContext = {
   readonly sourceType: "model-provider";
@@ -453,56 +407,6 @@ type ModelProviderPreparedRefreshTokenContext = {
   readonly currentEnv: ProviderEnv;
   readonly context: RefreshTokenContext;
 };
-
-function resolveRefreshTokenAccessClient(
-  authMethodRef: ConnectorRefreshTokenAccessClientMethodRef,
-): ConnectorRefreshTokenAccessResolvedClient | undefined {
-  return resolveConnectorResolvedAuthMethodClientByAccessKind(
-    authMethodRef,
-    (name) => {
-      return optionalEnv(name);
-    },
-  );
-}
-
-function connectorRefreshTokenAccessMethodHasClient(
-  authMethodRef: ConnectorRefreshTokenAccessMethodRef,
-): authMethodRef is ConnectorRefreshTokenAccessClientMethodRef {
-  return (
-    getConnectorAuthClientConfigForMethod(
-      authMethodRef.type,
-      authMethodRef.authMethod,
-    ) !== undefined
-  );
-}
-
-function connectorRefreshTokenAccessMethodHasNoClient(
-  authMethodRef: ConnectorRefreshTokenAccessMethodRef,
-): authMethodRef is ConnectorRefreshTokenAccessNoClientMethodRef {
-  return !connectorRefreshTokenAccessMethodHasClient(authMethodRef);
-}
-
-function connectorPreparedRefreshTokenContextWithClient(args: {
-  readonly resolvedClient: ConnectorRefreshTokenAccessResolvedClient;
-  readonly context: RefreshTokenContext;
-}): ConnectorPreparedRefreshTokenContext {
-  return {
-    sourceType: "connector",
-    ...args.resolvedClient,
-    context: args.context,
-  };
-}
-
-function connectorPreparedRefreshTokenContextWithoutClient(args: {
-  readonly authMethodRef: ConnectorRefreshTokenAccessNoClientMethodRef;
-  readonly context: RefreshTokenContext;
-}): ConnectorPreparedRefreshTokenContext {
-  return {
-    sourceType: "connector",
-    ...args.authMethodRef,
-    context: args.context,
-  };
-}
 
 type PrepareRefreshTokenContextResult =
   | {
@@ -561,6 +465,7 @@ function refreshFailedResult(
 
 interface RefreshExpiredTokensArgs {
   readonly db: Db;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly auth: SandboxAuth;
   readonly orgId: string;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -577,6 +482,7 @@ interface RefreshExpiredTokensArgs {
 
 interface RefreshBatchContext {
   readonly db: Db;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly auth: SandboxAuth;
   readonly orgId: string;
   readonly userId: string;
@@ -595,7 +501,8 @@ interface RefreshSourceState {
 }
 
 interface ConnectorAccessState extends RefreshSourceState {
-  readonly authMethod: string;
+  readonly authMethod: ConnectorCatalogAuthMethodId;
+  readonly runtimeMethod: ConnectorRuntimeMethod;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
   readonly runtimeMetadata: ConnectorAuthMethodRuntimeMetadata;
 }
@@ -1084,6 +991,7 @@ async function loadConnectorAccessStates(
   orgId: string,
   userId: string,
   connectorTypes: readonly string[],
+  snapshot: ConnectorRuntimeSnapshot,
 ): Promise<Map<string, ConnectorAccessState>> {
   const result = new Map<string, ConnectorAccessState>();
   if (connectorTypes.length === 0) {
@@ -1107,25 +1015,27 @@ async function loadConnectorAccessStates(
     );
 
   for (const row of rows) {
-    const parsed = connectorTypeSchema.safeParse(row.type);
-    if (!parsed.success) {
+    const connectorRef = connectorCatalogRefSchema.safeParse(row.type);
+    const authMethodId = connectorCatalogAuthMethodIdSchema.safeParse(
+      row.authMethod,
+    );
+    if (!connectorRef.success || !authMethodId.success) {
       continue;
     }
-    const accessMetadata = getConnectorAuthMethodAccessMetadata(
-      parsed.data,
-      row.authMethod,
-    );
-    const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
-      parsed.data,
-      row.authMethod,
-    );
-    if (!accessMetadata || !runtimeMetadata) {
+    const runtimeMethod = getConnectorRuntimeMethod({
+      snapshot,
+      connectorRef: connectorRef.data,
+      authMethodId: authMethodId.data,
+      requireExecutable: true,
+    });
+    if (!runtimeMethod) {
       continue;
     }
     result.set(row.type, {
-      authMethod: row.authMethod,
-      accessMetadata,
-      runtimeMetadata,
+      authMethod: authMethodId.data,
+      runtimeMethod,
+      accessMetadata: connectorAuthMethodAccessMetadata(runtimeMethod.method),
+      runtimeMetadata: connectorAuthMethodRuntimeMetadata(runtimeMethod.method),
       ...refreshSourceStateFromRow(row),
     });
   }
@@ -1344,6 +1254,7 @@ async function getSourceStateByProviderKey(args: {
 
 async function loadCurrentSourceStateSnapshot(args: {
   readonly db: Db;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly orgId: string;
   readonly userId: string;
   readonly connectorTypes: readonly string[];
@@ -1362,6 +1273,7 @@ async function loadCurrentSourceStateSnapshot(args: {
     args.orgId,
     args.userId,
     connectorOnly,
+    args.connectorCatalogSnapshot,
   );
   return {
     connectorAccessByType,
@@ -1455,21 +1367,7 @@ function prepareRefreshTokenContext(
     return { ok: false, reason: "not-refreshable" };
   }
   const accessMetadata = connectorAccess.accessMetadata;
-  const parsedConnectorType = connectorTypeSchema.safeParse(args.connectorType);
-  if (!parsedConnectorType.success) {
-    return { ok: false, reason: "not-refreshable" };
-  }
-  const parsedAuthMethod = connectorAuthMethodIdSchema.safeParse(
-    connectorAccess.authMethod,
-  );
-  if (!parsedAuthMethod.success) {
-    return { ok: false, reason: "not-refreshable" };
-  }
-  const authMethodRef: ConnectorAuthMethodRef = {
-    type: parsedConnectorType.data,
-    authMethod: parsedAuthMethod.data,
-  };
-  if (!connectorAuthMethodRefHasAccessKind(authMethodRef, "refresh-token")) {
+  if (connectorAccess.runtimeMethod.method.access.kind !== "refresh-token") {
     return { ok: false, reason: "not-refreshable" };
   }
 
@@ -1484,35 +1382,28 @@ function prepareRefreshTokenContext(
     ),
   };
 
-  if (connectorRefreshTokenAccessMethodHasClient(authMethodRef)) {
-    const resolvedClient = resolveRefreshTokenAccessClient(authMethodRef);
-    if (!resolvedClient) {
-      L.debug(
-        `${args.connectorType} connector client not configured, skipping token refresh`,
-      );
-      return { ok: false, reason: "client-unconfigured" };
-    }
-
-    return {
-      ok: true,
-      prepared: connectorPreparedRefreshTokenContextWithClient({
-        resolvedClient,
-        context,
-      }),
-    };
+  const clientConfig = connectorAccess.runtimeMethod.method.client;
+  const authClient = clientConfig
+    ? resolveConnectorAuthClient(clientConfig, optionalEnv)
+    : undefined;
+  if (clientConfig && !authClient) {
+    L.debug(
+      `${args.connectorType} connector client not configured, skipping token refresh`,
+    );
+    return { ok: false, reason: "client-unconfigured" };
   }
 
-  if (connectorRefreshTokenAccessMethodHasNoClient(authMethodRef)) {
-    return {
-      ok: true,
-      prepared: connectorPreparedRefreshTokenContextWithoutClient({
-        authMethodRef,
-        context,
-      }),
-    };
-  }
-
-  return { ok: false, reason: "not-refreshable" };
+  return {
+    ok: true,
+    prepared: {
+      sourceType: "connector",
+      connectorRef: connectorAccess.runtimeMethod.connectorRef,
+      authMethodId: connectorAccess.runtimeMethod.authMethodId,
+      runtimeMethod: connectorAccess.runtimeMethod,
+      ...(authClient ? { authClient } : {}),
+      context,
+    },
+  };
 }
 
 function tokenExpiresAtNeedsRefresh(tokenExpiresAt: Date | null): boolean {
@@ -2088,8 +1979,13 @@ function refreshPreparedConnectorAccessToken(args: {
   readonly inputs: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
 }) {
-  return refreshConnectorAuthProviderAccessToken({
-    ...args.prepared,
+  return refreshConnectorAuthProviderAccessTokenWithMethod({
+    connectorRef: args.prepared.connectorRef,
+    authMethodId: args.prepared.authMethodId,
+    method: args.prepared.runtimeMethod.method,
+    ...(args.prepared.authClient
+      ? { authClient: args.prepared.authClient }
+      : {}),
     inputs: args.inputs,
     signal: args.signal,
   });
@@ -2104,7 +2000,7 @@ async function lockPreparedRefreshSource(
     await lockConnectorState(db, {
       orgId: args.orgId,
       userId: args.userId,
-      type: prepared.type,
+      type: prepared.connectorRef,
     });
     return;
   }
@@ -3165,6 +3061,7 @@ function hasMissingUnresolvableSecrets(args: {
 
 async function prepareFirewallAuthResolutionContext(args: {
   readonly db: Db;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly auth: SandboxAuth;
   readonly body: FirewallAuthBody;
   readonly orgId: string;
@@ -3201,6 +3098,7 @@ async function prepareFirewallAuthResolutionContext(args: {
       secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
       referencedKeys: referenced.secrets,
     }),
+    args.connectorCatalogSnapshot,
   );
   const modelProviderRefreshable = referencedModelProviderAccessMap({
     secretConnectorMap: args.body.secretConnectorMap,
@@ -3666,6 +3564,7 @@ async function refreshExpiredTokens(
 
   const context = {
     db: args.db,
+    connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     auth: args.auth,
     orgId: args.orgId,
     userId: args.auth.userId,
@@ -3689,6 +3588,7 @@ async function refreshExpiredTokens(
       ? { connectorAccessByType: context.connectorAccessByType, sourceStateMap }
       : await loadCurrentSourceStateSnapshot({
           db: args.db,
+          connectorCatalogSnapshot: args.connectorCatalogSnapshot,
           orgId: args.orgId,
           userId: args.auth.userId,
           connectorTypes: skippedTypes,
@@ -3716,6 +3616,7 @@ async function refreshExpiredTokens(
           args.orgId,
           args.auth.userId,
           connectorTypes,
+          args.connectorCatalogSnapshot,
         )),
       ])
     : args.connectorAccessByType;
@@ -3948,6 +3849,7 @@ export async function resolveFirewallAuth(
   auth: SandboxAuth,
   body: FirewallAuthBody,
 ): Promise<ResolveFirewallAuthResult> {
+  const connectorCatalogSnapshot = await loadConnectorRuntimeSnapshot(db);
   const forceRefreshStartedAtMicros =
     body.forceRefresh === true
       ? await currentDatabaseTimestampMicros(db)
@@ -3968,6 +3870,7 @@ export async function resolveFirewallAuth(
 
   const prepared = await prepareFirewallAuthResolutionContext({
     db,
+    connectorCatalogSnapshot,
     auth,
     body,
     orgId: decrypted.orgId,
@@ -3998,6 +3901,7 @@ export async function resolveFirewallAuth(
   if (body.secretConnectorMap) {
     const result = await refreshExpiredTokens({
       db,
+      connectorCatalogSnapshot,
       auth,
       secrets: decryptedSecrets,
       secretConnectorMap: body.secretConnectorMap,

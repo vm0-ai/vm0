@@ -8,10 +8,8 @@ import type {
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { connectors } from "@vm0/db/schema/connector";
 import { hostedDeployments } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { secrets } from "@vm0/db/schema/secret";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, or, sql } from "drizzle-orm";
@@ -40,22 +38,29 @@ import {
   safeSync,
   tapError,
 } from "../utils";
-import { decryptStoredSecretValue } from "./crypto.utils";
+import {
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
+import {
+  connectorCredentialRuntimeValueRef,
+  loadConnectorCredentialConnection,
+  loadConnectorCredentialValues,
+  refreshConnectorCredentialAccess,
+  type ConnectorCredentialConnection,
+} from "./connector-credential-runtime.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const GOOGLE_DRIVE_UPLOAD_URL =
   "https://www.googleapis.com/upload/drive/v3/files";
-const GOOGLE_DRIVE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 const GOOGLE_DRIVE_STATUS_TIMEOUT_MS = 2000;
 const GOOGLE_DRIVE_ARTIFACT_APP_PROPERTY = "vm0Artifact";
 const GOOGLE_DRIVE_THREAD_APP_PROPERTY = "vm0ThreadId";
 const GOOGLE_DRIVE_RUN_APP_PROPERTY = "vm0RunId";
 const GOOGLE_DRIVE_FILE_APP_PROPERTY = "vm0FileId";
-const ACCESS_SECRET = "GOOGLE_DRIVE_ACCESS_TOKEN";
-const REFRESH_SECRET = "GOOGLE_DRIVE_REFRESH_TOKEN";
-const SECRET_TYPE = "connector";
+const GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME = "GOOGLE_DRIVE_TOKEN";
 
 const driveFileSchema = z.object({
   id: z.string(),
@@ -64,11 +69,6 @@ const driveFileSchema = z.object({
   appProperties: z.record(z.string(), z.string()).optional(),
 });
 const driveFileListSchema = z.object({ files: z.array(driveFileSchema) });
-const refreshResponseSchema = z.object({
-  access_token: z.string().optional(),
-  expires_in: z.number().optional(),
-  error: z.string().optional(),
-});
 
 interface DriveSyncResult {
   readonly id: string;
@@ -86,7 +86,7 @@ type DriveStatusLookup =
 
 interface ConnectorTokens {
   readonly accessToken: string;
-  readonly refreshToken: string | null;
+  readonly connection: ConnectorCredentialConnection;
   readonly needsReconnect: boolean;
 }
 
@@ -133,85 +133,62 @@ async function loadDriveTokens(
   orgId: string,
   userId: string,
   featureSwitchContext: FeatureSwitchContext,
+  snapshot: ConnectorRuntimeSnapshot,
 ): Promise<ConnectorTokens | null> {
-  const [connector] = await db
-    .select({ needsReconnect: connectors.needsReconnect })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, orgId),
-        eq(connectors.userId, userId),
-        eq(connectors.type, "google-drive"),
-      ),
-    )
-    .limit(1);
-  if (!connector) {
+  const loaded = await loadConnectorCredentialConnection({
+    db,
+    snapshot,
+    orgId,
+    userId,
+    connectorRef: "google-drive",
+  });
+  if (loaded.kind !== "ok") {
     return null;
   }
-
-  const secretRows = await db
-    .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.userId, userId),
-        eq(secrets.type, SECRET_TYPE),
-      ),
-    );
-
-  let accessEncrypted: string | undefined;
-  let refreshEncrypted: string | undefined;
-  for (const row of secretRows) {
-    if (row.name === ACCESS_SECRET) {
-      accessEncrypted = row.encryptedValue;
-    }
-    if (row.name === REFRESH_SECRET) {
-      refreshEncrypted = row.encryptedValue;
-    }
-  }
-  if (!accessEncrypted) {
+  const connection = loaded.connection;
+  const accessTokenValueRef = connectorCredentialRuntimeValueRef(
+    connection,
+    GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME,
+  );
+  if (accessTokenValueRef === null) {
     return null;
   }
-
+  const values = await loadConnectorCredentialValues({
+    db,
+    orgId,
+    userId,
+    featureSwitchContext,
+    valueRefs: [accessTokenValueRef],
+  });
+  const accessToken = values.get(accessTokenValueRef);
+  if (!accessToken) {
+    return null;
+  }
   return {
-    accessToken: await decryptStoredSecretValue(
-      accessEncrypted,
-      featureSwitchContext,
-    ),
-    refreshToken: refreshEncrypted
-      ? await decryptStoredSecretValue(refreshEncrypted, featureSwitchContext)
-      : null,
-    needsReconnect: connector.needsReconnect,
+    accessToken,
+    connection,
+    needsReconnect: connection.needsReconnect,
   };
 }
 
-async function refreshDriveAccessToken(
-  refreshToken: string,
-): Promise<string | null> {
-  const clientId = optionalEnv("GOOGLE_OAUTH_CLIENT_ID");
-  const clientSecret = optionalEnv("GOOGLE_OAUTH_CLIENT_SECRET");
-  if (!clientId || !clientSecret) {
-    return null;
-  }
-  const response = await fetch(GOOGLE_DRIVE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    }),
+async function refreshDriveAccessToken(args: {
+  readonly connection: ConnectorCredentialConnection;
+  readonly db: ReadonlyDb;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+  readonly userId: string;
+}): Promise<string | null> {
+  const refreshed = await refreshConnectorCredentialAccess({
+    connection: args.connection,
+    db: args.db,
+    featureSwitchContext: args.featureSwitchContext,
+    orgId: args.orgId,
+    userId: args.userId,
+    runtimeEnvironmentName: GOOGLE_DRIVE_ACCESS_TOKEN_ENVIRONMENT_NAME,
+    signal: args.signal,
   });
-  if (!response.ok) {
-    return null;
-  }
-  const parsed = refreshResponseSchema.safeParse(await response.json());
-  if (!parsed.success || !parsed.data.access_token) {
-    return null;
-  }
-  return parsed.data.access_token;
+  return refreshed.kind === "ok" ? refreshed.accessToken : null;
 }
 
 type DriveListResult =
@@ -252,9 +229,13 @@ async function listArtifactFiles(args: {
 }
 
 async function listArtifactFilesWithRefresh(args: {
+  readonly db: ReadonlyDb;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly orgId: string;
   readonly tokens: ConnectorTokens;
   readonly threadId: string;
   readonly signal: AbortSignal;
+  readonly userId: string;
 }): Promise<z.infer<typeof driveFileSchema>[] | "unauthorized"> {
   const first = await listArtifactFiles({
     accessToken: args.tokens.accessToken,
@@ -264,12 +245,14 @@ async function listArtifactFilesWithRefresh(args: {
   if (first.type === "ok") {
     return first.files;
   }
-  if (!args.tokens.refreshToken) {
-    return "unauthorized";
-  }
-  const refreshedAccessToken = await refreshDriveAccessToken(
-    args.tokens.refreshToken,
-  );
+  const refreshedAccessToken = await refreshDriveAccessToken({
+    connection: args.tokens.connection,
+    db: args.db,
+    featureSwitchContext: args.featureSwitchContext,
+    orgId: args.orgId,
+    signal: args.signal,
+    userId: args.userId,
+  });
   if (!refreshedAccessToken) {
     return "unauthorized";
   }
@@ -342,15 +325,12 @@ export function applyGoogleDriveArtifactSyncStatuses(
 /**
  * Compute the Drive sync status lookup for a chat thread's artifacts.
  *
- * Scoped to Google Drive only (no generic provider registry) since this is the
- * sole API consumer of OAuth refresh today.
- *
- * Token persistence is intentionally deferred. When the in-flight access
- * token is rejected and the refresh succeeds, the new token is used for
- * the retry but is NOT written back to `secrets`; the next request will
- * refresh again. Keeps the route handler a read-only `computed`. Drive
- * status check is a UI poll, not a hot path; refresh tokens don't rotate
- * (Google), so the cost is one extra RTT per stale-token request.
+ * Token persistence is intentionally deferred. The selected runtime method is
+ * still rechecked through the provider registry, but a successful refresh is
+ * used only for this retry and is not written back to connector storage. This
+ * keeps the route handler a read-only `computed`. Drive status check is a UI
+ * poll, not a hot path; refresh tokens don't rotate (Google), so the cost is
+ * one extra RTT per stale-token request.
  * Track in epic #12290 follow-up if telemetry shows this matters.
  */
 export function googleDriveArtifactStatusLookup(args: {
@@ -374,11 +354,19 @@ export function googleDriveArtifactStatusLookup(args: {
     const featureSwitchOverrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
-    const tokens = await loadDriveTokens(db, args.orgId, args.userId, {
+    const featureSwitchContext = {
       orgId: args.orgId,
       userId: args.userId,
       overrides: featureSwitchOverrides,
-    });
+    };
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    const tokens = await loadDriveTokens(
+      db,
+      args.orgId,
+      args.userId,
+      featureSwitchContext,
+      snapshot,
+    );
     if (!tokens || tokens.needsReconnect) {
       return { type: "disconnected" };
     }
@@ -388,9 +376,13 @@ export function googleDriveArtifactStatusLookup(args: {
     // swallowing aborts.
     const files = await tapError(
       listArtifactFilesWithRefresh({
+        db,
+        featureSwitchContext,
+        orgId: args.orgId,
         tokens,
         threadId: args.threadId,
         signal: AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
+        userId: args.userId,
       }),
     );
     if (files === undefined) {
@@ -1090,11 +1082,20 @@ export const syncArtifactToGoogleDrive$ = command(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
     signal.throwIfAborted();
-    const tokens = await loadDriveTokens(db, args.orgId, args.userId, {
+    const featureSwitchContext = {
       orgId: args.orgId,
       userId: args.userId,
       overrides: featureSwitchOverrides,
-    });
+    };
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
+    const tokens = await loadDriveTokens(
+      db,
+      args.orgId,
+      args.userId,
+      featureSwitchContext,
+      snapshot,
+    );
     signal.throwIfAborted();
     if (!tokens || tokens.needsReconnect) {
       return badRequestMessage("Connect Google Drive before syncing artifacts");
@@ -1152,8 +1153,15 @@ export const syncArtifactToGoogleDrive$ = command(
     });
     signal.throwIfAborted();
 
-    if (result.type === "unauthorized" && tokens.refreshToken) {
-      const refreshed = await refreshDriveAccessToken(tokens.refreshToken);
+    if (result.type === "unauthorized") {
+      const refreshed = await refreshDriveAccessToken({
+        connection: tokens.connection,
+        db,
+        featureSwitchContext,
+        orgId: args.orgId,
+        signal,
+        userId: args.userId,
+      });
       signal.throwIfAborted();
       if (refreshed) {
         result = await uploadArtifactWithToken({
@@ -1380,11 +1388,20 @@ export const uploadPresentationToGoogleSlides$ = command(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
     signal.throwIfAborted();
-    const tokens = await loadDriveTokens(db, args.orgId, args.userId, {
+    const featureSwitchContext = {
       orgId: args.orgId,
       userId: args.userId,
       overrides: featureSwitchOverrides,
-    });
+    };
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
+    const tokens = await loadDriveTokens(
+      db,
+      args.orgId,
+      args.userId,
+      featureSwitchContext,
+      snapshot,
+    );
     signal.throwIfAborted();
     if (!tokens || tokens.needsReconnect) {
       return badRequestMessage(
@@ -1408,8 +1425,15 @@ export const uploadPresentationToGoogleSlides$ = command(
     });
     signal.throwIfAborted();
 
-    if (result.type === "unauthorized" && tokens.refreshToken) {
-      const refreshed = await refreshDriveAccessToken(tokens.refreshToken);
+    if (result.type === "unauthorized") {
+      const refreshed = await refreshDriveAccessToken({
+        connection: tokens.connection,
+        db,
+        featureSwitchContext,
+        orgId: args.orgId,
+        signal,
+        userId: args.userId,
+      });
       signal.throwIfAborted();
       if (refreshed) {
         result = await uploadSlidesWithToken({

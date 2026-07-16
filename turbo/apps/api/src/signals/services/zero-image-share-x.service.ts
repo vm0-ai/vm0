@@ -1,27 +1,25 @@
 import { command } from "ccstate";
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ApiErrorKey } from "@vm0/api-contracts/contracts/errors";
-import { refreshXToken } from "@vm0/connectors/auth-providers/connectors/x/oauth";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { z } from "zod";
 
-import { env, optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { safeJsonParse, safeUrlParse, tapError } from "../utils";
-import { lockConnectorState } from "./auth-state-lock.service";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
-  decryptStoredSecretValue,
-  encryptStoredSecretValue,
-} from "./crypto.utils";
+  connectorCredentialRuntimeValueRef,
+  loadConnectorCredentialConnection,
+  loadConnectorCredentialValues,
+  refreshConnectorCredentialAccess,
+  type ConnectorCredentialConnection,
+} from "./connector-credential-runtime.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
 const X_CONNECTOR_TYPE = "x";
-const X_ACCESS_TOKEN_SECRET_NAME = "X_ACCESS_TOKEN";
-const X_REFRESH_TOKEN_SECRET_NAME = "X_REFRESH_TOKEN";
+const X_ACCESS_TOKEN_ENVIRONMENT_NAME = "X_TOKEN";
 const X_TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_X_CAPTION = "Made with Zero";
@@ -58,25 +56,12 @@ interface XShareFailure {
 
 type XShareResult = XShareSuccess | XShareFailure;
 
-interface XConnectorRow {
-  readonly oauthScopes: string | null;
-  readonly needsReconnect: boolean;
-  readonly tokenExpiresAt: Date | null;
-}
-
 type XAccessTokenResult =
   | {
       readonly ok: true;
       readonly accessToken: string;
     }
   | XShareFailure;
-
-interface XSecretValues {
-  readonly accessToken: string | null;
-  readonly refreshToken: string | null;
-}
-
-const oauthScopesSchema = z.array(z.string());
 
 const xMediaUploadResponseSchema = z
   .object({
@@ -107,18 +92,6 @@ function xShareError(errorKey: ApiErrorKey, message: string): XShareFailure {
   return { ok: false, errorKey, message };
 }
 
-function parseOAuthScopes(value: string | null): readonly string[] {
-  if (!value) {
-    return [];
-  }
-  const raw = safeJsonParse(value);
-  if (raw === undefined) {
-    return [];
-  }
-  const parsed = oauthScopesSchema.safeParse(raw);
-  return parsed.success ? parsed.data : [];
-}
-
 function missingRequiredScopes(scopes: readonly string[]): readonly string[] {
   const scopeSet = new Set(scopes);
   return REQUIRED_X_SCOPES.filter((scope) => {
@@ -126,197 +99,57 @@ function missingRequiredScopes(scopes: readonly string[]): readonly string[] {
   });
 }
 
-async function readXConnectorRow(args: {
+async function resolveXAccessToken(args: {
+  readonly connector: ConnectorCredentialConnection;
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
-}): Promise<XConnectorRow | null> {
-  const [row] = await args.db
-    .select({
-      oauthScopes: connectors.oauthScopes,
-      needsReconnect: connectors.needsReconnect,
-      tokenExpiresAt: connectors.tokenExpiresAt,
-    })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, args.orgId),
-        eq(connectors.userId, args.userId),
-        eq(connectors.type, X_CONNECTOR_TYPE),
-      ),
-    );
-  return row ?? null;
-}
-
-async function loadXSecretValues(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<XSecretValues> {
-  const rows = await args.db
-    .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, args.orgId),
-        eq(secrets.userId, args.userId),
-        eq(secrets.type, "connector"),
-        inArray(secrets.name, [
-          X_ACCESS_TOKEN_SECRET_NAME,
-          X_REFRESH_TOKEN_SECRET_NAME,
-        ]),
-      ),
-    );
-
-  const values = new Map<string, string>();
-  for (const row of rows) {
-    values.set(row.name, await decryptStoredSecretValue(row.encryptedValue));
-  }
-
-  return {
-    accessToken: values.get(X_ACCESS_TOKEN_SECRET_NAME) ?? null,
-    refreshToken: values.get(X_REFRESH_TOKEN_SECRET_NAME) ?? null,
-  };
-}
-
-async function upsertConnectorSecret(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly name: string;
-  readonly value: string;
-}): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(args.value);
-  await args.db
-    .insert(secrets)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      name: args.name,
-      encryptedValue,
-      description: null,
-      type: "connector",
-    })
-    .onConflictDoUpdate({
-      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
-      set: {
-        encryptedValue,
-        description: null,
-        updatedAt: sql`clock_timestamp()`,
-      },
-    });
-}
-
-async function refreshAndPersistXAccessToken(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly refreshToken: string;
   readonly signal: AbortSignal;
   readonly writeDb: Db;
 }): Promise<XAccessTokenResult> {
-  const clientId = optionalEnv("X_OAUTH_CLIENT_ID");
-  const clientSecret = optionalEnv("X_OAUTH_CLIENT_SECRET");
-  if (!clientId || !clientSecret) {
-    return xShareError("PROVIDER_UNAVAILABLE", "X sharing is not configured");
-  }
-
-  const refreshed = await tapError(
-    refreshXToken(clientId, clientSecret, args.refreshToken, args.signal),
+  const accessTokenValueRef = connectorCredentialRuntimeValueRef(
+    args.connector,
+    X_ACCESS_TOKEN_ENVIRONMENT_NAME,
   );
-  args.signal.throwIfAborted();
-  if (!refreshed) {
+  if (accessTokenValueRef === null) {
     return xShareError("CONFLICT", "Reconnect X to post images");
   }
-
-  const nextRefreshToken = refreshed.refreshToken ?? args.refreshToken;
-  const tokenExpiresAt = new Date(
-    now() +
-      (refreshed.expiresIn
-        ? refreshed.expiresIn * 1000
-        : DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS),
-  );
-
-  await args.writeDb.transaction(async (tx) => {
-    await lockConnectorState(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      type: X_CONNECTOR_TYPE,
-    });
-    args.signal.throwIfAborted();
-
-    await upsertConnectorSecret({
-      db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      name: X_ACCESS_TOKEN_SECRET_NAME,
-      value: refreshed.accessToken,
-    });
-    args.signal.throwIfAborted();
-
-    await upsertConnectorSecret({
-      db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      name: X_REFRESH_TOKEN_SECRET_NAME,
-      value: nextRefreshToken,
-    });
-    args.signal.throwIfAborted();
-
-    await tx
-      .update(connectors)
-      .set({
-        tokenExpiresAt,
-        needsReconnect: false,
-        reconnectReason: null,
-        updatedAt: sql`clock_timestamp()`,
-      })
-      .where(
-        and(
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          eq(connectors.type, X_CONNECTOR_TYPE),
-        ),
-      );
-  });
-
-  return { ok: true, accessToken: refreshed.accessToken };
-}
-
-async function resolveXAccessToken(args: {
-  readonly connector: XConnectorRow;
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-  readonly writeDb: Db;
-}): Promise<XAccessTokenResult> {
-  const secretValues = await loadXSecretValues({
+  const values = await loadConnectorCredentialValues({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
+    valueRefs: [accessTokenValueRef],
   });
   args.signal.throwIfAborted();
 
   const tokenExpiresAtMs = args.connector.tokenExpiresAt?.getTime() ?? 0;
+  const accessToken = values.get(accessTokenValueRef);
   const accessTokenCurrent =
-    secretValues.accessToken &&
+    accessToken &&
     (tokenExpiresAtMs === 0 ||
       tokenExpiresAtMs > now() + X_TOKEN_REFRESH_SKEW_MS);
   if (accessTokenCurrent) {
-    return { ok: true, accessToken: secretValues.accessToken };
+    return { ok: true, accessToken };
   }
 
-  if (!secretValues.refreshToken) {
-    return xShareError("CONFLICT", "Reconnect X to post images");
-  }
-
-  return await refreshAndPersistXAccessToken({
+  const refreshed = await refreshConnectorCredentialAccess({
+    connection: args.connector,
+    db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    refreshToken: secretValues.refreshToken,
+    runtimeEnvironmentName: X_ACCESS_TOKEN_ENVIRONMENT_NAME,
     signal: args.signal,
-    writeDb: args.writeDb,
+    persist: {
+      db: args.writeDb,
+      defaultExpiresInMs: DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS,
+    },
   });
+  if (refreshed.kind === "configuration-unavailable") {
+    return xShareError("PROVIDER_UNAVAILABLE", "X sharing is not configured");
+  }
+  return refreshed.kind === "ok"
+    ? { ok: true, accessToken: refreshed.accessToken }
+    : xShareError("CONFLICT", "Reconnect X to post images");
 }
 
 function normalizeImageContentType(contentTypeHeader: string | null): string {
@@ -553,22 +386,25 @@ export const shareImageToX$ = command(
   ): Promise<XShareResult> => {
     const db = get(db$);
     const writeDb = set(writeDb$);
-    const connector = await readXConnectorRow({
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
+    const loaded = await loadConnectorCredentialConnection({
       db,
+      snapshot,
       orgId: args.orgId,
       userId: args.userId,
+      connectorRef: X_CONNECTOR_TYPE,
     });
     signal.throwIfAborted();
 
-    if (!connector) {
+    if (loaded.kind === "missing") {
       return xShareError("NOT_FOUND", "Connect X to post images");
     }
-    if (connector.needsReconnect) {
+    if (loaded.kind === "unavailable" || loaded.connection.needsReconnect) {
       return xShareError("CONFLICT", "Reconnect X to post images");
     }
-    const missingScopes = missingRequiredScopes(
-      parseOAuthScopes(connector.oauthScopes),
-    );
+    const connector = loaded.connection;
+    const missingScopes = missingRequiredScopes(connector.oauthScopes ?? []);
     if (missingScopes.length > 0) {
       return xShareError("CONFLICT", "Reconnect X to post images");
     }

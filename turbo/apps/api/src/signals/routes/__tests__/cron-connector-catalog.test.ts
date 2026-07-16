@@ -1,7 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { cronConnectorCatalogContract } from "@vm0/api-contracts/contracts/cron";
-import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
+import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import { zeroSteamPlayerContract } from "@vm0/api-contracts/contracts/zero-steam-player";
+import {
+  zeroConnectorOpenIdStartContract,
+  zeroConnectorsSearchContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
@@ -35,11 +41,17 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
 import { createBddApi } from "./helpers/api-bdd";
 import {
+  awsVerificationCode,
   createConnectorBddApi,
+  mockAwsExternalCodeProvider,
   mockDatadogConnectorOAuth,
   mockGmailConnectorOAuth,
+  mockSlackConnectorOAuth,
+  mockTestOAuthDeviceConnectorProvider,
 } from "./helpers/api-bdd-connectors";
+import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 const context = testContext();
 const zeroMocks = createZeroRouteMocks(context);
@@ -52,7 +64,11 @@ const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const PRIVATE_VALUE = "SECRET_TOKEN";
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
+const SLACK_REVOKE_URL = "https://slack.com/api/auth.revoke";
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+const STEAM_TEST_ID = "76561198000000000";
 
 type JsonRecord = Record<string, unknown>;
 type JsonMutation = (value: JsonRecord) => void;
@@ -311,24 +327,31 @@ function manualPrivateAuthMethod(args: {
   };
 }
 
-function devicePrivateAuthMethod(): JsonRecord {
+function devicePrivateAuthMethod(args?: {
+  readonly accessTokenName?: string;
+  readonly clientId?: string;
+  readonly scopes?: readonly string[];
+}): JsonRecord {
+  const accessTokenName = args?.accessTokenName ?? "DEVICE_ACCESS_TOKEN";
   return {
     id: "oauth",
     client: {
       clientRegistration: "static",
       clientType: "public",
-      clientId: "external-device-client",
+      clientId: args?.clientId ?? "external-device-client",
     },
-    storage: { secrets: ["DEVICE_ACCESS_TOKEN"], variables: [] },
+    storage: { secrets: [accessTokenName], variables: [] },
     grant: {
       kind: "device-auth",
-      scopes: [],
-      outputs: { accessToken: "$secrets.DEVICE_ACCESS_TOKEN" },
+      scopes: [...(args?.scopes ?? [])],
+      outputs: { accessToken: `$secrets.${accessTokenName}` },
       startOptionMappings: [],
     },
     access: {
       kind: "static",
-      envBindings: { SERVICE_TOKEN: "$secrets.DEVICE_ACCESS_TOKEN" },
+      envBindings: {
+        TEST_OAUTH_DEVICE_TOKEN: `$secrets.${accessTokenName}`,
+      },
     },
     revoke: { kind: "none" },
   };
@@ -337,22 +360,92 @@ function devicePrivateAuthMethod(): JsonRecord {
 function steamPrivateAuthMethod(args?: {
   readonly callbackOrigin?: "web" | "api";
   readonly platformSecret?: string;
+  readonly steamIdName?: string;
 }): JsonRecord {
   const platformSecret = args?.platformSecret ?? "STEAM_WEB_API_KEY";
+  const steamIdName = args?.steamIdName ?? "STEAM_ID";
   return {
     id: "openid",
-    storage: { secrets: [], variables: ["STEAM_ID"] },
+    storage: { secrets: [], variables: [steamIdName] },
     grant: {
       kind: "openid-auth",
       callbackOrigin: args?.callbackOrigin ?? "api",
-      outputs: { steamId: "$vars.STEAM_ID" },
+      outputs: { steamId: `$vars.${steamIdName}` },
     },
     access: {
       kind: "static",
       platformSecrets: [platformSecret],
       envBindings: {
-        STEAM_ID: "$vars.STEAM_ID",
+        STEAM_ID: `$vars.${steamIdName}`,
         STEAM_WEB_API_KEY: `$secrets.${platformSecret}`,
+      },
+    },
+    revoke: { kind: "none" },
+  };
+}
+
+function awsPrivateAuthMethod(): JsonRecord {
+  const refreshTokenName = "CATALOG_AWS_LOGIN_REFRESH_TOKEN";
+  const dpopKeyName = "CATALOG_AWS_LOGIN_DPOP_KEY";
+  const accessKeyIdName = "CATALOG_AWS_ACCESS_KEY_ID";
+  const secretAccessKeyName = "CATALOG_AWS_SECRET_ACCESS_KEY";
+  const sessionTokenName = "CATALOG_AWS_SESSION_TOKEN";
+  const signinRegionName = "CATALOG_AWS_SIGNIN_REGION";
+  const runtimeRegionName = "CATALOG_AWS_REGION";
+  return {
+    id: "cli",
+    client: {
+      clientRegistration: "static",
+      clientType: "public",
+      clientId: "arn:aws:signin:::devtools/cross-device",
+    },
+    storage: {
+      secrets: [
+        refreshTokenName,
+        dpopKeyName,
+        accessKeyIdName,
+        secretAccessKeyName,
+        sessionTokenName,
+      ],
+      variables: [signinRegionName, runtimeRegionName],
+    },
+    grant: {
+      kind: "external-code",
+      scopes: ["openid"],
+      outputs: {
+        refreshToken: `$secrets.${refreshTokenName}`,
+        dpopKey: `$secrets.${dpopKeyName}`,
+        accessKeyId: `$secrets.${accessKeyIdName}`,
+        secretAccessKey: `$secrets.${secretAccessKeyName}`,
+        sessionToken: `$secrets.${sessionTokenName}`,
+        signinRegion: `$vars.${signinRegionName}`,
+        runtimeRegion: `$vars.${runtimeRegionName}`,
+      },
+    },
+    access: {
+      kind: "refresh-token",
+      inputs: {
+        refreshToken: `$secrets.${refreshTokenName}`,
+        dpopKey: `$secrets.${dpopKeyName}`,
+        signinRegion: `$vars.${signinRegionName}`,
+      },
+      outputs: {
+        refreshToken: `$secrets.${refreshTokenName}`,
+        accessKeyId: `$secrets.${accessKeyIdName}`,
+        secretAccessKey: `$secrets.${secretAccessKeyName}`,
+        sessionToken: `$secrets.${sessionTokenName}`,
+      },
+      refreshableSecrets: [
+        accessKeyIdName,
+        secretAccessKeyName,
+        sessionTokenName,
+      ],
+      envBindings: {
+        AWS_ACCESS_KEY_ID: `$secrets.${accessKeyIdName}`,
+        AWS_SECRET_ACCESS_KEY: `$secrets.${secretAccessKeyName}`,
+        AWS_SESSION_TOKEN: `$secrets.${sessionTokenName}`,
+        AWS_REGION: `$vars.${runtimeRegionName}`,
+        AWS_DEFAULT_REGION: `$vars.${runtimeRegionName}`,
       },
     },
     revoke: { kind: "none" },
@@ -401,7 +494,81 @@ function deelPrivateAuthMethod(): JsonRecord {
   };
 }
 
+function gmailPrivateAuthMethod(): JsonRecord {
+  const accessTokenName = "CATALOG_GMAIL_ACCESS_TOKEN";
+  const refreshTokenName = "CATALOG_GMAIL_REFRESH_TOKEN";
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+      clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+    },
+    storage: {
+      secrets: [accessTokenName, refreshTokenName],
+      variables: [],
+    },
+    grant: {
+      kind: "auth-code",
+      scopes: ["https://www.googleapis.com/auth/gmail.modify"],
+      callbackOrigin: "web",
+      outputs: {
+        accessToken: `$secrets.${accessTokenName}`,
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+    },
+    access: {
+      kind: "refresh-token",
+      envBindings: {
+        GMAIL_TOKEN: `$secrets.${accessTokenName}`,
+      },
+      inputs: {
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+      outputs: {
+        accessToken: `$secrets.${accessTokenName}`,
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+      refreshableSecrets: [accessTokenName],
+    },
+    revoke: { kind: "none" },
+  };
+}
+
+function slackPrivateAuthMethod(
+  accessTokenName = "CATALOG_SLACK_ACCESS_TOKEN",
+): JsonRecord {
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientIdEnv: "SLACK_OAUTH_CLIENT_ID",
+      clientSecretEnv: "SLACK_OAUTH_CLIENT_SECRET",
+    },
+    storage: { secrets: [accessTokenName], variables: [] },
+    grant: {
+      kind: "auth-code",
+      scopes: ["channels:read", "chat:write"],
+      callbackOrigin: "web",
+      outputs: { accessToken: `$secrets.${accessTokenName}` },
+    },
+    access: {
+      kind: "static",
+      envBindings: { SLACK_TOKEN: `$secrets.${accessTokenName}` },
+    },
+    revoke: {
+      kind: "token-revoke",
+      inputs: { accessToken: `$secrets.${accessTokenName}` },
+    },
+  };
+}
+
 function datadogPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
+  const accessTokenName = "CATALOG_DATADOG_ACCESS_TOKEN";
+  const refreshTokenName = "CATALOG_DATADOG_REFRESH_TOKEN";
+  const domainName = "CATALOG_DATADOG_DOMAIN";
   return {
     id: "oauth",
     client: {
@@ -411,34 +578,34 @@ function datadogPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
       clientSecretEnv: "DATADOG_OAUTH_CLIENT_SECRET",
     },
     storage: {
-      secrets: ["DATADOG_ACCESS_TOKEN", "DATADOG_REFRESH_TOKEN"],
-      variables: ["DATADOG_DOMAIN"],
+      secrets: [accessTokenName, refreshTokenName],
+      variables: [domainName],
     },
     grant: {
       kind: "auth-code",
       scopes: [...scopes],
       callbackOrigin: "web",
       outputs: {
-        accessToken: "$secrets.DATADOG_ACCESS_TOKEN",
-        refreshToken: "$secrets.DATADOG_REFRESH_TOKEN",
-        domain: "$vars.DATADOG_DOMAIN",
+        accessToken: `$secrets.${accessTokenName}`,
+        refreshToken: `$secrets.${refreshTokenName}`,
+        domain: `$vars.${domainName}`,
       },
     },
     access: {
       kind: "refresh-token",
       envBindings: {
-        DATADOG_TOKEN: "$secrets.DATADOG_ACCESS_TOKEN",
-        DATADOG_DOMAIN: "$vars.DATADOG_DOMAIN",
+        DATADOG_TOKEN: `$secrets.${accessTokenName}`,
+        DATADOG_DOMAIN: `$vars.${domainName}`,
       },
       inputs: {
-        refreshToken: "$secrets.DATADOG_REFRESH_TOKEN",
-        domain: "$vars.DATADOG_DOMAIN",
+        refreshToken: `$secrets.${refreshTokenName}`,
+        domain: `$vars.${domainName}`,
       },
       outputs: {
-        accessToken: "$secrets.DATADOG_ACCESS_TOKEN",
-        refreshToken: "$secrets.DATADOG_REFRESH_TOKEN",
+        accessToken: `$secrets.${accessTokenName}`,
+        refreshToken: `$secrets.${refreshTokenName}`,
       },
-      refreshableSecrets: ["DATADOG_ACCESS_TOKEN"],
+      refreshableSecrets: [accessTokenName],
     },
     revoke: { kind: "none" },
   };
@@ -681,6 +848,112 @@ function commandInput(command: unknown): JsonRecord {
     return {};
   }
   return isJsonRecord(command.input) ? command.input : {};
+}
+
+function steamOpenIdCallbackQuery(authorizationUrl: string) {
+  const url = new URL(authorizationUrl);
+  const returnTo = url.searchParams.get("openid.return_to");
+  if (!returnTo) {
+    throw new Error("Steam authorization URL is missing openid.return_to");
+  }
+  const state = new URL(returnTo).searchParams.get("state");
+  if (!state) {
+    throw new Error("Steam return_to is missing state");
+  }
+  const claimedId = `https://steamcommunity.com/openid/id/${STEAM_TEST_ID}`;
+  return {
+    state,
+    "openid.ns": "http://specs.openid.net/auth/2.0",
+    "openid.mode": "id_res",
+    "openid.op_endpoint": "https://steamcommunity.com/openid/login",
+    "openid.claimed_id": claimedId,
+    "openid.identity": claimedId,
+    "openid.return_to": returnTo,
+    "openid.response_nonce": "2026-07-15T08:00:00Znonce",
+    "openid.assoc_handle": "catalog-assoc-handle",
+    "openid.signed":
+      "op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
+    "openid.sig": "catalog-signature",
+  };
+}
+
+function mockSteamOpenIdVerification(): void {
+  server.use(
+    http.post(
+      "https://steamcommunity.com/openid/login",
+      async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        expect(body.get("openid.mode")).toBe("check_authentication");
+        return new HttpResponse(
+          ["ns:http://specs.openid.net/auth/2.0", "is_valid:true", ""].join(
+            "\n",
+          ),
+          { headers: { "content-type": "text/plain" } },
+        );
+      },
+    ),
+  );
+}
+
+function mockSteamPlayerApisForCatalog(): void {
+  server.use(
+    http.get(/https:\/\/api\.steampowered\.com\/.*/u, ({ request }) => {
+      const url = new URL(request.url);
+      expect(url.searchParams.get("key")).toBe("catalog-steam-api-key");
+      expect(
+        url.searchParams.get("steamid") ?? url.searchParams.get("steamids"),
+      ).toBe(STEAM_TEST_ID);
+      switch (url.pathname) {
+        case "/ISteamUser/GetPlayerSummaries/v0002/": {
+          return HttpResponse.json({
+            response: {
+              players: [
+                {
+                  steamid: STEAM_TEST_ID,
+                  personaname: "catalog-player",
+                },
+              ],
+            },
+          });
+        }
+        case "/IPlayerService/GetOwnedGames/v0001/": {
+          return HttpResponse.json({
+            response: { game_count: 0, games: [] },
+          });
+        }
+        case "/IPlayerService/GetRecentlyPlayedGames/v0001/": {
+          return HttpResponse.json({
+            response: { total_count: 0, games: [] },
+          });
+        }
+        case "/IPlayerService/GetSteamLevel/v1/": {
+          return HttpResponse.json({ response: { player_level: 1 } });
+        }
+        case "/IPlayerService/GetBadges/v1/": {
+          return HttpResponse.json({ response: { badges: [] } });
+        }
+        case "/IWishlistService/GetWishlist/v1/": {
+          return HttpResponse.json({ response: { items: [] } });
+        }
+        case "/IWishlistService/GetWishlistItemCount/v1/": {
+          return HttpResponse.json({ response: { count: 0 } });
+        }
+        case "/IStoreService/GetGamesFollowed/v1/": {
+          return HttpResponse.json({ response: { appids: [] } });
+        }
+        case "/IStoreService/GetGamesFollowedCount/v1/": {
+          return HttpResponse.json({
+            response: { followed_game_count: 0 },
+          });
+        }
+        default: {
+          return HttpResponse.text("Unexpected Steam API path", {
+            status: 404,
+          });
+        }
+      }
+    }),
+  );
 }
 
 function s3Body(bytes: Uint8Array): AsyncIterable<Uint8Array> {
@@ -1155,22 +1428,747 @@ describe("connector catalog valid lifecycle", () => {
     });
   });
 
+  it("executes an external manual grant with catalog-owned storage", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-manual-grant",
+      connectorRef: "agora",
+      label: "Catalog Agora",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
+    });
+    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
+    const connected = await connectorsApi.connectManualGrant(
+      actor,
+      "agora",
+      "api-token",
+      { credential: "catalog-manual-secret" },
+    );
+    expect(connected).toMatchObject({
+      type: "agora",
+      authMethod: "api-token",
+      connectionStatus: "connected",
+    });
+
+    const listed = await connectorsApi.listConnectors(actor);
+    expect(listed.connectorProvidedBindings).toContainEqual(
+      expect.objectContaining({
+        connectorType: "agora",
+        authMethod: "api-token",
+        namespace: "secrets",
+        name: "SERVICE_TOKEN",
+      }),
+    );
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const secrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(secrets.body.secrets).toContainEqual(
+      expect.objectContaining({ name: PRIVATE_VALUE, type: "connector" }),
+    );
+    expect(JSON.stringify(secrets.body)).not.toContain("catalog-manual-secret");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+  });
+
+  it("replaces and deletes connections with compatibility-filtered auth methods", async () => {
+    configureSource();
+    const legacyMethod = publicAuthMethod({
+      id: "legacy",
+      grantKind: "manual",
+      manual: true,
+    });
+    const currentMethod = publicAuthMethod({
+      id: "current",
+      grantKind: "manual",
+      manual: true,
+    });
+    const initial = buildRelease({
+      version: "2026-07-15.external-legacy-method",
+      connectorRef: "agora",
+      label: "Catalog Agora",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [legacyMethod]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          manualPrivateAuthMethod({
+            id: "legacy",
+            prefix: "LEGACY",
+            access: "static",
+            revoke: "none",
+          }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([initial], initial));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
+    });
+    await connectorsApi.connectManualGrant(actor, "agora", "legacy", {
+      credential: "legacy-catalog-secret",
+    });
+
+    const replacement = buildRelease({
+      version: "2026-07-15.external-replacement-method",
+      connectorRef: "agora",
+      label: "Catalog Agora",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [legacyMethod, currentMethod]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          manualPrivateAuthMethod({
+            id: "legacy",
+            prefix: "LEGACY",
+            access: "refresh-token",
+            revoke: "none",
+          }),
+          manualPrivateAuthMethod({
+            id: "current",
+            prefix: "CURRENT",
+            access: "static",
+            revoke: "none",
+          }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([initial, replacement], replacement));
+    const synced = await syncCatalog();
+    expect(synced.body.filtering.filteredAuthMethods).toStrictEqual([
+      {
+        connectorRef: "agora",
+        authMethodId: "legacy",
+        reasons: ["missing-access-provider"],
+      },
+    ]);
+
+    const connected = await connectorsApi.connectManualGrant(
+      actor,
+      "agora",
+      "current",
+      { credential: "current-catalog-secret" },
+    );
+    expect(connected).toMatchObject({
+      type: "agora",
+      authMethod: "current",
+      connectionStatus: "connected",
+    });
+
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const secrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const names = secrets.body.secrets.map((secret) => {
+      return secret.name;
+    });
+    expect(names).toContain("CURRENT_CREDENTIAL");
+    expect(names).not.toContain("LEGACY_CREDENTIAL");
+
+    const unavailable = buildRelease({
+      version: "2026-07-15.external-all-methods-filtered",
+      connectorRef: "agora",
+      label: "Catalog Agora",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [legacyMethod, currentMethod]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          manualPrivateAuthMethod({
+            id: "legacy",
+            prefix: "LEGACY",
+            access: "refresh-token",
+            revoke: "none",
+          }),
+          manualPrivateAuthMethod({
+            id: "current",
+            prefix: "CURRENT",
+            access: "refresh-token",
+            revoke: "none",
+          }),
+        ]);
+      },
+    });
+    serveObjects(
+      catalogObjects([initial, replacement, unavailable], unavailable),
+    );
+    const filtered = await syncCatalog();
+    expect(filtered.body.filtering.filteredAuthMethods).toHaveLength(2);
+
+    await connectorsApi.deleteConnectorByType(actor, "agora");
+    const secretsAfterDelete = await accept(
+      setupApp({ context })(zeroSecretsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      secretsAfterDelete.body.secrets.map((secret) => {
+        return secret.name;
+      }),
+    ).not.toContain("CURRENT_CREDENTIAL");
+  });
+
+  it("materializes external runtime bindings for runs and firewall auth", async () => {
+    const connectorRef = "external-runtime";
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-run-materialization",
+      connectorRef,
+      label: "External Runtime",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const runs = createRunsApi(context);
+    const firewall = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "External catalog runtime agent",
+      visibility: "private",
+    });
+    const created: { runId?: string } = {};
+    onTestFinished(async () => {
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      if (created.runId) {
+        await runs.requestCancelRun(actor, created.runId, [200, 404]);
+      }
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        connectorRef,
+        [204, 404],
+      );
+      await bdd.deleteAgent(actor, agent.agentId);
+    });
+    await connectorsApi.connectManualGrant(
+      actor,
+      connectorRef,
+      "api-token",
+      { credential: "catalog-runtime-secret" },
+      agent.agentId,
+    );
+
+    const callsBeforeRun = context.mocks.s3.send.mock.calls.length;
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "Use the externally sourced connector credential",
+      modelProvider: "anthropic-api-key",
+    });
+    created.runId = run.runId;
+    await runs.heartbeatRunner(runnerGroup);
+    await expect
+      .poll(
+        async () => {
+          return (await runs.pollRunner(runnerGroup)).body.job?.runId;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(run.runId);
+    const claim = await runs.claimRunnerJob(run.runId);
+    expect(claim.environment?.SERVICE_TOKEN).toBeTruthy();
+    expect(claim.secretConnectorMap).toMatchObject({
+      SERVICE_TOKEN: connectorRef,
+    });
+    expect(
+      claim.storageManifest?.storages.some((storage) => {
+        return storage.mountPath.endsWith(`/skills/${connectorRef}`);
+      }),
+    ).toBeFalsy();
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected encrypted connector secrets in the run claim");
+    }
+    const resolved = await firewall.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: ["Bearer $", "{{ secrets.SERVICE_TOKEN }}"].join(""),
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected firewall auth to resolve connector secrets");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer catalog-runtime-secret",
+    });
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeRun);
+    await runs.requestCancelRun(actor, run.runId, [200]);
+  }, 15_000);
+
+  it("executes an external device grant with catalog-owned storage", async () => {
+    mockTestOAuthDeviceConnectorProvider();
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-device-grant",
+      connectorRef: "test-oauth-device",
+      label: "Catalog Device OAuth",
+      mutatePublic: (artifact) => {
+        const method = publicAuthMethod({
+          id: "oauth",
+          grantKind: "device-auth",
+        });
+        method.featureSwitch = "testOauthConnector";
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          devicePrivateAuthMethod({
+            accessTokenName: "CATALOG_DEVICE_ACCESS_TOKEN",
+            clientId: "test-oauth-device-client",
+            scopes: ["read"],
+          }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        "test-oauth-device",
+        [204, 404],
+      );
+      await connectorsApi.deleteFeatureSwitches(actor);
+    });
+    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
+    const session = await connectorsApi.startDeviceAuth(
+      actor,
+      "test-oauth-device",
+      "oauth",
+    );
+    const completed = await connectorsApi.pollDeviceAuth(
+      actor,
+      "test-oauth-device",
+      session.sessionId,
+      session.sessionToken,
+    );
+    expect(completed.status).toBe("complete");
+    if (completed.status !== "complete") {
+      throw new Error(
+        `Expected completed device grant, got ${completed.status}`,
+      );
+    }
+    expect(completed.connector).toMatchObject({
+      type: "test-oauth-device",
+      authMethod: "oauth",
+      oauthScopes: ["read"],
+    });
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const secrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(secrets.body.secrets).toContainEqual(
+      expect.objectContaining({
+        name: "CATALOG_DEVICE_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    );
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+  });
+
+  it("executes an external OpenID grant with catalog-owned storage", async () => {
+    mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
+    mockOptionalEnv("STEAM_WEB_API_KEY", "catalog-steam-api-key");
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-openid-grant",
+      connectorRef: "steam",
+      label: "Catalog Steam",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "openid", grantKind: "openid-auth" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          steamPrivateAuthMethod({ steamIdName: "CATALOG_STEAM_ID" }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(actor, "steam", [204, 404]);
+    });
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const headers = { authorization: "Bearer clerk-session" };
+    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
+    const start = await accept(
+      setupApp({ context })(zeroConnectorOpenIdStartContract).start({
+        params: { type: "steam" },
+        headers,
+        body: { authMethod: "openid" },
+      }),
+      [200],
+    );
+    mockSteamOpenIdVerification();
+    await accept(
+      setupApp({ context })(connectorsTypeCallbackContract).callback({
+        params: { type: "steam" },
+        headers: {},
+        query: steamOpenIdCallbackQuery(start.body.authorizationUrl),
+      }),
+      [307],
+    );
+    mockSteamPlayerApisForCatalog();
+    const player = await accept(
+      setupApp({ context })(zeroSteamPlayerContract).getPlayer({ headers }),
+      [200],
+    );
+    expect(player.body).toMatchObject({
+      steamId: STEAM_TEST_ID,
+      profile: { personaName: "catalog-player" },
+    });
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+  });
+
+  it("executes an external-code grant with catalog-owned storage", async () => {
+    mockAwsExternalCodeProvider();
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-code-grant",
+      connectorRef: "aws",
+      label: "Catalog AWS",
+      mutatePublic: (artifact) => {
+        const method = publicAuthMethod({
+          id: "cli",
+          grantKind: "external-code",
+        });
+        method.featureSwitch = "awsConnector";
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [awsPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.AwsConnector]: true,
+    });
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(actor, "aws", [204, 404]);
+      await connectorsApi.deleteFeatureSwitches(actor);
+    });
+    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
+    const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
+    const completed = await connectorsApi.completeExternalCode(actor, "aws", {
+      sessionId: session.sessionId,
+      sessionToken: session.sessionToken,
+      code: awsVerificationCode(session.authorizationUrl),
+    });
+    expect(completed.connector).toMatchObject({
+      type: "aws",
+      authMethod: "cli",
+      externalId: "123456789012",
+      oauthScopes: ["openid"],
+    });
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const secrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      secrets.body.secrets.map((secret) => {
+        return secret.name;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        "CATALOG_AWS_ACCESS_KEY_ID",
+        "CATALOG_AWS_LOGIN_DPOP_KEY",
+        "CATALOG_AWS_LOGIN_REFRESH_TOKEN",
+        "CATALOG_AWS_SECRET_ACCESS_KEY",
+        "CATALOG_AWS_SESSION_TOKEN",
+      ]),
+    );
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+  });
+
+  it("revokes an external auth-code credential through its selected method", async () => {
+    mockSlackConnectorOAuth();
+    let revokeCalls = 0;
+    server.use(
+      http.post(SLACK_REVOKE_URL, ({ request }) => {
+        revokeCalls += 1;
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer xoxp-bdd-user-token",
+        );
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-auth-code-revoke",
+      connectorRef: "slack",
+      label: "Catalog Slack",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [slackPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
+    const start = await connectorsApi.startOauth(actor, "slack", "oauth");
+    const state = new URL(start.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Slack authorization state");
+    }
+    await connectorsApi.completeOauthCallback("slack", {
+      code: "catalog-slack-code",
+      state,
+    });
+    await connectorsApi.deleteConnectorByType(actor, "slack");
+    expect(revokeCalls).toBe(1);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+  });
+
+  it("keeps an in-flight provider operation on its selected external snapshot", async () => {
+    mockSlackConnectorOAuth();
+    configureSource();
+    const firstRelease = buildRelease({
+      version: "2026-07-15.external-in-flight-first",
+      connectorRef: "slack",
+      label: "Catalog Slack",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          slackPrivateAuthMethod("FIRST_RELEASE_SLACK_TOKEN"),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([firstRelease], firstRelease));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const providerEntered = deferredGate();
+    const providerResume = deferredGate();
+    server.use(
+      http.post(SLACK_OAUTH_TOKEN_URL, async () => {
+        providerEntered.release();
+        await providerResume.promise;
+        return HttpResponse.json({
+          ok: true,
+          authed_user: {
+            id: "U012AB3CD",
+            access_token: "xoxp-in-flight-token",
+            scope: "channels:read,chat:write",
+          },
+        });
+      }),
+      http.post(SLACK_REVOKE_URL, () => {
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      providerResume.release();
+      await connectorsApi.deleteConnectorByType(actor, "slack", [204, 404]);
+    });
+    const firstStart = await connectorsApi.startOauth(actor, "slack", "oauth");
+    const firstState = new URL(firstStart.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!firstState) {
+      throw new Error("Expected Slack authorization state");
+    }
+    const firstCallback = connectorsApi.completeOauthCallback("slack", {
+      code: "first-release",
+      state: firstState,
+    });
+    await providerEntered.promise;
+
+    const secondRelease = buildRelease({
+      version: "2026-07-15.external-in-flight-second",
+      connectorRef: "slack",
+      label: "Catalog Slack",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          slackPrivateAuthMethod("SECOND_RELEASE_SLACK_TOKEN"),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([firstRelease, secondRelease], secondRelease));
+    await syncCatalog();
+    const callsBeforeProviderResume = context.mocks.s3.send.mock.calls.length;
+    providerResume.release();
+    await firstCallback;
+
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const headers = { authorization: "Bearer clerk-session" };
+    const firstSecrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({ headers }),
+      [200],
+    );
+    expect(
+      firstSecrets.body.secrets.map((secret) => {
+        return secret.name;
+      }),
+    ).toContain("FIRST_RELEASE_SLACK_TOKEN");
+
+    const secondStart = await connectorsApi.startOauth(actor, "slack", "oauth");
+    const secondState = new URL(secondStart.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!secondState) {
+      throw new Error("Expected Slack authorization state");
+    }
+    await connectorsApi.completeOauthCallback("slack", {
+      code: "second-release",
+      state: secondState,
+    });
+    const secondSecrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({ headers }),
+      [200],
+    );
+    expect(
+      secondSecrets.body.secrets.map((secret) => {
+        return secret.name;
+      }),
+    ).toContain("SECOND_RELEASE_SLACK_TOKEN");
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(
+      callsBeforeProviderResume,
+    );
+  });
+
+  it("does not duplicate provider side effects in shadow mode", async () => {
+    mockSlackConnectorOAuth();
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.shadow-provider-side-effect",
+      connectorRef: "slack",
+      label: "Catalog Slack",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [slackPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "shadow");
+
+    let tokenExchangeCount = 0;
+    server.use(
+      http.post(SLACK_OAUTH_TOKEN_URL, () => {
+        tokenExchangeCount += 1;
+        return HttpResponse.json({
+          ok: true,
+          authed_user: {
+            id: "U012AB3CD",
+            access_token: "xoxp-shadow-token",
+            scope: "channels:read,chat:write",
+          },
+        });
+      }),
+      http.post(SLACK_REVOKE_URL, () => {
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(actor, "slack", [204, 404]);
+    });
+    const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
+    const start = await connectorsApi.startOauth(actor, "slack", "oauth");
+    const state = new URL(start.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Slack authorization state");
+    }
+    await connectorsApi.completeOauthCallback("slack", {
+      code: "shadow-side-effect",
+      state,
+    });
+    await flushWaitUntilForTest();
+
+    expect(tokenExchangeCount).toBe(1);
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+  });
+
   it("uses one external release for readiness status and fallback metadata", async () => {
     mockGmailConnectorOAuth({ email: "readiness@example.test" });
     configureSource();
-    const release = buildRelease({
+    const connectedRelease = buildRelease({
       version: "2026-07-15.external-readiness",
       connectorRef: "gmail",
       label: "Catalog Gmail",
       mutatePublic: (artifact) => {
-        const method = firstRecord(
-          firstRecord(artifact.connectors, "connectors").authMethods,
-          "authMethods",
-        );
-        method.visible = false;
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
       },
     });
-    serveObjects(catalogObjects([release], release));
+    serveObjects(catalogObjects([connectedRelease], connectedRelease));
     await syncCatalog();
 
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
@@ -1190,12 +2188,18 @@ describe("connector catalog valid lifecycle", () => {
           ],
         });
       }),
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
-        return HttpResponse.json({
-          historyId: "100",
-          expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
-        });
-      }),
+      http.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+        ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer catalog-refreshed-gmail-token",
+          );
+          return HttpResponse.json({
+            historyId: "100",
+            expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
+          });
+        },
+      ),
     );
 
     const actor = bdd.user({ orgId: STAFF_ORG_ID });
@@ -1228,6 +2232,20 @@ describe("connector catalog valid lifecycle", () => {
       code: "external-readiness",
       state: oauthState,
     });
+    mockNow(new Date("2026-07-15T10:00:00.000Z"));
+    const refreshBodies: URLSearchParams[] = [];
+    server.use(
+      http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        refreshBodies.push(body);
+        return HttpResponse.json({
+          access_token: "catalog-refreshed-gmail-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+          scope: "https://www.googleapis.com/auth/gmail.modify",
+        });
+      }),
+    );
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(actor, {
       displayName: "External readiness agent",
@@ -1263,6 +2281,32 @@ describe("connector catalog valid lifecycle", () => {
       }),
       [201],
     );
+    expect(refreshBodies).toHaveLength(1);
+    expect(refreshBodies[0]?.get("grant_type")).toBe("refresh_token");
+    expect(refreshBodies[0]?.get("refresh_token")).toBe("gmail-refresh-token");
+    const unavailableRelease = buildRelease({
+      version: "2026-07-15.external-readiness-unavailable",
+      connectorRef: "gmail",
+      label: "Catalog Gmail",
+      mutatePublic: (artifact) => {
+        const method = publicAuthMethod({
+          id: "oauth",
+          grantKind: "auth-code",
+        });
+        method.visible = false;
+        setArtifactAuthMethods(artifact, [method]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(
+      catalogObjects(
+        [connectedRelease, unavailableRelease],
+        unavailableRelease,
+      ),
+    );
+    await syncCatalog();
 
     const callsBeforeReadiness = context.mocks.s3.send.mock.calls.length;
     const readiness = await accept(
@@ -1291,28 +2335,6 @@ describe("connector catalog valid lifecycle", () => {
 
   it("derives connected scope and refresh status from the accepted release", async () => {
     mockDatadogConnectorOAuth();
-    // Connector actions remain on the static execution boundary in this PR,
-    // even while public catalog reads use the external backend.
-    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
-    const actor = bdd.user();
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.DatadogConnector]: true,
-    });
-    onTestFinished(async () => {
-      await connectorsApi.deleteConnectorByType(actor, "datadog", [204, 404]);
-      await connectorsApi.deleteFeatureSwitches(actor);
-    });
-    const start = await connectorsApi.startOauth(actor, "datadog", "oauth");
-    const state = new URL(start.authorizationUrl).searchParams.get("state");
-    if (!state) {
-      throw new Error("Expected Datadog authorization state");
-    }
-    await connectorsApi.completeOauthCallback("datadog", {
-      code: "external-catalog-status",
-      state,
-      domain: "us3.datadoghq.com",
-    });
-
     configureSource();
     const matching = buildRelease({
       version: "2026-07-15.external-connected-status",
@@ -1334,6 +2356,25 @@ describe("connector catalog valid lifecycle", () => {
     });
     serveObjects(catalogObjects([matching], matching));
     await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.DatadogConnector]: true,
+    });
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(actor, "datadog", [204, 404]);
+      await connectorsApi.deleteFeatureSwitches(actor);
+    });
+    const start = await connectorsApi.startOauth(actor, "datadog", "oauth");
+    const state = new URL(start.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Datadog authorization state");
+    }
+    await connectorsApi.completeOauthCallback("datadog", {
+      code: "external-catalog-status",
+      state,
+      domain: "us3.datadoghq.com",
+    });
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
@@ -1476,8 +2517,12 @@ describe("connector catalog valid lifecycle", () => {
     ).toBeFalsy();
 
     await flushWaitUntilForTest();
-    const [message, data] =
-      context.mocks.axiomLogging.debug.mock.calls.at(-1) ?? [];
+    const catalogComparison = [...context.mocks.axiomLogging.debug.mock.calls]
+      .reverse()
+      .find(([message]) => {
+        return message === "Connector catalog shadow comparison completed";
+      });
+    const [message, data] = catalogComparison ?? [];
     expect(message).toBe("Connector catalog shadow comparison completed");
     expect(data).toMatchObject({
       type: "connector_catalog_shadow_comparison",
@@ -1491,8 +2536,23 @@ describe("connector catalog valid lifecycle", () => {
       externalConnectorCount: 1,
       context: "connector-catalog:shadow",
     });
+    const runtimeComparison = [...context.mocks.axiomLogging.debug.mock.calls]
+      .reverse()
+      .find(([runtimeMessage]) => {
+        return (
+          runtimeMessage ===
+          "Connector runtime catalog shadow comparison completed"
+        );
+      });
+    expect(runtimeComparison?.[1]).toMatchObject({
+      type: "connector_runtime_catalog_shadow_comparison",
+      outcome: "difference",
+      schemaVersion: 1,
+      catalogVersion: release.version,
+      externalConnectorCount: 1,
+    });
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforePublicRead);
-    const logged = JSON.stringify([message, data]);
+    const logged = JSON.stringify(context.mocks.axiomLogging.debug.mock.calls);
     expect(logged).not.toContain(userId);
     expect(logged).not.toContain(orgId);
     expect(logged).not.toContain(PRIVATE_VALUE);
