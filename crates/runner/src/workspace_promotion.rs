@@ -15,7 +15,7 @@ use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::guest;
 use crate::workspace_image_cache::{
     WorkspaceImagePromotionContext, WorkspaceImagePromotionOutcome,
-    WorkspaceSessionHistorySidecarPromotionSource,
+    WorkspaceSessionHistorySidecarEntryGuard, WorkspaceSessionHistorySidecarPromotionSource,
 };
 use crate::workspace_mount::flush_and_unmount_workspace_drive;
 
@@ -29,34 +29,42 @@ enum WorkspacePromotionAction {
     AbandonUnpublished,
 }
 
-struct SessionHistorySidecarSourceGuard {
-    source: Option<WorkspaceSessionHistorySidecarPromotionSource>,
+struct SessionHistorySidecarSourceGuard<'a> {
+    entry_guard: WorkspaceSessionHistorySidecarEntryGuard<'a>,
+    source: WorkspaceSessionHistorySidecarPromotionSource,
 }
 
-impl SessionHistorySidecarSourceGuard {
-    fn new(source: Option<WorkspaceSessionHistorySidecarPromotionSource>) -> Self {
-        Self { source }
-    }
-
-    fn as_ref(&self) -> Option<&WorkspaceSessionHistorySidecarPromotionSource> {
-        self.source.as_ref()
-    }
-
-    async fn discard(&mut self, promotion: &WorkspaceImagePromotionContext) {
-        if let Some(source) = self.source.as_ref() {
-            promotion
-                .discard_session_history_sidecar_source(source)
-                .await;
+impl<'a> SessionHistorySidecarSourceGuard<'a> {
+    fn new(
+        entry_guard: WorkspaceSessionHistorySidecarEntryGuard<'a>,
+        source: WorkspaceSessionHistorySidecarPromotionSource,
+    ) -> Self {
+        Self {
+            entry_guard,
+            source,
         }
-        self.source = None;
+    }
+
+    fn tmp_path(&self) -> &std::path::Path {
+        &self.source.tmp_path
+    }
+
+    async fn discard(self) {
+        self.entry_guard
+            .discard_session_history_sidecar_source(&self.source)
+            .await;
+    }
+
+    async fn promote(&self) -> crate::error::RunnerResult<WorkspaceImagePromotionOutcome> {
+        self.entry_guard
+            .promote_with_session_history_sidecar(&self.source)
+            .await
     }
 }
 
-impl Drop for SessionHistorySidecarSourceGuard {
+impl Drop for SessionHistorySidecarSourceGuard<'_> {
     fn drop(&mut self) {
-        if let Some(source) = self.source.take() {
-            let _ = std::fs::remove_file(source.tmp_path);
-        }
+        let _ = std::fs::remove_file(&self.source.tmp_path);
     }
 }
 
@@ -101,13 +109,13 @@ async fn promote_workspace_image_from_active_sandbox_inner(
     promotion: &WorkspaceImagePromotionContext,
     reason: &'static str,
 ) -> WorkspacePromotionAction {
-    let mut sidecar_source = SessionHistorySidecarSourceGuard::new(
-        export_session_history_sidecar(sandbox, promotion, reason).await,
-    );
+    let mut sidecar_source = export_session_history_sidecar(sandbox, promotion, reason).await;
     match flush_and_unmount_workspace_drive(sandbox, promotion.run_id()).await {
         Ok(()) => {}
         Err(e) => {
-            sidecar_source.discard(promotion).await;
+            if let Some(source) = sidecar_source.take() {
+                source.discard().await;
+            }
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
@@ -121,11 +129,14 @@ async fn promote_workspace_image_from_active_sandbox_inner(
         }
     }
 
-    let outcome = promotion
-        .promote_with_session_history_sidecar(sidecar_source.as_ref())
-        .await;
-    if !matches!(outcome, Ok(WorkspaceImagePromotionOutcome::Promoted)) {
-        sidecar_source.discard(promotion).await;
+    let outcome = match sidecar_source.as_ref() {
+        Some(source) => source.promote().await,
+        None => promotion.promote_without_session_history_sidecar().await,
+    };
+    if !matches!(outcome, Ok(WorkspaceImagePromotionOutcome::Promoted))
+        && let Some(source) = sidecar_source.take()
+    {
+        source.discard().await;
     }
     match outcome {
         Ok(WorkspaceImagePromotionOutcome::Promoted) => WorkspacePromotionAction::Promoted,
@@ -150,11 +161,11 @@ async fn promote_workspace_image_from_active_sandbox_inner(
     }
 }
 
-async fn export_session_history_sidecar(
+async fn export_session_history_sidecar<'a>(
     sandbox: &dyn Sandbox,
-    promotion: &WorkspaceImagePromotionContext,
+    promotion: &'a WorkspaceImagePromotionContext,
     reason: &'static str,
-) -> Option<WorkspaceSessionHistorySidecarPromotionSource> {
+) -> Option<SessionHistorySidecarSourceGuard<'a>> {
     let verification = promotion
         .restored_session_identity()?
         .final_metadata_verification()?;
@@ -238,12 +249,26 @@ async fn export_session_history_sidecar(
             return None;
         }
     };
-    let tmp_path = promotion.session_history_sidecar_tmp_path();
-    let _ = fs::remove_file(&tmp_path).await;
+    let Some(entry_guard) = promotion
+        .try_acquire_session_history_sidecar_entry_guard()
+        .await
+    else {
+        cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
+            .await;
+        return None;
+    };
+    let tmp_path = entry_guard.session_history_sidecar_tmp_path();
+    let source = entry_guard.session_history_sidecar_source(
+        tmp_path,
+        metadata.representation,
+        metadata.encoded_size,
+    );
+    let sidecar_source = SessionHistorySidecarSourceGuard::new(entry_guard, source);
+    let _ = fs::remove_file(sidecar_source.tmp_path()).await;
     let copied = match sandbox
         .copy_file(
             &export_path,
-            &tmp_path,
+            sidecar_source.tmp_path(),
             CopyFileOptions {
                 max_bytes: SESSION_HISTORY_SIDECAR_MAX_BYTES,
                 timeout: SESSION_HISTORY_SIDECAR_COPY_TIMEOUT,
@@ -256,7 +281,7 @@ async fn export_session_history_sidecar(
         Err(e) => {
             cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
                 .await;
-            let _ = fs::remove_file(&tmp_path).await;
+            sidecar_source.discard().await;
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
@@ -271,7 +296,7 @@ async fn export_session_history_sidecar(
     };
     cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason).await;
     if copied.bytes_copied != metadata.encoded_size {
-        let _ = fs::remove_file(&tmp_path).await;
+        sidecar_source.discard().await;
         warn!(
             run_id = %promotion.run_id(),
             sandbox_id = %promotion.sandbox_id(),
@@ -284,11 +309,7 @@ async fn export_session_history_sidecar(
         );
         return None;
     }
-    promotion.session_history_sidecar_source(
-        tmp_path,
-        metadata.representation,
-        metadata.encoded_size,
-    )
+    Some(sidecar_source)
 }
 
 async fn cleanup_guest_session_history_sidecar_export(
