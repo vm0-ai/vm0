@@ -23,6 +23,8 @@ import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { now } from "../../../../lib/time";
+import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentInstructionsRoutes } from "../../zero-agent-instructions";
 import { zeroAgentsRoutes } from "../../zero-agents";
@@ -75,6 +77,23 @@ export interface OnboardingBootstrapOptions {
 
 function authHeaders(user: ApiTestUser | null): AuthHeaders {
   return user ? { authorization: "Bearer clerk-session" } : {};
+}
+
+function zeroAgentReadHeaders(user: ApiTestUser): AuthHeaders {
+  if (!user.orgId) {
+    throw new Error("Cannot bootstrap onboarding without an organization");
+  }
+  const seconds = Math.floor(now() / 1000);
+  const token = signSandboxJwtForTests({
+    scope: "zero",
+    userId: user.userId,
+    orgId: user.orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: ["agent:read"],
+    iat: seconds,
+    exp: seconds + 60,
+  });
+  return { authorization: `Bearer ${token}` };
 }
 
 function clerkUserProfile(user: ApiTestUser): ClerkUserProfile {
@@ -269,10 +288,14 @@ export function createBddApi(context: TestContext) {
       nextUser: ApiTestUser,
       options: OnboardingBootstrapOptions,
     ): Promise<string> {
-      acceptAgentStorageWrites();
+      const headers = authenticate(nextUser);
+      await accept(
+        agentsClient().list({ headers: zeroAgentReadHeaders(nextUser) }),
+        [200],
+      );
       const statusResponse = await accept(
         onboardingStatusClient().getStatus({
-          headers: authenticate(nextUser),
+          headers,
         }),
         [200],
       );
@@ -284,7 +307,7 @@ export function createBddApi(context: TestContext) {
       await accept(
         agentsByIdClient().updateMetadata({
           params: { id: status.defaultAgentId },
-          headers: authenticate(nextUser),
+          headers,
           body: {
             displayName: options.displayName,
             ...(options.sound === undefined ? {} : { sound: options.sound }),
@@ -299,7 +322,7 @@ export function createBddApi(context: TestContext) {
       if (options.timezone !== undefined) {
         await accept(
           userPreferencesClient().update({
-            headers: authenticate(nextUser),
+            headers,
             body: { timezone: options.timezone },
           }),
           [200],
@@ -308,7 +331,7 @@ export function createBddApi(context: TestContext) {
 
       const completed = await accept(
         onboardingCompleteClient().complete({
-          headers: authenticate(nextUser),
+          headers,
           body: {},
         }),
         [200, 403],
@@ -326,9 +349,9 @@ export function createBddApi(context: TestContext) {
       nextUser: ApiTestUser,
       options: OnboardingBootstrapOptions,
     ): Promise<string> {
-      acceptAgentStorageWrites();
+      const headers = authenticate(nextUser);
       const listed = await accept(
-        agentsClient().list({ headers: authenticate(nextUser) }),
+        agentsClient().list({ headers: zeroAgentReadHeaders(nextUser) }),
         [200],
       );
       const existingAgent = listed.body[0];
@@ -337,7 +360,7 @@ export function createBddApi(context: TestContext) {
       if (!agentId) {
         await accept(
           modelProvidersClient().upsert({
-            headers: authenticate(nextUser),
+            headers,
             body: { type: "vm0" },
           }),
           [200, 201],
@@ -345,7 +368,7 @@ export function createBddApi(context: TestContext) {
 
         const created = await accept(
           agentsClient().create({
-            headers: authenticate(nextUser),
+            headers,
             body: {
               displayName: options.displayName,
               ...(options.sound === undefined ? {} : { sound: options.sound }),
@@ -360,26 +383,36 @@ export function createBddApi(context: TestContext) {
         await accept(
           agentInstructionsClient().update({
             params: { id: agentId },
-            headers: authenticate(nextUser),
+            headers,
             body: { content: SEED_INSTRUCTIONS },
           }),
           [200],
         );
       }
 
-      await accept(
+      const defaultResponse = await accept(
         defaultAgentClient().setDefaultAgent({
           query: {},
-          headers: authenticate(nextUser),
+          headers,
           body: { agentId },
         }),
-        [200],
+        [200, 409],
       );
+      if (defaultResponse.status === 409) {
+        const statusResponse = await accept(
+          onboardingStatusClient().getStatus({ headers }),
+          [200],
+        );
+        if (!statusResponse.body.defaultAgentId) {
+          throw new Error("Expected the configured default agent to exist");
+        }
+        agentId = statusResponse.body.defaultAgentId;
+      }
 
       if (options.timezone !== undefined) {
         await accept(
           userPreferencesClient().update({
-            headers: authenticate(nextUser),
+            headers,
             body: { timezone: options.timezone },
           }),
           [200],
@@ -388,7 +421,7 @@ export function createBddApi(context: TestContext) {
 
       const completed = await accept(
         onboardingCompleteClient().complete({
-          headers: authenticate(nextUser),
+          headers,
           body: {},
         }),
         [200, 403],
