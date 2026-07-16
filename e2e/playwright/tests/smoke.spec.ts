@@ -56,6 +56,7 @@ test("sign in through onboarding handoff to chat page", async ({
     ignoreHTTPSErrors: true,
   });
   try {
+    await setupClerkTestingToken({ context: verificationContext });
     const verificationPage = await verificationContext.newPage();
     await verificationPage.goto(`${appUrl}/agents`, {
       waitUntil: "domcontentloaded",
