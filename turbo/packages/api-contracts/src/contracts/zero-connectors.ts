@@ -299,6 +299,7 @@ export const zeroConnectorsSearchContract = c.router({
       200: connectorSearchResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Search available connector types",
   },

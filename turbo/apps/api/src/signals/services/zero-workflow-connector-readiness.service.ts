@@ -7,10 +7,7 @@ import {
   connectorCatalogRefSchema,
   type ConnectorCatalogRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
   zeroWorkflowAutomations,
@@ -24,10 +21,7 @@ import { db$, type ReadonlyDb } from "../external/db";
 import { generateText } from "../external/openrouter";
 import { safeJsonParse } from "../utils";
 import { loadAgentConnectorScope } from "./agent-connector-scope.service";
-import {
-  getPublicConnectorCatalogIcon,
-  listPublicConnectorCatalogStatus,
-} from "./connector-catalog-reader.service";
+import { readPublicConnectorCatalogStatus } from "./connector-catalog-reader.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 
 const CONNECTOR_READINESS_MODEL = "google/gemini-3.1-flash-lite-preview";
@@ -165,28 +159,6 @@ async function loadAutomationConnectorDependencies(
   return dependencies;
 }
 
-function automationConnectorFallbackMetadata(
-  dependencies: ReadonlyMap<ConnectorType, AutomationConnectorDependency>,
-): ReadonlyMap<
-  ConnectorCatalogRef,
-  {
-    readonly label: string;
-    readonly icon: ZeroWorkflowConnectorReadinessEntry["icon"];
-  }
-> {
-  return new Map(
-    [...dependencies.values()].map((dependency) => {
-      return [
-        dependency.connectorRef,
-        {
-          label: CONNECTOR_TYPES[dependency.connectorRef].label,
-          icon: getPublicConnectorCatalogIcon(dependency.connectorRef),
-        },
-      ];
-    }),
-  );
-}
-
 interface ModelCatalogEntry {
   readonly connectorRef: ConnectorCatalogRef;
   readonly label: string;
@@ -320,13 +292,21 @@ export const detectWorkflowConnectorReadiness$ = command(
       ]);
     signal.throwIfAborted();
 
-    const statusCatalog = await listPublicConnectorCatalogStatus({
+    const catalogRead = await readPublicConnectorCatalogStatus({
+      db,
       featureStates: args.featureStates,
       apiAuthMethodPolicy: "include",
       connectors: connectorState.connectors,
+      referenceConnectorRefs: [...automationDependencies.keys()],
     });
     signal.throwIfAborted();
+    const statusCatalog = catalogRead.status;
 
+    const statusByRef = new Map(
+      statusCatalog.connectors.map((connector) => {
+        return [connector.connectorRef, connector];
+      }),
+    );
     const modelCatalog: ModelCatalogEntry[] = statusCatalog.connectors.map(
       (connector) => {
         return {
@@ -342,9 +322,8 @@ export const detectWorkflowConnectorReadiness$ = command(
       signal,
     });
     signal.throwIfAborted();
-
-    const statusByRef = new Map(
-      statusCatalog.connectors.map((connector) => {
+    const automationFallbackMetadata = new Map(
+      catalogRead.referenceMetadata.map((connector) => {
         return [connector.connectorRef, connector];
       }),
     );
@@ -357,10 +336,6 @@ export const detectWorkflowConnectorReadiness$ = command(
     for (const dependency of automationDependencies.values()) {
       mergedDependencies.set(dependency.connectorRef, dependency.reason);
     }
-    const automationFallbackMetadata = automationConnectorFallbackMetadata(
-      automationDependencies,
-    );
-
     const connectors: ZeroWorkflowConnectorReadinessEntry[] = [];
     for (const [connectorRef, reason] of mergedDependencies) {
       const catalogEntry = statusByRef.get(connectorRef);

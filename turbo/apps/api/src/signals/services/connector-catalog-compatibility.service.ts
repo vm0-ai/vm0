@@ -99,6 +99,10 @@ function executableCapabilityState(): ExecutableCapabilityState {
   };
 }
 
+export function connectorCatalogExecutableCapabilityDigest(): string {
+  return executableCapabilityState().digest;
+}
+
 function privateClientContract(
   method: PrivateAuthMethod,
 ): ConnectorAuthProviderMethodContract["client"] {
