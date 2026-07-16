@@ -667,6 +667,7 @@ type ArtifactDownloadMenuProps = {
   className?: string;
   filename: string;
   iconSize?: number;
+  menuInstanceKey: string;
   syncTarget?: ArtifactDownloadSyncTarget;
   url: string;
 };
@@ -726,15 +727,15 @@ function startArtifactDownloadWithCleanup(params: {
   readonly closeMenu: () => void;
   readonly description: string;
   readonly download: Promise<void>;
+  readonly downloadKey: string;
   readonly finish: (key: string) => void;
-  readonly menuKey: string;
   readonly start: (key: string) => void;
 }): void {
   params.closeMenu();
-  params.start(params.menuKey);
+  params.start(params.downloadKey);
   detach(
     withCleanup(params.download, () => {
-      params.finish(params.menuKey);
+      params.finish(params.downloadKey);
     }),
     Reason.DomCallback,
     params.description,
@@ -758,10 +759,11 @@ export function ArtifactDownloadMenu({
   className,
   filename,
   iconSize = 16,
+  menuInstanceKey,
   syncTarget,
   url,
 }: ArtifactDownloadMenuProps) {
-  const menuKey = `${url}:${filename}`;
+  const artifactDownloadKey = `${url}:${filename}`;
   const openKey = useGet(artifactDownloadMenuOpenKey$);
   const pendingKey = useGet(artifactDownloadPendingKey$);
   const openMenu = useSet(openArtifactDownloadMenu$);
@@ -770,8 +772,8 @@ export function ArtifactDownloadMenu({
   const finishArtifactDownload = useSet(finishArtifactDownload$);
   const pageSignal = useGet(pageSignal$);
   const features = useGet(featureSwitch$);
-  const open = openKey === menuKey;
-  const downloadPending = pendingKey === menuKey;
+  const open = openKey === `${menuInstanceKey}:${artifactDownloadKey}`;
+  const downloadPending = pendingKey === artifactDownloadKey;
   const downloadFilename = artifactDownloadFilename(
     artifactKind,
     filename,
@@ -784,7 +786,7 @@ export function ArtifactDownloadMenu({
       onOpenChange={(nextOpen) => {
         setArtifactDownloadMenuOpen({
           closeMenu,
-          menuKey,
+          menuKey: `${menuInstanceKey}:${artifactDownloadKey}`,
           nextOpen,
           openMenu,
         });
@@ -834,8 +836,8 @@ export function ArtifactDownloadMenu({
                 pageSignal,
                 downloadFilename,
               ),
+              downloadKey: artifactDownloadKey,
               finish: finishArtifactDownload,
-              menuKey,
               start: startArtifactDownload,
             });
           }}
@@ -854,8 +856,8 @@ export function ArtifactDownloadMenu({
                   signal: pageSignal,
                   url,
                 }),
+                downloadKey: artifactDownloadKey,
                 finish: finishArtifactDownload,
-                menuKey,
                 start: startArtifactDownload,
               });
             }}
