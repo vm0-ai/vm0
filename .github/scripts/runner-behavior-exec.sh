@@ -273,9 +273,15 @@ echo "--- Test: HTTPS through proxy ---"
 TLS_URL="https://www.vm0.ai"
 tls_check() {
   local label=$1 cmd=$2 t=${3:-15}
-  OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "timeout $t $cmd" 2>&1) \
-    || fail "HTTPS $label: $OUTPUT"
-  echo "  HTTPS $label: ok"
+  local output status
+
+  if output=$(sudo "$BIN_DIR/runner" exec --timeout "$((t + 10))" \
+    --sandbox "$SANDBOX_ID" -- sh -c "timeout --kill-after=5s $t $cmd" 2>&1); then
+    echo "  HTTPS $label: ok"
+  else
+    status=$?
+    fail "HTTPS $label failed with exit code $status: ${output:-no output}"
+  fi
 }
 tls_check "curl"      "curl -sf --max-time 10 $TLS_URL"
 tls_check "wget"      "wget -qO /dev/null --timeout=10 $TLS_URL"
@@ -285,7 +291,7 @@ tls_check "node"      "node -e \"require('https').get('$TLS_URL',r=>{r.resume();
 tls_check "ruby"      "ruby -e \"require 'net/http'; Net::HTTP.get(URI('$TLS_URL'))\""
 tls_check "php"       "php -r \"file_get_contents('$TLS_URL');\""
 tls_check "cargo"     "env CARGO_HOME=/tmp/cargo-test cargo search --limit 1 serde" 30
-tls_check "chromium"  "chromium --headless --disable-gpu --no-sandbox --dump-dom $TLS_URL 2>/dev/null | head -1" 30
+tls_check "chromium"  "chromium --headless --disable-gpu --no-sandbox --dump-dom $TLS_URL >/dev/null" 30
 
 # Java and Go need multi-line scripts — write temp files then run
 sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "printf '%s\n' 'import java.net.*;import java.net.http.*;' 'var c=HttpClient.newHttpClient();' 'var r=HttpRequest.newBuilder(URI.create(\"$TLS_URL\")).build();' 'c.send(r,HttpResponse.BodyHandlers.discarding());' '/exit' | timeout 30 jshell -" \
