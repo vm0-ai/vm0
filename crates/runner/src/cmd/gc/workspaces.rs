@@ -83,8 +83,8 @@ fn parse_base_dir_lock_content(
     Some(base_dir)
 }
 
-/// Find base-dir lock paths written by `runner start`.
-fn discover_dead_runner_base_dir_lock_candidates(
+/// Find base-dir lock paths that are free before ownership discovery.
+fn discover_initially_free_base_dir_lock_candidates(
     locks_dir: &Path,
 ) -> Vec<DeadRunnerBaseDirLockCandidate> {
     let entries = match std::fs::read_dir(locks_dir) {
@@ -109,10 +109,23 @@ fn discover_dead_runner_base_dir_lock_candidates(
         if !is_base_dir_lock_name(name) {
             continue;
         }
-        candidates.push(DeadRunnerBaseDirLockCandidate {
+        let candidate = DeadRunnerBaseDirLockCandidate {
             lock_path: entry.path(),
             lock_name: name.to_string(),
-        });
+        };
+        match probe_existing_lock(&candidate.lock_path) {
+            ExistingLockProbe::Free(lock_guard) => {
+                drop(lock_guard);
+                candidates.push(candidate);
+            }
+            ExistingLockProbe::Held | ExistingLockProbe::Missing => {}
+            ExistingLockProbe::Error(e) => {
+                warn!(
+                    "workspace gc: cannot probe base-dir lock {} during candidate discovery: {e}",
+                    candidate.lock_path.display()
+                );
+            }
+        }
     }
     candidates
 }
@@ -206,9 +219,27 @@ pub(super) async fn gc_workspace_orphans(
     home: &HomePaths,
     dry_run: bool,
 ) -> RunnerResult<WorkspaceGcSummary> {
-    // 1. Discover active workspaces from any running Firecracker process.
-    //    This protects orphaned FCs whose parent runner already died but
-    //    whose VM is still running.
+    // The initial free-lock observation, later ownership snapshots, fixed age
+    // boundary, and final held lease form one safety invariant. Keep this
+    // ordering: a runner holding a base-dir lock here must be excluded for the
+    // entire pass, while a runner entering later can only create workspaces
+    // newer than this age reference.
+    let workspace_age_reference = SystemTime::now();
+    let locks_dir = home.locks_dir();
+    let candidates = tokio::task::spawn_blocking(move || {
+        discover_initially_free_base_dir_lock_candidates(&locks_dir)
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("discover base-dir locks task failed: {e}")))?;
+
+    if candidates.is_empty() {
+        tracing::debug!("workspace gc: no initially-free base-dir locks discovered");
+        return Ok(WorkspaceGcSummary::default());
+    }
+
+    // Discover active workspaces after initial candidate selection. This
+    // protects orphaned Firecrackers whose parent runner already died but
+    // whose VM is still running.
     let discovered = crate::process::discover_all_with_status().await;
     if !discovered.proc_scan_complete {
         warn!(
@@ -239,26 +270,12 @@ pub(super) async fn gc_workspace_orphans(
         return Ok(WorkspaceGcSummary::default());
     }
 
-    // 2. Enumerate base-dir lock candidates without holding their fds. Each
-    //    candidate is leased separately while it is processed, so a large
-    //    backlog of old lock files cannot exhaust the process fd limit.
-    let locks_dir = home.locks_dir();
-    let candidates = tokio::task::spawn_blocking(move || {
-        discover_dead_runner_base_dir_lock_candidates(&locks_dir)
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("discover base-dir locks task failed: {e}")))?;
-
-    if candidates.is_empty() {
-        tracing::debug!("workspace gc: no dead-runner base_dirs discovered");
-        return Ok(WorkspaceGcSummary::default());
-    }
-
     gc_workspace_orphans_with_candidates(
         candidates,
         &discovered.firecrackers,
         &live_runner_base_dirs,
         false,
+        workspace_age_reference,
         dry_run,
     )
     .await
@@ -269,6 +286,7 @@ async fn gc_workspace_orphans_with_candidates(
     firecrackers: &[crate::process::FirecrackerProcessInfo],
     live_runner_base_dirs: &HashSet<PathBuf>,
     process_discovery_uncertain: bool,
+    workspace_age_reference: SystemTime,
     dry_run: bool,
 ) -> RunnerResult<WorkspaceGcSummary> {
     if process_discovery_uncertain {
@@ -277,8 +295,6 @@ async fn gc_workspace_orphans_with_candidates(
     }
 
     let active = active_workspace_paths(firecrackers);
-    // 3. Scan each base_dir/workspaces/ for orphans.
-    let now = SystemTime::now();
     let mut summary = WorkspaceGcSummary::default();
     let candidate_count = candidates.len();
 
@@ -316,7 +332,8 @@ async fn gc_workspace_orphans_with_candidates(
         }
 
         let (cleaned, freed, lock_decision) =
-            gc_workspace_orphans_in_base_dir(base_dir, &active, now, dry_run).await;
+            gc_workspace_orphans_in_base_dir(base_dir, &active, workspace_age_reference, dry_run)
+                .await;
         summary.workspaces_cleaned += cleaned;
         summary.bytes_freed += freed;
 
@@ -352,7 +369,7 @@ async fn gc_workspace_orphans_with_candidates(
 async fn gc_workspace_orphans_in_base_dir(
     base_dir: &Path,
     active: &HashSet<PathBuf>,
-    now: SystemTime,
+    workspace_age_reference: SystemTime,
     dry_run: bool,
 ) -> (u32, u64, BaseDirLockDecision) {
     match gc_path_dir_status(base_dir).await {
@@ -443,7 +460,7 @@ async fn gc_workspace_orphans_in_base_dir(
         let age = meta
             .modified()
             .ok()
-            .and_then(|mtime| now.duration_since(mtime).ok())
+            .and_then(|mtime| workspace_age_reference.duration_since(mtime).ok())
             .unwrap_or_default();
         if age < GC_MIN_AGE {
             tracing::debug!(

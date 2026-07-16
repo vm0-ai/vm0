@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.124](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.123...sandbox-fc-v0.37.124) (2026-07-16)
+
+
+### Documentation
+
+* **sandbox-fc:** clarify netns release semantics ([#21743](https://github.com/vm0-ai/vm0/issues/21743)) ([29ed84c](https://github.com/vm0-ai/vm0/commit/29ed84c9bb3fb16071ae5b6239a8e6d5067d88ac))
+
 ## [0.37.123](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.122...sandbox-fc-v0.37.123) (2026-07-16)
 
 
