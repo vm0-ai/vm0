@@ -123,7 +123,6 @@ export async function deleteStaleTestUsers(): Promise<void> {
           method: "DELETE",
           headers: getClerkHeaders(),
         },
-        { retryTransientFailures: true },
       );
       if (!deleteResponse.ok && deleteResponse.status !== 404) {
         console.warn(
