@@ -676,7 +676,7 @@ function ArtifactCardActions({
             }}
           >
             <IconMessagePlus size={14} stroke={1.7} aria-hidden />
-            Ask about it
+            Ask about this
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
@@ -684,7 +684,7 @@ function ArtifactCardActions({
             }}
           >
             <IconHistory size={14} stroke={1.7} aria-hidden />
-            View creation chat
+            View original chat
           </DropdownMenuItem>
           {isZipArtifact(item) ? (
             <DropdownMenuItem
@@ -708,7 +708,7 @@ function ArtifactCardActions({
                 aria-label={`Open preview for ${item.filename}`}
               >
                 <IconExternalLink size={14} stroke={1.7} aria-hidden />
-                Open a new tab
+                Open in new tab
               </a>
             </DropdownMenuItem>
           )}
