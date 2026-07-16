@@ -297,7 +297,11 @@ async fn setup_namespace_routing(
     Ok(())
 }
 
-/// Add host-side iptables rules for forwarding (connectivity only, no proxy).
+/// Add host-side source validation and forwarding rules.
+///
+/// The raw PREROUTING guard establishes the namespace's peer IP as a trusted
+/// identity before conntrack and NAT redirects can attribute the packet. This
+/// must remain independent of host reverse-path-filter configuration.
 async fn setup_host_iptables(
     name: &str,
     host_device: &str,
