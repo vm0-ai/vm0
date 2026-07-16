@@ -521,6 +521,16 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function menuItemByText(text: string): HTMLElement {
+  const menuItem = queryAllByRoleFast("menuitem").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!menuItem) {
+    throw new Error(`${text} menu item not found`);
+  }
+  return menuItem;
+}
+
 function focusedArtifactIndex(): string | null {
   return (
     document.activeElement?.closest<HTMLElement>("[data-artifact-index]")
@@ -1176,7 +1186,11 @@ describe("artifacts page", () => {
 
     await fill(screen.getByLabelText("Search artifacts"), "");
     click(screen.getByLabelText("Agent filter"));
-    click(await screen.findByRole("menuitem", { name: "Research Agent" }));
+    click(
+      await waitFor(() => {
+        return menuItemByText("Research Agent");
+      }),
+    );
     await waitFor(() => {
       expect(screen.getByText("research-brief.html")).toBeInTheDocument();
       expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
