@@ -986,6 +986,44 @@ function mockFailedAssistantThread({
 }
 
 describe("chat lifecycle", () => {
+  it("keeps an existing thread composer in its footer while idle and working", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000990";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "message-pwa-keyboard-layout",
+          role: "assistant",
+          runId: "run-pwa-keyboard-layout",
+          content: "Existing thread",
+          createdAt: "2026-07-15T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const composer = await waitFor(() => {
+      return chatComposerTextarea();
+    });
+    const composerCard = composer.closest(".zero-composer");
+    expect(composerCard).not.toBeNull();
+    expect(composerCard?.closest("[data-chat-composer]")).not.toBeNull();
+
+    await sendMessageInUI(user, composer, "Continue working");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      const workingComposer = chatComposerTextarea();
+      const workingComposerCard = workingComposer.closest(".zero-composer");
+      expect(workingComposerCard).not.toBeNull();
+      expect(
+        workingComposerCard?.closest("[data-chat-composer]"),
+      ).not.toBeNull();
+    });
+  });
+
   it("subscribes the browser for push notifications after a visible chat send", async () => {
     const user = userEvent.setup({ delay: null });
     const pushBrowser = mockPushBrowserSupport();

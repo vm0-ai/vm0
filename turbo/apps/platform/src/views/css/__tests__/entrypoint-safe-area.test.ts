@@ -71,26 +71,29 @@ describe("platform entrypoint safe area behavior", () => {
     expect(globalCss).toMatch(/bottom:\s*calc\(-1\s*\*\s*var\(--sab\)\);/);
   });
 
-  it("keeps the app shell out of page-level scrolling in standalone PWA mode", () => {
+  it("keeps the app shell geometry stable in standalone PWA mode", () => {
     const globalCss = readGlobalCss();
 
     expect(globalCss).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(globalCss).toMatch(/--zero-viewport-height:\s*100lvh;/);
-    expect(globalCss).toMatch(/--zero-viewport-offset-top:\s*0px;/);
-    expect(globalCss).toMatch(
-      /:root\[data-keyboard-open="true"\]\s*{[\s\S]*?--zero-viewport-height:\s*var\(--zero-keyboard-viewport-height,\s*100dvh\);/,
-    );
-    expect(globalCss).toMatch(
-      /--zero-viewport-offset-top:\s*var\(\s*--zero-keyboard-viewport-offset-top,\s*0px\s*\);/,
-    );
+    expect(globalCss).not.toContain("--zero-keyboard-inset");
+    expect(globalCss).not.toContain("--zero-keyboard-viewport-height");
+    expect(globalCss).not.toContain("--zero-keyboard-viewport-offset-top");
+    expect(globalCss).not.toContain("--zero-viewport-offset-top");
     expect(globalCss).toMatch(
       /html,\s*body,\s*#root\s*{[\s\S]*overflow:\s*hidden;[\s\S]*overscroll-behavior:\s*none;/,
     );
     expect(globalCss).toMatch(
-      /#root\s*{[\s\S]*position:\s*fixed;[\s\S]*top:\s*var\(--zero-viewport-offset-top\);[\s\S]*right:\s*0;[\s\S]*left:\s*0;/,
+      /#root\s*{[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*right:\s*0;[\s\S]*left:\s*0;/,
     );
     expect(globalCss).toMatch(
-      /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
+      /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab-raw\)\s+var\(--sal\);/,
+    );
+    expect(globalCss).toMatch(
+      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*#root\s*{\s*position:\s*absolute;\s*overflow-y:\s*auto;\s*}/,
+    );
+    expect(globalCss.indexOf("position: absolute;")).toBeGreaterThan(
+      globalCss.indexOf("position: fixed;"),
     );
     expect(globalCss).toMatch(
       /\.zero-viewport-shell\s*{[\s\S]*height:\s*100%;[\s\S]*max-height:\s*100%;[\s\S]*overflow:\s*hidden;/,
@@ -101,6 +104,14 @@ describe("platform entrypoint safe area behavior", () => {
     expect(globalCss).toMatch(
       /\.zero-mobile-fixed-safe-area\s*{[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
     );
+    expect(globalCss).toMatch(
+      /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*\[data-chat-composer\]\s+\.zero-composer\s*{\s*scroll-margin-block-end:\s*16px;\s*}/,
+    );
+    expect(globalCss).toMatch(
+      /#root::after\s*{[\s\S]*height:\s*var\(--zero-keyboard-scroll-reserve,\s*0px\);[\s\S]*pointer-events:\s*none;/,
+    );
+    expect(globalCss).not.toContain("data-keyboard-inset-page");
+    expect(globalCss).not.toMatch(/:root\[data-keyboard-open="true"\]\s+#root/);
   });
 
   it("keeps artifact fullscreen above app chrome", () => {
