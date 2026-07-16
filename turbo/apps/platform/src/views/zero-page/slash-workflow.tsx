@@ -90,7 +90,7 @@ export function SlashWorkflowMenu({
       className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
       data-testid="slash-workflow-menu"
     >
-      <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium text-muted-foreground">
+      <div className="px-2.5 pt-2 pb-2 text-xs font-medium text-muted-foreground">
         Workflows
       </div>
       {loading ? (
