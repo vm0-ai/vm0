@@ -292,7 +292,7 @@ impl Sandbox for MockSandbox {
         let Some(o) = &self.overrides else {
             return Ok(());
         };
-        o.lifecycle.stop_behaviors.next_result()
+        o.lifecycle.stop_behaviors.next_result(())
     }
 
     async fn kill(&mut self) -> Result<()> {
@@ -301,17 +301,19 @@ impl Sandbox for MockSandbox {
 
     /// Mock park: bumps the override `park_calls` counter on every call (so
     /// tests can assert exact invocation counts) and consumes one queued
-    /// result (FIFO). Empty queue → `Ok(())`. The trait's idempotency
+    /// result (FIFO). Empty queue → reusable. The trait's idempotency
     /// requirement is satisfied in practice because the default-Ok behavior
     /// is side-effect-free; tests that need to exercise non-idempotent
     /// scenarios queue explicit results.
-    async fn park(&mut self) -> Result<()> {
+    async fn park(&mut self) -> Result<SandboxParkOutcome> {
         let Some(o) = &self.overrides else {
-            return Ok(());
+            return Ok(SandboxParkOutcome::Reusable);
         };
         *o.lifecycle.park_calls.lock_ignoring_poison() += 1;
         wait_blocking_gate(&o.lifecycle.park_gate).await;
-        o.lifecycle.park_behaviors.next_result()
+        o.lifecycle
+            .park_behaviors
+            .next_result(SandboxParkOutcome::Reusable)
     }
 
     /// Mock unpark: counter + queued-result semantics mirror [`park`]
@@ -323,7 +325,7 @@ impl Sandbox for MockSandbox {
             return Ok(());
         };
         *o.lifecycle.unpark_calls.lock_ignoring_poison() += 1;
-        o.lifecycle.unpark_behaviors.next_result()
+        o.lifecycle.unpark_behaviors.next_result(())
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {

@@ -118,7 +118,7 @@ impl Sandbox for PostCopyGateSandbox {
         self.inner.kill().await
     }
 
-    async fn park(&mut self) -> sandbox::Result<()> {
+    async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
         self.inner.park().await
     }
 
@@ -202,8 +202,8 @@ impl Sandbox for PanicExecSandbox {
         Ok(())
     }
 
-    async fn park(&mut self) -> sandbox::Result<()> {
-        Ok(())
+    async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
+        Ok(sandbox::SandboxParkOutcome::Reusable)
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {

@@ -29,6 +29,24 @@ async fn overrides_count_park_and_unpark_calls_across_factory_sandboxes() {
 }
 
 #[tokio::test]
+async fn park_outcomes_are_consumed_fifo_and_default_to_reusable() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_park_result(Ok(SandboxParkOutcome::NonReusable(
+        SandboxParkNonReusableReason::SevereMemoryRetention,
+    )));
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let mut first = factory.create(test_sandbox_config()).await.unwrap();
+    let mut second = factory.create(test_sandbox_config()).await.unwrap();
+
+    assert_eq!(
+        first.park().await.unwrap(),
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
+    assert_eq!(second.park().await.unwrap(), SandboxParkOutcome::Reusable);
+    assert_eq!(overrides.park_call_count(), 2);
+}
+
+#[tokio::test]
 async fn overrides_count_destroy_calls_across_factory_sandboxes() {
     let overrides = Arc::new(MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));

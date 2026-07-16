@@ -2277,7 +2277,7 @@ mod tests {
             self.inner.kill().await
         }
 
-        async fn park(&mut self) -> sandbox::Result<()> {
+        async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
             self.inner.park().await
         }
 

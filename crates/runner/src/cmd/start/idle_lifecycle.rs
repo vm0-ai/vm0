@@ -261,7 +261,9 @@ mod tests {
             workspace_promotion: Some(fixture.promotion),
         });
         let candidate = match request.park_for_idle().await {
-            Ok(candidate) => candidate.with_last_completed_at(TEST_COMPLETED_AT.into()),
+            Ok(outcome) => outcome
+                .expect_reusable()
+                .with_last_completed_at(TEST_COMPLETED_AT.into()),
             Err(_) => panic!("park should succeed"),
         };
         let mut pool = IdlePool::new(IdlePoolConfig {
