@@ -174,7 +174,8 @@ function ManualGrantForm({
   const setFormValue = useSet(setManualGrantFormValue$);
   const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
-  const fieldValues = useGet(manualGrantFormValuesFor$(type));
+  const manualGrantFormValuesFor = useGet(manualGrantFormValuesFor$);
+  const fieldValues = manualGrantFormValuesFor(type);
   const submittingType = useGet(manualGrantFormSubmitting$);
   const setSubmitting = useSet(setManualGrantFormSubmitting$);
   const submitting = submittingType === type;
