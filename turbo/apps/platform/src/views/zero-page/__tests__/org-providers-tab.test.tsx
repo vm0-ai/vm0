@@ -338,7 +338,10 @@ describe("organization model providers settings", () => {
 
   it("lets limited-free-1 workspaces add VM0 Model without upgrading", async () => {
     mockAdminOrg();
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({
+      supportByok: false,
+      restrictedVm0Models: true,
+    });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
