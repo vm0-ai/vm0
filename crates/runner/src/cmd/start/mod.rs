@@ -1744,8 +1744,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         teardown.phase_complete("orphan_reap_shutdown_final", phase);
     }
     // Wait for any in-flight destroy tasks (from cleanup tick, profile
-    // mismatch eviction, etc.) so their factory Arcs are dropped before
-    // shutdown_factories calls Arc::try_unwrap.
+    // mismatch eviction, etc.) so their factory Arcs are dropped before the
+    // factory shutdown ownership preflight.
     let phase = teardown.phase_start("destroy_tasks_drain");
     while let Some(result) = destroy_tasks.join_next().await {
         match result {
