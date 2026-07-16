@@ -137,10 +137,13 @@ setsid -f sh -c "cd /home/user/workspace && exec 3>>live-writer && while :; do p
 test -f /home/user/workspace/nested/ephemeral' \
   || fail "Workspace cache turn 1 failed"
 
-# Force-draining the parked sandbox must freeze, stop, and promote its workspace.
-echo "--- Restarting runner to force workspace cache promotion ---"
-sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+# Drain while Firecracker is still owned by the runner so idle teardown can
+# unpark, freeze, stop, and promote the workspace before the service exits.
+echo "--- Draining runner to force workspace cache promotion ---"
+sudo "$BIN_DIR/runner" service drain --name "$SVC"
 wait_for_unit_inactive
+# Clear the drain drop-in before starting a fresh transient service.
+sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
 sudo "$BIN_DIR/runner" service start --name "$SVC" \
   --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
