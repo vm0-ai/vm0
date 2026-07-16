@@ -619,10 +619,10 @@ function ArtifactCardActions({
       {showFavoriteAction && (
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           size="icon"
           className={cn(
-            "h-8 w-8 rounded-md bg-background/95 text-muted-foreground hover:bg-muted hover:text-foreground active:bg-gray-100",
+            "h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted",
             favorited && "text-amber-500 hover:text-amber-500",
           )}
           aria-label={
@@ -651,9 +651,9 @@ function ArtifactCardActions({
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="secondary"
+            variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-md bg-background/95 text-muted-foreground hover:bg-muted hover:text-foreground active:bg-gray-100 data-[state=open]:bg-gray-100"
+            className="h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground active:bg-muted data-[state=open]:bg-muted data-[state=open]:text-foreground"
             aria-label={`More actions for ${item.filename}`}
             title={`More actions for ${item.filename}`}
           >
