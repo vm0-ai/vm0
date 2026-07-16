@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.279.1](https://github.com/vm0-ai/vm0/compare/api-v1.279.0...api-v1.279.1) (2026-07-16)
+
+
+### Refactoring
+
+* remove chat model family session continuity switch ([#21716](https://github.com/vm0-ai/vm0/issues/21716)) ([533031a](https://github.com/vm0-ai/vm0/commit/533031a8c81b20be9e5322e3be94e9d2f1eb2308))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.1
+    * @vm0/connectors bumped to 1.166.1
+    * @vm0/core bumped to 8.437.1
+    * @vm0/db bumped to 1.117.1
+
 ## [1.279.0](https://github.com/vm0-ai/vm0/compare/api-v1.278.1...api-v1.279.0) (2026-07-16)
 
 
