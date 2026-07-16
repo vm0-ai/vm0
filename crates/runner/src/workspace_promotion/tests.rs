@@ -407,6 +407,70 @@ async fn late_session_sidecar_staging_is_protected_from_gc() {
 }
 
 #[tokio::test]
+async fn late_session_sidecar_staging_cleans_source_and_unlocks_when_cancelled() {
+    let session_id = "sess-late-sidecar-cancelled";
+    let history = br#"{"type":"message","content":"cancelled"}"#;
+    let restored_identity = test_restored_session_identity(session_id, history);
+    let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
+        session_id,
+        &restored_identity,
+    )
+    .await;
+    let cache = fixture.cache.clone();
+    let sandbox = Arc::new(PostCopyGateSandbox::new(fixture.sandbox_id.to_string()));
+    let export_metadata = SessionHistorySidecarExportMetadata {
+        representation: SessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+    };
+    sandbox.inner.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    sandbox.inner.push_copy_file_result(Ok(history.to_vec()));
+    let promotion = fixture.promotion;
+    let promotion_sandbox = Arc::clone(&sandbox);
+    let promotion_task = tokio::spawn(async move {
+        promote_workspace_image_from_active_sandbox(
+            promotion_sandbox.as_ref(),
+            Some(promotion),
+            "test",
+        )
+        .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), sandbox.wait_for_copy())
+        .await
+        .expect("sidecar host copy must complete before cancellation");
+    let copy_calls = sandbox.inner.copy_file_calls();
+    assert_eq!(copy_calls.len(), 1);
+    let tmp_path = copy_calls[0].host_path.clone();
+    assert!(tmp_path.is_file());
+
+    promotion_task.abort();
+    let join_error = promotion_task
+        .await
+        .expect_err("cancelled promotion task must not complete normally");
+
+    assert!(join_error.is_cancelled());
+    assert!(!tmp_path.exists());
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default",
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+}
+
+#[tokio::test]
 async fn late_session_sidecar_staging_skips_copy_when_entry_lock_is_busy() {
     let session_id = "sess-late-sidecar-lock-busy";
     let history = br#"{"type":"message","content":"busy"}"#;
