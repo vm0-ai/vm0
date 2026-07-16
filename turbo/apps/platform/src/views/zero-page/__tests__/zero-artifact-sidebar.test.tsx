@@ -3190,6 +3190,103 @@ ${openFencedHostedSiteUrl}`,
     });
   });
 
+  it("resolves relative presentation assets from the hosted deck while editing", async () => {
+    const thumbnailObserver = mockIntersectionObserver();
+    const presentationUrl = "https://relative-assets.sites.vm7.io/index.html";
+    const expectedImageUrl =
+      "https://relative-assets.sites.vm7.io/assets/user-upload.png";
+    const browser = context.mocks.browser.blobDownload();
+    const html = `<!doctype html>
+<html>
+  <head><title>Relative assets</title></head>
+  <body>
+    <section data-vm0-slide data-slide-id="slide-intro">
+      <h1 data-vm0-editable="text" data-vm0-edit-id="intro">Intro</h1>
+    </section>
+    <section data-vm0-slide data-slide-id="slide-workflows">
+      <h2 data-vm0-editable="text" data-vm0-edit-id="workflows">Workflows</h2>
+      <img src="./assets/user-upload.png" alt="User upload" />
+    </section>
+  </body>
+</html>`;
+    setupPresentationArtifactThread(presentationUrl, html);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open slide 2")).toBeInTheDocument();
+    });
+    thumbnailObserver.triggerAll();
+
+    const thumbnailFrame = document.querySelector(
+      'iframe[data-slide-thumbnail-frame="slide-workflows"]',
+    );
+    if (!(thumbnailFrame instanceof HTMLIFrameElement)) {
+      throw new Error("Presentation thumbnail frame not found");
+    }
+    const resolvedImageUrl = async (frame: HTMLIFrameElement) => {
+      const previewHtml = await generatedPresentationPreviewHtml(
+        frame,
+        browser.blobForUrl,
+      );
+      const previewDocument = new DOMParser().parseFromString(
+        previewHtml,
+        "text/html",
+      );
+      const baseHref = previewDocument
+        .querySelector("base[href]")
+        ?.getAttribute("href");
+      const imageSrc = previewDocument
+        .querySelector('img[alt="User upload"]')
+        ?.getAttribute("src");
+      if (!baseHref || !imageSrc) {
+        throw new Error("Relative presentation asset base not found");
+      }
+      return new URL(imageSrc, baseHref).href;
+    };
+    await expect(resolvedImageUrl(thumbnailFrame)).resolves.toBe(
+      expectedImageUrl,
+    );
+
+    click(screen.getByLabelText("Open slide 2"));
+    const previewFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation preview"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    await expect(resolvedImageUrl(previewFrame)).resolves.toBe(
+      expectedImageUrl,
+    );
+
+    const previewDocument = await installGeneratedPresentationPreviewDocument(
+      previewFrame,
+      browser.blobForUrl,
+    );
+    fireEvent.load(previewFrame);
+    const title = previewDocument.querySelector(
+      '[data-vm0-editor-edit-id="workflows"]',
+    );
+    if (!(title instanceof HTMLElement)) {
+      throw new Error("Presentation workflow title not found");
+    }
+    const initialThumbnailUrl = thumbnailFrame.src;
+    title.textContent = "Reusable workflows";
+    fireEvent.input(title);
+    fireEvent.blur(title);
+
+    await waitFor(() => {
+      expect(thumbnailFrame.src).not.toBe(initialThumbnailUrl);
+    });
+    await expect(resolvedImageUrl(thumbnailFrame)).resolves.toBe(
+      expectedImageUrl,
+    );
+  });
+
   it("downloads an asset-backed presentation without speaker notes", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/asset-backed-deck.html";
     const assetUrl = "https://assets.test/roadmap-cover.png";
