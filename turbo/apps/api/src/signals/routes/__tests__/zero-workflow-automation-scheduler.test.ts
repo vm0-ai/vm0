@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
@@ -21,6 +23,7 @@ import {
   readAgentRunCallbacks$,
   updateAgentRunCallback$,
 } from "./helpers/agent-run-callback";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -403,6 +406,14 @@ describe("zero workflow automation scheduler", () => {
 
   it("skips an automation whose previous run is still active", async () => {
     const scenario = await setup();
+    // Pin the workflow queue off: this test covers the legacy skip-while-busy
+    // scheduler path that remains behind the switch.
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: scenario.orgId, userId: scenario.userId },
+      { [FeatureSwitchKey.WorkflowQueue]: false },
+    );
+    mocks.clerk.session(scenario.userId, scenario.orgId);
     const automation = await createDueLoopAutomation(scenario, 60);
 
     // First tick fires a run that stays active (never claimed or completed).

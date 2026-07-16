@@ -47,9 +47,11 @@ wait_for_exit() {
   # complete on a tick boundary, so anything <10s has no headroom
   # for real teardown work (idle pool + namespace cleanup
   # + mitm/dns/kmsg shutdown) and slow shutdown tails like
-  # background memory prefetch. 30s = 3× tick. See issues #10869
+  # background memory prefetch. Shared metal-host contention can also make
+  # namespace cleanup exceed 30s while it is still making progress, so allow
+  # six heartbeat ticks before treating the drain as stuck. See issues #10869
   # and #13688.
-  local svc=$1 budget=${2:-30}
+  local svc=$1 budget=${2:-60}
   echo "--- Waiting up to ${budget}s for $svc to exit ---"
   for i in $(seq 1 "$budget"); do
     systemctl is-active --quiet "vm0-runner-${svc}" || return 0

@@ -17,7 +17,7 @@ use crate::workspace_image_cache::{
     WorkspaceImagePromotionContext, WorkspaceImagePromotionOutcome,
     WorkspaceSessionHistorySidecarEntryGuard, WorkspaceSessionHistorySidecarPromotionSource,
 };
-use crate::workspace_mount::flush_and_unmount_workspace_drive;
+use crate::workspace_mount::freeze_workspace_drive;
 
 const SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_HISTORY_SIDECAR_COPY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -29,14 +29,26 @@ enum WorkspacePromotionAction {
     AbandonUnpublished,
 }
 
-struct SessionHistorySidecarSourceGuard<'a> {
-    entry_guard: WorkspaceSessionHistorySidecarEntryGuard<'a>,
+/// A workspace image whose guest filesystem is frozen and whose sandbox must
+/// now be stopped and destroyed.
+///
+/// The active image is not safe to publish until [`Sandbox::stop`] succeeds.
+/// Callers must never resume, thaw, or pool the sandbox after preparation.
+#[must_use = "a prepared workspace promotion must be published or abandoned after stopping the sandbox"]
+pub(crate) struct PreparedWorkspaceImagePromotion {
+    promotion: WorkspaceImagePromotionContext,
+    sidecar_source: Option<SessionHistorySidecarSourceGuard>,
+    reason: &'static str,
+}
+
+struct SessionHistorySidecarSourceGuard {
+    entry_guard: WorkspaceSessionHistorySidecarEntryGuard,
     source: WorkspaceSessionHistorySidecarPromotionSource,
 }
 
-impl<'a> SessionHistorySidecarSourceGuard<'a> {
+impl SessionHistorySidecarSourceGuard {
     fn new(
-        entry_guard: WorkspaceSessionHistorySidecarEntryGuard<'a>,
+        entry_guard: WorkspaceSessionHistorySidecarEntryGuard,
         source: WorkspaceSessionHistorySidecarPromotionSource,
     ) -> Self {
         Self {
@@ -55,39 +67,52 @@ impl<'a> SessionHistorySidecarSourceGuard<'a> {
             .await;
     }
 
-    async fn promote(&self) -> crate::error::RunnerResult<WorkspaceImagePromotionOutcome> {
+    async fn promote(
+        &self,
+        promotion: &WorkspaceImagePromotionContext,
+    ) -> crate::error::RunnerResult<WorkspaceImagePromotionOutcome> {
         self.entry_guard
-            .promote_with_session_history_sidecar(&self.source)
+            .promote_with_session_history_sidecar(promotion, &self.source)
             .await
     }
 }
 
-impl Drop for SessionHistorySidecarSourceGuard<'_> {
+impl Drop for SessionHistorySidecarSourceGuard {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.source.tmp_path);
     }
 }
 
-pub(crate) async fn promote_workspace_image_from_active_sandbox(
+pub(crate) async fn prepare_workspace_image_from_active_sandbox(
     sandbox: &dyn Sandbox,
     promotion: Option<WorkspaceImagePromotionContext>,
     reason: &'static str,
-) -> bool {
-    let Some(promotion) = promotion else {
-        return false;
-    };
+) -> Option<PreparedWorkspaceImagePromotion> {
+    let promotion = promotion?;
 
-    match AssertUnwindSafe(promote_workspace_image_from_active_sandbox_inner(
+    match AssertUnwindSafe(prepare_workspace_image_from_active_sandbox_inner(
         sandbox, &promotion, reason,
     ))
     .catch_unwind()
     .await
     {
-        Ok(WorkspacePromotionAction::Promoted) => true,
-        Ok(WorkspacePromotionAction::PreservedExisting) => false,
-        Ok(WorkspacePromotionAction::AbandonUnpublished) => {
+        Ok(Ok(sidecar_source)) => Some(PreparedWorkspaceImagePromotion {
+            promotion,
+            sidecar_source,
+            reason,
+        }),
+        Ok(Err(e)) => {
+            warn!(
+                run_id = %promotion.run_id(),
+                sandbox_id = %promotion.sandbox_id(),
+                profile_name = promotion.profile_name(),
+                session_id = %promotion.cli_agent_session_id(),
+                reason,
+                error = %e,
+                "workspace image cache promotion skipped because guest freeze failed"
+            );
             abandon_unpublished_workspace_promotion(Some(promotion), reason).await;
-            false
+            None
         }
         Err(_) => {
             warn!(
@@ -96,76 +121,105 @@ pub(crate) async fn promote_workspace_image_from_active_sandbox(
                 profile_name = promotion.profile_name(),
                 session_id = %promotion.cli_agent_session_id(),
                 reason,
-                "workspace image cache promotion panicked"
+                "workspace image cache promotion preparation panicked"
             );
             abandon_unpublished_workspace_promotion(Some(promotion), reason).await;
-            false
+            None
         }
     }
 }
 
-async fn promote_workspace_image_from_active_sandbox_inner(
+async fn prepare_workspace_image_from_active_sandbox_inner(
     sandbox: &dyn Sandbox,
     promotion: &WorkspaceImagePromotionContext,
     reason: &'static str,
-) -> WorkspacePromotionAction {
+) -> crate::error::RunnerResult<Option<SessionHistorySidecarSourceGuard>> {
     let mut sidecar_source = export_session_history_sidecar(sandbox, promotion, reason).await;
-    match flush_and_unmount_workspace_drive(sandbox, promotion.run_id()).await {
-        Ok(()) => {}
-        Err(e) => {
-            if let Some(source) = sidecar_source.take() {
-                source.discard().await;
+    if let Err(error) = freeze_workspace_drive(sandbox, promotion.run_id()).await {
+        if let Some(source) = sidecar_source.take() {
+            source.discard().await;
+        }
+        return Err(error);
+    }
+
+    Ok(sidecar_source)
+}
+
+impl PreparedWorkspaceImagePromotion {
+    pub(crate) async fn publish(mut self) -> bool {
+        let action = AssertUnwindSafe(self.publish_inner()).catch_unwind().await;
+        match action {
+            Ok(WorkspacePromotionAction::Promoted) => true,
+            Ok(WorkspacePromotionAction::PreservedExisting) => false,
+            Ok(WorkspacePromotionAction::AbandonUnpublished) => {
+                let reason = self.reason;
+                self.abandon(reason).await;
+                false
             }
-            warn!(
-                run_id = %promotion.run_id(),
-                sandbox_id = %promotion.sandbox_id(),
-                profile_name = promotion.profile_name(),
-                session_id = %promotion.cli_agent_session_id(),
-                reason,
-                error = %e,
-                "workspace image cache promotion skipped because guest unmount failed"
-            );
-            return WorkspacePromotionAction::AbandonUnpublished;
+            Err(_) => {
+                warn!(
+                    run_id = %self.promotion.run_id(),
+                    sandbox_id = %self.promotion.sandbox_id(),
+                    profile_name = self.promotion.profile_name(),
+                    session_id = %self.promotion.cli_agent_session_id(),
+                    reason = self.reason,
+                    "workspace image cache promotion publish panicked"
+                );
+                let reason = self.reason;
+                self.abandon(reason).await;
+                false
+            }
         }
     }
 
-    let outcome = match sidecar_source.as_ref() {
-        Some(source) => source.promote().await,
-        None => promotion.promote_without_session_history_sidecar().await,
-    };
-    if !matches!(outcome, Ok(WorkspaceImagePromotionOutcome::Promoted))
-        && let Some(source) = sidecar_source.take()
-    {
-        source.discard().await;
+    pub(crate) async fn abandon(mut self, reason: &'static str) {
+        if let Some(source) = self.sidecar_source.take() {
+            source.discard().await;
+        }
+        abandon_unpublished_workspace_promotion(Some(self.promotion), reason).await;
     }
-    match outcome {
-        Ok(WorkspaceImagePromotionOutcome::Promoted) => WorkspacePromotionAction::Promoted,
-        Ok(WorkspaceImagePromotionOutcome::PreservedExisting) => {
-            WorkspacePromotionAction::PreservedExisting
+
+    async fn publish_inner(&mut self) -> WorkspacePromotionAction {
+        let promotion = &self.promotion;
+
+        let outcome = match self.sidecar_source.as_ref() {
+            Some(source) => source.promote(promotion).await,
+            None => promotion.promote_without_session_history_sidecar().await,
+        };
+        if !matches!(outcome, Ok(WorkspaceImagePromotionOutcome::Promoted))
+            && let Some(source) = self.sidecar_source.take()
+        {
+            source.discard().await;
         }
-        Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished) => {
-            WorkspacePromotionAction::AbandonUnpublished
-        }
-        Err(e) => {
-            warn!(
-                run_id = %promotion.run_id(),
-                sandbox_id = %promotion.sandbox_id(),
-                profile_name = promotion.profile_name(),
-                session_id = %promotion.cli_agent_session_id(),
-                reason,
-                error = %e,
-                "workspace image cache promotion failed"
-            );
-            WorkspacePromotionAction::AbandonUnpublished
+        match outcome {
+            Ok(WorkspaceImagePromotionOutcome::Promoted) => WorkspacePromotionAction::Promoted,
+            Ok(WorkspaceImagePromotionOutcome::PreservedExisting) => {
+                WorkspacePromotionAction::PreservedExisting
+            }
+            Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished) => {
+                WorkspacePromotionAction::AbandonUnpublished
+            }
+            Err(e) => {
+                warn!(
+                    run_id = %promotion.run_id(),
+                    sandbox_id = %promotion.sandbox_id(),
+                    profile_name = promotion.profile_name(),
+                    session_id = %promotion.cli_agent_session_id(),
+                    reason = self.reason,
+                    error = %e,
+                    "workspace image cache promotion failed"
+                );
+                WorkspacePromotionAction::AbandonUnpublished
+            }
         }
     }
 }
 
-async fn export_session_history_sidecar<'a>(
+async fn export_session_history_sidecar(
     sandbox: &dyn Sandbox,
-    promotion: &'a WorkspaceImagePromotionContext,
+    promotion: &WorkspaceImagePromotionContext,
     reason: &'static str,
-) -> Option<SessionHistorySidecarSourceGuard<'a>> {
+) -> Option<SessionHistorySidecarSourceGuard> {
     let verification = promotion
         .restored_session_identity()?
         .final_metadata_verification()?;
@@ -353,14 +407,12 @@ async fn cleanup_guest_session_history_sidecar_export(
     }
 }
 
-pub(crate) async fn promote_workspace_image_from_parked_sandbox(
+pub(crate) async fn prepare_workspace_image_from_parked_sandbox(
     sandbox: &mut dyn Sandbox,
     promotion: Option<WorkspaceImagePromotionContext>,
     reason: &'static str,
-) -> bool {
-    let Some(promotion) = promotion else {
-        return false;
-    };
+) -> Option<PreparedWorkspaceImagePromotion> {
+    let promotion = promotion?;
 
     match AssertUnwindSafe(sandbox.unpark()).catch_unwind().await {
         Ok(Ok(())) => {}
@@ -375,7 +427,7 @@ pub(crate) async fn promote_workspace_image_from_parked_sandbox(
                 "workspace image cache promotion skipped because idle sandbox unpark failed"
             );
             abandon_unpublished_workspace_promotion(Some(promotion), reason).await;
-            return false;
+            return None;
         }
         Err(_) => {
             warn!(
@@ -387,11 +439,11 @@ pub(crate) async fn promote_workspace_image_from_parked_sandbox(
                 "workspace image cache promotion skipped because idle sandbox unpark panicked"
             );
             abandon_unpublished_workspace_promotion(Some(promotion), reason).await;
-            return false;
+            return None;
         }
     }
 
-    promote_workspace_image_from_active_sandbox(sandbox, Some(promotion), reason).await
+    prepare_workspace_image_from_active_sandbox(sandbox, Some(promotion), reason).await
 }
 
 pub(crate) async fn abandon_unpublished_workspace_promotion(

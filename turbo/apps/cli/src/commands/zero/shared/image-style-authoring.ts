@@ -47,9 +47,10 @@ function formatStyleSource(source: RegistryEntry["source"]): readonly string[] {
 
 const outputDir = "./generated/images";
 const artifactRules = [
-  "Compile the user prompt into a final image prompt before generating.",
-  "Use the style source, referenced assets, and generation path when they are available.",
-  "Generate with `--compiled-prompt`; do not pass `--style` during final image generation.",
+  "Resolve the selected style source before compiling or generating.",
+  "Use explicit requirements in the user prompt first, locked style requirements second, and CLI fallback values last.",
+  "Keep visual style requirements in the compiled prompt; map only compatible execution settings to CLI flags (`--background` accepts only `auto`, `opaque`, or `transparent`).",
+  "Generate with `--compiled-prompt`, without `--style`, and pass only required reference inputs.",
 ] as const;
 
 export function createStyledImageCompilationPacket(
@@ -75,7 +76,7 @@ export function createStyledImageCompilationPacket(
     `# Zero generate image prompt compile ${options.style.id}`,
     "",
     "This is an image prompt-compilation packet for the current agent.",
-    "Zero is not generating this image yet. The image style has already been selected — compile the user prompt into a final image prompt, then generate with `--compiled-prompt`.",
+    "Zero is not generating this image yet. The image style has already been selected — resolve its source, compile the user prompt into a final image prompt, then generate with `--compiled-prompt`.",
     "",
     "## User Prompt",
     options.prompt,
@@ -88,7 +89,7 @@ export function createStyledImageCompilationPacket(
     ...formatStyleSource(options.style.source),
     "",
     "## Prompt Compiler Task",
-    "- Read the selected style source when available, especially `SKILL.md`, references, examples, and templates.",
+    "- Read the selected style source before compiling, especially `SKILL.md`, references, examples, and templates. If unavailable, stop without generating.",
     "- Rewrite the user prompt into one final image-generation prompt that obeys the selected style.",
     "- Include style-specific composition, medium, palette, subject handling, reference usage, and must-avoid constraints in the final prompt.",
     "- Keep user intent intact; expand only the visual details needed to satisfy the style.",

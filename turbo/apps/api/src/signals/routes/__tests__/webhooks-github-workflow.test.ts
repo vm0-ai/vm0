@@ -219,6 +219,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
 
   it("dispatches matching label events and de-duplicates deliveries", async () => {
     const { fixture, actor, agentId, workflowId } = await setupFixture();
+    // Pin the workflow queue off: this test covers the legacy concurrent
+    // dispatch path that remains behind the switch.
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowQueue]: false,
+    });
     const runnerGroup = runsApi.configureRunnerGroup();
     const installed = await gh.installGithubApp(actor, agentId, {
       oauthCode: {

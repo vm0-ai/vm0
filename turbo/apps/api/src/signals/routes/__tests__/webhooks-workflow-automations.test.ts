@@ -1,3 +1,4 @@
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -9,6 +10,7 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -342,7 +344,13 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
   });
 
   it("starts an event run when the automation's previous run is still active", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    // Pin the workflow queue off: this test covers the legacy concurrent
+    // dispatch path that remains behind the switch.
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowQueue]: false,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const created = await accept(
       automationsClient().create({

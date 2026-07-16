@@ -365,7 +365,11 @@ async function enableGmailWorkflowAutomations(
   await updateFeatureSwitchesForUser(
     context,
     actor,
-    options.workflowQueue ? { [FeatureSwitchKey.WorkflowQueue]: true } : {},
+    options.workflowQueue === false
+      ? { [FeatureSwitchKey.WorkflowQueue]: false }
+      : options.workflowQueue
+        ? { [FeatureSwitchKey.WorkflowQueue]: true }
+        : {},
   );
 }
 
@@ -873,7 +877,9 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailMessageMocks(gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await enableGmailWorkflowAutomations(actor);
+    // Pin the workflow queue off: this test covers the legacy concurrent
+    // dispatch path that remains behind the switch.
+    await enableGmailWorkflowAutomations(actor, { workflowQueue: false });
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
 

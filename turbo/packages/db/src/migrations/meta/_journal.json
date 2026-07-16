@@ -4264,6 +4264,20 @@
       "when": 1784177952821,
       "tag": "0608_cleanup_stale_user_message_queue_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 609,
+      "version": "7",
+      "when": 1784196245309,
+      "tag": "0609_add_usage_event_gross_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 610,
+      "version": "7",
+      "when": 1784200108803,
+      "tag": "0610_cheerful_sebastian_shaw",
+      "breakpoints": true
     }
   ]
 }

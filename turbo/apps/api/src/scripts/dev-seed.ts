@@ -326,9 +326,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.output", usd(15), 1_000_000],
   ]),
   ...usageGroup("model", "gpt-5.6-luna", GPT_5_6_LUNA_PRICING),
-  // VM0 Model billing SKUs mirror the routed model's token prices.
-  ...usageGroup("model", "model-standard-v1", GPT_5_6_LUNA_PRICING),
-  ...usageGroup("model", "model-premium-v1", GPT_5_6_SOL_PRICING),
   ...usageGroup("model", "gpt-5.5", [
     ["tokens.input", usd(5), 1_000_000],
     ["tokens.cache_read", usd(0.5), 1_000_000],

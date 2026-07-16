@@ -235,6 +235,65 @@ fn binary_classifies_malformed_http_url_without_logging_it() {
 }
 
 #[test]
+fn binary_classifies_system_resolver_failure_without_logging_url() {
+    let fixture = BinaryLoggingFixture::new("resolver-failure-secret-url").unwrap();
+    let mount = fixture.dir.path().join("mount");
+    let hostname = format!("{}.invalid", "a".repeat(64));
+    let url = format!(
+        "http://{hostname}/storage-object/archive.tar.gz?X-Amz-Signature=resolver-secret-token&X-Amz-Credential=resolver-credential"
+    );
+    let manifest = write_manifest(
+        &fixture.dir,
+        &[(mount.to_str().unwrap(), Some(url.as_str()))],
+        None,
+    )
+    .unwrap();
+
+    let output = fixture.run_manifest_path(&manifest).unwrap();
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let system_log_content = fixture.read_system_log().unwrap();
+    let ops_log_content = fixture.read_ops_log().unwrap();
+    let forbidden = [
+        url.as_str(),
+        hostname.as_str(),
+        "storage-object",
+        "X-Amz-Signature",
+        "resolver-secret-token",
+        "X-Amz-Credential",
+        "resolver-credential",
+        "failed to lookup address information",
+    ];
+    assert_does_not_contain_any("stderr", &stderr, &forbidden);
+    assert_does_not_contain_any("system log", &system_log_content, &forbidden);
+    assert_does_not_contain_any("sandbox ops log", &ops_log_content, &forbidden);
+
+    let expected_error = "HTTP request error (kind=dns phase=resolve)";
+    validate_attempt_warnings("stderr", &stderr, expected_error, EXPECTED_RETRY_ATTEMPTS).unwrap();
+    validate_attempt_warnings(
+        "system log",
+        &system_log_content,
+        expected_error,
+        EXPECTED_RETRY_ATTEMPTS,
+    )
+    .unwrap();
+
+    let ops = fixture.ops_entries().unwrap();
+    assert!(
+        ops.iter()
+            .any(|entry| entry["action_type"] == "storage_download"
+                && entry["success"] == false
+                && entry["error"]
+                    .as_str()
+                    .is_some_and(|error| error.contains(expected_error))),
+        "missing classified storage_download entry: {ops_log_content}"
+    );
+    assert_download_total_success_present(&ops, false);
+}
+
+#[test]
 fn binary_classifies_connection_drop_without_logging_url() {
     let (base_url, server_handle) = start_connection_drop_server().unwrap();
     let fixture = BinaryLoggingFixture::new("connection-drop-secret-url").unwrap();

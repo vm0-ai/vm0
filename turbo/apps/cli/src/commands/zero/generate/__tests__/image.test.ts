@@ -287,23 +287,46 @@ describe("zero generate image command", () => {
       "cli",
       "image",
       "--style",
-      "image-style:notion-illustration",
+      "image-style:ink-storefront",
       "--prompt",
-      "Notion illustration of a product manager mapping a launch plan",
+      "A florist named Luna Floral",
       "--compile",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "# Zero generate image prompt compile image-style:notion-illustration",
+      "# Zero generate image prompt compile image-style:ink-storefront",
     );
     expect(stdout).toContain("image prompt-compilation packet");
     expect(stdout).toContain("## Selected Image Style");
-    expect(stdout).toContain("image-style:notion-illustration");
+    expect(stdout).toContain("image-style:ink-storefront");
+    expect(stdout).toContain("Single-color hand-drawn ink fineliner");
+    expect(stdout).not.toContain("portrait 1024x1536");
     expect(stdout).toContain("## Style Source");
     expect(stdout).toContain("vm0-ai/vm0-skills");
-    expect(stdout).toContain("notion-illustration");
+    expect(stdout).toContain("ink-storefront");
     expect(stdout).toContain("## Prompt Compiler Task");
+    expect(stdout).toContain("If unavailable, stop without generating");
+    expect(stdout).toContain("references, examples, and templates");
+    expect(stdout).toContain(
+      "Return only the compiled prompt text when preparing the next command",
+    );
+    expect(stdout).toContain("## Artifact Output Model");
+    expect(stdout).toContain("## Requested Parameters");
+    expect(stdout.indexOf("## Prompt Compiler Task")).toBeLessThan(
+      stdout.indexOf("## Artifact Output Model"),
+    );
+    expect(stdout.indexOf("## Artifact Output Model")).toBeLessThan(
+      stdout.indexOf("## Requested Parameters"),
+    );
+    expect(stdout).toContain("Requested size: 1024x1024");
+    expect(stdout).toContain("Source image URLs: none");
+    expect(stdout).toContain("## Image Authoring Rules");
+    expect(stdout).not.toContain("## Parameter Precedence");
+    expect(stdout).toContain("CLI fallback values last");
+    expect(stdout).toContain(
+      "`--background` accepts only `auto`, `opaque`, or `transparent`",
+    );
     expect(stdout).toContain("--compiled-prompt");
   });
 

@@ -11,6 +11,7 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconPlug,
   IconSparkles,
+  IconSearch,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -18,6 +19,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  cn,
 } from "@vm0/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -37,8 +39,12 @@ import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import {
   manageSectionCollapsed$,
   setManageSectionCollapsed$,
+  openAgentListDialog$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
+import {
+  ZeroOrgSwitcher,
+  ZeroOrgSwitcherCompact,
+} from "./zero-org-switcher.tsx";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
@@ -345,14 +351,22 @@ function CollapsedFooter() {
 
 // --- Expanded full sidebar (desktop default, mobile overlay when expanded) ---
 
-function ExpandedSidebar() {
+function ExpandedSidebar({ mobileOnly = false }: { mobileOnly?: boolean }) {
   const off = useGet(sidebarOff$);
   const expanded = useGet(sidebarExpanded$);
+  // When the three-column layout owns the desktop columns, this full sidebar is
+  // reused solely as the mobile drawer, so it hides on desktop instead of showing.
+  const visibility = mobileOnly
+    ? "hidden data-[sidebar-expanded]:max-md:flex md:hidden"
+    : "hidden md:flex data-[sidebar-off]:md:hidden data-[sidebar-expanded]:max-md:flex";
   return (
     <aside
       data-sidebar-off={off || undefined}
       data-sidebar-expanded={expanded || undefined}
-      className="zero-nav zero-pwa-fixed-cover zero-mobile-fixed-safe-area hidden md:flex data-[sidebar-off]:md:hidden data-[sidebar-expanded]:max-md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl"
+      className={cn(
+        "zero-nav zero-pwa-fixed-cover zero-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
+        visibility,
+      )}
     >
       <ExpandedHeader />
       <ExpandedMainNav />
@@ -680,7 +694,255 @@ function ExpandedFooterAccountInsights() {
   );
 }
 
+// --- Three-column (Slack-style) layout, gated behind ThreeColumnNav ---
+
+// Short, single-word rail captions so labels stay legible in the narrow rail
+// even when the underlying nav label is longer ("Activity logs", "Where Zero
+// works").
+function railLabel(id: SidebarNavId, fallback: string): string {
+  switch (id) {
+    case "chat": {
+      return "New";
+    }
+    case "activities": {
+      return "Activity";
+    }
+    case "works": {
+      return "Works";
+    }
+    default: {
+      return fallback;
+    }
+  }
+}
+
+function LabeledRailLink({
+  id,
+  navPath,
+  label,
+  icon: Icon,
+  iconImg,
+  isActive,
+  showBadge,
+  onSelect,
+}: {
+  id: SidebarNavId;
+  navPath: string;
+  label: string;
+  icon: NavIcon;
+  iconImg?: string | undefined;
+  isActive: boolean;
+  showBadge?: boolean;
+  onSelect: (id: SidebarNavId) => void;
+}) {
+  return (
+    <Link
+      pathname={navPath as Parameters<typeof Link>[0]["pathname"]}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) {
+          return;
+        }
+        e.preventDefault();
+        onSelect(id);
+      }}
+      aria-label={label}
+      aria-current={isActive ? "page" : undefined}
+      className="group flex w-full flex-col items-center gap-1 no-underline"
+    >
+      <span
+        className={`relative inline-flex h-9 w-10 items-center justify-center rounded-xl transition-colors duration-200 ${
+          isActive
+            ? "bg-gray-200 text-gray-900"
+            : "text-sidebar-foreground group-hover:bg-sidebar-accent"
+        }`}
+      >
+        {iconImg ? (
+          <span className="inline-flex h-4 w-4 items-center justify-center overflow-hidden">
+            <img
+              src={iconImg}
+              alt=""
+              className="h-4 w-4 scale-[2.2]"
+              width={16}
+              height={16}
+            />
+          </span>
+        ) : (
+          <Icon size={19} className="shrink-0" />
+        )}
+        {showBadge && (
+          <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500" />
+        )}
+      </span>
+      <span
+        className={`text-[10px] leading-none ${
+          isActive
+            ? "font-semibold text-sidebar-foreground"
+            : "text-sidebar-foreground/60"
+        }`}
+      >
+        {railLabel(id, label)}
+      </span>
+    </Link>
+  );
+}
+
+function LabeledNavRail() {
+  const activeId = useGet(activeRoute$);
+  const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
+  const onSelect = useNavSelect();
+  const { manageNav, footerNav } = useResolvedNavItems();
+  const navItems: {
+    id: SidebarNavId;
+    activeKeys: readonly RouteKey[];
+    pathname: string;
+    label: string;
+    icon: NavIcon;
+    iconImg?: string | undefined;
+  }[] = [
+    {
+      id: "chat",
+      activeKeys: ["home", "agentChat", "agentIdeas", "chat"],
+      pathname: "/",
+      label: "New chat",
+      icon: IconEdit as NavIcon,
+    },
+    ...manageNav,
+    ...footerNav,
+  ];
+  return (
+    <aside
+      data-testid="labeled-nav-rail"
+      className="zero-nav hidden md:flex h-full w-[76px] shrink-0 flex-col items-center border-r-[0.7px] border-sidebar-border bg-sidebar px-1.5 pb-2 pt-3"
+    >
+      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
+      <div className="mb-3 shrink-0">
+        <ZeroOrgSwitcherCompact />
+      </div>
+      <nav
+        aria-label="Sidebar"
+        className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto pb-2"
+      >
+        {navItems.map((item) => {
+          const isActive =
+            activeId !== null && item.activeKeys.includes(activeId);
+          return (
+            <LabeledRailLink
+              key={item.id}
+              id={item.id}
+              navPath={item.pathname}
+              label={item.label}
+              icon={item.icon}
+              iconImg={item.iconImg}
+              isActive={isActive}
+              showBadge={item.id === "works" && slackScopeMismatch}
+              onSelect={onSelect}
+            />
+          );
+        })}
+      </nav>
+      <div className="flex w-full shrink-0 flex-col items-center gap-2 pt-1">
+        <LabeledRailLink
+          id="insights"
+          navPath="/insights"
+          label="Insights"
+          icon={IconSparkles as NavIcon}
+          isActive={activeId === "insights"}
+          onSelect={onSelect}
+        />
+        <AccountDropdownContainer collapsed />
+      </div>
+    </aside>
+  );
+}
+
+function ChatListColumn() {
+  const onSelect = useNavSelect();
+  const openAgentList = useSet(openAgentListDialog$);
+  const activeId = useGet(activeRoute$);
+  const isNewChatActive =
+    activeId !== null &&
+    (["home", "agentChat", "agentIdeas", "chat"] as RouteKey[]).includes(
+      activeId,
+    );
+  return (
+    <aside
+      data-testid="chat-list-column"
+      className="zero-nav hidden md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar"
+    >
+      <div className="flex shrink-0 items-center gap-1 px-3 pb-2 pt-3">
+        <span className="flex-1 text-[15px] font-semibold text-sidebar-foreground">
+          Chat
+        </span>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => {
+                  openAgentList();
+                }}
+                aria-label="Search conversations"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              >
+                <IconSearch size={17} stroke={1.8} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Search conversations</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                pathname="/"
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    return;
+                  }
+                  e.preventDefault();
+                  onSelect("chat");
+                }}
+                aria-label="New chat"
+                aria-current={isNewChatActive ? "page" : undefined}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 no-underline transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              >
+                <IconEdit size={17} stroke={1.8} />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">New chat</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pt-1">
+        <PinnedAgentListSection layout="horizontal" />
+        <ChatThreadsSectionWithKey />
+      </div>
+      <div className="px-2 pb-2">
+        <SidebarUpgradeCard />
+      </div>
+    </aside>
+  );
+}
+
+function ThreeColumnNav() {
+  return (
+    <>
+      <LabeledNavRail />
+      <ChatListColumn />
+      {/* Reuse the full sidebar as the mobile drawer only. */}
+      <ExpandedSidebar mobileOnly />
+    </>
+  );
+}
+
 export function ZeroSidebar() {
+  const features = useLastResolved(featureSwitch$);
+  const threeColumnNav = features?.[FeatureSwitchKey.ThreeColumnNav] ?? false;
+  if (threeColumnNav) {
+    return <ThreeColumnNav />;
+  }
   return (
     <>
       <CollapsedSidebar />

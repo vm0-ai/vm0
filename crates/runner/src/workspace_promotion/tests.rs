@@ -62,6 +62,16 @@ fn test_restored_session_identity(session_id: &str, history: &[u8]) -> RestoredS
     .unwrap()
 }
 
+async fn prepare_and_publish_workspace_image(
+    sandbox: &dyn Sandbox,
+    promotion: WorkspaceImagePromotionContext,
+) -> bool {
+    match prepare_workspace_image_from_active_sandbox(sandbox, Some(promotion), "test").await {
+        Some(prepared) => prepared.publish().await,
+        None => false,
+    }
+}
+
 struct PostCopyGateSandbox {
     inner: MockSandbox,
     copy_completed: Arc<tokio::sync::Barrier>,
@@ -242,24 +252,44 @@ impl Sandbox for PanicExecSandbox {
 }
 
 #[tokio::test]
-async fn parked_workspace_promotion_unparks_unmounts_and_promotes_cache_entry() {
+async fn parked_workspace_promotion_unparks_and_freezes_before_publish() {
     let fixture = WorkspacePromotionFixture::new("sess-parked-promote").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
     let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let promoted = promote_workspace_image_from_parked_sandbox(
+    let prepared = prepare_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
         Some(fixture.promotion),
         "test",
     )
-    .await;
+    .await
+    .expect("workspace promotion should prepare");
 
-    assert!(promoted);
     assert_eq!(overrides.unpark_call_count(), 1);
     let exec_calls = overrides.exec_calls();
     assert_eq!(exec_calls.len(), 1);
     assert!(exec_calls[0].sudo);
-    assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
+    let freeze_command = &exec_calls[0].cmd;
+    assert!(freeze_command.contains("workspace_dir='/home/user/workspace'"));
+    assert!(freeze_command.contains("workspace_device='/dev/vdb'"));
+    assert!(freeze_command.contains("refuse_workspace_symlink_path"));
+    assert!(freeze_command.contains("mountpoint -q -- \"$workspace_dir\""));
+    assert!(freeze_command.contains("exec 3< \"$workspace_dir\""));
+    assert!(freeze_command.contains("mountpoint -d -- \"$workspace_fd_path\""));
+    assert!(freeze_command.contains("fsfreeze --freeze \"$workspace_fd_path\""));
+    assert!(!freeze_command.contains("--unfreeze"));
+    assert!(!freeze_command.contains("umount"));
+    assert!(!freeze_command.contains("kill "));
+    assert!(!freeze_command.contains("pkill"));
+    assert!(!freeze_command.contains("killall"));
+    assert!(
+        fixture.cache.held_session_states().await.is_empty(),
+        "a frozen image must not be published before the caller stops the sandbox"
+    );
+
+    let promoted = prepared.publish().await;
+
+    assert!(promoted);
     let states = fixture.cache.held_session_states().await;
     assert_eq!(states.len(), 1);
     assert_eq!(states[0].session_id, fixture.session_id);
@@ -288,11 +318,13 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     )));
     sandbox.push_copy_file_result(Ok(history.to_vec()));
 
-    let (promoted, events) = capture_promotion_events(promote_workspace_image_from_active_sandbox(
-        &sandbox,
-        Some(fixture.promotion),
-        "test",
-    ))
+    let (promoted, events) = capture_promotion_events(async {
+        prepare_workspace_image_from_active_sandbox(&sandbox, Some(fixture.promotion), "test")
+            .await
+            .expect("workspace promotion should prepare")
+            .publish()
+            .await
+    })
     .await;
 
     assert!(promoted);
@@ -362,7 +394,7 @@ async fn late_session_sidecar_staging_is_protected_from_gc() {
 
     let (promoted, ()) = tokio::time::timeout(Duration::from_secs(5), async {
         tokio::join!(
-            promote_workspace_image_from_active_sandbox(&sandbox, Some(fixture.promotion), "test",),
+            prepare_and_publish_workspace_image(&sandbox, fixture.promotion),
             async {
                 sandbox.wait_for_copy().await;
                 let copy_calls = sandbox.inner.copy_file_calls();
@@ -431,12 +463,7 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_when_cancelled()
     let promotion = fixture.promotion;
     let promotion_sandbox = Arc::clone(&sandbox);
     let promotion_task = tokio::spawn(async move {
-        promote_workspace_image_from_active_sandbox(
-            promotion_sandbox.as_ref(),
-            Some(promotion),
-            "test",
-        )
-        .await
+        prepare_and_publish_workspace_image(promotion_sandbox.as_ref(), promotion).await
     });
 
     tokio::time::timeout(Duration::from_secs(5), sandbox.wait_for_copy())
@@ -508,7 +535,7 @@ async fn late_session_sidecar_staging_skips_copy_when_entry_lock_is_busy() {
 
     let promoted = tokio::time::timeout(
         Duration::from_secs(1),
-        promote_workspace_image_from_active_sandbox(&sandbox, Some(fixture.promotion), "test"),
+        prepare_and_publish_workspace_image(&sandbox, fixture.promotion),
     )
     .await
     .expect("late sidecar lock contention must not block");
@@ -526,9 +553,9 @@ async fn late_session_sidecar_staging_skips_copy_when_entry_lock_is_busy() {
 }
 
 #[tokio::test]
-async fn late_session_sidecar_staging_cleans_source_and_unlocks_after_unmount_failure() {
-    let session_id = "sess-late-sidecar-unmount-failure";
-    let history = br#"{"type":"message","content":"unmount"}"#;
+async fn late_session_sidecar_staging_cleans_source_and_unlocks_after_freeze_failure() {
+    let session_id = "sess-late-sidecar-freeze-failure";
+    let history = br#"{"type":"message","content":"freeze"}"#;
     let restored_identity = test_restored_session_identity(session_id, history);
     let fixture = WorkspacePromotionFixture::new_late_session_with_restored_session_identity(
         session_id,
@@ -538,7 +565,7 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_after_unmount_fa
     let cache = fixture.cache.clone();
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.add_exec_matcher(ExecMatcher {
-        pattern: "umount -- \"$workspace_dir\"".into(),
+        pattern: "fsfreeze --freeze".into(),
         exit_code: 64,
         stdout: Vec::new(),
         stderr: b"not mounted".to_vec(),
@@ -556,9 +583,7 @@ async fn late_session_sidecar_staging_cleans_source_and_unlocks_after_unmount_fa
     )));
     sandbox.push_copy_file_result(Ok(history.to_vec()));
 
-    let promoted =
-        promote_workspace_image_from_active_sandbox(&sandbox, Some(fixture.promotion), "test")
-            .await;
+    let promoted = prepare_and_publish_workspace_image(&sandbox, fixture.promotion).await;
 
     assert!(!promoted);
     let copy_calls = sandbox.copy_file_calls();
@@ -590,14 +615,14 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
     }));
     let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let promoted = promote_workspace_image_from_parked_sandbox(
+    let prepared = prepare_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
         Some(fixture.promotion),
         "test",
     )
     .await;
 
-    assert!(!promoted);
+    assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
     assert!(fixture.cache.held_session_states().await.is_empty());
@@ -615,14 +640,14 @@ async fn parked_workspace_promotion_unpark_error_abandons_consumed_cache_hit() {
     }));
     let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let promoted = promote_workspace_image_from_parked_sandbox(
+    let prepared = prepare_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
         Some(fixture.promotion),
         "test",
     )
     .await;
 
-    assert!(!promoted);
+    assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(
         WorkspacePromotionFixture::checkout_result(&cache, &session_id).await,
@@ -641,14 +666,14 @@ async fn parked_workspace_promotion_warning_uses_session_id() {
     }));
     let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let (promoted, events) = capture_promotion_events(promote_workspace_image_from_parked_sandbox(
+    let (prepared, events) = capture_promotion_events(prepare_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
         Some(fixture.promotion),
         "test",
     ))
     .await;
 
-    assert!(!promoted);
+    assert!(prepared.is_none());
     let event = captured_event(
         &events,
         "workspace image cache promotion skipped because idle sandbox unpark failed",
@@ -666,42 +691,52 @@ async fn parked_workspace_promotion_unpark_panic_skips_cache() {
     overrides.push_unpark_panic("simulated unpark panic");
     let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let promoted = promote_workspace_image_from_parked_sandbox(
+    let prepared = prepare_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
         Some(fixture.promotion),
         "test",
     )
     .await;
 
-    assert!(!promoted);
+    assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
     assert!(fixture.cache.held_session_states().await.is_empty());
 }
 
 #[tokio::test]
-async fn parked_workspace_promotion_guest_unmount_failure_skips_cache() {
-    let fixture = WorkspacePromotionFixture::new("sess-parked-unmount-fail").await;
+async fn parked_workspace_promotion_guest_freeze_failure_skips_cache() {
+    let fixture = WorkspacePromotionFixture::new("sess-parked-freeze-fail").await;
     let overrides = Arc::new(MockSandboxOverrides::new());
     overrides.add_exec_matcher(ExecMatcher {
-        pattern: "umount -- \"$workspace_dir\"".into(),
+        pattern: "fsfreeze --freeze".into(),
         exit_code: 64,
         stdout: Vec::new(),
         stderr: b"not mounted".to_vec(),
     });
     let mut sandbox = mock_sandbox_with_overrides(fixture.sandbox_id, Arc::clone(&overrides)).await;
 
-    let promoted = promote_workspace_image_from_parked_sandbox(
+    let (prepared, events) = capture_promotion_events(prepare_workspace_image_from_parked_sandbox(
         sandbox.as_mut(),
         Some(fixture.promotion),
         "test",
-    )
+    ))
     .await;
 
-    assert!(!promoted);
+    assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.exec_calls().len(), 1);
     assert!(fixture.cache.held_session_states().await.is_empty());
+    let event = captured_event(
+        &events,
+        "workspace image cache promotion skipped because guest freeze failed",
+    );
+    assert!(
+        event
+            .fields
+            .get("error")
+            .is_some_and(|error| error.contains("not mounted"))
+    );
 }
 
 #[tokio::test]
@@ -709,11 +744,11 @@ async fn parked_workspace_promotion_guest_exec_panic_skips_cache() {
     let fixture = WorkspacePromotionFixture::new("sess-parked-exec-panic").await;
     let mut sandbox = PanicExecSandbox::new("parked-exec-panic");
 
-    let promoted =
-        promote_workspace_image_from_parked_sandbox(&mut sandbox, Some(fixture.promotion), "test")
+    let prepared =
+        prepare_workspace_image_from_parked_sandbox(&mut sandbox, Some(fixture.promotion), "test")
             .await;
 
-    assert!(!promoted);
+    assert!(prepared.is_none());
     assert!(fixture.cache.held_session_states().await.is_empty());
 }
 

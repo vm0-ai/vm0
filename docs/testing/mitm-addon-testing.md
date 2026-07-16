@@ -38,7 +38,10 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_request_handler_auth_base_body.py` | Request-hook auth-base body admission and cleanup |
 | `test_request_handler_usage_tracking.py` | Request-hook billable usage tracking lifecycle |
 | `test_response_headers_handler.py` | Response-header hook stream setup |
-| `test_response_handler.py` | Response hook logging, cleanup, and cache invalidation |
+| `test_response_handler_connector_diagnostics.py` | Response-hook connector diagnostic replacement and streaming lifecycle |
+| `test_response_handler_logging.py` | Response-hook network/proxy logging, size accounting, and body capture |
+| `test_response_handler_auth_recovery.py` | Response-hook 401 firewall-auth cache invalidation and refresh recovery |
+| `test_response_handler_cleanup.py` | Response-hook terminal request/response stream-state cleanup |
 | `test_error_handler.py` | Error hook logging and usage cleanup |
 | `test_done_hook.py` | Shutdown hook usage flush and executor cleanup |
 | `test_runner_usage_flush_signal.py` | Runner-triggered usage and JSONL flush requests |
