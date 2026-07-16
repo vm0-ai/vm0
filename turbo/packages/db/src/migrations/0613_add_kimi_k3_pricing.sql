@@ -2,7 +2,7 @@
 WITH "price_multipliers" ("category", "numerator", "denominator") AS (
   VALUES
     ('tokens.cache_creation', 60, 19),
-    ('tokens.cache_read', 30, 19),
+    ('tokens.cache_read', 15, 8),
     ('tokens.input', 60, 19),
     ('tokens.output', 15, 4)
 )
