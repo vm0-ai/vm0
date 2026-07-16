@@ -32,6 +32,22 @@ impl WorkspacePromotionFixture {
         session_id: &str,
         restored_session_identity: Option<&RestoredSessionIdentity>,
     ) -> Self {
+        Self::new_with_lease_session_id(session_id, Some(session_id), restored_session_identity)
+            .await
+    }
+
+    pub(crate) async fn new_late_session_with_restored_session_identity(
+        session_id: &str,
+        restored_session_identity: &RestoredSessionIdentity,
+    ) -> Self {
+        Self::new_with_lease_session_id(session_id, None, Some(restored_session_identity)).await
+    }
+
+    async fn new_with_lease_session_id(
+        session_id: &str,
+        lease_session_id: Option<&str>,
+        restored_session_identity: Option<&RestoredSessionIdentity>,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -44,7 +60,7 @@ impl WorkspacePromotionFixture {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
-                    cli_agent_session_id: Some(session_id),
+                    cli_agent_session_id: lease_session_id,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
                 },

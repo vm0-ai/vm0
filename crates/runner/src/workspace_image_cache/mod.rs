@@ -16,6 +16,9 @@
 //!   shared root.
 //! - Entry locks protect one cache key. Capacity lock protects budget-sensitive
 //!   promotion and GC work across the shared cache root.
+//! - Session-history sidecar staging inside a cache entry holds that entry's
+//!   lock from the first managed temporary-path operation through publication
+//!   or discard, so GC cannot classify active staging as orphaned state.
 //! - GC takes the capacity lock and then uses non-blocking entry lock attempts.
 //!   Promotion already holds or reacquires an entry lock and then uses a
 //!   non-blocking capacity lock attempt. Do not turn either side into blocking
@@ -47,7 +50,7 @@ mod tests;
 
 pub(crate) use lifecycle::{
     WorkspaceImageLease, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityFailure,
-    WorkspaceImagePromotionOutcome,
+    WorkspaceImagePromotionOutcome, WorkspaceSessionHistorySidecarEntryGuard,
 };
 pub(crate) use types::{
     CacheBudget, FsStats, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
