@@ -12,6 +12,9 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, {})).toBe(
+      true,
+    );
     expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(true);
   });
 
@@ -187,6 +190,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ArtifactPreviewImage]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
