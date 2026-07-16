@@ -293,6 +293,20 @@ _DOMAIN_LABEL_RE = re.compile(rf"^[a-z0-9-]{{1,{_MAX_DOMAIN_LABEL_CHARS}}}$")
 _INVALID_TLD_FOLLOWING_CHARS = "@+-"
 
 
+def _build_iana_tld_text_keys() -> frozenset[str]:
+    texts = set(IANA_TLDS)
+    texts.update(
+        tld.removeprefix("xn--").encode("ascii").decode("punycode")
+        for tld in IANA_TLDS
+        if tld.startswith("xn--")
+    )
+    return frozenset(text.casefold() for text in texts)
+
+
+_IANA_TLD_TEXT_KEYS = _build_iana_tld_text_keys()
+_MAX_IANA_TLD_TEXT_KEY_CHARS = max(map(len, _IANA_TLD_TEXT_KEYS))
+
+
 def _label_is_billing_domain_label(label: str) -> bool:
     return (
         bool(label)
@@ -310,12 +324,15 @@ def _is_twitter_text_tld_boundary(following_char: str) -> bool:
 
 
 def _label_has_tld_prefix_before_unicode(label: str) -> bool:
-    prefix_limit = min(len(label), _MAX_DOMAIN_LABEL_CHARS + 1)
+    prefix_limit = min(len(label), _MAX_IANA_TLD_TEXT_KEY_CHARS + 1)
     for prefix_end in range(1, prefix_limit):
         if label[prefix_end].isascii():
             continue
+        prefix = label[:prefix_end]
+        if prefix.casefold() not in _IANA_TLD_TEXT_KEYS:
+            continue
         try:
-            normalized_prefix = normalize_idna_label(label[:prefix_end])
+            normalized_prefix = normalize_idna_label(prefix)
         except UnicodeError:
             continue
         if _label_is_billing_domain_label(normalized_prefix) and normalized_prefix in IANA_TLDS:

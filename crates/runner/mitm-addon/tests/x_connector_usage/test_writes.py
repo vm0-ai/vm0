@@ -479,8 +479,9 @@ def test_tweet_create_url_like_non_links_downgrade_to_content_create(
 def test_tweet_create_near_limit_non_link_candidate_downgrades_to_content_create(
     x_usage, tmp_path, real_flow
 ):
-    """A near-limit candidate with no recognized TLD remains bounded and non-link."""
-    request_body = json.dumps({"text": ("a." * 30_000) + "notatld"}).encode()
+    """Near-limit Unicode labels avoid repeated IDNA work and remain non-link."""
+    text = "a." + (("é" * 20 + ".") * 1_400) + "notatld"
+    request_body = json.dumps({"text": text}, ensure_ascii=False).encode()
     assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
     flow = x_usage.make_flow(
         real_flow,
