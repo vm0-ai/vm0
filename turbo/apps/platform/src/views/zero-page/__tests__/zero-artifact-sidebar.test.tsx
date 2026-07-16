@@ -3275,12 +3275,15 @@ ${openFencedHostedSiteUrl}`,
     click(screen.getByLabelText("Close presentation editor"));
 
     await waitFor(() => {
-      expect(screen.getByText("Save changes?")).toBeInTheDocument();
-      expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
     });
     expect(redeployedHtml).toBeNull();
 
-    click(screen.getByRole("button", { name: "Save" }));
+    click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
@@ -3335,11 +3338,15 @@ ${openFencedHostedSiteUrl}`,
 
     click(screen.getByLabelText("Close presentation editor"));
     await waitFor(() => {
-      expect(screen.getByText("Save changes?")).toBeInTheDocument();
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
     });
     expect(redeployCount).toBe(0);
 
-    click(screen.getByRole("button", { name: "Exit" }));
+    click(screen.getByText("Discard"));
     await waitFor(() => {
       expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
     });
@@ -3356,7 +3363,11 @@ ${openFencedHostedSiteUrl}`,
     await waitFor(() => {
       expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
     });
-    expect(screen.queryByText("Save changes?")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Do you want to save your changes?", {
+        selector: "h2",
+      }),
+    ).not.toBeInTheDocument();
     expect(redeployCount).toBe(0);
   });
 
@@ -3364,6 +3375,7 @@ ${openFencedHostedSiteUrl}`,
     const thumbnailObserver = mockIntersectionObserver();
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     const downloads = captureDownloads(context.signal);
+    const speakerNotesResponse = Promise.withResolvers<void>();
     let generatedSlides: { slideId: string; speakerNotes: string }[] = [
       {
         slideId: "slide-plan",
@@ -3384,7 +3396,8 @@ ${openFencedHostedSiteUrl}`,
     );
     context.mocks.api(
       zeroHostContract.generatePresentationSpeakerNotes,
-      ({ respond }) => {
+      async ({ respond }) => {
+        await speakerNotesResponse.promise;
         return respond(200, {
           kind: "presentation-speaker-notes-patch",
           version: 1,
@@ -3471,6 +3484,15 @@ ${openFencedHostedSiteUrl}`,
 
     await fill(screen.getByLabelText("Speaker notes"), " ");
     click(screen.getByLabelText("Generate speaker notes"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Generating speaker notes")).toHaveAttribute(
+        "data-generating",
+        "true",
+      );
+      expect(screen.getByText("Generating")).toBeInTheDocument();
+    });
+    speakerNotesResponse.resolve();
 
     await waitFor(() => {
       expect(
@@ -3601,9 +3623,13 @@ ${openFencedHostedSiteUrl}`,
     click(screen.getByLabelText("Close presentation editor"));
 
     await waitFor(() => {
-      expect(screen.getByText("Save changes?")).toBeInTheDocument();
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
     });
-    click(screen.getByRole("button", { name: "Save" }));
+    click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();

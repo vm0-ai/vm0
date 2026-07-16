@@ -288,14 +288,25 @@ function PresentationEditorHeader({
       <button
         type="button"
         data-presentation-editor-action="true"
+        data-presentation-speaker-notes-action="true"
         aria-label="Generate speaker notes"
         title="Generate speaker notes"
         disabled={!onGenerateSpeakerNotes}
         onClick={onGenerateSpeakerNotes}
-        className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-2"
+        className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 data-[generating=true]:bg-violet-500/10 data-[generating=true]:text-violet-600 data-[generating=true]:disabled:opacity-100 dark:data-[generating=true]:text-violet-400 sm:w-auto sm:px-2"
       >
         <IconSparkles size={16} stroke={1.5} />
-        <span className="hidden sm:inline">Speaker notes</span>
+        <span data-speaker-notes-idle className="hidden sm:inline">
+          Speaker notes
+        </span>
+        <span data-speaker-notes-generating className="hidden">
+          Generating
+          <span aria-hidden="true" className="inline-flex">
+            <span className="speaker-notes-dot-1">.</span>
+            <span className="speaker-notes-dot-2">.</span>
+            <span className="speaker-notes-dot-3">.</span>
+          </span>
+        </span>
       </button>
       <button
         type="button"
@@ -692,6 +703,29 @@ function setEditorActionsDisabled(disabled: boolean) {
   }
 }
 
+function setSpeakerNotesGenerating(generating: boolean) {
+  const action = document.querySelector<HTMLButtonElement>(
+    '[data-presentation-speaker-notes-action="true"]',
+  );
+  if (!action) {
+    return;
+  }
+  const idleLabel = action.querySelector<HTMLElement>(
+    "[data-speaker-notes-idle]",
+  );
+  const generatingLabel = action.querySelector<HTMLElement>(
+    "[data-speaker-notes-generating]",
+  );
+  action.dataset.generating = generating ? "true" : "false";
+  const label = generating
+    ? "Generating speaker notes"
+    : "Generate speaker notes";
+  action.setAttribute("aria-label", label);
+  action.title = label;
+  idleLabel?.classList.toggle("sm:inline", !generating);
+  generatingLabel?.classList.toggle("sm:inline-flex", generating);
+}
+
 function setEditorPublishing(params: {
   readonly busyRef: MutableValue<SVGSVGElement | null>;
   readonly publishing: boolean;
@@ -948,6 +982,7 @@ async function runFillEmptySpeakerNotes(ctx: {
   }
 
   ctx.setPublishing(true);
+  setSpeakerNotesGenerating(true);
   ctx.setStatus("Generating speaker notes");
   const generated = await tapError(
     generatePresentationSpeakerNotes({
@@ -955,6 +990,7 @@ async function runFillEmptySpeakerNotes(ctx: {
       html: ctx.buildEditedHtml(),
       signal: params.pageSignal,
     }).finally(() => {
+      setSpeakerNotesGenerating(false);
       ctx.setPublishing(false);
     }),
     (error) => {
@@ -1174,23 +1210,25 @@ function PresentationEditorCloseDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="zero-app !z-[10000] gap-5 sm:max-w-xs"
+        className="zero-app !z-[10000] gap-5 sm:max-w-md"
         overlayClassName="!z-[10000]"
       >
         <DialogHeader>
-          <DialogTitle>Save changes?</DialogTitle>
+          <DialogTitle className="whitespace-nowrap">
+            Do you want to save your changes?
+          </DialogTitle>
         </DialogHeader>
         <DialogFooter>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="text-destructive hover:text-destructive"
+            className="h-9 px-4 text-destructive hover:text-destructive"
             onClick={onExit}
           >
-            Exit
+            Discard
           </Button>
-          <Button type="button" size="sm" onClick={onSave}>
+          <Button type="button" size="sm" className="h-9 px-4" onClick={onSave}>
             Save
           </Button>
         </DialogFooter>

@@ -387,11 +387,13 @@ export const openPresentationEditor$ = command(({ get, set }, url: string) => {
 export const closePresentationEditor$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
   set(internalPresentationEditorCloseDialogOpen$, false);
-  if (!params.has(PRESENTATION_EDITOR_QUERY_PARAM)) {
+  const presentationUrl = params.get(PRESENTATION_EDITOR_QUERY_PARAM);
+  if (presentationUrl === null) {
     return;
   }
   params.delete(PRESENTATION_EDITOR_QUERY_PARAM);
   params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  params.set(ARTIFACT_QUERY_PARAM, presentationUrl);
   set(replaceSearchParams$, params);
 });
 
