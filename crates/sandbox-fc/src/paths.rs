@@ -247,7 +247,17 @@ impl SnapshotOutputPaths {
     /// the work directory paths recorded during snapshot creation.
     ///
     /// `sock_id` identifies the socket directory under `/run/vm0/sock/` —
-    /// typically the config hash so each snapshot gets a unique path.
+    /// typically the config hash so each snapshot gets a unique path. It must
+    /// be a single, non-empty normal path segment containing only ASCII
+    /// letters, digits, `.`, `-`, or `_`. The special `.` and `..` components,
+    /// as well as nested or composite IDs such as `<rootfs>/<snapshot>`, are
+    /// invalid. The complete generated
+    /// `/run/vm0/sock/<sock_id>/vsock/vsock.sock` path must be at most 107
+    /// bytes.
+    ///
+    /// This helper only constructs paths; it does not validate `sock_id`.
+    /// Callers must ensure these requirements are met before using the returned
+    /// config.
     pub fn snapshot_config(&self, sock_id: &str) -> SnapshotConfig {
         let work = SandboxPaths::new(self.work_dir());
         let runtime = RuntimePaths::new();
