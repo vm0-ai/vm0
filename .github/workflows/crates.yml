@@ -338,6 +338,17 @@ jobs:
           shared-key: coverage
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Report coverage disk usage after cache restore
+        run: |
+          df -h "$GITHUB_WORKSPACE"
+          for path in crates/target crates/target/llvm-cov-target; do
+            if [ -e "$path" ]; then
+              du -sh "$path"
+            else
+              echo "$path: not present"
+            fi
+          done
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
@@ -345,6 +356,18 @@ jobs:
         run: |
           cd crates
           cargo llvm-cov --all-targets --all-features --lcov --output-path lcov.info
+
+      - name: Report final coverage disk usage
+        if: success() || failure()
+        run: |
+          df -h "$GITHUB_WORKSPACE"
+          for path in crates/target crates/target/llvm-cov-target; do
+            if [ -e "$path" ]; then
+              du -sh "$path"
+            else
+              echo "$path: not present"
+            fi
+          done
 
       - name: Upload coverage to Codecov
         if: success() || failure()
