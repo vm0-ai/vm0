@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.37.128](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.127...sandbox-fc-v0.37.128) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+* **runner:** recover from guest dns readiness failures ([#21879](https://github.com/vm0-ai/vm0/issues/21879)) ([38a6647](https://github.com/vm0-ai/vm0/commit/38a664712e595a88a482df90ef8012f976c3f128))
+
 ## [0.37.127](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.126...sandbox-fc-v0.37.127) (2026-07-16)
 
 
