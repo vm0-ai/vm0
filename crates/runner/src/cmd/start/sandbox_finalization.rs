@@ -196,8 +196,8 @@ pub(super) async fn finalize_sandbox_for_completion(
             workspace_image_size_bytes,
             workspace_promotion,
         });
-        let candidate = match park_request.park_for_idle().await {
-            Ok(candidate) => candidate,
+        let park_outcome = match park_request.park_for_idle().await {
+            Ok(outcome) => outcome,
             Err(failure) => {
                 let failure = failure.into_active_parts();
                 let IdleParkActiveParts {
@@ -246,6 +246,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 );
             }
         };
+        let (candidate, non_reusable_reason) = park_outcome.into_parts();
         if cancel.is_cancelled() {
             let (payload, budget_lease) = candidate.into_active_destroy_parts();
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
@@ -258,6 +259,30 @@ pub(super) async fn finalize_sandbox_for_completion(
                 payload,
                 budget_lease,
                 "cancelled",
+                destroy_bookkeeping,
+            )
+            .await;
+            session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
+                &held_session_snapshot,
+                Some(&cli_agent_session_id),
+                &completed_at,
+                destroy_result.workspace_cache_promoted,
+            );
+            destroy_result.budget
+        } else if let Some(reason) = non_reusable_reason {
+            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
+            info!(
+                run_id = %run_id,
+                session_id = %cli_agent_session_id,
+                reason = reason.as_str(),
+                admission_action = "reject_and_destroy",
+                "sandbox parked but is not reusable, destroying VM"
+            );
+            let (payload, budget_lease) = candidate.into_active_destroy_parts();
+            let destroy_result = destroy_active_owned_idle_payload(
+                payload,
+                budget_lease,
+                reason.as_str(),
                 destroy_bookkeeping,
             )
             .await;
@@ -1744,6 +1769,7 @@ mod tests {
             let error = failure.into_active_parts().error;
             panic!("existing sandbox should park: {error}");
         })
+        .expect_reusable()
         .with_last_completed_at(local_completed_at());
         assert!(matches!(
             fixture.idle_pool.lock().await.park(existing_candidate),

@@ -108,6 +108,7 @@ fn test_sandbox_with_state(state: SandboxState) -> FirecrackerSandbox {
         delete_workspace_on_leak_cleanup: true,
         destroyed: true,
         is_parked: false,
+        park_outcome: None,
         park_fence: None,
     }
 }
@@ -625,7 +626,10 @@ async fn wait_for_path_removed(path: &Path) {
     .unwrap();
 }
 
-fn assert_idle_transition(result: sandbox::Result<()>, expected: SandboxIdleTransition) {
+fn assert_idle_transition<T: std::fmt::Debug>(
+    result: sandbox::Result<T>,
+    expected: SandboxIdleTransition,
+) {
     match result {
         Err(SandboxError::IdleTransition { transition, .. }) => {
             assert_eq!(transition, expected);
@@ -737,13 +741,15 @@ impl Drop for ClosingStateFence {
 fn termination_releases_park_fence_and_clears_parked_flag() {
     let events = event_log();
     let mut is_parked = true;
+    let mut park_outcome = Some(SandboxParkOutcome::Reusable);
     let mut fence = Some(RecordedFence {
         events: Arc::clone(&events),
     });
 
-    release_park_state_for_termination(&mut is_parked, &mut fence);
+    release_park_state_for_termination(&mut is_parked, &mut park_outcome, &mut fence);
 
     assert!(!is_parked);
+    assert!(park_outcome.is_none());
     assert!(fence.is_none());
     assert_eq!(logged_events(&events), vec!["release_fence"]);
 }
@@ -812,6 +818,31 @@ async fn ready_for_park_boundary_quiesces_before_firecracker_park() {
     assert_eq!(
         logged_events(&events),
         vec!["guest_quiesce", "firecracker_park"]
+    );
+    assert!(matches!(coordinator.state(), CoordinatorState::Parked));
+}
+
+#[tokio::test]
+async fn ready_for_park_boundary_preserves_non_reusable_outcome() {
+    let coordinator = ParkCoordinator::new();
+
+    let (_fence, outcome) = super::park_with_ready_for_park(
+        "test-sandbox",
+        &coordinator,
+        || async { Ok(TestNormalOperationFence) },
+        || async { Ok(()) },
+        || async {
+            Ok(SandboxParkOutcome::NonReusable(
+                SandboxParkNonReusableReason::SevereMemoryRetention,
+            ))
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
     );
     assert!(matches!(coordinator.state(), CoordinatorState::Parked));
 }
@@ -1148,7 +1179,7 @@ async fn ready_for_park_boundary_firecracker_failure_after_quiesce_marks_dirty()
         },
         || async move {
             park_events.lock().unwrap().push("firecracker_park");
-            Err(idle_transition_error(
+            Err::<(), _>(idle_transition_error(
                 SandboxIdleTransition::Park,
                 "pause failed",
             ))
@@ -3554,9 +3585,10 @@ async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "near-target")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     assert!(!has_captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway"
@@ -3590,9 +3622,10 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "stalled")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -3608,6 +3641,7 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     assert_event_field(event, "max_actual_mib", "Some(1250)");
     assert_event_field(event, "actual_delta_mib", "Some(0)");
     assert_event_field(event, "reason", "actual_stalled");
+    assert_event_field(event, "admission_action", "reuse");
 }
 
 #[tokio::test]
@@ -3621,9 +3655,10 @@ async fn wait_for_balloon_accepts_pressure_limited_partial_reclaim() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "pressure-limited")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     assert!(!has_captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway"
@@ -3670,6 +3705,7 @@ fn balloon_settle_summary_classifies_progressing_timeout() {
     summary.observe(&balloon_statistics(target_mib, 1300));
 
     assert_eq!(summary.reason(), "actual_progressing_timeout");
+    assert_eq!(summary.park_outcome(), SandboxParkOutcome::Reusable);
     assert_eq!(summary.last_actual_mib, Some(1300));
     assert_eq!(summary.last_deficit_mib, Some(236));
     assert_eq!(summary.first_actual_mib, Some(1200));
@@ -3716,9 +3752,10 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "stale-target")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -3742,9 +3779,10 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "slow-stats")).await;
 
+    assert_eq!(outcome, SandboxParkOutcome::Reusable);
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -3767,9 +3805,13 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     .await;
     let client = ApiClient::new(&sock).unwrap();
 
-    let (_, events) =
+    let (outcome, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "severe")).await;
 
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
     let event = captured_event(
         &events,
         "balloon inflate incomplete after 5s, pausing anyway",
@@ -3781,6 +3823,7 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     assert_event_field(event, "reported_available_mib", "Some(0)");
     assert_event_field(event, "reported_total_mib", "Some(2048)");
     assert_event_field(event, "reason", "severe_deficit");
+    assert_event_field(event, "admission_action", "reject_and_destroy");
 }
 
 #[tokio::test]
@@ -4481,9 +4524,18 @@ async fn unpark_retry_after_failure_succeeds() {
 
 #[tokio::test]
 async fn park_pause_failure_propagates_as_idle_transition() {
-    // Balloon inflate OK (204), vm pause fails (500).
-    let (sock, reqs, _dir) =
-        spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 500]), None).await;
+    // Balloon inflate succeeds and observes a severe deficit. The next stats
+    // request fails, terminating settle with that severe classification, but
+    // the final VM pause still fails and must remain an operational error.
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let (sock, reqs, _dir) = spawn_mock_fc_api_with_stats(
+        std::collections::VecDeque::from(vec![204, 500]),
+        std::collections::VecDeque::from([
+            MockBalloonStatsReply::Ok(MockBalloonStats::new(target_mib, 0)),
+            MockBalloonStatsReply::Status(500),
+        ]),
+    )
+    .await;
 
     let mut controller = Some(test_balloon_controller());
     let mut is_parked = false;
@@ -4732,7 +4784,7 @@ async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
         "pressure-limited-park",
     ))
     .await;
-    result.unwrap();
+    assert_eq!(result.unwrap(), SandboxParkOutcome::Reusable);
 
     assert!(is_parked);
     assert!(controller.is_none());
@@ -4761,24 +4813,29 @@ async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
 }
 
 #[tokio::test]
-async fn park_pauses_after_balloon_settle_timeout() {
-    // Balloon never reaches target — wait_for_balloon must time out
-    // and proceed to pause anyway.
-    let balloon_actual = Arc::new(AtomicU32::new(0)); // stuck at 0
-    let (sock, reqs, _dir) = spawn_mock_fc_api(
+async fn park_rejects_severe_balloon_retention_after_pausing() {
+    // Balloon never progresses despite observing the requested target.
+    // Parking must still pause the VM, then report it as non-reusable.
+    let target_mib = 2048 - balloon::MIN_GUEST_MIB;
+    let (sock, reqs, _dir) = spawn_mock_fc_api_with_stats(
         std::collections::VecDeque::new(),
-        Some(Arc::clone(&balloon_actual)),
+        std::collections::VecDeque::from([MockBalloonStatsReply::Ok(MockBalloonStats::new(
+            target_mib, 0,
+        ))]),
     )
     .await;
 
     let mut controller = Some(test_balloon_controller());
     let mut is_parked = false;
 
-    park_inner(&mut is_parked, 2048, &mut controller, &sock, "timeout-test")
+    let outcome = park_inner(&mut is_parked, 2048, &mut controller, &sock, "timeout-test")
         .await
         .unwrap();
 
-    // Park must succeed despite balloon never reaching target.
+    assert_eq!(
+        outcome,
+        SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+    );
     assert!(is_parked);
 
     let reqs = reqs.lock().await;

@@ -854,6 +854,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         let error = failure.into_active_parts().error;
         panic!("test sandbox should park: {error}");
     })
+    .expect_reusable()
     .with_last_completed_at("2026-06-01T00:00:01.000Z".into());
 
     let mut pool = IdlePool::new(IdlePoolConfig {
@@ -964,6 +965,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         let error = failure.into_active_parts().error;
         panic!("test sandbox should park: {error}");
     })
+    .expect_reusable()
     .with_last_completed_at("2026-06-01T00:00:01.000Z".into());
 
     let mut pool = IdlePool::new(IdlePoolConfig {

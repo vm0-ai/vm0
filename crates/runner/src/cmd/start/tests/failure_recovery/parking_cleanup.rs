@@ -2,7 +2,7 @@ use super::super::super::*;
 use super::super::support::{
     MockRunEnv, context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool,
     shutdown, test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
-    wait_workspace_cache_sessions,
+    wait_status_idle_sessions_and_active_runs, wait_workspace_cache_sessions,
 };
 use super::support::assert_no_completion_for_run;
 
@@ -10,6 +10,12 @@ use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
 use crate::workspace_image_cache::SessionWorkspaceCache;
 use sandbox_mock::MockLifecycleGate;
+
+fn severe_memory_retention() -> sandbox::SandboxParkOutcome {
+    sandbox::SandboxParkOutcome::NonReusable(
+        sandbox::SandboxParkNonReusableReason::SevereMemoryRetention,
+    )
+}
 
 /// When `Sandbox::park()` returns an error, the runner falls back to
 /// `stop_and_destroy_sandbox` and does NOT insert into the idle pool.
@@ -59,7 +65,7 @@ async fn park_failure_destroys_sandbox_and_skips_pool() {
 
 #[tokio::test]
 async fn park_failure_promotes_workspace_cache_before_destroy() {
-    assert_workspace_cache_after_failed_park(
+    assert_workspace_cache_after_park_cleanup(
         "sess-park-fail-cache",
         |overrides| {
             overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
@@ -68,24 +74,38 @@ async fn park_failure_promotes_workspace_cache_before_destroy() {
             }));
         },
         true,
+        0,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn non_reusable_park_promotes_workspace_cache_through_parked_path() {
+    assert_workspace_cache_after_park_cleanup(
+        "sess-severe-retention-cache",
+        |overrides| overrides.push_park_result(Ok(severe_memory_retention())),
+        true,
+        1,
     )
     .await;
 }
 
 #[tokio::test]
 async fn park_panic_skips_workspace_cache_before_destroy() {
-    assert_workspace_cache_after_failed_park(
+    assert_workspace_cache_after_park_cleanup(
         "sess-park-panic-cache",
         |overrides| overrides.push_park_panic("simulated park panic"),
         false,
+        0,
     )
     .await;
 }
 
-async fn assert_workspace_cache_after_failed_park(
+async fn assert_workspace_cache_after_park_cleanup(
     session_id: &str,
     configure_park: impl FnOnce(&sandbox_mock::MockSandboxOverrides),
     expect_cache: bool,
+    expected_unpark_calls: u32,
 ) {
     let wait_gate = MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
@@ -138,12 +158,13 @@ async fn assert_workspace_cache_after_failed_park(
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await
-        .expect("job should complete normally after park failure destroy");
+        .expect("job should complete normally after park cleanup destroy");
     assert_eq!(completion.exit_code, 0);
 
     wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
     assert_eq!(idle_pool.lock().await.len(), 0);
     assert_eq!(counter.park_call_count(), 1);
+    assert_eq!(counter.unpark_call_count(), expected_unpark_calls);
     assert_eq!(counter.destroy_call_count(), 1);
     if expect_cache {
         wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2))
@@ -152,6 +173,159 @@ async fn assert_workspace_cache_after_failed_park(
         let held = workspace_cache.held_session_states().await;
         assert!(held.is_empty());
     }
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_status() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_park_result(Ok(severe_memory_retention()));
+    let destroy_gate = MockLifecycleGate::new();
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+
+    let counter = Arc::clone(&overrides);
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "sess-severe-retention")),
+    );
+
+    wait_lifecycle_gate_entered(
+        &destroy_gate,
+        "non-reusable parked sandbox should enter destroy gate",
+    )
+    .await;
+    assert_destroy_in_flight(
+        &counter,
+        &budget,
+        1,
+        "non-reusable parked VM should be sent to destroy exactly once",
+        "non-reusable parked VM must retain budget while destroy is in-flight",
+    );
+    assert_idle_pool_len(
+        &idle_pool,
+        0,
+        "non-reusable parked VM must never enter the idle pool",
+    )
+    .await;
+    wait_status_idle_sessions_and_active_runs(
+        &status_path,
+        &[],
+        &[run_id.to_string()],
+        Duration::from_secs(5),
+    )
+    .await;
+    assert_no_completion_for_run(
+        &env,
+        run_id,
+        "provider.complete must wait until non-reusable VM destroy finishes",
+    );
+
+    release_destroy_and_wait_for_successful_completion(
+        &env,
+        &destroy_gate,
+        run_id,
+        "successful job should complete after non-reusable VM destroy finishes",
+    )
+    .await;
+
+    assert_post_destroy_cleanup(&budget, &idle_pool, None, run_id, 0, 0).await;
+    wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5)).await;
+    assert_eq!(counter.park_call_count(), 1);
+    assert_eq!(counter.destroy_call_count(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn repeated_non_reusable_parks_use_fresh_sandboxes() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_park_result(Ok(severe_memory_retention()));
+    overrides.push_park_result(Ok(severe_memory_retention()));
+    let counter = Arc::clone(&overrides);
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let run_handle = tokio::spawn(run(config));
+
+    for run_id in [RunId::new_v4(), RunId::new_v4()] {
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(
+                run_id,
+                "sess-repeated-severe-retention",
+            )),
+        );
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("successful job should complete after non-reusable VM destroy");
+        assert_eq!(completion.exit_code, 0);
+        assert!(completion.error.is_none());
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        assert_idle_pool_len(
+            &idle_pool,
+            0,
+            "repeated non-reusable VMs must never cycle through the idle pool",
+        )
+        .await;
+    }
+
+    assert_eq!(counter.create_configs().len(), 2);
+    assert_eq!(counter.park_call_count(), 2);
+    assert_eq!(counter.unpark_call_count(), 0);
+    assert_eq!(counter.destroy_call_count(), 2);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn non_reusable_park_destroy_panic_still_completes_and_releases_budget() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_park_result(Ok(severe_memory_retention()));
+    overrides.push_destroy_panic("simulated non-reusable destroy panic");
+    let counter = Arc::clone(&overrides);
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "sess-severe-destroy-panic")),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("destroy uncertainty must not rewrite or skip provider completion");
+    assert_eq!(completion.exit_code, 0);
+    assert!(completion.error.is_none());
+    wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+    assert_idle_pool_len(
+        &idle_pool,
+        0,
+        "destroy uncertainty must not publish a non-reusable VM as idle",
+    )
+    .await;
+    assert_eq!(counter.park_call_count(), 1);
+    assert_eq!(counter.destroy_call_count(), 1);
 
     shutdown(&env, run_handle).await;
 }
@@ -580,6 +754,7 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
 #[tokio::test(start_paused = true)]
 async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_park_result(Ok(severe_memory_retention()));
     let park_gate = MockLifecycleGate::new();
     let destroy_gate = MockLifecycleGate::new();
     overrides.set_park_lifecycle_gate(park_gate.clone());

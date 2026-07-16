@@ -6,13 +6,13 @@ use ::sandbox::Result;
 
 use crate::support::LockIgnoringPoison;
 
-enum LifecycleBehavior {
-    Result(Result<()>),
+enum LifecycleBehavior<T> {
+    Result(Result<T>),
     Panic(String),
 }
 
-impl LifecycleBehavior {
-    fn into_result(self) -> Result<()> {
+impl<T> LifecycleBehavior<T> {
+    fn into_result(self) -> Result<T> {
         match self {
             Self::Result(result) => result,
             #[allow(clippy::panic)]
@@ -21,13 +21,20 @@ impl LifecycleBehavior {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct LifecycleBehaviors {
-    queue: Mutex<VecDeque<LifecycleBehavior>>,
+pub(crate) struct LifecycleBehaviors<T> {
+    queue: Mutex<VecDeque<LifecycleBehavior<T>>>,
 }
 
-impl LifecycleBehaviors {
-    pub(crate) fn push_result(&self, result: Result<()>) {
+impl<T> Default for LifecycleBehaviors<T> {
+    fn default() -> Self {
+        Self {
+            queue: Mutex::new(VecDeque::new()),
+        }
+    }
+}
+
+impl<T> LifecycleBehaviors<T> {
+    pub(crate) fn push_result(&self, result: Result<T>) {
         self.queue
             .lock_ignoring_poison()
             .push_back(LifecycleBehavior::Result(result));
@@ -39,9 +46,9 @@ impl LifecycleBehaviors {
             .push_back(LifecycleBehavior::Panic(message.into()));
     }
 
-    pub(crate) fn next_result(&self) -> Result<()> {
+    pub(crate) fn next_result(&self, default: T) -> Result<T> {
         let behavior = self.queue.lock_ignoring_poison().pop_front();
-        behavior.map_or(Ok(()), LifecycleBehavior::into_result)
+        behavior.map_or(Ok(default), LifecycleBehavior::into_result)
     }
 }
 
