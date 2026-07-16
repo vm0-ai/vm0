@@ -1264,8 +1264,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
-    // destroys at shutdown, preventing factory Arc leaks that cause
-    // "factory still referenced" warnings from Arc::try_unwrap.
+    // destroys at shutdown so their factory Arcs are released before the
+    // exclusive ownership preflight.
     let mut destroy_tasks: JoinSet<bool> = JoinSet::new();
 
     if startup_mode == RunnerMode::Running {
