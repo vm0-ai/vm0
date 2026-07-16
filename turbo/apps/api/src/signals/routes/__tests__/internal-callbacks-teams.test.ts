@@ -53,7 +53,9 @@ const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
 const MICROSOFT_GRAPH_SCOPE = "https://graph.microsoft.com/.default";
-const MICROSOFT_TOKEN_URL =
+const BOT_FRAMEWORK_TOKEN_URL =
+  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
+const MICROSOFT_GRAPH_TOKEN_URL =
   "https://login.microsoftonline.com/:tenantId/oauth2/v2.0/token";
 
 interface TeamsPostedActivity {
@@ -113,19 +115,19 @@ function teamsApiMocks(args: {
   const serviceBaseUrl = teamsServiceBaseUrl(args.serviceUrl);
 
   server.use(
-    http.post(MICROSOFT_TOKEN_URL, async ({ request }) => {
+    http.post(BOT_FRAMEWORK_TOKEN_URL, async ({ request }) => {
       const form = new URLSearchParams(await request.text());
-      const scope = form.get("scope");
-      if (scope === BOT_FRAMEWORK_SCOPE) {
-        tokenRequests.push(form);
-        return HttpResponse.json({
-          access_token: "teams-access-token",
-          token_type: "Bearer",
-          expires_in: 3600,
-        });
-      }
-
-      expect(scope).toBe(MICROSOFT_GRAPH_SCOPE);
+      expect(form.get("scope")).toBe(BOT_FRAMEWORK_SCOPE);
+      tokenRequests.push(form);
+      return HttpResponse.json({
+        access_token: "teams-access-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+      });
+    }),
+    http.post(MICROSOFT_GRAPH_TOKEN_URL, async ({ request }) => {
+      const form = new URLSearchParams(await request.text());
+      expect(form.get("scope")).toBe(MICROSOFT_GRAPH_SCOPE);
       return HttpResponse.json({
         access_token: "teams-graph-token",
         token_type: "Bearer",

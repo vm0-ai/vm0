@@ -3,6 +3,8 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { safeJsonParse, safeUrlParse, settle } from "../utils";
 
+const BOT_FRAMEWORK_TOKEN_URL =
+  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
 const MICROSOFT_GRAPH_SCOPE = "https://graph.microsoft.com/.default";
 const DEFAULT_MICROSOFT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
@@ -266,13 +268,13 @@ function e2eTeamsMockHeaders(): Record<string, string> {
   };
 }
 
-function botTokenUrl(tenantId: string): string {
+function botTokenUrl(): string {
   const configured = optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL");
   if (configured) {
     return configured;
   }
   const mockBaseUrl = e2eTeamsMockBaseUrl();
-  return mockBaseUrl ? `${mockBaseUrl}/token` : tenantTokenUrl(tenantId);
+  return mockBaseUrl ? `${mockBaseUrl}/token` : BOT_FRAMEWORK_TOKEN_URL;
 }
 
 function graphTokenUrl(tenantId: string): string {
@@ -362,16 +364,15 @@ async function fetchClientCredentialsAccessToken(args: {
   return { kind: "ok", accessToken: parsed.data.access_token };
 }
 
-function fetchTeamsBotAccessToken(args: {
-  readonly tenantId: string;
-  readonly signal: AbortSignal;
-}): Promise<
+function fetchTeamsBotAccessToken(
+  signal: AbortSignal,
+): Promise<
   { readonly kind: "ok"; readonly accessToken: string } | TeamsApiErrorResult
 > {
   return fetchClientCredentialsAccessToken({
-    tokenUrl: botTokenUrl(args.tenantId),
+    tokenUrl: botTokenUrl(),
     scope: BOT_FRAMEWORK_SCOPE,
-    signal: args.signal,
+    signal,
   });
 }
 
@@ -533,10 +534,7 @@ export async function fetchTeamsFile(args: {
   };
 
   if (shouldAuthorizeTeamsFileDownload(args.url)) {
-    const accessToken = await fetchTeamsBotAccessToken({
-      tenantId: args.tenantId,
-      signal: args.signal,
-    });
+    const accessToken = await fetchTeamsBotAccessToken(args.signal);
     if (accessToken.kind === "teams-error") {
       return accessToken;
     }
@@ -630,10 +628,7 @@ async function postTeamsActivity(args: {
   readonly activity: TeamsActivityBody;
   readonly signal: AbortSignal;
 }): Promise<SendTeamsActivityResult> {
-  const accessToken = await fetchTeamsBotAccessToken({
-    tenantId: args.tenantId,
-    signal: args.signal,
-  });
+  const accessToken = await fetchTeamsBotAccessToken(args.signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -696,10 +691,7 @@ export async function createTeamsPersonalConversation(args: {
   readonly teamsUserDisplayName?: string | null;
   readonly signal: AbortSignal;
 }): Promise<CreateTeamsConversationResult> {
-  const accessToken = await fetchTeamsBotAccessToken({
-    tenantId: args.tenantId,
-    signal: args.signal,
-  });
+  const accessToken = await fetchTeamsBotAccessToken(args.signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }
@@ -774,10 +766,7 @@ async function requestTeamsReaction(args: {
   readonly reactionType: string;
   readonly signal: AbortSignal;
 }): Promise<SendTeamsReactionResult> {
-  const accessToken = await fetchTeamsBotAccessToken({
-    tenantId: args.tenantId,
-    signal: args.signal,
-  });
+  const accessToken = await fetchTeamsBotAccessToken(args.signal);
   if (accessToken.kind === "teams-error") {
     return accessToken;
   }

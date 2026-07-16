@@ -25,8 +25,8 @@ const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
-const MICROSOFT_TOKEN_URL =
-  "https://login.microsoftonline.com/:tenantId/oauth2/v2.0/token";
+const BOT_FRAMEWORK_TOKEN_URL =
+  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
 
 interface TeamsWelcomeRequest {
   readonly kind: "conversation" | "activity";
@@ -86,7 +86,7 @@ function teamsWelcomeHandlers(
   const serviceBaseUrl = teamsServiceBaseUrl(fixture.serviceUrl);
 
   server.use(
-    http.post(MICROSOFT_TOKEN_URL, async ({ request }) => {
+    http.post(BOT_FRAMEWORK_TOKEN_URL, async ({ request }) => {
       const form = new URLSearchParams(await request.text());
       expect(form.get("client_id")).toBe(BOT_APP_ID);
       expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
