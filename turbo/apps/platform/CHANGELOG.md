@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.602.5](https://github.com/vm0-ai/vm0/compare/app-v0.602.4...app-v0.602.5) (2026-07-16)
+
+
+### Bug Fixes
+
+* **platform:** mute artifact action menu icons to match dropdown spec ([#21824](https://github.com/vm0-ai/vm0/issues/21824)) ([42bccd7](https://github.com/vm0-ai/vm0/commit/42bccd7574a66d41251eafaa9ac68088e84fbbe1))
+* **platform:** preserve presentation background in editor ([#21834](https://github.com/vm0-ai/vm0/issues/21834)) ([01286b3](https://github.com/vm0-ai/vm0/commit/01286b31a66c3b8776ff46b407e95232d286f394))
+* **platform:** resolve relative assets in presentation editor ([#21818](https://github.com/vm0-ai/vm0/issues/21818)) ([f62475d](https://github.com/vm0-ai/vm0/commit/f62475d39a3dc55044b133f9596dddcdb76ad37a)), closes [#21758](https://github.com/vm0-ai/vm0/issues/21758)
+
 ## [0.602.4](https://github.com/vm0-ai/vm0/compare/app-v0.602.3...app-v0.602.4) (2026-07-16)
 
 
