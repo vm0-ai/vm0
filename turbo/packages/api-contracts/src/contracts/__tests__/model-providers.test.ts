@@ -42,6 +42,7 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_TYPES,
   getVm0ModelProviderConfig,
+  getVm0ModelCodexRuntimeConfig,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
   shouldInlineModelProviderFirewall,
@@ -994,6 +995,22 @@ describe("openai-api-key codex provider", () => {
 });
 
 describe("vm0-model managed proxy", () => {
+  it("advertises a one-million-token context window", () => {
+    const config = getVm0ModelCodexRuntimeConfig("https://www.vm0.ai/v1");
+
+    expect(config).toMatchObject({
+      modelCatalog: {
+        models: [
+          {
+            slug: "vm0-model",
+            context_window: 1_000_000,
+            max_context_window: 1_000_000,
+          },
+        ],
+      },
+    });
+  });
+
   it("scopes both managed credentials to the configured web origin", () => {
     const config = getVm0ModelProviderConfig(
       "https://preview-www.vm0.test/workspace",
