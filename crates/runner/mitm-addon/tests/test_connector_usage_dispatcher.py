@@ -54,7 +54,7 @@ class TestConnectorUsageDispatcher:
 
     def test_skips_for_model_provider(self, tmp_path, real_flow):
         """Model-provider flows go through report_model_provider_usage instead.
-        The dispatcher has no ``model-provider:*`` entry in ``_HANDLERS``, so
+        The dispatcher has no ``model-provider:*`` entry in ``_REGISTRATIONS``, so
         it early-returns and never reaches the X parser even when
         firewall_billable=True."""
         flow = self._make_x_flow(real_flow, tmp_path)
@@ -85,7 +85,7 @@ class TestConnectorUsageDispatcher:
         the TypeScript firewall billable metadata) must NOT reach the X parser.
         The dispatcher drops when the firewall_name has no registered handler,
         which prevents bogus billing records if someone marks a connector
-        billable without also registering a handler in ``_HANDLERS``."""
+        billable without also adding it to ``_REGISTRATIONS``."""
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
         assert self._call_and_get_billing(flow) == []

@@ -16,7 +16,6 @@ import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
-from tests.stream_buffer_helpers import set_response_stream_buffer
 from tests.x_flow_helpers import (
     json_body_that_exceeds_decoder_recursion,
     json_body_that_exceeds_integer_digit_limit,
@@ -527,29 +526,24 @@ class TestXConnectorErrorPipeline:
     def _sync_executor(self, sync_usage_executor):
         """Run delivery inline for error-pipeline behavior tests."""
 
-    def test_error_logs_connector_usage_for_x_stream(
+    def test_full_pipeline_json_error_does_not_bill_request_hints(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
-        """Mid-flight stream crash: partial counts still reported (issue #9534)."""
-        flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
-        flow.metadata[metadata_keys.X_NDJSON_STATE] = {
-            "data_count": 23,
-            "includes": {"users": 5},
-            "lines_parsed": 23,
-            "lines_failed": 0,
-        }
-        set_response_stream_buffer(flow, b"")
+        """Interrupted ordinary JSON cannot bill from request-side hints."""
+        flow = make_x_pipeline_flow(real_flow, tmp_path, query="ids=1,2,3")
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(b'{"data":[')
         flow.error = Error("connection reset by peer")
 
         with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
 
-        assert webhook.request_count > 0
-        payloads = webhook.usage_events()
-        by_cat = {p["category"]: p["quantity"] for p in payloads}
-        assert by_cat["posts.read"] == 23
-        assert by_cat["user.read"] == 5
+        assert webhook.usage_events() == []
+        assert metadata_keys.X_JSON_STATE not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+        assert "connector_response_report_on_interruption" not in flow.metadata
 
     def test_full_pipeline_stream_error_midflight(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
@@ -584,6 +578,7 @@ class TestXConnectorErrorPipeline:
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["posts.read"] == 2  # not 3; partial trailing dropped
         assert by_cat["user.read"] == 1
+        assert "connector_response_report_on_interruption" not in flow.metadata
 
     def test_full_pipeline_stream_error_counts_complete_final_line_without_newline(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api

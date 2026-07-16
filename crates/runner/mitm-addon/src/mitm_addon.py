@@ -1366,14 +1366,10 @@ def _handle_error(flow: http.HTTPFlow) -> None:
     response_streaming.finalize_model_sse_usage(flow)
     terminal_usage.report_model_provider_usage_once(flow, run_id)
 
-    # Billable connector usage for X NDJSON streams that crash mid-flight
-    # (issue #9534): the incremental parser populated x_ndjson_state during
-    # chunks; log what was observed so partial streams aren't silently
-    # dropped from billing.  Do not run the generic connector fallback for
-    # non-streaming JSON errors: partial bodies could otherwise be treated
-    # as unparseable successes and billed from request-side hints.
-    if flow.metadata.get(metadata_keys.X_NDJSON_STATE) is not None:
-        response_streaming.finalize_connector_response_state(flow)
+    # Connector parsers opt into interrupted reporting only when accumulated
+    # partial observations are independently billable. Ordinary JSON parsers do
+    # not opt in because incomplete responses could reach request-side hints.
+    if response_streaming.finalize_interrupted_connector_response_state(flow):
         usage.report_connector_usage(flow, run_id)
 
     safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
