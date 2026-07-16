@@ -662,7 +662,7 @@ function ArtifactCardActions({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-48"
+          className="w-48 [&_svg]:text-muted-foreground"
           onClick={(event) => {
             event.stopPropagation();
           }}
