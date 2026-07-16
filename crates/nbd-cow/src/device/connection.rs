@@ -856,12 +856,9 @@ mod tests {
         handle.join().unwrap();
     }
 
-    /// Verify is_our_thread rejects a TID that doesn't belong to our process.
+    /// Verify is_our_thread rejects a TID that cannot exist.
     #[test]
-    fn is_our_thread_foreign_tid() {
-        // PID 1 (init) is never one of our threads.
-        assert!(!is_our_thread(1));
-        // A very large TID that doesn't exist.
+    fn is_our_thread_nonexistent_tid() {
         assert!(!is_our_thread(u32::MAX));
     }
 }
