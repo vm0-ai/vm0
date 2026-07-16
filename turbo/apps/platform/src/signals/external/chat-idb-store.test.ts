@@ -2,6 +2,7 @@ import type { DBSchema, IDBPDatabase, OpenDBCallbacks, openDB } from "idb";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { CHAT_IDB_VERSION, CHAT_MESSAGES_STORE } from "./chat-idb-schema.ts";
 import { createChatIdbStore } from "./chat-idb-store.ts";
+import { createDeferredPromise } from "../utils.ts";
 
 type VersionChangeListener = (event: IDBVersionChangeEvent) => void;
 
@@ -154,11 +155,10 @@ describe("openChatIdb", () => {
     const firstDb = fakeDb();
     const secondDb = fakeDb();
     const { openDatabaseMock, subject } = setupSubject([secondDb]);
-    let resolveFirst: ((db: IDBPDatabase) => void) | undefined;
-    const pendingFirst = new Promise<IDBPDatabase>((resolve) => {
-      resolveFirst = resolve;
-    });
-    openDatabaseMock.mockReturnValueOnce(pendingFirst);
+    const pendingFirst = createDeferredPromise<IDBPDatabase>(
+      AbortSignal.any([]),
+    );
+    openDatabaseMock.mockReturnValueOnce(pendingFirst.promise);
 
     const first = subject.openChatIdb("user_1", "org_1");
     const second = subject.openChatIdb("user_1", "org_2");
@@ -172,10 +172,7 @@ describe("openChatIdb", () => {
     ).toEqual(["vm0-chat-user_1-org_1", "vm0-chat-user_1-org_2"]);
     expect(firstDb.close).not.toHaveBeenCalled();
 
-    if (resolveFirst === undefined) {
-      throw new Error("first open resolver was not registered");
-    }
-    resolveFirst(firstDb.db);
+    pendingFirst.resolve(firstDb.db);
     await expect(first).resolves.toBe(firstDb.db);
     expect(firstDb.close).toHaveBeenCalledTimes(1);
   });
