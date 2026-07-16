@@ -2700,6 +2700,89 @@ async function buildInsufficientCreditsAssistantMessage(params: {
   ].join("\n");
 }
 
+async function appendQueueFirstInsufficientCreditsMessages(params: {
+  readonly prepared: PreparedNormalSend;
+  readonly userId: string;
+  readonly messageId: string;
+  readonly assistantContent: string;
+}): Promise<CreatedChatMessageResponse> {
+  // The queue-first send already persisted the user message. Append an
+  // error-bearing replacement so the original row remains immutable, then
+  // consume its queue item so it can never auto-dispatch.
+  const userCreatedAt = nowDate();
+  const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
+  const createdAt = await params.prepared.db.transaction(async (tx) => {
+    const [queuedMessage] = await tx
+      .select({
+        content: chatMessages.content,
+        attachFiles: chatMessages.attachFiles,
+        attachFileMetadata: chatMessages.attachFileMetadata,
+        generationTemplate: chatMessages.generationTemplate,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, params.messageId),
+          eq(chatMessages.chatThreadId, params.prepared.thread.threadId),
+          eq(chatMessages.role, "user"),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .limit(1);
+    if (!queuedMessage) {
+      throw new Error("Queue-first message is no longer available");
+    }
+
+    await deleteUserMessageQueueItem(tx, params.messageId);
+    const [replacement] = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: params.prepared.thread.threadId,
+        role: "user",
+        content: queuedMessage.content,
+        runId: null,
+        revokesMessageId: params.messageId,
+        error: INSUFFICIENT_CREDITS_MARKER,
+        sequenceNumber: 0,
+        createdAt: userCreatedAt,
+        attachFiles: queuedMessage.attachFiles
+          ? [...queuedMessage.attachFiles]
+          : null,
+        attachFileMetadata: queuedMessage.attachFileMetadata
+          ? [...queuedMessage.attachFileMetadata]
+          : null,
+        generationTemplate: queuedMessage.generationTemplate,
+      })
+      .onConflictDoNothing({ target: chatMessages.revokesMessageId })
+      .returning({ id: chatMessages.id });
+    if (replacement) {
+      await tx.insert(chatMessages).values({
+        chatThreadId: params.prepared.thread.threadId,
+        role: "assistant",
+        content: params.assistantContent,
+        error: INSUFFICIENT_CREDITS_MARKER,
+        sequenceNumber: 1,
+        createdAt: assistantCreatedAt,
+        runId: null,
+      });
+    }
+    return queuedMessage.createdAt;
+  });
+  await publishChatMessageCreated(
+    params.userId,
+    params.prepared.thread.threadId,
+  );
+  return {
+    status: 201,
+    body: {
+      runId: null,
+      threadId: params.prepared.thread.threadId,
+      createdAt: createdAt.toISOString(),
+    },
+  };
+}
+
 async function appendInsufficientCreditsMessages(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
@@ -2712,44 +2795,16 @@ async function appendInsufficientCreditsMessages(params: {
     db: params.prepared.db,
     orgId: params.orgId,
   });
+  if (params.queueFirstMessageId) {
+    return appendQueueFirstInsufficientCreditsMessages({
+      prepared: params.prepared,
+      userId: params.userId,
+      messageId: params.queueFirstMessageId,
+      assistantContent,
+    });
+  }
   const userCreatedAt = nowDate();
   const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
-  if (params.queueFirstMessageId) {
-    // The queue-first send already persisted the user message. Mark it with
-    // the credits error (so it never auto-dispatches) and consume its queue
-    // item instead of inserting a copy.
-    const messageId = params.queueFirstMessageId;
-    const createdAt = await params.prepared.db.transaction(async (tx) => {
-      await deleteUserMessageQueueItem(tx, messageId);
-      const [marked] = await tx
-        .update(chatMessages)
-        .set({ error: INSUFFICIENT_CREDITS_MARKER, sequenceNumber: 0 })
-        .where(and(eq(chatMessages.id, messageId), isNull(chatMessages.runId)))
-        .returning({ createdAt: chatMessages.createdAt });
-      await tx.insert(chatMessages).values({
-        chatThreadId: params.prepared.thread.threadId,
-        role: "assistant",
-        content: assistantContent,
-        error: INSUFFICIENT_CREDITS_MARKER,
-        sequenceNumber: 1,
-        createdAt: assistantCreatedAt,
-        runId: null,
-      });
-      return marked?.createdAt ?? userCreatedAt;
-    });
-    await publishChatMessageCreated(
-      params.userId,
-      params.prepared.thread.threadId,
-    );
-    return {
-      status: 201,
-      body: {
-        runId: null,
-        threadId: params.prepared.thread.threadId,
-        createdAt: createdAt.toISOString(),
-      },
-    };
-  }
   const result = await params.prepared.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
