@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.604.0](https://github.com/vm0-ai/vm0/compare/app-v0.603.1...app-v0.604.0) (2026-07-16)
+
+
+### Features
+
+* add kimi k3 pricing and managed keys ([#21892](https://github.com/vm0-ai/vm0/issues/21892)) ([5b5901f](https://github.com/vm0-ai/vm0/commit/5b5901f21453723a299ab0c71d1a47ce3d14cf87))
+
+
+### Bug Fixes
+
+* **chat:** create mail draft signals outside render ([#21893](https://github.com/vm0-ai/vm0/issues/21893)) ([50b503a](https://github.com/vm0-ai/vm0/commit/50b503afeba38b402346ddc5f5a3c7bf0748f98b))
+* keep inline feedback in the tiptap composer ([#21889](https://github.com/vm0-ai/vm0/issues/21889)) ([cc5d5b9](https://github.com/vm0-ai/vm0/commit/cc5d5b99415d606d59c784cf5f71caba0839d6aa))
+* **platform:** bind presentation thumbnail observer to slide list ([#21902](https://github.com/vm0-ai/vm0/issues/21902)) ([ec7ead2](https://github.com/vm0-ai/vm0/commit/ec7ead2cf49e90a1ef7de55b87c4cb39cfdb6315))
+* **platform:** dispatch app skeleton event after mount ([#21900](https://github.com/vm0-ai/vm0/issues/21900)) ([0261f76](https://github.com/vm0-ai/vm0/commit/0261f7680934f8f00cdae5340fffbefe59993267))
+* **platform:** isolate agent profile settings drafts ([#21901](https://github.com/vm0-ai/vm0/issues/21901)) ([85a2ac9](https://github.com/vm0-ai/vm0/commit/85a2ac926ebf0e09470473f3b9f25ec223eead16))
+
+
+### Refactoring
+
+* remove relationship memory experiments ([#21890](https://github.com/vm0-ai/vm0/issues/21890)) ([2009691](https://github.com/vm0-ai/vm0/commit/2009691cb46549e3c79304cfc5a4658be2091720))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.0
+    * @vm0/connectors bumped to 1.169.1
+    * @vm0/core bumped to 8.439.0
+
 ## [0.603.1](https://github.com/vm0-ai/vm0/compare/app-v0.603.0...app-v0.603.1) (2026-07-16)
 
 

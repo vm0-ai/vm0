@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.241.8](https://github.com/vm0-ai/vm0/compare/cli-v9.241.7...cli-v9.241.8) (2026-07-16)
+
+
+### Refactoring
+
+* remove relationship memory experiments ([#21890](https://github.com/vm0-ai/vm0/issues/21890)) ([2009691](https://github.com/vm0-ai/vm0/commit/2009691cb46549e3c79304cfc5a4658be2091720))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.200.0
+    * @vm0/connectors bumped to 1.169.1
+    * @vm0/core bumped to 8.439.0
+
 ## [9.241.7](https://github.com/vm0-ai/vm0/compare/cli-v9.241.6...cli-v9.241.7) (2026-07-16)
 
 
