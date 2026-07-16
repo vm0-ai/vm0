@@ -65,7 +65,12 @@ impl ProcessContainmentError {
 
 impl SupervisedProcessContainment {
     pub(crate) fn create(sequence: u32) -> Result<Self, ProcessContainmentError> {
-        if cfg!(debug_assertions) || cfg!(feature = "test-support") {
+        // Host-side debug integration tests have no guest cgroup hierarchy.
+        // A real guest, including a debug build, gets the hierarchy from
+        // guest-init before vsock-guest starts and therefore uses cgroups.
+        if cfg!(feature = "test-support")
+            || (cfg!(debug_assertions) && !Path::new(SUPERVISED_CGROUP_BASE_PATH).is_dir())
+        {
             return Ok(Self {
                 backend: ContainmentBackend::TestNoop,
             });
