@@ -42,6 +42,7 @@
         "src/views/zero-page/zero-sidebar-upgrade.tsx"
       ],
       "ignoreDependencies": [
+        "@sentry/cli",
         "idb",
         "dom-to-pptx",
         "katex",
