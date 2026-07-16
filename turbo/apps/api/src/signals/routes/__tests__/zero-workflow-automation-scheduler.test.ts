@@ -146,7 +146,7 @@ interface WorkflowRunMessage {
   readonly runId: string;
   readonly triggerSource: string | undefined;
   readonly automationId: string | undefined;
-  readonly triggerId: string | undefined;
+  readonly hasLegacyTriggerId: boolean;
   readonly triggerBrief: string | null | undefined;
 }
 
@@ -171,7 +171,10 @@ async function workflowRunMessages(
         runId: message.runId,
         triggerSource: message.triggerSource,
         automationId: message.workflowSnapshot?.automationId,
-        triggerId: message.workflowSnapshot?.triggerId,
+        hasLegacyTriggerId: Object.hasOwn(
+          message.workflowSnapshot ?? {},
+          "triggerId",
+        ),
         triggerBrief: message.workflowSnapshot?.triggerBrief,
       },
     ];
@@ -548,7 +551,6 @@ describe("zero workflow automation scheduler", () => {
         internalKind: "workflow-automation:cron",
         payload: {
           automationId: created.body.id,
-          triggerId: created.body.id,
           timezone: "UTC",
           cronExpression: "0 9 * * *",
         },
@@ -557,17 +559,8 @@ describe("zero workflow automation scheduler", () => {
     );
     expect(run).toMatchObject({
       automationId: created.body.id,
-      triggerId: created.body.id,
+      hasLegacyTriggerId: false,
     });
-    await rewriteAutomationCallback(
-      emittedCallbacks,
-      "workflow-automation:cron",
-      {
-        automationId: created.body.id,
-        timezone: "UTC",
-        cronExpression: "0 9 * * *",
-      },
-    );
     await completeRunThroughSandbox(scenario, run.runId, 0);
 
     await expect
@@ -600,14 +593,13 @@ describe("zero workflow automation scheduler", () => {
         internalKind: "workflow-automation:loop",
         payload: {
           automationId: automation.automationId,
-          triggerId: automation.automationId,
         },
         status: "pending",
       }),
     );
     expect(run).toMatchObject({
       automationId: automation.automationId,
-      triggerId: automation.automationId,
+      hasLegacyTriggerId: false,
     });
     await rewriteAutomationCallback(
       emittedCallbacks,
