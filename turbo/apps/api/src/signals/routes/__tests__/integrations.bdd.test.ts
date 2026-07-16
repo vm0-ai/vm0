@@ -1182,7 +1182,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       "api_dispatch_pre_create_zero_slack_entrypoint_gap",
       "api_dispatch_pre_create_zero_slack_background_start_gap",
       "api_dispatch_pre_create_zero_slack_resolve_message",
-      "api_dispatch_pre_create_zero_slack_record_memory_source",
       "api_dispatch_pre_create_zero_slack_set_thread_status",
       "api_dispatch_pre_create_zero_slack_build_run_params",
       "api_dispatch_pre_create_zero_slack_build_run_params_enrich_message",
