@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.437.3](https://github.com/vm0-ai/vm0/compare/core-v8.437.2...core-v8.437.3) (2026-07-16)
+
+
+### Bug Fixes
+
+* **core:** disable zero mail for staff ([#21796](https://github.com/vm0-ai/vm0/issues/21796)) ([406c8d6](https://github.com/vm0-ai/vm0/commit/406c8d6e7c19adc36fb43a69ebc5188aa6529ebd))
+* **platform:** gate artifact favorites behind feature switch ([#21800](https://github.com/vm0-ai/vm0/issues/21800)) ([4057a12](https://github.com/vm0-ai/vm0/commit/4057a127ff33dbb327cd30100f4e4df143f0a496))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.198.0
+    * @vm0/connectors bumped to 1.168.0
+
 ## [8.437.2](https://github.com/vm0-ai/vm0/compare/core-v8.437.1...core-v8.437.2) (2026-07-16)
 
 

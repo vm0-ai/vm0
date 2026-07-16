@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.280.0](https://github.com/vm0-ai/vm0/compare/api-v1.279.4...api-v1.280.0) (2026-07-16)
+
+
+### Features
+
+* prepare external public connector catalog backend ([#21773](https://github.com/vm0-ai/vm0/issues/21773)) ([f0c5204](https://github.com/vm0-ai/vm0/commit/f0c5204903dededbe7a6d88cc44558320bc1e542))
+
+
+### Bug Fixes
+
+* support dynamic vm0 model routing ([#21693](https://github.com/vm0-ai/vm0/issues/21693)) ([80d0dca](https://github.com/vm0-ai/vm0/commit/80d0dca1f3e198f7c83ed28783da740d2215675f))
+
+
+### Refactoring
+
+* dual-write automation identifiers across callbacks and chat snapshots ([#21795](https://github.com/vm0-ai/vm0/issues/21795)) ([b8fd86e](https://github.com/vm0-ai/vm0/commit/b8fd86ea8d3c7bf119f4a83e381698d6484120d7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.198.0
+    * @vm0/connectors bumped to 1.168.0
+    * @vm0/core bumped to 8.437.3
+    * @vm0/db bumped to 1.117.3
+
 ## [1.279.4](https://github.com/vm0-ai/vm0/compare/api-v1.279.3...api-v1.279.4) (2026-07-16)
 
 

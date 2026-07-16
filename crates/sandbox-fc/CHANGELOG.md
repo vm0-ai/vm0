@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.125](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.124...sandbox-fc-v0.37.125) (2026-07-16)
+
+
+### Documentation
+
+* **sandbox-fc:** document snapshot socket id constraints ([#21794](https://github.com/vm0-ai/vm0/issues/21794)) ([d211d78](https://github.com/vm0-ai/vm0/commit/d211d787ea7c714e9c2d335966889025d6efbb7b))
+
 ## [0.37.124](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.123...sandbox-fc-v0.37.124) (2026-07-16)
 
 
