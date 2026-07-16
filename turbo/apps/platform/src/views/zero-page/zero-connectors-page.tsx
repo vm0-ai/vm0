@@ -328,7 +328,7 @@ function ConnectorFilterDropdown({
           variant="outline"
           size="sm"
           aria-label="Filter connectors"
-          className="zero-btn-morandi h-9 shrink-0 gap-1.5 rounded-lg border"
+          className="zero-btn-morandi hidden h-9 shrink-0 gap-1.5 rounded-lg border sm:inline-flex"
         >
           <IconFilter
             size={14}

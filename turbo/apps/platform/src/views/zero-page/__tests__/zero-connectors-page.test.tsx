@@ -912,6 +912,7 @@ describe("connectors page", () => {
     await expectConnectorCardsVisible({ github: true, asana: true });
 
     const filterTrigger = screen.getByLabelText("Filter connectors");
+    expect(filterTrigger).toHaveClass("hidden", "sm:inline-flex");
     click(filterTrigger);
     click(menuItemByText("Connected"));
 
