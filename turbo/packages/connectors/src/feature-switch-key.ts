@@ -83,4 +83,5 @@ export enum FeatureSwitchKey {
   OrgPlanEntitlementReads = "orgPlanEntitlementReads",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ZeroMail = "zeroMail",
+  ThreeColumnNav = "threeColumnNav",
 }
