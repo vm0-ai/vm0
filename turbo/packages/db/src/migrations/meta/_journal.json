@@ -4310,15 +4310,22 @@
     {
       "idx": 615,
       "version": "7",
-      "when": 1784233358824,
-      "tag": "0615_preserve_chat_message_run_references",
+      "when": 1784232246678,
+      "tag": "0615_retire_orphaned_queued_chat_messages",
       "breakpoints": true
     },
     {
       "idx": 616,
       "version": "7",
-      "when": 1784233370754,
-      "tag": "0616_protect_chat_event_rows_from_update",
+      "when": 1784234795005,
+      "tag": "0616_preserve_chat_message_run_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 617,
+      "version": "7",
+      "when": 1784234806520,
+      "tag": "0617_protect_chat_event_rows_from_update",
       "breakpoints": true
     }
   ]

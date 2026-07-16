@@ -135,11 +135,19 @@ const exchangeTokenInner$ = command(
         );
       }
       case "authenticated": {
+        if (!session.userId || !session.orgId) {
+          return oauthError(
+            500,
+            "server_error",
+            "Authenticated device code is missing user or organization identity",
+          );
+        }
+
         const issued = await set(
           issueCliToken$,
           {
-            userId: session.userId ?? "",
-            orgId: session.orgId ?? "",
+            userId: session.userId,
+            orgId: session.orgId,
             name: "CLI Device Flow Authentication",
           },
           signal,
