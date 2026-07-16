@@ -127,8 +127,10 @@ struct NetnsPoolInner {
 ///
 /// The active queue is intentionally a bounded high-water cache, not a strict
 /// idle cap. Namespaces returned via [`release`](Self::release) are recycled
-/// back into that queue, and completed background creation can also add ready
-/// entries after a burst. The queue may therefore exceed `BUFFER_SIZE` until
+/// only when they remain safe to reuse; otherwise release attempts to delete
+/// them. A successful release therefore does not necessarily restore warm
+/// capacity. Safe recycling and completed background creation can both add
+/// ready entries after a burst, so the queue may exceed `BUFFER_SIZE` until
 /// pool cleanup/shutdown or until the entries are acquired again.
 /// `MAX_NAMESPACES` remains the hard per-pool allocation bound; namespace
 /// indexes are allocated monotonically and are not returned to a reusable pool.
@@ -1165,8 +1167,8 @@ impl NetnsPool {
     /// startup. Without a proxy port, this is the plain queue; with a proxy
     /// port, this is the proxy queue. After each [`acquire`](Self::acquire),
     /// the pool replenishes the same active queue toward that target.
-    /// Namespaces returned via [`release`](Self::release) are recycled back
-    /// into that queue, so `BUFFER_SIZE` is not a strict idle cap.
+    /// Namespaces that [`release`](Self::release) determines are safe to reuse
+    /// return to that queue, so `BUFFER_SIZE` is not a strict idle cap.
     ///
     /// Automatically acquires a unique pool index (0–63) via flock. Enables
     /// host IP forwarding and reconciles orphaned resources from any idle
@@ -1202,12 +1204,28 @@ impl NetnsPool {
         self.inner.activate_dns_readiness().await
     }
 
-    /// Return a namespace to the pool, or delete it if the pool is inactive.
+    /// Release a checked-out namespace.
+    ///
+    /// Release requeues the namespace only when the pool is active, the lease
+    /// has not been made non-reusable by an earlier cancelled release, and the
+    /// conntrack flush is trusted. It attempts to delete the namespace when
+    /// the pool is inactive, cleanup wins a race before commit, the conntrack
+    /// flush is untrusted, or an earlier release was cancelled after cleanup
+    /// began. A deletion that cannot complete is left for startup orphan
+    /// reconciliation.
+    ///
+    /// `Ok(())` means the lease was accepted and consumed. The namespace may
+    /// have been requeued, deleted, or left for orphan reconciliation after an
+    /// abandoned deletion; success does not guarantee restored warm capacity
+    /// or immediate deletion. An invalid lease returns an error without being
+    /// consumed.
     ///
     /// The caller keeps the lease in `Some` while this future awaits. Release
     /// only takes and disarms the lease at the final no-await commit point, so
     /// cancelling this future before success leaves cleanup ownership with the
-    /// caller.
+    /// caller. Once cleanup has begun, cancellation also makes the lease
+    /// non-reusable, so a later release attempt deletes it instead of risking
+    /// reuse.
     pub async fn release(&mut self, lease: &mut Option<NetnsLease>) -> Result<()> {
         match self.inner.release_outcome(lease).await {
             NetnsReleaseOutcome::Released

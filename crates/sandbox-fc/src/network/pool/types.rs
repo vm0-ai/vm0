@@ -44,8 +44,11 @@ impl NetnsInfo {
 
 /// Non-cloneable release authority for a checked-out namespace.
 ///
-/// Dropping a live lease only emits a warning. Call `NetnsPool::release` so
-/// the namespace is either recycled into the pool or deleted during shutdown.
+/// Dropping a live lease only emits a warning. Call
+/// [`NetnsPool::release`](super::NetnsPool::release) to return ownership to the
+/// pool. An accepted release recycles the namespace only when it is safe to
+/// reuse; otherwise it attempts deletion and leaves failed cleanup for startup
+/// orphan reconciliation.
 #[derive(Debug)]
 #[must_use]
 pub struct NetnsLease {
