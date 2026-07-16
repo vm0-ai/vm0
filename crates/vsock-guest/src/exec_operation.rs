@@ -22,6 +22,7 @@ use crate::process::{
     ProcessTreeKillTarget, extract_exit_code, kill_and_reap_child_with_target,
     process_tree_kill_target, refresh_process_tree_kill_target,
 };
+use crate::process_containment::SupervisedProcessContainment;
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
     SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
@@ -395,6 +396,7 @@ impl ExecCompletion<'_> {
 struct ExecSetup {
     child: Child,
     kill_target: ProcessTreeKillTarget,
+    process_containment: Option<SupervisedProcessContainment>,
     stdin_writer: Option<StdinWriter>,
     drain_cancel: Arc<AtomicBool>,
     drain_done_tx: mpsc::Sender<()>,
@@ -402,13 +404,14 @@ struct ExecSetup {
 }
 
 impl ExecSetup {
-    fn new(child: Child) -> Self {
+    fn new(child: Child, process_containment: Option<SupervisedProcessContainment>) -> Self {
         let kill_target = process_tree_kill_target(child.id());
         let drain_cancel = Arc::new(AtomicBool::new(false));
         let (drain_done_tx, drain_done_rx) = mpsc::channel::<()>();
         Self {
             child,
             kill_target,
+            process_containment,
             stdin_writer: None,
             drain_cancel,
             drain_done_tx,
@@ -461,6 +464,7 @@ impl ExecSetup {
         let ExecSetup {
             child,
             kill_target,
+            process_containment,
             stdin_writer,
             drain_cancel,
             drain_done_tx: _,
@@ -469,6 +473,7 @@ impl ExecSetup {
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
         kill_and_reap_child_with_target(child, kill_target);
+        cleanup_process_containment(process_containment);
         join_stdin_writer_after_kill(stdin_writer);
         completion.wait_failed(diagnostic);
     }
@@ -478,12 +483,14 @@ impl ExecSetup {
         let ExecSetup {
             child,
             kill_target,
+            process_containment,
             stdin_writer: _,
             drain_cancel: _,
             drain_done_tx: _,
             drain_done_rx: _,
         } = self;
         kill_and_reap_child_with_target(child, kill_target);
+        cleanup_process_containment(process_containment);
         completion.release_without_result();
     }
 }
@@ -517,6 +524,7 @@ impl ExecSetupWithStdout {
         let ExecSetup {
             child,
             kill_target,
+            process_containment,
             stdin_writer,
             drain_cancel,
             drain_done_tx: _,
@@ -525,6 +533,7 @@ impl ExecSetupWithStdout {
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
         kill_and_reap_child_with_target(child, kill_target);
+        cleanup_process_containment(process_containment);
         join_stdin_writer_after_kill(stdin_writer);
         let _ = stdout_handle.join();
         completion.wait_failed(diagnostic);
@@ -543,6 +552,7 @@ impl ExecSetupWithStdout {
         let ExecSetup {
             child,
             kill_target,
+            process_containment,
             stdin_writer,
             drain_cancel,
             drain_done_tx,
@@ -553,6 +563,7 @@ impl ExecSetupWithStdout {
         RunningExec {
             child,
             kill_target,
+            process_containment,
             stdin_writer,
             stdout_handle,
             stdout_result_rx,
@@ -567,6 +578,7 @@ impl ExecSetupWithStdout {
 struct RunningExec {
     child: Child,
     kill_target: ProcessTreeKillTarget,
+    process_containment: Option<SupervisedProcessContainment>,
     stdin_writer: Option<StdinWriter>,
     stdout_handle: JoinHandle<()>,
     stdout_result_rx: mpsc::Receiver<BoundedDrainResult>,
@@ -587,6 +599,7 @@ impl RunningExec {
         let RunningExec {
             child,
             mut kill_target,
+            process_containment,
             stdin_writer,
             stdout_handle,
             stdout_result_rx,
@@ -617,9 +630,11 @@ impl RunningExec {
             prepare_stdin_writer_for_pre_reap,
         );
         join_stdin_writer_after_wait(stdin_writer, request.seq, &request.label);
+        let containment_clean = cleanup_process_containment(process_containment);
         if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
             || connection_cancel.load(Ordering::Acquire)
             || exec_cancel.load(Ordering::Acquire)
+            || !containment_clean
         {
             exec_cancel.store(true, Ordering::Release);
             drain_cancel.store(true, Ordering::Release);
@@ -673,6 +688,13 @@ impl RunningExec {
             &diagnostic,
         );
     }
+}
+
+fn cleanup_process_containment(process_containment: Option<SupervisedProcessContainment>) -> bool {
+    process_containment
+        .map(SupervisedProcessContainment::cleanup)
+        .transpose()
+        .is_ok()
 }
 
 pub(crate) fn start_exec_operation(
@@ -809,11 +831,25 @@ fn run_exec_operation_worker<S>(
     } else {
         env_refs.as_slice()
     };
+    let process_containment = if request.lifecycle == ExecOperationLifecycle::Supervised {
+        match SupervisedProcessContainment::create(request.seq) {
+            Ok(process_containment) => Some(process_containment),
+            Err(error) => {
+                completion.start_failed(&format!(
+                    "Failed to initialize supervised process containment: {error}"
+                ));
+                return;
+            }
+        }
+    } else {
+        None
+    };
     let spawned = match spawn_shell_command_with_pipes(
         &request.command,
         effective_env,
         request.sudo,
         pipe_stdin,
+        process_containment.as_ref(),
     ) {
         Ok(spawned) => spawned,
         Err(e) => {
@@ -828,7 +864,7 @@ fn run_exec_operation_worker<S>(
 
     let SpawnedShellCommand { child, env_script } = spawned;
     let _env_script = env_script;
-    let mut setup = ExecSetup::new(child);
+    let mut setup = ExecSetup::new(child, process_containment);
 
     if request.lifecycle == ExecOperationLifecycle::Supervised
         && let Err(e) = send_exec_started(request.seq, setup.child.id(), &writer)

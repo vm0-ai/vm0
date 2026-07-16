@@ -44,6 +44,8 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsE
 
 use shell_quote::quote_shell_arg;
 
+use crate::process_containment::SupervisedProcessContainment;
+
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
 const ENV_SCRIPT_PREFIX: &str = "vm0-env-";
@@ -551,6 +553,7 @@ pub(crate) fn spawn_shell_command_with_pipes(
     env: &[(&str, &str)],
     sudo: bool,
     pipe_stdin: bool,
+    process_containment: Option<&SupervisedProcessContainment>,
 ) -> io::Result<SpawnedShellCommand> {
     let PreparedShellCommand {
         mut command,
@@ -559,6 +562,13 @@ pub(crate) fn spawn_shell_command_with_pipes(
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     if pipe_stdin {
         command.stdin(Stdio::piped());
+    }
+    if let Some(process_containment) = process_containment {
+        process_containment
+            .configure_command(&mut command)
+            .map_err(|error| {
+                io::Error::other(format!("process containment setup failed: {error}"))
+            })?;
     }
     let child = crate::process::spawn_in_own_process_group(&mut command)?;
     Ok(SpawnedShellCommand { child, env_script })
