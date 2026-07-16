@@ -13,7 +13,6 @@ import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-compo
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
-import type { MailDraftLoaderSignals } from "./mail-draft.ts";
 
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
@@ -63,7 +62,6 @@ export interface ChatThreadSignals {
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
   threadSettledInServer$: Computed<Promise<boolean>>;
-  mailDrafts: MailDraftLoaderSignals;
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.

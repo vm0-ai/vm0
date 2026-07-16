@@ -1,4 +1,5 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
+import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroMailContract,
   type ZeroMailDraft,
@@ -28,31 +29,59 @@ export const mailDraftOverrides$ = computed((get) => {
   return get(internalMailDraftOverrides$);
 });
 
+export type MailDraftResource = Computed<Promise<ZeroMailDraft>>;
+
 export interface MailDraftLoaderSignals {
-  readonly byId: (mailDraftId: string) => Computed<Promise<ZeroMailDraft>>;
+  readonly mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>;
+  readonly registerMailDraftMessages$: Command<
+    void,
+    [readonly PagedChatMessage[]]
+  >;
 }
 
 export function createMailDraftLoaderSignals(): MailDraftLoaderSignals {
-  const cache = new Map<string, Computed<Promise<ZeroMailDraft>>>();
-  return {
-    byId: (mailDraftId) => {
-      const existing = cache.get(mailDraftId);
-      if (existing) {
-        return existing;
-      }
-      const mailDraft$ = computed(async (get) => {
-        const response = await accept(
-          get(zeroClient$)(zeroMailContract).getDraft({
-            params: { mailDraftId },
-            fetchOptions: { signal: get(pageSignal$) },
+  const internalMailDraftById$ = state<ReadonlyMap<string, MailDraftResource>>(
+    new Map(),
+  );
+  const mailDraftById$ = computed((get) => {
+    return get(internalMailDraftById$);
+  });
+  const registerMailDraftMessages$ = command(
+    ({ get, set }, messages: readonly PagedChatMessage[]) => {
+      const current = get(internalMailDraftById$);
+      let next: Map<string, MailDraftResource> | undefined;
+      for (const message of messages) {
+        const { mailDraftId } = message;
+        if (
+          mailDraftId === undefined ||
+          current.has(mailDraftId) ||
+          next?.has(mailDraftId)
+        ) {
+          continue;
+        }
+        next ??= new Map(current);
+        next.set(
+          mailDraftId,
+          computed(async (get) => {
+            const response = await accept(
+              get(zeroClient$)(zeroMailContract).getDraft({
+                params: { mailDraftId },
+                fetchOptions: { signal: get(pageSignal$) },
+              }),
+              [200],
+            );
+            return response.body.mailDraft;
           }),
-          [200],
         );
-        return response.body.mailDraft;
-      });
-      cache.set(mailDraftId, mailDraft$);
-      return mailDraft$;
+      }
+      if (next !== undefined) {
+        set(internalMailDraftById$, next);
+      }
     },
+  );
+  return {
+    mailDraftById$,
+    registerMailDraftMessages$,
   };
 }
 

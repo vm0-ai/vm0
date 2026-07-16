@@ -103,6 +103,7 @@ describe("model-first canonical catalog", () => {
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "deepseek-v4-pro",
+      "kimi-k3",
       "kimi-k2.7-code",
       "MiniMax-M3",
       "glm-5.2",
@@ -127,6 +128,7 @@ describe("model-first canonical catalog", () => {
     expect(supportedRunModelSchema.safeParse("claude-sonnet-5").success).toBe(
       true,
     );
+    expect(supportedRunModelSchema.safeParse("kimi-k3").success).toBe(true);
     expect(supportedRunModelSchema.safeParse("kimi-k2.7-code").success).toBe(
       true,
     );
@@ -214,6 +216,7 @@ describe("model-first canonical catalog", () => {
     expect(getCanonicalModelDisplayName("gpt-5.6-terra")).toBe("GPT 5.6 Terra");
     expect(getCanonicalModelDisplayName("gpt-5.6-luna")).toBe("GPT 5.6 Luna");
     expect(getCanonicalModelDisplayName("gpt-5.5")).toBe("GPT 5.5");
+    expect(getCanonicalModelDisplayName("kimi-k3")).toBe("Kimi K3");
     expect(getCanonicalModelDisplayName("glm-5.2")).toBe("GLM-5.2");
     expect(getCanonicalModelDisplayName("mimo-v2.5")).toBe("MiMo-V2.5");
     expect(getCanonicalModelDisplayName("hy3-preview")).toBe("Hy3 Preview");
@@ -238,6 +241,7 @@ describe("model-first canonical catalog", () => {
     expect(isSupportedRunModel("mimo-v2.5")).toBe(true);
     expect(isSupportedRunModel("hy3-preview")).toBe(true);
     expect(isSupportedRunModel("gpt-5.6-sol")).toBe(true);
+    expect(isSupportedRunModel("kimi-k3")).toBe(true);
     expect(isSupportedRunModel("openai/gpt-5.6-sol")).toBe(false);
     expect(normalizeRunModelId("deepseek/deepseek-v4-flash")).toBe(
       "deepseek/deepseek-v4-flash",
@@ -307,6 +311,10 @@ describe("model-first canonical catalog", () => {
     expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
       "openrouter-api-key",
     );
+    expect(getProvidersForModel("kimi-k3")).toEqual([
+      "vm0",
+      "moonshot-api-key",
+    ]);
     expect(getProvidersForModel("kimi-k2.7-code")).toEqual([
       "vm0",
       "moonshot-api-key",
@@ -414,6 +422,9 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("moonshot-api-key", "kimi-k2.7-code")).toBe(
       "kimi-k2.7-code",
     );
+    expect(getProviderRuntimeModel("moonshot-api-key", "kimi-k3")).toBe(
+      "kimi-k3",
+    );
     expect(getProviderRuntimeModel("minimax-api-key", "MiniMax-M3")).toBe(
       "MiniMax-M3",
     );
@@ -510,6 +521,7 @@ describe("model-first canonical catalog", () => {
         "claude-opus-4-6": "$$$",
         "claude-sonnet-5": "$$",
         "deepseek-v4-pro": "$",
+        "kimi-k3": "$$",
         "kimi-k2.7-code": "$",
         "glm-5.2": "$",
         "mimo-v2.5": "$",
@@ -526,6 +538,7 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("claude-opus-4-6")).toBe("$$$");
     expect(getVm0ModelPriceTier("claude-sonnet-5")).toBe("$$");
     expect(getVm0ModelPriceTier("deepseek-v4-pro")).toBe("$");
+    expect(getVm0ModelPriceTier("kimi-k3")).toBe("$$");
     expect(getVm0ModelPriceTier("kimi-k2.7-code")).toBe("$");
     expect(getVm0ModelPriceTier("glm-5.2")).toBe("$");
     expect(getVm0ModelPriceTier("mimo-v2.5")).toBe("$");
@@ -741,6 +754,7 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("vm0-model");
     expect(models).toContain("claude-fable-5");
     expect(models).toContain("claude-opus-4-8");
+    expect(models).toContain("kimi-k3");
     expect(models).toContain("kimi-k2.7-code");
     expect(models).toContain("MiniMax-M3");
     expect(models).toContain("glm-5.2");
@@ -790,6 +804,7 @@ describe("model image input support", () => {
     "anthropic/claude-sonnet-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
+    "kimi-k3",
     "kimi-k2.7-code",
     "MiniMax-M3",
     "mimo-v2.5",

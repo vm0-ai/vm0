@@ -60,6 +60,16 @@ function buildOpenAiKeys(
   });
 }
 
+function buildMoonshotKeys(
+  values: Readonly<Record<string, string | undefined>>,
+): ReturnType<typeof buildVm0ApiKeys> {
+  return buildVm0ApiKeys(readEnvFrom(values), () => {
+    // Suppress expected skip logs for vendors that are not configured in tests.
+  }).filter((key) => {
+    return key.vendor === "moonshot";
+  });
+}
+
 describe("buildVm0ApiKeys", () => {
   it("falls back to ANTHROPIC_API_KEY for Anthropic dev seed rows", () => {
     const anthropicKeys = buildAnthropicKeys({
@@ -217,6 +227,31 @@ describe("buildVm0ApiKeys", () => {
         }),
       ),
     ).toStrictEqual(new Set(["dev-openai-key"]));
+  });
+
+  it("falls back to MOONSHOT_API_KEY for the Kimi K3 dev seed row", () => {
+    const moonshotKeys = buildMoonshotKeys({
+      DEV_MODEL_MOONSHOT_KEY: "",
+      MOONSHOT_API_KEY: "provider-moonshot-key",
+    });
+
+    expect(moonshotKeys).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          apiKey: "provider-moonshot-key",
+          label: "dev-seed",
+          model: "kimi-k3",
+          vendor: "moonshot",
+        }),
+      ]),
+    );
+    expect(
+      new Set(
+        moonshotKeys.map((key) => {
+          return key.apiKey;
+        }),
+      ),
+    ).toStrictEqual(new Set(["provider-moonshot-key"]));
   });
 
   it("falls back to DEEPSEEK_API_KEY for DeepSeek dev seed rows", () => {
