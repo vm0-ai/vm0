@@ -803,13 +803,14 @@ def _unhandled_request_classification(classification: NoReturn) -> NoReturn:
 
 
 async def request(flow: http.HTTPFlow) -> None:
-    """
-    Intercept request: inject firewall auth headers for configured firewall rules.
+    """Dispatch a request-phase classification and apply its outcome.
 
-    Order:
-    1. Registry gate (block unavailable or invalid registered VM state)
-    2. VM0 API auto-allow (agent must always reach the platform)
-    3. Firewall match (inject auth headers for allowed requests)
+    `request_classification.classification_for_request()` reuses an intentionally
+    cached header-phase classification when present; otherwise it delegates to
+    `request_classification.classify_request()`, which owns the canonical decision
+    order. This hook dispatches the result. For firewall allows, it revalidates any
+    `publicDestination` constraint against the current runtime destination before
+    allowing traffic or injecting credentials.
     """
     connector_intent.capture_and_strip(flow)
 
