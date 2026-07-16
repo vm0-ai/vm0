@@ -610,10 +610,10 @@ async fn delete_namespace_link_and_netns(
 
 /// Flush conntrack entries for a given IP address.
 ///
-/// Namespaces are reused between VMs with the same peer IP. Without
-/// flushing, stale conntrack entries from a previous VM can cause the
-/// stateful iptables rule (`-m state --state RELATED,ESTABLISHED`) to
-/// misroute or silently drop return packets for a new VM.
+/// Peer IPs are reused across VM attachments and runner lifecycles. Without
+/// flushing, stale conntrack entries from a previous owner can cause the
+/// stateful iptables rule (`-m state --state RELATED,ESTABLISHED`) or a NAT
+/// redirect to misroute or silently drop packets for the next owner.
 async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
     let src_args = ["-D", "-s", peer_ip];
     let dst_args = ["-D", "-d", peer_ip];
@@ -627,7 +627,7 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
         {
             warn!(
                 peer_ip,
-                "conntrack command not found; reusing namespace without conntrack flush"
+                "conntrack command not found; proceeding without conntrack reset"
             );
         }
         ConntrackFlushOutcome::Trusted
@@ -636,7 +636,7 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
             peer_ip,
             src = ?src,
             dst = ?dst,
-            "conntrack flush failed or timed out; namespace will not be reused"
+            "conntrack reset failed or timed out; peer network state is untrusted"
         );
         ConntrackFlushOutcome::Untrusted
     }
