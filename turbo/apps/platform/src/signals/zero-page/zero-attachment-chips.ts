@@ -218,17 +218,15 @@ const closeLightboxOnEscape$ = command(
       "keydown",
       (e: KeyboardEvent) => {
         if (e.key === "Escape") {
-          set(internalLightboxDialogCloseToken$, (value) => {
-            return value + 1;
-          });
-          set(internalLightboxDialogVisible$, false);
-          set(internalLightboxDialogFullscreen$, false);
-          set(internalLightboxState$, null);
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          set(closeLightboxWithDialogExit$);
         }
       },
-      { signal },
+      { capture: true, signal },
     );
-    el.focus();
+    el.focus({ preventScroll: true });
   },
 );
 
