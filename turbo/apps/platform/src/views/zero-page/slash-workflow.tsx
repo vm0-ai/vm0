@@ -116,10 +116,11 @@ export function SlashWorkflowMenu({
                 }}
               >
                 <span className="w-full truncate font-mono text-sm text-foreground">
-                  {workflow.token}
+                  <span className="text-primary">/</span>
+                  {workflow.name}
                 </span>
                 {workflow.description && (
-                  <span className="w-full truncate text-xs text-muted-foreground">
+                  <span className="w-full truncate text-xs text-muted-foreground/70">
                     {workflow.description}
                   </span>
                 )}
