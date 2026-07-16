@@ -51,10 +51,10 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
 const APP_URL = "https://app.vm0.test";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const BOT_APP_PASSWORD = "teams-test-password";
+const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
 const MICROSOFT_GRAPH_SCOPE = "https://graph.microsoft.com/.default";
-const BOT_FRAMEWORK_TOKEN_URL =
-  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
+const BOT_FRAMEWORK_TOKEN_URL = `https://login.microsoftonline.com/${TEAMS_APP_TENANT_ID}/oauth2/v2.0/token`;
 const MICROSOFT_GRAPH_TOKEN_URL =
   "https://login.microsoftonline.com/:tenantId/oauth2/v2.0/token";
 

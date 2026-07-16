@@ -70,8 +70,7 @@ const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
   "https://login.botframework.com/v1/.well-known/keys";
-const BOT_FRAMEWORK_TOKEN_URL =
-  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
+const BOT_FRAMEWORK_TOKEN_URL = `https://login.microsoftonline.com/${TEAMS_APP_TENANT_ID}/oauth2/v2.0/token`;
 
 const keyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicJwk = keyPair.publicKey.export({ format: "jwk" });

@@ -28,8 +28,8 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
-const BOT_FRAMEWORK_TOKEN_URL =
-  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
+const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+const BOT_FRAMEWORK_TOKEN_URL = `https://login.microsoftonline.com/${TEAMS_APP_TENANT_ID}/oauth2/v2.0/token`;
 
 interface CapturedTeamsActivity {
   conversationBody?: Record<string, unknown>;

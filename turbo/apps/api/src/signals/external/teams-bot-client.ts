@@ -3,8 +3,6 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { safeJsonParse, safeUrlParse, settle } from "../utils";
 
-const BOT_FRAMEWORK_TOKEN_URL =
-  "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token";
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
 const MICROSOFT_GRAPH_SCOPE = "https://graph.microsoft.com/.default";
 const DEFAULT_MICROSOFT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
@@ -268,13 +266,17 @@ function e2eTeamsMockHeaders(): Record<string, string> {
   };
 }
 
-function botTokenUrl(): string {
+function botTokenUrl(): string | undefined {
   const configured = optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL");
   if (configured) {
     return configured;
   }
   const mockBaseUrl = e2eTeamsMockBaseUrl();
-  return mockBaseUrl ? `${mockBaseUrl}/token` : BOT_FRAMEWORK_TOKEN_URL;
+  if (mockBaseUrl) {
+    return `${mockBaseUrl}/token`;
+  }
+  const appTenantId = env("MICROSOFT_TEAMS_APP_TENANT_ID");
+  return appTenantId ? tenantTokenUrl(appTenantId) : undefined;
 }
 
 function graphTokenUrl(tenantId: string): string {
@@ -369,8 +371,14 @@ function fetchTeamsBotAccessToken(
 ): Promise<
   { readonly kind: "ok"; readonly accessToken: string } | TeamsApiErrorResult
 > {
+  const tokenUrl = botTokenUrl();
+  if (!tokenUrl) {
+    return Promise.resolve(
+      teamsApiError(502, "Microsoft Teams bot app tenant is not configured"),
+    );
+  }
   return fetchClientCredentialsAccessToken({
-    tokenUrl: botTokenUrl(),
+    tokenUrl,
     scope: BOT_FRAMEWORK_SCOPE,
     signal,
   });
