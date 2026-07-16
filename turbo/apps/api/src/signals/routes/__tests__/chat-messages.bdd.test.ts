@@ -1467,8 +1467,8 @@ describe("CHAT-02: admission without spendable credits", () => {
     }
     expect(queuedUser).toMatchObject({
       content: "blocked by suspended plan",
-      runId: undefined,
     });
+    expect(queuedUser.runId).toBeUndefined();
     expect(queuedUser.error).toBeUndefined();
     const blockedUser = blockedUsers.find((message) => {
       return message.revokesMessageId === clientMessageId;
