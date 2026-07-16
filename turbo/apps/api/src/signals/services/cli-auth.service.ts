@@ -4,8 +4,9 @@ import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { userCache } from "@vm0/db/schema/user-cache";
 import { command, computed, type Computed } from "ccstate";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 
 import { generateCliToken } from "../auth/tokens";
 import { clerk$ } from "../external/clerk";
@@ -18,6 +19,7 @@ export const CLI_TOKEN_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60;
 
 const FAR_FUTURE_CACHE_MS = 365 * 24 * 60 * 60 * 1000;
 const ORG_CACHE_TTL_MS = 60_000;
+const USER_CACHE_TTL_MS = 15 * 60 * 1000;
 const TEST_ORG_CREDITS = 100_000;
 
 interface IssuedCliToken {
@@ -129,18 +131,113 @@ export const issueCliToken$ = command(
   },
 );
 
-export function testUserId(email: string): Computed<Promise<string>> {
-  return computed(async (get): Promise<string> => {
-    const { data: users } = await get(clerk$).users.getUserList({
-      emailAddress: [email],
-    });
-    const userId = users[0]?.id;
-    if (!userId) {
-      throw new Error(`Test user not found for email: ${email}`);
-    }
-    return userId;
-  });
+interface TestUserIdArgs {
+  readonly email: string;
+  readonly refresh: boolean;
 }
+
+export const testUserId$ = command(
+  async (
+    { get, set },
+    args: TestUserIdArgs,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const refreshStartedAt = nowDate();
+    const db = get(db$);
+
+    if (!args.refresh) {
+      const [cached] = await db
+        .select({ userId: userCache.userId, cachedAt: userCache.cachedAt })
+        .from(userCache)
+        .where(eq(userCache.email, args.email))
+        .orderBy(desc(userCache.cachedAt))
+        .limit(1);
+      signal.throwIfAborted();
+      if (
+        cached &&
+        refreshStartedAt.getTime() - cached.cachedAt.getTime() <
+          USER_CACHE_TTL_MS
+      ) {
+        return cached.userId;
+      }
+    }
+
+    const clerk = get(clerk$);
+    const writeDb = set(writeDb$);
+    return await writeDb.transaction(async (tx): Promise<string> => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`clerk_user_email:${args.email}`}))`,
+      );
+      signal.throwIfAborted();
+
+      const [lockedCached] = await tx
+        .select({ userId: userCache.userId, cachedAt: userCache.cachedAt })
+        .from(userCache)
+        .where(eq(userCache.email, args.email))
+        .orderBy(desc(userCache.cachedAt))
+        .limit(1);
+      signal.throwIfAborted();
+      if (
+        lockedCached &&
+        (args.refresh
+          ? lockedCached.cachedAt.getTime() >= refreshStartedAt.getTime()
+          : refreshStartedAt.getTime() - lockedCached.cachedAt.getTime() <
+            USER_CACHE_TTL_MS)
+      ) {
+        return lockedCached.userId;
+      }
+
+      const { data: users } = await clerk.users.getUserList({
+        emailAddress: [args.email],
+      });
+      signal.throwIfAborted();
+      const user = users[0];
+      if (!user) {
+        await tx.delete(userCache).where(eq(userCache.email, args.email));
+        throw new Error(`Test user not found for email: ${args.email}`);
+      }
+
+      const resolvedEmail =
+        user.emailAddresses?.find((entry) => {
+          return entry.id === user.primaryEmailAddressId;
+        })?.emailAddress ??
+        user.emailAddresses?.[0]?.emailAddress ??
+        args.email;
+      const name =
+        [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
+      const cachedAt = nowDate();
+
+      await tx
+        .delete(userCache)
+        .where(
+          and(
+            eq(userCache.email, resolvedEmail),
+            ne(userCache.userId, user.id),
+          ),
+        );
+      await tx
+        .insert(userCache)
+        .values({
+          userId: user.id,
+          email: resolvedEmail,
+          name,
+          imageUrl: user.imageUrl ?? null,
+          cachedAt,
+        })
+        .onConflictDoUpdate({
+          target: userCache.userId,
+          set: {
+            email: resolvedEmail,
+            name,
+            imageUrl: user.imageUrl ?? null,
+            cachedAt,
+          },
+        });
+      signal.throwIfAborted();
+      return user.id;
+    });
+  },
+);
 
 function clerkRoleToCacheRole(role: string): "admin" | "member" {
   return role === "org:admin" ? "admin" : "member";
@@ -245,3 +342,84 @@ export function testUserOrgId(
     return cached?.orgId ?? null;
   });
 }
+
+export const resolveTestOrgId$ = command(
+  async (
+    { get, set },
+    userId: string,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const cachedOrgId = await get(testUserOrgId(userId));
+    signal.throwIfAborted();
+    if (cachedOrgId) {
+      return cachedOrgId;
+    }
+
+    const clerk = get(clerk$);
+    const writeDb = set(writeDb$);
+    return await writeDb.transaction(async (tx): Promise<string> => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`clerk_test_org:${userId}`}))`,
+      );
+      signal.throwIfAborted();
+
+      const [lockedCached] = await tx
+        .select({ orgId: orgMembersCache.orgId })
+        .from(orgMembersCache)
+        .where(eq(orgMembersCache.userId, userId))
+        .orderBy(desc(orgMembersCache.cachedAt))
+        .limit(1);
+      signal.throwIfAborted();
+      if (lockedCached) {
+        return lockedCached.orgId;
+      }
+
+      const memberships = await clerk.users.getOrganizationMembershipList({
+        userId,
+      });
+      signal.throwIfAborted();
+      const membership = [...memberships.data].sort((a, b) => {
+        return a.createdAt - b.createdAt;
+      })[0];
+      if (!membership) {
+        throw new Error(`Test user ${userId} has no organization membership`);
+      }
+
+      const org = membership.organization;
+      const cachedAt = new Date(nowDate().getTime() + FAR_FUTURE_CACHE_MS);
+      await tx
+        .insert(orgCache)
+        .values({
+          orgId: org.id,
+          slug: org.slug ?? org.id,
+          name: org.name ?? org.slug ?? org.id,
+          cachedAt,
+        })
+        .onConflictDoUpdate({
+          target: orgCache.orgId,
+          set: {
+            slug: org.slug ?? org.id,
+            name: org.name ?? org.slug ?? org.id,
+            cachedAt,
+          },
+        });
+      await tx
+        .insert(orgMembersCache)
+        .values({
+          orgId: org.id,
+          userId,
+          role: clerkRoleToCacheRole(membership.role),
+          cachedAt,
+        })
+        .onConflictDoUpdate({
+          target: [orgMembersCache.orgId, orgMembersCache.userId],
+          set: {
+            role: clerkRoleToCacheRole(membership.role),
+            cachedAt,
+          },
+        });
+      signal.throwIfAborted();
+      return org.id;
+    });
+  },
+);

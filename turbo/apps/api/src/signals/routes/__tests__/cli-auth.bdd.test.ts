@@ -494,6 +494,50 @@ describe("CLI-TEST: test-token provisioning", () => {
     const unresolved = await authDevice.requestTestTokenRaw();
     expect(unresolved.status).toBe(500);
   });
+
+  it("refreshes recreated users and serves downstream setup from cache", async () => {
+    const firstActor = bdd.user();
+    authDevice.seedClerkDirectory(firstActor);
+    const first = await authDevice.requestTestToken(
+      { email: firstActor.email },
+      [200],
+    );
+    if (first.status !== 200) {
+      throw new Error(`Expected first test token, got ${first.status}`);
+    }
+    expect(first.body.user_id).toBe(firstActor.userId);
+
+    const recreatedActor = bdd.user({ email: firstActor.email });
+    authDevice.seedClerkDirectory(recreatedActor);
+    const refreshed = await authDevice.requestTestToken(
+      { email: firstActor.email },
+      [200],
+    );
+    if (refreshed.status !== 200) {
+      throw new Error(`Expected refreshed test token, got ${refreshed.status}`);
+    }
+    expect(refreshed.body.user_id).toBe(recreatedActor.userId);
+
+    context.mocks.clerk.users.getUserList.mockRejectedValue(
+      new Error("Clerk rate limited"),
+    );
+    context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+      new Error("Clerk rate limited"),
+    );
+    const seeded = await authDevice.requestTestConnector(
+      { email: firstActor.email },
+      {
+        connectorName: "github",
+        authMethod: "oauth",
+        accessToken: "cached-identity-access-token",
+      },
+      [200],
+    );
+    if (seeded.status !== 200) {
+      throw new Error(`Expected cached identity seed, got ${seeded.status}`);
+    }
+    expect(seeded.body.orgId).toBe(recreatedActor.orgId);
+  });
 });
 
 describe("CLI-TEST: test-connector", () => {
