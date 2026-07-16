@@ -1,3 +1,4 @@
+import { Socket } from "node:net";
 import { performance } from "node:perf_hooks";
 
 import {
@@ -15,6 +16,16 @@ import { deriveSqlSpanName } from "./sql-span-name";
 const POOL_QUERY_SPAN_KEY = createContextKey("vm0.pg.pool-query-span");
 const POOL_ACQUIRE_DURATION_ATTRIBUTE = "vm0.db.pool.acquire.duration_ms";
 const POOL_ACQUIRE_PATH_ATTRIBUTE = "vm0.db.pool.acquire.path";
+const CONNECTION_LOOKUP_DURATION_ATTRIBUTE =
+  "vm0.db.connection.lookup.duration_ms";
+const CONNECTION_SOCKET_CONNECT_DURATION_ATTRIBUTE =
+  "vm0.db.connection.socket_connect.duration_ms";
+const CONNECTION_ATTEMPT_COUNT_ATTRIBUTE = "vm0.db.connection.attempt_count";
+const CONNECTION_ATTEMPT_FAILED_COUNT_ATTRIBUTE =
+  "vm0.db.connection.attempt_failed_count";
+const CONNECTION_ATTEMPT_TIMEOUT_COUNT_ATTRIBUTE =
+  "vm0.db.connection.attempt_timeout_count";
+const CONNECTION_ADDRESS_FAMILY_ATTRIBUTE = "vm0.db.connection.address_family";
 
 type AnyArgs = readonly unknown[];
 type PgQuery = (...args: AnyArgs) => unknown;
@@ -28,6 +39,99 @@ type PoolConnectCallback = (
 
 class PoolQuerySpan {
   constructor(readonly span: Span) {}
+}
+
+function normalizeAddressFamily(
+  family: string | undefined,
+): "ipv4" | "ipv6" | undefined {
+  if (family === "IPv4") {
+    return "ipv4";
+  }
+  if (family === "IPv6") {
+    return "ipv6";
+  }
+  return undefined;
+}
+
+export function createInstrumentedPgStream(): Socket {
+  const socket = new Socket();
+  const markedSpan = context.active().getValue(POOL_QUERY_SPAN_KEY);
+  if (
+    !(markedSpan instanceof PoolQuerySpan) ||
+    !markedSpan.span.isRecording()
+  ) {
+    return socket;
+  }
+
+  const querySpan = markedSpan.span;
+  const startedAt = performance.now();
+  let attemptCount = 0;
+  let failedAttemptCount = 0;
+  let timedOutAttemptCount = 0;
+
+  function onLookup(): void {
+    querySpan.setAttribute(
+      CONNECTION_LOOKUP_DURATION_ATTRIBUTE,
+      performance.now() - startedAt,
+    );
+  }
+
+  function onConnectionAttempt(): void {
+    attemptCount += 1;
+    querySpan.setAttribute(CONNECTION_ATTEMPT_COUNT_ATTRIBUTE, attemptCount);
+  }
+
+  function onConnectionAttemptFailed(): void {
+    failedAttemptCount += 1;
+    querySpan.setAttribute(
+      CONNECTION_ATTEMPT_FAILED_COUNT_ATTRIBUTE,
+      failedAttemptCount,
+    );
+  }
+
+  function onConnectionAttemptTimeout(): void {
+    timedOutAttemptCount += 1;
+    querySpan.setAttribute(
+      CONNECTION_ATTEMPT_TIMEOUT_COUNT_ATTRIBUTE,
+      timedOutAttemptCount,
+    );
+  }
+
+  function removePhaseListeners(): void {
+    socket.removeListener("lookup", onLookup);
+    socket.removeListener("connectionAttempt", onConnectionAttempt);
+    socket.removeListener("connectionAttemptFailed", onConnectionAttemptFailed);
+    socket.removeListener(
+      "connectionAttemptTimeout",
+      onConnectionAttemptTimeout,
+    );
+    socket.removeListener("connect", onConnect);
+    socket.removeListener("close", removePhaseListeners);
+  }
+
+  function onConnect(): void {
+    querySpan.setAttribute(
+      CONNECTION_SOCKET_CONNECT_DURATION_ATTRIBUTE,
+      performance.now() - startedAt,
+    );
+    const addressFamily = normalizeAddressFamily(socket.remoteFamily);
+    if (addressFamily) {
+      querySpan.setAttribute(
+        CONNECTION_ADDRESS_FAMILY_ATTRIBUTE,
+        addressFamily,
+      );
+    }
+    removePhaseListeners();
+  }
+
+  socket.once("lookup", onLookup);
+  socket.on("connectionAttempt", onConnectionAttempt);
+  socket.on("connectionAttemptFailed", onConnectionAttemptFailed);
+  socket.on("connectionAttemptTimeout", onConnectionAttemptTimeout);
+  socket.once("connect", onConnect);
+  socket.once("close", removePhaseListeners);
+
+  return socket;
 }
 
 function extractSql(args: AnyArgs): string {
