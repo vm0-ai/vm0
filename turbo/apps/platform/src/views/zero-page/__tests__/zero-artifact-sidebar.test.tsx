@@ -2453,7 +2453,11 @@ describe("zero artifact sidebar", () => {
       zeroConnectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
         expect(params.type).toBe("google-drive");
-        expect(body.authMethod).toBe(authMethod);
+        expect(body).toStrictEqual({
+          authMethod,
+          agentId: AGENT_ID,
+          authorizeAgent: true,
+        });
         return respond(200, { authorizationUrl });
       },
     );
@@ -2629,6 +2633,9 @@ describe("zero artifact sidebar", () => {
     let enabledTypes: string[] = [];
     let agentAuthorized = false;
     let artifactSynced = false;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes });
+    });
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {
@@ -2902,6 +2909,11 @@ describe("zero artifact sidebar", () => {
       });
     });
     let agentAuthorized = false;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: agentAuthorized ? ["google-drive"] : [],
+      });
+    });
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {
@@ -3305,6 +3317,14 @@ ${openFencedHostedSiteUrl}`,
 
     click(screen.getByLabelText("Close presentation editor"));
     await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+    await waitFor(() => {
       expect(redeployedHtml).not.toBeNull();
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
     });
@@ -3473,6 +3493,14 @@ ${openFencedHostedSiteUrl}`,
 
     click(screen.getByLabelText("Close presentation editor"));
     await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
+    await waitFor(() => {
       expect(redeployedHtml).not.toBeNull();
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
     });
@@ -3633,6 +3661,14 @@ ${openFencedHostedSiteUrl}`,
       expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     });
     click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
     await waitFor(() => {
       expect(redeployedHtml).not.toBeNull();
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
@@ -3965,6 +4001,17 @@ ${openFencedHostedSiteUrl}`,
     click(screen.getByLabelText("Close presentation editor"));
 
     await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(redeployedHtml).toBeNull();
+
+    click(screen.getByText("Save"));
+
+    await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();
       expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
     });
@@ -3980,10 +4027,81 @@ ${openFencedHostedSiteUrl}`,
     });
   });
 
+  it("exits the presentation editor without publishing draft changes", async () => {
+    const presentationUrl =
+      "https://deck.sites.vm7.io/exit-without-saving.html";
+    let redeployCount = 0;
+
+    context.mocks.api(
+      zeroHostContract.redeployPresentationHtml,
+      ({ respond }) => {
+        redeployCount += 1;
+        return respond(200, {
+          siteId: "44444444-4444-4444-8444-444444444444",
+          deploymentId: "55555555-5555-4555-8555-555555555555",
+          publicSlug: "exit-without-saving",
+          url: presentationUrl,
+          status: "ready",
+        });
+      },
+    );
+    setupPresentationArtifactThread(presentationUrl);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Edit presentation"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
+        "Open with launch metrics.",
+      );
+    });
+    await fill(
+      screen.getByLabelText("Speaker notes"),
+      "Discard this local draft.",
+    );
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(redeployCount).toBe(0);
+
+    click(screen.getByText("Discard"));
+    await waitFor(() => {
+      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+    });
+    expect(redeployCount).toBe(0);
+
+    click(screen.getByLabelText("Edit presentation"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Speaker notes")).toHaveValue(
+        "Open with launch metrics.",
+      );
+    });
+
+    click(screen.getByLabelText("Close presentation editor"));
+    await waitFor(() => {
+      expect(screen.queryByText("Presentation editor")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("Do you want to save your changes?", {
+        selector: "h2",
+      }),
+    ).not.toBeInTheDocument();
+    expect(redeployCount).toBe(0);
+  });
+
   it("edits and downloads a presentation artifact from the editor", async () => {
     const thumbnailObserver = mockIntersectionObserver();
     const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
     const downloads = captureDownloads(context.signal);
+    const speakerNotesResponse = Promise.withResolvers<void>();
     let generatedSlides: { slideId: string; speakerNotes: string }[] = [
       {
         slideId: "slide-plan",
@@ -4004,7 +4122,8 @@ ${openFencedHostedSiteUrl}`,
     );
     context.mocks.api(
       zeroHostContract.generatePresentationSpeakerNotes,
-      ({ respond }) => {
+      async ({ respond }) => {
+        await speakerNotesResponse.promise;
         return respond(200, {
           kind: "presentation-speaker-notes-patch",
           version: 1,
@@ -4090,7 +4209,16 @@ ${openFencedHostedSiteUrl}`,
     });
 
     await fill(screen.getByLabelText("Speaker notes"), " ");
-    click(screen.getByLabelText("Generate PPT script"));
+    click(screen.getByLabelText("Generate speaker notes"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Generating speaker notes")).toHaveAttribute(
+        "data-generating",
+        "true",
+      );
+      expect(screen.getByText("Generating")).toBeInTheDocument();
+    });
+    speakerNotesResponse.resolve();
 
     await waitFor(() => {
       expect(
@@ -4107,7 +4235,7 @@ ${openFencedHostedSiteUrl}`,
       ).not.toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Generate PPT script"));
+    click(screen.getByLabelText("Generate speaker notes"));
 
     await waitFor(() => {
       expect(
@@ -4128,7 +4256,7 @@ ${openFencedHostedSiteUrl}`,
       },
     ];
     await fill(screen.getByLabelText("Speaker notes"), " ");
-    click(screen.getByLabelText("Generate PPT script"));
+    click(screen.getByLabelText("Generate speaker notes"));
 
     await waitFor(() => {
       expect(
@@ -4219,6 +4347,15 @@ ${openFencedHostedSiteUrl}`,
     });
 
     click(screen.getByLabelText("Close presentation editor"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Do you want to save your changes?", {
+          selector: "h2",
+        }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(screen.getByText("Presentation updated")).toBeInTheDocument();

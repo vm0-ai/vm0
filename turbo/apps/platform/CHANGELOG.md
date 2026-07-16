@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.602.1](https://github.com/vm0-ai/vm0/compare/app-v0.602.0...app-v0.602.1) (2026-07-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.1
+    * @vm0/connectors bumped to 1.166.1
+    * @vm0/core bumped to 8.437.1
+
+## [0.602.0](https://github.com/vm0-ai/vm0/compare/app-v0.601.1...app-v0.602.0) (2026-07-16)
+
+
+### Features
+
+* add presentation element offset protocol ([#21565](https://github.com/vm0-ai/vm0/issues/21565)) ([ef75664](https://github.com/vm0-ai/vm0/commit/ef7566467fd410f09dec760a3fd47e364fa7a180))
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* authorize agents during connector connection ([#21709](https://github.com/vm0-ai/vm0/issues/21709)) ([5edaafc](https://github.com/vm0-ai/vm0/commit/5edaafcdf15ab37c2c96b3584c70f9b145ace20e))
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+* **platform:** stabilize mobile pwa keyboard and caret ([#21518](https://github.com/vm0-ai/vm0/issues/21518)) ([baa6d59](https://github.com/vm0-ai/vm0/commit/baa6d59eb6fd130e80d7054e226888cdddfff1cc))
+* route chat thread navigation through page setup ([#21712](https://github.com/vm0-ai/vm0/issues/21712)) ([e52ca6a](https://github.com/vm0-ai/vm0/commit/e52ca6a058e36c5640e0d9b02dc5ddbde21251d6))
+
+
+### Refactoring
+
+* **app:** make platform builds portable across domains ([#21537](https://github.com/vm0-ai/vm0/issues/21537)) ([48ff8ef](https://github.com/vm0-ai/vm0/commit/48ff8efba26cfd7daf81558fbe3f157596558d5e))
+* remove workflow trigger compatibility surfaces ([#21523](https://github.com/vm0-ai/vm0/issues/21523)) ([88edf69](https://github.com/vm0-ai/vm0/commit/88edf6915fdb75904e866ac8df8107737286c95b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.0
+    * @vm0/connectors bumped to 1.166.0
+    * @vm0/core bumped to 8.437.0
+
 ## [0.601.1](https://github.com/vm0-ai/vm0/compare/app-v0.601.0...app-v0.601.1) (2026-07-15)
 
 

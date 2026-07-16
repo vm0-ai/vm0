@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.27.42](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.41...desktop-v0.27.42) (2026-07-16)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.1
+
+## [0.27.41](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.40...desktop-v0.27.41) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.0
+
 ## [0.27.40](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.39...desktop-v0.27.40) (2026-07-15)
 
 

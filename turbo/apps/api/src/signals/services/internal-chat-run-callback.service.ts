@@ -3,8 +3,6 @@ import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
@@ -27,7 +25,6 @@ import {
   isNotNull,
   isNull,
   lte,
-  or,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -85,7 +82,6 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { shouldStartNewChatSession } from "./chat-session-continuity.service";
 
 const log = logger("callback:chat");
@@ -115,7 +111,6 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
@@ -353,9 +348,9 @@ type CreatedQueuedRun = {
   readonly status: "queued" | "pending" | "running";
 };
 
-type QueuedUserMessageClaim =
-  | { readonly kind: "created"; readonly messageId: string }
-  | { readonly kind: "updated"; readonly messageId: string };
+interface QueuedUserMessageClaim {
+  readonly messageId: string;
+}
 
 interface CreatedAutoSentQueuedRun {
   readonly run: CreatedQueuedRun;
@@ -1544,12 +1539,10 @@ async function latestSessionForThreadFromDb(
 function shouldStartNewSessionForQueuedMessage(params: {
   readonly latestSession: LatestThreadSession | null;
   readonly queuedMessage: QueuedUserMessage;
-  readonly chatModelFamilySessionContinuityEnabled: boolean;
 }): boolean {
   return shouldStartNewChatSession({
     latestModel: params.latestSession?.selectedModel,
     nextModel: params.queuedMessage.selectedModel,
-    preserveModelFamilySession: params.chatModelFamilySessionContinuityEnabled,
   });
 }
 
@@ -1752,27 +1745,9 @@ async function buildCreateQueuedChatRunInput(args: {
         ]);
       },
     );
-  const chatModelFamilySessionContinuityEnabled =
-    await measureChatCallbackPreCreateTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context",
-      "nested",
-      async () => {
-        const context = await loadUserFeatureSwitchContext(
-          args.db,
-          args.agent.orgId,
-          args.userId,
-        );
-        return isFeatureEnabled(
-          FeatureSwitchKey.ChatModelFamilySessionContinuity,
-          context,
-        );
-      },
-    );
   const startNewSession = shouldStartNewSessionForQueuedMessage({
     latestSession,
     queuedMessage: resolvedQueuedMessage,
-    chatModelFamilySessionContinuityEnabled,
   });
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
@@ -1916,49 +1891,23 @@ async function claimQueuedUserMessageForDispatch(args: {
       return null;
     }
 
-    // Queue-first messages (identified by their chat_message_queue item) are
-    // claimed in place: bind the run id onto the existing row and consume the
-    // queue item. Legacy queued messages keep the shadow-row-plus-revoke
-    // convention so pre-switch rows claim exactly as before.
-    if (args.queuedMessage.queueFirst) {
-      const [updated] = await tx
-        .update(chatMessages)
-        .set({ runId: args.runId })
-        .where(
-          and(
-            eq(chatMessages.id, args.queuedMessage.id),
-            eq(chatMessages.chatThreadId, args.threadId),
-            isNull(chatMessages.runId),
-          ),
-        )
-        .returning({ id: chatMessages.id });
-      if (updated) {
-        await deleteUserMessageQueueItem(tx, args.queuedMessage.id);
-      }
-      return updated
-        ? { kind: "updated" as const, messageId: updated.id }
-        : null;
-    }
-
-    const [message] = await tx
-      .insert(chatMessages)
-      .values({
-        chatThreadId: args.threadId,
-        role: "user",
-        content: args.queuedMessage.content,
-        runId: args.runId,
-        attachFiles: args.queuedMessage.attachFiles
-          ? [...args.queuedMessage.attachFiles]
-          : null,
-        attachFileMetadata: args.queuedMessage.attachFileMetadata
-          ? [...args.queuedMessage.attachFileMetadata]
-          : null,
-        generationTemplate: args.queuedMessage.generationTemplate,
-        revokesMessageId: args.queuedMessage.id,
-      })
-      .onConflictDoNothing({ target: chatMessages.revokesMessageId })
+    // Claim both current queue items and persisted pre-convergence rows in
+    // place. Deleting a missing queue pointer is a safe no-op for legacy rows.
+    const [updated] = await tx
+      .update(chatMessages)
+      .set({ runId: args.runId })
+      .where(
+        and(
+          eq(chatMessages.id, args.queuedMessage.id),
+          eq(chatMessages.chatThreadId, args.threadId),
+          isNull(chatMessages.runId),
+        ),
+      )
       .returning({ id: chatMessages.id });
-    return message ? { kind: "created" as const, messageId: message.id } : null;
+    if (updated) {
+      await deleteUserMessageQueueItem(tx, args.queuedMessage.id);
+    }
+    return updated ? { messageId: updated.id } : null;
   });
 
   return claimed;
@@ -1981,8 +1930,6 @@ async function appendAutoSentQueuedRunMarker(args: {
       return;
     }
 
-    // The claimed message is either the queue-first row itself (claimed in
-    // place) or a legacy shadow row revoking the queued original.
     const [message] = await tx
       .select({ createdAt: chatMessages.createdAt })
       .from(chatMessages)
@@ -1991,10 +1938,7 @@ async function appendAutoSentQueuedRunMarker(args: {
           eq(chatMessages.chatThreadId, args.threadId),
           eq(chatMessages.runId, args.runId),
           eq(chatMessages.role, "user"),
-          or(
-            eq(chatMessages.id, args.queuedMessageId),
-            eq(chatMessages.revokesMessageId, args.queuedMessageId),
-          ),
+          eq(chatMessages.id, args.queuedMessageId),
         ),
       )
       .limit(1);
@@ -2097,14 +2041,12 @@ async function publishAutoSentQueuedRunSignals(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
-      if (args.claim.kind === "updated") {
-        await publishChatThreadMessageUpdated(
-          args.userId,
-          args.threadId,
-          args.claim.messageId,
-        );
-      }
-      if (args.claim.kind === "created" || args.runStatus === "queued") {
+      await publishChatThreadMessageUpdated(
+        args.userId,
+        args.threadId,
+        args.claim.messageId,
+      );
+      if (args.runStatus === "queued") {
         await publishUserSignal(
           [args.userId],
           `chatThreadMessageCreated:${args.threadId}`,

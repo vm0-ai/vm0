@@ -895,7 +895,7 @@ function presentationPreviewInteractionStyle(
     return `
       [data-vm0-editor-edit-id] {
         cursor: text !important;
-        outline: 2px solid transparent !important;
+        outline: 4px solid transparent !important;
         outline-offset: 4px !important;
         z-index: 2 !important;
         pointer-events: auto !important;
@@ -906,16 +906,18 @@ function presentationPreviewInteractionStyle(
       }
       [data-vm0-editor-edit-id]:hover {
         outline-color: #0f82ff !important;
+        filter: none !important;
       }
       [data-vm0-editor-edit-id]:focus {
         outline-color: hsl(var(--ring, 15 80% 66%)) !important;
+        filter: none !important;
       }
     `;
   }
   return `
     [data-vm0-editor-move-id] {
       cursor: move !important;
-      outline: 2px solid transparent !important;
+      outline: 4px solid transparent !important;
       outline-offset: 4px !important;
       z-index: 2 !important;
       pointer-events: auto !important;

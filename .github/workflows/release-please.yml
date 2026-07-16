@@ -1364,7 +1364,8 @@ jobs:
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
-            VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+            VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW=${{ vars.PLAUSIBLE_SCRIPT_URL }}
+            VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
             VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
             VITE_SENTRY_DSN=${{ vars.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}

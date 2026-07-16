@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.64](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.63...guest-download-v0.20.64) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+* **guest-download:** stop retrying malformed urls ([#21679](https://github.com/vm0-ai/vm0/issues/21679)) ([74b39d6](https://github.com/vm0-ai/vm0/commit/74b39d631be6b29025a4bafd6d89da3e5ce00350))
+
 ## [0.20.63](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.62...guest-download-v0.20.63) (2026-07-15)
 
 ## [0.20.62](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.61...guest-download-v0.20.62) (2026-07-14)

@@ -8,6 +8,7 @@ import {
   cronAggregateUsageContract,
   cronCompactChatThreadSnapshotsContract,
   cronCleanupSandboxesContract,
+  cronConnectorCatalogContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
   cronDrainRelationshipMemoryContract,
@@ -93,6 +94,10 @@ const expectedVercelCrons = [
   },
   {
     path: cronSyncSkillsContract.sync.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronConnectorCatalogContract.sync.path,
     schedule: "* * * * *",
   },
   {

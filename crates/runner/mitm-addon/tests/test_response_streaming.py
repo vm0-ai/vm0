@@ -1113,7 +1113,14 @@ class TestReleaseResponseStreamState:
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     @pytest.mark.parametrize(
-        ("host", "path", "response_content_type", "metadata", "finish_key"),
+        (
+            "host",
+            "path",
+            "response_content_type",
+            "metadata",
+            "finish_key",
+            "reports_on_interruption",
+        ),
         [
             pytest.param(
                 "api.anthropic.com",
@@ -1125,6 +1132,7 @@ class TestReleaseResponseStreamState:
                     metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",
                 },
                 "model_json_usage_finish",
+                False,
                 id="model-json",
             ),
             pytest.param(
@@ -1138,6 +1146,7 @@ class TestReleaseResponseStreamState:
                     metadata_keys.MODEL_USAGE_PROVIDER: "gpt-5.5",
                 },
                 "model_sse_usage_finish",
+                False,
                 id="model-sse",
             ),
             pytest.param(
@@ -1150,6 +1159,7 @@ class TestReleaseResponseStreamState:
                     metadata_keys.ORIGINAL_URL: "https://api.x.com/2/tweets",
                 },
                 "connector_response_finish",
+                False,
                 id="x-json",
             ),
             pytest.param(
@@ -1162,6 +1172,7 @@ class TestReleaseResponseStreamState:
                     metadata_keys.ORIGINAL_URL: "https://api.x.com/2/tweets/search/stream",
                 },
                 "connector_response_finish",
+                True,
                 id="x-ndjson",
             ),
         ],
@@ -1174,6 +1185,7 @@ class TestReleaseResponseStreamState:
         response_content_type,
         metadata,
         finish_key,
+        reports_on_interruption,
     ):
         flow = real_flow(with_response=False, host=host, path=path)
         flow.metadata.update(metadata)
@@ -1184,10 +1196,14 @@ class TestReleaseResponseStreamState:
 
         mitm_addon.responseheaders(flow)
         assert finish_key in flow.metadata
+        assert (
+            "connector_response_report_on_interruption" in flow.metadata
+        ) is reports_on_interruption
 
         response_streaming.release_response_stream_state(flow)
 
         assert finish_key not in flow.metadata
+        assert "connector_response_report_on_interruption" not in flow.metadata
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata

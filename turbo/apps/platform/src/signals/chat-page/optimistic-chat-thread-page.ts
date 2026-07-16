@@ -231,15 +231,11 @@ const routeMainChatThread$ = command(
 );
 
 const routeSidebarChatThread$ = command(
-  async (
-    { get, set },
-    threadId: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
+  ({ get, set }, threadId: string): void => {
     if (!get(currentChatThreadId$)) {
       return;
     }
-    await set(loadRightThread$, threadId, signal);
+    set(loadRightThread$, threadId);
   },
 );
 
@@ -265,7 +261,7 @@ const routeChatThread$ = command(
         ...(searchParams ? { searchParams } : {}),
       });
     } else {
-      await set(routeSidebarChatThread$, threadId, signal);
+      await set(routeSidebarChatThread$, threadId);
     }
   },
 );

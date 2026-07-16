@@ -10,13 +10,14 @@ delegates to the matching per-connector ``report_usage`` function.
 The TypeScript billable connector manifest lives in
 ``turbo/packages/firewalls-generator/src/connector-firewall-manifest.ts`` as
 ``BILLABLE_FIREWALL_CONNECTOR_TYPES``. Adding a new billable connector means
-marking it billable there, adding a connector module here, and registering it
-in :data:`_HANDLERS`. Connectors that need incremental response-body usage
-extraction also register a parser factory in :data:`_RESPONSE_PARSER_FACTORIES`.
-The dispatcher already enforces the cross-connector invariants.
+marking it billable there, adding a connector module here, and registering its
+reporter plus optional response-inspection capability in :data:`_REGISTRATIONS`.
+Response inspection owns both parser creation and buffered-fallback selection,
+so those decisions cannot drift across independent registries.
 """
 
 from collections.abc import Callable
+from typing import NamedTuple
 
 from mitmproxy import http
 
@@ -30,26 +31,30 @@ _ConnectorUsageHandler = Callable[[http.HTTPFlow, str, str], None]
 _ResponseParserFactory = Callable[[http.HTTPFlow, str], ConnectorResponseParser | None]
 _ResponseBufferFallbackPredicate = Callable[[http.HTTPFlow], bool]
 
-# Map firewall_name → per-connector report_usage handler. A handler is only
-# invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True. That
-# flag comes from the runner claim's ``billableFirewalls`` list, generated from
-# ``BILLABLE_FIREWALL_CONNECTOR_TYPES`` in the TypeScript firewall manifest.
-# This table controls which billable flows the addon knows how to parse. Desync
-# manifests as a dropped billing record plus a missing handler in test coverage.
-_HANDLERS: dict[str, _ConnectorUsageHandler] = {
-    "x": x.report_usage,
-}
 
-# Response parser factories are consulted at response-header time for registered
-# connector firewall flows that may need streamed response-body state before
-# final usage reporting. A factory returns None when the specific flow needs no
-# parser.
-_RESPONSE_PARSER_FACTORIES: dict[str, _ResponseParserFactory] = {
-    "x": x.create_response_parser,
-}
+class _ConnectorResponseInspection(NamedTuple):
+    create_parser: _ResponseParserFactory
+    needs_buffered_fallback: _ResponseBufferFallbackPredicate
 
-_RESPONSE_BUFFER_FALLBACK_PREDICATES: dict[str, _ResponseBufferFallbackPredicate] = {
-    "x": x.needs_response_buffer_fallback,
+
+class _ConnectorUsageRegistration(NamedTuple):
+    report_usage: _ConnectorUsageHandler
+    response_inspection: _ConnectorResponseInspection | None = None
+
+
+# Map firewall_name → one coherent connector usage registration. A reporter is
+# only invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True.
+# That flag comes from the runner claim's ``billableFirewalls`` list, generated
+# from ``BILLABLE_FIREWALL_CONNECTOR_TYPES`` in the TypeScript firewall manifest.
+# Deployment desync manifests as a dropped billing record plus the warning below.
+_REGISTRATIONS: dict[str, _ConnectorUsageRegistration] = {
+    "x": _ConnectorUsageRegistration(
+        report_usage=x.report_usage,
+        response_inspection=_ConnectorResponseInspection(
+            create_parser=x.create_response_parser,
+            needs_buffered_fallback=x.needs_response_buffer_fallback,
+        ),
+    ),
 }
 
 # One-shot guard: first time we see a billable firewall_name with no
@@ -65,6 +70,11 @@ def _require_original_url(flow: http.HTTPFlow) -> str:
     if not original_url:
         raise ValueError("registered billable connector flow is missing original_url")
     return original_url
+
+
+def _response_inspection(firewall_name: str) -> _ConnectorResponseInspection | None:
+    registration = _REGISTRATIONS.get(firewall_name)
+    return registration.response_inspection if registration is not None else None
 
 
 def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
@@ -89,27 +99,27 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
     firewall_name = flow_metadata.firewall_name(flow.metadata)
     if firewall_name.startswith("model-provider:"):
         return
-    handler = _HANDLERS.get(firewall_name)
-    if handler is None:
+    registration = _REGISTRATIONS.get(firewall_name)
+    if registration is None:
         if firewall_name and firewall_name not in _unregistered_handler_warned:
             _unregistered_handler_warned.add(firewall_name)
             log_usage_underbilling(
                 flow_metadata.proxy_log_path(flow.metadata),
                 f"Billable firewall {firewall_name!r} has no registered handler — "
                 "billing records for this firewall will be dropped.  Check that "
-                "BILLABLE_FIREWALL_CONNECTOR_TYPES and _HANDLERS here are in sync.",
+                "BILLABLE_FIREWALL_CONNECTOR_TYPES and _REGISTRATIONS here are in sync.",
                 "unregistered_billable_handler",
                 "confirmed",
                 firewall_name=firewall_name,
             )
         return
     original_url = _require_original_url(flow)
-    handler(flow, run_id, original_url)
+    registration.report_usage(flow, run_id, original_url)
 
 
 def has_connector_response_parser(firewall_name: str) -> bool:
     """Return whether a connector has response-body parser capability."""
-    return firewall_name in _RESPONSE_PARSER_FACTORIES
+    return _response_inspection(firewall_name) is not None
 
 
 def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | None:
@@ -122,11 +132,11 @@ def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponsePa
     if not flow_metadata.is_firewall_billable(flow.metadata):
         return None
     firewall_name = flow_metadata.firewall_name(flow.metadata)
-    factory = _RESPONSE_PARSER_FACTORIES.get(firewall_name)
-    if factory is None:
+    inspection = _response_inspection(firewall_name)
+    if inspection is None:
         return None
     original_url = _require_original_url(flow)
-    return factory(flow, original_url)
+    return inspection.create_parser(flow, original_url)
 
 
 def needs_connector_response_buffer_fallback(flow: http.HTTPFlow) -> bool:
@@ -134,5 +144,5 @@ def needs_connector_response_buffer_fallback(flow: http.HTTPFlow) -> bool:
     if not flow_metadata.is_firewall_billable(flow.metadata):
         return False
     firewall_name = flow_metadata.firewall_name(flow.metadata)
-    predicate = _RESPONSE_BUFFER_FALLBACK_PREDICATES.get(firewall_name)
-    return predicate(flow) if predicate is not None else False
+    inspection = _response_inspection(firewall_name)
+    return inspection.needs_buffered_fallback(flow) if inspection is not None else False

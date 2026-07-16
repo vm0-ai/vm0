@@ -6,7 +6,10 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { reloadAgentConnectorAuthorizations$ } from "../zero-page/agent-connector-authorizations.ts";
+import {
+  isAgentConnectorAuthorized,
+  reloadAgentConnectorAuthorizations$,
+} from "../zero-page/agent-connector-authorizations.ts";
 import { settle, withCleanup } from "../utils.ts";
 
 type ArtifactGoogleDriveSyncParams = {
@@ -167,14 +170,34 @@ async function authorizeGoogleDriveForAgent(params: {
 
 export const waitForGoogleDriveAuthorization$ = command(
   async (
-    { set },
-    params: { readonly agentId: string },
+    { get, set },
+    params: {
+      readonly agentId: string;
+      readonly authorizeConnected?: boolean;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
-    const authorizeWhenConnected$ = command(
+    if (params.authorizeConnected) {
+      await authorizeGoogleDriveForAgent({
+        agentId: params.agentId,
+        createClient: get(zeroClient$),
+        signal,
+      });
+    }
+
+    const authorizationReady$ = command(
       async ({ get, set }, sig: AbortSignal): Promise<boolean> => {
         set(reloadConnectors$);
-        const { connectors } = await get(connectors$);
+        set(reloadAgentConnectorAuthorizations$);
+        const [{ connectors }, authorized] = await Promise.all([
+          get(connectors$),
+          get(
+            isAgentConnectorAuthorized({
+              agentId: params.agentId,
+              connectorType: "google-drive",
+            }),
+          ),
+        ]);
         sig.throwIfAborted();
         const connected = connectors.some((connector) => {
           return (
@@ -182,32 +205,17 @@ export const waitForGoogleDriveAuthorization$ = command(
             connector.connectionStatus === "connected"
           );
         });
-        if (!connected) {
-          return false;
-        }
-
-        await withCleanup(
-          authorizeGoogleDriveForAgent({
-            agentId: params.agentId,
-            createClient: get(zeroClient$),
-            signal: sig,
-          }),
-          () => {
-            set(reloadAgentConnectorAuthorizations$);
-          },
-        );
-        sig.throwIfAborted();
-        return true;
+        return connected && authorized;
       },
     );
 
-    if (await set(authorizeWhenConnected$, signal)) {
+    if (await set(authorizationReady$, signal)) {
       return;
     }
     signal.throwIfAborted();
     await set(
       setAblyLoop$,
-      { topic: "connector:changed", loopCommand$: authorizeWhenConnected$ },
+      { topic: "connector:changed", loopCommand$: authorizationReady$ },
       signal,
     );
   },
@@ -221,7 +229,7 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
   ) => {
     await set(
       waitForGoogleDriveAuthorization$,
-      { agentId: params.agentId },
+      { agentId: params.agentId, authorizeConnected: true },
       signal,
     );
     signal.throwIfAborted();

@@ -2474,14 +2474,6 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
   it("sends v1 chat messages with a personal access token", async () => {
     const { actor, agentId, runnerGroup } =
       await entitledChatActor("V1 send agent");
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor for queue coverage");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatMessageQueue]: true },
-    );
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     authOrg.mockClerkOrg(actor);
     const key = await authOrg.createApiKey(actor, {

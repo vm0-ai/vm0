@@ -162,8 +162,7 @@ Model-provider usage
 Connector usage and parser state
 --------------------------------
 - ``X_NDJSON_STATE``: ``dict`` owned by the X connector NDJSON parser. Written
-  when a streaming X response parser is registered, read by X billing, and
-  also read by ``error()`` to report partial stream usage.
+  when a streaming X response parser is registered and read by X billing.
 - ``X_JSON_STATE``: ``dict`` owned by the X connector JSON parser. Written by
   connector parser finalization before normal response billing, then read by X
   billing instead of the capped stream-buffer fallback.

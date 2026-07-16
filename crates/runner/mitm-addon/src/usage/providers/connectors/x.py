@@ -488,6 +488,7 @@ def create_response_parser(
 
             return ConnectorResponseParser(
                 feed=extractor.feed,
+                report_on_interruption=True,
                 finish=extractor.finish,
                 finish_decode_error=finish_ndjson_decode_error,
             )
@@ -512,6 +513,7 @@ def create_response_parser(
 
     return ConnectorResponseParser(
         feed=extractor.feed,
+        report_on_interruption=False,
         finish=finish_json_state,
         finish_decode_error=finish_json_decode_error,
     )

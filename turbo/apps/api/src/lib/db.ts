@@ -4,7 +4,10 @@ import { attachDatabasePool } from "@vercel/functions";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
-import { instrumentPgPool } from "./db-instrumentation";
+import {
+  createInstrumentedPgStream,
+  instrumentPgPool,
+} from "./db-instrumentation";
 import { env } from "./env";
 import { logger } from "./log";
 import { singleton } from "./singleton";
@@ -33,6 +36,7 @@ const pool = singleton((): Pool => {
       max: env("DB_POOL_MAX"),
       idleTimeoutMillis: env("DB_POOL_IDLE_TIMEOUT_MS"),
       connectionTimeoutMillis: env("DB_POOL_CONNECT_TIMEOUT_MS"),
+      stream: createInstrumentedPgStream,
     }),
     trace.getTracer("vm0-api/pg"),
   );

@@ -57,7 +57,11 @@ def flush_all_logs() -> None:
 
 
 def shutdown_log_writer() -> None:
-    """Drain and stop the JSONL writer."""
+    """Request the default bounded JSONL writer shutdown.
+
+    If the writer times out, it logs a warning and can leave accepted entries
+    pending; this wrapper does not report completion.
+    """
     jsonl_writer.shutdown_writer()
 
 

@@ -311,13 +311,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show VM0 Model in the workspace Add model selector.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatModelFamilySessionContinuity]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Reuse Claude Code or Codex chat sessions when switching models within the same model family.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -481,13 +474,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Queue workflow automation events per workflow and run them serially instead of firing concurrent runs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatMessageQueue]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Queue-first user message dispatch: sends enqueue a chat_message_queue item and claim it in place instead of the legacy revoke-claim convention.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

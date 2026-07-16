@@ -771,6 +771,7 @@ jobs:
     if: >-
       ${{
         (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
         startsWith(needs.prepare.outputs.job-ref, 'pr-') &&
         needs.prepare.outputs.www-preview-url != ''
       }}
@@ -805,6 +806,7 @@ jobs:
     # cannot resolve the temporary `gh-readonly-queue/*` ref via the GitHub API).
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1142,6 +1144,7 @@ jobs:
     if: >-
       ${{
         (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
         needs.prepare.outputs.job-ref != '' && (
           needs.prepare.outputs.api-changed == 'true' ||
           needs.prepare.outputs.cli-changed == 'true' ||
@@ -1180,6 +1183,10 @@ jobs:
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
+            VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW=${{ vars.PLAUSIBLE_SCRIPT_URL }}
+            VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+            VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
+            VITE_SENTRY_DSN=${{ vars.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
@@ -1215,6 +1222,7 @@ jobs:
     if: |
       always() &&
       github.event_name != 'push' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.api-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1670,6 +1678,7 @@ jobs:
     timeout-minutes: 20
     if: |
       needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     outputs:
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
@@ -1765,6 +1774,7 @@ jobs:
     timeout-minutes: 8
     if: |
       needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     steps:
       - uses: actions/checkout@v7
@@ -2038,6 +2048,7 @@ jobs:
     needs: [prepare, build-cli, deploy-api]
     if: |
       needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     timeout-minutes: 2
     steps:
@@ -2123,6 +2134,7 @@ jobs:
       ]
     if: |
       needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     strategy:
       fail-fast: false
@@ -2398,6 +2410,11 @@ jobs:
           RUNNER_E2E_SKIP_ALLOWED="true"
           if [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ]; then
             RUNNER_E2E_SKIP_ALLOWED=""
+          fi
+          if [ "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}" = "true" ]; then
+            # External fork PRs cannot access runner infra secrets, so their
+            # runner deployment and runner E2E jobs are expected to skip.
+            RUNNER_E2E_SKIP_ALLOWED="true"
           fi
 
           check_result() {

@@ -32,6 +32,7 @@ import {
   type DirectedAuthorizeConnectModalKey,
 } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { reloadAgentConnectorAuthorizations$ } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { Vm0LogoLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -266,18 +267,25 @@ function runDirectedAuthorize(params: {
   readonly connect: (
     connectorType: ConnectorType,
     method: ConnectorStatusAuthMethodDetail,
-    options: { readonly connectorLabel?: string },
+    options: {
+      readonly connectorLabel?: string;
+      readonly agentId?: string;
+    },
     signal: AbortSignal,
   ) => Promise<boolean>;
   readonly connectNoAuth: (
     args: {
       readonly type: ConnectorType;
       readonly authMethod: ConnectorAuthMethodId;
-      readonly options: { readonly connectorLabel?: string };
+      readonly options: {
+        readonly connectorLabel?: string;
+        readonly agentId?: string;
+      };
     },
     signal: AbortSignal,
   ) => Promise<boolean>;
   readonly openConnectModal: () => void;
+  readonly reloadAuthorization: () => void;
 }): void {
   if (!params.canAuthorize) {
     return;
@@ -301,12 +309,15 @@ function runDirectedAuthorize(params: {
   if (browserAuthMethod || noAuthMethod) {
     detach(
       (async () => {
-        let connected: boolean;
+        let connected = false;
         if (browserAuthMethod) {
           connected = await params.connect(
             params.connectorType,
             browserAuthMethod,
-            { connectorLabel: params.connectorLabel },
+            {
+              connectorLabel: params.connectorLabel,
+              agentId: params.agentId,
+            },
             params.signal,
           );
         } else if (noAuthMethod) {
@@ -314,21 +325,19 @@ function runDirectedAuthorize(params: {
             {
               type: params.connectorType,
               authMethod: noAuthMethod,
-              options: { connectorLabel: params.connectorLabel },
+              options: {
+                connectorLabel: params.connectorLabel,
+                agentId: params.agentId,
+              },
             },
             params.signal,
           );
         } else {
           return;
         }
-        if (!connected) {
-          return;
+        if (connected) {
+          params.reloadAuthorization();
         }
-        await params.authorize(
-          params.connectorType,
-          params.agentId,
-          params.signal,
-        );
       })(),
       Reason.DomCallback,
     );
@@ -346,6 +355,7 @@ function DirectedAuthorizeCard() {
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorize = useSet(authorizeConnector$);
+  const reloadAuthorization = useSet(reloadAgentConnectorAuthorizations$);
   const signal = useGet(pageSignal$);
   const connectModalKey = useGet(directedAuthorizeConnectModalKey$);
   const setDirectedAuthorizeConnectModalKey = useSet(
@@ -398,6 +408,7 @@ function DirectedAuthorizeCard() {
       authorize,
       connect,
       connectNoAuth,
+      reloadAuthorization,
       openConnectModal: () => {
         setDirectedAuthorizeConnectModalKey({ connectorType, agentId, signal });
       },
@@ -420,11 +431,10 @@ function DirectedAuthorizeCard() {
       {connectModalOpen && (
         <ConnectModal
           selectedType={connectorType}
+          agentId={agentId}
+          onSuccess={reloadAuthorization}
           onClose={() => {
             setDirectedAuthorizeConnectModalKey(null);
-          }}
-          onSuccess={async () => {
-            await authorize(connectorType, agentId, signal);
           }}
         />
       )}

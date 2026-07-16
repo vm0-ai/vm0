@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "base64",
  "futures-util",
@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "api-contracts"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1256,7 +1256,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.52.0"
+version = "0.53.1"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1292,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.39"
+version = "0.2.40"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "libc",
  "serde",
@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.63"
+version = "0.20.64"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.112"
+version = "0.16.113"
 dependencies = [
  "libc",
  "nix",
@@ -1340,7 +1340,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.17"
+version = "0.21.18"
 dependencies = [
  "api-contracts",
  "libc",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.6.7"
+version = "0.6.8"
 dependencies = [
  "chrono",
  "clap",
@@ -1363,14 +1363,14 @@ dependencies = [
 
 [[package]]
 name = "guest-reseed"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.25"
+version = "0.1.26"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2059,7 +2059,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.65"
+version = "0.4.66"
 dependencies = [
  "bitvec",
  "libc",
@@ -2289,7 +2289,7 @@ dependencies = [
 
 [[package]]
 name = "process-control-ipc"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "libc",
 ]
@@ -2567,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.144.26"
+version = "0.145.2"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2776,7 +2776,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.24"
+version = "0.19.25"
 dependencies = [
  "async-trait",
  "serde",
@@ -2788,7 +2788,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.122"
+version = "0.37.124"
 dependencies = [
  "async-trait",
  "base64",
@@ -2819,7 +2819,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.36"
+version = "0.8.37"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3069,7 +3069,7 @@ dependencies = [
 
 [[package]]
 name = "shell-quote"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "shlex"
@@ -3559,7 +3559,7 @@ dependencies = [
 
 [[package]]
 name = "tracing-test-support"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -3722,7 +3722,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.32"
+version = "0.19.33"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3733,7 +3733,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.57"
+version = "0.17.58"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3747,11 +3747,11 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.18.21"
+version = "0.18.22"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.147"
+version = "0.9.148"
 dependencies = [
  "guest-write-file",
  "libc",

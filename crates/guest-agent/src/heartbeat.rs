@@ -16,7 +16,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Run the heartbeat loop. Returns when:
 /// - The first heartbeat fails (returns `Err`)
-/// - Consecutive heartbeat failures exceed `MAX_CONSECUTIVE_HEARTBEAT_FAILURES` (returns `Err`)
+/// - Consecutive heartbeat failures reach `MAX_CONSECUTIVE_HEARTBEAT_FAILURES` (returns `Err`)
 /// - The shutdown token is cancelled (returns `Ok(())`)
 ///
 /// The caller should race this against CLI execution so that a network

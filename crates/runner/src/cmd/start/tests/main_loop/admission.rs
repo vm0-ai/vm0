@@ -1,10 +1,10 @@
 use super::super::super::*;
 use super::super::support::{
-    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, push_job, seed_idle_pool,
+    TestParkedIdleCandidateSpec, assert_run_exits_within, context_with_session, minimal_context,
+    mock_run_config, mock_run_config_with_overrides, push_job, seed_idle_pool,
     seed_idle_pool_with_history_generation, seed_idle_pool_with_overrides,
-    seed_workspace_cache_state, shutdown, test_profiles, wait_budget_count, wait_cancel_token,
-    wait_cancel_token_removed, wait_discover_entered,
+    seed_idle_pool_with_timing, seed_workspace_cache_state, shutdown, test_profiles,
+    wait_budget_count, wait_cancel_token, wait_cancel_token_removed, wait_discover_entered,
 };
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::Arc;
@@ -27,11 +27,33 @@ fn generation_affinity_protected_candidate(
     session_id: &str,
     target_generation_run_id: RunId,
 ) -> crate::provider::JobCandidate {
-    affinity_protected_candidate(run_id, session_id)
-        .with_history_generation_run_id(Some(target_generation_run_id))
-        .with_history_generation_affinity_protected_until(Some(
-            FUTURE_AFFINITY_PROTECTED_UNTIL.to_string(),
-        ))
+    generation_affinity_protected_candidate_with_discovered_at(
+        run_id,
+        session_id,
+        target_generation_run_id,
+        std::time::Instant::now(),
+    )
+}
+
+fn generation_affinity_protected_candidate_with_discovered_at(
+    run_id: RunId,
+    session_id: &str,
+    target_generation_run_id: RunId,
+    discovered_at: std::time::Instant,
+) -> crate::provider::JobCandidate {
+    crate::provider::JobCandidate::new_with_discovered_at(
+        run_id,
+        "vm0/default".into(),
+        discovered_at,
+    )
+    .with_affinity_metadata(
+        Some(session_id.to_string()),
+        Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
+    )
+    .with_history_generation_run_id(Some(target_generation_run_id))
+    .with_history_generation_affinity_protected_until(Some(
+        FUTURE_AFFINITY_PROTECTED_UNTIL.to_string(),
+    ))
 }
 
 /// TOCTOU regression: soft drain can arrive after the main loop has selected
@@ -176,6 +198,10 @@ async fn claim_failure_rolls_back_budget() {
         unavailable_candidate.session_history_generation_relationship(),
         Some(crate::provider::SessionHistoryGenerationRelationship::Fresh)
     );
+    assert_eq!(
+        unavailable_candidate.session_history_generation_local_availability(),
+        None
+    );
 
     // Second job: claim succeeds — budget should have been freed.
     let run_id_2 = RunId::new_v4();
@@ -202,6 +228,10 @@ async fn claim_failure_rolls_back_budget() {
     assert_eq!(
         followup_candidate.session_history_generation_relationship(),
         Some(crate::provider::SessionHistoryGenerationRelationship::UnknownTarget)
+    );
+    assert_eq!(
+        followup_candidate.session_history_generation_local_availability(),
+        None
     );
 
     shutdown(&env, run_handle).await;
@@ -266,14 +296,19 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     let idle_pool = Arc::clone(&env.idle_pool);
     let session_id = "sess-conflict-restore";
     let reserved_generation_run_id = RunId::new_v4();
-    seed_idle_pool_with_history_generation(
+    let discovered_at = std::time::Instant::now();
+    seed_idle_pool_with_timing(
         &idle_pool,
         &budget,
-        session_id,
-        "vm0/default",
-        2,
-        4096,
-        reserved_generation_run_id,
+        TestParkedIdleCandidateSpec {
+            session_id,
+            profile_name: "vm0/default",
+            vcpu: 2,
+            memory_mb: 4096,
+            history_generation_run_id: Some(reserved_generation_run_id),
+            parked_at: discovered_at - HEARTBEAT_PERIOD,
+            idle_timeout: Duration::from_secs(300),
+        },
     )
     .await;
     let run_handle = tokio::spawn(run(config));
@@ -284,10 +319,11 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     env.provider.set_claim_result(conflict_run_id, None);
     env.handle
         .discover_tx
-        .send(generation_affinity_protected_candidate(
+        .send(generation_affinity_protected_candidate_with_discovered_at(
             conflict_run_id,
             session_id,
             reserved_generation_run_id,
+            discovered_at,
         ))
         .unwrap();
 
@@ -311,6 +347,12 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     assert_eq!(
         conflict_candidate.session_history_generation_relationship(),
         Some(crate::provider::SessionHistoryGenerationRelationship::Exact)
+    );
+    assert_eq!(
+        conflict_candidate.session_history_generation_local_availability(),
+        Some(
+            crate::provider::SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod
+        )
     );
 
     let followup_run_id = RunId::new_v4();
@@ -340,6 +382,115 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
     assert_eq!(
         followup_candidate.session_history_generation_relationship(),
         Some(crate::provider::SessionHistoryGenerationRelationship::Different)
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn reusable_generation_parked_after_discovery_is_attributed_at_claim() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    let session_id = "sess-parked-after-discovery";
+    let generation_run_id = RunId::new_v4();
+    let discovered_at = std::time::Instant::now() - Duration::from_secs(1);
+    seed_idle_pool_with_history_generation(
+        &idle_pool,
+        &budget,
+        session_id,
+        "vm0/default",
+        2,
+        4096,
+        generation_run_id,
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    env.handle
+        .discover_tx
+        .send(generation_affinity_protected_candidate_with_discovered_at(
+            run_id,
+            session_id,
+            generation_run_id,
+            discovered_at,
+        ))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("post-discovery parked generation should be reused");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    let claim_candidates = env.handle.claim_candidates();
+    let candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("post-discovery parked candidate should reach claim");
+    assert_eq!(
+        candidate.session_history_generation_relationship(),
+        Some(crate::provider::SessionHistoryGenerationRelationship::Exact)
+    );
+    assert_eq!(
+        candidate.session_history_generation_local_availability(),
+        Some(crate::provider::SessionHistoryGenerationLocalAvailability::AfterDiscovery)
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn reusable_claim_without_generation_target_omits_local_availability() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    let session_id = "sess-missing-generation-target";
+    seed_idle_pool_with_history_generation(
+        &idle_pool,
+        &budget,
+        session_id,
+        "vm0/default",
+        2,
+        4096,
+        RunId::new_v4(),
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    env.handle
+        .discover_tx
+        .send(affinity_protected_candidate(run_id, session_id))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("missing-target reusable candidate should be claimed");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    let claim_candidates = env.handle.claim_candidates();
+    let candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("missing-target reusable candidate should reach claim");
+    assert_eq!(
+        candidate.session_history_generation_relationship(),
+        Some(crate::provider::SessionHistoryGenerationRelationship::UnknownTarget)
+    );
+    assert_eq!(
+        candidate.session_history_generation_local_availability(),
+        None
     );
 
     shutdown(&env, run_handle).await;
@@ -638,6 +789,12 @@ async fn expired_generation_protection_preserves_local_session_claim() {
     assert_eq!(
         claimed_candidate.session_history_generation_relationship(),
         Some(crate::provider::SessionHistoryGenerationRelationship::UnknownReserved)
+    );
+    assert_eq!(
+        claimed_candidate.session_history_generation_local_availability(),
+        Some(
+            crate::provider::SessionHistoryGenerationLocalAvailability::BeforeDiscoveryLtHeartbeatPeriod
+        )
     );
     assert!(
         claimed_candidate

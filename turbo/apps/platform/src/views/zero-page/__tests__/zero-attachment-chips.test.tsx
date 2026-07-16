@@ -529,6 +529,29 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("closes the attachment lightbox with Escape before browser shortcuts run", async () => {
+    await setupUploadedImagePreview();
+
+    click(screen.getByLabelText("Open image preview for photo.png"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+    });
+
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "Escape",
+    });
+    document.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBeTruthy();
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("pans an uploaded image preview with ordinary wheel events", async () => {
     await setupUploadedImagePreview();
 

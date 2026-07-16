@@ -362,10 +362,16 @@ describe("previewPresentationHtml", () => {
       .join("\n");
 
     expect(injectedCss).toMatch(
+      /\[data-vm0-editor-edit-id\]\s*{[^}]*outline:\s*4px solid transparent\s*!important;/,
+    );
+    expect(injectedCss).toMatch(
       /\[data-vm0-editor-edit-id\]:hover\s*{\s*outline-color:\s*#0f82ff\s*!important;/,
     );
     expect(injectedCss).toMatch(
       /\[data-vm0-editor-edit-id\]:focus\s*{\s*outline-color:\s*hsl\(var\(--ring, 15 80% 66%\)\)\s*!important;/,
+    );
+    expect(injectedCss).toMatch(
+      /\[data-vm0-editor-edit-id\]:focus\s*{[^}]*filter:\s*none\s*!important;/,
     );
   });
 

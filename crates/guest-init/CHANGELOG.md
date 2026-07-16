@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.113](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.112...guest-init-v0.16.113) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+
+### Documentation
+
+* **guest-init:** correct waitpid architecture description ([#21676](https://github.com/vm0-ai/vm0/issues/21676)) ([8399f40](https://github.com/vm0-ai/vm0/commit/8399f40ff66e989302db0c245f5246c2325034ce))
+
 ## [0.16.112](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.111...guest-init-v0.16.112) (2026-07-15)
 
 ## [0.16.111](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.110...guest-init-v0.16.111) (2026-07-15)

@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.145.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.1...runner-rs-v0.145.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **mitm-addon:** validate empty zlib tails at decode limit ([#21750](https://github.com/vm0-ai/vm0/issues/21750)) ([8acba08](https://github.com/vm0-ai/vm0/commit/8acba0859c99cb39dec9113317b16ce88326fc22))
+* **runner:** close workspace gc ownership race ([#21754](https://github.com/vm0-ai/vm0/issues/21754)) ([e198e65](https://github.com/vm0-ai/vm0/commit/e198e6590e3fd2814451993b7210f261734bb1fd))
+
+
+### Documentation
+
+* **mitm-addon:** align request hook classification contract ([#21742](https://github.com/vm0-ai/vm0/issues/21742)) ([8c17d00](https://github.com/vm0-ai/vm0/commit/8c17d00b783bc4ed9d24c26942c2b0735ac845ec))
+
+## [0.145.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.0...runner-rs-v0.145.1) (2026-07-16)
+
+
+### Documentation
+
+* **mitm-addon:** clarify force-refresh cooldown start ([#21717](https://github.com/vm0-ai/vm0/issues/21717)) ([3cb10d3](https://github.com/vm0-ai/vm0/commit/3cb10d32285b1171dbcaed15406d48e53f1bd918))
+
+## [0.145.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.26...runner-rs-v0.145.0) (2026-07-16)
+
+
+### Features
+
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+* **runner:** bound r2 template archive extraction ([#21680](https://github.com/vm0-ai/vm0/issues/21680)) ([8860bb8](https://github.com/vm0-ai/vm0/commit/8860bb808995889be734dd115165c272b46f3c52))
+* **runner:** reject invalid parameterized firewall authorities ([#21690](https://github.com/vm0-ai/vm0/issues/21690)) ([419599c](https://github.com/vm0-ai/vm0/commit/419599c7e97dade82464a391a3e00cc9633e1e1d))
+
+
+### CI
+
+* cap runner behavior tests at two concurrent lanes ([#21695](https://github.com/vm0-ai/vm0/issues/21695)) ([696194b](https://github.com/vm0-ai/vm0/commit/696194bf0e1fbb7a3a639b3d965622e09cd7167c))
+
+
+### Documentation
+
+* **python:** clarify usage flush semantics ([#21677](https://github.com/vm0-ai/vm0/issues/21677)) ([d16766c](https://github.com/vm0-ai/vm0/commit/d16766caa81e2e8270d51099180de2f8b1885408))
+
 ## [0.144.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.25...runner-rs-v0.144.26) (2026-07-15)
 
 

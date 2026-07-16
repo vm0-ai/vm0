@@ -4236,6 +4236,34 @@
       "when": 1784112668382,
       "tag": "0604_add_vm0_model_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 605,
+      "version": "7",
+      "when": 1784125478257,
+      "tag": "0605_luxuriant_ender_wiggin",
+      "breakpoints": true
+    },
+    {
+      "idx": 606,
+      "version": "7",
+      "when": 1784132864940,
+      "tag": "0606_small_centennial",
+      "breakpoints": true
+    },
+    {
+      "idx": 607,
+      "version": "7",
+      "when": 1784141672974,
+      "tag": "0607_tan_lady_ursula",
+      "breakpoints": true
+    },
+    {
+      "idx": 608,
+      "version": "7",
+      "when": 1784177952821,
+      "tag": "0608_cleanup_stale_user_message_queue_rows",
+      "breakpoints": true
     }
   ]
 }

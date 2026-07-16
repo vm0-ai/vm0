@@ -7,7 +7,15 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { cn } from "@vm0/ui";
+import {
+  Button,
+  cn,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@vm0/ui";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLoadable, useSet } from "ccstate-react";
@@ -20,6 +28,10 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { createPresentationDraftByUrlFactory } from "../../signals/zero-page/presentation-html-editor-draft.ts";
+import {
+  presentationEditorCloseDialogOpen$,
+  setPresentationEditorCloseDialogOpen$,
+} from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import { detach, Reason, tapError } from "../../signals/utils.ts";
 import { downloadPresentationHtmlStringPptx } from "./presentation-html-pptx-download.ts";
 import {
@@ -328,14 +340,25 @@ function PresentationEditorHeader({
       <button
         type="button"
         data-presentation-editor-action="true"
-        aria-label="Generate PPT script"
-        title="Generate PPT script"
+        data-presentation-speaker-notes-action="true"
+        aria-label="Generate speaker notes"
+        title="Generate speaker notes"
         disabled={!onGenerateSpeakerNotes}
         onClick={onGenerateSpeakerNotes}
-        className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:px-2"
+        className="inline-flex h-8 w-8 items-center justify-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 data-[generating=true]:bg-violet-500/10 data-[generating=true]:text-violet-600 data-[generating=true]:disabled:opacity-100 dark:data-[generating=true]:text-violet-400 sm:w-auto sm:px-2"
       >
         <IconSparkles size={16} stroke={1.5} />
-        <span className="hidden sm:inline">Script</span>
+        <span data-speaker-notes-idle className="hidden sm:inline">
+          Speaker notes
+        </span>
+        <span data-speaker-notes-generating className="hidden">
+          Generating
+          <span aria-hidden="true" className="inline-flex">
+            <span className="speaker-notes-dot-1">.</span>
+            <span className="speaker-notes-dot-2">.</span>
+            <span className="speaker-notes-dot-3">.</span>
+          </span>
+        </span>
       </button>
       <button
         type="button"
@@ -1405,12 +1428,47 @@ function setEditorStatus(
   }
 }
 
+function createPresentationEditorStatusRef(
+  statusRef: MutableValue<HTMLDivElement | null>,
+  draggingUnsupported: boolean,
+): Ref<HTMLDivElement> {
+  return (node) => {
+    statusRef.current = node;
+    if (draggingUnsupported && node) {
+      setEditorStatus(statusRef, "Dragging unavailable for this presentation");
+    }
+  };
+}
+
 function setEditorActionsDisabled(disabled: boolean) {
   for (const button of document.querySelectorAll<HTMLButtonElement>(
     '[data-presentation-editor-action="true"]',
   )) {
     button.disabled = disabled;
   }
+}
+
+function setSpeakerNotesGenerating(generating: boolean) {
+  const action = document.querySelector<HTMLButtonElement>(
+    '[data-presentation-speaker-notes-action="true"]',
+  );
+  if (!action) {
+    return;
+  }
+  const idleLabel = action.querySelector<HTMLElement>(
+    "[data-speaker-notes-idle]",
+  );
+  const generatingLabel = action.querySelector<HTMLElement>(
+    "[data-speaker-notes-generating]",
+  );
+  action.dataset.generating = generating ? "true" : "false";
+  const label = generating
+    ? "Generating speaker notes"
+    : "Generate speaker notes";
+  action.setAttribute("aria-label", label);
+  action.title = label;
+  idleLabel?.classList.toggle("sm:inline", !generating);
+  generatingLabel?.classList.toggle("sm:inline-flex", generating);
 }
 
 function setEditorPublishing(params: {
@@ -1698,6 +1756,7 @@ async function runFillEmptySpeakerNotes(ctx: {
   }
 
   ctx.setPublishing(true);
+  setSpeakerNotesGenerating(true);
   ctx.setStatus("Generating speaker notes");
   const generated = await tapError(
     generatePresentationSpeakerNotes({
@@ -1705,6 +1764,7 @@ async function runFillEmptySpeakerNotes(ctx: {
       html: ctx.buildEditedHtml(),
       signal: params.pageSignal,
     }).finally(() => {
+      setSpeakerNotesGenerating(false);
       ctx.setPublishing(false);
     }),
     (error) => {
@@ -1811,12 +1871,11 @@ function createPresentationEditorController(
       publishingRef: params.publishingRef,
     });
   };
+  const hasUnsavedChanges = () => {
+    return currentSignature() !== params.publishedSignatureRef.current;
+  };
   const markDirty = () => {
-    setStatus(
-      currentSignature() !== params.publishedSignatureRef.current
-        ? "Unsaved changes"
-        : "Presentation editor",
-    );
+    setStatus(hasUnsavedChanges() ? "Unsaved changes" : "Presentation editor");
   };
   const queueSlideThumbnailUpdate = (slideId: string) => {
     params.pendingThumbnailSlideIdRef.current = slideId;
@@ -1887,12 +1946,90 @@ function createPresentationEditorController(
     buildEditedHtml,
     ensureRedeployed,
     fillEmptySpeakerNotes,
+    hasUnsavedChanges,
     markDirty,
     previewHtml,
     queueSlideThumbnailUpdate,
     showSlide,
     slides,
   };
+}
+
+function createPresentationEditorCloseActions(params: {
+  readonly controller: ReturnType<typeof createPresentationEditorController>;
+  readonly draft: EditorDraft;
+  readonly onClose: () => void;
+  readonly publishingRef: MutableValue<boolean>;
+  readonly setCloseDialogOpen: (open: boolean) => void;
+  readonly sourceUrl: string;
+}) {
+  const requestClose = () => {
+    if (!params.controller.hasUnsavedChanges()) {
+      params.onClose();
+      return;
+    }
+    params.setCloseDialogOpen(true);
+  };
+  const exitWithoutSaving = () => {
+    presentationDraftByUrl.invalidate(params.sourceUrl);
+    presentationDraftByUrl.invalidate(params.draft.publicUrl);
+    params.setCloseDialogOpen(false);
+    params.onClose();
+  };
+  const saveAndClose = () => {
+    params.setCloseDialogOpen(false);
+    runEditorTaskIfIdle({
+      publishingRef: params.publishingRef,
+      reason: "presentation html editor close",
+      task: async () => {
+        if (await params.controller.ensureRedeployed()) {
+          params.onClose();
+        }
+      },
+    });
+  };
+  return { exitWithoutSaving, requestClose, saveAndClose };
+}
+
+function PresentationEditorCloseDialog({
+  onExit,
+  onOpenChange,
+  onSave,
+  open,
+}: {
+  readonly onExit: () => void;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onSave: () => void;
+  readonly open: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="zero-app !z-[10000] gap-5 sm:max-w-md"
+        overlayClassName="!z-[10000]"
+      >
+        <DialogHeader>
+          <DialogTitle className="whitespace-nowrap">
+            Do you want to save your changes?
+          </DialogTitle>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 px-4 text-destructive hover:text-destructive"
+            onClick={onExit}
+          >
+            Discard
+          </Button>
+          <Button type="button" size="sm" className="h-9 px-4" onClick={onSave}>
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function PresentationEditorReady({
@@ -1914,6 +2051,8 @@ function PresentationEditorReady({
 }) {
   const pageSignal = useGet(pageSignal$);
   const createClient = useGet(zeroClient$);
+  const closeDialogOpen = useGet(presentationEditorCloseDialogOpen$);
+  const setCloseDialogOpen = useSet(setPresentationEditorCloseDialogOpen$);
   const refreshPresentationHtmlPreviews = useSet(
     refreshPresentationHtmlPreviews$,
   );
@@ -1950,17 +2089,14 @@ function PresentationEditorReady({
     thumbnailUpdateFrameRef,
   });
 
-  const closeAfterPublish = () => {
-    runEditorTaskIfIdle({
-      publishingRef,
-      reason: "presentation html editor close",
-      task: async () => {
-        if (await controller.ensureRedeployed()) {
-          onClose();
-        }
-      },
-    });
-  };
+  const closeActions = createPresentationEditorCloseActions({
+    controller,
+    draft,
+    onClose,
+    publishingRef,
+    setCloseDialogOpen,
+    sourceUrl,
+  });
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -1968,7 +2104,7 @@ function PresentationEditorReady({
         busyRef={(node) => {
           busyRef.current = node;
         }}
-        onClose={closeAfterPublish}
+        onClose={closeActions.requestClose}
         onDownloadPptx={() => {
           runEditorTaskIfIdle({
             publishingRef,
@@ -1993,15 +2129,10 @@ function PresentationEditorReady({
             task: controller.fillEmptySpeakerNotes,
           });
         }}
-        statusRef={(node) => {
-          statusRef.current = node;
-          if (draggingUnsupported && node) {
-            setEditorStatus(
-              statusRef,
-              "Dragging unavailable for this presentation",
-            );
-          }
-        }}
+        statusRef={createPresentationEditorStatusRef(
+          statusRef,
+          draggingUnsupported,
+        )}
         title={title}
       />
       <PresentationEditorWorkspace
@@ -2018,6 +2149,12 @@ function PresentationEditorReady({
         showSlide={controller.showSlide}
         slidesRef={slidesRef}
         slides={controller.slides}
+      />
+      <PresentationEditorCloseDialog
+        open={closeDialogOpen}
+        onExit={closeActions.exitWithoutSaving}
+        onOpenChange={setCloseDialogOpen}
+        onSave={closeActions.saveAndClose}
       />
     </div>
   );

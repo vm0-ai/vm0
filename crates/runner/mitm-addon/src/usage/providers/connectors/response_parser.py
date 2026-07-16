@@ -7,7 +7,7 @@ from typing import NamedTuple
 class ConnectorResponseParser(NamedTuple):
     """Incremental parser hooks for connector response-body usage extraction.
 
-    Connector parser factories registered in ``_RESPONSE_PARSER_FACTORIES``
+    Connector response-inspection capabilities registered in ``_REGISTRATIONS``
     return this value when a connector flow needs response-body parsing for
     connector usage extraction. The response streaming layer wires ``feed`` into
     the stream callback for that flow.
@@ -21,21 +21,27 @@ class ConnectorResponseParser(NamedTuple):
     no-op: incremental decompressors may produce no output for a source chunk,
     and decompression failures intentionally suppress later parser input.
 
+    ``report_on_interruption`` explicitly declares whether state accumulated by
+    this parser may be finalized and reported after a connection error. Use it
+    only when partial observations are independently billable; ordinary JSON
+    parsers must leave it false so an incomplete body cannot reach request-side
+    billing fallbacks.
+
     ``finish`` is optional. When provided, normal completed-response
     finalization calls it once after streaming has fed all chunks and before
-    ``report_connector_usage`` consumes connector metadata. It should publish
-    final parser state to connector-owned ``flow.metadata`` keys through the
-    closure created by the connector parser factory. Cleanup and connection
-    error paths can release unfinished parser state without finalizing it, so
-    parser correctness must not rely on ``finish`` running for every interrupted
-    response.
+    ``report_connector_usage`` consumes connector metadata. An interrupted
+    response also calls it when ``report_on_interruption`` is true. It should
+    publish final parser state to connector-owned ``flow.metadata`` keys through
+    the closure created by the connector parser factory.
 
     ``finish_decode_error`` is optional. When provided, response streaming calls
     it instead of ``finish`` if the transport decoder cannot prove a compressed
     response body completed. It should publish connector-owned unparsed state so
-    later fallback parsing does not trust best-effort decoded bytes.
+    later fallback parsing does not trust best-effort decoded bytes. This runs
+    before an opted-in interrupted response is reported.
     """
 
     feed: Callable[[bytes], None]
+    report_on_interruption: bool
     finish: Callable[[], None] | None = None
     finish_decode_error: Callable[[str], None] | None = None

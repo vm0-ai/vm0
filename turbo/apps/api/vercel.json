@@ -57,6 +57,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/sync-connector-catalog",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/process-usage-events",
       "schedule": "* * * * *"
     },

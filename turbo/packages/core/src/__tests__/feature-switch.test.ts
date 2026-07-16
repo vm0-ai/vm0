@@ -32,10 +32,6 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.ChatMessageQueue, {})).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatModelFamilySessionContinuity, {}),
-    ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
       false,
     );
@@ -148,9 +144,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
-    expect(
-      staffOrgStates[FeatureSwitchKey.ChatModelFamilySessionContinuity],
-    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PresentationElementDragging]).toBe(
@@ -159,7 +152,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatMessageQueue]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -189,9 +181,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
-    expect(
-      otherOrgStates[FeatureSwitchKey.ChatModelFamilySessionContinuity],
-    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,
@@ -202,7 +191,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatMessageQueue]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

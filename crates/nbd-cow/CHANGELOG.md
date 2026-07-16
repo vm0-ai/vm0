@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.66](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.65...nbd-cow-v0.4.66) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.4.65](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.64...nbd-cow-v0.4.65) (2026-07-15)
 
 
