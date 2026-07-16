@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.145.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.4...runner-rs-v0.145.5) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** bound image gc lock descriptors ([#21811](https://github.com/vm0-ai/vm0/issues/21811)) ([f4fe116](https://github.com/vm0-ai/vm0/commit/f4fe1161f73d0db7a59aec543dd0123d7f8ad729))
+* **runner:** isolate heartbeat requests from reactor ([#21804](https://github.com/vm0-ai/vm0/issues/21804)) ([775dc63](https://github.com/vm0-ai/vm0/commit/775dc631c94f62e9a496591399afdfe9f846cf19))
+
 ## [0.145.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.3...runner-rs-v0.145.4) (2026-07-16)
 
 
