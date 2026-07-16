@@ -1065,11 +1065,13 @@ describe("chat composer models", () => {
     await user.click(editor);
     await user.keyboard("/");
 
-    const salesSuggestion = await screen.findByText("/sales-research");
+    // Menu rows render the leading "/" as a separate accent span, so the row's
+    // queryable text node is the bare workflow name (not the "/name" token).
+    const salesSuggestion = await screen.findByText("sales-research");
     expect(salesSuggestion).toBeInTheDocument();
-    expect(screen.getByText("/support-escalation")).toBeInTheDocument();
-    expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
-    expect(screen.queryByText("/other-agent-workflow")).not.toBeInTheDocument();
+    expect(screen.getByText("support-escalation")).toBeInTheDocument();
+    expect(screen.queryByText("deep-dive")).not.toBeInTheDocument();
+    expect(screen.queryByText("other-agent-workflow")).not.toBeInTheDocument();
     // The menu renders in a Radix Popover portal (Floating UI handles
     // cross-browser placement), so it lives outside the composer element.
     const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
@@ -1087,9 +1089,9 @@ describe("chat composer models", () => {
     await user.keyboard("sales");
 
     await waitFor(() => {
-      expect(screen.queryByText("/support-escalation")).not.toBeInTheDocument();
+      expect(screen.queryByText("support-escalation")).not.toBeInTheDocument();
     });
-    expect(screen.getByText("/sales-research")).toBeInTheDocument();
+    expect(screen.getByText("sales-research")).toBeInTheDocument();
 
     await user.keyboard("{Enter}");
 
@@ -1271,7 +1273,7 @@ describe("chat composer models", () => {
     });
 
     await expect(
-      screen.findByText("/new-chat-workflow"),
+      screen.findByText("new-chat-workflow"),
     ).resolves.toBeInTheDocument();
   });
 
@@ -1380,7 +1382,7 @@ describe("chat composer models", () => {
     await user.keyboard("/");
 
     await waitFor(() => {
-      expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+      expect(screen.queryByText("deep-dive")).not.toBeInTheDocument();
     });
     expect(editor.textContent).toContain("/");
   });
@@ -1411,7 +1413,7 @@ describe("chat composer models", () => {
     await expect(
       screen.findByText("No matching workflows"),
     ).resolves.toBeInTheDocument();
-    expect(screen.queryByText("/deep-dive")).not.toBeInTheDocument();
+    expect(screen.queryByText("deep-dive")).not.toBeInTheDocument();
     const link = linkByText("View all workflows");
     expect(link).toHaveAttribute("href", "/workflows");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
@@ -1454,7 +1456,7 @@ describe("chat composer models", () => {
     await user.click(editor);
     await user.keyboard("/");
     await expect(
-      screen.findByText("/custom-workflow-1"),
+      screen.findByText("custom-workflow-1"),
     ).resolves.toBeInTheDocument();
 
     await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");

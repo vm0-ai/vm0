@@ -98,13 +98,31 @@ pub(super) fn write_job_with_profile(
 }
 
 pub(super) fn write_job_with_active_input(dir: &std::path::Path, job_id: RunId, prompt: &str) {
-    write_job_in_partition_with_active_input(
+    write_job_in_partition_with_options(
         dir,
         crate::profile::DEFAULT_PROFILE,
         job_id,
         prompt,
         Some(crate::profile::DEFAULT_PROFILE),
+        None,
         Some(true),
+    );
+}
+
+pub(super) fn write_job_with_session(
+    dir: &std::path::Path,
+    job_id: RunId,
+    prompt: &str,
+    session_id: &str,
+) {
+    write_job_in_partition_with_options(
+        dir,
+        crate::profile::DEFAULT_PROFILE,
+        job_id,
+        prompt,
+        Some(crate::profile::DEFAULT_PROFILE),
+        Some(session_id),
+        None,
     );
 }
 
@@ -115,22 +133,24 @@ pub(super) fn write_job_in_partition(
     prompt: &str,
     json_profile: Option<&str>,
 ) {
-    write_job_in_partition_with_active_input(
+    write_job_in_partition_with_options(
         dir,
         partition_profile,
         job_id,
         prompt,
         json_profile,
         None,
+        None,
     );
 }
 
-fn write_job_in_partition_with_active_input(
+fn write_job_in_partition_with_options(
     dir: &std::path::Path,
     partition_profile: &str,
     job_id: RunId,
     prompt: &str,
     json_profile: Option<&str>,
+    session_id: Option<&str>,
     active_input: Option<bool>,
 ) {
     let req = JobRequest {
@@ -142,7 +162,7 @@ fn write_job_in_partition_with_active_input(
         secret_environment: None,
         user_timezone: None,
         profile: json_profile.map(String::from),
-        session_id: None,
+        session_id: session_id.map(String::from),
         feature_flags: None,
         active_input,
     };

@@ -87,10 +87,10 @@ export function SlashWorkflowMenu({
       onOpenAutoFocus={(event) => {
         event.preventDefault();
       }}
-      className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
+      className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
       data-testid="slash-workflow-menu"
     >
-      <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="px-2.5 pt-2 pb-2 text-xs font-medium text-muted-foreground">
         Workflows
       </div>
       {loading ? (
@@ -107,7 +107,7 @@ export function SlashWorkflowMenu({
                 key={workflow.name}
                 type="button"
                 className={cn(
-                  "flex w-full items-center rounded px-2 py-1.5 text-left transition-colors",
+                  "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left transition-colors",
                   selected ? "bg-accent" : "hover:bg-accent/60",
                 )}
                 onMouseDown={(event) => {
@@ -115,9 +115,15 @@ export function SlashWorkflowMenu({
                   onSelect(workflow);
                 }}
               >
-                <span className="truncate font-mono text-sm text-primary">
-                  {workflow.token}
+                <span className="w-full truncate font-mono text-sm text-foreground">
+                  <span className="text-primary">/</span>
+                  {workflow.name}
                 </span>
+                {workflow.description && (
+                  <span className="w-full truncate text-xs text-muted-foreground/70">
+                    {workflow.description}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -128,14 +134,14 @@ export function SlashWorkflowMenu({
         </div>
       )}
       {showWorkflowsPageLink && (
-        <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1.5">
+        <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1">
           <Link
             pathname={ROUTES.workflows}
             onMouseDown={(event) => {
               // Keep the composer focused until Link handles the click.
               event.preventDefault();
             }}
-            className="flex h-9 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
+            className="flex h-8 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
           >
             <span className="flex min-w-0 items-center gap-2">
               <IconFileText

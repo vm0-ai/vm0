@@ -13,6 +13,13 @@ pub(crate) struct LocalDiscoveredJob {
     pub(crate) run_id: RunId,
     pub(crate) profile_name: String,
     pub(crate) job_path: PathBuf,
+    pub(crate) cli_agent_session_id: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct LocalDiscoveryMetadata {
+    #[serde(default)]
+    session_id: Option<String>,
 }
 
 pub(crate) enum LocalClaimResult {
@@ -181,10 +188,18 @@ impl LocalQueue {
                 if self.discovery_candidate_ineligible(&candidate, snapshot.as_ref()) {
                     continue;
                 }
+                let cli_agent_session_id =
+                    super::read_private_file(&candidate.path, "local job discovery metadata")
+                        .ok()
+                        .and_then(|bytes| {
+                            serde_json::from_slice::<LocalDiscoveryMetadata>(&bytes).ok()
+                        })
+                        .and_then(|metadata| metadata.session_id);
                 return Some(LocalDiscoveredJob {
                     run_id: candidate.run_id,
                     profile_name: profile.clone(),
                     job_path: candidate.path,
+                    cli_agent_session_id,
                 });
             }
         }

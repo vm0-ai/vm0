@@ -992,7 +992,6 @@ function appendPresentationPreviewStyle(
       height: 100%;
       margin: 0 !important;
       overflow: hidden !important;
-      background: #fff !important;
     }
     body {
       display: block !important;
