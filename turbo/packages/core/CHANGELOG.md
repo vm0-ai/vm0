@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.437.0](https://github.com/vm0-ai/vm0/compare/core-v8.436.1...core-v8.437.0) (2026-07-16)
+
+
+### Features
+
+* add presentation element offset protocol ([#21565](https://github.com/vm0-ai/vm0/issues/21565)) ([ef75664](https://github.com/vm0-ai/vm0/commit/ef7566467fd410f09dec760a3fd47e364fa7a180))
+* enable chat model family session continuity for all users ([#21713](https://github.com/vm0-ai/vm0/issues/21713)) ([a427ac9](https://github.com/vm0-ai/vm0/commit/a427ac9652c276f8f219c0dba5ef458a7ca400d6))
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* claim queued chat messages in place ([#21627](https://github.com/vm0-ai/vm0/issues/21627)) ([c47ccc4](https://github.com/vm0-ai/vm0/commit/c47ccc4fa687b5ae369369432b4bad1de6bc9297))
+* **core:** refresh color-system-fixed runbook digests ([#21689](https://github.com/vm0-ai/vm0/issues/21689)) ([3f226db](https://github.com/vm0-ai/vm0/commit/3f226db672307f2af4a391c892c464286a73a7e8))
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+
+### Refactoring
+
+* remove workflow trigger compatibility surfaces ([#21523](https://github.com/vm0-ai/vm0/issues/21523)) ([88edf69](https://github.com/vm0-ai/vm0/commit/88edf6915fdb75904e866ac8df8107737286c95b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.0
+    * @vm0/connectors bumped to 1.166.0
+
 ## [8.436.1](https://github.com/vm0-ai/vm0/compare/core-v8.436.0...core-v8.436.1) (2026-07-15)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.11](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.10...guest-contracts-v0.3.11) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.3.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.9...guest-contracts-v0.3.10) (2026-07-15)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.8](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.7...ably-subscriber-v1.0.8) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [1.0.7](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.6...ably-subscriber-v1.0.7) (2026-07-15)
 
 

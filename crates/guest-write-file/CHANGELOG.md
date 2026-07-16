@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.25...guest-write-file-v0.1.26) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.1.25](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.24...guest-write-file-v0.1.25) (2026-07-15)
 
 ## [0.1.24](https://github.com/vm0-ai/vm0/compare/guest-write-file-v0.1.23...guest-write-file-v0.1.24) (2026-07-14)

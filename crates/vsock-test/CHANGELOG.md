@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.148](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.147...vsock-test-v0.9.148) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.9.147](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.146...vsock-test-v0.9.147) (2026-07-15)
 
 ## [0.9.146](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.145...vsock-test-v0.9.146) (2026-07-15)

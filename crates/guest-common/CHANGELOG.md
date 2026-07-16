@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.40](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.39...guest-common-v0.2.40) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.2.39](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.38...guest-common-v0.2.39) (2026-07-15)
 
 ## [0.2.38](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.37...guest-common-v0.2.38) (2026-07-14)
