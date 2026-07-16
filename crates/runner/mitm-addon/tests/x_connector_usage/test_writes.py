@@ -390,6 +390,17 @@ def test_non_refinement_flow_does_not_decode_request_body(x_usage, tmp_path, rea
         "Visit EXAMPLE.COM",
         "Visit 123.com",
         "Visit blog.example.co.uk",
+        "Visit example.com.notatld",
+        "Visit vm0.ai.notatld",
+        "Visit foo.co.uk.notatld",
+        "Visit example.com.notatld@user",
+        "Visit example.com.notatld+tag",
+        "Visit example.com.notatld-tag",
+        "Visit example.com.123",
+        "Visit example.com.例",
+        "Visit example.com例",
+        "Visit mañana.com例",
+        "Visit foo.みんな例",
         "Open example.com/path/to/resource?search=foo&lang=en",
         "Open example.com:443/path",
         "Open xn--r8jz45g.xn--q9jyb4c",
@@ -432,11 +443,16 @@ def test_tweet_create_with_url_stays_on_with_url_bucket(x_usage, tmp_path, real_
         "Fullwidth tag \uff03twitter.com",
         "Plus suffix example.com+tag",
         "At suffix example.com@user",
+        "Hyphen suffix example.com-tag",
+        "ASCII suffix example.comuser",
+        "Numeric suffix example.com1",
         "Unknown example.notatld",
+        "TLD-only prefix com.notatld",
         "Fullwidth unknown \uff26\uff2f\uff2f.notatld",
         "Underscore foo_bar.example.com",
         "Leading hyphen -bad.com",
         "Trailing hyphen bad-.com",
+        "Invalid prefix bad-.com.notatld",
     ],
 )
 def test_tweet_create_url_like_non_links_downgrade_to_content_create(
@@ -456,6 +472,31 @@ def test_tweet_create_url_like_non_links_downgrade_to_content_create(
     flow.request.method = "POST"
     flow.request.content = json.dumps({"text": text}).encode()
     p = x_usage.call_and_get_single_billing(flow)
+    assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+def test_tweet_create_near_limit_non_link_candidate_downgrades_to_content_create(
+    x_usage, tmp_path, real_flow
+):
+    """Near-limit Unicode labels avoid repeated IDNA work and remain non-link."""
+    text = "a." + (("é" * 20 + ".") * 1_400) + "notatld"
+    request_body = json.dumps({"text": text}, ensure_ascii=False).encode()
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+    )
+    flow.request.method = "POST"
+    flow.request.content = request_body
+
+    p = x_usage.call_and_get_single_billing(flow)
+
     assert p["category"] == "content.create"
     assert p["quantity"] == 1
 
