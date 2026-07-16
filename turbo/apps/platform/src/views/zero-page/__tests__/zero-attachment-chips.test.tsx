@@ -1,4 +1,5 @@
 import {
+  artifactsContract,
   chatThreadArtifactsContract,
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -1751,6 +1752,9 @@ describe("zero attachment chips", () => {
       expect(screen.getByLabelText("Open in split view")).toBeInTheDocument();
       expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByLabelText("Add quarterly-roadmap.html to favorites"),
+    ).toBeNull();
     expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
       "tabindex",
       "-1",
@@ -1798,6 +1802,89 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+    });
+  });
+
+  it("favorites an artifact from the preview header when enabled", async () => {
+    const presentationUrl =
+      "https://cdn.vm7.io/artifacts/test/favorite-preview/quarterly-roadmap.html";
+    const html = presentationHtml();
+    let favoriteBody: { readonly artifactUrl: string } | undefined;
+    let unfavoriteBody: { readonly artifactUrl: string } | undefined;
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(html, {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(artifactsContract.favorite, ({ body, respond }) => {
+      favoriteBody = body;
+      return respond(204);
+    });
+    context.mocks.api(artifactsContract.unfavorite, ({ body, respond }) => {
+      unfavoriteBody = body;
+      return respond(204);
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-favorite-preview",
+            files: [
+              artifactFile(presentationUrl, {
+                isFavorited: true,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-favorite-preview",
+          role: "assistant",
+          content: `[Quarterly roadmap](${presentationUrl})`,
+          runId: "run-favorite-preview",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactFavorites]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await screen.findByLabelText("Open html preview for Quarterly roadmap"),
+    );
+
+    const removeFavorite = await screen.findByLabelText(
+      "Remove quarterly-roadmap.html from favorites",
+    );
+    const separator = removeFavorite.nextElementSibling;
+    const share = screen.getByLabelText("Share");
+    expect(separator).toHaveClass("w-px");
+    expect(separator?.nextElementSibling).toBe(share);
+
+    click(removeFavorite);
+    await waitFor(() => {
+      expect(unfavoriteBody).toStrictEqual({ artifactUrl: presentationUrl });
+      expect(
+        screen.getByLabelText("Add quarterly-roadmap.html to favorites"),
+      ).toHaveAttribute("aria-pressed", "false");
+    });
+
+    click(screen.getByLabelText("Add quarterly-roadmap.html to favorites"));
+    await waitFor(() => {
+      expect(favoriteBody).toStrictEqual({ artifactUrl: presentationUrl });
+      expect(
+        screen.getByLabelText("Remove quarterly-roadmap.html from favorites"),
+      ).toHaveAttribute("aria-pressed", "true");
     });
   });
 

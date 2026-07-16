@@ -66,6 +66,10 @@ import {
 import { openArtifactImageEdit$ } from "../../signals/zero-page/zero-image-edit.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
+  artifactFavoriteOverrides$,
+  toggleArtifactFavorite$,
+} from "../../signals/artifacts-page/artifacts-signals.ts";
+import {
   presentationHtmlPreviewUrl,
   presentationHtmlRefreshVersion$,
 } from "../../signals/zero-page/presentation-html-cache-bust.ts";
@@ -79,6 +83,7 @@ import {
 import {
   ArtifactActionSeparator,
   ArtifactDownloadMenu,
+  ArtifactFavoriteButton,
   ArtifactShareButton,
   type ArtifactDownloadSyncTarget,
 } from "./zero-artifact-actions.tsx";
@@ -445,6 +450,7 @@ function artifactDialogMetadataFromItem(params: {
     googleDriveDisconnected:
       params.item.file.googleDriveSync?.status === "disconnected",
     googleDriveSynced: params.item.file.googleDriveSync?.status === "synced",
+    isFavorited: params.item.file.isFavorited,
     onSyncSuccess: params.onSyncSuccess,
     runId: params.item.runId,
     size: params.item.file.size,
@@ -1073,6 +1079,48 @@ function resetArtifactDialogImageZoom({
   resetZoom(artifactDialogImageZoomKey(preview.url, targetFullscreen));
 }
 
+function ArtifactDialogFavoriteAction({
+  artifact,
+  preview,
+}: {
+  artifact: AttachmentArtifactMetadata | undefined;
+  preview: AttachmentLightboxState;
+}) {
+  const features = useGet(featureSwitch$);
+  const favoriteOverrides = useGet(artifactFavoriteOverrides$);
+  const pageSignal = useGet(pageSignal$);
+  const toggleArtifactFavorite = useSet(toggleArtifactFavorite$);
+
+  if (!artifact || !features?.[FeatureSwitchKey.ArtifactFavorites]) {
+    return null;
+  }
+
+  const favorited =
+    favoriteOverrides[preview.url] ?? artifact.isFavorited === true;
+  return (
+    <>
+      <ArtifactFavoriteButton
+        favorited={favorited}
+        filename={artifact.filename}
+        iconSize={18}
+        onToggle={() => {
+          detach(
+            toggleArtifactFavorite(
+              {
+                currentIsFavorited: favorited,
+                url: preview.url,
+              },
+              pageSignal,
+            ),
+            Reason.DomCallback,
+          );
+        }}
+      />
+      <ArtifactActionSeparator />
+    </>
+  );
+}
+
 function ArtifactPreviewDialogActions({
   artifact,
   fullscreen,
@@ -1140,6 +1188,7 @@ function ArtifactPreviewDialogActions({
 
   return (
     <div className="flex shrink-0 items-center gap-1">
+      <ArtifactDialogFavoriteAction artifact={artifact} preview={preview} />
       <ArtifactShareButton ariaLabel="Share" iconSize={18} url={preview.url} />
       <ArtifactDownloadMenu
         ariaLabel="Download options"

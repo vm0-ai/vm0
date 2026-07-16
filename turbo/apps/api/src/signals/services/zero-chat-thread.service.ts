@@ -934,10 +934,19 @@ export function zeroChatThreadArtifacts(args: {
           url: runUploadedFiles.url,
           metadata: runUploadedFiles.metadata,
           createdAt: runUploadedFiles.createdAt,
+          isFavorited: sql<boolean>`${userArtifactFavorites.artifactUrl} IS NOT NULL`,
         })
         .from(runUploadedFiles)
         .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
         .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
+        .leftJoin(
+          userArtifactFavorites,
+          and(
+            eq(userArtifactFavorites.orgId, agentRuns.orgId),
+            eq(userArtifactFavorites.userId, args.userId),
+            eq(userArtifactFavorites.artifactUrl, runUploadedFiles.url),
+          ),
+        )
         .where(
           and(
             eq(runUploadedFiles.userId, args.userId),
@@ -1000,6 +1009,7 @@ export function zeroChatThreadArtifacts(args: {
           url: row.url,
           ...(artifactKind ? { artifactKind } : {}),
           createdAt: row.createdAt.toISOString(),
+          isFavorited: row.isFavorited,
         });
         byRun.set(row.runId, existing);
       }

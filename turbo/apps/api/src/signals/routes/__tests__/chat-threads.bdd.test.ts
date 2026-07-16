@@ -1890,6 +1890,18 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       googleDriveSync: { status: "disconnected" },
     });
 
+    if (!csvFile) {
+      throw new Error("Expected the CSV artifact to be listed");
+    }
+    expect(csvFile.isFavorited).toBeFalsy();
+    await chat.favoriteArtifact(actor, csvFile.url);
+    artifacts = await chat.listThreadArtifacts(actor, run.threadId);
+    expect(
+      artifacts.runs[0]?.files.find((file) => {
+        return file.id === csvId;
+      })?.isFavorited,
+    ).toBeTruthy();
+
     // Sync requires a connected Drive.
     const noConnector = await chat.requestSyncThreadArtifact(
       actor,

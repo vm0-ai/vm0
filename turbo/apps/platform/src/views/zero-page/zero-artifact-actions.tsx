@@ -1,6 +1,8 @@
 import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from "react";
 import {
   IconBrandGoogleDrive,
+  IconCarambola,
+  IconCarambolaFilled,
   IconDownload,
   IconLoader2,
   IconPresentation,
@@ -329,6 +331,42 @@ export function ArtifactActionTooltip({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+export function ArtifactFavoriteButton({
+  favorited,
+  filename,
+  iconSize = 16,
+  onToggle,
+}: {
+  favorited: boolean;
+  filename: string;
+  iconSize?: number;
+  onToggle: () => void;
+}) {
+  const label = favorited
+    ? `Remove ${filename} from favorites`
+    : `Add ${filename} to favorites`;
+
+  return (
+    <ArtifactActionTooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={favorited}
+        className={iconButtonClassName(
+          favorited ? "text-amber-500 hover:text-amber-500" : undefined,
+        )}
+        onClick={onToggle}
+      >
+        {favorited ? (
+          <IconCarambolaFilled size={iconSize} aria-hidden />
+        ) : (
+          <IconCarambola size={iconSize} stroke={1.5} aria-hidden />
+        )}
+      </button>
+    </ArtifactActionTooltip>
   );
 }
 

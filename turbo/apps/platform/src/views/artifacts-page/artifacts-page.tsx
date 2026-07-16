@@ -237,6 +237,7 @@ function artifactLightboxMetadata(
     filename: item.filename,
     googleDriveDisconnected: item.googleDriveSync?.status === "disconnected",
     googleDriveSynced: item.googleDriveSync?.status === "synced",
+    isFavorited: item.isFavorited,
     onSyncSuccess,
     runId: item.runId,
     size: item.size,

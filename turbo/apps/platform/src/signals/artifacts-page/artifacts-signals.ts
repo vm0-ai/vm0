@@ -341,6 +341,13 @@ export const artifactFavoriteOverrides$ = computed((get) => {
   return get(internalArtifactFavoriteOverrides$);
 });
 
+type ArtifactFavoriteTarget =
+  | ArtifactItem
+  | {
+      readonly currentIsFavorited: boolean;
+      readonly url: string;
+    };
+
 // Applies the search / agent / category filters in memory over the active set,
 // so switching filters is instant and never re-fetches or truncates.
 export function filterArtifacts(
@@ -375,25 +382,29 @@ export function filterArtifacts(
 }
 
 export const toggleArtifactFavorite$ = command(
-  async ({ get, set }, item: ArtifactItem, signal: AbortSignal) => {
-    const currentIsFavorited = item.isFavorited === true;
+  async ({ get, set }, target: ArtifactFavoriteTarget, signal: AbortSignal) => {
+    const item = "currentIsFavorited" in target ? undefined : target;
+    const currentIsFavorited =
+      "currentIsFavorited" in target
+        ? target.currentIsFavorited
+        : target.isFavorited === true;
     const nextIsFavorited = !currentIsFavorited;
     set(internalArtifactFavoriteOverrides$, (overrides) => {
-      return { ...overrides, [item.url]: nextIsFavorited };
+      return { ...overrides, [target.url]: nextIsFavorited };
     });
 
     const client = get(zeroClient$)(artifactsContract);
     const request = nextIsFavorited
       ? accept(
           client.favorite({
-            body: { artifactUrl: item.url },
+            body: { artifactUrl: target.url },
             fetchOptions: { signal },
           }),
           [204],
         )
       : accept(
           client.unfavorite({
-            body: { artifactUrl: item.url },
+            body: { artifactUrl: target.url },
             fetchOptions: { signal },
           }),
           [204],
@@ -401,18 +412,20 @@ export const toggleArtifactFavorite$ = command(
     await onRejection(request, () => {
       if (!signal.aborted) {
         set(internalArtifactFavoriteOverrides$, (overrides) => {
-          return { ...overrides, [item.url]: currentIsFavorited };
+          return { ...overrides, [target.url]: currentIsFavorited };
         });
       }
     });
     signal.throwIfAborted();
 
-    const { userId, orgId } = await get(authenticatedIdentity$);
-    signal.throwIfAborted();
-    await artifactItemCacheStores(userId, orgId).writeStore.upsertItems([
-      { ...item, isFavorited: nextIsFavorited },
-    ]);
-    signal.throwIfAborted();
+    if (item) {
+      const { userId, orgId } = await get(authenticatedIdentity$);
+      signal.throwIfAborted();
+      await artifactItemCacheStores(userId, orgId).writeStore.upsertItems([
+        { ...item, isFavorited: nextIsFavorited },
+      ]);
+      signal.throwIfAborted();
+    }
     set(reloadArtifacts$);
   },
 );

@@ -48,6 +48,7 @@ const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
   createdAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
+  isFavorited: z.boolean().optional(),
 });
 
 const chatThreadArtifactRunSchema = z.object({

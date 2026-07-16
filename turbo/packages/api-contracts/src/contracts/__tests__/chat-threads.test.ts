@@ -5,6 +5,7 @@ import {
   artifactItemSchema,
   artifactsContract,
   artifactsListResponseSchema,
+  chatThreadArtifactRunSchema,
   chatMessagesContract,
   chatThreadModelSelectionContract,
   chatThreadsContract,
@@ -367,6 +368,25 @@ describe("artifacts contract", () => {
       url: "https://static.vm0.io/artifacts/launch-plan.html",
       createdAt: "2026-07-07T00:00:00.000Z",
       isFavorited: true,
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts favorite state on thread artifact files", () => {
+    const parsed = chatThreadArtifactRunSchema.safeParse({
+      runId: "run-1",
+      files: [
+        {
+          id: "file-1",
+          filename: "launch-plan.html",
+          contentType: "text/html",
+          size: 1024,
+          url: "https://static.vm0.io/artifacts/launch-plan.html",
+          createdAt: "2026-07-07T00:00:00.000Z",
+          isFavorited: true,
+        },
+      ],
     });
 
     expect(parsed.success).toBe(true);
