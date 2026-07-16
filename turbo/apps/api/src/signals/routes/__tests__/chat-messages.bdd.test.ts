@@ -3791,7 +3791,14 @@ describe("CHAT-02: shared user message queue", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to be drained");
     }
-    expect(failedMessageUpdatedPublish).toBeTruthy();
+    // The drain publishes are scheduled side effects, so they can land after
+    // the message row is already observable as drained. Poll instead of
+    // asserting synchronously.
+    await expect
+      .poll(() => {
+        return failedMessageUpdatedPublish;
+      })
+      .toBe(true);
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some(([topic]) => {
