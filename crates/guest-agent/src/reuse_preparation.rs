@@ -17,7 +17,6 @@ use guest_contracts::reuse_preparation::{
 use crate::nofollow_fs::{Dir, FileIdentity};
 
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
-const CGROUP2_SUPER_MAGIC: i64 = 0x6367_7270;
 const CGROUP_EVENTS_FILE: &str = "cgroup.events";
 const CGROUP_KILL_FILE: &str = "cgroup.kill";
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
@@ -180,7 +179,7 @@ struct ProcessContainmentPaths {
 
 fn verify_process_containment() -> io::Result<ProcessContainmentEvidence> {
     let paths = process_containment_paths();
-    if paths.require_cgroup2_filesystem && filesystem_type(&paths.mount)? != CGROUP2_SUPER_MAGIC {
+    if paths.require_cgroup2_filesystem && !is_cgroup2_filesystem(&paths.mount)? {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "canonical cgroup mount is not cgroup v2",
@@ -194,7 +193,7 @@ fn verify_process_containment() -> io::Result<ProcessContainmentEvidence> {
             "supervised cgroup base is not a directory",
         ));
     }
-    if paths.require_cgroup2_filesystem && filesystem_type(&paths.base)? != CGROUP2_SUPER_MAGIC {
+    if paths.require_cgroup2_filesystem && !is_cgroup2_filesystem(&paths.base)? {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "supervised cgroup base is not on cgroup v2",
@@ -261,7 +260,7 @@ fn process_containment_paths() -> ProcessContainmentPaths {
     }
 }
 
-fn filesystem_type(path: &Path) -> io::Result<i64> {
+fn is_cgroup2_filesystem(path: &Path) -> io::Result<bool> {
     let path = CString::new(path.as_os_str().as_bytes())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL byte"))?;
     let mut stats = std::mem::MaybeUninit::<libc::statfs>::uninit();
@@ -271,7 +270,7 @@ fn filesystem_type(path: &Path) -> io::Result<i64> {
         return Err(io::Error::last_os_error());
     }
     // SAFETY: successful statfs initialized the structure.
-    Ok(unsafe { stats.assume_init() }.f_type)
+    Ok(unsafe { stats.assume_init() }.f_type == 0x6367_7270)
 }
 
 fn parse_populated(content: &str) -> Option<bool> {
