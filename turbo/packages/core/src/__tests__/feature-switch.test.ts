@@ -125,6 +125,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
@@ -160,6 +161,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroWebSearch]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroMail]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
