@@ -608,8 +608,8 @@ describe("artifacts page", () => {
 
     setupArtifactsPage({ scope });
 
-    await screen.findByRole("heading", { name: "No artifacts yet" });
-    expect(screen.getByLabelText("Agent filter")).toHaveClass(
+    const agentFilter = await screen.findByLabelText("Agent filter");
+    expect(agentFilter).toHaveClass(
       "focus:border-primary",
       "focus:ring-[3px]",
       "focus:ring-primary/10",
