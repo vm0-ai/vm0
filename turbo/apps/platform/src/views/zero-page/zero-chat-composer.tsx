@@ -4665,19 +4665,13 @@ function TemplatePickerCategoryNav({
                 onChange(categoryOptions[nextIndex]?.value ?? value);
               }}
               className={cn(
-                "flex h-9 w-full items-center gap-2 rounded-lg border px-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                "flex h-8 w-full items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 selected
-                  ? "border-border bg-card font-medium text-foreground"
-                  : "border-transparent text-muted-foreground hover:bg-card hover:text-foreground focus-visible:bg-card focus-visible:text-foreground",
+                  ? "bg-gray-200 font-medium text-sidebar-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent focus-visible:bg-sidebar-accent",
               )}
             >
-              <Icon
-                className={cn(
-                  "h-4 w-4 shrink-0",
-                  selected ? "text-primary" : "text-muted-foreground",
-                )}
-                stroke={1.8}
-              />
+              <Icon className="h-4 w-4 shrink-0 text-gray-700" stroke={1.8} />
               <span className="truncate">{label}</span>
             </button>
           );
