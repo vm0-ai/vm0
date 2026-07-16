@@ -4067,7 +4067,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("defaults limited-free runs to Luna, allows Terra, and rejects Sol", async () => {
+  it("defaults limited-free runs to Luna, allows Terra and VM0 Model, and rejects Sol", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -4137,6 +4137,52 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toHaveLength(0);
     expect(queue.body.concurrency.active).toBe(0);
+
+    const vm0Model = "vm0-model";
+    const proxyHost = "https://www.vm0.test";
+    const proxyBaseUrl = `${proxyHost}/api/internal/vm0-model/v1`;
+    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
+    mockOptionalEnv("VM0_MODEL_PROXY_HOST", proxyHost);
+    await seedVm0ManagedModelKey(vm0Model);
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: vm0Model,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const vm0Sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "limited-free VM0 Model run",
+        model: vm0Model,
+      },
+      [201],
+    );
+    if (vm0Sent.status !== 201 || vm0Sent.body.runId === null) {
+      throw new Error("Expected VM0 Model to create a limited-free run");
+    }
+    await api.heartbeatRunner(runnerGroup);
+    const vm0Claim = await api.claimRunnerJob(vm0Sent.body.runId);
+    expect(vm0Claim.environment).toMatchObject({
+      OPENAI_BASE_URL: proxyBaseUrl,
+      OPENAI_MODEL: vm0Model,
+    });
+    expect(vm0Claim.codexRuntimeConfig).toMatchObject({
+      providerId: vm0Model,
+      baseUrl: proxyBaseUrl,
+    });
+    expect(
+      vm0Claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:vm0-model");
+    expect(vm0Claim.modelUsageProvider).toBe(vm0Model);
+    await api.requestCancelRun(actor, vm0Sent.body.runId, [200]);
   });
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {

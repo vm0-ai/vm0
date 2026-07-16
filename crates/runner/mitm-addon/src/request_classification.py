@@ -28,6 +28,7 @@ import matching
 import public_destination
 import registry
 import registry_firewalls
+import upstream_admission
 import upstream_destination_binding
 from url_utils import AuthorityValidationError, get_trusted_authority, normalize_trusted_hostname
 
@@ -351,7 +352,9 @@ def classify_request(
     )
 
     hostname = trusted_authority.host.lower()
-    if _api_hostname_matches(api_url, hostname) and not flow.request.path.startswith("/api/test/"):
+    if _api_hostname_matches(
+        api_url, hostname
+    ) and not upstream_admission.request_path_uses_platform_firewall(flow.request.path):
         return ApiAllow(vm_info=vm_info)
 
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
