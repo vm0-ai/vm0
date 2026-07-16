@@ -608,9 +608,9 @@ describe("artifacts page", () => {
 
     const agentFilter = await screen.findByLabelText("Agent filter");
     expect(agentFilter).toHaveClass(
-      "focus:border-primary",
-      "focus:ring-[3px]",
-      "focus:ring-primary/10",
+      "focus-visible:ring-2",
+      "focus-visible:ring-ring",
+      "focus-visible:ring-offset-2",
     );
   });
 
@@ -1176,7 +1176,7 @@ describe("artifacts page", () => {
 
     await fill(screen.getByLabelText("Search artifacts"), "");
     click(screen.getByLabelText("Agent filter"));
-    click(await screen.findByRole("option", { name: "Research Agent" }));
+    click(await screen.findByRole("menuitem", { name: "Research Agent" }));
     await waitFor(() => {
       expect(screen.getByText("research-brief.html")).toBeInTheDocument();
       expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
