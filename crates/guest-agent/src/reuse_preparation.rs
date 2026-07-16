@@ -5,9 +5,7 @@ use std::io::{self, Read};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
-use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, ProcessContainmentEvidence, SUPERVISED_CGROUP_BASE_PATH,
-};
+use guest_contracts::process_containment::{CGROUP_V2_MOUNT_PATH, SUPERVISED_CGROUP_BASE_PATH};
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
     REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
@@ -107,8 +105,7 @@ fn prepare(
         .map(Path::new)
         .map(|path| split_retained_runtime_path(path, &runtime_parent))
         .transpose()?;
-    let process_containment =
-        verify_process_containment().map_err(ReusePreparationError::Containment)?;
+    verify_process_containment().map_err(ReusePreparationError::Containment)?;
 
     let parent = Dir::open_absolute(&runtime_parent).map_err(ReusePreparationError::Cleanup)?;
     let parent_identity = parent.identity().map_err(ReusePreparationError::Cleanup)?;
@@ -167,7 +164,6 @@ fn prepare(
         before,
         after,
         removed_entries,
-        process_containment: Some(process_containment),
     })
 }
 
@@ -177,7 +173,7 @@ struct ProcessContainmentPaths {
     require_cgroup2_filesystem: bool,
 }
 
-fn verify_process_containment() -> io::Result<ProcessContainmentEvidence> {
+fn verify_process_containment() -> io::Result<()> {
     let paths = process_containment_paths();
     if paths.require_cgroup2_filesystem && !is_cgroup2_filesystem(&paths.mount)? {
         return Err(io::Error::new(
@@ -232,7 +228,7 @@ fn verify_process_containment() -> io::Result<ProcessContainmentEvidence> {
 
     let events = std::fs::read_to_string(paths.base.join(CGROUP_EVENTS_FILE))?;
     match parse_populated(&events) {
-        Some(false) => Ok(ProcessContainmentEvidence::CgroupV2),
+        Some(false) => Ok(()),
         Some(true) => Err(io::Error::other("supervised cgroup remains populated")),
         None => Err(io::Error::new(
             io::ErrorKind::InvalidData,

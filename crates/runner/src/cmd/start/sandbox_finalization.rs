@@ -635,7 +635,6 @@ mod tests {
         constants::runners::paths::CANONICAL_WORKING_DIR,
         types::runners::storage::{ArtifactEntry, StorageEntry, StorageManifest},
     };
-    use guest_contracts::process_containment::ProcessContainmentEvidence;
     use guest_contracts::reuse_preparation::{ReusePreparationReport, RootFilesystemCapacity};
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory, MockSandboxOverrides};
@@ -915,7 +914,6 @@ mod tests {
                     available_inodes: 4096,
                 },
                 removed_entries: 0,
-                process_containment: Some(ProcessContainmentEvidence::CgroupV2),
             })
             .unwrap(),
             stderr: Vec::new(),

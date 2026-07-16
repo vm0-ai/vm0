@@ -8,7 +8,6 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-use guest_contracts::process_containment::ProcessContainmentEvidence;
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
     REUSE_PREPARATION_EXIT_INVALID_REQUEST, ReusePreparationReport, ReusePreparationRequest,
@@ -54,10 +53,6 @@ fn prepare_for_reuse_removes_only_unprotected_runtime_entries() -> TestResult {
     );
     let report = serde_json::from_slice::<ReusePreparationReport>(&output.stdout)?;
     assert_eq!(report.removed_entries, 3);
-    assert_eq!(
-        report.process_containment,
-        Some(ProcessContainmentEvidence::CgroupV2)
-    );
     assert!(report.before.available_bytes > 0);
     assert!(report.after.available_bytes > 0);
     assert_eq!(
