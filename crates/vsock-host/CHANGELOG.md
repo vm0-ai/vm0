@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.58](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.57...vsock-host-v0.17.58) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.17.57](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.56...vsock-host-v0.17.57) (2026-07-15)
 
 

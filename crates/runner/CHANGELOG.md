@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.145.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.26...runner-rs-v0.145.0) (2026-07-16)
+
+
+### Features
+
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+* **runner:** bound r2 template archive extraction ([#21680](https://github.com/vm0-ai/vm0/issues/21680)) ([8860bb8](https://github.com/vm0-ai/vm0/commit/8860bb808995889be734dd115165c272b46f3c52))
+* **runner:** reject invalid parameterized firewall authorities ([#21690](https://github.com/vm0-ai/vm0/issues/21690)) ([419599c](https://github.com/vm0-ai/vm0/commit/419599c7e97dade82464a391a3e00cc9633e1e1d))
+
+
+### CI
+
+* cap runner behavior tests at two concurrent lanes ([#21695](https://github.com/vm0-ai/vm0/issues/21695)) ([696194b](https://github.com/vm0-ai/vm0/commit/696194bf0e1fbb7a3a639b3d965622e09cd7167c))
+
+
+### Documentation
+
+* **python:** clarify usage flush semantics ([#21677](https://github.com/vm0-ai/vm0/issues/21677)) ([d16766c](https://github.com/vm0-ai/vm0/commit/d16766caa81e2e8270d51099180de2f8b1885408))
+
 ## [0.144.26](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.25...runner-rs-v0.144.26) (2026-07-15)
 
 

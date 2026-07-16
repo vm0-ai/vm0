@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.53.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.52.0...guest-agent-v0.53.0) (2026-07-16)
+
+
+### Features
+
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.52.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.51.7...guest-agent-v0.52.0) (2026-07-15)
 
 

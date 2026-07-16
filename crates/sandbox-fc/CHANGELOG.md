@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.123](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.122...sandbox-fc-v0.37.123) (2026-07-16)
+
+
+### Bug Fixes
+
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
 ## [0.37.122](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.121...sandbox-fc-v0.37.122) (2026-07-15)
 
 ## [0.37.121](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.120...sandbox-fc-v0.37.121) (2026-07-15)

@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.279.0](https://github.com/vm0-ai/vm0/compare/api-v1.278.1...api-v1.279.0) (2026-07-16)
+
+
+### Features
+
+* **api:** reconcile connector catalog compatibility ([#21706](https://github.com/vm0-ai/vm0/issues/21706)) ([b1434dd](https://github.com/vm0-ai/vm0/commit/b1434dde242495914a4e4d6a44b36fc03bfbce85))
+* **api:** sync connector catalog snapshots from r2 ([#21568](https://github.com/vm0-ai/vm0/issues/21568)) ([9d38804](https://github.com/vm0-ai/vm0/commit/9d388040f4d502b5c8b63434cab03031f70f7c60))
+* enable chat model family session continuity for all users ([#21713](https://github.com/vm0-ai/vm0/issues/21713)) ([a427ac9](https://github.com/vm0-ai/vm0/commit/a427ac9652c276f8f219c0dba5ef458a7ca400d6))
+* route vm0-auto through signed usage proxy ([#21437](https://github.com/vm0-ai/vm0/issues/21437)) ([cdb5bee](https://github.com/vm0-ai/vm0/commit/cdb5beeb3617f207570635e1497d57a4f796e329))
+
+
+### Bug Fixes
+
+* **api:** serve color-system-fixed presentation runbooks ([#21688](https://github.com/vm0-ai/vm0/issues/21688)) ([e7a6bd8](https://github.com/vm0-ai/vm0/commit/e7a6bd884cfd52c7b1e924497c40729935dfb256))
+* authorize agents during connector connection ([#21709](https://github.com/vm0-ai/vm0/issues/21709)) ([5edaafc](https://github.com/vm0-ai/vm0/commit/5edaafcdf15ab37c2c96b3584c70f9b145ace20e))
+* claim queued chat messages in place ([#21627](https://github.com/vm0-ai/vm0/issues/21627)) ([c47ccc4](https://github.com/vm0-ai/vm0/commit/c47ccc4fa687b5ae369369432b4bad1de6bc9297))
+* describe zero scrape capabilities in agent context ([#21574](https://github.com/vm0-ai/vm0/issues/21574)) ([5d5b298](https://github.com/vm0-ai/vm0/commit/5d5b298b1396f2e4c1ee6873d429987fcb9df4cc))
+
+
+### Refactoring
+
+* **api:** reject invalid x api response bodies ([#21504](https://github.com/vm0-ai/vm0/issues/21504)) ([031cd91](https://github.com/vm0-ai/vm0/commit/031cd91ee1de12038eca264007af1c4bd70348e1))
+* remove workflow trigger compatibility surfaces ([#21523](https://github.com/vm0-ai/vm0/issues/21523)) ([88edf69](https://github.com/vm0-ai/vm0/commit/88edf6915fdb75904e866ac8df8107737286c95b))
+
+
+### Performance Improvements
+
+* **api:** reuse memory candidate rows during final ranking ([#21692](https://github.com/vm0-ai/vm0/issues/21692)) ([b1f3e60](https://github.com/vm0-ai/vm0/commit/b1f3e60d1a8f0c729e03ad872f551ff34d6a786c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.197.0
+    * @vm0/connectors bumped to 1.166.0
+    * @vm0/core bumped to 8.437.0
+    * @vm0/db bumped to 1.117.0
+
 ## [1.278.1](https://github.com/vm0-ai/vm0/compare/api-v1.278.0...api-v1.278.1) (2026-07-15)
 
 
