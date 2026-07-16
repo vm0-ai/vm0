@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -181,7 +182,7 @@ fn cleanup_cgroup(group_path: &Path) -> Result<CleanupReport, ProcessContainment
         match read_member_pids(group_path) {
             Ok(pids) => {
                 initial_members = pids.len();
-                graceful_errors = signal_term(&pids);
+                graceful_errors = signal_term(group_path, &pids);
             }
             Err(error) => {
                 graceful_errors = 1;
@@ -294,8 +295,9 @@ fn read_member_pids(group_path: &Path) -> io::Result<Vec<libc::pid_t>> {
         .collect()
 }
 
-fn signal_term(pids: &[libc::pid_t]) -> usize {
+fn signal_term(group_path: &Path, pids: &[libc::pid_t]) -> usize {
     let mut errors = 0;
+    let mut candidates = Vec::with_capacity(pids.len());
     for &pid in pids {
         let pidfd = match open_pidfd(pid) {
             Ok(Some(pidfd)) => pidfd,
@@ -305,6 +307,23 @@ fn signal_term(pids: &[libc::pid_t]) -> usize {
                 continue;
             }
         };
+        candidates.push((pid, pidfd));
+    }
+    if candidates.is_empty() {
+        return errors;
+    }
+
+    // Opening a pidfd stabilizes identity only from that point onward. Recheck
+    // membership so a PID recycled after the first enumeration is never
+    // signalled through a pidfd opened for an unrelated process.
+    let current_members = match read_member_pids(group_path) {
+        Ok(pids) => pids.into_iter().collect::<HashSet<_>>(),
+        Err(_) => return errors + 1,
+    };
+    for (pid, pidfd) in candidates {
+        if !current_members.contains(&pid) {
+            continue;
+        }
         if let Err(error) = signal_pidfd(&pidfd, libc::SIGTERM)
             && error.raw_os_error() != Some(libc::ESRCH)
         {
@@ -387,8 +406,17 @@ fn remove_empty_cgroup(group_path: &Path) -> Result<(), ProcessContainmentError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Read, Seek, SeekFrom};
-    use std::process::Stdio;
+    use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+    use std::process::{Child, Stdio};
+
+    struct ChildGuard(Child);
+
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
 
     #[test]
     fn parses_recursive_populated_state() {
@@ -413,5 +441,38 @@ mod tests {
         let mut content = String::new();
         placement.read_to_string(&mut content).unwrap();
         assert_eq!(content, "0");
+    }
+
+    #[test]
+    fn graceful_signal_rechecks_membership_after_opening_pidfd() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(directory.path().join(CGROUP_PROCS_FILE), "").unwrap();
+        let mut child = ChildGuard(
+            Command::new("/bin/sh")
+                .arg("-c")
+                .arg(
+                    "trap 'printf \"term\\n\"; exit 42' TERM; \
+                     printf 'ready\\n'; \
+                     while IFS= read -r line; do printf '%s\\n' \"$line\"; done",
+                )
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let enumerated_pid = libc::pid_t::try_from(child.0.id()).unwrap();
+        let mut stdout = BufReader::new(child.0.stdout.take().unwrap());
+        let mut response = String::new();
+        stdout.read_line(&mut response).unwrap();
+        assert_eq!(response, "ready\n");
+
+        let errors = signal_term(directory.path(), &[enumerated_pid]);
+        writeln!(child.0.stdin.as_mut().unwrap(), "probe").unwrap();
+        response.clear();
+        stdout.read_line(&mut response).unwrap();
+
+        assert_eq!(errors, 0);
+        assert_eq!(response, "probe\n");
     }
 }
