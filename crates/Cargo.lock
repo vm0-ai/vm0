@@ -1333,8 +1333,10 @@ dependencies = [
 name = "guest-init"
 version = "0.16.113"
 dependencies = [
+ "guest-contracts",
  "libc",
  "nix",
+ "tempfile",
  "vsock-guest",
 ]
 
@@ -2567,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.145.4"
+version = "0.145.5"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -3728,6 +3730,7 @@ dependencies = [
  "libc",
  "process-control-ipc",
  "shell-quote",
+ "tempfile",
  "vsock-proto",
 ]
 

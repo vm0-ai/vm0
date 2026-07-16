@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
 use guest_contracts::reuse_preparation::{
-    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
-    REUSE_PREPARATION_EXIT_INVALID_REQUEST, ReusePreparationReport, ReusePreparationRequest,
+    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+    REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
+    ReusePreparationReport, ReusePreparationRequest,
 };
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecResult, ExecTermination, Sandbox};
 use tracing::{info, warn};
@@ -25,6 +26,7 @@ enum ReuseRejectionReason {
     InvalidRequest,
     InspectionFailed,
     CleanupFailed,
+    ContainmentFailed,
     HelperFailed,
     InvalidReport,
     LowBytes,
@@ -38,6 +40,7 @@ impl ReuseRejectionReason {
             Self::InvalidRequest => "invalid_request",
             Self::InspectionFailed => "inspection_failed",
             Self::CleanupFailed => "cleanup_failed",
+            Self::ContainmentFailed => "containment_failed",
             Self::HelperFailed => "helper_failed",
             Self::InvalidReport => "invalid_report",
             Self::LowBytes => "low_bytes",
@@ -205,6 +208,9 @@ fn helper_failure_reason(result: &ExecResult) -> ReuseRejectionReason {
         ExecTermination::Exited {
             exit_code: REUSE_PREPARATION_EXIT_CLEANUP_FAILED,
         } => ReuseRejectionReason::CleanupFailed,
+        ExecTermination::Exited {
+            exit_code: REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+        } => ReuseRejectionReason::ContainmentFailed,
         ExecTermination::Exited { .. }
         | ExecTermination::TimedOut
         | ExecTermination::Cancelled
@@ -456,13 +462,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn preparation_distinguishes_helper_inspection_and_cleanup_failures() {
+    async fn preparation_distinguishes_typed_helper_failures() {
         for (exit_code, expected_reason) in [
             (
                 REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
                 "inspection_failed",
             ),
             (REUSE_PREPARATION_EXIT_CLEANUP_FAILED, "cleanup_failed"),
+            (
+                REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+                "containment_failed",
+            ),
         ] {
             let sandbox = MockSandbox::new(expected_reason);
             sandbox.push_exec_result(Ok(ExecResult::new(
