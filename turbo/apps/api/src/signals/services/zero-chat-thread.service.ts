@@ -579,7 +579,6 @@ function workflowSnapshotFromRow(
     displayName: row.workflowDisplayName,
     description: row.workflowDescription,
     automationId: row.workflowAutomationId ?? undefined,
-    triggerId: row.workflowAutomationId ?? undefined,
     triggerBrief:
       row.workflowAutomationBrief ?? workflowScheduleAutomationBrief(row),
   };

@@ -12,6 +12,7 @@ import matching
 import registry
 import registry_firewalls
 from tests.registry_helpers import (
+    assert_invalid_builtin_vm,
     builtin_vm,
     inline_vm,
     write_multi_vm_registry,
@@ -130,7 +131,7 @@ def _catalog_snapshot(
     )
 
 
-def _assert_invalid_builtin_vm(
+def _assert_invalid_builtin_vm_with_cache(
     *,
     registry_path,
     cache_path,
@@ -141,13 +142,8 @@ def _assert_invalid_builtin_vm(
         registry_path=str(registry_path),
         builtin_firewall_catalog_cache_path=str(cache_path),
     ):
-        context = registry.get_vm_context("10.200.0.1", str(registry_path))
-        state = registry.load_registry_state(str(registry_path))
+        invalid_vm = assert_invalid_builtin_vm(registry_path)
 
-    assert context is None
-    assert not isinstance(state, registry.RegistryUnavailable)
-    invalid_vm = state.invalid_vms["10.200.0.1"]
-    assert invalid_vm.reason == "invalid_firewalls"
     assert expected_message in invalid_vm.message
 
 
@@ -174,7 +170,7 @@ def _assert_cache_firewall_is_invalid(
         {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
     )
 
-    _assert_invalid_builtin_vm(
+    _assert_invalid_builtin_vm_with_cache(
         registry_path=registry_path,
         cache_path=cache_path,
         mitm_ctx=mitm_ctx,
@@ -683,7 +679,7 @@ class TestRegistryBuiltinCache:
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm(
+        _assert_invalid_builtin_vm_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
@@ -704,7 +700,7 @@ class TestRegistryBuiltinCache:
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm(
+        _assert_invalid_builtin_vm_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
@@ -792,7 +788,7 @@ class TestRegistryBuiltinCache:
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
         )
 
-        _assert_invalid_builtin_vm(
+        _assert_invalid_builtin_vm_with_cache(
             registry_path=registry_path,
             cache_path=cache_path,
             mitm_ctx=mitm_ctx,
