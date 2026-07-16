@@ -307,6 +307,14 @@ jobs:
           cd crates
           cargo clippy --all-targets --all-features
 
+      - name: Lint vsock-guest production configuration
+        if: |
+          needs.detect.outputs.vsock-test-changed == 'true' ||
+          needs.detect.outputs.ci-changed == 'true'
+        run: |
+          cd crates
+          cargo clippy -p vsock-guest --release --no-default-features --all-targets
+
       - name: Build documentation
         run: |
           cd crates
@@ -321,6 +329,48 @@ jobs:
         run: |
           cd crates
           cargo run -p ably-subscriber --example smoke_test
+
+      - name: Run vsock-guest production identity test
+        if: |
+          needs.detect.outputs.vsock-test-changed == 'true' ||
+          needs.detect.outputs.ci-changed == 'true'
+        run: |
+          test "$(id -u)" -eq 0
+          for command in getent groupadd useradd install; do
+            command -v "$command"
+          done
+
+          if getent passwd user >/dev/null || getent passwd 42420 >/dev/null; then
+            echo "production identity test user conflicts with the CI image" >&2
+            exit 1
+          fi
+          if getent group vm0-identity-primary >/dev/null || \
+             getent group vm0-identity-extra >/dev/null || \
+             getent group 42420 >/dev/null || \
+             getent group 42421 >/dev/null; then
+            echo "production identity test group conflicts with the CI image" >&2
+            exit 1
+          fi
+          if [ -e /sbin/guest-write-file ]; then
+            echo "production identity test helper conflicts with the CI image" >&2
+            exit 1
+          fi
+
+          groupadd --gid 42420 vm0-identity-primary
+          groupadd --gid 42421 vm0-identity-extra
+          useradd --create-home --home-dir /home/user --uid 42420 \
+            --gid vm0-identity-primary --groups vm0-identity-extra \
+            --shell /bin/sh user
+          install -d -m 0755 -o user -g vm0-identity-primary /home/user
+          install -m 0755 \
+            crates/vsock-guest/tests/fixtures/guest-write-file-identity-probe.sh \
+            /sbin/guest-write-file
+
+          cd crates
+          HOME=/root USER=root LOGNAME=root \
+            cargo test -p vsock-guest --release --no-default-features \
+              --test production_identity -- \
+              --ignored --exact production_write_file_identity_matches_sudo_policy
 
   coverage:
     runs-on: ubuntu-latest
