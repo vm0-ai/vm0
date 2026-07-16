@@ -320,17 +320,15 @@ mod tests {
             profile: "vm0/second".into(),
             shutdowns: Arc::clone(&factory_shutdowns),
         }));
-        let other_retained_factory: SharedFactory = Arc::new(Box::new(RecordingFactory {
+        let weakly_referenced_factory: SharedFactory = Arc::new(Box::new(RecordingFactory {
             profile: "vm0/third".into(),
             shutdowns: Arc::clone(&factory_shutdowns),
         }));
+        let retained_weak_factory = Arc::downgrade(&weakly_referenced_factory);
         let mut factories = BTreeMap::new();
         factories.insert("vm0/first".into(), (unique_factory, false));
         factories.insert("vm0/second".into(), (Arc::clone(&retained_factory), false));
-        factories.insert(
-            "vm0/third".into(),
-            (Arc::clone(&other_retained_factory), false),
-        );
+        factories.insert("vm0/third".into(), (weakly_referenced_factory, false));
 
         let error = shutdown_factory_instances(&mut factories, None)
             .await
@@ -344,7 +342,7 @@ mod tests {
             "got: {message}"
         );
         assert!(
-            message.contains("vm0/third (strong=2, weak=0)"),
+            message.contains("vm0/third (strong=1, weak=1)"),
             "got: {message}"
         );
         assert_eq!(factories.len(), 3);
@@ -352,7 +350,7 @@ mod tests {
         assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 0);
 
         drop(retained_factory);
-        drop(other_retained_factory);
+        drop(retained_weak_factory);
 
         shutdown_factory_instances(&mut factories, None)
             .await
