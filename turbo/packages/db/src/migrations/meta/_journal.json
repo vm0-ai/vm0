@@ -4306,6 +4306,20 @@
       "when": 1784229404189,
       "tag": "0614_migrate_kimi_k3_key",
       "breakpoints": true
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1784233358824,
+      "tag": "0615_preserve_chat_message_run_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 616,
+      "version": "7",
+      "when": 1784233370754,
+      "tag": "0616_protect_chat_event_rows_from_update",
+      "breakpoints": true
     }
   ]
 }
