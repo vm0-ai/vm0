@@ -1457,16 +1457,52 @@ describe("CHAT-02: admission without spendable credits", () => {
     expect(sent.body.runId).toBeNull();
 
     const messages = await chat.listThreadMessages(actor, sent.body.threadId);
-    const blockedUser = userMessages(messages.messages)[0];
+    const blockedUsers = userMessages(messages.messages);
+    expect(blockedUsers).toHaveLength(2);
+    const queuedUser = blockedUsers.find((message) => {
+      return message.id === clientMessageId;
+    });
+    if (!queuedUser) {
+      throw new Error("Expected the original queued user message");
+    }
+    expect(queuedUser).toMatchObject({
+      content: "blocked by suspended plan",
+    });
+    expect(queuedUser.runId).toBeUndefined();
+    expect(queuedUser.error).toBeUndefined();
+    const blockedUser = blockedUsers.find((message) => {
+      return message.revokesMessageId === clientMessageId;
+    });
+    if (!blockedUser) {
+      throw new Error("Expected an insufficient-credits replacement message");
+    }
     expect(blockedUser).toMatchObject({
-      id: clientMessageId,
       content: "blocked by suspended plan",
       error: "insufficient_credits",
+      revokesMessageId: clientMessageId,
     });
-    expect(blockedUser?.runId).toBeUndefined();
+    expect(blockedUser.runId).toBeUndefined();
     const guidance = assistantMessages(messages.messages)[0];
-    expect(guidance?.content).toContain("Upgrade to Pro");
-    expect(guidance?.error).toBe("insufficient_credits");
+    if (!guidance) {
+      throw new Error("Expected insufficient-credits assistant guidance");
+    }
+    expect(guidance.content).toContain("Upgrade to Pro");
+    expect(guidance.error).toBe("insufficient_credits");
+
+    const appended = await chat.listThreadMessages(actor, sent.body.threadId, {
+      sinceId: clientMessageId,
+    });
+    expect(appended.messages).toStrictEqual([
+      expect.objectContaining({
+        id: blockedUser.id,
+        revokesMessageId: clientMessageId,
+        error: "insufficient_credits",
+      }),
+      expect.objectContaining({
+        id: guidance.id,
+        error: "insufficient_credits",
+      }),
+    ]);
 
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toHaveLength(0);
@@ -1479,7 +1515,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     );
     expect(retry.body).toStrictEqual(sent.body);
     const afterRetry = await chat.listThreadMessages(actor, sent.body.threadId);
-    expect(afterRetry.messages).toHaveLength(2);
+    expect(afterRetry.messages).toHaveLength(3);
   }, 60_000);
 });
 

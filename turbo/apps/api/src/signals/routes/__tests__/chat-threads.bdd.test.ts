@@ -1345,17 +1345,43 @@ describe("CHAT-01 chat thread read state", () => {
       }),
     ).toStrictEqual([
       ["user", "cursor round one"],
+      ["user", "cursor round one"],
       ["assistant", expect.stringContaining("Insufficient credits")],
+      ["user", "cursor round two"],
       ["user", "cursor round two"],
       ["assistant", expect.stringContaining("Insufficient credits")],
     ]);
     const ids = full.messages.map((message) => {
       return message.id;
     });
-    const [firstUser, firstAssistant, secondUser, secondAssistant] = ids;
-    if (!firstUser || !firstAssistant || !secondUser || !secondAssistant) {
-      throw new Error("Expected four messages across the two sends");
+    const [
+      firstQueuedUser,
+      firstReplacement,
+      firstAssistant,
+      secondQueuedUser,
+      secondReplacement,
+      secondAssistant,
+    ] = ids;
+    if (
+      !firstQueuedUser ||
+      !firstReplacement ||
+      !firstAssistant ||
+      !secondQueuedUser ||
+      !secondReplacement ||
+      !secondAssistant
+    ) {
+      throw new Error("Expected six messages across the two sends");
     }
+    expect(full.messages[0]?.error).toBeUndefined();
+    expect(full.messages[1]).toMatchObject({
+      error: "insufficient_credits",
+      revokesMessageId: firstQueuedUser,
+    });
+    expect(full.messages[3]?.error).toBeUndefined();
+    expect(full.messages[4]).toMatchObject({
+      error: "insufficient_credits",
+      revokesMessageId: secondQueuedUser,
+    });
 
     // Latest page overflow: only the newest rows, with history behind them.
     const latest = await chat.listThreadMessages(owner, threadId, {
@@ -1365,7 +1391,7 @@ describe("CHAT-01 chat thread read state", () => {
       latest.messages.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([secondUser, secondAssistant]);
+    ).toStrictEqual([secondReplacement, secondAssistant]);
     expect(latest.hasHistoryBefore).toBeTruthy();
 
     // Forward pagination strictly after the cursor.
@@ -1376,18 +1402,18 @@ describe("CHAT-01 chat thread read state", () => {
       since.messages.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([secondUser, secondAssistant]);
+    ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
 
     // Backward pagination strictly before the cursor.
     const before = await chat.listThreadMessages(owner, threadId, {
-      beforeId: secondUser,
-      limit: 2,
+      beforeId: secondQueuedUser,
+      limit: 3,
     });
     expect(
       before.messages.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([firstUser, firstAssistant]);
+    ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
     expect(before.hasHistoryBefore).toBeFalsy();
 
     const beforeOverflow = await chat.listThreadMessages(owner, threadId, {
@@ -1398,7 +1424,7 @@ describe("CHAT-01 chat thread read state", () => {
       beforeOverflow.messages.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([firstAssistant, secondUser]);
+    ).toStrictEqual([secondQueuedUser, secondReplacement]);
     expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
   }, 30_000);
 });
@@ -2297,10 +2323,32 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     const ids = page.messages.map((message) => {
       return message.id;
     });
-    const [m1, m2, m3, m4] = ids;
-    if (!m1 || !m2 || !m3 || !m4) {
-      throw new Error("Expected four seeded thread messages");
+    const [
+      firstQueuedUser,
+      firstReplacement,
+      firstAssistant,
+      secondQueuedUser,
+      secondReplacement,
+      secondAssistant,
+    ] = ids;
+    if (
+      !firstQueuedUser ||
+      !firstReplacement ||
+      !firstAssistant ||
+      !secondQueuedUser ||
+      !secondReplacement ||
+      !secondAssistant
+    ) {
+      throw new Error("Expected six seeded thread messages");
     }
+    expect(page.messages[1]).toMatchObject({
+      error: "insufficient_credits",
+      revokesMessageId: firstQueuedUser,
+    });
+    expect(page.messages[4]).toMatchObject({
+      error: "insufficient_credits",
+      revokesMessageId: secondQueuedUser,
+    });
 
     // Path validation runs before auth.
     const app = createApp({ signal: context.signal });
@@ -2434,7 +2482,14 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       chronological.body.messages.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([m1, m2, m3, m4]);
+    ).toStrictEqual([
+      firstQueuedUser,
+      firstReplacement,
+      firstAssistant,
+      secondQueuedUser,
+      secondReplacement,
+      secondAssistant,
+    ]);
     expect(chronological.body.messages[0]).toMatchObject({
       role: "user",
       content: "v1 round one",
@@ -2443,7 +2498,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
     const since = await chat.requestV1ThreadMessages(
       bearer,
       threadId,
-      { sinceId: m2 },
+      { sinceId: firstAssistant },
       [200],
     );
     if (since.status !== 200) {
@@ -2453,12 +2508,12 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       since.body.messages.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([m3, m4]);
+    ).toStrictEqual([secondQueuedUser, secondReplacement, secondAssistant]);
 
     const before = await chat.requestV1ThreadMessages(
       bearer,
       threadId,
-      { beforeId: m3, limit: 2 },
+      { beforeId: secondQueuedUser, limit: 3 },
       [200],
     );
     if (before.status !== 200) {
@@ -2468,7 +2523,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       before.body.messages.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([m1, m2]);
+    ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
   }, 60_000);
 
   it("sends v1 chat messages with a personal access token", async () => {
