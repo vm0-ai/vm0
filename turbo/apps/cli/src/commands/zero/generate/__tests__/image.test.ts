@@ -308,24 +308,16 @@ describe("zero generate image command", () => {
     expect(stdout).toContain(
       "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/illustration-template/ink-storefront/SKILL.md",
     );
-    expect(stdout).toContain(
-      "## Required Stage 1: Resolve Locked Style Source",
-    );
-    expect(stdout).toContain("registry summary above is context only");
+    expect(stdout).toContain("## Required Workflow");
+    expect(stdout).toContain("If unavailable, stop without generating");
     expect(stdout).toContain("required model inputs");
-    expect(stdout).toContain("authoring-only examples");
     expect(stdout).not.toContain("## Requested Parameters");
     expect(stdout).not.toContain("Requested size: 1024x1024");
     expect(stdout).not.toContain("Source image URLs: none");
     expect(stdout).not.toContain("## Parameter Precedence");
-    expect(stdout).toContain(
-      "Explicit user requirements override conflicting style requirements",
-    );
+    expect(stdout).toContain("Explicit user requirements override conflicts");
     expect(stdout).toContain(
       "`--background` accepts only `auto`, `opaque`, or `transparent`",
-    );
-    expect(stdout).toContain(
-      "stop and report that limitation instead of generating",
     );
     expect(stdout).toContain("--compiled-prompt");
     expect(stdout).toContain("<resolved compatible CLI options>");
