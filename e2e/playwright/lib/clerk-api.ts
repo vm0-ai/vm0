@@ -124,6 +124,7 @@ export async function deleteStaleTestUsers(): Promise<void> {
           headers: getClerkHeaders(),
         },
       );
+      await deleteResponse.body?.cancel();
       if (!deleteResponse.ok && deleteResponse.status !== 404) {
         console.warn(
           `Failed to delete stale user ${user.id} (${userEmail}): ${deleteResponse.status}`,
@@ -154,6 +155,7 @@ export async function deleteUserByEmail(email: string): Promise<void> {
         },
         { retryTransientFailures: true },
       );
+      await deleteResponse.body?.cancel();
       if (!deleteResponse.ok && deleteResponse.status !== 404) {
         throw new Error(
           `delete Clerk test user failed with ${formatClerkResponseSummary(deleteResponse)}`,
