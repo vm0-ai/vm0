@@ -18,7 +18,16 @@ interface RetryableClerkRequestInit extends RequestInit {
 }
 
 function getClerkApiBase(): string {
-  return process.env.CLERK_API_BASE_URL ?? DEFAULT_CLERK_API_BASE;
+  const testApiBase = process.env.CLERK_API_TEST_BASE_URL;
+  if (!testApiBase) {
+    return DEFAULT_CLERK_API_BASE;
+  }
+
+  const testApiUrl = new URL(testApiBase);
+  if (testApiUrl.protocol !== "http:" || testApiUrl.hostname !== "127.0.0.1") {
+    throw new Error("CLERK_API_TEST_BASE_URL must use an HTTP 127.0.0.1 URL");
+  }
+  return testApiBase;
 }
 
 function getClerkHeaders(): Record<string, string> {
@@ -183,8 +192,9 @@ async function requestClerk(
   path: string,
   init: RequestInit,
 ): Promise<Response> {
+  const url = `${getClerkApiBase()}${path}`;
   try {
-    return await fetch(`${getClerkApiBase()}${path}`, init);
+    return await fetch(url, init);
   } catch (cause) {
     throw new Error(`${operation} request failed`, { cause });
   }
@@ -195,10 +205,11 @@ async function requestClerkWithRetry(
   path: string,
   init: RetryableClerkRequestInit,
 ): Promise<Response> {
+  const url = `${getClerkApiBase()}${path}`;
   for (const fallbackDelayMs of CLERK_RETRY_DELAYS_MS) {
     let response: Response;
     try {
-      response = await fetch(`${getClerkApiBase()}${path}`, init);
+      response = await fetch(url, init);
     } catch {
       await wait(fallbackDelayMs);
       continue;

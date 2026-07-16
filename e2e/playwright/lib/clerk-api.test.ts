@@ -215,6 +215,25 @@ test("keeps bulk stale-user deletion single-attempt and best-effort", async () =
   );
 });
 
+test("rejects a non-loopback Clerk test endpoint", async () => {
+  const previousBaseUrl = process.env.CLERK_API_TEST_BASE_URL;
+  const previousSecretKey = process.env.CLERK_SECRET_KEY;
+  process.env.CLERK_API_TEST_BASE_URL = "https://example.com/v1";
+  process.env.CLERK_SECRET_KEY = "sk_test_fixture";
+  try {
+    const error = await captureError(async () => {
+      await createUser("invalid-endpoint@example.com");
+    });
+    assert.equal(
+      error.message,
+      "CLERK_API_TEST_BASE_URL must use an HTTP 127.0.0.1 URL",
+    );
+  } finally {
+    restoreEnvironmentVariable("CLERK_API_TEST_BASE_URL", previousBaseUrl);
+    restoreEnvironmentVariable("CLERK_SECRET_KEY", previousSecretKey);
+  }
+});
+
 async function withClerkServer(
   handler: ClerkServerHandler,
   run: (requests: readonly ObservedRequest[]) => Promise<void>,
@@ -243,17 +262,17 @@ async function withClerkServer(
     throw new Error("Expected Clerk test server to listen on a TCP port");
   }
 
-  const previousBaseUrl = process.env.CLERK_API_BASE_URL;
+  const previousBaseUrl = process.env.CLERK_API_TEST_BASE_URL;
   const previousSecretKey = process.env.CLERK_SECRET_KEY;
   const previousJobRef = process.env.JOB_REF;
-  process.env.CLERK_API_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
+  process.env.CLERK_API_TEST_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
   process.env.CLERK_SECRET_KEY = "sk_test_fixture";
   process.env.JOB_REF = "test-job";
 
   try {
     await run(requests);
   } finally {
-    restoreEnvironmentVariable("CLERK_API_BASE_URL", previousBaseUrl);
+    restoreEnvironmentVariable("CLERK_API_TEST_BASE_URL", previousBaseUrl);
     restoreEnvironmentVariable("CLERK_SECRET_KEY", previousSecretKey);
     restoreEnvironmentVariable("JOB_REF", previousJobRef);
     await closeServer(server);
