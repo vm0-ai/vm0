@@ -1016,7 +1016,6 @@ async def test_capture_enabled_trace_with_managed_auth_defers_to_request_block(
         request_headers=headers(
             ("Host", "api.github.com"),
             ("X-Client-Header", "visible"),
-            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
     original_headers = tuple(flow.request.headers.fields)
