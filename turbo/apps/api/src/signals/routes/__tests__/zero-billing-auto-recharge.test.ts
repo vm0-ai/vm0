@@ -42,7 +42,7 @@ function createActor(
 
 async function createOnboardedActor(): Promise<AutoRechargeActor> {
   const admin = createActor();
-  await billingApi.setupOnboarding(admin, {
+  await billingApi.bootstrapOnboarding(admin, {
     displayName: "BDD Auto Recharge",
   });
   return admin;

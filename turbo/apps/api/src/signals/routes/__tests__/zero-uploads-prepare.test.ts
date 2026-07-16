@@ -155,7 +155,7 @@ describe("POST /api/zero/uploads/prepare", () => {
 
   it("rejects suspended orgs with insufficient credits", async () => {
     const actor = bdd.user();
-    await bdd.setupOnboarding(actor, {
+    await bdd.bootstrapOnboarding(actor, {
       displayName: "Suspended upload prepare agent",
     });
     if (!actor.orgId) {

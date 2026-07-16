@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import type StripeSDK from "stripe";
 import { audioTranscriptionsV1Contract } from "@vm0/api-contracts/contracts/audio-transcriptions-v1";
 import { cronProcessUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
-import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
@@ -58,7 +57,11 @@ import {
   mockStripeClient,
 } from "../../../external/stripe-client";
 import { modelStatsContract } from "../../model-stats";
-import type { ApiTestUser, OnboardingSetupBody } from "./api-bdd";
+import {
+  createBddApi,
+  type ApiTestUser,
+  type OnboardingBootstrapOptions,
+} from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -284,12 +287,15 @@ export function createBillingMediaApi(context: TestContext) {
     configureCampaign,
     configureMapsProvider,
 
-    async setupOnboarding(actor: ApiTestUser, body: OnboardingSetupBody) {
-      const client = setupApp({ context })(onboardingSetupContract);
-      return await accept(
-        client.setup({ headers: authenticate(actor), body }),
-        [200, 409],
+    async bootstrapOnboarding(
+      actor: ApiTestUser,
+      body: OnboardingBootstrapOptions,
+    ) {
+      const agentId = await createBddApi(context).bootstrapOnboarding(
+        actor,
+        body,
       );
+      return { status: 200 as const, body: { agentId } };
     },
 
     async readBillingStatus(

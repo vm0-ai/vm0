@@ -9,7 +9,6 @@ import {
   zeroBillingStatusContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { createStore } from "ccstate";
@@ -17,8 +16,12 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import {
+  seedOrgMetadata,
+  setOnboardingPaymentPendingFixture,
+} from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { createBddApi } from "./helpers/api-bdd";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -109,14 +112,18 @@ async function readBillingStatus(
 
 async function createOnboardingPaymentPendingOrg(): Promise<BillingOrgFixture> {
   const fixture = createOrgFixture();
-  authenticateOrg(fixture);
-  await accept(
-    setupApp({ context })(onboardingSetupContract).setup({
-      headers: { authorization: "Bearer clerk-session" },
-      body: { displayName: "Billing Checkout Test Agent" },
-    }),
-    [200, 409],
+  await createBddApi(context).bootstrapOnboarding(
+    {
+      ...fixture,
+      orgRole: "org:admin",
+      email: `${fixture.userId}@example.test`,
+    },
+    { displayName: "Billing Checkout Test Agent" },
   );
+  await setOnboardingPaymentPendingFixture({
+    orgId: fixture.orgId,
+    onboardingPaymentPending: true,
+  });
   return fixture;
 }
 

@@ -95,13 +95,12 @@ Coverage: `zero-org-members`, `zero-org-invite`, `zero-org-membership-requests`.
 
 ### ORG-03: Onboarding and first-run setup
 
-Given a new authenticated user completes onboarding setup
-When they read onboarding status, org state, default resources, connectors, and agents
-Then setup is complete and idempotent.
-Then repeated setup does not create duplicate visible resources.
-Then skipped or invalid setup returns client errors without changing visible state.
+Given a new authenticated org admin reads onboarding status
+When the status read bootstraps default resources and the admin completes onboarding
+Then onboarding is complete and repeated status reads do not create duplicate resources.
+Then members cannot complete onboarding for the org.
 
-Coverage: `zero-onboarding-setup`, `zero-onboarding-status`.
+Coverage: `zero-onboarding-status`, `zero-onboarding-complete`.
 
 ### AGENT-01: Agent lifecycle and isolation
 
@@ -544,7 +543,7 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 
 | `zero-chat-threads{,-create,-list,-delete,-patch,-mark-read,-messages,-model-selection}.test.ts`, `zero-chat-search.test.ts`, `zero-chat-threads-github-prs.test.ts`, `zero-chat-threads-artifacts.test.ts`, `zero-chat-threads-artifacts-sync.test.ts`, `chat-threads-v1.test.ts` | CHAT-01/03 chains in `chat-threads.bdd.test.ts`, the CHAT-01 mutation chain in `chat-files.bdd.test.ts`, and the CHAT-02 queued-attachment case in `chat-messages.bdd.test.ts`; legacy artifact-row sync arms listed below | targeted CHAT-03 + docs exception |
 | 9 compose legacy files (`agent-composes-*`, `zero-composes-*`) | COMPOSE-01 chains in `composes.bdd.test.ts` plus the lifecycle chain in `auth-org-agents.bdd.test.ts` | same |
-| 10 org/team legacy files (`zero-org*`, `zero-team`, `zero-default-agent`, `zero-onboarding-setup`) | ORG-01/02/03, TEAM-01, AGENT-02 chains ORG-LOGO-A..ORG-TOKEN-G in `org-team.bdd.test.ts` | same |
+| 9 org/team legacy files (`zero-org*`, `zero-team`, `zero-default-agent`) | ORG-01/02/03, TEAM-01, AGENT-02 chains ORG-LOGO-A..ORG-TOKEN-G in `org-team.bdd.test.ts` | same |
 | 13 user-config legacy files (`zero-secrets*`, `zero-variables*`, `zero-api-keys*`, `zero-user-*`, `zero-push-subscriptions`, `auth-me`, `health-auth-probe`) | AUTH-01/03 batches UC-A..D in `user-config.bdd.test.ts` | same |
 | 14 run-read legacy files plus the deleted DB-seeded `agent-runs-create.test.ts` and `agent-run-telemetry.test.ts` remnants | RUN-03/04 read chains and RUN-01/02 resume/admission chains in `run-reads.bdd.test.ts` | targeted RUN-03/04 + docs exception |
 | `webhooks-agent-checkpoints.test.ts`, `webhooks-agent-storage.test.ts`, `webhooks-agent-health-usage-telemetry.test.ts`, `webhooks-agent-firewall-auth.test.ts`, `webhooks-agent-complete.test.ts` | CHAIN-RUN/RUN-03 chains in `run-lifecycle.bdd.test.ts`, WHCB-05/06/09 in `webhooks-callbacks.bdd.test.ts`, FW-2/3/4/8/9/10 in `webhooks-agent-firewall-auth.bdd.test.ts`; firewall and priced-usage inconsistent-state arms listed below | targeted webhook BDD + docs exception |

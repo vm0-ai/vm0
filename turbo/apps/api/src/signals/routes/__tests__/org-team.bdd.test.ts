@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 
 import { testContext } from "../../../__tests__/test-context";
 import {
@@ -14,15 +13,14 @@ import { expectApiError } from "./helpers/api-bdd";
 
 /*
 ORG-01/02/03, TEAM, and AGENT-02 chains replacing the legacy zero-org*,
-zero-team, zero-default-agent, and zero-onboarding-setup route tests:
+zero-team, and zero-default-agent route tests:
 - Org/member/Slack-connection DB row asserts are replaced by follow-up
   GET /org, listMembers, listOrgs, Slack connect-status reads, and response
-  messages; onboarding row asserts by onboarding status, agents list, and
-  enabled-connector reads.
+  messages; onboarding row asserts by onboarding status and agents list.
 - Boundary-call asserts are kept only where contract-critical: the Clerk
   `updateOrganizationLogo(orgId, {file})` shape, the `updateOrganization`
-  slug-retry call sequences, and the membership_requests REST call-count 0
-  for non-admin callers (security guarantee).
+  call shape and the membership_requests REST call-count 0 for non-admin
+  callers (security guarantee).
 - Per-route 401 / no-org / sandbox-token-rejection duplicates are merged:
   one representative per distinct inner-handler statement, plus two
   representative sandbox rejections in the run-scoped token chain.
@@ -66,52 +64,16 @@ async function onboardAdmin(
     orgState.name = options.name;
   }
   api.mockClerkOrg(admin, orgState);
-  const setup = await api.setupOnboarding(admin, {
+  const bootstrap = await api.bootstrapOnboarding(admin, {
     displayName: options.displayName ?? "BDD Org Team Agent",
-    workspaceName: options.name ?? "BDD Org Team Workspace",
     sound: "calm",
-    timezone: "UTC",
-    role: "engineering",
   });
-  if (setup.status !== 200 && setup.status !== 409) {
+  if (bootstrap.status !== 200) {
     throw new Error(
-      `Expected onboarding setup to succeed, got ${setup.status}`,
+      `Expected onboarding bootstrap to succeed, got ${bootstrap.status}`,
     );
   }
-  return setup.body.agentId;
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Expected a plain object");
-  }
-  return value as Record<string, unknown>;
-}
-
-function slugConflictError(): Error {
-  return Object.assign(new Error("Unprocessable Entity"), {
-    status: 422,
-    errors: [
-      {
-        code: "form_identifier_exists",
-        message: "That slug is already in use",
-        meta: { paramName: "slug" },
-      },
-    ],
-  });
-}
-
-function nonSlugClerkError(): Error {
-  return Object.assign(new Error("Unprocessable Entity"), {
-    status: 422,
-    errors: [
-      {
-        code: "form_param_value_invalid",
-        message: "Name is invalid",
-        meta: { paramName: "name" },
-      },
-    ],
-  });
+  return bootstrap.body.agentId;
 }
 
 function pngLogoFile(): File {
@@ -941,173 +903,6 @@ describe("ORG-01/AGENT-02: team listing and default-agent recovery", () => {
     );
     expectApiError(missingAgent.body);
     expect(missingAgent.body.error.message).toBe("Agent not found in this org");
-  });
-});
-
-describe("ORG-03: onboarding setup edges", () => {
-  it("gates non-admins, validates connectors, and survives clerk slug conflicts [ONBOARD-F]", async () => {
-    const runs = createRunsApi(context);
-    api.acceptAgentStorageWrites();
-
-    const unauthenticated = await api.requestSetupOnboarding(
-      null,
-      { displayName: "Anon Setup" },
-      [401],
-    );
-    expect(unauthenticated.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-
-    const gatekeptAdmin = api.user();
-    const member = api.user({
-      orgId: gatekeptAdmin.orgId,
-      orgRole: "org:member",
-    });
-    const memberSetup = await api.requestSetupOnboarding(
-      member,
-      { displayName: "Member Setup" },
-      [403],
-    );
-    expect(memberSetup.body).toStrictEqual({
-      error: {
-        message: "Only org admins can run onboarding setup",
-        code: "FORBIDDEN",
-      },
-    });
-
-    // Selected connectors are authorized to the default agent and visible
-    // through the user-connectors read.
-    const connectorAdmin = api.user();
-    const connectorSetup = await api.requestSetupOnboarding(
-      connectorAdmin,
-      {
-        displayName: "BDD Connector Setup",
-        selectedConnectors: ["slack", "github"],
-      },
-      [200],
-    );
-    const connectorAgentId = connectorSetup.body.agentId;
-    const enabled = await api.readEnabledConnectorTypes(
-      connectorAdmin,
-      connectorAgentId,
-    );
-    expect([...enabled].sort()).toStrictEqual(["github", "slack"]);
-    const onboardingProviders =
-      await runs.listOrgModelProviders(connectorAdmin);
-    expect(
-      onboardingProviders.find((provider) => {
-        return provider.type === "vm0";
-      })?.selectedModel,
-    ).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
-
-    // Unavailable connectors are rejected before any agent is created.
-    const gatedAdmin = api.user();
-    const gated = await api.requestSetupOnboarding(
-      gatedAdmin,
-      { displayName: "BDD Gated Setup", selectedConnectors: ["bentoml"] },
-      [403],
-    );
-    expectApiError(gated.body);
-    expect(gated.body.error.message).toBe(
-      "Connector types are not available: bentoml",
-    );
-    await expect(api.listAgents(gatedAdmin)).resolves.toStrictEqual([]);
-
-    // Repeated setup is idempotent on the agent but re-authorizes connectors.
-    const repeated = await api.requestSetupOnboarding(
-      connectorAdmin,
-      { displayName: "BDD Connector Setup", selectedConnectors: ["github"] },
-      [200],
-    );
-    expect(repeated.body.agentId).toBe(connectorAgentId);
-    await expect(
-      api.readEnabledConnectorTypes(connectorAdmin, connectorAgentId),
-    ).resolves.toStrictEqual(["github"]);
-
-    // A paid org never re-enters payment-pending onboarding on repeat setup.
-    const paidAdmin = api.user();
-    await runs.grantProEntitlement(paidAdmin);
-    const paidRepeat = await api.requestSetupOnboarding(
-      paidAdmin,
-      { displayName: "BDD Paid Repeat", selectedConnectors: ["slack"] },
-      [200],
-    );
-    expect(paidRepeat.body.agentId).toBeTruthy();
-    const paidStatus = await api.readOnboardingStatus(paidAdmin);
-    expect(paidStatus.needsOnboarding).toBeFalsy();
-
-    // Clerk slug conflict retries with a suffixed slug.
-    const conflictAdmin = api.user();
-    const updateOrganization =
-      context.mocks.clerk.organizations.updateOrganization;
-    updateOrganization.mockClear();
-    updateOrganization.mockImplementation((_orgId: unknown, data: unknown) => {
-      if (recordOf(data).slug === "my-workspace") {
-        return Promise.reject(slugConflictError());
-      }
-      return Promise.resolve({});
-    });
-    const retried = await api.requestSetupOnboarding(
-      conflictAdmin,
-      { displayName: "Zero", workspaceName: "My Workspace" },
-      [200],
-    );
-    expect(retried.body.agentId).toBeTruthy();
-    expect(updateOrganization.mock.calls).toHaveLength(2);
-    const retryArgs = recordOf(updateOrganization.mock.calls[1]?.[1]);
-    expect(retryArgs.name).toBe("My Workspace");
-    expect(retryArgs.slug).toMatch(/^my-workspace-[a-z0-9]{6}$/);
-
-    // When every slug candidate conflicts, the update falls back to name-only.
-    const fallbackAdmin = api.user();
-    updateOrganization.mockClear();
-    updateOrganization.mockImplementation((_orgId: unknown, data: unknown) => {
-      if ("slug" in recordOf(data)) {
-        return Promise.reject(slugConflictError());
-      }
-      return Promise.resolve({});
-    });
-    const fallback = await api.requestSetupOnboarding(
-      fallbackAdmin,
-      { displayName: "Zero", workspaceName: "My Workspace" },
-      [200],
-    );
-    expect(fallback.body.agentId).toBeTruthy();
-    expect(updateOrganization.mock.calls).toHaveLength(3);
-    expect(updateOrganization.mock.calls[2]).toStrictEqual([
-      orgIdOf(fallbackAdmin),
-      { name: "My Workspace" },
-    ]);
-
-    // Non-slug Clerk failures never block setup.
-    const invalidNameAdmin = api.user();
-    updateOrganization.mockClear();
-    updateOrganization.mockRejectedValue(nonSlugClerkError());
-    const tolerated = await api.requestSetupOnboarding(
-      invalidNameAdmin,
-      { displayName: "Zero", workspaceName: "Test Workspace" },
-      [200],
-    );
-    const toleratedAgents = await api.listAgents(invalidNameAdmin);
-    expect(
-      toleratedAgents.some((agent) => {
-        return agent.agentId === tolerated.body.agentId;
-      }),
-    ).toBeTruthy();
-
-    // Non-Latin workspace names update the Clerk org name only.
-    const cjkAdmin = api.user();
-    updateOrganization.mockClear();
-    updateOrganization.mockResolvedValue({});
-    const cjk = await api.requestSetupOnboarding(
-      cjkAdmin,
-      { displayName: "Zero", workspaceName: "我的工作区" },
-      [200],
-    );
-    expect(cjk.body.agentId).toBeTruthy();
-    expect(updateOrganization).toHaveBeenCalledWith(orgIdOf(cjkAdmin), {
-      name: "我的工作区",
-    });
   });
 });
 

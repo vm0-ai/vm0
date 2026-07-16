@@ -955,11 +955,9 @@ export {
 } from "./org-members";
 export {
   onboardingStatusContract,
-  onboardingSetupContract,
   onboardingCompleteContract,
   onboardingStatusResponseSchema,
   type OnboardingStatusContract,
-  type OnboardingSetupContract,
   type OnboardingCompleteContract,
   type OnboardingStatusResponse,
 } from "./onboarding";
