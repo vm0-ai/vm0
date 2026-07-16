@@ -146,13 +146,17 @@ function buildWorkflowAutomationCallbacks(
     callbacks.push({
       internalKind: "workflow-automation:loop",
       secret: generateCallbackSecret(),
-      payload: { triggerId: automation.id },
+      payload: {
+        automationId: automation.id,
+        triggerId: automation.id,
+      },
     });
   } else {
     callbacks.push({
       internalKind: "workflow-automation:cron",
       secret: generateCallbackSecret(),
       payload: {
+        automationId: automation.id,
         triggerId: automation.id,
         timezone: automation.timezone,
         ...(automation.cronExpression
