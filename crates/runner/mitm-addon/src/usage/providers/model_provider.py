@@ -46,7 +46,7 @@ from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
-ModelUsagePricing = tuple[str, int, dict[str, int]]
+ModelUsagePricing = tuple[int, dict[str, int]]
 _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
     (
         MODEL_USAGE_CATEGORY_INPUT,
@@ -99,13 +99,11 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
         return False
     if not flow_metadata.is_firewall_billable(flow.metadata):
         return False
-    billing_sku = flow_metadata.model_usage_billing_sku(flow.metadata)
     events = _build_model_provider_usage_events(
         flow,
         run_id,
         USAGE_EVENT_NAMESPACE_MODEL,
-        billing_sku=billing_sku,
-        billing_pricing=_model_usage_pricing(flow, billing_sku),
+        billing_pricing=_model_usage_pricing(flow),
     )
     if not events:
         return False
@@ -143,7 +141,6 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
         flow,
         run_id,
         USAGE_OBSERVATION_NAMESPACE_MODEL,
-        billing_sku=None,
         billing_pricing=None,
     )
     if not events:
@@ -177,15 +174,13 @@ def report_model_provider_usage_source(
     can_report_usage = _is_billable_model_provider(flow, run_id)
     can_report_observation = bool(run_id and is_model_provider_usage_observable(flow))
     if can_report_usage:
-        billing_sku = flow_metadata.model_usage_billing_sku(flow.metadata)
         usage_events = _build_usage_events(
             run_id,
             source_id,
             provider,
             source_usage,
             USAGE_EVENT_NAMESPACE_MODEL,
-            billing_sku=billing_sku,
-            billing_pricing=_model_usage_pricing(flow, billing_sku),
+            billing_pricing=_model_usage_pricing(flow),
         )
     if can_report_observation:
         observation_events = _build_usage_events(
@@ -194,7 +189,6 @@ def report_model_provider_usage_source(
             provider,
             source_usage,
             USAGE_OBSERVATION_NAMESPACE_MODEL,
-            billing_sku=None,
             billing_pricing=None,
         )
 
@@ -380,7 +374,6 @@ def _build_model_provider_usage_events(
     run_id: str,
     namespace: uuid.UUID,
     *,
-    billing_sku: str | None,
     billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
@@ -393,7 +386,6 @@ def _build_model_provider_usage_events(
                 provider,
                 usage,
                 namespace,
-                billing_sku=billing_sku,
                 billing_pricing=billing_pricing,
             )
         )
@@ -423,7 +415,6 @@ def _build_usage_events(
     usage: dict,
     namespace: uuid.UUID,
     *,
-    billing_sku: str | None,
     billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
@@ -441,27 +432,19 @@ def _build_usage_events(
             "category": category,
             "quantity": quantity,
         }
-        if billing_sku is not None:
-            event["billingSku"] = billing_sku
-            if billing_pricing is not None:
-                unit_price = billing_pricing[2].get(category)
-                if unit_price is not None:
-                    event["billingUnitPrice"] = unit_price
-                    event["billingUnitSize"] = billing_pricing[1]
+        if billing_pricing is not None:
+            unit_price = billing_pricing[1].get(category)
+            if unit_price is not None:
+                event["billingUnitPrice"] = unit_price
+                event["billingUnitSize"] = billing_pricing[0]
         events.append(event)
     return events
 
 
 def _model_usage_pricing(
     flow: http.HTTPFlow,
-    billing_sku: str | None,
 ) -> ModelUsagePricing | None:
-    if billing_sku is None:
-        return None
-    pricing = flow_metadata.model_usage_pricing(flow.metadata)
-    if pricing is None or pricing[0] != billing_sku:
-        return None
-    return pricing
+    return flow_metadata.model_usage_pricing(flow.metadata)
 
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:

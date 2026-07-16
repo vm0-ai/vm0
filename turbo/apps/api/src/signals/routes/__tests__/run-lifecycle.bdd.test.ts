@@ -8956,7 +8956,6 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
             idempotencyKey: randomUUID(),
             kind: "model",
             provider: "vm0-model",
-            billingSku: "model-standard-v1",
             category: "tokens.output",
             quantity: 1000,
             grossCredits: 17,

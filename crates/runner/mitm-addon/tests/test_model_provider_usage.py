@@ -29,7 +29,6 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-opus-4-6"
-        flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] = "model-standard-v1"
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "claude-sonnet-4-6",
             "message_id": "msg-usage-1",
@@ -57,28 +56,24 @@ class TestReportModelProviderUsage:
             "tokens.input": {
                 "kind": "model",
                 "provider": "claude-opus-4-6",
-                "billingSku": "model-standard-v1",
                 "category": "tokens.input",
                 "quantity": 100,
             },
             "tokens.output": {
                 "kind": "model",
                 "provider": "claude-opus-4-6",
-                "billingSku": "model-standard-v1",
                 "category": "tokens.output",
                 "quantity": 50,
             },
             "tokens.cache_read": {
                 "kind": "model",
                 "provider": "claude-opus-4-6",
-                "billingSku": "model-standard-v1",
                 "category": "tokens.cache_read",
                 "quantity": 25,
             },
             "tokens.cache_creation": {
                 "kind": "model",
                 "provider": "claude-opus-4-6",
-                "billingSku": "model-standard-v1",
                 "category": "tokens.cache_creation",
                 "quantity": 10,
             },
@@ -92,9 +87,7 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-luna"
-        flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] = "model-standard-v1"
         flow.metadata[metadata_keys.MODEL_USAGE_PRICING] = {
-            "billingSku": "model-standard-v1",
             "unitSize": 100,
             "unitPrices": {
                 "tokens.input": 7,
@@ -115,6 +108,7 @@ class TestReportModelProviderUsage:
             usage.flush_usage_events(trigger="test")
 
         events = webhook.requests[0].json_body()["events"]
+        assert all("billingSku" not in event for event in events)
         assert {event["category"]: event["grossCredits"] for event in events} == {
             "tokens.input": 7,
             "tokens.output": 7,
