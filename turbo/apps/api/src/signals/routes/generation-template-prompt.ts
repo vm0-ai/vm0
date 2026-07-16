@@ -256,6 +256,10 @@ function buildIllustrationGenerationTemplatePrompt(
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
+  const styleSource =
+    imageStyle.source.repo && imageStyle.source.ref
+      ? `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`
+      : imageStyle.source.path;
 
   return {
     status: "resolved",
@@ -265,10 +269,12 @@ function buildIllustrationGenerationTemplatePrompt(
       "- Artifact type: illustration",
       `- Style: ${imageStyle.name} (${imageStyle.id})`,
       `- Style description: ${imageStyle.description}`,
+      `- Style source: ${styleSource}`,
       "",
       "When you produce an illustration or image from the user's request:",
-      `- Run: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile`,
-      '- Compile the returned packet into a final image prompt, then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with any reference image URLs and requested generation parameters from the packet.',
+      `- Run once: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile`,
+      `- Follow the returned packet completely, including reading its style source (${styleSource}) and SKILL.md. If the source is unavailable, stop without generating.`,
+      '- Then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with the resolved compatible CLI options and required reference image URLs, without `--style`.',
       "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),
   };

@@ -28,6 +28,7 @@ const EXPECTED_CATEGORIZED_CONNECTORS = [
   "google-search-console",
   "google-sheets",
   "nintendo-switch-parental-controls",
+  "playstation",
   "slack",
   "stripe",
   "vercel",

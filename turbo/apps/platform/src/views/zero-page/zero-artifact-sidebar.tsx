@@ -1364,6 +1364,7 @@ function ArtifactSidebarPreviewActions({
         ariaLabel="Download artifact"
         artifactKind={artifactKind}
         filename={title}
+        menuInstanceKey="artifact-sidebar"
         syncTarget={syncTarget}
         url={url}
       />

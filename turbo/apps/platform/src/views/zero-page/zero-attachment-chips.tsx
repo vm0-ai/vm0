@@ -1146,6 +1146,7 @@ function ArtifactPreviewDialogActions({
         artifactKind={artifact?.artifactKind}
         filename={artifact?.filename ?? artifactDialogFilename(preview)}
         iconSize={18}
+        menuInstanceKey="artifact-dialog"
         syncTarget={artifactDialogSyncTarget(artifact)}
         url={preview.url}
       />

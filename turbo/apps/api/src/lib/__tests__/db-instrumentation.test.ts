@@ -32,6 +32,8 @@ const ACQUIRE_PATH_ATTRIBUTE = "vm0.db.pool.acquire.path";
 const CONNECTION_LOOKUP_DURATION_ATTRIBUTE =
   "vm0.db.connection.lookup.duration_ms";
 const CONNECTION_LOOKUP_HEDGED_ATTRIBUTE = "vm0.db.connection.lookup.hedged";
+const CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE =
+  "vm0.db.connection.lookup.hedge_budget_unavailable";
 const CONNECTION_LOOKUP_SOURCE_ATTRIBUTE = "vm0.db.connection.lookup.source";
 const CONNECTION_SOCKET_CONNECT_DURATION_ATTRIBUTE =
   "vm0.db.connection.socket_connect.duration_ms";
@@ -45,6 +47,7 @@ const CONNECTION_ADDRESS_FAMILY_ATTRIBUTE = "vm0.db.connection.address_family";
 const CONNECTION_ATTRIBUTE_NAMES = [
   CONNECTION_LOOKUP_DURATION_ATTRIBUTE,
   CONNECTION_LOOKUP_HEDGED_ATTRIBUTE,
+  CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE,
   CONNECTION_LOOKUP_SOURCE_ATTRIBUTE,
   CONNECTION_SOCKET_CONNECT_DURATION_ATTRIBUTE,
   CONNECTION_ATTEMPT_COUNT_ATTRIBUTE,
@@ -351,6 +354,9 @@ describe("instrumentPgPool", () => {
     const span = findSpan(statement);
     expectConnectionAcquisition(span);
     expect(span.attributes[CONNECTION_LOOKUP_HEDGED_ATTRIBUTE]).toBeUndefined();
+    expect(
+      span.attributes[CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE],
+    ).toBeUndefined();
     expect(span.attributes[CONNECTION_LOOKUP_SOURCE_ATTRIBUTE]).toBeUndefined();
   });
 
@@ -385,10 +391,13 @@ describe("instrumentPgPool", () => {
     expect(span.attributes[CONNECTION_LOOKUP_SOURCE_ATTRIBUTE]).toBe(
       "secondary",
     );
+    expect(
+      span.attributes[CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE],
+    ).toBeUndefined();
     expect(span.attributes[CONNECTION_ATTEMPT_COUNT_ATTRIBUTE]).toBe(1);
   });
 
-  it("bounds and releases secondary lookup capacity across connections", async () => {
+  it("attributes, bounds, and releases secondary lookup capacity", async () => {
     const controlledLookup = createControlledLookup(testAbortController.signal);
     const stream: PgStreamFactory = () => {
       return createInstrumentedPgStream({
@@ -422,12 +431,23 @@ describe("instrumentPgPool", () => {
     expect(resultB.rowCount).toBe(1);
     expect(connectedClientCount).toBe(2);
     expect(pool.totalCount).toBe(2);
+    const spanA = findSpan(statementA);
+    const spanB = findSpan(statementB);
+    expect(spanA.attributes[CONNECTION_LOOKUP_SOURCE_ATTRIBUTE]).toBe(
+      "secondary",
+    );
     expect(
-      findSpan(statementA).attributes[CONNECTION_LOOKUP_SOURCE_ATTRIBUTE],
-    ).toBe("secondary");
-    expect(
-      findSpan(statementB).attributes[CONNECTION_LOOKUP_HEDGED_ATTRIBUTE],
+      spanA.attributes[CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE],
     ).toBeUndefined();
+    expect(
+      spanB.attributes[CONNECTION_LOOKUP_HEDGED_ATTRIBUTE],
+    ).toBeUndefined();
+    expect(
+      spanB.attributes[CONNECTION_LOOKUP_SOURCE_ATTRIBUTE],
+    ).toBeUndefined();
+    expect(
+      spanB.attributes[CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE],
+    ).toBeTruthy();
 
     const laterPool = createPool({}, stream);
     const laterStatement = "SELECT 117 AS hedge_after_release";
@@ -441,9 +461,15 @@ describe("instrumentPgPool", () => {
     expect(laterResult.rowCount).toBe(1);
     expect(controlledLookup.callCount).toBe(5);
     expect(laterPool.totalCount).toBe(1);
+    const laterSpan = findSpan(laterStatement);
+    expect(laterSpan.attributes[CONNECTION_LOOKUP_SOURCE_ATTRIBUTE]).toBe(
+      "secondary",
+    );
     expect(
-      findSpan(laterStatement).attributes[CONNECTION_LOOKUP_SOURCE_ATTRIBUTE],
-    ).toBe("secondary");
+      laterSpan.attributes[
+        CONNECTION_LOOKUP_HEDGE_BUDGET_UNAVAILABLE_ATTRIBUTE
+      ],
+    ).toBeUndefined();
   });
 
   it("keeps primary errors authoritative after a secondary starts", async () => {

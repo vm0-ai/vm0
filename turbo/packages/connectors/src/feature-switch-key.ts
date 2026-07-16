@@ -77,7 +77,6 @@ export enum FeatureSwitchKey {
   Artifacts = "artifacts",
   ArtifactFavorites = "artifactFavorites",
   ArtifactPreviewImage = "artifactPreviewImage",
-  WorkflowTemplateCatalog = "workflowTemplateCatalog",
   WebsiteTemplates = "websiteTemplates",
   WorkflowQueue = "workflowQueue",
   OrgPlanEntitlementReads = "orgPlanEntitlementReads",

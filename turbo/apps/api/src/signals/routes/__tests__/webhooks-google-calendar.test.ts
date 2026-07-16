@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";
@@ -7,8 +9,10 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   createWorkflowsBddApi,
   mockGoogleCalendarConnectorOAuth,
@@ -19,6 +23,32 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
+const webhooksApi = createWebhookCallbackApi(context);
+
+async function completeRunThroughSandbox(
+  sandboxToken: string,
+  runId: string,
+): Promise<void> {
+  const sandboxHeaders = { authorization: `Bearer ${sandboxToken}` };
+  await webhooksApi.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `calendar-webhook-cli-${runId}`,
+      cliAgentSessionHistoryHash: createHash("sha256")
+        .update(`calendar webhook history ${runId}`)
+        .digest("hex"),
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooksApi.requestAgentComplete(
+    { runId, exitCode: 0 },
+    sandboxHeaders,
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
 
 const WORKFLOW_NAME = "calendar-webhook-workflow";
 const CALENDAR_EMAIL = "calendar-webhook-user@example.com";
@@ -485,7 +515,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
-    await runsApi.claimRunnerJob(firstJob.body.job!.runId);
+    const firstClaim = await runsApi.claimRunnerJob(firstJob.body.job!.runId);
 
     // The same revision (same etag) arriving again dispatches nothing.
     const second = await postGoogleCalendarWebhook(webhookHeaders(watch));
@@ -499,6 +529,12 @@ describe("POST /api/webhooks/google-calendar", () => {
     });
     const idleAfterSameRevision = await runsApi.pollRunner(runnerGroup);
     expect(idleAfterSameRevision.body.job).toBeNull();
+
+    // Finish the first run so the workflow queue can dispatch the next event.
+    await completeRunThroughSandbox(
+      firstClaim.sandboxToken,
+      firstJob.body.job!.runId,
+    );
 
     // A new revision (new etag) dispatches exactly one more run.
     const third = await postGoogleCalendarWebhook(webhookHeaders(watch));

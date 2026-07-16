@@ -13,14 +13,20 @@ import mitm_addon
 from tests.flow_helpers import header_map, response_stream
 
 
-def signed_usage_receipt_headers(billing_sku: str) -> dict[str, str]:
-    receipt = (
+def signed_usage_pricing_headers() -> dict[str, str]:
+    pricing = (
         base64.urlsafe_b64encode(
             json.dumps(
                 {
                     "version": 1,
-                    "billingSku": billing_sku,
                     "issuedAt": int(time.time()),
+                    "unitSize": 1_000_000,
+                    "unitPrices": {
+                        "tokens.input": 1000,
+                        "tokens.cache_read": 100,
+                        "tokens.cache_creation": 1250,
+                        "tokens.output": 6000,
+                    },
                 },
                 separators=(",", ":"),
             ).encode()
@@ -32,7 +38,7 @@ def signed_usage_receipt_headers(billing_sku: str) -> dict[str, str]:
         base64.urlsafe_b64encode(
             hmac.new(
                 b"proxy-secret",
-                b"vm0-model-usage-receipt-v1\0" + receipt.encode(),
+                b"vm0-model-usage-pricing-v1\0" + pricing.encode(),
                 hashlib.sha256,
             ).digest()
         )
@@ -40,9 +46,8 @@ def signed_usage_receipt_headers(billing_sku: str) -> dict[str, str]:
         .rstrip("=")
     )
     return {
-        "content-type": "application/json",
-        "x-vm0-usage-receipt": receipt,
-        "x-vm0-usage-signature": signature,
+        "x-vm0-usage-pricing": pricing,
+        "x-vm0-usage-pricing-signature": signature,
     }
 
 
@@ -87,39 +92,47 @@ class TestResponseHeadersHandler:
 
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
 
-    def test_accepts_and_strips_signed_model_usage_receipt(self, real_flow):
+    def test_accepts_and_strips_signed_model_usage_pricing(self, real_flow):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=header_map(signed_usage_receipt_headers("model-standard-v1")),
+            headers=header_map(signed_usage_pricing_headers()),
         )
 
         mitm_addon.responseheaders(flow)
 
-        assert flow.metadata[metadata_keys.MODEL_USAGE_BILLING_SKU] == "model-standard-v1"
-        assert "x-vm0-usage-receipt" not in flow.response.headers
-        assert "x-vm0-usage-signature" not in flow.response.headers
+        assert flow.metadata[metadata_keys.MODEL_USAGE_PRICING] == {
+            "unitSize": 1_000_000,
+            "unitPrices": {
+                "tokens.input": 1000,
+                "tokens.cache_read": 100,
+                "tokens.cache_creation": 1250,
+                "tokens.output": 6000,
+            },
+        }
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
-    def test_rejects_signed_model_usage_receipt_from_other_provider(self, real_flow):
+    def test_rejects_signed_model_usage_pricing_from_other_provider(self, real_flow):
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.response = tutils.tresp(
             status_code=200,
-            headers=header_map(signed_usage_receipt_headers("model-standard-v1")),
+            headers=header_map(signed_usage_pricing_headers()),
         )
 
         mitm_addon.responseheaders(flow)
 
-        assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
-        assert "x-vm0-usage-receipt" not in flow.response.headers
-        assert "x-vm0-usage-signature" not in flow.response.headers
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
-    def test_rejects_invalid_model_usage_receipt_signature(self, real_flow):
+    def test_rejects_invalid_model_usage_pricing_signature(self, real_flow):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
@@ -129,19 +142,19 @@ class TestResponseHeadersHandler:
             headers=header_map(
                 {
                     "content-type": "application/json",
-                    "x-vm0-usage-receipt": "invalid",
-                    "x-vm0-usage-signature": "invalid",
+                    "x-vm0-usage-pricing": "invalid",
+                    "x-vm0-usage-pricing-signature": "invalid",
                 }
             ),
         )
 
         mitm_addon.responseheaders(flow)
 
-        assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
-        assert "x-vm0-usage-receipt" not in flow.response.headers
-        assert "x-vm0-usage-signature" not in flow.response.headers
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
-    def test_rejects_non_ascii_model_usage_receipt(self, real_flow):
+    def test_rejects_non_ascii_model_usage_pricing(self, real_flow):
         flow = real_flow(with_response=False, host="model.vm0.ai")
         flow.request.headers["authorization"] = "Bearer proxy-secret"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
@@ -151,14 +164,14 @@ class TestResponseHeadersHandler:
             headers=header_map(
                 {
                     "content-type": "application/json",
-                    "x-vm0-usage-receipt": "réceipt",
-                    "x-vm0-usage-signature": "aW52YWxpZA",
+                    "x-vm0-usage-pricing": "prïcing",
+                    "x-vm0-usage-pricing-signature": "aW52YWxpZA",
                 }
             ),
         )
 
         mitm_addon.responseheaders(flow)
 
-        assert metadata_keys.MODEL_USAGE_BILLING_SKU not in flow.metadata
-        assert "x-vm0-usage-receipt" not in flow.response.headers
-        assert "x-vm0-usage-signature" not in flow.response.headers
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers

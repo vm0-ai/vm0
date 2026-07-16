@@ -469,13 +469,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.WorkflowTemplateCatalog]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "Show the full persona-grouped built-in workflow template catalog in the chat composer template picker. Off shows only the General starter template.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.WebsiteTemplates]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -486,8 +479,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Queue workflow automation events per workflow and run them serially instead of firing concurrent runs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.OrgPlanEntitlementReads]: {
     maintainer: "yuma@vm0.ai",
