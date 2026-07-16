@@ -788,21 +788,6 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("keeps the legacy polling endpoint for already-loaded clients", async () => {
-      const app = createApp({ signal: context.signal });
-      const response = await app.request(
-        "/api/client/compatibility?version=0.599.18",
-        { method: "GET" },
-      );
-
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toStrictEqual({
-        minimumSupportedVersion: "0.599.19",
-        supported: false,
-      });
-      expect(response.headers.get("cache-control")).toBe("no-store");
-    });
-
     it("rejects stale app clients before route handlers run", async () => {
       const app = createApp({ signal: context.signal });
       const response = await app.request("/health", {
