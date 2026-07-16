@@ -612,7 +612,8 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
-  # Cap these runner behavior scenarios at three concurrent metal-host users.
+  # Balance these scenarios by recent CI timings across three concurrent
+  # metal-host users.
   # Run balloon first in lane A, exec last in lane B, and upgrade last in lane C
   # to stagger the three heaviest scenarios during normal runs.
   runner-behavior-lane-a:
