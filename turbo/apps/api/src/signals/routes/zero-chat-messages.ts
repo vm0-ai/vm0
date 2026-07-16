@@ -231,7 +231,6 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplatesEnabled: boolean;
-  readonly chatModelFamilySessionContinuityEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1120,10 +1119,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.WebsiteTemplates,
       context,
     ),
-    chatModelFamilySessionContinuityEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ChatModelFamilySessionContinuity,
-      context,
-    ),
   };
 }
 
@@ -1478,7 +1473,6 @@ async function resolveThread(params: {
   readonly initialPin: ThreadModelPin;
   readonly codexServiceTier: CodexServiceTier | null;
   readonly modelSelection: IncomingModelSelection;
-  readonly chatModelFamilySessionContinuityEnabled: boolean;
 }): Promise<ResolvedThread | ReturnType<typeof notFound>> {
   if (!params.existingThreadId) {
     const thread = await createChatThread(params.db, {
@@ -1533,7 +1527,6 @@ async function resolveThread(params: {
       modelSelection: params.modelSelection,
       threadSelectedModel: thread.selectedModel,
     }),
-    preserveModelFamilySession: params.chatModelFamilySessionContinuityEnabled,
   });
   return {
     threadId: thread.id,
@@ -2219,7 +2212,6 @@ function resolveTimedThread(
   args: NormalSendArgs,
   db: Db,
   initialPin: ThreadModelPin,
-  chatModelFamilySessionContinuityEnabled: boolean,
 ): ReturnType<typeof resolveThread> {
   return measureApiDispatchTiming(
     args.timing,
@@ -2237,7 +2229,6 @@ function resolveTimedThread(
         initialPin,
         codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
         modelSelection: args.body.modelSelection,
-        chatModelFamilySessionContinuityEnabled,
       });
     },
   );
@@ -2369,12 +2360,7 @@ const prepareNormalSend$ = command(
       return initialPin;
     }
 
-    const thread = await resolveTimedThread(
-      args,
-      db,
-      initialPin,
-      featureSwitches.chatModelFamilySessionContinuityEnabled,
-    );
+    const thread = await resolveTimedThread(args, db, initialPin);
     signal.throwIfAborted();
     if ("status" in thread) {
       return thread;

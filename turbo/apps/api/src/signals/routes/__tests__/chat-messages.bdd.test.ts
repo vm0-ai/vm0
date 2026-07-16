@@ -2244,18 +2244,10 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, third.runId);
   }, 90_000);
 
-  it("resumes the CLI session across same-family model switches when enabled", async () => {
+  it("resumes the CLI session across same-family model switches", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected entitled actor to belong to an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ChatModelFamilySessionContinuity]: true },
-    );
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
         model: "claude-opus-4-6",

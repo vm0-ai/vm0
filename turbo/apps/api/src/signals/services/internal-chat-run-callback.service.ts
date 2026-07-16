@@ -3,8 +3,6 @@ import { randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
@@ -84,7 +82,6 @@ import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { shouldStartNewChatSession } from "./chat-session-continuity.service";
 
 const log = logger("callback:chat");
@@ -114,7 +111,6 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context"
-  | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
@@ -1543,12 +1539,10 @@ async function latestSessionForThreadFromDb(
 function shouldStartNewSessionForQueuedMessage(params: {
   readonly latestSession: LatestThreadSession | null;
   readonly queuedMessage: QueuedUserMessage;
-  readonly chatModelFamilySessionContinuityEnabled: boolean;
 }): boolean {
   return shouldStartNewChatSession({
     latestModel: params.latestSession?.selectedModel,
     nextModel: params.queuedMessage.selectedModel,
-    preserveModelFamilySession: params.chatModelFamilySessionContinuityEnabled,
   });
 }
 
@@ -1751,27 +1745,9 @@ async function buildCreateQueuedChatRunInput(args: {
         ]);
       },
     );
-  const chatModelFamilySessionContinuityEnabled =
-    await measureChatCallbackPreCreateTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context",
-      "nested",
-      async () => {
-        const context = await loadUserFeatureSwitchContext(
-          args.db,
-          args.agent.orgId,
-          args.userId,
-        );
-        return isFeatureEnabled(
-          FeatureSwitchKey.ChatModelFamilySessionContinuity,
-          context,
-        );
-      },
-    );
   const startNewSession = shouldStartNewSessionForQueuedMessage({
     latestSession,
     queuedMessage: resolvedQueuedMessage,
-    chatModelFamilySessionContinuityEnabled,
   });
   const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
