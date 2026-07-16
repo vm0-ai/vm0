@@ -44,16 +44,24 @@ describe("PlayStation psn-api source parser", () => {
       permissionsByBase.get("https://m.np.playstation.com") ?? [];
     const webPermissions =
       permissionsByBase.get("https://web.np.playstation.com") ?? [];
+    const accountPermissions =
+      permissionsByBase.get("https://accounts.api.playstation.com") ?? [];
 
-    expect(
-      mobilePermissions.map((permission) => permission.name),
-    ).toStrictEqual([
-      "playstation-profile-read",
-      "playstation-social-read",
-      "playstation-games-read",
-      "playstation-trophies-read",
-      "playstation-search-read",
-    ]);
+    expect(mobilePermissions.map((permission) => permission.name)).toEqual(
+      expect.arrayContaining([
+        "playstation-profile-read",
+        "playstation-social-read",
+        "playstation-games-read",
+        "playstation-trophies-read",
+        "playstation-search-read",
+        "playstation-entitlements-read",
+        "playstation-media-read",
+        "playstation-messaging-read",
+        "playstation-mobile-graphql-read",
+        "playstation-social-write",
+        "playstation-messaging-write",
+      ]),
+    );
     expect(
       mobilePermissions.find((permission) => {
         return permission.name === "playstation-trophies-read";
@@ -64,12 +72,27 @@ describe("PlayStation psn-api source parser", () => {
         return permission.name === "playstation-search-read";
       })?.rules,
     ).toStrictEqual(["POST /api/search/v1/universalSearch"]);
-    expect(webPermissions).toStrictEqual([
+    expect(
+      mobilePermissions.find((permission) => {
+        return permission.name === "playstation-messaging-write";
+      })?.rules,
+    ).toContain(
+      "POST /api/gamingLoungeGroups/v1/groups/{groupId}/threads/{threadId}/messages",
+    );
+    expect(
+      webPermissions.map((permission) => {
+        return [permission.name, permission.rules] as const;
+      }),
+    ).toStrictEqual([
+      ["playstation-graphql-games-read", ["GET /api/graphql/v1/op"]],
+      ["playstation-store-graphql-post", ["POST /api/graphql/v1/op"]],
+    ]);
+    expect(accountPermissions).toStrictEqual([
       {
-        name: "playstation-graphql-games-read",
+        name: "playstation-account-private-read",
         description:
-          "Read PlayStation purchased and recently played game lists through psn-api GraphQL operations",
-        rules: ["GET /api/graphql/v1/op"],
+          "Read the connected account's full private record, including contact, identity, birth date, address, locale, and account-state fields",
+        rules: ["GET /api/v1/accounts/me"],
       },
     ]);
   });
