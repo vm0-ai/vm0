@@ -119,7 +119,6 @@ export const connectorCatalogCompatibilityReasonSchema = z.enum([
   "missing-revoke-provider",
   "provider-contract-mismatch",
   "missing-platform-configuration",
-  "unsupported-feature-switch",
 ]);
 
 export const connectorCatalogFilteredAuthMethodSchema = z.object({

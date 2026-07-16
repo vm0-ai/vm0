@@ -12,7 +12,6 @@ import {
   type ConnectorAuthProviderMethodContract,
   type ConnectorAuthProviderRegistrationCapability,
 } from "@vm0/connectors/auth-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogCompatibilityEvaluation,
@@ -29,7 +28,6 @@ import {
   connectorCatalogPublicArtifactSchema,
   SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
   type ConnectorCatalogPrivateArtifact,
-  type ConnectorCatalogPublicArtifact,
 } from "./connector-catalog-artifacts/artifacts";
 import { connectorCatalogSource } from "./connector-catalog-sync.service";
 
@@ -39,22 +37,18 @@ const COMPATIBILITY_REASON_ORDER = [
   "missing-revoke-provider",
   "provider-contract-mismatch",
   "missing-platform-configuration",
-  "unsupported-feature-switch",
 ] as const satisfies readonly ConnectorCatalogCompatibilityReason[];
 
 // Bump when evaluator semantics change without changing a provider or generic
 // capability projection, so rolling builds cannot reuse each other's reports.
-const EXECUTABLE_CAPABILITY_EVALUATOR_VERSION = 2;
+const EXECUTABLE_CAPABILITY_EVALUATOR_VERSION = 1;
 
 type PrivateAuthMethod =
   ConnectorCatalogPrivateArtifact["connectors"][number]["authMethods"][number];
-type PublicAuthMethod =
-  ConnectorCatalogPublicArtifact["connectors"][number]["authMethods"][number];
 
 interface ExecutableCapabilityState {
   readonly digest: string;
   readonly configuredNames: ReadonlySet<string>;
-  readonly featureSwitchKeys: ReadonlySet<string>;
   readonly registrations: readonly ConnectorAuthProviderRegistrationCapability[];
 }
 
@@ -78,8 +72,6 @@ function registrationKey(connectorRef: string, authMethodId: string): string {
 
 function executableCapabilityState(): ExecutableCapabilityState {
   const registrations = getConnectorAuthProviderRegistrationCapabilities();
-  const featureSwitchKeys =
-    Object.values(FeatureSwitchKey).sort(compareStrings);
   const configurationNames = [
     ...new Set(
       registrations.flatMap((registration) => {
@@ -95,7 +87,6 @@ function executableCapabilityState(): ExecutableCapabilityState {
     generic: CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS,
     registrations,
     configuration,
-    featureSwitchKeys,
   });
   return {
     digest: `sha256:${createHash("sha256").update(preimage).digest("hex")}`,
@@ -104,7 +95,6 @@ function executableCapabilityState(): ExecutableCapabilityState {
         return present ? [name] : [];
       }),
     ),
-    featureSwitchKeys: new Set(featureSwitchKeys),
     registrations,
   };
 }
@@ -219,21 +209,13 @@ function hasUnapprovedConfigurationIdentity(
 }
 
 function evaluateMethod(args: {
-  readonly publicMethod: PublicAuthMethod;
   readonly method: PrivateAuthMethod;
   readonly registration:
     | ConnectorAuthProviderRegistrationCapability
     | undefined;
   readonly configuredNames: ReadonlySet<string>;
-  readonly featureSwitchKeys: ReadonlySet<string>;
 }): ConnectorCatalogCompatibilityReason[] {
   const reasons = new Set<ConnectorCatalogCompatibilityReason>();
-  if (
-    args.publicMethod.featureSwitch !== null &&
-    !args.featureSwitchKeys.has(args.publicMethod.featureSwitch)
-  ) {
-    reasons.add("unsupported-feature-switch");
-  }
   addProviderReasons(reasons, args.method, args.registration);
 
   const contract = privateMethodContract(args.method);
@@ -280,38 +262,26 @@ function evaluateSnapshot(
       ];
     }),
   );
-  const filtered = privateArtifact.connectors.flatMap(
-    (connector, connectorIndex) => {
-      const publicConnector = publicArtifact.connectors[connectorIndex];
-      if (publicConnector?.connectorRef !== connector.connectorRef) {
-        throw new Error("Connector catalog public/private alignment mismatch");
-      }
-      return connector.authMethods.flatMap((method, methodIndex) => {
-        const publicMethod = publicConnector.authMethods[methodIndex];
-        if (publicMethod?.id !== method.id) {
-          throw new Error("Connector catalog auth method alignment mismatch");
-        }
-        const reasons = evaluateMethod({
-          publicMethod,
-          method,
-          registration: registrations.get(
-            registrationKey(connector.connectorRef, method.id),
-          ),
-          configuredNames: capability.configuredNames,
-          featureSwitchKeys: capability.featureSwitchKeys,
-        });
-        return reasons.length === 0
-          ? []
-          : [
-              {
-                connectorRef: connector.connectorRef,
-                authMethodId: method.id,
-                reasons,
-              },
-            ];
+  const filtered = privateArtifact.connectors.flatMap((connector) => {
+    return connector.authMethods.flatMap((method) => {
+      const reasons = evaluateMethod({
+        method,
+        registration: registrations.get(
+          registrationKey(connector.connectorRef, method.id),
+        ),
+        configuredNames: capability.configuredNames,
       });
-    },
-  );
+      return reasons.length === 0
+        ? []
+        : [
+            {
+              connectorRef: connector.connectorRef,
+              authMethodId: method.id,
+              reasons,
+            },
+          ];
+    });
+  });
   return filtered.sort((left, right) => {
     return (
       compareStrings(left.connectorRef, right.connectorRef) ||

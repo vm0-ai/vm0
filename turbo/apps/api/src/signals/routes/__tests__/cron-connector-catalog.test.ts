@@ -1702,7 +1702,7 @@ describe("connector catalog valid lifecycle", () => {
 });
 
 describe("connector catalog executable compatibility", () => {
-  it("filters auth methods that reference an unknown feature switch", async () => {
+  it("leaves feature-switch rollout out of executable compatibility", async () => {
     configureSource();
     const unknownSwitch = buildRelease({
       version: "2026-07-15.unknown-feature-switch",
@@ -1718,30 +1718,8 @@ describe("connector catalog executable compatibility", () => {
 
     expect((await syncCatalog()).body.filtering).toMatchObject({
       stale: false,
-      filteredAuthMethods: [
-        {
-          connectorRef: unknownSwitch.connectorRef,
-          authMethodId: "api-token",
-          reasons: ["unsupported-feature-switch"],
-        },
-      ],
+      filteredAuthMethods: [],
     });
-
-    const knownSwitch = buildRelease({
-      version: "2026-07-15.known-feature-switch",
-      mutatePublic: (artifact) => {
-        const method = firstRecord(
-          firstRecord(artifact.connectors, "connectors").authMethods,
-          "authMethods",
-        );
-        method.featureSwitch = "awsConnector";
-      },
-    });
-    serveObjects(catalogObjects([unknownSwitch, knownSwitch], knownSwitch));
-
-    expect(
-      (await syncCatalog()).body.filtering.filteredAuthMethods,
-    ).toStrictEqual([]);
   });
 
   it("filters unsupported grant, access, and revoke handlers independently", async () => {
