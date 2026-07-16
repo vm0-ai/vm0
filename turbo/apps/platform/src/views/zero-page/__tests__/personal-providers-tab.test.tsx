@@ -128,10 +128,14 @@ function mockPersonalProvidersStory(): void {
   });
 }
 
-function mockBillingTier(tier: string): void {
+function mockBillingCapabilities(modelCapabilities: {
+  readonly supportByok: boolean;
+  readonly restrictedVm0Models: boolean;
+}): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     const status: BillingStatusResponse = {
-      tier,
+      tier: "pro",
+      ...modelCapabilities,
       credits: 20_000,
       onboardingPaymentPending: false,
       subscriptionStatus: null,
@@ -226,7 +230,7 @@ function mockBrowserTimeZone(timeZone: string): void {
 }
 
 describe("personal model providers settings", () => {
-  it("offers Pro upgrade for personal providers on limited-free-1", async () => {
+  it("offers Pro upgrade when personal BYOK is unsupported", async () => {
     context.mocks.data.org({
       id: "org_1",
       slug: "test-org",
@@ -234,7 +238,7 @@ describe("personal model providers settings", () => {
       role: "admin",
     });
     context.mocks.data.personalModelProviders([]);
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
 
     await openModelSettings();
 

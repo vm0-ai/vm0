@@ -1,12 +1,15 @@
 import { command } from "ccstate";
 import {
   isCodexFastModeModel,
-  isLimitedFree1RestrictedRunModel,
   type OrgModelPoliciesResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
-import { billingStatusAsync$ } from "./billing.ts";
+import {
+  modelAllowedForPlan,
+  modelPlanCapabilities$,
+  modelPolicyAllowedForPlan,
+} from "./model-plan-capabilities.ts";
 
 interface UserModelDefaultSource {
   selectedModel: string | null;
@@ -98,14 +101,19 @@ export const resolveExplicitModelSelection$ = command(
     },
     signal: AbortSignal,
   ): Promise<ExplicitModelSelectionResult> => {
-    const [policies, billing] = await Promise.all([
+    const [policies, modelCapabilities] = await Promise.all([
       get(orgModelPolicies$),
-      get(billingStatusAsync$),
+      get(modelPlanCapabilities$),
     ]);
     signal.throwIfAborted();
+    const selectedModel = params.selection?.selectedModel;
+    const selectedPolicy = policies.policies.find((policy) => {
+      return policy.model === selectedModel;
+    });
     if (
-      billing.tier === "limited-free-1" &&
-      isLimitedFree1RestrictedRunModel(params.selection?.selectedModel ?? null)
+      !modelAllowedForPlan(selectedModel, modelCapabilities) ||
+      (selectedPolicy !== undefined &&
+        !modelPolicyAllowedForPlan(selectedPolicy, modelCapabilities))
     ) {
       return { kind: "compare-plans" };
     }

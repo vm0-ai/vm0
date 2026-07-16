@@ -300,11 +300,8 @@ import {
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
-import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
-import {
-  setActiveOrgManageTab$,
-  setBillingSubPage$,
-} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-settings-state.ts";
+import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
@@ -5741,8 +5738,7 @@ function InsufficientCreditsCard() {
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const [creditCheckoutLoadable, creditCheckout] =
     useLoadableSet(startCreditCheckout$);
-  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
-  const setTab = useSet(setActiveOrgManageTab$);
+  const openSettings = useSet(openSettingsDialogAt$);
   const setSubPage = useSet(setBillingSubPage$);
   const pageSignal = useGet(pageSignal$);
 
@@ -5773,9 +5769,8 @@ function InsufficientCreditsCard() {
   });
 
   const openBilling = () => {
-    setTab("billing");
     setSubPage(false);
-    detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+    detach(openSettings("billing", pageSignal), Reason.DomCallback);
   };
 
   const handleUpgradeClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -5827,8 +5822,7 @@ function isBillingRecoveryError(error: string): boolean {
 }
 
 function AssistantErrorContent({ error }: { error: string }) {
-  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
-  const setTab = useSet(setActiveOrgManageTab$);
+  const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
 
   if (isBillingRecoveryError(error)) {
@@ -5868,8 +5862,7 @@ function AssistantErrorContent({ error }: { error: string }) {
             type="button"
             className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
             onClick={() => {
-              setTab("providers");
-              detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+              detach(openSettings("model", pageSignal), Reason.DomCallback);
             }}
           >
             Set one up in Workspace Settings

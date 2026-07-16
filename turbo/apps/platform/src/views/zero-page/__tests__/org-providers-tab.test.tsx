@@ -172,9 +172,16 @@ function mockAdminOrg(): void {
   });
 }
 
-function billingStatus(tier: string): BillingStatusResponse {
+function billingStatus(
+  tier: string,
+  modelCapabilities?: {
+    readonly supportByok?: boolean;
+    readonly restrictedVm0Models?: boolean;
+  },
+): BillingStatusResponse {
   return {
     tier,
+    ...modelCapabilities,
     credits: 20_000,
     onboardingPaymentPending: false,
     subscriptionStatus: null,
@@ -194,9 +201,12 @@ function billingStatus(tier: string): BillingStatusResponse {
   };
 }
 
-function mockBillingTier(tier: string): void {
+function mockBillingCapabilities(modelCapabilities: {
+  readonly supportByok: boolean;
+  readonly restrictedVm0Models: boolean;
+}): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-    return respond(200, billingStatus(tier));
+    return respond(200, billingStatus("pro", modelCapabilities));
   });
 }
 
@@ -220,10 +230,10 @@ async function openProvidersTab(options?: {
         : { [FeatureSwitchKey.Vm0Model]: options.vm0ModelEnabled },
   });
   await waitFor(() => {
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Models Configuration" }),
+      screen.getByRole("dialog", { name: "Settings" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
   });
 }
 
@@ -493,7 +503,7 @@ describe("organization model providers settings", () => {
 
   it("opens compare plans when selecting a limited-free-1 default Pro model", async () => {
     mockAdminOrg();
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
@@ -522,7 +532,7 @@ describe("organization model providers settings", () => {
 
   it("starts pro checkout when adding a limited-free-1 Pro model", async () => {
     mockAdminOrg();
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: true, restrictedVm0Models: true });
     mockProCheckout();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
@@ -556,9 +566,9 @@ describe("organization model providers settings", () => {
     });
   });
 
-  it("opens compare plans from limited-free-1 BYOK route options", async () => {
+  it("opens compare plans when BYOK is unsupported", async () => {
     mockAdminOrg();
-    mockBillingTier("limited-free-1");
+    mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(

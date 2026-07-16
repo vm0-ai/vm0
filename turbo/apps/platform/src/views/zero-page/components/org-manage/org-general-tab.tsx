@@ -40,7 +40,7 @@ import {
   saveOrgProfile$,
   leaveOrg$,
   deleteOrg$,
-} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+} from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
 import { readImageDimensions } from "./read-image-dimensions.ts";
 
 const sectionCardStyle = {

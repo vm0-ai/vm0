@@ -556,6 +556,49 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
         return agent.displayName === "Zero";
       }),
     ).toHaveLength(1);
+
+    api.configureStripeBillingEnv();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
+    context.mocks.ably.publish.mockClear();
+    const grantExpiresAtUnix = epochSeconds(7);
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_bootstrap_${randomUUID()}`,
+          customer: `cus_bdd_bootstrap_${randomUUID()}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId: orgOf(admin),
+            tier: "team",
+            duration: "7d",
+            atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_bootstrap_${randomUUID()}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: grantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "billing:changed",
+      null,
+    );
   });
 
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {

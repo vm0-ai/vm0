@@ -7,12 +7,9 @@ import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import {
   initProfileName$,
-  setActiveOrgManageTab$,
   setBillingScrollTarget$,
   setBillingSubPage$,
-  type OrgManageTab,
-} from "./org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "./org-manage-dialog.ts";
+} from "./workspace-settings-state.ts";
 
 export const SETTINGS_SECTIONS = [
   "preference",
@@ -27,8 +24,8 @@ export const SETTINGS_SECTIONS = [
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
-type OrgManageOnlySettingsSection = "providers";
-type UnifiedSettingsSection = SettingsSection | OrgManageOnlySettingsSection;
+type LegacySettingsSection = "providers";
+type UnifiedSettingsSection = SettingsSection | LegacySettingsSection;
 
 // `usage` stays visible to everyone. The rendered label and detail UI depend
 // on org role and feature switches.
@@ -169,38 +166,16 @@ function isUnifiedSettingsSection(
   return isSettingsSection(value) || value === "providers";
 }
 
-function orgManageTabForSettingsSection(
+function settingsSectionFromParam(
   section: UnifiedSettingsSection,
-): OrgManageTab | null {
-  switch (section) {
-    case "general": {
-      return "general";
-    }
-    case "people": {
-      return "members";
-    }
-    case "providers": {
-      return "providers";
-    }
-    case "billing": {
-      return "billing";
-    }
-    case "usage": {
-      return "usage";
-    }
-    case "invoices": {
-      return "invoices";
-    }
-    default: {
-      return null;
-    }
-  }
+): SettingsSection {
+  return section === "providers" ? "model" : section;
 }
 
 /**
  * Check URL for `?settings=<section>` and auto-open the matching settings
- * surface. Admin-only workspace sections open the workspace management dialog
- * for admins, and fall back to the closest non-admin section otherwise.
+ * surface. The legacy `providers` value remains an alias for `model` so old
+ * links keep opening the unified settings dialog.
  * Valid settings params stay in the URL while the dialog is open; closing the
  * dialog clears them.
  */
@@ -220,7 +195,7 @@ export const checkUnifiedSettingsParam$ = command(
       return;
     }
 
-    const section = value;
+    const section = settingsSectionFromParam(value);
     const opensBillingPlans = section === "billing" && billingView === "plans";
     const opensBuyCredits = section === "billing" && billingView === "credits";
     const isAdmin = await get(isOrgAdmin$);
@@ -228,14 +203,6 @@ export const checkUnifiedSettingsParam$ = command(
     const features = get(featureSwitch$);
     const apiKeysEnabled = Boolean(features[FeatureSwitchKey.ApiKeys]);
 
-    const orgManageTab = orgManageTabForSettingsSection(section);
-    if (orgManageTab && isAdmin) {
-      set(setActiveOrgManageTab$, orgManageTab);
-      set(setBillingSubPage$, opensBillingPlans);
-      set(setBillingScrollTarget$, opensBuyCredits ? "buy-credits" : null);
-      await set(setOrgManageDialogOpen$, true, signal);
-      return;
-    }
     if (!isAdmin && (opensBillingPlans || opensBuyCredits)) {
       set(setBillingSubPage$, false);
       set(setBillingScrollTarget$, null);
@@ -247,7 +214,6 @@ export const checkUnifiedSettingsParam$ = command(
     }
 
     const resolved: SettingsSection =
-      !isSettingsSection(section) ||
       (section === "api-keys" && !apiKeysEnabled) ||
       (!isAdmin && isAdminOnlySettingsSection(section))
         ? "preference"

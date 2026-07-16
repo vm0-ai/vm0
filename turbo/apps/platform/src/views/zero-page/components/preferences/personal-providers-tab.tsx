@@ -20,7 +20,7 @@ import {
   setSettingsCodexResetDialog$,
   settingsCodexResetDialog$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
-import { limitedFree1$ } from "../../../../signals/zero-page/billing.ts";
+import { modelPlanCapabilities$ } from "../../../../signals/zero-page/model-plan-capabilities.ts";
 import { openSettingsBillingPlans$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
@@ -55,7 +55,7 @@ export function PersonalProvidersTab() {
 
 function OAuthCredentialsSection() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
-  const limitedFree1Loadable = useLastLoadable(limitedFree1$);
+  const modelCapabilitiesLoadable = useLastLoadable(modelPlanCapabilities$);
   const openBillingPlans = useSet(openSettingsBillingPlans$);
   const openClaudeCodeDeviceAuthDialog = useSet(
     setClaudeCodeDeviceAuthDialogStatePersonal$,
@@ -74,11 +74,12 @@ function OAuthCredentialsSection() {
 
   const isLoading =
     providersLoadable.state === "loading" ||
-    limitedFree1Loadable.state === "loading";
+    modelCapabilitiesLoadable.state === "loading";
   const providers =
     providersLoadable.state === "hasData" ? providersLoadable.data : [];
-  const limitedFree1 =
-    limitedFree1Loadable.state === "hasData" && limitedFree1Loadable.data;
+  const supportByok =
+    modelCapabilitiesLoadable.state !== "hasData" ||
+    modelCapabilitiesLoadable.data.supportByok;
   const claudeCode = findProvider(providers, "claude-code-oauth-token");
   const openAI = findProvider(providers, "codex-oauth-token");
   const openAIStatus = getOpenAIStatus(openAI);
@@ -86,7 +87,7 @@ function OAuthCredentialsSection() {
   const codexResetCredits = openAI?.subscriptionResetCredits ?? null;
 
   const connectClaudeCode = () => {
-    if (limitedFree1) {
+    if (!supportByok) {
       openBillingPlans();
       return;
     }
@@ -97,7 +98,7 @@ function OAuthCredentialsSection() {
     openClaudeCodeDeviceAuthDialog(next);
   };
   const connectOpenAI = () => {
-    if (limitedFree1) {
+    if (!supportByok) {
       openBillingPlans();
       return;
     }
@@ -144,7 +145,7 @@ function OAuthCredentialsSection() {
           <>
             <ClaudeOAuthCredentialRow
               actionPending={actionPending}
-              actionLabel={limitedFree1 ? "Upgrade Pro to use" : "Connect"}
+              actionLabel={supportByok ? "Connect" : "Upgrade Pro to use"}
               provider={claudeCode}
               status={getOpenAIStatus(claudeCode)}
               onAction={connectClaudeCode}
@@ -157,7 +158,7 @@ function OAuthCredentialsSection() {
             />
             <CodexOAuthCredentialRow
               actionPending={actionPending}
-              actionLabel={limitedFree1 ? "Upgrade Pro to use" : "Connect"}
+              actionLabel={supportByok ? "Connect" : "Upgrade Pro to use"}
               provider={openAI}
               resetCredits={codexResetCredits}
               status={openAIStatus}
