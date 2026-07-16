@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -72,53 +72,6 @@ function buildUsageBreakdown(
     }, 0);
     return { kind, credits, providers };
   });
-}
-
-function usagePayloadKey(payload: ChatMessageUsagePayload): string {
-  return JSON.stringify({
-    version: payload.version,
-    totalCredits: payload.totalCredits,
-    settledAt: payload.settledAt,
-    breakdown: payload.breakdown
-      .map((kind) => {
-        return {
-          kind: kind.kind,
-          credits: kind.credits,
-          providers: [...kind.providers]
-            .sort((a, b) => {
-              return a.provider.localeCompare(b.provider);
-            })
-            .map((provider) => {
-              return {
-                provider: provider.provider,
-                credits: provider.credits,
-              };
-            }),
-        };
-      })
-      .sort((a, b) => {
-        return a.kind.localeCompare(b.kind);
-      }),
-  });
-}
-
-function usagePayloadEquals(
-  left: ChatMessageUsagePayload,
-  right: ChatMessageUsagePayload,
-): boolean {
-  return usagePayloadKey(left) === usagePayloadKey(right);
-}
-
-function usageMessageMatchesPayload(
-  message: {
-    readonly usagePayload: ChatMessageUsagePayload | null;
-  },
-  payload: ChatMessageUsagePayload,
-): boolean {
-  return (
-    message.usagePayload !== null &&
-    usagePayloadEquals(message.usagePayload, payload)
-  );
 }
 
 function usageCreditsExpression() {
@@ -205,6 +158,22 @@ export const maybeEmitRunUsageMessage$ = command(
         return null;
       }
 
+      const [existingUsageMessage] = await tx
+        .select({ id: chatMessages.id })
+        .from(chatMessages)
+        .where(
+          and(
+            eq(chatMessages.runId, runId),
+            sql`${chatMessages.usagePayload} IS NOT NULL`,
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (existingUsageMessage) {
+        return null;
+      }
+
       const breakdownRows = await loadUsageBreakdownRows(tx, runId);
       signal.throwIfAborted();
 
@@ -215,42 +184,6 @@ export const maybeEmitRunUsageMessage$ = command(
         breakdown: buildUsageBreakdown(breakdownRows),
       };
 
-      const existingUsageMessages = await tx
-        .select({
-          createdAt: chatMessages.createdAt,
-          usagePayload: chatMessages.usagePayload,
-        })
-        .from(chatMessages)
-        .where(
-          and(
-            eq(chatMessages.runId, runId),
-            sql`${chatMessages.usagePayload} IS NOT NULL`,
-          ),
-        );
-      signal.throwIfAborted();
-
-      const hasExistingPayload = existingUsageMessages.some((message) => {
-        return usageMessageMatchesPayload(message, payload);
-      });
-      if (hasExistingPayload) {
-        return null;
-      }
-
-      const [latestThreadMessage] = await tx
-        .select({ createdAt: chatMessages.createdAt })
-        .from(chatMessages)
-        .where(eq(chatMessages.chatThreadId, context.chatThreadId))
-        .orderBy(desc(chatMessages.createdAt))
-        .limit(1);
-      signal.throwIfAborted();
-
-      // Keep appended revisions after the current thread cursor even when the
-      // business settlement timestamp has not advanced.
-      const createdAtMs = Math.max(
-        new Date(payload.settledAt).getTime(),
-        (latestThreadMessage?.createdAt.getTime() ?? 0) + 1,
-      );
-
       const [inserted] = await tx
         .insert(chatMessages)
         .values({
@@ -260,7 +193,7 @@ export const maybeEmitRunUsageMessage$ = command(
           runId,
           runGroupId: context.runGroupId,
           usagePayload: payload,
-          createdAt: new Date(createdAtMs),
+          createdAt: new Date(payload.settledAt),
         })
         .returning({ id: chatMessages.id });
       signal.throwIfAborted();
