@@ -764,7 +764,6 @@ export function ArtifactDownloadMenu({
   url,
 }: ArtifactDownloadMenuProps) {
   const artifactDownloadKey = `${url}:${filename}`;
-  const menuKey = `${menuInstanceKey}:${artifactDownloadKey}`;
   const openKey = useGet(artifactDownloadMenuOpenKey$);
   const pendingKey = useGet(artifactDownloadPendingKey$);
   const openMenu = useSet(openArtifactDownloadMenu$);
@@ -773,7 +772,7 @@ export function ArtifactDownloadMenu({
   const finishArtifactDownload = useSet(finishArtifactDownload$);
   const pageSignal = useGet(pageSignal$);
   const features = useGet(featureSwitch$);
-  const open = openKey === menuKey;
+  const open = openKey === `${menuInstanceKey}:${artifactDownloadKey}`;
   const downloadPending = pendingKey === artifactDownloadKey;
   const downloadFilename = artifactDownloadFilename(
     artifactKind,
@@ -787,7 +786,7 @@ export function ArtifactDownloadMenu({
       onOpenChange={(nextOpen) => {
         setArtifactDownloadMenuOpen({
           closeMenu,
-          menuKey,
+          menuKey: `${menuInstanceKey}:${artifactDownloadKey}`,
           nextOpen,
           openMenu,
         });
