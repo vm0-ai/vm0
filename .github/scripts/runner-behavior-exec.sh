@@ -275,6 +275,8 @@ tls_check() {
   local label=$1 cmd=$2 t=${3:-15}
   local output status
 
+  # Let the guest timeout finish its TERM/KILL cycle and return stderr before
+  # runner exec's timeout can replace the result with a synthetic Timeout.
   if output=$(sudo "$BIN_DIR/runner" exec --timeout "$((t + 10))" \
     --sandbox "$SANDBOX_ID" -- sh -c "timeout --kill-after=5s $t $cmd" 2>&1); then
     echo "  HTTPS $label: ok"
