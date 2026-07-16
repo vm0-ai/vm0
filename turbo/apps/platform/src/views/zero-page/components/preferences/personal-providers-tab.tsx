@@ -20,6 +20,8 @@ import {
   setSettingsCodexResetDialog$,
   settingsCodexResetDialog$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
+import { limitedFree1$ } from "../../../../signals/zero-page/billing.ts";
+import { openSettingsBillingPlans$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -53,6 +55,8 @@ export function PersonalProvidersTab() {
 
 function OAuthCredentialsSection() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
+  const limitedFree1Loadable = useLastLoadable(limitedFree1$);
+  const openBillingPlans = useSet(openSettingsBillingPlans$);
   const openClaudeCodeDeviceAuthDialog = useSet(
     setClaudeCodeDeviceAuthDialogStatePersonal$,
   );
@@ -68,9 +72,13 @@ function OAuthCredentialsSection() {
   const actionLoadable = useLoadable(personalActionPromise$);
   const pageSignal = useGet(pageSignal$);
 
-  const isLoading = providersLoadable.state === "loading";
+  const isLoading =
+    providersLoadable.state === "loading" ||
+    limitedFree1Loadable.state === "loading";
   const providers =
     providersLoadable.state === "hasData" ? providersLoadable.data : [];
+  const limitedFree1 =
+    limitedFree1Loadable.state === "hasData" && limitedFree1Loadable.data;
   const claudeCode = findProvider(providers, "claude-code-oauth-token");
   const openAI = findProvider(providers, "codex-oauth-token");
   const openAIStatus = getOpenAIStatus(openAI);
@@ -78,6 +86,10 @@ function OAuthCredentialsSection() {
   const codexResetCredits = openAI?.subscriptionResetCredits ?? null;
 
   const connectClaudeCode = () => {
+    if (limitedFree1) {
+      openBillingPlans();
+      return;
+    }
     const next = {
       open: true,
       mode: claudeCode?.needsReconnect ? "reconnect" : "connect",
@@ -85,6 +97,10 @@ function OAuthCredentialsSection() {
     openClaudeCodeDeviceAuthDialog(next);
   };
   const connectOpenAI = () => {
+    if (limitedFree1) {
+      openBillingPlans();
+      return;
+    }
     const next = {
       open: true,
       mode: openAI?.needsReconnect ? "reconnect" : "connect",
@@ -128,6 +144,7 @@ function OAuthCredentialsSection() {
           <>
             <ClaudeOAuthCredentialRow
               actionPending={actionPending}
+              actionLabel={limitedFree1 ? "Upgrade Pro to use" : "Connect"}
               provider={claudeCode}
               status={getOpenAIStatus(claudeCode)}
               onAction={connectClaudeCode}
@@ -140,6 +157,7 @@ function OAuthCredentialsSection() {
             />
             <CodexOAuthCredentialRow
               actionPending={actionPending}
+              actionLabel={limitedFree1 ? "Upgrade Pro to use" : "Connect"}
               provider={openAI}
               resetCredits={codexResetCredits}
               status={openAIStatus}
@@ -170,12 +188,14 @@ function OAuthCredentialsSection() {
 
 function ClaudeOAuthCredentialRow({
   actionPending,
+  actionLabel,
   provider,
   status,
   onAction,
   onDisconnect,
 }: {
   actionPending: boolean;
+  actionLabel: string;
   provider: ModelProviderResponse | undefined;
   status: OAuthStatus;
   onAction: () => void;
@@ -188,6 +208,7 @@ function ClaudeOAuthCredentialRow({
       description="Connect with Claude Code login for Claude-backed model routes."
       provider={provider}
       status={status}
+      actionLabel={actionLabel}
       menuItems={
         provider
           ? [
@@ -212,6 +233,7 @@ function ClaudeOAuthCredentialRow({
 
 function CodexOAuthCredentialRow({
   actionPending,
+  actionLabel,
   provider,
   resetCredits,
   status,
@@ -220,6 +242,7 @@ function CodexOAuthCredentialRow({
   onOpenReset,
 }: {
   actionPending: boolean;
+  actionLabel: string;
   provider: ModelProviderResponse | undefined;
   resetCredits: number | null;
   status: OAuthStatus;
@@ -234,6 +257,7 @@ function CodexOAuthCredentialRow({
       description="Connect with Codex device login for Codex-backed model routes."
       provider={provider}
       status={status}
+      actionLabel={actionLabel}
       menuItems={
         provider
           ? [
@@ -515,6 +539,7 @@ function OAuthCredentialRow({
   description,
   provider,
   status,
+  actionLabel,
   disabled = false,
   menuItems,
   onAction,
@@ -525,6 +550,7 @@ function OAuthCredentialRow({
   description: string;
   provider: ModelProviderResponse | undefined;
   status: OAuthStatus;
+  actionLabel: string;
   disabled?: boolean;
   menuItems: OAuthMenuItem[];
   onAction: () => void;
@@ -563,11 +589,15 @@ function OAuthCredentialRow({
             variant="outline"
             size="sm"
             className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
-            aria-label={`Connect ${title}`}
+            aria-label={
+              actionLabel === "Connect"
+                ? `Connect ${title}`
+                : `${actionLabel} ${title}`
+            }
             disabled={disabled}
             onClick={onAction}
           >
-            Connect
+            {actionLabel}
           </Button>
         ) : (
           <div className="ml-auto flex items-center justify-end gap-1.5">

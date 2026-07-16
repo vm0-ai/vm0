@@ -615,12 +615,14 @@ function PolicyRow({
 function RouteChoiceButton({
   active,
   disabled = false,
+  pro = false,
   title,
   description,
   onClick,
 }: {
   active: boolean;
   disabled?: boolean;
+  pro?: boolean;
   title: string;
   description: string;
   onClick: () => void;
@@ -644,7 +646,10 @@ function RouteChoiceButton({
         disabled && "cursor-not-allowed opacity-50",
       )}
     >
-      <span className="text-sm font-medium text-foreground">{title}</span>
+      <span className="flex w-full items-center justify-between gap-2 text-sm font-medium text-foreground">
+        {title}
+        {pro && <ProBadge />}
+      </span>
       <span className="text-[13px] text-muted-foreground">{description}</span>
     </button>
   );
@@ -930,6 +935,7 @@ function ModelPolicyRouteDialog({
   featureStates,
   saving,
   limitedFree1,
+  onUpgrade,
   onSubmit,
 }: {
   policies: OrgModelPolicy[];
@@ -938,6 +944,7 @@ function ModelPolicyRouteDialog({
   featureStates: ModelProviderFeatureStates;
   saving: boolean;
   limitedFree1: boolean;
+  onUpgrade: () => void;
   onSubmit: (next: UpdateOrgModelPolicy[]) => void;
 }) {
   const dialog = useGet(modelPolicyDialogState$);
@@ -991,6 +998,10 @@ function ModelPolicyRouteDialog({
     routeProvider === null;
 
   const chooseRoute = (routeKind: ModelPolicyRouteKind) => {
+    if (limitedFree1 && routeKind !== "built-in") {
+      onUpgrade();
+      return;
+    }
     setRoute({
       routeKind,
       providerType: getDefaultProviderTypeForRoute({
@@ -1158,6 +1169,7 @@ function ModelPolicyRouteDialog({
                 <RouteChoiceButton
                   active={dialog.routeKind === "api-key"}
                   disabled={apiTypes.length === 0}
+                  pro={limitedFree1}
                   title="API key"
                   description="A shared workspace key. Best when the team bills through one account."
                   onClick={() => {
@@ -1167,6 +1179,7 @@ function ModelPolicyRouteDialog({
                 {oauthTypes.length > 0 && (
                   <RouteChoiceButton
                     active={dialog.routeKind === "oauth"}
+                    pro={limitedFree1}
                     title={getOAuthRouteCopy(oauthTypes).title}
                     description={getOAuthRouteCopy(oauthTypes).description}
                     onClick={() => {
@@ -1373,6 +1386,7 @@ export function OrgModelPoliciesSection() {
         featureStates={featureStates}
         saving={saving}
         limitedFree1={limitedFree1}
+        onUpgrade={openComparePlans}
         onSubmit={submit}
       />
     </section>

@@ -556,6 +556,33 @@ describe("organization model providers settings", () => {
     });
   });
 
+  it("opens compare plans from limited-free-1 BYOK route options", async () => {
+    mockAdminOrg();
+    mockBillingTier("limited-free-1");
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000222",
+        "kimi-k2.7-code",
+        "Kimi K2.7 Code",
+        true,
+      ),
+    ]);
+    await openModelSettings();
+
+    click(buttonByText("Add model"));
+    await selectDialogModel("GLM-5.2");
+
+    const apiKeyRoute = screen.getByRole("radio", {
+      name: /API key\s+Pro/u,
+    });
+    click(apiKeyRoute);
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("reassigns the workspace default model when deleting the default route", async () => {
     mockApiKeyModelRouteStory();
     await openProvidersTab();

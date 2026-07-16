@@ -1,5 +1,9 @@
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
+import {
+  zeroBillingStatusContract,
+  type BillingStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -124,6 +128,31 @@ function mockPersonalProvidersStory(): void {
   });
 }
 
+function mockBillingTier(tier: string): void {
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    const status: BillingStatusResponse = {
+      tier,
+      credits: 20_000,
+      onboardingPaymentPending: false,
+      subscriptionStatus: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      scheduledChange: null,
+      hasSubscription: false,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+      creditExpiry: {
+        expiringNextCycle: 0,
+        nextExpiryDate: null,
+      },
+      creditBreakdown: [],
+      creditGrants: [],
+      concurrencyLimit: 0,
+      concurrencySubscriptions: [],
+    };
+    return respond(200, status);
+  });
+}
+
 async function openModelSettings(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=model" });
   await waitFor(() => {
@@ -197,6 +226,38 @@ function mockBrowserTimeZone(timeZone: string): void {
 }
 
 describe("personal model providers settings", () => {
+  it("offers Pro upgrade for personal providers on limited-free-1", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.personalModelProviders([]);
+    mockBillingTier("limited-free-1");
+
+    await openModelSettings();
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    const claudeUpgrade = connectButtonInRow(
+      claudeCodeRow,
+      "Upgrade Pro to use Claude Code OAuth",
+    );
+    expect(claudeUpgrade).toHaveTextContent("Upgrade Pro to use");
+    expect(
+      connectButtonInRow(codexRow, "Upgrade Pro to use ChatGPT (Codex)"),
+    ).toHaveTextContent("Upgrade Pro to use");
+
+    click(claudeUpgrade);
+
+    await expect(
+      screen.findByRole("heading", { name: "Compare plans" }),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("opens personal Claude Code login from model settings", async () => {
     context.mocks.data.org({
       id: "org_1",
