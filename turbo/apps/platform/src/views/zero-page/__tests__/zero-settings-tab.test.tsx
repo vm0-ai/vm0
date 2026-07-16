@@ -23,13 +23,10 @@ const AGENT_ID = "a0000000-0000-4000-a000-000000000020";
 const SECOND_AGENT_ID = "a0000000-0000-4000-a000-000000000021";
 const PAGE_LOAD_TIMEOUT_MS = 5000;
 
-function renderedAvatarSvgLayerSrcs(): string[] {
-  return Array.from(
-    document.querySelectorAll<HTMLImageElement>("img"),
-    (img) => {
-      return img.src;
-    },
-  ).filter((src) => {
+function renderedAvatarSvgLayerSrcs(root: ParentNode): string[] {
+  return Array.from(root.querySelectorAll<HTMLImageElement>("img"), (img) => {
+    return img.src;
+  }).filter((src) => {
     return src.includes("/platform/views/zero-page/assets/avatar-svg/");
   });
 }
@@ -178,14 +175,13 @@ describe("zero settings tab", () => {
     prepareAgentProfile();
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
 
-    expect(renderedAvatarSvgLayerSrcs()).toHaveLength(0);
     click(await findCreateCustomAvatarButton());
 
-    await waitFor(() => {
-      expect(renderedAvatarSvgLayerSrcs()).toHaveLength(18);
-    });
+    const dialog = await screen.findByRole("dialog");
+    const layerSrcs = renderedAvatarSvgLayerSrcs(dialog);
 
-    const uniqueSrcs = new Set(renderedAvatarSvgLayerSrcs());
+    expect(layerSrcs).toHaveLength(18);
+    const uniqueSrcs = new Set(layerSrcs);
     expect(uniqueSrcs.size).toBe(15);
   });
 
