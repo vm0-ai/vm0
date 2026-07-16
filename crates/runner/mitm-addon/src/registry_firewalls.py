@@ -231,8 +231,13 @@ def resolve_firewall_entries(
     registry pass cannot mix catalog versions.
 
     Inline firewalls are deep-copied and receive per-entry `None` builtin cache
-    keys. API IDs are assigned after expansion and before returning. Callers must
-    validate `vm["runId"]` as a non-empty string before calling.
+    keys. Builtin catalog API IDs are discarded during expansion, so builtin
+    APIs receive generated run-scoped IDs. Inline APIs preserve an existing
+    non-empty string ID; absent, empty, or non-string IDs are generated.
+    Generated IDs use `<runId>:<index>`, where the zero-based index advances over
+    dictionary API entries in resolved firewall order, including entries whose
+    IDs are preserved. Callers must validate `vm["runId"]` as a non-empty string
+    before calling.
 
     Raises `FirewallEntryResolutionError` for malformed firewall lists or
     entries, unsupported entry kinds, unknown builtins, invalid builtin base URL
