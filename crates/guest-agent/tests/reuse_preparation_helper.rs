@@ -8,9 +8,10 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+use guest_contracts::process_containment::ProcessContainmentEvidence;
 use guest_contracts::reuse_preparation::{
-    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
-    ReusePreparationReport, ReusePreparationRequest,
+    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+    REUSE_PREPARATION_EXIT_INVALID_REQUEST, ReusePreparationReport, ReusePreparationRequest,
 };
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
@@ -53,6 +54,10 @@ fn prepare_for_reuse_removes_only_unprotected_runtime_entries() -> TestResult {
     );
     let report = serde_json::from_slice::<ReusePreparationReport>(&output.stdout)?;
     assert_eq!(report.removed_entries, 3);
+    assert_eq!(
+        report.process_containment,
+        Some(ProcessContainmentEvidence::CgroupV2)
+    );
     assert!(report.before.available_bytes > 0);
     assert!(report.after.available_bytes > 0);
     assert_eq!(
@@ -198,9 +203,122 @@ fn prepare_for_reuse_rejects_same_filesystem_bind_mount() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn prepare_for_reuse_rejects_missing_containment_capability() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::remove_file(containment.base.join("cgroup.kill"))?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_stale_operation_cgroup() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::create_dir(containment.base.join("exec-stale"))?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_populated_supervised_cgroup() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(containment.base.join("cgroup.events"), b"populated 1\n")?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_enabled_controllers() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(
+        containment.base.join("cgroup.subtree_control"),
+        b"+memory\n",
+    )?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+struct ContainmentFixture {
+    _directory: tempfile::TempDir,
+    root: PathBuf,
+    base: PathBuf,
+}
+
+impl ContainmentFixture {
+    fn new() -> TestResult<Self> {
+        let directory = tempfile::tempdir()?;
+        let root = directory.path().join("cgroup");
+        let base = root.join("vm0-supervised");
+        std::fs::create_dir_all(&base)?;
+        for (filename, content) in [
+            ("cgroup.procs", ""),
+            ("cgroup.events", "populated 0\nfrozen 0\n"),
+            ("cgroup.kill", ""),
+            ("cgroup.subtree_control", ""),
+        ] {
+            std::fs::write(base.join(filename), content)?;
+        }
+        Ok(Self {
+            _directory: directory,
+            root,
+            base,
+        })
+    }
+}
+
+fn reusable_request() -> TestResult<(ReusePreparationRequest, tempfile::TempDir)> {
+    let runtime = tempfile::tempdir()?;
+    let current = runtime.path().join("runs/current");
+    std::fs::create_dir_all(&current)?;
+    Ok((
+        ReusePreparationRequest {
+            current_runtime_dir: path_string(&current),
+            retained_runtime_dir: None,
+        },
+        runtime,
+    ))
+}
+
 fn run_helper(request: &ReusePreparationRequest) -> Result<Output, Box<dyn std::error::Error>> {
+    let containment = ContainmentFixture::new()?;
+    run_helper_with_containment(request, &containment)
+}
+
+fn run_helper_with_containment(
+    request: &ReusePreparationRequest,
+    containment: &ContainmentFixture,
+) -> Result<Output, Box<dyn std::error::Error>> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
         .env_clear()
+        .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
         .arg("prepare-for-reuse")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -219,8 +337,10 @@ fn run_helper_with_bind_mount(
     mount_source: &Path,
     mount_target: &Path,
 ) -> Result<Output, Box<dyn std::error::Error>> {
+    let containment = ContainmentFixture::new()?;
     let mut child = Command::new("/usr/bin/unshare")
         .env_clear()
+        .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
         .env("VM0_MOUNT_SOURCE", mount_source)
         .env("VM0_MOUNT_TARGET", mount_target)
         .env("VM0_HELPER", env!("CARGO_BIN_EXE_guest-agent"))

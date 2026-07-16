@@ -1,18 +1,29 @@
 //! Safe reclamation of runner-owned runtime state before idle reuse.
 
-use std::ffi::{OsStr, OsString};
+use std::ffi::{CString, OsStr, OsString};
 use std::io::{self, Read};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
+use guest_contracts::process_containment::{
+    CGROUP_V2_MOUNT_PATH, ProcessContainmentEvidence, SUPERVISED_CGROUP_BASE_PATH,
+};
 use guest_contracts::reuse_preparation::{
-    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
-    REUSE_PREPARATION_EXIT_INVALID_REQUEST, ReusePreparationReport, ReusePreparationRequest,
-    RootFilesystemCapacity,
+    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+    REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
+    ReusePreparationReport, ReusePreparationRequest, RootFilesystemCapacity,
 };
 
 use crate::nofollow_fs::{Dir, FileIdentity};
 
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
+const CGROUP2_SUPER_MAGIC: i64 = 0x6367_7270;
+const CGROUP_EVENTS_FILE: &str = "cgroup.events";
+const CGROUP_KILL_FILE: &str = "cgroup.kill";
+const CGROUP_PROCS_FILE: &str = "cgroup.procs";
+const CGROUP_SUBTREE_CONTROL_FILE: &str = "cgroup.subtree_control";
+#[cfg(debug_assertions)]
+const TEST_CONTAINMENT_ROOT_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_ROOT";
 
 /// Failure returned by the reuse-preparation helper.
 #[derive(Debug)]
@@ -23,6 +34,8 @@ pub enum ReusePreparationError {
     Inspection(io::Error),
     /// Stale runtime entries could not be safely removed.
     Cleanup(io::Error),
+    /// Supervised process containment could not be proven healthy and empty.
+    Containment(io::Error),
 }
 
 impl ReusePreparationError {
@@ -33,6 +46,7 @@ impl ReusePreparationError {
             Self::InvalidRequest(_) => REUSE_PREPARATION_EXIT_INVALID_REQUEST,
             Self::Inspection(_) => REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
             Self::Cleanup(_) => REUSE_PREPARATION_EXIT_CLEANUP_FAILED,
+            Self::Containment(_) => REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
         }
     }
 }
@@ -43,6 +57,7 @@ impl std::fmt::Display for ReusePreparationError {
             Self::InvalidRequest(error) => write!(f, "invalid reuse-preparation request: {error}"),
             Self::Inspection(error) => write!(f, "rootfs capacity inspection failed: {error}"),
             Self::Cleanup(error) => write!(f, "runtime cleanup failed: {error}"),
+            Self::Containment(error) => write!(f, "process containment check failed: {error}"),
         }
     }
 }
@@ -50,9 +65,10 @@ impl std::fmt::Display for ReusePreparationError {
 impl std::error::Error for ReusePreparationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::InvalidRequest(error) | Self::Inspection(error) | Self::Cleanup(error) => {
-                Some(error)
-            }
+            Self::InvalidRequest(error)
+            | Self::Inspection(error)
+            | Self::Cleanup(error)
+            | Self::Containment(error) => Some(error),
         }
     }
 }
@@ -92,6 +108,8 @@ fn prepare(
         .map(Path::new)
         .map(|path| split_retained_runtime_path(path, &runtime_parent))
         .transpose()?;
+    let process_containment =
+        verify_process_containment().map_err(ReusePreparationError::Containment)?;
 
     let parent = Dir::open_absolute(&runtime_parent).map_err(ReusePreparationError::Cleanup)?;
     let parent_identity = parent.identity().map_err(ReusePreparationError::Cleanup)?;
@@ -150,6 +168,123 @@ fn prepare(
         before,
         after,
         removed_entries,
+        process_containment: Some(process_containment),
+    })
+}
+
+struct ProcessContainmentPaths {
+    mount: PathBuf,
+    base: PathBuf,
+    require_cgroup2_filesystem: bool,
+}
+
+fn verify_process_containment() -> io::Result<ProcessContainmentEvidence> {
+    let paths = process_containment_paths();
+    if paths.require_cgroup2_filesystem && filesystem_type(&paths.mount)? != CGROUP2_SUPER_MAGIC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "canonical cgroup mount is not cgroup v2",
+        ));
+    }
+
+    let base_metadata = std::fs::symlink_metadata(&paths.base)?;
+    if !base_metadata.is_dir() || base_metadata.file_type().is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "supervised cgroup base is not a directory",
+        ));
+    }
+    if paths.require_cgroup2_filesystem && filesystem_type(&paths.base)? != CGROUP2_SUPER_MAGIC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "supervised cgroup base is not on cgroup v2",
+        ));
+    }
+    for filename in [
+        CGROUP_PROCS_FILE,
+        CGROUP_EVENTS_FILE,
+        CGROUP_KILL_FILE,
+        CGROUP_SUBTREE_CONTROL_FILE,
+    ] {
+        if !std::fs::metadata(paths.base.join(filename))?.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("supervised cgroup core file is invalid: {filename}"),
+            ));
+        }
+    }
+
+    let subtree_control = std::fs::read_to_string(paths.base.join(CGROUP_SUBTREE_CONTROL_FILE))?;
+    if !subtree_control.trim().is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "resource controllers are enabled for the supervised cgroup",
+        ));
+    }
+
+    for entry in std::fs::read_dir(&paths.base)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            return Err(io::Error::other(
+                "stale supervised operation cgroup remains",
+            ));
+        }
+    }
+
+    let events = std::fs::read_to_string(paths.base.join(CGROUP_EVENTS_FILE))?;
+    match parse_populated(&events) {
+        Some(false) => Ok(ProcessContainmentEvidence::CgroupV2),
+        Some(true) => Err(io::Error::other("supervised cgroup remains populated")),
+        None => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "cgroup.events is missing valid populated state",
+        )),
+    }
+}
+
+fn process_containment_paths() -> ProcessContainmentPaths {
+    #[cfg(debug_assertions)]
+    if let Some(root) = std::env::var_os(TEST_CONTAINMENT_ROOT_ENV) {
+        let mount = PathBuf::from(root);
+        let base = mount.join("vm0-supervised");
+        return ProcessContainmentPaths {
+            mount,
+            base,
+            require_cgroup2_filesystem: false,
+        };
+    }
+
+    ProcessContainmentPaths {
+        mount: PathBuf::from(CGROUP_V2_MOUNT_PATH),
+        base: PathBuf::from(SUPERVISED_CGROUP_BASE_PATH),
+        require_cgroup2_filesystem: true,
+    }
+}
+
+fn filesystem_type(path: &Path) -> io::Result<i64> {
+    let path = CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL byte"))?;
+    let mut stats = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: `path` is NUL-terminated and `stats` points to writable memory.
+    let result = unsafe { libc::statfs(path.as_ptr(), stats.as_mut_ptr()) };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: successful statfs initialized the structure.
+    Ok(unsafe { stats.assume_init() }.f_type)
+}
+
+fn parse_populated(content: &str) -> Option<bool> {
+    content.lines().find_map(|line| {
+        let (key, value) = line.split_once(' ')?;
+        if key != "populated" {
+            return None;
+        }
+        match value {
+            "0" => Some(false),
+            "1" => Some(true),
+            _ => None,
+        }
     })
 }
 

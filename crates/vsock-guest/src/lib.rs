@@ -15,6 +15,7 @@ mod file_write_worker;
 mod handlers;
 mod log;
 mod process;
+mod process_containment;
 mod quiesce;
 mod shell_command;
 mod shutdown;

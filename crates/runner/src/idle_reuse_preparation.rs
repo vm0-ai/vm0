@@ -3,9 +3,11 @@
 use std::time::Duration;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_GUEST_HOME_DIR;
+use guest_contracts::process_containment::ProcessContainmentEvidence;
 use guest_contracts::reuse_preparation::{
-    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
-    REUSE_PREPARATION_EXIT_INVALID_REQUEST, ReusePreparationReport, ReusePreparationRequest,
+    REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+    REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
+    ReusePreparationReport, ReusePreparationRequest,
 };
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecResult, ExecTermination, Sandbox};
 use tracing::{info, warn};
@@ -25,8 +27,10 @@ enum ReuseRejectionReason {
     InvalidRequest,
     InspectionFailed,
     CleanupFailed,
+    ContainmentFailed,
     HelperFailed,
     InvalidReport,
+    MissingContainmentEvidence,
     LowBytes,
     LowInodes,
     LowBytesAndInodes,
@@ -38,8 +42,10 @@ impl ReuseRejectionReason {
             Self::InvalidRequest => "invalid_request",
             Self::InspectionFailed => "inspection_failed",
             Self::CleanupFailed => "cleanup_failed",
+            Self::ContainmentFailed => "containment_failed",
             Self::HelperFailed => "helper_failed",
             Self::InvalidReport => "invalid_report",
+            Self::MissingContainmentEvidence => "missing_containment_evidence",
             Self::LowBytes => "low_bytes",
             Self::LowInodes => "low_inodes",
             Self::LowBytesAndInodes => "low_bytes_and_inodes",
@@ -133,6 +139,15 @@ pub(crate) async fn prepare_sandbox_for_idle_reuse(
                 format!("reuse preparation returned an invalid report: {error}"),
             )
         })?;
+    if report.process_containment != Some(ProcessContainmentEvidence::CgroupV2) {
+        return Err(reject_with_result(
+            sandbox,
+            run_id,
+            ReuseRejectionReason::MissingContainmentEvidence,
+            &result,
+            "reuse preparation did not prove supervised process containment".into(),
+        ));
+    }
     let low_bytes = report.after.available_bytes < MIN_REUSE_ROOTFS_AVAILABLE_BYTES;
     let low_inodes = report.after.available_inodes < MIN_REUSE_ROOTFS_AVAILABLE_INODES;
     if low_bytes || low_inodes {
@@ -170,6 +185,7 @@ pub(crate) fn healthy_reuse_preparation_report() -> ReusePreparationReport {
             available_inodes: 2048,
         },
         removed_entries: 0,
+        process_containment: Some(ProcessContainmentEvidence::CgroupV2),
     }
 }
 
@@ -205,6 +221,9 @@ fn helper_failure_reason(result: &ExecResult) -> ReuseRejectionReason {
         ExecTermination::Exited {
             exit_code: REUSE_PREPARATION_EXIT_CLEANUP_FAILED,
         } => ReuseRejectionReason::CleanupFailed,
+        ExecTermination::Exited {
+            exit_code: REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+        } => ReuseRejectionReason::ContainmentFailed,
         ExecTermination::Exited { .. }
         | ExecTermination::TimedOut
         | ExecTermination::Cancelled
@@ -327,6 +346,7 @@ mod tests {
                 available_inodes: after_inodes,
             },
             removed_entries: 3,
+            process_containment: Some(ProcessContainmentEvidence::CgroupV2),
         }
     }
 
@@ -456,13 +476,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn preparation_distinguishes_helper_inspection_and_cleanup_failures() {
+    async fn preparation_distinguishes_typed_helper_failures() {
         for (exit_code, expected_reason) in [
             (
                 REUSE_PREPARATION_EXIT_INSPECTION_FAILED,
                 "inspection_failed",
             ),
             (REUSE_PREPARATION_EXIT_CLEANUP_FAILED, "cleanup_failed"),
+            (
+                REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
+                "containment_failed",
+            ),
         ] {
             let sandbox = MockSandbox::new(expected_reason);
             sandbox.push_exec_result(Ok(ExecResult::new(
@@ -480,6 +504,29 @@ mod tests {
                 Some(expected_reason)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn preparation_rejects_old_guest_report_without_containment_evidence() {
+        let sandbox = MockSandbox::new("missing-containment-evidence");
+        let mut report = healthy_reuse_preparation_report();
+        report.process_containment = None;
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            0,
+            serde_json::to_vec(&report).unwrap(),
+            Vec::new(),
+        )));
+
+        let (result, events) = capture_preparation(&sandbox, RunId::new_v4()).await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            captured_event(&events, "sandbox rejected from idle reuse")
+                .fields
+                .get("reason")
+                .map(String::as_str),
+            Some("missing_containment_evidence")
+        );
     }
 
     #[tokio::test]

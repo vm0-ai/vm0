@@ -9,6 +9,15 @@
 
 use nix::mount::{MsFlags, mount};
 use std::fs;
+use std::io;
+use std::path::Path;
+
+use guest_contracts::process_containment::{CGROUP_V2_MOUNT_PATH, SUPERVISED_CGROUP_BASE_PATH};
+
+const CGROUP_PROCS_FILE: &str = "cgroup.procs";
+const CGROUP_EVENTS_FILE: &str = "cgroup.events";
+const CGROUP_KILL_FILE: &str = "cgroup.kill";
+const CGROUP_SUBTREE_CONTROL_FILE: &str = "cgroup.subtree_control";
 
 /// Initialize virtual filesystems and environment.
 ///
@@ -56,6 +65,8 @@ pub fn init_filesystem() -> Result<(), InitError> {
         source: e,
     })?;
 
+    initialize_process_containment()?;
+
     // Mount tmpfs on /dev/shm — required by Chromium for shared memory.
     // devtmpfs (CONFIG_DEVTMPFS_MOUNT=y) doesn't create /dev/shm.
     let _ = fs::create_dir_all("/dev/shm");
@@ -100,7 +111,16 @@ pub fn init_filesystem() -> Result<(), InitError> {
 /// Errors that can occur during filesystem initialization
 #[derive(Debug)]
 pub enum InitError {
-    Mount { target: String, source: nix::Error },
+    Mount {
+        target: String,
+        source: nix::Error,
+    },
+    Filesystem {
+        operation: &'static str,
+        path: String,
+        source: io::Error,
+    },
+    InvalidProcessContainment(String),
 }
 
 impl std::fmt::Display for InitError {
@@ -109,11 +129,84 @@ impl std::fmt::Display for InitError {
             InitError::Mount { target, source } => {
                 write!(f, "Failed to mount {}: {}", target, source)
             }
+            InitError::Filesystem {
+                operation,
+                path,
+                source,
+            } => write!(f, "Failed to {operation} {path}: {source}"),
+            InitError::InvalidProcessContainment(message) => {
+                write!(f, "Invalid process containment: {message}")
+            }
         }
     }
 }
 
 impl std::error::Error for InitError {}
+
+fn initialize_process_containment() -> Result<(), InitError> {
+    create_dir_all(Path::new(CGROUP_V2_MOUNT_PATH))?;
+    mount(
+        Some("cgroup2"),
+        CGROUP_V2_MOUNT_PATH,
+        Some("cgroup2"),
+        MsFlags::MS_NODEV | MsFlags::MS_NOEXEC | MsFlags::MS_NOSUID,
+        None::<&str>,
+    )
+    .map_err(|source| InitError::Mount {
+        target: CGROUP_V2_MOUNT_PATH.into(),
+        source,
+    })?;
+
+    let base = Path::new(SUPERVISED_CGROUP_BASE_PATH);
+    create_dir_all(base)?;
+    verify_process_containment_base(base)?;
+    eprintln!("[guest-init] Supervised process containment initialized");
+    Ok(())
+}
+
+fn create_dir_all(path: &Path) -> Result<(), InitError> {
+    fs::create_dir_all(path).map_err(|source| InitError::Filesystem {
+        operation: "create directory",
+        path: path.display().to_string(),
+        source,
+    })
+}
+
+fn verify_process_containment_base(base: &Path) -> Result<(), InitError> {
+    for filename in [
+        CGROUP_PROCS_FILE,
+        CGROUP_EVENTS_FILE,
+        CGROUP_KILL_FILE,
+        CGROUP_SUBTREE_CONTROL_FILE,
+    ] {
+        let path = base.join(filename);
+        let metadata = fs::metadata(&path).map_err(|source| InitError::Filesystem {
+            operation: "inspect",
+            path: path.display().to_string(),
+            source,
+        })?;
+        if !metadata.is_file() {
+            return Err(InitError::InvalidProcessContainment(format!(
+                "{} is not a file",
+                path.display()
+            )));
+        }
+    }
+
+    let subtree_control_path = base.join(CGROUP_SUBTREE_CONTROL_FILE);
+    let subtree_control =
+        fs::read_to_string(&subtree_control_path).map_err(|source| InitError::Filesystem {
+            operation: "read",
+            path: subtree_control_path.display().to_string(),
+            source,
+        })?;
+    if !subtree_control.trim().is_empty() {
+        return Err(InitError::InvalidProcessContainment(
+            "resource controllers are enabled for the supervised subtree".into(),
+        ));
+    }
+    Ok(())
+}
 
 /// Parse environment file content into key-value pairs.
 ///
@@ -156,6 +249,18 @@ unsafe fn load_etc_environment() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_cgroup_core_files(base: &Path, subtree_control: &str) {
+        fs::create_dir_all(base).unwrap();
+        for (filename, content) in [
+            (CGROUP_PROCS_FILE, ""),
+            (CGROUP_EVENTS_FILE, "populated 0\nfrozen 0\n"),
+            (CGROUP_KILL_FILE, ""),
+            (CGROUP_SUBTREE_CONTROL_FILE, subtree_control),
+        ] {
+            fs::write(base.join(filename), content).unwrap();
+        }
+    }
 
     #[test]
     fn parse_env_basic() {
@@ -226,5 +331,34 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("/proc"));
         assert!(msg.contains("EACCES"));
+    }
+
+    #[test]
+    fn process_containment_base_requires_core_files() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cgroup_core_files(dir.path(), "");
+        fs::remove_file(dir.path().join(CGROUP_KILL_FILE)).unwrap();
+
+        let error = verify_process_containment_base(dir.path()).unwrap_err();
+
+        assert!(error.to_string().contains(CGROUP_KILL_FILE));
+    }
+
+    #[test]
+    fn process_containment_base_rejects_enabled_controllers() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cgroup_core_files(dir.path(), "+memory\n");
+
+        let error = verify_process_containment_base(dir.path()).unwrap_err();
+
+        assert!(error.to_string().contains("resource controllers"));
+    }
+
+    #[test]
+    fn process_containment_base_accepts_controller_free_core_files() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cgroup_core_files(dir.path(), "\n");
+
+        verify_process_containment_base(dir.path()).unwrap();
     }
 }
