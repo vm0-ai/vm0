@@ -2794,15 +2794,22 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       thread.id,
       (messages) => {
         return userMessages(messages).some((message) => {
-          return message.id === sent.body.messageId && message.runId === run1Id;
+          return (
+            message.revokesMessageId === sent.body.messageId &&
+            message.runId === run1Id
+          );
         });
       },
     );
     expect(
       userMessages(zeroPage.messages).find((message) => {
-        return message.id === sent.body.messageId;
+        return message.revokesMessageId === sent.body.messageId;
       }),
-    ).toMatchObject({ content: "hello from v1", runId: run1Id });
+    ).toMatchObject({
+      content: "hello from v1",
+      runId: run1Id,
+      revokesMessageId: sent.body.messageId,
+    });
     await flushWaitUntilForTest();
     const afterV1SideEffects = await chat.listThreadMessages(actor, thread.id);
     expect(initialThinkingRequests).toBe(0);
@@ -2875,23 +2882,25 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.id === queued.body.messageId && message.runId !== undefined
+            message.revokesMessageId === queued.body.messageId &&
+            message.runId !== undefined
           );
         });
       },
     );
     const promoted = userMessages(afterQueue.messages).find((message) => {
-      return message.id === queued.body.messageId;
+      return message.revokesMessageId === queued.body.messageId;
     });
     if (!promoted?.runId) {
       throw new Error("Expected the queued v1 message to auto-send into a run");
     }
     expect(promoted.content).toBe("queued from v1");
-    expect(
-      afterQueue.messages.some((message) => {
-        return message.revokesMessageId === queued.body.messageId;
-      }),
-    ).toBeFalsy();
+    const original = await chat.getThreadMessage(
+      actor,
+      thread.id,
+      queued.body.messageId,
+    );
+    expect(original.runId).toBeUndefined();
     await expectZeroPreCreateSource(promoted.runId, "chat_callback_auto_send");
     await flushWaitUntilForTest();
     const afterAutoSendSideEffects = await chat.listThreadMessages(
