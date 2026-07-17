@@ -2529,20 +2529,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "reusableSandbox",
     );
 
-    await heartbeatHolder({
-      admittableProfiles: ["vm0/default"],
-      workspaceCaches: [
-        {
-          profile: "vm0/default",
-          workspaceAffinityVersion: 1,
-          sessionHistorySidecar: {
-            historyGenerationRunId: first.runId,
-            rawSizeBucket: "64_256_kib",
-          },
-        },
-      ],
-    });
     const sidecarVariantRunners = [
+      {
+        runnerId: randomUUID(),
+        sessionHistorySidecar: {
+          historyGenerationRunId: first.runId,
+          rawSizeBucket: "64_256_kib" as const,
+        },
+      },
       {
         runnerId: randomUUID(),
         sessionHistorySidecar: {
@@ -2582,6 +2576,22 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         ],
       });
     }
+    const reusableWithCompetingWorkspaceSidecars = await pollFollowUp(
+      "observe workspace sidecars while reusable sandbox remains preferred",
+    );
+    expect(
+      sessionAffinityProtectedUntil(reusableWithCompetingWorkspaceSidecars.job),
+    ).toStrictEqual(expect.any(String));
+    expect(
+      historyGenerationAffinityProtectedUntil(
+        reusableWithCompetingWorkspaceSidecars.job,
+      ),
+    ).toStrictEqual(expect.any(String));
+    expect(
+      sessionAffinityResource(reusableWithCompetingWorkspaceSidecars.job),
+    ).toBe("reusableSandbox");
+
+    await heartbeatHolder({ admittableProfiles: [], mode: "stopping" });
     const competingWorkspaceSidecars = await pollFollowUp(
       "observe competing workspace sidecars without routing by them",
     );
@@ -2591,24 +2601,32 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       historyGenerationAffinityProtectedUntil(competingWorkspaceSidecars.job),
     ).toBeNull();
-    for (const actionType of [
-      "runner_notification_affinity_lookup",
-      "runner_poll_pending_job_lookup",
+    for (const { runId, resource } of [
+      {
+        runId: reusableWithCompetingWorkspaceSidecars.run.runId,
+        resource: "reusableSandbox",
+      },
+      {
+        runId: competingWorkspaceSidecars.run.runId,
+        resource: "workspaceCache",
+      },
     ]) {
-      const events = sandboxOperationEventsForRunByAction(
-        competingWorkspaceSidecars.run.runId,
-        actionType,
-      );
-      expect(events).toHaveLength(1);
-      expect(events[0]).toStrictEqual(
-        expect.objectContaining({
-          session_affinity_resource: "workspaceCache",
-          workspace_sidecar_exact_holder: "true",
-          workspace_sidecar_different_holder: "true",
-          workspace_sidecar_legacy_holder: "true",
-          workspace_sidecar_absent_holder: "true",
-        }),
-      );
+      for (const actionType of [
+        "runner_notification_affinity_lookup",
+        "runner_poll_pending_job_lookup",
+      ]) {
+        const events = sandboxOperationEventsForRunByAction(runId, actionType);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toStrictEqual(
+          expect.objectContaining({
+            session_affinity_resource: resource,
+            workspace_sidecar_exact_holder: "true",
+            workspace_sidecar_different_holder: "true",
+            workspace_sidecar_legacy_holder: "true",
+            workspace_sidecar_absent_holder: "true",
+          }),
+        );
+      }
     }
     for (const variant of sidecarVariantRunners) {
       await api.requestHeartbeatRunner(true, [200], {
