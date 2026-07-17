@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.146.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.3...runner-rs-v0.146.4) (2026-07-17)
+
+
+### Bug Fixes
+
+* **runner:** scope interception certificates to tls sni ([#21939](https://github.com/vm0-ai/vm0/issues/21939)) ([7f2ca7a](https://github.com/vm0-ai/vm0/commit/7f2ca7a811ad68f38153a9fe5b9052d671b8de92))
+
+
+### Refactoring
+
+* **mitm-addon:** split websocket tests by responsibility ([#21942](https://github.com/vm0-ai/vm0/issues/21942)) ([a60ae85](https://github.com/vm0-ai/vm0/commit/a60ae85500311dfaf70b1056049c41cf68dea9ee))
+
 ## [0.146.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.2...runner-rs-v0.146.3) (2026-07-17)
 
 ## [0.146.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.1...runner-rs-v0.146.2) (2026-07-17)
