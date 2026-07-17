@@ -34,6 +34,7 @@ export interface ConnectorCredentialConnection {
   readonly needsReconnect: boolean;
   readonly oauthScopes: readonly string[] | null;
   readonly runtimeMethod: ConnectorRuntimeMethod;
+  readonly stateRevision: string;
   readonly tokenExpiresAt: Date | null;
 }
 
@@ -59,12 +60,33 @@ type ConnectorCredentialRefreshResult =
     }
   | {
       readonly kind:
+        | "connection-changed"
         | "configuration-unavailable"
         | "invalid-output"
         | "missing-input"
         | "not-refreshable"
         | "provider-failed";
     };
+
+interface ConnectorCredentialRefreshArgs {
+  readonly connection: ConnectorCredentialConnection;
+  readonly db: ReadonlyDb;
+  readonly featureSwitchContext?: FeatureSwitchContext;
+  readonly orgId: string;
+  readonly persist?: {
+    readonly db: Db;
+    readonly defaultExpiresInMs?: number;
+    readonly markNeedsReconnectOnFailure?: boolean;
+  };
+  readonly runtimeEnvironmentName: string;
+  readonly signal: AbortSignal;
+  readonly userId: string;
+}
+
+type ConnectorRefreshTokenAccess = Extract<
+  ConnectorRuntimeMethod["method"]["access"],
+  { readonly kind: "refresh-token" }
+>;
 
 function parseOauthScopes(value: string | null): readonly string[] | null {
   return value === null ? null : oauthScopesSchema.parse(JSON.parse(value));
@@ -112,6 +134,7 @@ export async function loadConnectorCredentialConnection(args: {
       externalId: connectors.externalId,
       needsReconnect: connectors.needsReconnect,
       oauthScopes: connectors.oauthScopes,
+      stateRevision: sql<string>`${connectors.updatedAt}::text`,
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(connectors)
@@ -139,6 +162,7 @@ export async function loadConnectorCredentialConnection(args: {
       needsReconnect: row.needsReconnect,
       oauthScopes: parseOauthScopes(row.oauthScopes),
       runtimeMethod,
+      stateRevision: row.stateRevision,
       tokenExpiresAt: row.tokenExpiresAt,
     },
   };
@@ -296,12 +320,17 @@ async function persistConnectorRefresh(args: {
   readonly connection: ConnectorCredentialConnection;
   readonly db: Db;
   readonly defaultExpiresInMs?: number;
+  readonly featureSwitchContext?: FeatureSwitchContext;
+  readonly inputs: Readonly<Record<string, string>>;
   readonly orgId: string;
   readonly outputs: Readonly<Record<string, string | undefined>>;
   readonly signal: AbortSignal;
   readonly userId: string;
   readonly expiresIn: number | undefined;
-}): Promise<Date | null> {
+}): Promise<
+  | { readonly kind: "ok"; readonly tokenExpiresAt: Date | null }
+  | { readonly kind: "connection-changed" }
+> {
   const access = args.connection.runtimeMethod.method.access;
   if (access.kind !== "refresh-token") {
     throw new Error("Connector credential is not refreshable");
@@ -310,13 +339,61 @@ async function persistConnectorRefresh(args: {
     args.expiresIn,
     args.defaultExpiresInMs,
   );
-  await args.db.transaction(async (tx) => {
+  const result = await args.db.transaction(async (tx) => {
     await lockConnectorState(tx, {
       orgId: args.orgId,
       userId: args.userId,
       type: args.connection.connectorRef,
     });
     args.signal.throwIfAborted();
+    const [currentConnector] = await tx
+      .select({
+        authMethod: connectors.authMethod,
+        externalEmail: connectors.externalEmail,
+        externalId: connectors.externalId,
+        needsReconnect: connectors.needsReconnect,
+        reconnectReason: connectors.reconnectReason,
+        stateRevision: sql<string>`${connectors.updatedAt}::text`,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.id, args.connection.connectorId),
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.type, args.connection.connectorRef),
+        ),
+      )
+      .limit(1);
+    const currentRevisionCanAcceptRefresh =
+      currentConnector?.stateRevision === args.connection.stateRevision ||
+      (currentConnector !== undefined &&
+        !args.connection.needsReconnect &&
+        currentConnector.needsReconnect &&
+        currentConnector.reconnectReason === null);
+    if (
+      currentConnector?.authMethod !==
+        args.connection.runtimeMethod.authMethodId ||
+      currentConnector.externalEmail !== args.connection.externalEmail ||
+      currentConnector.externalId !== args.connection.externalId ||
+      !currentRevisionCanAcceptRefresh
+    ) {
+      return { kind: "connection-changed" } as const;
+    }
+    const currentInputValues = await loadConnectorCredentialValues({
+      db: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+      valueRefs: Object.values(access.inputs),
+      ...(args.featureSwitchContext === undefined
+        ? {}
+        : { featureSwitchContext: args.featureSwitchContext }),
+    });
+    for (const [inputName, valueRef] of Object.entries(access.inputs)) {
+      if (currentInputValues.get(valueRef) !== args.inputs[inputName]) {
+        return { kind: "connection-changed" } as const;
+      }
+    }
     for (const [outputName, value] of Object.entries(args.outputs)) {
       if (value === undefined) {
         continue;
@@ -354,37 +431,70 @@ async function persistConnectorRefresh(args: {
         updatedAt: sql`clock_timestamp()`,
       })
       .where(eq(connectors.id, args.connection.connectorId));
+    return { kind: "ok", tokenExpiresAt } as const;
   });
   args.signal.throwIfAborted();
-  return tokenExpiresAt;
+  return result;
 }
 
-export async function refreshConnectorCredentialAccess(args: {
+async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(args: {
   readonly connection: ConnectorCredentialConnection;
-  readonly db: ReadonlyDb;
-  readonly featureSwitchContext?: FeatureSwitchContext;
+  readonly db: Db;
   readonly orgId: string;
-  readonly persist?: {
-    readonly db: Db;
-    readonly defaultExpiresInMs?: number;
-  };
-  readonly runtimeEnvironmentName: string;
   readonly signal: AbortSignal;
   readonly userId: string;
-}): Promise<ConnectorCredentialRefreshResult> {
-  const access = args.connection.runtimeMethod.method.access;
-  if (access.kind !== "refresh-token") {
-    return { kind: "not-refreshable" };
+}): Promise<void> {
+  await args.db.transaction(async (tx) => {
+    await lockConnectorState(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      type: args.connection.connectorRef,
+    });
+    args.signal.throwIfAborted();
+    await tx
+      .update(connectors)
+      .set({ needsReconnect: true, updatedAt: sql`clock_timestamp()` })
+      .where(
+        and(
+          eq(connectors.id, args.connection.connectorId),
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.type, args.connection.connectorRef),
+          eq(connectors.authMethod, args.connection.runtimeMethod.authMethodId),
+          sql`${connectors.updatedAt}::text = ${args.connection.stateRevision}`,
+        ),
+      );
+  });
+  args.signal.throwIfAborted();
+}
+
+async function connectorCredentialRefreshFailure(
+  args: ConnectorCredentialRefreshArgs,
+  kind:
+    | "invalid-output"
+    | "missing-input"
+    | "not-refreshable"
+    | "provider-failed",
+): Promise<ConnectorCredentialRefreshResult> {
+  if (args.persist?.markNeedsReconnectOnFailure === true) {
+    await markConnectorCredentialNeedsReconnectAfterRefreshFailure({
+      connection: args.connection,
+      db: args.persist.db,
+      orgId: args.orgId,
+      signal: args.signal,
+      userId: args.userId,
+    });
   }
-  const authClient = args.connection.runtimeMethod.method.client
-    ? resolveConnectorAuthClient(
-        args.connection.runtimeMethod.method.client,
-        optionalEnv,
-      )
-    : undefined;
-  if (args.connection.runtimeMethod.method.client && !authClient) {
-    return { kind: "configuration-unavailable" };
-  }
+  return { kind };
+}
+
+async function loadConnectorRefreshInputs(
+  args: ConnectorCredentialRefreshArgs,
+  access: ConnectorRefreshTokenAccess,
+): Promise<
+  | { readonly kind: "ok"; readonly inputs: Readonly<Record<string, string>> }
+  | { readonly kind: "missing-input" }
+> {
   const inputValues = await loadConnectorCredentialValues({
     db: args.db,
     orgId: args.orgId,
@@ -402,13 +512,59 @@ export async function refreshConnectorCredentialAccess(args: {
     }
     inputs[inputName] = value;
   }
+  return { kind: "ok", inputs };
+}
+
+function connectorRefreshAccessToken(args: {
+  readonly access: ConnectorRefreshTokenAccess;
+  readonly connection: ConnectorCredentialConnection;
+  readonly outputs: Readonly<Record<string, string | undefined>>;
+  readonly runtimeEnvironmentName: string;
+}): string | null {
+  const accessTokenValueRef = connectorCredentialRuntimeValueRef(
+    args.connection,
+    args.runtimeEnvironmentName,
+  );
+  if (accessTokenValueRef === null) {
+    return null;
+  }
+  const accessTokenOutputName = Object.entries(args.access.outputs).find(
+    ([, valueRef]) => {
+      return valueRef === accessTokenValueRef;
+    },
+  )?.[0];
+  return accessTokenOutputName === undefined
+    ? null
+    : (args.outputs[accessTokenOutputName] ?? null);
+}
+
+export async function refreshConnectorCredentialAccess(
+  args: ConnectorCredentialRefreshArgs,
+): Promise<ConnectorCredentialRefreshResult> {
+  const access = args.connection.runtimeMethod.method.access;
+  if (access.kind !== "refresh-token") {
+    return await connectorCredentialRefreshFailure(args, "not-refreshable");
+  }
+  const authClient = args.connection.runtimeMethod.method.client
+    ? resolveConnectorAuthClient(
+        args.connection.runtimeMethod.method.client,
+        optionalEnv,
+      )
+    : undefined;
+  if (args.connection.runtimeMethod.method.client && !authClient) {
+    return { kind: "configuration-unavailable" };
+  }
+  const loadedInputs = await loadConnectorRefreshInputs(args, access);
+  if (loadedInputs.kind === "missing-input") {
+    return await connectorCredentialRefreshFailure(args, "missing-input");
+  }
   const refreshed = await settleIncludingAbort(
     refreshConnectorAuthProviderAccessTokenWithMethod({
       connectorRef: args.connection.runtimeMethod.connectorRef,
       authMethodId: args.connection.runtimeMethod.authMethodId,
       method: args.connection.runtimeMethod.method,
       ...(authClient === undefined ? {} : { authClient }),
-      inputs,
+      inputs: loadedInputs.inputs,
       signal: args.signal,
     }),
   );
@@ -419,51 +575,47 @@ export async function refreshConnectorCredentialAccess(args: {
       authMethodId: args.connection.runtimeMethod.authMethodId,
       error: refreshed.error,
     });
-    return { kind: "provider-failed" };
+    return await connectorCredentialRefreshFailure(args, "provider-failed");
   }
-  const accessTokenValueRef = connectorCredentialRuntimeValueRef(
-    args.connection,
-    args.runtimeEnvironmentName,
-  );
-  if (accessTokenValueRef === null) {
-    return { kind: "invalid-output" };
+  const accessToken = connectorRefreshAccessToken({
+    access,
+    connection: args.connection,
+    outputs: refreshed.value.outputs,
+    runtimeEnvironmentName: args.runtimeEnvironmentName,
+  });
+  if (accessToken === null) {
+    return await connectorCredentialRefreshFailure(args, "invalid-output");
   }
-  const accessTokenOutput = Object.entries(access.outputs).find(
-    ([, valueRef]) => {
-      return valueRef === accessTokenValueRef;
-    },
-  );
-  const accessToken = accessTokenOutput
-    ? refreshed.value.outputs[accessTokenOutput[0]]
-    : undefined;
-  if (accessToken === undefined) {
-    return { kind: "invalid-output" };
-  }
-  const tokenExpiresAt = args.persist
+  const persisted = args.persist
     ? await persistConnectorRefresh({
         connection: args.connection,
         db: args.persist.db,
+        inputs: loadedInputs.inputs,
         orgId: args.orgId,
         outputs: refreshed.value.outputs,
         signal: args.signal,
         userId: args.userId,
         expiresIn: refreshed.value.expiresIn,
+        ...(args.featureSwitchContext === undefined
+          ? {}
+          : { featureSwitchContext: args.featureSwitchContext }),
         ...(args.persist.defaultExpiresInMs === undefined
           ? {}
           : { defaultExpiresInMs: args.persist.defaultExpiresInMs }),
       })
-    : refreshTokenExpiresAt(refreshed.value.expiresIn, undefined);
-  return { kind: "ok", accessToken, tokenExpiresAt };
-}
-
-export async function markConnectorCredentialNeedsReconnect(args: {
-  readonly connectorId: string;
-  readonly db: Db;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await args.db
-    .update(connectors)
-    .set({ needsReconnect: true, updatedAt: sql`clock_timestamp()` })
-    .where(eq(connectors.id, args.connectorId));
-  args.signal.throwIfAborted();
+    : {
+        kind: "ok" as const,
+        tokenExpiresAt: refreshTokenExpiresAt(
+          refreshed.value.expiresIn,
+          undefined,
+        ),
+      };
+  if (persisted.kind === "connection-changed") {
+    return persisted;
+  }
+  return {
+    kind: "ok",
+    accessToken,
+    tokenExpiresAt: persisted.tokenExpiresAt,
+  };
 }

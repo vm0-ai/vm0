@@ -27,7 +27,6 @@ import {
   connectorCredentialRuntimeValueRef,
   loadConnectorCredentialConnection,
   loadConnectorCredentialValues,
-  markConnectorCredentialNeedsReconnect,
   refreshConnectorCredentialAccess,
 } from "./connector-credential-runtime.service";
 import {
@@ -306,7 +305,7 @@ async function resolveGoogleMeetAccess(args: {
     userId: args.userId,
     runtimeEnvironmentName: GOOGLE_MEET_ACCESS_TOKEN_ENVIRONMENT_NAME,
     signal: args.signal,
-    persist: { db: args.db },
+    persist: { db: args.db, markNeedsReconnectOnFailure: true },
   });
   if (refreshed.kind === "configuration-unavailable") {
     return {
@@ -315,11 +314,6 @@ async function resolveGoogleMeetAccess(args: {
     };
   }
   if (refreshed.kind !== "ok") {
-    await markConnectorCredentialNeedsReconnect({
-      db: args.db,
-      connectorId: connection.connectorId,
-      signal: args.signal,
-    });
     return {
       kind: "bad_request",
       message:

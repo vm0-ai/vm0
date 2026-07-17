@@ -55,6 +55,7 @@ import {
   ExternalConnectorCatalogUnavailableError,
   getAcceptedConnectorCatalogAvailableDetail,
   getAcceptedConnectorCatalogResolutionDetail,
+  listAcceptedConnectorCatalogAvailableRefs,
   loadAcceptedConnectorCatalogSnapshot,
   type AcceptedConnectorCatalogSnapshot,
   type ExternalCatalogIdentity,
@@ -891,6 +892,16 @@ export async function listConnectorRuntimeVisibleRefs(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly featureStates: ConnectorFeatureStates;
 }): Promise<readonly ConnectorCatalogRef[]> {
+  if (args.snapshot.identity.source === "external") {
+    const acceptedSnapshot = args.snapshot.acceptedSnapshot;
+    if (acceptedSnapshot === null) {
+      throw new Error("External connector runtime snapshot is incomplete");
+    }
+    return listAcceptedConnectorCatalogAvailableRefs({
+      snapshot: acceptedSnapshot,
+      featureStates: args.featureStates,
+    });
+  }
   const refs: ConnectorCatalogRef[] = [];
   for (const connector of args.snapshot.connectors.values()) {
     const available = await getConnectorRuntimeAvailableCatalogDetail({

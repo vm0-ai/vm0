@@ -190,6 +190,7 @@ async function loadMailConnections(args: {
       externalId: connectors.externalId,
       needsReconnect: connectors.needsReconnect,
       oauthScopes: connectors.oauthScopes,
+      stateRevision: sql<string>`${connectors.updatedAt}::text`,
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(userConnectors)
@@ -236,6 +237,7 @@ async function loadMailConnections(args: {
         externalId: row.externalId,
         needsReconnect: row.needsReconnect,
         oauthScopes,
+        stateRevision: row.stateRevision,
         scopesReady: connectorAuthMethodHasRequiredScopes(
           runtimeMethod.method,
           oauthScopes,

@@ -358,6 +358,7 @@ interface RefreshTokenContext {
 }
 
 interface RefreshState {
+  readonly authMethod: string | null;
   readonly outputValues: Readonly<Record<string, string | null>>;
   readonly inputValues: Readonly<Record<string, string | null>>;
   readonly tokenExpiresAt: Date | null;
@@ -367,6 +368,7 @@ interface RefreshState {
 }
 
 interface RefreshStateRow {
+  readonly authMethod: string | null;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
   readonly lastRefreshErrorCode: string | null;
@@ -1672,6 +1674,7 @@ async function loadModelProviderRefreshStateRow(
 ): Promise<RefreshStateRow | null> {
   const query = db
     .select({
+      authMethod: sql<string | null>`NULL`,
       tokenExpiresAt: modelProviders.tokenExpiresAt,
       needsReconnect: modelProviders.needsReconnect,
       lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
@@ -1698,6 +1701,7 @@ async function loadConnectorRefreshStateRow(
 ): Promise<RefreshStateRow | null> {
   const query = db
     .select({
+      authMethod: connectors.authMethod,
       tokenExpiresAt: connectors.tokenExpiresAt,
       needsReconnect: connectors.needsReconnect,
       lastRefreshErrorCode: sql<string | null>`NULL`,
@@ -1770,6 +1774,7 @@ async function loadRefreshState(
   }
 
   return {
+    authMethod: row.authMethod,
     outputValues,
     inputValues,
     tokenExpiresAt: row.tokenExpiresAt,
@@ -2012,6 +2017,43 @@ async function lockPreparedRefreshSource(
   });
 }
 
+function preparedRefreshSourceMatchesState(
+  args: RefreshAccessTokenArgs,
+  prepared: PreparedRefreshTokenContext,
+  state: RefreshState,
+): boolean {
+  if (prepared.sourceType === "model-provider") {
+    return true;
+  }
+  return (
+    args.connectorType === prepared.connectorRef &&
+    state.authMethod === prepared.authMethodId
+  );
+}
+
+function currentPreparedRefreshState(args: {
+  readonly refreshArgs: RefreshAccessTokenArgs;
+  readonly prepared: PreparedRefreshTokenContext;
+  readonly state: RefreshState | null;
+}): RefreshState | null {
+  if (!args.state) {
+    L.warn(`${args.refreshArgs.connectorType} token refresh source missing`, {
+      connectorType: args.refreshArgs.connectorType,
+      orgId: args.refreshArgs.orgId,
+      userId: args.refreshArgs.userId,
+      sourceType: args.refreshArgs.sourceType,
+    });
+    return null;
+  }
+  return preparedRefreshSourceMatchesState(
+    args.refreshArgs,
+    args.prepared,
+    args.state,
+  )
+    ? args.state
+    : null;
+}
+
 function currentRefreshAccessResult(args: {
   readonly connectorType: string;
   readonly context: RefreshTokenContext;
@@ -2118,19 +2160,17 @@ async function refreshLockedAccessToken(args: {
   readonly initialState: RefreshState | null;
   readonly requestStartedAtMicros: bigint | null;
 }): Promise<RefreshAccessTokenResult> {
-  const lockedState = await loadRefreshState(
-    args.refreshArgs.db,
-    args.refreshArgs,
-    args.prepared.context,
-    { lockRow: true },
-  );
+  const lockedState = currentPreparedRefreshState({
+    refreshArgs: args.refreshArgs,
+    prepared: args.prepared,
+    state: await loadRefreshState(
+      args.refreshArgs.db,
+      args.refreshArgs,
+      args.prepared.context,
+      { lockRow: true },
+    ),
+  });
   if (!lockedState) {
-    L.warn(`${args.refreshArgs.connectorType} token refresh source missing`, {
-      connectorType: args.refreshArgs.connectorType,
-      orgId: args.refreshArgs.orgId,
-      userId: args.refreshArgs.userId,
-      sourceType: args.refreshArgs.sourceType,
-    });
     return sourceMissingResult();
   }
 

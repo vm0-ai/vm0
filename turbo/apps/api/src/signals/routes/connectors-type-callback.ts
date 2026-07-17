@@ -791,9 +791,13 @@ function authCodeCallbackPreflight(args: {
   }
   const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrlForMethods(
     args.request,
-    [...connectorResult.connector.methods.values()].map((runtimeMethod) => {
-      return runtimeMethod.method;
-    }),
+    [...connectorResult.connector.methods.values()]
+      .filter((runtimeMethod) => {
+        return runtimeMethod.executable;
+      })
+      .map((runtimeMethod) => {
+        return runtimeMethod.method;
+      }),
   );
   return canonicalRedirectUrl
     ? connectorOAuthRedirectResponse(canonicalRedirectUrl)

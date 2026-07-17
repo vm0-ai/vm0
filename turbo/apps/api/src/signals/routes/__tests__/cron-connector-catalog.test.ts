@@ -48,6 +48,7 @@ import {
   mockGmailConnectorOAuth,
   mockSlackConnectorOAuth,
   mockTestOAuthDeviceConnectorProvider,
+  requestOauthCallbackRaw,
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
@@ -531,6 +532,76 @@ function gmailPrivateAuthMethod(): JsonRecord {
         refreshToken: `$secrets.${refreshTokenName}`,
       },
       refreshableSecrets: [accessTokenName],
+    },
+    revoke: { kind: "none" },
+  };
+}
+
+function cloudflarePrivateAuthMethod(): JsonRecord {
+  const accessTokenName = "CATALOG_CLOUDFLARE_ACCESS_TOKEN";
+  const refreshTokenName = "CATALOG_CLOUDFLARE_REFRESH_TOKEN";
+  return {
+    id: "oauth",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientIdEnv: "CLOUDFLARE_OAUTH_CLIENT_ID",
+      clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+    },
+    storage: {
+      secrets: [accessTokenName, refreshTokenName],
+      variables: [],
+    },
+    grant: {
+      kind: "auth-code",
+      scopes: [],
+      callbackOrigin: "api",
+      outputs: {
+        accessToken: `$secrets.${accessTokenName}`,
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+    },
+    access: {
+      kind: "refresh-token",
+      envBindings: {
+        CLOUDFLARE_TOKEN: `$secrets.${accessTokenName}`,
+      },
+      inputs: {
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+      outputs: {
+        accessToken: `$secrets.${accessTokenName}`,
+        refreshToken: `$secrets.${refreshTokenName}`,
+      },
+      refreshableSecrets: [accessTokenName],
+    },
+    revoke: {
+      kind: "token-revoke",
+      inputs: { refreshToken: `$secrets.${refreshTokenName}` },
+    },
+  };
+}
+
+function unsupportedWebAuthCodePrivateAuthMethod(): JsonRecord {
+  const accessTokenName = "FUTURE_WEB_ACCESS_TOKEN";
+  return {
+    id: "future-web",
+    client: {
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientIdEnv: "CLOUDFLARE_OAUTH_CLIENT_ID",
+      clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+    },
+    storage: { secrets: [accessTokenName], variables: [] },
+    grant: {
+      kind: "auth-code",
+      scopes: [],
+      callbackOrigin: "web",
+      outputs: { accessToken: `$secrets.${accessTokenName}` },
+    },
+    access: {
+      kind: "static",
+      envBindings: { FUTURE_WEB_TOKEN: `$secrets.${accessTokenName}` },
     },
     revoke: { kind: "none" },
   };
@@ -2333,6 +2404,198 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeReadiness);
   });
 
+  it("does not persist an in-flight refresh after the connector is replaced", async () => {
+    mockGmailConnectorOAuth({ email: "refresh-race@example.test" });
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-refresh-replacement",
+      connectorRef: "gmail",
+      label: "Catalog Gmail",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    mockOptionalEnv(
+      "GMAIL_PUBSUB_TOPIC_NAME",
+      "projects/vm0-ai-488909/topics/gmail-events",
+    );
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: JSON.stringify({ connectors: [] }) },
+            },
+          ],
+        });
+      }),
+    );
+
+    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const created: { agentId?: string; workflowId?: string } = {};
+    const refreshResume = deferredGate();
+    onTestFinished(async () => {
+      refreshResume.release();
+      context.mocks.s3.send.mockResolvedValue({ Contents: [] });
+      await connectorsApi.deleteConnectorByType(actor, "gmail", [204, 404]);
+      if (created.workflowId) {
+        await miscApi.deleteWorkflow(actor, created.workflowId, [204, 404]);
+      }
+      if (created.agentId) {
+        await bdd.deleteAgent(actor, created.agentId);
+      }
+      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "active",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+    const initialOauth = await connectorsApi.startOauth(
+      actor,
+      "gmail",
+      "oauth",
+    );
+    const initialState = new URL(
+      initialOauth.authorizationUrl,
+    ).searchParams.get("state");
+    if (!initialState) {
+      throw new Error("Expected initial Gmail authorization state");
+    }
+    await connectorsApi.completeOauthCallback("gmail", {
+      code: "initial",
+      state: initialState,
+    });
+
+    mockNow(new Date("2026-07-15T10:00:00.000Z"));
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Refresh replacement agent",
+      visibility: "private",
+    });
+    created.agentId = agent.agentId;
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const headers = { authorization: "Bearer clerk-session" };
+    const workflow = await accept(
+      setupApp({ context })(zeroWorkflowsCollectionContract).create({
+        headers,
+        body: {
+          agentId: agent.agentId,
+          name: `refresh-replacement-${randomUUID().slice(0, 8)}`,
+          instruction: "Handle incoming Gmail messages.",
+        },
+      }),
+      [201],
+    );
+    created.workflowId = workflow.body.id;
+
+    const refreshEntered = deferredGate();
+    const watchAuthorizations: string[] = [];
+    server.use(
+      http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
+        const body = new URLSearchParams(await request.text());
+        if (body.get("grant_type") === "refresh_token") {
+          refreshEntered.release();
+          await refreshResume.promise;
+          return HttpResponse.json({
+            access_token: "stale-refreshed-gmail-token",
+            refresh_token: "stale-rotated-gmail-refresh-token",
+            expires_in: 3600,
+            token_type: "Bearer",
+            scope: "https://www.googleapis.com/auth/gmail.modify",
+          });
+        }
+        return HttpResponse.json({
+          access_token: "replacement-gmail-token",
+          refresh_token: "replacement-gmail-refresh-token",
+          expires_in: 3600,
+          token_type: "Bearer",
+          scope: "https://www.googleapis.com/auth/gmail.modify",
+        });
+      }),
+      http.post(
+        "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+        ({ request }) => {
+          watchAuthorizations.push(request.headers.get("authorization") ?? "");
+          return HttpResponse.json({
+            historyId: "100",
+            expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
+          });
+        },
+      ),
+    );
+
+    const firstCreate = accept(
+      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+        headers,
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [400],
+    );
+    await refreshEntered.promise;
+
+    const replacementOauth = await connectorsApi.startOauth(
+      actor,
+      "gmail",
+      "oauth",
+    );
+    const replacementState = new URL(
+      replacementOauth.authorizationUrl,
+    ).searchParams.get("state");
+    if (!replacementState) {
+      throw new Error("Expected replacement Gmail authorization state");
+    }
+    await connectorsApi.completeOauthCallback("gmail", {
+      code: "replacement",
+      state: replacementState,
+    });
+    refreshResume.release();
+
+    const rejected = await firstCreate;
+    expect(rejected.body.error.message).toBe(
+      "Reconnect Gmail before using Gmail event automations",
+    );
+    await expect(
+      connectorsApi.readConnectorByType(actor, "gmail"),
+    ).resolves.toMatchObject({
+      connectionStatus: "connected",
+      reconnectReason: null,
+    });
+
+    await accept(
+      setupApp({ context })(zeroWorkflowAutomationsContract).create({
+        headers,
+        params: { workflowId: workflow.body.id },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    expect(watchAuthorizations).toStrictEqual([
+      "Bearer replacement-gmail-token",
+    ]);
+  });
+
   it("derives connected scope and refresh status from the accepted release", async () => {
     mockDatadogConnectorOAuth();
     configureSource();
@@ -2862,6 +3125,57 @@ describe("connector catalog executable compatibility", () => {
     expect(
       (await syncCatalog()).body.filtering.filteredAuthMethods,
     ).toHaveLength(3);
+  });
+
+  it("ignores filtered sibling methods when choosing the callback origin", async () => {
+    configureSource();
+    mockEnv("VM0_WEB_URL", "https://app.vm0.test");
+    mockOptionalEnv("CLOUDFLARE_OAUTH_CLIENT_ID", "cloudflare-client-id");
+    mockOptionalEnv(
+      "CLOUDFLARE_OAUTH_CLIENT_SECRET",
+      "cloudflare-client-secret",
+    );
+    const release = buildRelease({
+      version: "2026-07-15.filtered-callback-origin",
+      connectorRef: "cloudflare",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+          publicAuthMethod({ id: "future-web", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          cloudflarePrivateAuthMethod(),
+          unsupportedWebAuthCodePrivateAuthMethod(),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect(
+      (await syncCatalog()).body.filtering.filteredAuthMethods,
+    ).toStrictEqual([
+      {
+        connectorRef: "cloudflare",
+        authMethodId: "future-web",
+        reasons: ["missing-grant-provider", "provider-contract-mismatch"],
+      },
+    ]);
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const response = await requestOauthCallbackRaw(context, {
+      origin: "https://api.vm0.ai",
+      type: "cloudflare",
+      query: { code: "missing-state" },
+    });
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.origin).toBe("https://app.vm0.test");
+    expect(location.pathname).toBe("/connector/error");
+    expect(location.searchParams.get("message")).toBe(
+      "Missing state parameter",
+    );
   });
 
   it("rejects unapproved configuration identities without reading them", async () => {
