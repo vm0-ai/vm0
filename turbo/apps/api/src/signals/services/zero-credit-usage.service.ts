@@ -307,6 +307,7 @@ async function processOrgUsageEventsInTransaction(
           usageEventId: event.record.id,
           runId: event.record.runId,
           grossUnits: event.grossCredits,
+          occurredAt: event.record.createdAt,
         };
       }),
     });

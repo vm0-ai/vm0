@@ -6,6 +6,7 @@ import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
+import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
 interface CreditCheckRow extends Record<string, unknown> {
@@ -132,10 +133,25 @@ export const checkManagedCredits$ = command(
     const credits = BigInt(row.credits);
     const unsettledExpired = BigInt(row.unsettled_expired ?? "0");
     const quantity = args.resource.quantity ?? 1;
-    return credits - unsettledExpired >=
-      estimatedCredits(row.unit_price, row.unit_size, quantity)
-      ? null
-      : insufficientCredits();
+    const requiredCredits = estimatedCredits(
+      row.unit_price,
+      row.unit_size,
+      quantity,
+    );
+    const spendableCredits = credits - unsettledExpired;
+    if (spendableCredits >= requiredCredits) {
+      return null;
+    }
+
+    const allowance = await resolveUsageAllowanceAvailability(
+      writeDb,
+      args.orgId,
+    );
+    signal.throwIfAborted();
+    const spendableUnits =
+      (spendableCredits > 0n ? spendableCredits : 0n) +
+      BigInt(allowance?.remainingUnits ?? 0);
+    return spendableUnits >= requiredCredits ? null : insufficientCredits();
   },
 );
 

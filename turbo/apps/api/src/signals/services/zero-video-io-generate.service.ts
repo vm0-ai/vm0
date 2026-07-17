@@ -4,12 +4,13 @@ import { randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
+import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
 import { putS3Object } from "../external/s3";
 import { safeJsonParse, safeSync, tapError } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
@@ -437,11 +438,6 @@ interface RecordedVideo {
   readonly generateAudio: boolean;
   readonly sourceUrl: string;
   readonly requestId: string | undefined;
-}
-
-interface CreditCheckRow extends Record<string, unknown> {
-  readonly credits: string | null;
-  readonly unsettled_expired: string | null;
 }
 
 type BytePlusContent =
@@ -1076,34 +1072,7 @@ export const checkVideoCredits$ = command(
     args: { readonly orgId: string },
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const writeDb = set(writeDb$);
-    const { rows } = await writeDb.execute<CreditCheckRow>(sql`
-      WITH org AS (
-        SELECT credits FROM org_metadata
-        WHERE org_id = ${args.orgId}
-        LIMIT 1
-      ),
-      expired AS (
-        SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-        FROM credit_expires_record
-        WHERE org_id = ${args.orgId}
-          AND expires_at <= now()
-          AND remaining > 0
-      )
-      SELECT
-        (SELECT credits FROM org) AS credits,
-        (SELECT total FROM expired) AS unsettled_expired
-    `);
-    signal.throwIfAborted();
-
-    const row = rows[0];
-    if (!row || row.credits === null) {
-      return false;
-    }
-
-    const credits = Number(row.credits);
-    const unsettledExpired = Number(row.unsettled_expired ?? 0);
-    return credits - unsettledExpired > 0;
+    return await set(checkBillableOperationCredits$, args, signal);
   },
 );
 

@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 
 import { writeDb$ } from "../external/db";
+import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 export const checkBillableOperationCredits$ = command(
@@ -16,10 +17,18 @@ export const checkBillableOperationCredits$ = command(
     });
     signal.throwIfAborted();
 
-    return (
-      availability !== null &&
-      availability.status === "active" &&
-      availability.spendableCredits > 0
+    if (!availability || availability.status !== "active") {
+      return false;
+    }
+    if (availability.spendableCredits > 0) {
+      return true;
+    }
+
+    const allowance = await resolveUsageAllowanceAvailability(
+      writeDb,
+      args.orgId,
     );
+    signal.throwIfAborted();
+    return (allowance?.remainingUnits ?? 0) > 0;
   },
 );

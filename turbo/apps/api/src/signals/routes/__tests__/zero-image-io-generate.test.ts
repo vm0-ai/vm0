@@ -10,7 +10,7 @@ import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now, nowDate } from "../../external/time";
 import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
@@ -26,6 +26,10 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
+import {
+  generatedStripeCustomerId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -679,6 +683,40 @@ describe("POST /api/zero/image-io/generate", () => {
         code: "INSUFFICIENT_CREDITS",
       },
     });
+  });
+
+  it("admits image generation when allowance remains", async () => {
+    const fixture = await seedImageFixture({ credits: 0, withPricing: true });
+    const effectiveAt = nowDate();
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      customerId: generatedStripeCustomerId(),
+      subscriptionId: `sub_image_allowance_${randomUUID()}`,
+      effectiveAt,
+      expiresAt: new Date(effectiveAt.getTime() + 365 * 24 * 60 * 60 * 1000),
+      shortWindowSeconds: 5 * 60 * 60,
+      shortWindowUnits: 100,
+      weeklyWindowSeconds: 7 * 24 * 60 * 60,
+      weeklyWindowUnits: 200,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    server.use(
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
+        return HttpResponse.json(falQueueHandle("allowance-image-request"));
+      }),
+    );
+
+    const response = await createImageIoTestApp().request(
+      "/api/zero/image-io/generate",
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ prompt: "a cat covered by allowance" }),
+      },
+    );
+
+    expect(response.status).toBe(202);
   });
 
   it("returns 503 when image pricing is not configured", async () => {
