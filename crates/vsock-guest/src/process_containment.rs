@@ -484,6 +484,7 @@ mod tests {
         };
 
         assert_eq!(error.stage, "open cgroup.procs");
+        assert_eq!(error.source.kind(), io::ErrorKind::NotFound);
         assert!(fs::read_dir(base.path()).unwrap().next().is_none());
     }
 
