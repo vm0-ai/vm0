@@ -1,11 +1,13 @@
 //! Ably wire protocol types, constants, and MessagePack encode/decode.
 
 use std::collections::HashMap;
+use std::fmt;
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
+use crate::types::{REDACTED_DEBUG_VALUE, redact_auth_query_params};
 
 // ---------------------------------------------------------------------------
 // Protocol action constants
@@ -50,7 +52,7 @@ pub mod flags {
 // NOTE: We intentionally omit `skip_serializing_if = "Option::is_none"` on
 // these structs. rmp_serde has a long-standing bug where skipped Option fields
 // cause deserialization failures: https://github.com/3Hren/msgpack-rust/issues/86
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ProtocolMessage {
     pub action: i32,
@@ -71,7 +73,7 @@ pub struct ProtocolMessage {
     pub params: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ConnectionDetails {
     pub client_id: Option<String>,
@@ -83,7 +85,7 @@ pub struct ConnectionDetails {
     pub server_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ErrorInfo {
     pub code: i32,
@@ -91,10 +93,70 @@ pub struct ErrorInfo {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AuthDetails {
     pub access_token: String,
+}
+
+impl fmt::Debug for ProtocolMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProtocolMessage")
+            .field("action", &self.action)
+            .field("id", &self.id)
+            .field("channel", &self.channel)
+            .field("channel_serial", &self.channel_serial)
+            .field("connection_id", &self.connection_id)
+            .field(
+                "connection_key",
+                &self.connection_key.as_ref().map(|_| REDACTED_DEBUG_VALUE),
+            )
+            .field("connection_details", &self.connection_details)
+            .field("connection_serial", &self.connection_serial)
+            .field("msg_serial", &self.msg_serial)
+            .field("flags", &self.flags)
+            .field("error", &self.error)
+            .field("auth", &self.auth)
+            .field("messages", &self.messages)
+            .field("timestamp", &self.timestamp)
+            .field("params", &self.params)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ConnectionDetails {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConnectionDetails")
+            .field("client_id", &self.client_id)
+            .field(
+                "connection_key",
+                &self.connection_key.as_ref().map(|_| REDACTED_DEBUG_VALUE),
+            )
+            .field("connection_state_ttl", &self.connection_state_ttl)
+            .field("max_idle_interval", &self.max_idle_interval)
+            .field("max_message_size", &self.max_message_size)
+            .field("max_frame_size", &self.max_frame_size)
+            .field("server_id", &self.server_id)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ErrorInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ErrorInfo")
+            .field("code", &self.code)
+            .field("status_code", &self.status_code)
+            .field("message", &redact_auth_query_params(&self.message))
+            .finish()
+    }
+}
+
+impl fmt::Debug for AuthDetails {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AuthDetails")
+            .field("access_token", &REDACTED_DEBUG_VALUE)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
