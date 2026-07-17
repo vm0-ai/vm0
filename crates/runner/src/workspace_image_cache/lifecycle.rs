@@ -634,10 +634,6 @@ impl SessionWorkspaceCache {
                 )
                 .await
             {
-                let session_history_sidecar = self
-                    .observe_session_history_sidecar(cache_key, &metadata.session_id)
-                    .await
-                    .ok();
                 states.push(HeldSessionState {
                     session_id: metadata.session_id,
                     last_completed_at: metadata.last_completed_at,
@@ -645,7 +641,6 @@ impl SessionWorkspaceCache {
                     workspace_caches: vec![WorkspaceCacheState {
                         profile: metadata.profile_name,
                         workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
-                        session_history_sidecar,
                     }],
                 });
             }
@@ -1535,11 +1530,6 @@ pub(crate) fn cap_workspace_held_session_states(
                     {
                         *existing_completed_at = state.last_completed_at.clone();
                         *existing = workspace_cache;
-                    } else if capability_order.is_eq()
-                        && state.last_completed_at == *existing_completed_at
-                        && workspace_cache != *existing
-                    {
-                        existing.session_history_sidecar = None;
                     }
                 }
             }

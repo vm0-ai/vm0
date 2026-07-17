@@ -84,7 +84,6 @@ export const sessionAffinityResourceSchema = z.enum([
 const sessionAffinityLocalResourceSchema = z.enum([
   "reusableSandbox",
   "workspaceCache",
-  "legacySession",
 ]);
 const runnerLocalAdmissionResourceSchema = z.enum(["reusableSandbox", "fresh"]);
 
@@ -92,7 +91,6 @@ const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
 const runnerPreLocalAdmissionOutcomeSchema = z.enum([
   "not_protected",
   "local_holder",
-  "missing_session_metadata",
 ]);
 export const sessionHistoryGenerationRelationshipSchema = z.enum([
   "exact",
@@ -106,14 +104,6 @@ export const sessionHistoryGenerationLocalAvailabilitySchema = z.enum([
   "parked_before_discovery_lt_heartbeat_period",
   "parked_before_discovery_ge_heartbeat_period",
 ]);
-export const workspaceSessionHistorySidecarRelationshipSchema = z.enum([
-  "exact",
-  "different",
-  "legacy",
-  "absent",
-  "no_target",
-]);
-
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
@@ -134,10 +124,6 @@ const runnerClaimTelemetrySchema = z.object({
     sessionHistoryGenerationRelationshipSchema.optional(),
   sessionHistoryGenerationLocalAvailability:
     sessionHistoryGenerationLocalAvailabilitySchema.optional(),
-  workspaceSessionHistorySidecarRelationship:
-    workspaceSessionHistorySidecarRelationshipSchema.optional(),
-  workspaceSessionHistorySidecarRawSizeBucket:
-    sessionHistorySizeBucketSchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
@@ -243,12 +229,6 @@ export const heldSessionStateSchema = z.object({
       z.object({
         profile: z.string(),
         workspaceAffinityVersion: z.literal(1).optional(),
-        sessionHistorySidecar: z
-          .object({
-            historyGenerationRunId: z.uuid().optional(),
-            rawSizeBucket: sessionHistorySizeBucketSchema,
-          })
-          .optional(),
       }),
     )
     .max(8)
@@ -749,9 +729,6 @@ export type SessionHistoryGenerationLocalAvailability = z.infer<
 >;
 export type SessionHistorySizeBucket = z.infer<
   typeof sessionHistorySizeBucketSchema
->;
-export type WorkspaceSessionHistorySidecarRelationship = z.infer<
-  typeof workspaceSessionHistorySidecarRelationshipSchema
 >;
 export type SessionAffinityResource = z.infer<
   typeof sessionAffinityResourceSchema

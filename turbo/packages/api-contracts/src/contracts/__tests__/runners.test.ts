@@ -330,7 +330,7 @@ describe("runner resume session contract", () => {
     ).toBe(true);
   });
 
-  it("keeps generation metadata in stored and discovery shapes only", () => {
+  it("keeps generation metadata in stable discovery and reusable shapes", () => {
     const historyGenerationAffinityProtectedUntil = "2026-07-15T00:00:00.500Z";
     const storedResumeSession = {
       sessionId: "sess-123",
@@ -395,10 +395,6 @@ describe("runner resume session contract", () => {
       {
         profile: "vm0/default",
         workspaceAffinityVersion: 1,
-        sessionHistorySidecar: {
-          historyGenerationRunId,
-          rawSizeBucket: "64_256_kib",
-        },
       },
       { profile: "vm0/large" },
     ]);
@@ -662,8 +658,6 @@ describe("runner claim capability contract", () => {
         sessionAffinityLocalResource: "workspaceCache",
         localAdmissionResource: "fresh",
         sessionHistoryGenerationRelationship: "exact",
-        workspaceSessionHistorySidecarRelationship: "exact",
-        workspaceSessionHistorySidecarRawSizeBucket: "64_256_kib",
       },
     });
 
@@ -696,35 +690,29 @@ describe("runner claim capability contract", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects dynamic workspace sidecar telemetry values", () => {
-    expect(
-      runnersJobClaimContract.claim.body.safeParse({
-        telemetry: {
-          sessionHistoryGenerationRelationship: "fresh",
-          workspaceSessionHistorySidecarRelationship:
-            "exact-for-11111111-1111-4111-8111-111111111111",
-        },
-      }).success,
-    ).toBe(false);
-    expect(
-      runnersJobClaimContract.claim.body.safeParse({
-        telemetry: {
-          sessionHistoryGenerationRelationship: "fresh",
-          workspaceSessionHistorySidecarRawSizeBucket: "exact_123_bytes",
-        },
-      }).success,
-    ).toBe(false);
+  it("accepts and strips previous workspace sidecar telemetry", () => {
+    const body = runnersJobClaimContract.claim.body.parse({
+      telemetry: {
+        sessionHistoryGenerationRelationship: "fresh",
+        workspaceSessionHistorySidecarRelationship: "exact",
+        workspaceSessionHistorySidecarRawSizeBucket: "64_256_kib",
+      },
+    });
+
+    expect(body.telemetry).toEqual({
+      sessionHistoryGenerationRelationship: "fresh",
+    });
   });
 
   it("accepts old claim bodies without generation telemetry", () => {
     expect(runnersJobClaimContract.claim.body.safeParse({}).success).toBe(true);
   });
 
-  it("rejects non-enum affinity resource telemetry", () => {
+  it("rejects the removed legacy local resource value", () => {
     const result = runnersJobClaimContract.claim.body.safeParse({
       telemetry: {
-        sessionAffinityResource: "legacySession",
-        sessionAffinityLocalResource: "workspaceCache",
+        sessionAffinityResource: "workspaceCache",
+        sessionAffinityLocalResource: "legacySession",
         localAdmissionResource: "fresh",
       },
     });

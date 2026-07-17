@@ -27,10 +27,7 @@ use std::time::{Duration, Instant};
 use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
-use crate::types::{
-    ExecutionContext, HeartbeatState, SandboxReuseResult, SessionAffinityResource,
-    SessionHistorySizeBucket,
-};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult, SessionAffinityResource};
 
 /// Low-cardinality source that first discovered a job candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,7 +49,6 @@ impl JobDiscoverySource {
 pub(crate) enum PreLocalAdmissionOutcome {
     NotProtected,
     LocalHolder,
-    MissingSessionMetadata,
 }
 
 impl PreLocalAdmissionOutcome {
@@ -60,7 +56,6 @@ impl PreLocalAdmissionOutcome {
         match self {
             Self::NotProtected => "not_protected",
             Self::LocalHolder => "local_holder",
-            Self::MissingSessionMetadata => "missing_session_metadata",
         }
     }
 }
@@ -69,7 +64,6 @@ impl PreLocalAdmissionOutcome {
 pub(crate) enum SessionAffinityLocalResource {
     ReusableSandbox,
     WorkspaceCache,
-    LegacySession,
 }
 
 impl SessionAffinityLocalResource {
@@ -77,7 +71,6 @@ impl SessionAffinityLocalResource {
         match self {
             Self::ReusableSandbox => "reusableSandbox",
             Self::WorkspaceCache => "workspaceCache",
-            Self::LegacySession => "legacySession",
         }
     }
 }
@@ -135,27 +128,6 @@ impl SessionHistoryGenerationLocalAvailability {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum WorkspaceSessionHistorySidecarRelationship {
-    Exact,
-    Different,
-    Legacy,
-    Absent,
-    NoTarget,
-}
-
-impl WorkspaceSessionHistorySidecarRelationship {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Exact => "exact",
-            Self::Different => "different",
-            Self::Legacy => "legacy",
-            Self::Absent => "absent",
-            Self::NoTarget => "no_target",
-        }
-    }
-}
-
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -183,9 +155,6 @@ pub struct JobCandidate {
     session_history_generation_relationship: Option<SessionHistoryGenerationRelationship>,
     session_history_generation_local_availability:
         Option<SessionHistoryGenerationLocalAvailability>,
-    workspace_session_history_sidecar_relationship:
-        Option<WorkspaceSessionHistorySidecarRelationship>,
-    workspace_session_history_sidecar_raw_size_bucket: Option<SessionHistorySizeBucket>,
     history_generation_affinity_protected_until: Option<DateTime<Utc>>,
     affinity_protected_until: Option<DateTime<Utc>>,
 }
@@ -224,8 +193,6 @@ impl JobCandidate {
             history_generation_run_id: None,
             session_history_generation_relationship: None,
             session_history_generation_local_availability: None,
-            workspace_session_history_sidecar_relationship: None,
-            workspace_session_history_sidecar_raw_size_bucket: None,
             history_generation_affinity_protected_until: None,
             affinity_protected_until: None,
         }
@@ -353,18 +320,6 @@ impl JobCandidate {
         self.session_history_generation_local_availability
     }
 
-    pub(crate) fn workspace_session_history_sidecar_relationship(
-        &self,
-    ) -> Option<WorkspaceSessionHistorySidecarRelationship> {
-        self.workspace_session_history_sidecar_relationship
-    }
-
-    pub(crate) fn workspace_session_history_sidecar_raw_size_bucket(
-        &self,
-    ) -> Option<SessionHistorySizeBucket> {
-        self.workspace_session_history_sidecar_raw_size_bucket
-    }
-
     pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
         protection_remaining(self.affinity_protected_until)
     }
@@ -437,15 +392,6 @@ impl JobCandidate {
         availability: SessionHistoryGenerationLocalAvailability,
     ) {
         self.session_history_generation_local_availability = Some(availability);
-    }
-
-    pub(crate) fn set_workspace_session_history_sidecar_observation(
-        &mut self,
-        relationship: WorkspaceSessionHistorySidecarRelationship,
-        raw_size_bucket: Option<SessionHistorySizeBucket>,
-    ) {
-        self.workspace_session_history_sidecar_relationship = Some(relationship);
-        self.workspace_session_history_sidecar_raw_size_bucket = raw_size_bucket;
     }
 
     pub(crate) fn set_session_affinity_local_resource(

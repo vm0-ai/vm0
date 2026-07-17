@@ -13,9 +13,7 @@ import {
   type SessionHistoryDownloadSource,
   type SessionHistoryGenerationLocalAvailability,
   type SessionHistoryGenerationRelationship,
-  type SessionHistorySizeBucket,
   type StoredExecutionContext,
-  type WorkspaceSessionHistorySidecarRelationship,
 } from "@vm0/api-contracts/contracts/runners";
 import {
   RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
@@ -73,7 +71,6 @@ import {
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
   runnerSessionAffinityTelemetryResource,
-  runnerWorkspaceSidecarTelemetryDimensions,
 } from "../services/runner-session-affinity";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
@@ -346,22 +343,6 @@ function canonicalizeHeldSessionStates(
                         workspaceCache.workspaceAffinityVersion,
                     }
                   : {}),
-                ...(workspaceCache.sessionHistorySidecar
-                  ? {
-                      sessionHistorySidecar: {
-                        ...(workspaceCache.sessionHistorySidecar
-                          .historyGenerationRunId
-                          ? {
-                              historyGenerationRunId:
-                                workspaceCache.sessionHistorySidecar
-                                  .historyGenerationRunId,
-                            }
-                          : {}),
-                        rawSizeBucket:
-                          workspaceCache.sessionHistorySidecar.rawSizeBucket,
-                      },
-                    }
-                  : {}),
               };
             }),
           }
@@ -454,7 +435,6 @@ function recordPollTimingMetrics(args: {
   readonly sessionAffinity: string;
   readonly sessionAffinityResource: string;
   readonly historyGenerationAffinity: string;
-  readonly workspaceSidecarDimensions: Readonly<Record<string, string>>;
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
   readonly pendingJobLookupStartedAtMs: number;
@@ -468,7 +448,6 @@ function recordPollTimingMetrics(args: {
     session_affinity: args.sessionAffinity,
     session_affinity_resource: args.sessionAffinityResource,
     history_generation_affinity: args.historyGenerationAffinity,
-    ...args.workspaceSidecarDimensions,
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
@@ -630,8 +609,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     sessionAffinity: affinity.status,
     sessionAffinityResource: runnerSessionAffinityTelemetryResource(affinity),
     historyGenerationAffinity: affinity.historyGenerationStatus,
-    workspaceSidecarDimensions:
-      runnerWorkspaceSidecarTelemetryDimensions(affinity),
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
     pendingJobLookupStartedAtMs,
@@ -709,10 +686,6 @@ function recordSessionHistoryGenerationClaimAttempt(args: {
   readonly localAvailability:
     | SessionHistoryGenerationLocalAvailability
     | undefined;
-  readonly workspaceSidecarRelationship:
-    | WorkspaceSessionHistorySidecarRelationship
-    | undefined;
-  readonly workspaceSidecarRawSizeBucket: SessionHistorySizeBucket | undefined;
   readonly outcome: SessionHistoryGenerationClaimOutcome;
   readonly authType: RunnerAuthContext["type"];
   readonly runnerGroup?: string;
@@ -728,14 +701,6 @@ function recordSessionHistoryGenerationClaimAttempt(args: {
   };
   if (args.localAvailability) {
     dimensions.generation_local_availability = args.localAvailability;
-  }
-  if (args.workspaceSidecarRelationship) {
-    dimensions.workspace_sidecar_relationship =
-      args.workspaceSidecarRelationship;
-  }
-  if (args.workspaceSidecarRawSizeBucket) {
-    dimensions.workspace_sidecar_raw_size_bucket =
-      args.workspaceSidecarRawSizeBucket;
   }
   if (args.runnerGroup) {
     dimensions.runner_group = args.runnerGroup;
@@ -761,10 +726,6 @@ function recordSessionHistoryGenerationClaimAttemptForJob(args: {
   readonly localAvailability:
     | SessionHistoryGenerationLocalAvailability
     | undefined;
-  readonly workspaceSidecarRelationship:
-    | WorkspaceSessionHistorySidecarRelationship
-    | undefined;
-  readonly workspaceSidecarRawSizeBucket: SessionHistorySizeBucket | undefined;
   readonly outcome: SessionHistoryGenerationClaimOutcome;
   readonly authType: RunnerAuthContext["type"];
   readonly job: ClaimableJob["job"];
@@ -773,8 +734,6 @@ function recordSessionHistoryGenerationClaimAttemptForJob(args: {
     runId: args.runId,
     relationship: args.relationship,
     localAvailability: args.localAvailability,
-    workspaceSidecarRelationship: args.workspaceSidecarRelationship,
-    workspaceSidecarRawSizeBucket: args.workspaceSidecarRawSizeBucket,
     outcome: args.outcome,
     authType: args.authType,
     runnerGroup: args.job.runnerGroup,
@@ -2087,12 +2046,6 @@ const claimAuthorizedJob$ = command(
       readonly generationLocalAvailability:
         | SessionHistoryGenerationLocalAvailability
         | undefined;
-      readonly workspaceSidecarRelationship:
-        | WorkspaceSessionHistorySidecarRelationship
-        | undefined;
-      readonly workspaceSidecarRawSizeBucket:
-        | SessionHistorySizeBucket
-        | undefined;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
@@ -2106,8 +2059,6 @@ const claimAuthorizedJob$ = command(
         runId,
         relationship: args.generationRelationship,
         localAvailability: args.generationLocalAvailability,
-        workspaceSidecarRelationship: args.workspaceSidecarRelationship,
-        workspaceSidecarRawSizeBucket: args.workspaceSidecarRawSizeBucket,
         outcome,
         authType: args.authType,
         job: jobWithRun.job,
@@ -2223,10 +2174,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     body.data.telemetry?.sessionHistoryGenerationRelationship;
   const generationLocalAvailability =
     body.data.telemetry?.sessionHistoryGenerationLocalAvailability;
-  const workspaceSidecarRelationship =
-    body.data.telemetry?.workspaceSessionHistorySidecarRelationship;
-  const workspaceSidecarRawSizeBucket =
-    body.data.telemetry?.workspaceSessionHistorySidecarRawSizeBucket;
   const db = set(writeDb$);
   claimRouteTiming.recordElapsed(
     "claim_route_request_prepare",
@@ -2242,8 +2189,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         runId,
         relationship: generationRelationship,
         localAvailability: generationLocalAvailability,
-        workspaceSidecarRelationship,
-        workspaceSidecarRawSizeBucket,
         outcome: "unavailable",
         authType: auth.type,
       });
@@ -2267,8 +2212,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     jobWithRun,
     generationRelationship,
     generationLocalAvailability,
-    workspaceSidecarRelationship,
-    workspaceSidecarRawSizeBucket,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
     claimRouteTiming,

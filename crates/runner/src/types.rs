@@ -1321,20 +1321,10 @@ impl SessionHistorySizeBucket {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceSessionHistorySidecarState {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub history_generation_run_id: Option<RunId>,
-    pub raw_size_bucket: SessionHistorySizeBucket,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct WorkspaceCacheState {
     pub profile: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_affinity_version: Option<u8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_history_sidecar: Option<WorkspaceSessionHistorySidecarState>,
 }
 
 /// Runner state snapshot sent to the server via heartbeat.
@@ -2064,12 +2054,6 @@ mod tests {
                 workspace_caches: vec![WorkspaceCacheState {
                     profile: "vm0/large".into(),
                     workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
-                    session_history_sidecar: Some(WorkspaceSessionHistorySidecarState {
-                        history_generation_run_id: Some(
-                            "22222222-2222-4222-8222-222222222222".parse().unwrap(),
-                        ),
-                        raw_size_bucket: SessionHistorySizeBucket::From64To256Kib,
-                    }),
                 }],
             }],
             mode: "running".into(),
@@ -2097,11 +2081,7 @@ mod tests {
                 },
                 "workspaceCaches": [{
                     "profile": "vm0/large",
-                    "workspaceAffinityVersion": 1,
-                    "sessionHistorySidecar": {
-                        "historyGenerationRunId": "22222222-2222-4222-8222-222222222222",
-                        "rawSizeBucket": "64_256_kib"
-                    }
+                    "workspaceAffinityVersion": 1
                 }]
             }])
         );
