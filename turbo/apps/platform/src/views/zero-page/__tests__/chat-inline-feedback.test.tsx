@@ -540,6 +540,75 @@ describe("chat inline feedback", () => {
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
   });
 
+  it("submits the committed inline feedback after IME composition ends", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    const sentPrompts: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-ime-send-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-ime-send",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-ime-send-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-ime-send",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        if (body.prompt !== undefined) {
+          sentPrompts.push(body.prompt);
+        }
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+
+    const feedbackComment = await findFeedbackNote();
+    await user.click(feedbackComment);
+    await user.keyboard("补");
+    await waitFor(() => {
+      expect(feedbackComment).toHaveTextContent("补");
+    });
+
+    fireEvent.compositionStart(feedbackComment, { data: "补" });
+    const paragraph = feedbackComment.querySelector("p");
+    if (!paragraph) {
+      throw new Error("Feedback paragraph not found");
+    }
+    paragraph.textContent = "补充具体日期";
+
+    fireEvent.click(screen.getByLabelText("Send"));
+    expect(sentPrompts).toHaveLength(0);
+
+    fireEvent.compositionEnd(feedbackComment, { data: "补充具体日期" });
+    fireEvent.input(feedbackComment, {
+      data: "补充具体日期",
+      inputType: "insertCompositionText",
+      isComposing: false,
+    });
+
+    await waitFor(() => {
+      expect(sentPrompts).toHaveLength(1);
+    });
+    expect(sentPrompts[0]).toContain("补充具体日期");
+  });
+
   it("shows the inline feedback toolbar when double-click selection settles after mouseup", async () => {
     const assistantReply = "The rollout dates are unclear in this summary.";
 
