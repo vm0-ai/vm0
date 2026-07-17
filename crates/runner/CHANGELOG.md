@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.146.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.6...runner-rs-v0.146.7) (2026-07-17)
+
+
+### Bug Fixes
+
+* **mitm-addon:** detect unbound metadata key access ([#21993](https://github.com/vm0-ai/vm0/issues/21993)) ([b576de6](https://github.com/vm0-ai/vm0/commit/b576de61241c47db045b47b0fcc0a6847e941f30))
+* **runner:** delegate service signals to systemd ([#21981](https://github.com/vm0-ai/vm0/issues/21981)) ([2ed47da](https://github.com/vm0-ai/vm0/commit/2ed47da8d62d4b98b159407d298896fac2b4fd55))
+
+
+### Documentation
+
+* **mitm-addon:** clarify jsonl flush completion semantics ([#21982](https://github.com/vm0-ai/vm0/issues/21982)) ([ab74d23](https://github.com/vm0-ai/vm0/commit/ab74d230fc50eea4a2c86c08b3a9e3686d181894))
+
 ## [0.146.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.5...runner-rs-v0.146.6) (2026-07-17)
 
 

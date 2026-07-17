@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.37](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.36...vsock-guest-v0.19.37) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock-guest:** roll back cgroup setup failures ([#21977](https://github.com/vm0-ai/vm0/issues/21977)) ([1e5bfff](https://github.com/vm0-ai/vm0/commit/1e5bfff4ae2b3f4267cd78838834a06843841133))
+
 ## [0.19.36](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.35...vsock-guest-v0.19.36) (2026-07-17)
 
 ## [0.19.35](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.34...vsock-guest-v0.19.35) (2026-07-16)

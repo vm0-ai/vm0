@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.283.2](https://github.com/vm0-ai/vm0/compare/api-v1.283.1...api-v1.283.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* **api:** spend usage allowance before credits for all billable usage ([#21987](https://github.com/vm0-ai/vm0/issues/21987)) ([e144db9](https://github.com/vm0-ai/vm0/commit/e144db92fdf67ea34b6e83ca85430097e428e90a))
+* update stripe customer default card after payment ([#21989](https://github.com/vm0-ai/vm0/issues/21989)) ([e3afc21](https://github.com/vm0-ai/vm0/commit/e3afc213f621566f131148959f44e1f0dd6b1132))
+
 ## [1.283.1](https://github.com/vm0-ai/vm0/compare/api-v1.283.0...api-v1.283.1) (2026-07-17)
 
 
