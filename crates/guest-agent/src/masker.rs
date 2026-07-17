@@ -14,24 +14,17 @@ use std::{collections::HashSet, ops::Range};
 /// Minimum secret length to avoid false-positive masking.
 const MIN_SECRET_LEN: usize = 5;
 
-/// Holds pre-computed secret value patterns for efficient masking.
+/// Holds compiled secret matchers for efficient masking.
 ///
 /// Uses Aho-Corasick with leftmost-longest match semantics so that when one
 /// configured value is a substring of another, the longer match wins and no
-/// partial sensitive value survives. See issue #9778.
+/// partial sensitive value survives. Source pattern vectors are dropped after
+/// the matchers are built. See issue #9778.
 pub struct SecretMasker {
-    state: MaskerState,
-}
-
-struct MaskerState {
     matcher: Option<Matcher>,
     diagnostic_matcher: Option<Matcher>,
     url_encoded_matcher: Option<Matcher>,
     diagnostic_url_encoded_matcher: Option<Matcher>,
-    patterns: Vec<String>,
-    diagnostic_patterns: Vec<String>,
-    url_encoded_patterns: Vec<String>,
-    diagnostic_url_encoded_patterns: Vec<String>,
 }
 
 struct Matcher {
@@ -57,7 +50,10 @@ impl SecretMasker {
 
         // Parse comma-separated base64 values
         let engine = base64::engine::general_purpose::STANDARD;
-        let mut state = MaskerState::empty();
+        let mut patterns = Vec::new();
+        let mut diagnostic_patterns = Vec::new();
+        let mut url_encoded_patterns = Vec::new();
+        let mut diagnostic_url_encoded_patterns = Vec::new();
         let mut seen_secrets = HashSet::new();
         for secret in raw.split(',').filter_map(|part| {
             let trimmed = part.trim();
@@ -70,16 +66,29 @@ impl SecretMasker {
                 .and_then(|bytes| String::from_utf8(bytes).ok())
                 .filter(|value| !value.is_empty())
         }) {
-            if seen_secrets.insert(secret.clone()) {
-                state.add_secret_value_patterns(&secret);
+            if seen_secrets.insert(secret.clone()) && secret.len() >= MIN_SECRET_LEN {
+                push_secret_patterns(&secret, &mut patterns);
+                push_secret_patterns(&secret, &mut diagnostic_patterns);
+                push_url_encoded_secret_pattern(&secret, &mut url_encoded_patterns);
+                push_url_encoded_secret_pattern(&secret, &mut diagnostic_url_encoded_patterns);
+                push_diagnostic_multiline_patterns(&secret, &mut diagnostic_patterns);
             }
         }
-        state.rebuild_matchers();
-        Self::from_state(state)
+        Self::build_with_diagnostic_patterns(
+            patterns,
+            diagnostic_patterns,
+            url_encoded_patterns,
+            diagnostic_url_encoded_patterns,
+        )
     }
 
     fn empty() -> Self {
-        Self::from_state(MaskerState::empty())
+        Self {
+            matcher: None,
+            diagnostic_matcher: None,
+            url_encoded_matcher: None,
+            diagnostic_url_encoded_matcher: None,
+        }
     }
 
     #[cfg(test)]
@@ -87,19 +96,18 @@ impl SecretMasker {
         Self::build_with_diagnostic_patterns(patterns.clone(), patterns, Vec::new(), Vec::new())
     }
 
-    #[cfg(test)]
     fn build_with_diagnostic_patterns(
         patterns: Vec<String>,
         diagnostic_patterns: Vec<String>,
         url_encoded_patterns: Vec<String>,
         diagnostic_url_encoded_patterns: Vec<String>,
     ) -> Self {
-        Self::from_state(MaskerState::from_pattern_sets(
-            patterns,
-            diagnostic_patterns,
-            url_encoded_patterns,
-            diagnostic_url_encoded_patterns,
-        ))
+        Self {
+            matcher: Self::build_matcher(&patterns),
+            diagnostic_matcher: Self::build_matcher(&diagnostic_patterns),
+            url_encoded_matcher: Self::build_matcher(&url_encoded_patterns),
+            diagnostic_url_encoded_matcher: Self::build_matcher(&diagnostic_url_encoded_patterns),
+        }
     }
 
     /// # Panics
@@ -128,99 +136,8 @@ impl SecretMasker {
         Some(Matcher { ac, replacements })
     }
 
-    fn from_state(state: MaskerState) -> Self {
-        Self { state }
-    }
-
     /// Recursively mask secrets in JSON object keys and string values (in-place).
     pub fn mask_value(&self, val: &mut Value) {
-        self.state.mask_value(val);
-    }
-
-    /// Replace all secret patterns in a string with `***`.
-    ///
-    /// Uses leftmost-longest matching semantics: at each position, the
-    /// longest configured pattern wins, so a shorter secret that is a
-    /// substring of a longer one cannot strip a byte off the longer match.
-    pub fn mask_string(&self, s: &str) -> String {
-        self.masked_string(s).unwrap_or_else(|| s.to_string())
-    }
-
-    pub(crate) fn mask_owned_string(&self, s: String) -> String {
-        self.masked_string(&s).unwrap_or(s)
-    }
-
-    /// Mask diagnostic text while preserving the caller's line boundaries.
-    pub(crate) fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
-        self.state.mask_diagnostic_lines(lines)
-    }
-
-    #[cfg(test)]
-    fn mask_string_in_place(&self, s: &mut String) -> bool {
-        self.state.mask_string_in_place(s)
-    }
-
-    fn masked_string(&self, s: &str) -> Option<String> {
-        self.state.masked_string(s)
-    }
-}
-
-impl MaskerState {
-    fn empty() -> Self {
-        Self {
-            matcher: None,
-            diagnostic_matcher: None,
-            url_encoded_matcher: None,
-            diagnostic_url_encoded_matcher: None,
-            patterns: Vec::new(),
-            diagnostic_patterns: Vec::new(),
-            url_encoded_patterns: Vec::new(),
-            diagnostic_url_encoded_patterns: Vec::new(),
-        }
-    }
-
-    #[cfg(test)]
-    fn from_pattern_sets(
-        patterns: Vec<String>,
-        diagnostic_patterns: Vec<String>,
-        url_encoded_patterns: Vec<String>,
-        diagnostic_url_encoded_patterns: Vec<String>,
-    ) -> Self {
-        let mut state = Self {
-            matcher: None,
-            diagnostic_matcher: None,
-            url_encoded_matcher: None,
-            diagnostic_url_encoded_matcher: None,
-            patterns,
-            diagnostic_patterns,
-            url_encoded_patterns,
-            diagnostic_url_encoded_patterns,
-        };
-        state.rebuild_matchers();
-        state
-    }
-
-    fn add_secret_value_patterns(&mut self, value: &str) {
-        if value.len() < MIN_SECRET_LEN {
-            return;
-        }
-
-        push_secret_patterns(value, &mut self.patterns);
-        push_secret_patterns(value, &mut self.diagnostic_patterns);
-        push_url_encoded_secret_pattern(value, &mut self.url_encoded_patterns);
-        push_url_encoded_secret_pattern(value, &mut self.diagnostic_url_encoded_patterns);
-        push_diagnostic_multiline_patterns(value, &mut self.diagnostic_patterns);
-    }
-
-    fn rebuild_matchers(&mut self) {
-        self.matcher = SecretMasker::build_matcher(&self.patterns);
-        self.diagnostic_matcher = SecretMasker::build_matcher(&self.diagnostic_patterns);
-        self.url_encoded_matcher = SecretMasker::build_matcher(&self.url_encoded_patterns);
-        self.diagnostic_url_encoded_matcher =
-            SecretMasker::build_matcher(&self.diagnostic_url_encoded_patterns);
-    }
-
-    fn mask_value(&self, val: &mut Value) {
         if self.matcher.is_none() && self.url_encoded_matcher.is_none() {
             return;
         }
@@ -240,59 +157,21 @@ impl MaskerState {
         }
     }
 
-    fn mask_object(&self, map: &mut Map<String, Value>) {
-        let has_masked_key = map.keys().any(|key| self.masked_string(key).is_some());
-        if !has_masked_key {
-            for value in map.values_mut() {
-                self.mask_value(value);
-            }
-            return;
-        }
-
-        let entries = std::mem::take(map);
-        let mut masked_entries = Vec::new();
-        for (key, mut value) in entries {
-            self.mask_value(&mut value);
-            if let Some(masked_key) = self.fully_masked_key(&key) {
-                masked_entries.push((masked_key, value));
-            } else {
-                map.insert(key, value);
-            }
-        }
-
-        for (masked_key, value) in masked_entries {
-            let unique_key = self.unique_masked_key(map, masked_key);
-            map.insert(unique_key, value);
-        }
+    /// Replace all secret patterns in a string with `***`.
+    ///
+    /// Uses leftmost-longest matching semantics: at each position, the
+    /// longest configured pattern wins, so a shorter secret that is a
+    /// substring of a longer one cannot strip a byte off the longer match.
+    pub fn mask_string(&self, s: &str) -> String {
+        self.masked_string(s).unwrap_or_else(|| s.to_string())
     }
 
-    fn fully_masked_key(&self, key: &str) -> Option<String> {
-        let mut masked = self.masked_string(key)?;
-        // Production patterns are longer than "***", so each pass shortens
-        // the key and the loop terminates after removing cascading matches.
-        while let Some(remasked) = self.masked_string(&masked) {
-            debug_assert!(remasked.len() < masked.len());
-            masked = remasked;
-        }
-        Some(masked)
+    pub(crate) fn mask_owned_string(&self, s: String) -> String {
+        self.masked_string(&s).unwrap_or(s)
     }
 
-    fn unique_masked_key(&self, map: &Map<String, Value>, masked_key: String) -> String {
-        if !map.contains_key(&masked_key) {
-            return masked_key;
-        }
-
-        let mut suffix = 2;
-        loop {
-            let candidate = format!("{masked_key}#{suffix}");
-            if !map.contains_key(&candidate) && self.masked_string(&candidate).is_none() {
-                return candidate;
-            }
-            suffix += 1;
-        }
-    }
-
-    fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
+    /// Mask diagnostic text while preserving the caller's line boundaries.
+    pub(crate) fn mask_diagnostic_lines(&self, lines: Vec<String>) -> Vec<String> {
         if self.diagnostic_matcher.is_none() && self.diagnostic_url_encoded_matcher.is_none() {
             return lines;
         }
@@ -391,6 +270,58 @@ impl MaskerState {
             None
         } else {
             Some(redact_ranges(s.to_string(), &ranges))
+        }
+    }
+
+    fn mask_object(&self, map: &mut Map<String, Value>) {
+        let has_masked_key = map.keys().any(|key| self.masked_string(key).is_some());
+        if !has_masked_key {
+            for value in map.values_mut() {
+                self.mask_value(value);
+            }
+            return;
+        }
+
+        let entries = std::mem::take(map);
+        let mut masked_entries = Vec::new();
+        for (key, mut value) in entries {
+            self.mask_value(&mut value);
+            if let Some(masked_key) = self.fully_masked_key(&key) {
+                masked_entries.push((masked_key, value));
+            } else {
+                map.insert(key, value);
+            }
+        }
+
+        for (masked_key, value) in masked_entries {
+            let unique_key = self.unique_masked_key(map, masked_key);
+            map.insert(unique_key, value);
+        }
+    }
+
+    fn fully_masked_key(&self, key: &str) -> Option<String> {
+        let mut masked = self.masked_string(key)?;
+        // Production patterns are longer than "***", so each pass shortens
+        // the key and the loop terminates after removing cascading matches.
+        while let Some(remasked) = self.masked_string(&masked) {
+            debug_assert!(remasked.len() < masked.len());
+            masked = remasked;
+        }
+        Some(masked)
+    }
+
+    fn unique_masked_key(&self, map: &Map<String, Value>, masked_key: String) -> String {
+        if !map.contains_key(&masked_key) {
+            return masked_key;
+        }
+
+        let mut suffix = 2;
+        loop {
+            let candidate = format!("{masked_key}#{suffix}");
+            if !map.contains_key(&candidate) && self.masked_string(&candidate).is_none() {
+                return candidate;
+            }
+            suffix += 1;
         }
     }
 
