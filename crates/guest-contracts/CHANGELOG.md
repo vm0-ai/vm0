@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.14](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.13...guest-contracts-v0.3.14) (2026-07-17)
+
+
+### Documentation
+
+* **rust:** clarify stack-dependent execve budget ([#21974](https://github.com/vm0-ai/vm0/issues/21974)) ([fb75eff](https://github.com/vm0-ai/vm0/commit/fb75eff67f38b2778427efbf9e501708b0ed616e))
+
 ## [0.3.13](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.12...guest-contracts-v0.3.13) (2026-07-16)
 
 

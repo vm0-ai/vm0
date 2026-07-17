@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.440.0](https://github.com/vm0-ai/vm0/compare/core-v8.439.2...core-v8.440.0) (2026-07-17)
+
+
+### Features
+
+* enable website templates rollout ([#21203](https://github.com/vm0-ai/vm0/issues/21203)) ([5a16112](https://github.com/vm0-ai/vm0/commit/5a161121a2fdfaffcd38c87755fdeb05d849c665))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.3
+
 ## [8.439.2](https://github.com/vm0-ai/vm0/compare/core-v8.439.1...core-v8.439.2) (2026-07-17)
 
 
