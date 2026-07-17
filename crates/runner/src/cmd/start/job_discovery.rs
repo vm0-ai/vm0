@@ -13,7 +13,6 @@ use sandbox::SandboxId;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-use super::HEARTBEAT_PERIOD;
 use super::active_sessions::ActiveCliAgentSessionGuard;
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
@@ -37,8 +36,7 @@ use crate::idle_pool::{
 use crate::ids::RunId;
 use crate::paths::short_digest;
 use crate::provider::{
-    ClaimedJob, JobCandidate, LocalAdmissionResourceKind, PreLocalAdmissionOutcome,
-    SessionAffinityLocalResource, SessionHistoryGenerationLocalAvailability,
+    ClaimedJob, JobCandidate, LocalAdmissionResourceKind, SessionAffinityLocalResource,
     SessionHistoryGenerationRelationship,
 };
 use crate::resource_budget::{BudgetLease, ResourceBudget};
@@ -106,26 +104,6 @@ impl LocalAdmissionResource {
                 Some(_) => SessionHistoryGenerationRelationship::Different,
                 None => SessionHistoryGenerationRelationship::UnknownReserved,
             },
-        }
-    }
-
-    fn session_history_generation_local_availability(
-        &self,
-        target_generation_run_id: Option<RunId>,
-        candidate_discovered_at: Instant,
-    ) -> Option<SessionHistoryGenerationLocalAvailability> {
-        target_generation_run_id?;
-        let Self::Reusable(reservation) = self else {
-            return None;
-        };
-        let parked_at = reservation.parked_at();
-        if parked_at > candidate_discovered_at {
-            return Some(SessionHistoryGenerationLocalAvailability::AfterDiscovery);
-        }
-        if candidate_discovered_at.duration_since(parked_at) < HEARTBEAT_PERIOD {
-            Some(SessionHistoryGenerationLocalAvailability::BeforeDiscoveryLtHeartbeatPeriod)
-        } else {
-            Some(SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod)
         }
     }
 }
@@ -580,16 +558,7 @@ async fn claim_with_local_admission(
     let relationship = admission
         .resource
         .session_history_generation_relationship(target_generation_run_id);
-    let local_availability = admission
-        .resource
-        .session_history_generation_local_availability(
-            target_generation_run_id,
-            candidate.discovered_at(),
-        );
     candidate.set_session_history_generation_relationship(relationship);
-    if let Some(local_availability) = local_availability {
-        candidate.set_session_history_generation_local_availability(local_availability);
-    }
     // claim() runs in the branch handler: non-interruptible, so a valid
     // successful claim is always paired with complete().
     let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
@@ -635,8 +604,7 @@ async fn prepare_affinity_protected_candidate(
         )
         .await
         {
-            let mut candidate =
-                candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+            let mut candidate = candidate;
             candidate
                 .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
             return Some(PreparedAffinityCandidate {
@@ -661,8 +629,7 @@ async fn prepare_affinity_protected_candidate(
 
     if !candidate.is_affinity_protected() {
         return Some(PreparedAffinityCandidate {
-            candidate: candidate
-                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
+            candidate,
             resource: None,
         });
     }
@@ -690,8 +657,7 @@ async fn prepare_affinity_protected_candidate(
             )
             .await
             {
-                let mut candidate = candidate
-                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                let mut candidate = candidate;
                 candidate.set_session_affinity_local_resource(
                     SessionAffinityLocalResource::ReusableSandbox,
                 );
@@ -711,8 +677,7 @@ async fn prepare_affinity_protected_candidate(
             )
             .await
             {
-                let mut candidate = candidate
-                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                let mut candidate = candidate;
                 candidate.set_session_affinity_local_resource(
                     SessionAffinityLocalResource::ReusableSandbox,
                 );
@@ -735,8 +700,7 @@ async fn prepare_affinity_protected_candidate(
                 && let Some(lease) =
                     ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
             {
-                let mut candidate = candidate
-                    .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                let mut candidate = candidate;
                 candidate.set_session_affinity_local_resource(
                     SessionAffinityLocalResource::WorkspaceCache,
                 );

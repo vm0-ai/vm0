@@ -769,10 +769,10 @@ function expectDirectAblyClaimTimingEvents(args: {
         profile: "vm0/default",
         auth_type: "user",
         discovery_source: "ably",
-        pre_local_admission_outcome: "local_holder",
       }),
     );
     expect(event).not.toHaveProperty("poll_reason");
+    expect(event).not.toHaveProperty("pre_local_admission_outcome");
   }
 
   expect(
@@ -783,7 +783,6 @@ function expectDirectAblyClaimTimingEvents(args: {
   ).toStrictEqual(
     expect.objectContaining({
       duration_ms: 12,
-      pre_local_admission_outcome: "local_holder",
     }),
   );
   expect(
@@ -791,7 +790,6 @@ function expectDirectAblyClaimTimingEvents(args: {
   ).toStrictEqual(
     expect.objectContaining({
       duration_ms: 34,
-      pre_local_admission_outcome: "local_holder",
     }),
   );
   expect(
@@ -799,7 +797,6 @@ function expectDirectAblyClaimTimingEvents(args: {
   ).toStrictEqual(
     expect.objectContaining({
       duration_ms: 45,
-      pre_local_admission_outcome: "local_holder",
     }),
   );
   expect(
@@ -807,7 +804,6 @@ function expectDirectAblyClaimTimingEvents(args: {
   ).toStrictEqual(
     expect.objectContaining({
       duration_ms: 67,
-      pre_local_admission_outcome: "local_holder",
     }),
   );
 
@@ -7896,8 +7892,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: true,
         duration_ms: 0,
         generation_relationship: "different",
-        generation_local_availability:
-          "parked_before_discovery_lt_heartbeat_period",
         claim_outcome: "accepted",
         auth_type: "official-runner",
         runner_group: runnerGroup,
@@ -7907,7 +7901,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: false,
         duration_ms: 0,
         generation_relationship: "exact",
-        generation_local_availability: "parked_after_discovery",
         claim_outcome: "unavailable",
         auth_type: "official-runner",
       }),
@@ -7918,6 +7911,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(event).not.toHaveProperty("history_hash");
       expect(event).not.toHaveProperty("parked_at");
       expect(event).not.toHaveProperty("discovered_at");
+      expect(event).not.toHaveProperty("generation_local_availability");
       expect(event).not.toHaveProperty("generation_local_availability_ms");
       expect(event).not.toHaveProperty("workspace_sidecar_generation_run_id");
       expect(event).not.toHaveProperty("workspace_sidecar_raw_size_bytes");
@@ -8058,8 +8052,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: false,
         duration_ms: 0,
         generation_relationship: "exact",
-        generation_local_availability:
-          "parked_before_discovery_ge_heartbeat_period",
         claim_outcome: "preclaim_error",
         auth_type: "official-runner",
         runner_group: runnerGroup,
@@ -8068,6 +8060,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     ]);
     expect(JSON.stringify(events)).not.toContain(source.runId);
     expect(JSON.stringify(events)).not.toContain(historyHash);
+    expect(events[0]).not.toHaveProperty("generation_local_availability");
     expect(events[0]).not.toHaveProperty("workspace_sidecar_relationship");
     expect(events[0]).not.toHaveProperty("workspace_sidecar_raw_size_bucket");
 
@@ -8361,7 +8354,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           directCandidateInboxWaitMs: 34,
           providerDiscoveryToMainLoopMs: 45,
           mainLoopToLocalAdmissionMs: 67,
-          preLocalAdmissionOutcome: "local_holder",
         },
       },
     );

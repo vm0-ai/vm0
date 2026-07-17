@@ -46,21 +46,6 @@ impl JobDiscoverySource {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PreLocalAdmissionOutcome {
-    NotProtected,
-    LocalHolder,
-}
-
-impl PreLocalAdmissionOutcome {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::NotProtected => "not_protected",
-            Self::LocalHolder => "local_holder",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SessionAffinityLocalResource {
     ReusableSandbox,
     WorkspaceCache,
@@ -111,23 +96,6 @@ impl SessionHistoryGenerationRelationship {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SessionHistoryGenerationLocalAvailability {
-    AfterDiscovery,
-    BeforeDiscoveryLtHeartbeatPeriod,
-    BeforeDiscoveryGeHeartbeatPeriod,
-}
-
-impl SessionHistoryGenerationLocalAvailability {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::AfterDiscovery => "parked_after_discovery",
-            Self::BeforeDiscoveryLtHeartbeatPeriod => "parked_before_discovery_lt_heartbeat_period",
-            Self::BeforeDiscoveryGeHeartbeatPeriod => "parked_before_discovery_ge_heartbeat_period",
-        }
-    }
-}
-
 /// Discovered work item ready for the non-cancellable claim phase.
 #[derive(Clone, Debug)]
 pub struct JobCandidate {
@@ -143,7 +111,6 @@ pub struct JobCandidate {
     discovery_source: Option<JobDiscoverySource>,
     direct_candidate_notification_to_enqueue_elapsed: Option<Duration>,
     direct_candidate_inbox_wait_elapsed: Option<Duration>,
-    pre_local_admission_outcome: Option<PreLocalAdmissionOutcome>,
     poll_reason: Option<String>,
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
@@ -153,8 +120,6 @@ pub struct JobCandidate {
     local_admission_resource: Option<LocalAdmissionResourceKind>,
     history_generation_run_id: Option<RunId>,
     session_history_generation_relationship: Option<SessionHistoryGenerationRelationship>,
-    session_history_generation_local_availability:
-        Option<SessionHistoryGenerationLocalAvailability>,
     history_generation_affinity_protected_until: Option<DateTime<Utc>>,
     affinity_protected_until: Option<DateTime<Utc>>,
 }
@@ -182,7 +147,6 @@ impl JobCandidate {
             discovery_source: None,
             direct_candidate_notification_to_enqueue_elapsed: None,
             direct_candidate_inbox_wait_elapsed: None,
-            pre_local_admission_outcome: None,
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
@@ -192,7 +156,6 @@ impl JobCandidate {
             local_admission_resource: None,
             history_generation_run_id: None,
             session_history_generation_relationship: None,
-            session_history_generation_local_availability: None,
             history_generation_affinity_protected_until: None,
             affinity_protected_until: None,
         }
@@ -243,10 +206,6 @@ impl JobCandidate {
         self.discovered_at.elapsed()
     }
 
-    pub(crate) fn discovered_at(&self) -> Instant {
-        self.discovered_at
-    }
-
     pub(crate) fn local_admission_elapsed(&self) -> Option<Duration> {
         self.local_admission_started_at
             .map(|started| started.elapsed())
@@ -266,10 +225,6 @@ impl JobCandidate {
 
     pub(crate) fn main_loop_to_local_admission_elapsed(&self) -> Option<Duration> {
         self.main_loop_to_local_admission_elapsed
-    }
-
-    pub(crate) fn pre_local_admission_outcome(&self) -> Option<PreLocalAdmissionOutcome> {
-        self.pre_local_admission_outcome
     }
 
     pub(crate) fn discovery_source(&self) -> Option<JobDiscoverySource> {
@@ -312,12 +267,6 @@ impl JobCandidate {
         &self,
     ) -> Option<SessionHistoryGenerationRelationship> {
         self.session_history_generation_relationship
-    }
-
-    pub(crate) fn session_history_generation_local_availability(
-        &self,
-    ) -> Option<SessionHistoryGenerationLocalAvailability> {
-        self.session_history_generation_local_availability
     }
 
     pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
@@ -387,13 +336,6 @@ impl JobCandidate {
         self.session_history_generation_relationship = Some(relationship);
     }
 
-    pub(crate) fn set_session_history_generation_local_availability(
-        &mut self,
-        availability: SessionHistoryGenerationLocalAvailability,
-    ) {
-        self.session_history_generation_local_availability = Some(availability);
-    }
-
     pub(crate) fn set_session_affinity_local_resource(
         &mut self,
         resource: SessionAffinityLocalResource,
@@ -417,14 +359,6 @@ impl JobCandidate {
     ) -> Self {
         self.direct_candidate_notification_to_enqueue_elapsed = notification_to_enqueue_elapsed;
         self.direct_candidate_inbox_wait_elapsed = inbox_wait_elapsed;
-        self
-    }
-
-    pub(crate) fn with_pre_local_admission_outcome(
-        mut self,
-        outcome: PreLocalAdmissionOutcome,
-    ) -> Self {
-        self.pre_local_admission_outcome = Some(outcome);
         self
     }
 
