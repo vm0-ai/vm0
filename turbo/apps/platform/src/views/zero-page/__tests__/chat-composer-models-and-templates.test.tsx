@@ -2446,7 +2446,7 @@ describe("chat composer models", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("keeps VM0 Model available when VM0 models and BYOK are restricted", async () => {
+  it("keeps Auto available when VM0 models and BYOK are restricted", async () => {
     const user = userEvent.setup({ delay: null });
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
     context.mocks.data.orgModelPolicies([
@@ -2461,7 +2461,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000704",
         model: "vm0-model",
-        modelLabel: "VM0 Model",
+        modelLabel: "Auto",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -2472,9 +2472,9 @@ describe("chat composer models", () => {
 
     await expectComposerModel("Kimi K2.7 Code");
     await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
-    await user.click(await screen.findByRole("option", { name: /VM0 Model/u }));
+    await user.click(await screen.findByRole("option", { name: /Auto/u }));
 
-    await expectComposerModel("VM0 Model");
+    await expectComposerModel("Auto");
     expect(
       screen.queryByRole("heading", { name: "Compare plans" }),
     ).not.toBeInTheDocument();

@@ -91,7 +91,7 @@ The `Caddyfile` defines:
 | api.vm7.ai:8443 | 8443 | localhost:3001 (Hono API)   |
 | vm7.ai:8443     | 8443 | Redirect to www.vm7.ai:8443 |
 
-The public `tunnel-*-www.vm7.ai` development tunnel points to Caddy on port 3043. Caddy sends the VM0 Model proxy path to vm0-marketing and preserves the
+The public `tunnel-*-www.vm7.ai` development tunnel points to Caddy on port 3043. Caddy sends the Auto proxy path to vm0-marketing and preserves the
 API as the fallback for every other path.
 
 ## Scripts

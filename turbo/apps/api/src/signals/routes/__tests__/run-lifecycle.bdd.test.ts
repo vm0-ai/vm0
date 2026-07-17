@@ -3900,7 +3900,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("defaults limited-free runs to Luna, allows Terra and VM0 Model, and rejects Sol", async () => {
+  it("defaults limited-free runs to Luna, allows Terra and Auto, and rejects Sol", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -3991,13 +3991,13 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       {
         agentId,
-        prompt: "limited-free VM0 Model run",
+        prompt: "limited-free Auto run",
         model: vm0Model,
       },
       [201],
     );
     if (vm0Sent.status !== 201 || vm0Sent.body.runId === null) {
-      throw new Error("Expected VM0 Model to create a limited-free run");
+      throw new Error("Expected Auto to create a limited-free run");
     }
     await api.heartbeatRunner(runnerGroup);
     const vm0Claim = await api.claimRunnerJob(vm0Sent.body.runId);
@@ -4150,7 +4150,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       [201],
     );
     if (sent.status !== 201 || sent.body.runId === null) {
-      throw new Error("Expected VM0 Model chat send to create a run");
+      throw new Error("Expected Auto chat send to create a run");
     }
 
     await api.heartbeatRunner(runnerGroup);
@@ -4165,7 +4165,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.environment?.OPENAI_API_KEY).not.toBe("vm0-model-proxy-token");
     expect(claim.codexRuntimeConfig).toMatchObject({
       providerId: "vm0-model",
-      name: "VM0 Model",
+      name: "Auto",
       baseUrl: proxyBaseUrl,
       envKey: "OPENAI_API_KEY",
       wireApi: "responses",
@@ -4199,7 +4199,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       [200],
     );
     if (resolved.status !== 200) {
-      throw new Error("Expected VM0 Model firewall auth to resolve");
+      throw new Error("Expected Auto firewall auth to resolve");
     }
     expect(resolved.body.headers).toStrictEqual({
       Authorization: "Bearer vm0-model-proxy-token",
