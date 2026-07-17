@@ -171,7 +171,6 @@ const RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_pre_create_agent_run",
-  "api_dispatch_check_org_tier",
   "api_dispatch_check_run_admission",
   "api_dispatch_prepare_run_context",
   "api_dispatch_prepare_context_feature_switches",
@@ -1015,6 +1014,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectNoApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
@@ -1121,7 +1121,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [prompt, agentId]);
   });
 
-  it("emits api dispatch timing for direct create route runs", async () => {
+  it("retains direct plan admission and emits direct create timing", async () => {
     const api = createRunsApi(context);
     const { actor } = await entitledRunActor();
     const prompt = "direct route api dispatch timing should not leak prompt";
@@ -1145,6 +1145,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     expectApiDispatchActions(timingEvents, API_DISPATCH_TIMING_ACTION_TYPES);
+    expectApiDispatchActions(timingEvents, ["api_dispatch_check_org_tier"]);
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_check_org_tier"],
+      "top_level",
+    );
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
@@ -1192,6 +1198,33 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
+
+    if (!actor.orgId) {
+      throw new Error("Expected suspended direct-run actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    const suspendedPrompt = `suspended direct ${randomUUID()}`;
+    const rejected = await api.requestDirectRun(
+      actor,
+      { agentComposeVersionId: headVersionId, prompt: suspendedPrompt },
+      [402],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.filter((run) => {
+        return run.prompt === suspendedPrompt;
+      }),
+    ).toHaveLength(0);
   });
 
   it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
@@ -3041,6 +3074,8 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       description: "Covers the pro-suspend admission branch.",
       visibility: "private",
     });
+    const byokPrompt = `suspended BYOK ${randomUUID()}`;
+    const vm0Prompt = `suspended VM0 ${randomUUID()}`;
     await seedOrgMetadata({
       orgId: actor.orgId,
       tier: "pro-suspend",
@@ -3051,7 +3086,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       actor,
       {
         agentId: agent.agentId,
-        prompt: "should be rejected",
+        prompt: byokPrompt,
         modelProvider: "anthropic-api-key",
       },
       [402],
@@ -3064,13 +3099,26 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       actor,
       {
         agentId: agent.agentId,
-        prompt: "should be rejected",
+        prompt: vm0Prompt,
         modelProvider: "vm0",
       },
       [402],
     );
     expectApiError(vm0Rejected.body);
     expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.filter((run) => {
+        return run.prompt === byokPrompt || run.prompt === vm0Prompt;
+      }),
+    ).toHaveLength(0);
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toHaveLength(0);
+    expect(queue.body.concurrency.active).toBe(0);
   });
 
   it("does not require queued payload encryption while capacity is available", async () => {
@@ -3853,7 +3901,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("uses staff entitlement capabilities for run admission", async () => {
+  it("enforces staff entitlement status at final run admission", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const actor = bdd.user({ orgId: STAFF_ORG_ID });
@@ -3896,8 +3944,57 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       prompt: "staff entitlement BYOK run",
       modelProvider: "anthropic-api-key",
     });
-
+    expectNoApiDispatchActions(apiDispatchTimingEventsForRun(run.runId), [
+      "api_dispatch_check_org_tier",
+    ]);
     await api.requestCancelRun(actor, run.runId, [200]);
+
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "suspended",
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+
+    const byokPrompt = `staff suspended BYOK ${randomUUID()}`;
+    const vm0Prompt = `staff suspended VM0 ${randomUUID()}`;
+    const byokRejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: byokPrompt,
+        modelProvider: "anthropic-api-key",
+      },
+      [402],
+    );
+    expectApiError(byokRejected.body);
+    expect(byokRejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    const vm0Rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId: agent.agentId,
+        prompt: vm0Prompt,
+        modelProvider: "vm0",
+      },
+      [402],
+    );
+    expectApiError(vm0Rejected.body);
+    expect(vm0Rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.filter((candidate) => {
+        return (
+          candidate.prompt === byokPrompt || candidate.prompt === vm0Prompt
+        );
+      }),
+    ).toHaveLength(0);
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toHaveLength(0);
+    expect(queue.body.concurrency.active).toBe(0);
   });
 
   it("defaults limited-free runs to Luna, allows Terra and Auto, and rejects Sol", async () => {

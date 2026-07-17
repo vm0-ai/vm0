@@ -1063,6 +1063,7 @@ const createAgentRunAfterZeroPreCreate$ = command(
       {
         args: createAgentRunArgs,
         timing: input.timing,
+        checkOrgPlanStatusBeforeContext: false,
         preloadedFeatureSwitchContext: input.featureSwitchContext,
       },
       signal,
