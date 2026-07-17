@@ -849,7 +849,7 @@ fn run_exec_operation_worker<S>(
         effective_env,
         request.sudo,
         pipe_stdin,
-        process_containment.as_ref(),
+        process_containment,
     ) {
         Ok(spawned) => spawned,
         Err(e) => {
@@ -862,7 +862,11 @@ fn run_exec_operation_worker<S>(
         }
     };
 
-    let SpawnedShellCommand { child, env_script } = spawned;
+    let SpawnedShellCommand {
+        child,
+        env_script,
+        process_containment,
+    } = spawned;
     let _env_script = env_script;
     let mut setup = ExecSetup::new(child, process_containment);
 
