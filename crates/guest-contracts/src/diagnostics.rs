@@ -333,6 +333,8 @@ pub enum CliTerminationReason {
     HeartbeatPanic,
     /// Writing the initial prompt to stdin failed and required termination.
     InitialPromptStdin,
+    /// Event delivery overloaded or stopped and required termination.
+    EventDelivery,
 }
 
 impl CliTerminationReason {
@@ -345,6 +347,7 @@ impl CliTerminationReason {
             Self::HeartbeatError => "heartbeat_error",
             Self::HeartbeatPanic => "heartbeat_panic",
             Self::InitialPromptStdin => "initial_prompt_stdin",
+            Self::EventDelivery => "event_delivery",
         }
     }
 }
