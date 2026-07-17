@@ -13,7 +13,11 @@ import {
 } from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { withErrorHandler } from "../../../lib/command";
-import { toPlatformUrl } from "./platform-url";
+import { toPlatformUrl } from "../doctor/platform-url";
+import {
+  isComputerUsePermissionTarget,
+  printComputerUsePermissionGuidance,
+} from "./computer-use-guidance";
 
 interface CheckConnectorOptions {
   readonly connector?: string;
@@ -97,7 +101,24 @@ function connectorSelectionCommand(
   if (method !== "GET") {
     args.push(`--method ${shellQuoteArg(method)}`);
   }
-  return `zero doctor check-connector ${args.join(" ")}`;
+  return `zero connector check ${args.join(" ")}`;
+}
+
+function rawPathFromUrl(url: string): string | undefined {
+  const sanitizedUrl = stripUrlQueryAndFragment(url);
+  const schemeEnd = sanitizedUrl.indexOf("://");
+  if (schemeEnd === -1) return undefined;
+
+  const pathStart = sanitizedUrl.indexOf("/", schemeEnd + 3);
+  return pathStart === -1 ? "/" : sanitizedUrl.slice(pathStart);
+}
+
+function isComputerUseCheckTarget(opts: CheckConnectorOptions): boolean {
+  return isComputerUsePermissionTarget({
+    connectorRef: opts.connector ?? "",
+    path: opts.url === undefined ? undefined : rawPathFromUrl(opts.url),
+    permission: opts.checkPermission,
+  });
 }
 
 function validateCheckConnectorOptions(
@@ -186,15 +207,15 @@ function unsafeInputError(
   switch (reason) {
     case "invalid-method":
       return new Error(
-        "check-connector requires --method to be a supported HTTP method.",
+        "connector check requires --method to be a supported HTTP method.",
       );
     case "invalid-url":
       return new Error(
-        "check-connector requires --url to be a valid absolute http or https URL.",
+        "connector check requires --url to be a valid absolute http or https URL.",
       );
     case "unsafe-path":
       return new Error(
-        "check-connector cannot diagnose unsafe URL paths because they are blocked before permission policy evaluation.",
+        "connector check cannot diagnose unsafe URL paths because they are blocked before permission policy evaluation.",
       );
   }
 }
@@ -575,6 +596,7 @@ function printUnavailablePolicy(
 }
 
 function printNamedPolicyResult(
+  connectorRef: string,
   permission: string,
   policy: ConnectorCheckPolicy,
 ): void {
@@ -610,12 +632,18 @@ function printNamedPolicyResult(
           ? `Result: "${permission}" is in the deny list — denied.`
           : `Result: The unknown-endpoint policy denies "${permission}".`,
       );
+      console.log(
+        `To request this permission, run: ${permissionRequestCommand(connectorRef, permission)}`,
+      );
       return;
     case "ask":
       console.log(
         policy.basis === "ask-list"
           ? `Result: "${permission}" is in the ask list — blocked until approval.`
           : `Result: The unknown-endpoint policy blocks "${permission}" until approval.`,
+      );
+      console.log(
+        `To request this permission, run: ${permissionRequestCommand(connectorRef, permission)}`,
       );
       return;
     case "unavailable":
@@ -624,8 +652,11 @@ function printNamedPolicyResult(
   }
 }
 
-function unknownPermissionChangeCommand(connectorRef: string): string {
-  return `zero doctor permission-change ${connectorRef} --permission __unknown__ --enable --duration 1h`;
+function permissionRequestCommand(
+  connectorRef: string,
+  permission: string,
+): string {
+  return `zero connector permission-request ${connectorRef} --permission ${permission} --duration 1h`;
 }
 
 function printUnknownEndpointPolicy(
@@ -645,7 +676,7 @@ function printUnknownEndpointPolicy(
         "Result: No permission matched. The unknown endpoint policy denies this request.",
       );
       console.log(
-        `To allow unknown endpoints, run: ${unknownPermissionChangeCommand(connectorRef)}`,
+        `To request access to unknown endpoints, run: ${permissionRequestCommand(connectorRef, "__unknown__")}`,
       );
       return;
     case "ask":
@@ -653,7 +684,7 @@ function printUnknownEndpointPolicy(
         "Result: No permission matched. The unknown endpoint policy requires approval.",
       );
       console.log(
-        `To allow unknown endpoints, run: ${unknownPermissionChangeCommand(connectorRef)}`,
+        `To request access to unknown endpoints, run: ${permissionRequestCommand(connectorRef, "__unknown__")}`,
       );
       return;
     case "unavailable":
@@ -680,7 +711,11 @@ function printUrlPermissionDiagnostic(result: ResolvedUrlDiagnostic): void {
     );
     console.log("");
     for (const permission of result.permission.permissions) {
-      printNamedPolicyResult(permission.name, permission.policy);
+      printNamedPolicyResult(
+        result.connector.connectorRef,
+        permission.name,
+        permission.policy,
+      );
     }
   } else {
     console.log(
@@ -713,7 +748,11 @@ function printEnvironmentPermissionDiagnostic(
     `Checking permission: "${permissionName}" for the ${result.connector.label} connector.`,
   );
   console.log("");
-  printNamedPolicyResult(permissionName, result.permission);
+  printNamedPolicyResult(
+    result.connector.connectorRef,
+    permissionName,
+    result.permission,
+  );
   console.log("");
 }
 
@@ -740,12 +779,12 @@ function printRediagnoseHint(
     args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
   }
   console.log(
-    `To re-diagnose after changes, run: zero doctor check-connector ${args.join(" ")}`,
+    `To re-diagnose after changes, run: zero connector check ${args.join(" ")}`,
   );
 }
 
 export const checkConnectorCommand = new Command()
-  .name("check-connector")
+  .name("check")
   .description(
     "Diagnose connector health: environment names, connector configuration, and permission policies",
   )
@@ -770,7 +809,7 @@ export const checkConnectorCommand = new Command()
   .addOption(
     new Option(
       "--method <METHOD>",
-      "HTTP method to use when matching permissions with --url (default: GET)",
+      "HTTP method to use when matching permissions with --url",
     ).default("GET"),
   )
   .addOption(
@@ -783,11 +822,11 @@ export const checkConnectorCommand = new Command()
     "after",
     `
 Examples:
-  zero doctor check-connector --env-name GITHUB_TOKEN
-  zero doctor check-connector --url https://api.github.com/repos/owner/repo
-  zero doctor check-connector --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
-  zero doctor check-connector --url https://slack.com/api/chat.postMessage --method POST
-  zero doctor check-connector --env-name SLACK_TOKEN --check-permission chat:write
+  zero connector check --env-name GITHUB_TOKEN
+  zero connector check --url https://api.github.com/repos/owner/repo
+  zero connector check --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
+  zero connector check --url https://slack.com/api/chat.postMessage --method POST
+  zero connector check --env-name SLACK_TOKEN --check-permission chat:write
 
 How connectors work:
   A Connector holds the real credentials for an external service. These credentials
@@ -800,6 +839,10 @@ How connectors work:
   .action(
     withErrorHandler(async (opts: CheckConnectorOptions, command: Command) => {
       validateCheckConnectorOptions(opts, command);
+      if (isComputerUseCheckTarget(opts)) {
+        printComputerUsePermissionGuidance();
+        return;
+      }
       const method = opts.method.toUpperCase();
       const request = buildDiagnosticRequest(opts, method);
       const diagnostic = await diagnoseZeroConnectorCheck(request);

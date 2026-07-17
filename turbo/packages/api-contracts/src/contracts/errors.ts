@@ -101,7 +101,7 @@ export const RUN_ERROR_GUIDANCE: Record<
     guidance:
       "Request a delegated Computer Use authorization link, ask the user to select a Zero Desktop host for this chat or Slack thread, then start a new run. Existing run tokens cannot be upgraded in place.",
     cliHint:
-      "zero doctor permission-change computer-use --permission computer-use:write --enable",
+      "zero connector permission-request computer-use --permission computer-use:write",
   },
   NO_MODEL_PROVIDER: {
     title: "No model provider configured",
