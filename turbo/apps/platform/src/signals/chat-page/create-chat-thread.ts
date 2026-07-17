@@ -121,8 +121,8 @@ import type {
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import {
-  createMailDraftLoaderSignals,
-  type MailDraftResource,
+  createMailDraftRegistry,
+  type MailDraftSignals,
 } from "./mail-draft.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
@@ -1250,12 +1250,12 @@ function setLatestUsageForRun(
 
 function createRenderedChatGroups(
   semanticMessages$: Computed<SemanticChatMessage[]>,
-  mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>,
+  mailDraftSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>,
   messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ) {
   const transcriptMessages$ = createTranscriptMessagesComputed(
     semanticMessages$,
-    mailDraftById$,
+    mailDraftSignalsById$,
     messageBlocksById$,
   );
 
@@ -1505,11 +1505,11 @@ function createRawMessagesComputed({
 
 function createTranscriptMessagesComputed(
   semanticMessages$: Computed<SemanticChatMessage[]>,
-  mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>,
+  mailDraftSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>,
   messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
   return computed((get): Promise<EnrichedChatMessage[]> => {
-    const mailDraftById = get(mailDraftById$);
+    const mailDraftSignalsById = get(mailDraftSignalsById$);
     const blocksById = get(messageBlocksById$);
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
@@ -1520,18 +1520,15 @@ function createTranscriptMessagesComputed(
         // and short-lived, so parse them on read.
         const enrichedBlocks =
           blocksById.get(message.id) ?? parseMessageBodyBlocks(message);
-        let mailDraftResource: EnrichedChatMessage["mailDraftResource"] = null;
+        let mailDraftSignals: EnrichedChatMessage["mailDraftSignals"] = null;
         if (message.mailDraftId !== undefined) {
-          const mailDraft$ = mailDraftById.get(message.mailDraftId);
-          if (mailDraft$ === undefined) {
+          mailDraftSignals =
+            mailDraftSignalsById.get(message.mailDraftId) ?? null;
+          if (mailDraftSignals === null) {
             throw new Error(
-              `Mail draft resource was not registered: ${message.mailDraftId}`,
+              `Mail draft signals were not registered: ${message.mailDraftId}`,
             );
           }
-          mailDraftResource = {
-            mailDraftId: message.mailDraftId,
-            mailDraft$,
-          };
         }
         if (message.role !== "assistant") {
           return {
@@ -1540,7 +1537,7 @@ function createTranscriptMessagesComputed(
             blocks: enrichedBlocks,
             isQueued,
             isOptimisticRun,
-            mailDraftResource,
+            mailDraftSignals,
           };
         }
         return {
@@ -1549,7 +1546,7 @@ function createTranscriptMessagesComputed(
           blocks: enrichedBlocks,
           isQueued,
           isOptimisticRun: false,
-          mailDraftResource,
+          mailDraftSignals,
         };
       }),
     );
@@ -2298,7 +2295,7 @@ function createActiveGoalObjectiveComputed(
 }
 
 function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
-  const mailDrafts = createMailDraftLoaderSignals();
+  const mailDrafts = createMailDraftRegistry();
   const permissionCards = createPermissionCardRegistry();
   const messageBlocks = createMessageBlocksRegistry(
     permissionCards.registerPermissionCardBlocks$,
@@ -2328,7 +2325,7 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
 
   const renderedMessages = createRenderedChatGroups(
     semanticMessages$,
-    mailDrafts.mailDraftById$,
+    mailDrafts.mailDraftSignalsById$,
     messageBlocks.messageBlocksById$,
   );
 

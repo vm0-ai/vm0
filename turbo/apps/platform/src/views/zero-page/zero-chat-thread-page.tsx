@@ -6616,8 +6616,9 @@ function PagedAssistantMessageItem({
     openImageLightbox(url);
   };
 
-  if (message.mailDraftResource) {
-    const { mailDraftId, mailDraft$ } = message.mailDraftResource;
+  const mailDraftSignals = message.mailDraftSignals;
+  if (mailDraftSignals) {
+    const { mailDraftId } = mailDraftSignals;
     return (
       <div
         className={cn(
@@ -6625,11 +6626,7 @@ function PagedAssistantMessageItem({
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         )}
       >
-        <MailDraftCard
-          key={mailDraftId}
-          mailDraftId={mailDraftId}
-          mailDraft$={mailDraft$}
-        />
+        <MailDraftCard key={mailDraftId} signals={mailDraftSignals} />
       </div>
     );
   }
