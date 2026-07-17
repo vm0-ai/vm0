@@ -9,6 +9,8 @@ from mitmproxy import connection
 
 import auth
 import connector_intent
+import firewall_auth_cache as auth_cache
+import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import upstream_destination_binding
@@ -21,6 +23,15 @@ from tests.request_handler_helpers import (
     _write_github_firewall_registry,
     _write_registry,
 )
+from tests.requestheaders_helpers import await_requestheaders_result
+
+
+def _resolved_firewall_auth() -> auth_client.FirewallAuthSuccess:
+    return auth_client.FirewallAuthSuccess(
+        payload=auth_client.FirewallAuthPayload(
+            headers={"Authorization": "Bearer resolved"},
+        )
+    )
 
 
 async def test_firewall_match_calls_handler(
@@ -44,6 +55,144 @@ async def test_firewall_match_calls_handler(
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "full-access"
+
+
+async def test_repeated_firewall_requests_reuse_snapshot_auth_identity(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        vm_fields={
+            "_firewallAuthIdentityCache": {
+                "entries": {"forged": {"authIdentity": "caller-controlled"}}
+            }
+        },
+    )
+    flows = [
+        real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos",
+        )
+        for _ in range(2)
+    ]
+    auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
+        patch.object(
+            auth,
+            "_build_firewall_auth_identity",
+            wraps=auth._build_firewall_auth_identity,
+        ) as build_identity,
+    ):
+        for flow in flows:
+            await mitm_addon.request(flow)
+
+    first_key = flows[0].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    second_key = flows[1].metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    assert first_key == second_key
+    assert first_key.auth_identity != "caller-controlled"
+    assert build_identity.call_count == 1
+    auth_fetch.assert_awaited_once()
+    assert flows[0].metadata[metadata_keys.AUTH_CACHE_HIT] is False
+    assert flows[1].metadata[metadata_keys.AUTH_CACHE_HIT] is True
+    assert flows[0].request.headers["Authorization"] == "Bearer resolved"
+    assert flows[1].request.headers["Authorization"] == "Bearer resolved"
+
+
+async def test_requestheaders_and_request_share_snapshot_auth_identity(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    streamed_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    normal_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos",
+    )
+    auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
+        patch.object(
+            auth,
+            "_build_firewall_auth_identity",
+            wraps=auth._build_firewall_auth_identity,
+        ) as build_identity,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(streamed_flow)
+        await await_requestheaders_result(requestheaders_result)
+        await mitm_addon.request(streamed_flow)
+        await mitm_addon.request(normal_flow)
+
+    streamed_key = streamed_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    normal_key = normal_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    assert streamed_key == normal_key
+    assert build_identity.call_count == 1
+    auth_fetch.assert_awaited_once()
+    assert streamed_flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
+    assert normal_flow.metadata[metadata_keys.AUTH_CACHE_HIT] is True
+    assert streamed_flow.request.headers["Authorization"] == "Bearer resolved"
+    assert normal_flow.request.headers["Authorization"] == "Bearer resolved"
+
+
+async def test_registry_reload_recomputes_firewall_auth_identity(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    first_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos",
+    )
+    second_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos",
+    )
+    auth_fetch = AsyncMock(return_value=_resolved_firewall_auth())
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth_cache, "fetch_firewall_headers", auth_fetch),
+        patch.object(
+            auth,
+            "_build_firewall_auth_identity",
+            wraps=auth._build_firewall_auth_identity,
+        ) as build_identity,
+    ):
+        await mitm_addon.request(first_flow)
+        _write_github_firewall_registry(
+            tmp_path,
+            vm_fields={"encryptedSecrets": "iv:tag:data-updated"},
+        )
+        await mitm_addon.request(second_flow)
+
+    first_key = first_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    second_key = second_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+    assert first_key.run_id == second_key.run_id == "run-conn-1"
+    assert first_key.api_id == second_key.api_id == "run-conn-1:0"
+    assert first_key.auth_identity != second_key.auth_identity
+    assert build_identity.call_count == 2
+    assert auth_fetch.await_count == 2
 
 
 @pytest.mark.parametrize("reverse", [False, True])
