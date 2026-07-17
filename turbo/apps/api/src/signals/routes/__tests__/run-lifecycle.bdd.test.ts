@@ -4880,6 +4880,162 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
   });
 });
 
+describe("RUN-02: persisted run environment resolution", () => {
+  it("preserves scope precedence and excludes unreferenced secrets", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected persisted environment actor organization");
+    }
+    const orgActor = bdd.user({
+      userId: "__org__",
+      orgId: actor.orgId,
+      orgRole: "org:admin",
+    });
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
+    const names = {
+      orgOnlyVariable: `BDD_ORG_ONLY_VARIABLE_${suffix}`,
+      userVariable: `BDD_USER_VARIABLE_${suffix}`,
+      requestVariable: `BDD_REQUEST_VARIABLE_${suffix}`,
+      orgOnlySecret: `BDD_ORG_ONLY_SECRET_${suffix}`,
+      userSecret: `BDD_USER_SECRET_${suffix}`,
+      requestSecret: `BDD_REQUEST_SECRET_${suffix}`,
+      unreferencedSecret: `BDD_UNREFERENCED_SECRET_${suffix}`,
+    };
+
+    await authOrg.setVariable(orgActor, {
+      name: names.orgOnlyVariable,
+      value: "org-only-variable-value",
+    });
+    await authOrg.setVariable(orgActor, {
+      name: names.userVariable,
+      value: "org-user-variable-value",
+    });
+    await authOrg.setVariable(actor, {
+      name: names.userVariable,
+      value: "user-variable-value",
+    });
+    await authOrg.setVariable(orgActor, {
+      name: names.requestVariable,
+      value: "org-request-variable-value",
+    });
+    await authOrg.setVariable(actor, {
+      name: names.requestVariable,
+      value: "user-request-variable-value",
+    });
+
+    await authOrg.setSecret(orgActor, {
+      name: names.orgOnlySecret,
+      value: "org-only-secret-value",
+    });
+    await authOrg.setSecret(orgActor, {
+      name: names.userSecret,
+      value: "org-user-secret-value",
+    });
+    await authOrg.setSecret(actor, {
+      name: names.userSecret,
+      value: "user-secret-value",
+    });
+    await authOrg.setSecret(orgActor, {
+      name: names.requestSecret,
+      value: "org-request-secret-value",
+    });
+    await authOrg.setSecret(actor, {
+      name: names.requestSecret,
+      value: "user-request-secret-value",
+    });
+    await authOrg.setSecret(actor, {
+      name: names.unreferencedSecret,
+      value: "unreferenced-secret-value",
+    });
+
+    const composeName = `bdd-persisted-environment-${suffix.toLowerCase()}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            ORG_ONLY_VARIABLE: `\${{ vars.${names.orgOnlyVariable} }}`,
+            USER_VARIABLE: `\${{ vars.${names.userVariable} }}`,
+            REQUEST_VARIABLE: `\${{ vars.${names.requestVariable} }}`,
+            ORG_ONLY_SECRET: `\${{ secrets.${names.orgOnlySecret} }}`,
+            USER_SECRET: `\${{ secrets.${names.userSecret} }}`,
+            REQUEST_SECRET: `\${{ secrets.${names.requestSecret} }}`,
+          },
+        },
+      },
+    });
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "resolve persisted environment",
+      vars: { [names.requestVariable]: "request-variable-value" },
+      secrets: { [names.requestSecret]: "request-secret-value" },
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment).toMatchObject({
+      ORG_ONLY_VARIABLE: "org-only-variable-value",
+      USER_VARIABLE: "user-variable-value",
+      REQUEST_VARIABLE: "request-variable-value",
+      ORG_ONLY_SECRET: "org-only-secret-value",
+      USER_SECRET: "user-secret-value",
+      REQUEST_SECRET: "request-secret-value",
+    });
+    expect(claim.secretValues).not.toContain("unreferenced-secret-value");
+    expect(claim.environment).not.toHaveProperty(names.unreferencedSecret);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+
+    const variableOnlyComposeName = `bdd-persisted-vars-${suffix.toLowerCase()}`;
+    const variableOnlyCompose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [variableOnlyComposeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            ORG_ONLY_VARIABLE: `\${{ vars.${names.orgOnlyVariable} }}`,
+            USER_VARIABLE: `\${{ vars.${names.userVariable} }}`,
+          },
+        },
+      },
+    });
+    const variableOnlyRun = await api.createDirectRun(actor, {
+      agentComposeId: variableOnlyCompose.composeId,
+      prompt: "resolve persisted variables without secret references",
+    });
+    const variableOnlyClaim = await api.claimRunnerJob(variableOnlyRun.runId);
+
+    expect(variableOnlyClaim.environment).toMatchObject({
+      ORG_ONLY_VARIABLE: "org-only-variable-value",
+      USER_VARIABLE: "user-variable-value",
+    });
+    expect(variableOnlyClaim.secretValues).toBeNull();
+    expect(variableOnlyClaim.environment).not.toHaveProperty(
+      names.unreferencedSecret,
+    );
+
+    await api.requestCancelRun(actor, variableOnlyRun.runId, [200]);
+    const variableOnlyCancelled = await api.readRun(
+      actor,
+      variableOnlyRun.runId,
+    );
+    expect(variableOnlyCancelled.status).toBe("cancelled");
+  });
+});
+
 describe("RUN-02: stored connector injection into claimed runs", () => {
   it("omits connected stored connectors when the Zero run allowlist is empty", async () => {
     const api = createRunsApi(context);
