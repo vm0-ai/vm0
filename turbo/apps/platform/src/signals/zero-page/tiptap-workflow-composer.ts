@@ -47,7 +47,10 @@ import {
 } from "./template-preview-runtime.ts";
 
 const EDITOR_CONTENT_CLASS =
-  "w-full max-h-[200px] overflow-y-auto whitespace-pre-wrap " +
+  // The editor grows with its content instead of scrolling inside a fixed
+  // 200px box: a nested scroll region felt cramped once queued references and
+  // typed text stacked up. Overflow is delegated to the surrounding page.
+  "w-full whitespace-pre-wrap " +
   "break-words px-4 pt-4 pb-0 text-[0.9375rem] leading-6 text-foreground " +
   "caret-foreground outline-none focus:outline-none [&_p]:m-0 " +
   "selection:bg-primary/20";
