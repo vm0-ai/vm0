@@ -248,7 +248,7 @@ mod tests {
         target_command.arg("60").process_group(0);
         let target = target_command.spawn().unwrap();
 
-        let unrelated = Command::new("setsid")
+        let mut unrelated = Command::new("setsid")
             .arg("sleep")
             .arg("60")
             .stdout(Stdio::null())
@@ -259,12 +259,19 @@ mod tests {
 
         kill_and_reap_child(target);
 
+        let unrelated_exit = wait_for_pidfd_exit(&unrelated_pidfd, Duration::from_millis(100));
+        let cleanup = kill_pidfd_and_wait(&unrelated_pidfd);
+        if cleanup.is_err() {
+            let _ = unrelated.kill();
+        }
+        let wait = unrelated.wait();
+
+        cleanup.unwrap();
+        wait.unwrap();
         assert!(
-            !wait_for_pidfd_exit(&unrelated_pidfd, Duration::from_millis(100)).unwrap(),
-            "direct child group cleanup must not signal an unrelated group"
+            matches!(unrelated_exit, Ok(false)),
+            "direct child group cleanup must not signal an unrelated group: {unrelated_exit:?}"
         );
-        kill_pidfd_and_wait(&unrelated_pidfd).unwrap();
-        let _ = unrelated.wait_with_output();
     }
 
     #[cfg(target_os = "linux")]
