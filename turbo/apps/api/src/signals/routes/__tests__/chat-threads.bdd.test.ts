@@ -2310,6 +2310,9 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     await chat.completeUploadWithBearer(bearer1, { id: sharedId }, [200]);
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(run1.runId, claim1.sandboxHeaders);
+    // Run 1's completion drains the thread queue via waitUntil side effects;
+    // flush them so the drain cannot claim run 2's queued message first.
+    await flushWaitUntilForTest();
 
     // Run 2 in the same thread re-completes the shared upload: the later
     // run owns the deduplicated URL.
