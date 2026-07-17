@@ -32,6 +32,7 @@ pub(super) enum Scenario {
     RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnStartedBeforeSteer,
     RuntimeTurnCompleteWithoutThreadStarted,
+    RuntimeEventFlood,
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
     ThreadStartInvalidThreadId,
@@ -82,6 +83,7 @@ impl Scenario {
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
+                "runtime-event-flood" => Ok(Self::RuntimeEventFlood),
                 "resume-different-thread-id" => Ok(Self::ResumeDifferentThreadId),
                 "resume-rpc-error-with-thread-id" => Ok(Self::ResumeRpcErrorWithThreadId),
                 "thread-start-invalid-thread-id" => Ok(Self::ThreadStartInvalidThreadId),

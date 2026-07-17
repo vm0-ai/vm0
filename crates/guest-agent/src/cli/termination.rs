@@ -69,6 +69,7 @@ pub(super) enum TerminationReason {
     StuckTool,
     HeartbeatError,
     HeartbeatPanic,
+    EventDelivery,
 }
 
 impl TerminationReason {
@@ -79,6 +80,7 @@ impl TerminationReason {
             TerminationReason::StuckTool => "stuck-tool watchdog",
             TerminationReason::HeartbeatError => "heartbeat error",
             TerminationReason::HeartbeatPanic => "heartbeat panic",
+            TerminationReason::EventDelivery => "event delivery",
         }
     }
 }
@@ -222,6 +224,7 @@ pub(super) enum ControlTerminationLog {
     HeartbeatFailed,
     HeartbeatTaskPanicked,
     HeartbeatStoppedBeforeStatus,
+    EventDeliveryFailed { error: String },
 }
 
 impl ControlTerminationLog {
@@ -255,6 +258,12 @@ impl ControlTerminationLog {
                 log_warn!(
                     LOG_TAG,
                     "Heartbeat task stopped before reporting status, SIGTERM pgid={pgid}"
+                );
+            }
+            Self::EventDeliveryFailed { error } => {
+                log_warn!(
+                    LOG_TAG,
+                    "Event delivery failed, SIGTERM pgid={pgid}: {error}"
                 );
             }
         }
@@ -560,6 +569,7 @@ fn diagnostic_termination_reason(reason: TerminationReason) -> DiagnosticTermina
         TerminationReason::StuckTool => DiagnosticTerminationReason::StuckToolWatchdog,
         TerminationReason::HeartbeatError => DiagnosticTerminationReason::HeartbeatError,
         TerminationReason::HeartbeatPanic => DiagnosticTerminationReason::HeartbeatPanic,
+        TerminationReason::EventDelivery => DiagnosticTerminationReason::EventDelivery,
     }
 }
 

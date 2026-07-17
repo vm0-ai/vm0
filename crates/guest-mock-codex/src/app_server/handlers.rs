@@ -1,9 +1,9 @@
 use super::messages::{
     initialize_response, large_server_notification, server_notification,
     server_notification_with_index, server_request, thread_response, thread_started_notification,
-    turn, turn_completed_notification, turn_started_notification, write_error, write_json_line,
-    write_split_json_line_prefix, write_success, write_turn_completion_notifications,
-    write_turn_notifications,
+    turn, turn_completed_notification, turn_started_notification, warning_notification,
+    write_error, write_json_line, write_split_json_line_prefix, write_success,
+    write_turn_completion_notifications, write_turn_notifications,
 };
 use super::persistence::{InputEventContext, persist_input_events};
 use super::scenario::Scenario;
@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
 const OVERSIZED_STDOUT_BYTES: usize = 65 * 1024 * 1024;
+const EVENT_DELIVERY_FLOOD_COUNT: usize = 260;
 
 impl AppServerState {
     pub(super) fn handle_initialize<W: Write>(
@@ -288,6 +289,15 @@ impl AppServerState {
             Scenario::RuntimeTurnComplete | Scenario::RuntimeTurnCompleteWithoutThreadStarted
         ) {
             write_turn_notifications(output, &thread_id, &turn_id)?;
+        }
+        if self.scenario == Scenario::RuntimeEventFlood {
+            write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
+            for index in 0..EVENT_DELIVERY_FLOOD_COUNT {
+                write_json_line(output, &warning_notification(&thread_id, index))?;
+                output.flush()?;
+                thread::sleep(std::time::Duration::from_millis(1));
+            }
+            write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
         }
         Ok(ServerAction::Continue)
     }

@@ -1,0 +1,64 @@
+//! Ordinary CLI event delivery must fail without blocking stdout when the
+//! bounded delivery queue fills behind a stalled event endpoint.
+
+mod common;
+
+use guest_agent::masker::SecretMasker;
+use httpmock::prelude::*;
+use serde_json::json;
+use std::time::Duration;
+
+#[tokio::test]
+async fn ordinary_cli_event_delivery_count_overload_terminates_promptly()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mock_cli = common::build_and_locate_mock()?;
+    let tmp = tempfile::tempdir()?;
+    let server = MockServer::start();
+    let mut prompt_lines = vec!["@ECHO@".to_string()];
+    prompt_lines
+        .extend((0..260).map(|index| json!({ "type": "assistant", "index": index }).to_string()));
+    let prompt = prompt_lines.join("\n");
+
+    unsafe {
+        common::setup_env(&mock_cli, tmp.path(), &prompt, 1, 1)?;
+        std::env::set_var("VM0_API_BACKEND_URL", server.base_url());
+        std::env::set_var("VM0_API_TOKEN", "test-token");
+    }
+    let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
+
+    let stalled_events = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(200).delay(Duration::from_secs(30));
+    });
+
+    let masker = SecretMasker::from_raw("");
+    let execution = tokio::time::timeout(
+        Duration::from_secs(5),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+    )
+    .await
+    .expect("delivery overload should not wait for the stalled event request");
+
+    let (error, last_event_sequence) = match execution {
+        Ok(result) => (
+            result
+                .control_error
+                .expect("a live CLI should expose delivery overload as a control error")
+                .to_string(),
+            result.last_event_sequence,
+        ),
+        Err(error) => (error.to_string(), None),
+    };
+    assert!(
+        error.contains("event delivery queue exceeded 128 pending events"),
+        "unexpected overload error: {error}"
+    );
+    assert_eq!(last_event_sequence, None);
+    assert!(
+        stalled_events.calls() <= 1,
+        "the serial sender should have at most one stalled request in flight"
+    );
+
+    Ok(())
+}
