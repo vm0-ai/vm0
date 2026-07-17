@@ -319,7 +319,7 @@ def test_snapshot_has_version_and_expected_stable_entries():
     assert {"ai", "com", "dev", "museum", "xn--q9jyb4c"} <= IANA_TLDS
 
 
-def test_read_existing_snapshot_ignores_stale_timestamp_bytecode(tmp_path, monkeypatch):
+def test_check_cli_ignores_stale_timestamp_bytecode(tmp_path, monkeypatch, capsys):
     output = tmp_path / "x_tlds.py"
     initial = update_x_tlds.render_module("111", ("aaa",))
     updated = update_x_tlds.render_module("222", ("bbb",))
@@ -340,8 +340,13 @@ def test_read_existing_snapshot_ignores_stale_timestamp_bytecode(tmp_path, monke
     output.write_text(updated, encoding="utf-8")
     os.utime(output, ns=(timestamp_ns, timestamp_ns))
     monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT), "--check"])
 
-    assert update_x_tlds.read_existing_snapshot() == ("222", ("bbb",))
+    assert update_x_tlds.main() == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == f"{output} is canonical for IANA TLD version 222\n"
+    assert captured.err == ""
 
 
 def test_compare_snapshot_to_source_accepts_version_only_drift():
