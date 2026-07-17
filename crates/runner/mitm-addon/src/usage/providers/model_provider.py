@@ -22,7 +22,6 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
-import model_usage_pricing
 from logging_utils import log_proxy_entry
 
 from ..buffer import (
@@ -37,6 +36,7 @@ from ..idempotency import (
     USAGE_OBSERVATION_NAMESPACE_MODEL,
     derive_usage_idempotency_key,
 )
+from ..model_pricing import ModelUsagePricing, from_flow_metadata
 from ..model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
@@ -374,7 +374,7 @@ def _build_model_provider_usage_events(
     run_id: str,
     namespace: uuid.UUID,
     *,
-    billing_pricing: model_usage_pricing.ModelUsagePricing | None,
+    billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for source_id, usage in _iter_model_provider_usage_sources(flow):
@@ -415,7 +415,7 @@ def _build_usage_events(
     usage: dict,
     namespace: uuid.UUID,
     *,
-    billing_pricing: model_usage_pricing.ModelUsagePricing | None,
+    billing_pricing: ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
@@ -441,8 +441,8 @@ def _build_usage_events(
 
 def _model_usage_pricing(
     flow: http.HTTPFlow,
-) -> model_usage_pricing.ModelUsagePricing | None:
-    return model_usage_pricing.from_flow_metadata(flow.metadata)
+) -> ModelUsagePricing | None:
+    return from_flow_metadata(flow.metadata)
 
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:
