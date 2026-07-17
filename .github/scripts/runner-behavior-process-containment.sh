@@ -116,12 +116,18 @@ test -f "$marker/vm-reuse-marker"
 
 for identity in "$marker/user.identity" "$marker/root.identity"; do
   read -r pid start_time < "$identity"
-  if [ -r "/proc/$pid/stat" ]; then
-    current_start=$(awk '{print $22}' "/proc/$pid/stat")
-    [ "$current_start" != "$start_time" ] || {
-      echo "recorded descendant is still alive: $identity pid=$pid" >&2
-      exit 1
-    }
+  if current_identity=$(awk '{sub(/^.*\) /, ""); print $1, $20}' "/proc/$pid/stat" 2>/dev/null); then
+    current_state=${current_identity%% *}
+    current_start=${current_identity#* }
+    case "$current_state" in
+      Z|X|x) ;;
+      *)
+        [ "$current_start" != "$start_time" ] || {
+          echo "recorded descendant is still running: $identity pid=$pid" >&2
+          exit 1
+        }
+        ;;
+    esac
   fi
 done
 

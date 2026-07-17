@@ -452,12 +452,18 @@ set -eu
 identity=/tmp/vm0-one-shot-containment.identity
 group_file=/tmp/vm0-one-shot-containment.group
 read -r pid start_time < "$identity"
-if [ -r "/proc/$pid/stat" ]; then
-  current_start=$(awk '{print $22}' "/proc/$pid/stat")
-  [ "$current_start" != "$start_time" ] || {
-    echo "one-shot descendant is still alive: pid=$pid" >&2
-    exit 1
-  }
+if current_identity=$(awk '{sub(/^.*\) /, ""); print $1, $20}' "/proc/$pid/stat" 2>/dev/null); then
+  current_state=${current_identity%% *}
+  current_start=${current_identity#* }
+  case "$current_state" in
+    Z|X|x) ;;
+    *)
+      [ "$current_start" != "$start_time" ] || {
+        echo "one-shot descendant is still running: pid=$pid" >&2
+        exit 1
+      }
+      ;;
+  esac
 fi
 base=/sys/fs/cgroup/vm0-exec
 relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
