@@ -161,6 +161,12 @@ def load(loader: Loader) -> None:
         help="Runner-generated usage-pending state id",
     )
     loader.add_option(
+        name="vm0_addon_ready_path",
+        typespec=str,
+        default="",
+        help="Path for the runner's addon initialization marker",
+    )
+    loader.add_option(
         name="vm0_client_session_id",
         typespec=str,
         default="",
@@ -196,6 +202,11 @@ def configure(updated: set[str]) -> None:
             str(Path(__file__).resolve().parent / "usage-pending"),
             usage_state_id=ctx.options.vm0_usage_state_id or None,
         )
+    if {"vm0_addon_ready_path", "vm0_usage_state_id"} & updated:
+        ready_path = ctx.options.vm0_addon_ready_path
+        usage_state_id = ctx.options.vm0_usage_state_id
+        if ready_path and usage_state_id:
+            Path(ready_path).write_text(usage_state_id, encoding="utf-8")
 
 
 def get_api_url() -> str:

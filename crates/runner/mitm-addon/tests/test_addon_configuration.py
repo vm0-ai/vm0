@@ -60,11 +60,13 @@ class _Options:
         self,
         *,
         usage_state_id: str = "runner-usage-state-id",
+        addon_ready_path: str = "",
         flush_interval_seconds: float = usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
         client_session_id: str = "runner-session-test",
         client_version: str = "runner-version-test",
     ) -> None:
         self.vm0_usage_state_id = usage_state_id
+        self.vm0_addon_ready_path = addon_ready_path
         self.vm0_usage_flush_interval_seconds = flush_interval_seconds
         self.vm0_client_session_id = client_session_id
         self.vm0_client_version = client_version
@@ -112,6 +114,7 @@ class TestAddonConfiguration:
 
         option_names = [option.name for option in master.options.added]
         assert "vm0_usage_state_id" in option_names
+        assert "vm0_addon_ready_path" in option_names
         assert "vm0_client_session_id" in option_names
         assert "vm0_client_version" in option_names
         assert "vm0_usage_flush_interval_seconds" in option_names
@@ -141,6 +144,19 @@ class TestAddonConfiguration:
 
         state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] == "runner-usage-state-id"
+
+    def test_configure_writes_addon_ready_marker_with_usage_state_id(self, tmp_path):
+        ready_path = tmp_path / "addon-ready"
+
+        with patch.object(
+            mitm_addon.ctx,
+            "options",
+            _Options(addon_ready_path=str(ready_path)),
+            create=True,
+        ):
+            mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+
+        assert ready_path.read_text(encoding="utf-8") == "runner-usage-state-id"
 
     def test_configure_writes_fallback_pending_state_id_when_usage_state_id_is_empty(
         self, tmp_path

@@ -126,6 +126,7 @@ async def test_http2_open_auth_base_get_without_length_is_rejected_before_body(
     get_headers = AsyncMock()
 
     with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
         taddons.context(Proxyserver(), mitm_addon) as addon_context,
         patch.object(auth, "get_firewall_headers", get_headers),
     ):
@@ -183,6 +184,7 @@ async def test_headers_only_auth_base_get_without_length_is_forwarded(
     }
 
     with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
         taddons.context(Proxyserver(), mitm_addon) as addon_context,
         patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
         fake_forwarder_upstream(status=200, body=b"ok"),
