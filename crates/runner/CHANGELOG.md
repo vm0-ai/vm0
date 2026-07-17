@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.1...runner-rs-v0.146.2) (2026-07-17)
+
+
+### Refactoring
+
+* **runner:** add generic workspace affinity resource classes ([#21888](https://github.com/vm0-ai/vm0/issues/21888)) ([92bf6af](https://github.com/vm0-ai/vm0/commit/92bf6af909f9aa3666a256edbfdad016b94947a6))
+
 ## [0.146.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.0...runner-rs-v0.146.1) (2026-07-16)
 
 
