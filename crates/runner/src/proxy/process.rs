@@ -1059,6 +1059,7 @@ PY
         let port = find_available_port().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let addon_ready_path = dir.path().join(ADDON_READY_FILENAME);
+        std::fs::write(&addon_ready_path, "usage-state-test").unwrap();
 
         let result = wait_for_ready(
             &mut child,
@@ -1111,6 +1112,34 @@ PY
         )
         .await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn wait_for_ready_rejects_missing_marker_when_port_is_open() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let dir = tempfile::tempdir().unwrap();
+        let mut child = tokio::process::Command::new("sleep")
+            .arg("60")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let error = wait_for_ready(
+            &mut child,
+            port,
+            &dir.path().join(ADDON_READY_FILENAME),
+            "current-usage-state",
+            Duration::from_millis(500),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("did not initialize its addon"));
+        let _ = child.kill().await;
     }
 
     #[tokio::test]
