@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.53.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.8...guest-agent-v0.53.9) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock:** replace descendant process-group cleanup with exec cgroups ([#22013](https://github.com/vm0-ai/vm0/issues/22013)) ([302bf21](https://github.com/vm0-ai/vm0/commit/302bf216fac511a8fd6bf9c0c778cf8643f2374b))
+
+
+### Performance Improvements
+
+* **guest-agent:** bound cli event delivery buffering ([#22015](https://github.com/vm0-ai/vm0/issues/22015)) ([0bde876](https://github.com/vm0-ai/vm0/commit/0bde876b83ef7781a24deb495f68ebec5e78e1cf))
+
 ## [0.53.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.7...guest-agent-v0.53.8) (2026-07-17)
 
 ## [0.53.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.6...guest-agent-v0.53.7) (2026-07-17)

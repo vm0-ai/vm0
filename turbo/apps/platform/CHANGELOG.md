@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.606.1](https://github.com/vm0-ai/vm0/compare/app-v0.606.0...app-v0.606.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* **platform:** wait for IME composition before submit ([#22024](https://github.com/vm0-ai/vm0/issues/22024)) ([10c4a2b](https://github.com/vm0-ai/vm0/commit/10c4a2b02c9560edaaf53cc244bd117e4992ac07))
+
+
+### Refactoring
+
+* **chat:** split card signal registries by resource type ([#22022](https://github.com/vm0-ai/vm0/issues/22022)) ([830086a](https://github.com/vm0-ai/vm0/commit/830086ada32bbb8e62f6c403420bd6c24002906b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.4
+    * @vm0/core bumped to 8.440.1
+
 ## [0.606.0](https://github.com/vm0-ai/vm0/compare/app-v0.605.2...app-v0.606.0) (2026-07-17)
 
 

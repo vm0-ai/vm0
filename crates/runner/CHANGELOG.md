@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.146.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.8...runner-rs-v0.146.9) (2026-07-17)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve explicit port zero in network logs ([#22010](https://github.com/vm0-ai/vm0/issues/22010)) ([4940def](https://github.com/vm0-ai/vm0/commit/4940def63f892e8b10f500a9db979ce669f06304))
+* **runner:** reject unbounded auth.base h2 request bodies ([#22019](https://github.com/vm0-ai/vm0/issues/22019)) ([19fff6d](https://github.com/vm0-ai/vm0/commit/19fff6de49fa4ea2cbdc48d728a38e9e51a167a1))
+
+
+### Documentation
+
+* **python:** document tcp message byte accounting ([#22007](https://github.com/vm0-ai/vm0/issues/22007)) ([67dd6b8](https://github.com/vm0-ai/vm0/commit/67dd6b8ccfa9990e2ecea919b59ff1f13922246e))
+
+
+### Refactoring
+
+* **mitm-addon:** centralize model usage pricing contract ([#22016](https://github.com/vm0-ai/vm0/issues/22016)) ([427e17d](https://github.com/vm0-ai/vm0/commit/427e17d15fb6e7b83e72692072ec0b2c1521f4eb))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid jsonl backlog copies ([#22017](https://github.com/vm0-ai/vm0/issues/22017)) ([edd27ed](https://github.com/vm0-ai/vm0/commit/edd27ed7e0afaf4ac9e13afa1b7a9a8c731f14de))
+
 ## [0.146.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.7...runner-rs-v0.146.8) (2026-07-17)
 
 
