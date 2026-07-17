@@ -819,6 +819,10 @@ const updateAgentUserConnectorsInner$ = command(
     const uniqueTypes = Array.from(new Set(body.data.enabledTypes));
     const operation = body.data.operation ?? "replace";
     if (operation !== "remove") {
+      // Agent connector selection is persisted execution configuration, not a
+      // discovery surface. Validate that each connector can execute, but do
+      // not consult feature switches or authored visibility: rollout changes
+      // must not invalidate direct API updates or an existing agent config.
       const resolver = await get(connectorActionResolver());
       signal.throwIfAborted();
       const resolved = await resolver.resolveRefs({
