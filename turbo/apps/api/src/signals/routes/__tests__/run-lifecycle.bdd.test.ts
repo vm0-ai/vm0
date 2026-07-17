@@ -7377,6 +7377,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("# Agent Tools");
     for (const toolHint of [
       "zero web download-file -h",
+      "Prefer the workspace directory (`/home/user/workspace`) for file operations and project work",
       "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime",
       "`agent-browser` provides rendered-page inspection and interaction",
       "Local dev servers are useful for agent-side verification",
