@@ -108,7 +108,9 @@ async function getSlackState(
   },
 ): Promise<TestSlackStateResponse> {
   const params = new URLSearchParams();
-  if (query.teamId) {
+  if (query.teamId === "") {
+    params.set("empty_team_id", "1");
+  } else if (query.teamId) {
     params.set("team_id", query.teamId);
   }
   if (query.orgId) {

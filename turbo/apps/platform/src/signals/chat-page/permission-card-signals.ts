@@ -9,6 +9,10 @@ import {
   permissionActionResourceKey,
   type PermissionActionDescriptor,
 } from "./permission-action-block.ts";
+import {
+  getOrCreateCardSignals,
+  registeredCardSignals,
+} from "./card-signal-map.ts";
 
 /**
  * Reactive resources backing one rendered permission action card. Created once
@@ -24,6 +28,11 @@ export interface PermissionSignals extends PermissionActionDescriptor {
   >;
 }
 
+export interface PermissionCardSignalsRegistry {
+  register(descriptor: PermissionActionDescriptor): PermissionSignals;
+  resolve(resourceKey: string): PermissionSignals;
+}
+
 export function createPermissionSignals(
   descriptor: PermissionActionDescriptor,
 ): PermissionSignals {
@@ -35,5 +44,23 @@ export function createPermissionSignals(
     metadata$: firewallPermissionMetadataByConnector({
       connectorRef: descriptor.connectorRef,
     }),
+  };
+}
+
+export function createPermissionCardSignalsRegistry(): PermissionCardSignalsRegistry {
+  const signalsByResourceKey = new Map<string, PermissionSignals>();
+  return {
+    register(descriptor) {
+      return getOrCreateCardSignals(
+        signalsByResourceKey,
+        permissionActionResourceKey(descriptor),
+        () => {
+          return createPermissionSignals(descriptor);
+        },
+      );
+    },
+    resolve(resourceKey) {
+      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    },
   };
 }

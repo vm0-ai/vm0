@@ -1,4 +1,8 @@
 import { computed, type Computed } from "ccstate";
+import {
+  getOrCreateCardSignals,
+  registeredCardSignals,
+} from "./card-signal-map.ts";
 
 export type ArtifactKind =
   | "image"
@@ -20,6 +24,11 @@ export interface ArtifactDescriptor {
 
 export interface ArtifactSignals extends ArtifactDescriptor {
   readonly text$?: Computed<Promise<string>>;
+}
+
+export interface ArtifactCardSignalsRegistry {
+  register(descriptor: ArtifactDescriptor): ArtifactSignals;
+  resolve(resourceKey: string): ArtifactSignals;
 }
 
 const TEXT_PREVIEW_MAX_BYTES = 65_536;
@@ -93,5 +102,23 @@ export function createArtifactSignals(
     text$: computed(() => {
       return fetchPreviewText(descriptor.url);
     }),
+  };
+}
+
+export function createArtifactCardSignalsRegistry(): ArtifactCardSignalsRegistry {
+  const signalsByResourceKey = new Map<string, ArtifactSignals>();
+  return {
+    register(descriptor) {
+      return getOrCreateCardSignals(
+        signalsByResourceKey,
+        descriptor.url,
+        () => {
+          return createArtifactSignals(descriptor);
+        },
+      );
+    },
+    resolve(resourceKey) {
+      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    },
   };
 }
