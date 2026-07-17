@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import http.client
 import io
+import os
+import py_compile
 import subprocess
 import sys
 import urllib.error
@@ -315,6 +317,36 @@ def test_update_cli_reports_missing_source_file_without_replacing_output(
 def test_snapshot_has_version_and_expected_stable_entries():
     assert IANA_TLD_VERSION
     assert {"ai", "com", "dev", "museum", "xn--q9jyb4c"} <= IANA_TLDS
+
+
+def test_check_cli_ignores_stale_timestamp_bytecode(tmp_path, monkeypatch, capsys):
+    output = tmp_path / "x_tlds.py"
+    initial = update_x_tlds.render_module("111", ("aaa",))
+    updated = update_x_tlds.render_module("222", ("bbb",))
+    timestamp_ns = 1_700_000_000_000_000_000
+
+    assert len(initial.encode()) == len(updated.encode())
+
+    output.write_text(initial, encoding="utf-8")
+    os.utime(output, ns=(timestamp_ns, timestamp_ns))
+    bytecode = py_compile.compile(
+        str(output),
+        doraise=True,
+        invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
+    )
+    assert bytecode is not None
+    assert Path(bytecode).is_file()
+
+    output.write_text(updated, encoding="utf-8")
+    os.utime(output, ns=(timestamp_ns, timestamp_ns))
+    monkeypatch.setattr(update_x_tlds, "OUTPUT_PATH", output)
+    monkeypatch.setattr(sys, "argv", [str(_UPDATE_SCRIPT), "--check"])
+
+    assert update_x_tlds.main() == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == f"{output} is canonical for IANA TLD version 222\n"
+    assert captured.err == ""
 
 
 def test_compare_snapshot_to_source_accepts_version_only_drift():
