@@ -15,7 +15,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, {})).toBe(
       true,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -35,6 +34,7 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
       false,
@@ -180,7 +180,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactPreviewImage]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
