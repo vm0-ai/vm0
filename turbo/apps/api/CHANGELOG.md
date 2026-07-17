@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.283.1](https://github.com/vm0-ai/vm0/compare/api-v1.283.0...api-v1.283.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* fall back to attached card for auto-recharge ([#21986](https://github.com/vm0-ai/vm0/issues/21986)) ([ef3ee72](https://github.com/vm0-ai/vm0/commit/ef3ee723948a9e9a91add672b7a0468ce32dc116))
+
 ## [1.283.0](https://github.com/vm0-ai/vm0/compare/api-v1.282.4...api-v1.283.0) (2026-07-17)
 
 
