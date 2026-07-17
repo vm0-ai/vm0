@@ -357,7 +357,7 @@ install_packages() {
     php php-cli php-common php-curl php-mbstring php-xml php-zip \
     default-jdk maven gradle \
     gcc g++ clang make cmake \
-    postgresql-18 postgresql-contrib-18 \
+    postgresql-18 postgresql-contrib-18 postgresql-18-pgvector \
     redis-server \
     gh
 

@@ -533,11 +533,12 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c '
   "$pg_bin/pg_ctl" -D /tmp/pgdata -l /tmp/pgdata/log -o "-c listen_addresses=localhost" -w -t 30 start
   pg_isready -h localhost
   [ "$(psql -h localhost -d postgres -Atc "select 1")" = "1" ]
+  psql -h localhost -d postgres -v ON_ERROR_STOP=1 -c "CREATE EXTENSION vector"
   "$pg_bin/pg_ctl" -D /tmp/pgdata stop
   pg_started=0
 ' \
-  || { sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL start"; }
-echo "  PostgreSQL start/stop: ok"
+  || { sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/pgdata/log 2>&1 || true; fail "PostgreSQL/pgvector smoke test"; }
+echo "  PostgreSQL/pgvector smoke test: ok"
 echo "PASS: runtime availability"
 
 # Test 7: verify /etc/environment is loaded for both user and root

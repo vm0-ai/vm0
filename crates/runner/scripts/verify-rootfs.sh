@@ -337,6 +337,7 @@ fi
 check_bin "/usr/lib/postgresql/*/bin/postgres" "PostgreSQL server"
 check_bin "/usr/lib/postgresql/*/bin/initdb"   "PostgreSQL initdb"
 check_bin "/usr/lib/postgresql/*/bin/pg_ctl"   "PostgreSQL pg_ctl"
+check_bin "/usr/share/postgresql/*/extension/vector.control" "pgvector extension"
 
 if [[ -f "${MOUNT_DIR}/usr/bin/redis-server" ]]; then
   echo "  redis-server: found"
