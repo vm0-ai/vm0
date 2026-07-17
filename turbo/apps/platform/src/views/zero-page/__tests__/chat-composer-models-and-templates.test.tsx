@@ -789,6 +789,18 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+async function expectTemplateAttachedToComposer(
+  removeAriaLabel: string,
+): Promise<void> {
+  const editor = await findComposerEditor();
+  const removeButton = screen.getByLabelText(removeAriaLabel);
+  const attachment = removeButton.closest(
+    "[data-composer-template-attachment]",
+  );
+  expect(attachment).toBeInTheDocument();
+  expect(editor).toContainElement(attachment as HTMLElement);
+}
+
 function placeCaretAfterText(root: HTMLElement, text: string): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -3650,6 +3662,7 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${template.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(`Remove template ${template.title}`);
 
     click(screen.getByLabelText(`Remove template ${template.title}`));
 
@@ -3658,6 +3671,55 @@ describe("chat composer templates", () => {
         "aria-pressed",
         "false",
       );
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps a selected template attached when replacing all prompt text", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    let submittedPrompt: string | undefined;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedPrompt = body.prompt;
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await selectTemplate(user, template);
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Initial prompt");
+    await fill(editor, "Replacement prompt");
+
+    await waitFor(() => {
+      expect(
+        editor.querySelectorAll("[data-composer-template-attachment]"),
+      ).toHaveLength(1);
+      expect(editor).toHaveTextContent("Replacement prompt");
+      expect(editor).not.toHaveTextContent("Initial prompt");
+    });
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedPrompt).toBe("Replacement prompt");
+      expect(submittedTemplate).toMatchObject({
+        type: "presentation",
+        selection: { templateId: template.templateId },
+      });
+      expect(
+        editor.querySelectorAll("[data-composer-template-attachment]"),
+      ).toHaveLength(0);
       expect(
         screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
@@ -4777,6 +4839,9 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove template ${illustrationTemplate.title}`,
+    );
 
     click(
       screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
@@ -5321,6 +5386,9 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove video template ${videoStyle.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove video template ${videoStyle.title}`,
+    );
 
     click(screen.getByLabelText(`Remove video template ${videoStyle.title}`));
 
@@ -5396,6 +5464,9 @@ describe("chat composer templates", () => {
         ),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove workflow template ${workflowTemplate.title}`,
+    );
 
     const editor = await findComposerEditor();
     await sendMessageInUI(user, editor, "Create this inbox workflow");
@@ -5482,6 +5553,9 @@ describe("chat composer templates", () => {
         ),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove website template ${websiteTemplate.title}`,
+    );
 
     click(
       screen.getByLabelText(
