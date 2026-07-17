@@ -641,6 +641,8 @@ interface PersistedRunEnvironmentSnapshot {
   readonly variables: readonly PersistedRunEnvironmentVariable[];
 }
 
+type PersistedRunEnvironmentRowKind = "variable" | "secret";
+
 interface CustomConnectorRuntimeContext {
   readonly firewalls: readonly ExpandedFirewallConfig[];
   readonly reservedSecretAliases: Record<string, true> | undefined;
@@ -2035,41 +2037,39 @@ async function loadPersistedRunEnvironmentSnapshot(
     readonly content: AgentComposeContent;
   },
 ): Promise<PersistedRunEnvironmentSnapshot> {
-  return await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
-    );
-    const variableRows = await tx
-      .select({
-        name: variables.name,
-        value: variables.value,
-        userId: variables.userId,
+  const environment = firstAgent(args.content)?.environment;
+  const referencedSecretNames = environment
+    ? extractAndGroupVariables(environment).secrets.map((ref) => {
+        return ref.name;
       })
-      .from(variables)
-      .where(
-        and(
-          eq(variables.orgId, args.orgId),
-          eq(variables.type, "user"),
-          or(
-            eq(variables.userId, ORG_SENTINEL_USER_ID),
-            eq(variables.userId, args.userId),
-          ),
+    : [];
+  const secretNamesToLoad = [...new Set(referencedSecretNames)];
+  const variableQuery = db
+    .select({
+      kind: sql<PersistedRunEnvironmentRowKind>`'variable'`.as("kind"),
+      name: variables.name,
+      value: variables.value,
+      userId: variables.userId,
+    })
+    .from(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.type, "user"),
+        or(
+          eq(variables.userId, ORG_SENTINEL_USER_ID),
+          eq(variables.userId, args.userId),
         ),
-      );
-
-    const environment = firstAgent(args.content)?.environment;
-    const referencedSecretNames = environment
-      ? extractAndGroupVariables(environment).secrets.map((ref) => {
-          return ref.name;
-        })
-      : [];
-    const secretNamesToLoad = [...new Set(referencedSecretNames)];
-    const secretRows =
-      secretNamesToLoad.length > 0
-        ? await tx
+      ),
+    );
+  const rows =
+    secretNamesToLoad.length > 0
+      ? await variableQuery.unionAll(
+          db
             .select({
+              kind: sql<PersistedRunEnvironmentRowKind>`'secret'`.as("kind"),
               name: secretsTable.name,
-              encryptedValue: secretsTable.encryptedValue,
+              value: secretsTable.encryptedValue,
               userId: secretsTable.userId,
             })
             .from(secretsTable)
@@ -2083,11 +2083,29 @@ async function loadPersistedRunEnvironmentSnapshot(
                 ),
                 inArray(secretsTable.name, secretNamesToLoad),
               ),
-            )
-        : [];
+            ),
+        )
+      : await variableQuery;
 
-    return { variables: variableRows, secrets: secretRows };
-  });
+  const variableRows: PersistedRunEnvironmentVariable[] = [];
+  const secretRows: PersistedRunEnvironmentSecret[] = [];
+  for (const row of rows) {
+    if (row.kind === "variable") {
+      variableRows.push({
+        name: row.name,
+        value: row.value,
+        userId: row.userId,
+      });
+    } else {
+      secretRows.push({
+        name: row.name,
+        encryptedValue: row.value,
+        userId: row.userId,
+      });
+    }
+  }
+
+  return { variables: variableRows, secrets: secretRows };
 }
 
 function buildMergedVariables(args: {
