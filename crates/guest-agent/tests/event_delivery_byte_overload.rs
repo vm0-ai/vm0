@@ -9,6 +9,7 @@ use serde_json::json;
 use std::time::Duration;
 
 const EVENT_BYTES: usize = 2 * 1024 * 1024;
+const EVENT_COUNT: usize = 8;
 
 #[tokio::test]
 async fn ordinary_cli_event_delivery_byte_overload_terminates_promptly()
@@ -17,7 +18,10 @@ async fn ordinary_cli_event_delivery_byte_overload_terminates_promptly()
     let tmp = tempfile::tempdir()?;
     let server = MockServer::start();
     let mut prompt_lines = vec!["@ECHO@".to_string()];
-    prompt_lines.extend((0..10).map(|index| {
+    // One in-flight payload plus seven queued payloads crosses the byte budget;
+    // seven queued payloads alone do not. This distinguishes queued-plus-in-flight
+    // accounting from a queue-only implementation.
+    prompt_lines.extend((0..EVENT_COUNT).map(|index| {
         json!({
             "type": "assistant",
             "index": index,
@@ -65,9 +69,10 @@ async fn ordinary_cli_event_delivery_byte_overload_terminates_promptly()
             .reason,
         guest_contracts::diagnostics::CliTerminationReason::EventDelivery
     );
-    assert!(
-        events.calls() <= 1,
-        "the serial sender should have at most one stalled request in flight"
+    assert_eq!(
+        events.calls(),
+        1,
+        "the byte limit must include the one stalled request in flight"
     );
 
     Ok(())
