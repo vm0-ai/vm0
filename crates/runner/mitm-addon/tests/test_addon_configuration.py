@@ -148,11 +148,14 @@ class TestAddonConfiguration:
     def test_configure_writes_addon_ready_marker_with_usage_state_id(self, tmp_path):
         ready_path = tmp_path / "addon-ready"
 
-        with patch.object(
-            mitm_addon.ctx,
-            "options",
-            _Options(addon_ready_path=str(ready_path)),
-            create=True,
+        with (
+            patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
+            patch.object(
+                mitm_addon.ctx,
+                "options",
+                _Options(addon_ready_path=str(ready_path)),
+                create=True,
+            ),
         ):
             mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
 
