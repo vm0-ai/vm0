@@ -76,9 +76,7 @@ impl ExecProcessContainment {
         // Host-side debug integration tests have no guest cgroup hierarchy.
         // A real guest, including a debug build, gets the hierarchy from
         // guest-init before vsock-guest starts and therefore uses cgroups.
-        if cfg!(feature = "test-support")
-            || (cfg!(debug_assertions) && !Path::new(EXEC_CGROUP_BASE_PATH).is_dir())
-        {
+        if use_test_noop_backend() {
             return Ok(Self {
                 backend: ContainmentBackend::TestNoop,
             });
@@ -113,6 +111,47 @@ impl ExecProcessContainment {
                 .map_err(|error| ProcessContainmentError::new("remove test cgroup", error)),
         }
     }
+}
+
+pub(crate) fn verify_exec_process_containment_empty() -> Result<(), ProcessContainmentError> {
+    if use_test_noop_backend() {
+        return Ok(());
+    }
+    verify_exec_process_containment_empty_in(Path::new(EXEC_CGROUP_BASE_PATH))
+}
+
+fn use_test_noop_backend() -> bool {
+    cfg!(feature = "test-support")
+        || (cfg!(debug_assertions) && !Path::new(EXEC_CGROUP_BASE_PATH).is_dir())
+}
+
+fn verify_exec_process_containment_empty_in(
+    base_path: &Path,
+) -> Result<(), ProcessContainmentError> {
+    for entry in fs::read_dir(base_path)
+        .map_err(|error| ProcessContainmentError::new("read exec cgroup base", error))?
+    {
+        let entry =
+            entry.map_err(|error| ProcessContainmentError::new("read exec cgroup entry", error))?;
+        if entry
+            .file_type()
+            .map_err(|error| ProcessContainmentError::new("inspect exec cgroup entry", error))?
+            .is_dir()
+        {
+            return Err(ProcessContainmentError::new(
+                "verify exec cgroup empty",
+                io::Error::other("exec operation cgroup remains after quiesce"),
+            ));
+        }
+    }
+
+    if read_populated(base_path)? {
+        return Err(ProcessContainmentError::new(
+            "verify exec cgroup empty",
+            io::Error::other("exec cgroup remains populated after quiesce"),
+        ));
+    }
+    Ok(())
 }
 
 impl CgroupGuard {
@@ -512,6 +551,37 @@ mod tests {
         assert_eq!(parse_populated("populated 1\nfrozen 0\n"), Some(true));
         assert_eq!(parse_populated("frozen 0\n"), None);
         assert_eq!(parse_populated("populated 2\n"), None);
+    }
+
+    #[test]
+    fn quiesce_accepts_empty_exec_cgroup_base() {
+        let base = tempfile::tempdir().unwrap();
+        fs::write(base.path().join(CGROUP_EVENTS_FILE), b"populated 0\n").unwrap();
+
+        verify_exec_process_containment_empty_in(base.path()).unwrap();
+    }
+
+    #[test]
+    fn quiesce_rejects_stale_exec_cgroup_leaf() {
+        let base = tempfile::tempdir().unwrap();
+        fs::write(base.path().join(CGROUP_EVENTS_FILE), b"populated 0\n").unwrap();
+        fs::create_dir(base.path().join("exec-stale")).unwrap();
+
+        let error = verify_exec_process_containment_empty_in(base.path())
+            .expect_err("stale operation leaf must reject quiesce");
+
+        assert_eq!(error.stage, "verify exec cgroup empty");
+    }
+
+    #[test]
+    fn quiesce_rejects_populated_exec_cgroup_base() {
+        let base = tempfile::tempdir().unwrap();
+        fs::write(base.path().join(CGROUP_EVENTS_FILE), b"populated 1\n").unwrap();
+
+        let error = verify_exec_process_containment_empty_in(base.path())
+            .expect_err("populated containment must reject quiesce");
+
+        assert_eq!(error.stage, "verify exec cgroup empty");
     }
 
     #[test]
