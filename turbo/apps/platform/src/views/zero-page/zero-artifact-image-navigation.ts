@@ -118,9 +118,9 @@ function messageImages(message: MessageImageSource): MessageImage[] {
     }
   }
   for (const block of message.blocks ?? []) {
-    if (block.type === "preview") {
-      if (block.preview.kind === "image") {
-        add(block.preview.url, block.preview.filename);
+    if (block.type === "artifact") {
+      if (block.signals.kind === "image") {
+        add(block.signals.url, block.signals.filename);
       }
       continue;
     }

@@ -21,7 +21,7 @@ export interface ConnectorActionDescriptor {
   originalUrl: string;
 }
 
-export interface ConnectorActionSignals {
+export interface ConnectorSignals extends ConnectorActionDescriptor {
   displayMetadata$: Computed<Promise<ConnectorCatalogDisplayMetadata | null>>;
   available$: Computed<Promise<boolean>>;
   connected$: Computed<Promise<boolean>>;
@@ -30,22 +30,13 @@ export interface ConnectorActionSignals {
   activate$: Command<Promise<void>, [AbortSignal]>;
 }
 
-export type ConnectorActionBlock = ConnectorActionDescriptor &
-  ConnectorActionSignals & {
-    type: "connector-action";
-    id: string;
-  };
-
 export interface CustomConnectorActionDescriptor {
   displayName: string;
   agentId: string | null;
   originalUrl: string;
 }
 
-export type CustomConnectorActionBlock = CustomConnectorActionDescriptor & {
-  type: "custom-connector-action";
-  id: string;
-};
+export type CustomConnectorSignals = CustomConnectorActionDescriptor;
 
 const activeChatConnectorActionState$ = state<ConnectorActionDescriptor | null>(
   null,
@@ -119,21 +110,15 @@ export function parseCustomConnectorProposalUrl(
   };
 }
 
-export function createCustomConnectorActionBlock(
-  id: string,
+export function createCustomConnectorSignals(
   descriptor: CustomConnectorActionDescriptor,
-): CustomConnectorActionBlock {
-  return {
-    type: "custom-connector-action",
-    id,
-    ...descriptor,
-  };
+): CustomConnectorSignals {
+  return descriptor;
 }
 
-export function createConnectorActionBlock(
-  id: string,
+export function createConnectorSignals(
   descriptor: ConnectorActionDescriptor,
-): ConnectorActionBlock {
+): ConnectorSignals {
   const displayMetadata$ = computed(async (get) => {
     const metadataByRef = await get(connectorCatalogDisplayMetadataByRef$);
     return metadataByRef.get(descriptor.connectorRef) ?? null;
@@ -200,8 +185,6 @@ export function createConnectorActionBlock(
   });
 
   return {
-    type: "connector-action",
-    id,
     ...descriptor,
     displayMetadata$,
     available$,

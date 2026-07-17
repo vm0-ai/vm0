@@ -21,18 +21,9 @@ export interface PermissionActionDescriptor {
   originalUrl: string;
 }
 
-/**
- * Pure data parsed from a permission URL in a message body. The reactive
- * resources backing the rendered card live in the thread-scoped permission
- * card registry (see permission-card-signals.ts), keyed by `href`.
- */
-export type PermissionActionBlock = PermissionActionDescriptor & {
-  type: "permission-action";
-  id: string;
-  href: string;
-};
-
-function permissionActionHref(descriptor: PermissionActionDescriptor): string {
+export function permissionActionResourceKey(
+  descriptor: PermissionActionDescriptor,
+): string {
   const path = `/agents/${encodeURIComponent(descriptor.agentId)}/permissions`;
   return descriptor.search ? `${path}?${descriptor.search}` : path;
 }
@@ -206,17 +197,5 @@ export function parsePermissionActionUrl(
     expiresIn,
     search: url.searchParams.toString(),
     originalUrl: value,
-  };
-}
-
-export function createPermissionActionBlock(
-  id: string,
-  descriptor: PermissionActionDescriptor,
-): PermissionActionBlock {
-  return {
-    type: "permission-action",
-    id,
-    ...descriptor,
-    href: permissionActionHref(descriptor),
   };
 }

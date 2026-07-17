@@ -308,7 +308,7 @@ describe("chat message action cards", () => {
     expect(draftRequests).toBe(1);
   });
 
-  it("lets users authorize connectors and confirm permissions from assistant messages", async () => {
+  it("shares connector state across assistant messages and confirms permissions", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
@@ -389,14 +389,28 @@ describe("chat message action cards", () => {
           id: "msg-user-action-request",
           role: "user",
           content: "Set up the integrations",
-          runId: "run-action-cards",
+          runId: "run-action-cards-one",
           createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-connector-card",
+          role: "assistant",
+          content: connectorAuthorizeUrl,
+          runId: "run-action-cards-one",
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+        {
+          id: "msg-user-permission-request",
+          role: "user",
+          content: "Continue with permissions",
+          runId: "run-action-cards-two",
+          createdAt: "2026-06-09T10:00:45Z",
         },
         {
           id: "msg-assistant-action-cards",
           role: "assistant",
           content: `${connectorAuthorizeUrl}\n\n${permissionAuthorizeUrl}`,
-          runId: "run-action-cards",
+          runId: "run-action-cards-two",
           createdAt: "2026-06-09T10:01:00Z",
         },
       ],
@@ -407,7 +421,11 @@ describe("chat message action cards", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const connectorCard = await screen.findByTestId("connector-action-card");
+    const connectorCards = await screen.findAllByTestId(
+      "connector-action-card",
+    );
+    expect(connectorCards).toHaveLength(2);
+    const connectorCard = connectorCards[0]!;
     expect(
       within(connectorCard).getByText("Catalog GitHub"),
     ).toBeInTheDocument();
@@ -421,7 +439,9 @@ describe("chat message action cards", () => {
     await user.click(within(connectorCard).getByText("Connect"));
 
     await waitFor(() => {
-      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+      for (const card of connectorCards) {
+        expect(within(card).getByText("Connected")).toBeInTheDocument();
+      }
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");

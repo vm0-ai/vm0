@@ -1,0 +1,97 @@
+import { computed, type Computed } from "ccstate";
+
+export type ArtifactKind =
+  | "image"
+  | "video"
+  | "audio"
+  | "markdown"
+  | "text"
+  | "json"
+  | "csv"
+  | "pdf"
+  | "html"
+  | "file";
+
+export interface ArtifactDescriptor {
+  readonly filename: string;
+  readonly url: string;
+  readonly kind: ArtifactKind;
+}
+
+export interface ArtifactSignals extends ArtifactDescriptor {
+  readonly text$?: Computed<Promise<string>>;
+}
+
+const TEXT_PREVIEW_MAX_BYTES = 65_536;
+
+async function readLimitedText(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return "";
+  }
+
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  let reachedLimit = false;
+
+  while (received < TEXT_PREVIEW_MAX_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    const remaining = TEXT_PREVIEW_MAX_BYTES - received;
+    const chunk =
+      value.byteLength > remaining ? value.slice(0, remaining) : value;
+    chunks.push(chunk);
+    received += chunk.byteLength;
+    if (received >= TEXT_PREVIEW_MAX_BYTES) {
+      reachedLimit = true;
+      break;
+    }
+  }
+
+  if (reachedLimit) {
+    await reader.cancel();
+  }
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+export async function fetchPreviewText(
+  url: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await fetch(url, {
+    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${String(response.status)}`);
+  }
+  return readLimitedText(response);
+}
+
+function needsTextPreview(kind: ArtifactKind): boolean {
+  return kind === "text" || kind === "json";
+}
+
+export function createArtifactSignals(
+  descriptor: ArtifactDescriptor,
+): ArtifactSignals {
+  if (!needsTextPreview(descriptor.kind)) {
+    return descriptor;
+  }
+  return {
+    ...descriptor,
+    text$: computed(() => {
+      return fetchPreviewText(descriptor.url);
+    }),
+  };
+}

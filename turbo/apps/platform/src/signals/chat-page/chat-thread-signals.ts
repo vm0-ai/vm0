@@ -11,7 +11,6 @@ import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
-import type { PermissionCardSignals } from "./permission-card-signals.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
@@ -132,12 +131,6 @@ export interface ChatThreadSignals {
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  // Signals backing rendered permission action cards, keyed by the card's
-  // normalized permission URL. Populated when persistent messages are written;
-  // cards look up their signals at render time.
-  permissionCardSignalsByUrl$: Computed<
-    ReadonlyMap<string, PermissionCardSignals>
-  >;
   visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;

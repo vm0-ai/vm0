@@ -9,11 +9,8 @@ export interface ComputerUseAuthorizationDescriptor {
   href: string;
 }
 
-export type ComputerUseAuthorizationBlock =
-  ComputerUseAuthorizationDescriptor & {
-    type: "computer-use-authorization";
-    id: string;
-  };
+export type ComputerUseAuthorizationSignals =
+  ComputerUseAuthorizationDescriptor;
 
 function browserOrigin(): string | null {
   if (typeof location === "undefined" || !location.origin) {
@@ -130,13 +127,8 @@ export function parseComputerUseAuthorizationUrl(
   };
 }
 
-export function createComputerUseAuthorizationBlock(
-  id: string,
+export function createComputerUseAuthorizationSignals(
   descriptor: ComputerUseAuthorizationDescriptor,
-): ComputerUseAuthorizationBlock {
-  return {
-    type: "computer-use-authorization",
-    id,
-    ...descriptor,
-  };
+): ComputerUseAuthorizationSignals {
+  return descriptor;
 }

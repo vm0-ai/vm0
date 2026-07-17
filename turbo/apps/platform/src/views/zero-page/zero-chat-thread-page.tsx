@@ -7,7 +7,6 @@ import type {
   UIEvent as ReactUIEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import type { Computed } from "ccstate";
 import {
   useGet,
   useSet,
@@ -134,8 +133,8 @@ import {
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
-  type CustomConnectorActionBlock,
-  type ConnectorActionBlock,
+  type ConnectorSignals,
+  type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
 import {
   completedWorkExpandedKeys$,
@@ -148,9 +147,8 @@ import {
   type RunGroupFold,
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
-import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
-import type { PermissionCardSignals } from "../../signals/chat-page/permission-card-signals.ts";
-import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
+import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
+import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -4670,107 +4668,27 @@ function BodyContentBlocks({
   hardBreaks,
   escapeMarkdownHtml = false,
   markdownMediaPreview = true,
-  permissionCardSignalsByUrl$,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
   escapeMarkdownHtml?: boolean;
   markdownMediaPreview?: boolean;
-  permissionCardSignalsByUrl$: Computed<
-    ReadonlyMap<string, PermissionCardSignals>
-  >;
 }) {
+  const cardOccurrences = new Map<string, number>();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-
   return (
     <div className="flex flex-col gap-3">
       {blocks.map((block) => {
-        if (block.type === "markdown") {
-          return (
-            <Markdown
-              key={block.id}
-              source={
-                hardBreaks
-                  ? block.content.replace(/\n/g, "  \n")
-                  : block.content
-              }
-              mediaPreview={markdownMediaPreview}
-              mathEnabled
-              escapeHtml={escapeMarkdownHtml}
-              style={{ fontSize: "inherit", lineHeight: "inherit" }}
-            />
-          );
-        }
-
-        if (block.type === "connector-action") {
-          return <ConnectorActionCard key={block.id} block={block} />;
-        }
-
-        if (block.type === "custom-connector-action") {
-          return <CustomConnectorActionCard key={block.id} block={block} />;
-        }
-
-        if (block.type === "permission-action") {
-          return (
-            <PermissionActionCard
-              key={block.id}
-              block={block}
-              permissionCardSignalsByUrl$={permissionCardSignalsByUrl$}
-            />
-          );
-        }
-
-        if (block.type === "computer-use-authorization") {
-          return <ComputerUseAuthorizationCard key={block.id} block={block} />;
-        }
-
-        if (block.preview.kind === "image") {
-          return (
-            <ChatImagePreviewLink
-              key={block.id}
-              alt={block.preview.filename}
-              ariaLabel={`Preview ${block.preview.filename}`}
-              imageClassName="block h-full w-full object-contain"
-              linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
-              onPreview={() => {
-                openLightbox(block.preview.url);
-              }}
-              placeholderClassName="h-full w-full"
-              url={block.preview.url}
-            />
-          );
-        }
-
-        if (block.preview.kind === "video") {
-          return (
-            <ChatVideoPreviewButton
-              key={block.id}
-              ariaLabel={`Preview ${block.preview.filename}`}
-              buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
-              filename={block.preview.filename}
-              onPreview={() => {
-                openVideoLightbox({
-                  url: block.preview.url,
-                  filename: block.preview.filename,
-                });
-              }}
-              posterClassName="h-full w-full"
-              url={block.preview.url}
-              videoClassName="h-full w-full object-contain"
-            />
-          );
-        }
-
         return (
-          <AttachmentPreview
-            key={block.id}
-            attachment={{
-              filename: block.preview.filename,
-              url: block.preview.url,
-              contentType: contentTypeForBodyPreviewKind(block.preview.kind),
-            }}
-            text$={block.preview.text$}
+          <BodyRenderBlockView
+            key={bodyRenderBlockKey(block, cardOccurrences)}
+            block={block}
+            openLightbox={openLightbox}
+            openVideoLightbox={openVideoLightbox}
+            hardBreaks={hardBreaks}
+            escapeMarkdownHtml={escapeMarkdownHtml}
+            markdownMediaPreview={markdownMediaPreview}
           />
         );
       })}
@@ -4778,14 +4696,117 @@ function BodyContentBlocks({
   );
 }
 
-function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
+function bodyRenderBlockKey(
+  block: BodyRenderBlock,
+  cardOccurrences: Map<string, number>,
+): string {
+  if (block.type === "markdown") {
+    return block.id;
+  }
+  const resourceKey = `${block.type}:${block.resourceKey}`;
+  const occurrence = (cardOccurrences.get(resourceKey) ?? 0) + 1;
+  cardOccurrences.set(resourceKey, occurrence);
+  return `${resourceKey}:${String(occurrence)}`;
+}
+
+function BodyRenderBlockView({
+  block,
+  openLightbox,
+  openVideoLightbox,
+  hardBreaks,
+  escapeMarkdownHtml,
+  markdownMediaPreview,
+}: {
+  block: BodyRenderBlock;
+  openLightbox: (url: string) => void;
+  openVideoLightbox: (value: { url: string; filename: string }) => void;
+  hardBreaks: boolean;
+  escapeMarkdownHtml: boolean;
+  markdownMediaPreview: boolean;
+}) {
+  switch (block.type) {
+    case "markdown": {
+      return (
+        <Markdown
+          source={
+            hardBreaks ? block.content.replace(/\n/g, "  \n") : block.content
+          }
+          mediaPreview={markdownMediaPreview}
+          mathEnabled
+          escapeHtml={escapeMarkdownHtml}
+          style={{ fontSize: "inherit", lineHeight: "inherit" }}
+        />
+      );
+    }
+    case "connector-action": {
+      return <ConnectorActionCard signals={block.signals} />;
+    }
+    case "custom-connector-action": {
+      return <CustomConnectorActionCard signals={block.signals} />;
+    }
+    case "permission-action": {
+      return <PermissionActionCard signals={block.signals} />;
+    }
+    case "computer-use-authorization": {
+      return <ComputerUseAuthorizationCard signals={block.signals} />;
+    }
+    case "artifact": {
+      const { signals } = block;
+      if (signals.kind === "image") {
+        return (
+          <ChatImagePreviewLink
+            alt={signals.filename}
+            ariaLabel={`Preview ${signals.filename}`}
+            imageClassName="block h-full w-full object-contain"
+            linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
+            onPreview={() => {
+              openLightbox(signals.url);
+            }}
+            placeholderClassName="h-full w-full"
+            url={signals.url}
+          />
+        );
+      }
+      if (signals.kind === "video") {
+        return (
+          <ChatVideoPreviewButton
+            ariaLabel={`Preview ${signals.filename}`}
+            buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
+            filename={signals.filename}
+            onPreview={() => {
+              openVideoLightbox({
+                url: signals.url,
+                filename: signals.filename,
+              });
+            }}
+            posterClassName="h-full w-full"
+            url={signals.url}
+            videoClassName="h-full w-full object-contain"
+          />
+        );
+      }
+      return (
+        <AttachmentPreview
+          attachment={{
+            filename: signals.filename,
+            url: signals.url,
+            contentType: contentTypeForBodyPreviewKind(signals.kind),
+          }}
+          text$={signals.text$}
+        />
+      );
+    }
+  }
+}
+
+function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   const pageSignal = useGet(pageSignal$);
-  const available = useLastResolved(block.available$) ?? false;
-  const completeLoadable = useLoadable(block.complete$);
+  const available = useLastResolved(signals.available$) ?? false;
+  const completeLoadable = useLoadable(signals.complete$);
   const complete =
     completeLoadable.state === "hasData" && completeLoadable.data;
-  const displayMetadata = useLastResolved(block.displayMetadata$);
-  const [activateLoadable, activate] = useLoadableSet(block.activate$);
+  const displayMetadata = useLastResolved(signals.displayMetadata$);
+  const [activateLoadable, activate] = useLoadableSet(signals.activate$);
   const loading =
     completeLoadable.state === "loading" ||
     activateLoadable.state === "loading";
@@ -4827,9 +4848,9 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
 }
 
 function CustomConnectorActionCard({
-  block,
+  signals,
 }: {
-  block: CustomConnectorActionBlock;
+  signals: CustomConnectorSignals;
 }) {
   return (
     <div
@@ -4842,17 +4863,17 @@ function CustomConnectorActionCard({
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {block.displayName}
+            {signals.displayName}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {block.agentId
+            {signals.agentId
               ? "Review, connect, and authorize this custom connector for the agent."
               : "Review and connect this custom connector."}
           </div>
         </div>
       </div>
       <a
-        href={block.originalUrl}
+        href={signals.originalUrl}
         target="_blank"
         rel="noreferrer"
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
@@ -4865,9 +4886,9 @@ function CustomConnectorActionCard({
 }
 
 function ComputerUseAuthorizationCard({
-  block,
+  signals,
 }: {
-  block: ComputerUseAuthorizationBlock;
+  signals: ComputerUseAuthorizationSignals;
 }) {
   return (
     <div
@@ -4888,7 +4909,7 @@ function ComputerUseAuthorizationCard({
         </div>
       </div>
       <a
-        href={block.href}
+        href={signals.href}
         target="_blank"
         rel="noreferrer"
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
@@ -5099,7 +5120,7 @@ function isPermissionActionAlreadyApplied(params: {
 }
 
 function findPermissionActionPermission(
-  block: PermissionActionBlock,
+  block: PermissionSignals,
   metadata: PublicConnectorCatalogPermissionDetail | undefined,
 ) {
   return metadata
@@ -5109,7 +5130,7 @@ function findPermissionActionPermission(
 
 function permissionActionUserGrantPolicy(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
-  block: PermissionActionBlock,
+  block: PermissionSignals,
   metadata: PublicConnectorCatalogPermissionDetail | undefined,
 ): FirewallPolicyValue | undefined {
   const grants = loadableData(loadable);
@@ -5121,7 +5142,7 @@ function permissionActionUserGrantPolicy(
 
 function permissionActionUserGrant(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
-  block: PermissionActionBlock,
+  block: PermissionSignals,
 ): PermissionActionUserGrant | undefined {
   const grants = loadableData(loadable);
   if (!grants) {
@@ -5199,7 +5220,7 @@ function createPermissionActionCardStatus(params: {
 }
 
 function createPermissionActionCardViewState(params: {
-  block: PermissionActionBlock;
+  block: PermissionSignals;
   hasAgent: boolean;
   agentLoadableState: string;
   permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
@@ -5273,7 +5294,7 @@ function runPermissionAction(params: {
 }
 
 function createPermissionActionHandler(params: {
-  block: PermissionActionBlock;
+  block: PermissionSignals;
   pageSignal: AbortSignal;
   focusedPermission: { name: string } | undefined;
   status: PermissionActionCardStatus;
@@ -5308,7 +5329,7 @@ function createPermissionActionHandler(params: {
 }
 
 function PermissionActionCardContent({
-  block,
+  signals,
   icon,
   connectorLabel,
   actionLabel,
@@ -5320,7 +5341,7 @@ function PermissionActionCardContent({
   expiresAt,
   onClick,
 }: {
-  block: PermissionActionBlock;
+  signals: PermissionSignals;
   icon: PublicConnectorCatalogPermissionDetail["icon"] | undefined;
   connectorLabel: string;
   actionLabel: string;
@@ -5373,7 +5394,10 @@ function PermissionActionCardContent({
             ariaLabel="Permission duration"
           />
         )}
-        <PermissionActionTerminalStatus status={status} action={block.action} />
+        <PermissionActionTerminalStatus
+          status={status}
+          action={signals.action}
+        />
         <PermissionActionButton status={status} onClick={onClick} />
       </div>
     </div>
@@ -5381,40 +5405,38 @@ function PermissionActionCardContent({
 }
 
 function PermissionActionCardForTarget({
-  block,
-  resource,
+  signals,
   hasTarget,
   targetLoadableState,
   userGrantsLoadable,
 }: {
-  block: PermissionActionBlock;
-  resource: PermissionCardSignals;
+  signals: PermissionSignals;
   hasTarget: boolean;
   targetLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const expirationAvailable = block.action === "allow";
-  const durationScope = `${block.id}\u0000${block.expiresIn ?? ""}`;
+  const expirationAvailable = signals.action === "allow";
+  const durationScope = `${signals.href}\u0000${signals.expiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
   const expiresIn =
     expiresInByScope[durationScope] ??
-    block.expiresIn ??
+    signals.expiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
-  const permissionMetadataLoadable = useLoadable(resource.metadata$);
+  const permissionMetadataLoadable = useLoadable(signals.metadata$);
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
   const savedGrant =
     grantLoadable.state === "hasData" ? grantLoadable.data : null;
   const savedGrantActive = savedGrant
     ? isActiveUserPermissionGrant(savedGrant)
     : false;
-  const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
+  const existingGrant = permissionActionUserGrant(userGrantsLoadable, signals);
   const existingGrantActive = existingGrant
     ? isActiveUserPermissionGrant(existingGrant)
     : false;
   const actionState = createPermissionActionCardViewState({
-    block,
+    block: signals,
     hasAgent: hasTarget,
     agentLoadableState: targetLoadableState,
     permissionMetadataLoadable,
@@ -5436,11 +5458,11 @@ function PermissionActionCardForTarget({
 
   return (
     <PermissionActionCardContent
-      block={block}
+      signals={signals}
       icon={permissionMetadata?.icon}
-      connectorLabel={permissionMetadata?.label ?? block.connectorRef}
+      connectorLabel={permissionMetadata?.label ?? signals.connectorRef}
       actionLabel={actionState.actionLabel}
-      permissionName={actionState.focusedPermission?.name ?? block.permission}
+      permissionName={actionState.focusedPermission?.name ?? signals.permission}
       status={actionState.status}
       expirationAvailable={expirationAvailable}
       expiresIn={expiresIn}
@@ -5449,7 +5471,7 @@ function PermissionActionCardForTarget({
       }}
       expiresAt={grantExpiresAt}
       onClick={createPermissionActionHandler({
-        block,
+        block: signals,
         pageSignal,
         focusedPermission: actionState.focusedPermission,
         status: actionState.status,
@@ -5461,45 +5483,17 @@ function PermissionActionCardForTarget({
   );
 }
 
-function AgentPermissionActionCardWithResource({
-  block,
-  resource,
-}: {
-  block: PermissionActionBlock;
-  resource: PermissionCardSignals;
-}) {
-  const agentLoadable = useLastLoadable(resource.agent$);
-  const userGrantsLoadable = useLoadable(resource.grants$);
+function PermissionActionCard({ signals }: { signals: PermissionSignals }) {
+  const agentLoadable = useLastLoadable(signals.agent$);
+  const userGrantsLoadable = useLoadable(signals.grants$);
   const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
   return (
     <PermissionActionCardForTarget
-      block={block}
-      resource={resource}
+      signals={signals}
       hasTarget={Boolean(agent)}
       targetLoadableState={agentLoadable.state}
       userGrantsLoadable={userGrantsLoadable}
     />
-  );
-}
-
-function PermissionActionCard({
-  block,
-  permissionCardSignalsByUrl$,
-}: {
-  block: PermissionActionBlock;
-  permissionCardSignalsByUrl$: Computed<
-    ReadonlyMap<string, PermissionCardSignals>
-  >;
-}) {
-  const signalsByUrl = useGet(permissionCardSignalsByUrl$);
-  const signals = signalsByUrl.get(block.href);
-  if (!signals) {
-    // The block's URL was not registered (e.g. an optimistic message that
-    // never reached the persistent-message write path) — nothing to render.
-    return null;
-  }
-  return (
-    <AgentPermissionActionCardWithResource block={block} resource={signals} />
   );
 }
 
@@ -6357,14 +6351,10 @@ function GoalUserMessage({
   message,
   bodyBlocks,
   openLightbox,
-  permissionCardSignalsByUrl$,
 }: {
   message: EnrichedChatMessage & { role: "user" };
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
-  permissionCardSignalsByUrl$: Computed<
-    ReadonlyMap<string, PermissionCardSignals>
-  >;
 }) {
   const objectiveBrief = message.goalSnapshot?.objectiveBrief?.trim();
   return (
@@ -6394,7 +6384,6 @@ function GoalUserMessage({
                   hardBreaks
                   escapeMarkdownHtml
                   markdownMediaPreview={false}
-                  permissionCardSignalsByUrl$={permissionCardSignalsByUrl$}
                 />
               </div>
             </div>
@@ -6461,7 +6450,6 @@ function PagedUserMessage({
         message={message}
         bodyBlocks={bodyBlocks}
         openLightbox={openLightbox}
-        permissionCardSignalsByUrl$={thread.permissionCardSignalsByUrl$}
       />
     );
   }
@@ -6487,9 +6475,6 @@ function PagedUserMessage({
                   hardBreaks
                   escapeMarkdownHtml
                   markdownMediaPreview={false}
-                  permissionCardSignalsByUrl$={
-                    thread.permissionCardSignalsByUrl$
-                  }
                 />
               </div>
             </div>
@@ -6548,7 +6533,6 @@ function PagedAssistantGroup({
       <PagedAssistantMessageItem
         key={message.id}
         message={message}
-        thread={thread}
         compactTop={compactTop}
       />
     );
@@ -6598,11 +6582,9 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({
   message,
-  thread,
   compactTop = false,
 }: {
   message: EnrichedChatMessage;
-  thread: ChatThreadSignals;
   compactTop?: boolean;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6655,7 +6637,6 @@ function PagedAssistantMessageItem({
             blocks={blocks}
             openLightbox={openLightbox}
             hardBreaks={false}
-            permissionCardSignalsByUrl$={thread.permissionCardSignalsByUrl$}
           />
         ) : null}
       </div>
