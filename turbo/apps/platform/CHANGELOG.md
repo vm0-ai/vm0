@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.604.1](https://github.com/vm0-ai/vm0/compare/app-v0.604.0...app-v0.604.1) (2026-07-16)
+
+
+### Refactoring
+
+* **platform:** remove avatar preload and permission expiry timers ([#21905](https://github.com/vm0-ai/vm0/issues/21905)) ([02dc42f](https://github.com/vm0-ai/vm0/commit/02dc42f46721546737855f181c72f3b97f519089))
+* **platform:** remove keyed computed caches ([#21904](https://github.com/vm0-ai/vm0/issues/21904)) ([666812b](https://github.com/vm0-ai/vm0/commit/666812b71cf538bf6295777dbf9a5dc81a2ab314))
+
 ## [0.604.0](https://github.com/vm0-ai/vm0/compare/app-v0.603.1...app-v0.604.0) (2026-07-16)
 
 

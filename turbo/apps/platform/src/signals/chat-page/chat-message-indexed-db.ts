@@ -1,20 +1,22 @@
 import { command, computed } from "ccstate";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
-import { authenticatedIdentity$ } from "../auth.ts";
 import {
   chatIdbReadOr,
   chatIdbWriteBestEffort,
 } from "../external/chat-idb-safe.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
+import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { logger } from "../log.ts";
 
 const L = logger("ChatMessageIndexedDb");
 
 type Stores = ReturnType<typeof createIdbMessageStores>;
 
-const chatMessageStores$ = computed(async (get): Promise<Stores> => {
-  const { userId, orgId } = await get(authenticatedIdentity$);
-  return createIdbMessageStores(userId, orgId);
+const chatMessageStores$ = computed((get): Stores => {
+  const dbPromise = get(chatIdb$);
+  return createIdbMessageStores(() => {
+    return dbPromise;
+  });
 });
 
 export const loadIndexedDbChatMessages$ = command(

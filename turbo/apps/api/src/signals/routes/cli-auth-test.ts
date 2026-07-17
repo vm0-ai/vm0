@@ -37,7 +37,7 @@ import {
 import {
   DEFAULT_TEST_EMAIL,
   issueCliToken$,
-  testUserId,
+  testUserId$,
   testUserOrgId,
   ensureTestOrg$,
 } from "../services/cli-auth.service";
@@ -184,7 +184,11 @@ const createTestToken$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const query = get(testTokenQuery$);
-  const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
+  const userId = await set(
+    testUserId$,
+    { email: query.email ?? DEFAULT_TEST_EMAIL, refresh: true },
+    signal,
+  );
   signal.throwIfAborted();
   const { orgId } = await set(ensureTestOrg$, userId, signal);
   signal.throwIfAborted();
@@ -246,7 +250,11 @@ const createTestConnector$ = command(
     const connectorType = connectorParsed.data;
 
     const query = get(testConnectorQuery$);
-    const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
+    const userId = await set(
+      testUserId$,
+      { email: query.email ?? DEFAULT_TEST_EMAIL, refresh: false },
+      signal,
+    );
     signal.throwIfAborted();
     const orgId = await testOrgForUser(get, userId);
     signal.throwIfAborted();
@@ -330,7 +338,11 @@ const enableTestConnectors$ = command(
     }
 
     const query = get(testEnableConnectorQuery$);
-    const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
+    const userId = await set(
+      testUserId$,
+      { email: query.email ?? DEFAULT_TEST_EMAIL, refresh: false },
+      signal,
+    );
     signal.throwIfAborted();
     const orgId = await testOrgForUser(get, userId);
     signal.throwIfAborted();
@@ -422,7 +434,11 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const query = get(testCodexOauthQuery$);
-  const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
+  const userId = await set(
+    testUserId$,
+    { email: query.email ?? DEFAULT_TEST_EMAIL, refresh: false },
+    signal,
+  );
   signal.throwIfAborted();
   const orgId = await testOrgForUser(get, userId);
   signal.throwIfAborted();

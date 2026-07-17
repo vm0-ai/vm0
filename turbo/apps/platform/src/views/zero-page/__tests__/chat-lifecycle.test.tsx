@@ -197,7 +197,7 @@ function parseChatClipboardPayload(html: string): {
 }
 
 function mockPushBrowserSupport(): PushBrowserMock {
-  vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "AQIDBA");
+  vi.stubEnv("VITE_VAPID_PUBLIC_KEY_PREVIEW", "AQIDBA");
   vi.stubGlobal("PushManager", class TestPushManager {});
   let notificationPermission: NotificationPermission = "default";
   vi.stubGlobal("Notification", {
@@ -3153,6 +3153,7 @@ describe("chat lifecycle", () => {
     });
     let page = 0;
     let emptyForwardPageRequested = false;
+    const sinceIds: string[] = [];
 
     mockSubagentThread(context, threadId);
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -3169,6 +3170,7 @@ describe("chat lifecycle", () => {
           hasHistoryBefore: false,
         });
       }
+      sinceIds.push(query.sinceId);
       const startIndex = page * 50;
       page += 1;
       const messages = burstMessages.slice(startIndex, startIndex + 50);
@@ -3195,6 +3197,12 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Burst 119")).toBeInTheDocument();
       expect(emptyForwardPageRequested).toBeTruthy();
     });
+    expect(sinceIds).toStrictEqual([
+      baselineMessages.at(-1)!.id,
+      burstMessages[49]!.id,
+      burstMessages[99]!.id,
+      burstMessages.at(-1)!.id,
+    ]);
   });
 
   it("loads older pages after a delayed initial remote message page", async () => {
