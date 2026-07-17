@@ -128,16 +128,6 @@ class TestLogProxyEntry:
                 id="protocol-relative",
             ),
             pytest.param(
-                "https://user:pass@[invalid/path?token=secret#fragment",
-                "https://[invalid/path",
-                id="urlsplit-value-error-absolute",
-            ),
-            pytest.param(
-                "//user:pass@[invalid/path?token=secret#fragment",
-                "//[invalid/path",
-                id="urlsplit-value-error-protocol-relative",
-            ),
-            pytest.param(
                 "https:////user:pass@example.com/path?token=secret#fragment",
                 "https://example.com/path",
                 id="extra-slashes",

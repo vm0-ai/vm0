@@ -151,6 +151,10 @@ def test_response_log_includes_firewall_auth_metadata(tmp_path, real_flow, mitm_
             "https://[invalid.example.com/path",
         ),
         (
+            "//user:pass@[invalid.example.com/path?access_token=secret#fragment",
+            "//[invalid.example.com/path",
+        ),
+        (
             "https://user:pass@target.example.com:9443/path?access_token=secret#fragment",
             "https://target.example.com:9443/path",
         ),
