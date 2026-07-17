@@ -1262,12 +1262,79 @@ pub struct ReusableSandboxState {
     pub history_generation_run_id: Option<RunId>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SessionHistorySizeBucket {
+    #[serde(rename = "lt_64_kib")]
+    LessThan64Kib,
+    #[serde(rename = "64_256_kib")]
+    From64To256Kib,
+    #[serde(rename = "256_kib_1_mib")]
+    From256KibTo1Mib,
+    #[serde(rename = "1_4_mib")]
+    From1To4Mib,
+    #[serde(rename = "4_16_mib")]
+    From4To16Mib,
+    #[serde(rename = "16_64_mib")]
+    From16To64Mib,
+    #[serde(rename = "64_128_mib")]
+    From64To128Mib,
+}
+
+impl SessionHistorySizeBucket {
+    pub const fn from_size(size: u64) -> Self {
+        const SIZE_64_KIB: u64 = 64 * 1024;
+        const SIZE_256_KIB: u64 = 256 * 1024;
+        const SIZE_1_MIB: u64 = 1024 * 1024;
+        const SIZE_4_MIB: u64 = 4 * SIZE_1_MIB;
+        const SIZE_16_MIB: u64 = 16 * SIZE_1_MIB;
+        const SIZE_64_MIB: u64 = 64 * SIZE_1_MIB;
+
+        if size < SIZE_64_KIB {
+            Self::LessThan64Kib
+        } else if size < SIZE_256_KIB {
+            Self::From64To256Kib
+        } else if size < SIZE_1_MIB {
+            Self::From256KibTo1Mib
+        } else if size < SIZE_4_MIB {
+            Self::From1To4Mib
+        } else if size < SIZE_16_MIB {
+            Self::From4To16Mib
+        } else if size < SIZE_64_MIB {
+            Self::From16To64Mib
+        } else {
+            Self::From64To128Mib
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LessThan64Kib => "lt_64_kib",
+            Self::From64To256Kib => "64_256_kib",
+            Self::From256KibTo1Mib => "256_kib_1_mib",
+            Self::From1To4Mib => "1_4_mib",
+            Self::From4To16Mib => "4_16_mib",
+            Self::From16To64Mib => "16_64_mib",
+            Self::From64To128Mib => "64_128_mib",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSessionHistorySidecarState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_generation_run_id: Option<RunId>,
+    pub raw_size_bucket: SessionHistorySizeBucket,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceCacheState {
     pub profile: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_affinity_version: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_history_sidecar: Option<WorkspaceSessionHistorySidecarState>,
 }
 
 /// Runner state snapshot sent to the server via heartbeat.
@@ -1997,6 +2064,12 @@ mod tests {
                 workspace_caches: vec![WorkspaceCacheState {
                     profile: "vm0/large".into(),
                     workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    session_history_sidecar: Some(WorkspaceSessionHistorySidecarState {
+                        history_generation_run_id: Some(
+                            "22222222-2222-4222-8222-222222222222".parse().unwrap(),
+                        ),
+                        raw_size_bucket: SessionHistorySizeBucket::From64To256Kib,
+                    }),
                 }],
             }],
             mode: "running".into(),
@@ -2024,7 +2097,11 @@ mod tests {
                 },
                 "workspaceCaches": [{
                     "profile": "vm0/large",
-                    "workspaceAffinityVersion": 1
+                    "workspaceAffinityVersion": 1,
+                    "sessionHistorySidecar": {
+                        "historyGenerationRunId": "22222222-2222-4222-8222-222222222222",
+                        "rawSizeBucket": "64_256_kib"
+                    }
                 }]
             }])
         );

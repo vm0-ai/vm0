@@ -39,7 +39,7 @@ use crate::paths::short_digest;
 use crate::provider::{
     ClaimedJob, JobCandidate, LocalAdmissionResourceKind, PreLocalAdmissionOutcome,
     SessionAffinityLocalResource, SessionHistoryGenerationLocalAvailability,
-    SessionHistoryGenerationRelationship,
+    SessionHistoryGenerationRelationship, WorkspaceSessionHistorySidecarRelationship,
 };
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
@@ -49,7 +49,7 @@ use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{
     ExecutionContext, HeldSessionState, SandboxReuseResult, SessionAffinityResource,
-    WORKSPACE_AFFINITY_VERSION,
+    SessionHistorySizeBucket, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheState,
 };
 
 pub(super) struct DiscoveredJob {
@@ -730,15 +730,15 @@ async fn prepare_affinity_protected_candidate(
             }
 
             let held_session_states = current_local_held_session_states(ctx).await;
-            let has_capable_workspace = held_session_states.iter().any(|state| {
-                state.session_id == cli_agent_session_id
-                    && state.workspace_caches.iter().any(|workspace| {
-                        workspace.profile == profile_name
-                            && workspace.workspace_affinity_version
-                                == Some(WORKSPACE_AFFINITY_VERSION)
-                    })
-            });
-            if has_capable_workspace
+            let capable_workspace = held_session_states
+                .iter()
+                .filter(|state| state.session_id == cli_agent_session_id)
+                .flat_map(|state| &state.workspace_caches)
+                .find(|workspace| {
+                    workspace.profile == profile_name
+                        && workspace.workspace_affinity_version == Some(WORKSPACE_AFFINITY_VERSION)
+                });
+            if let Some(capable_workspace) = capable_workspace
                 && let Some(lease) =
                     ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
             {
@@ -746,6 +746,14 @@ async fn prepare_affinity_protected_candidate(
                     .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
                 candidate.set_session_affinity_local_resource(
                     SessionAffinityLocalResource::WorkspaceCache,
+                );
+                let (relationship, raw_size_bucket) = workspace_sidecar_observation(
+                    capable_workspace,
+                    candidate.history_generation_run_id(),
+                );
+                candidate.set_workspace_session_history_sidecar_observation(
+                    relationship,
+                    raw_size_bucket,
                 );
                 return Some(PreparedAffinityCandidate {
                     candidate,
@@ -794,6 +802,35 @@ async fn prepare_affinity_protected_candidate(
     );
     ctx.spawn_ctx.provider.defer_poll_after(delay).await;
     None
+}
+
+fn workspace_sidecar_observation(
+    workspace: &WorkspaceCacheState,
+    target_generation_run_id: Option<RunId>,
+) -> (
+    WorkspaceSessionHistorySidecarRelationship,
+    Option<SessionHistorySizeBucket>,
+) {
+    let Some(target_generation_run_id) = target_generation_run_id else {
+        return (
+            WorkspaceSessionHistorySidecarRelationship::NoTarget,
+            workspace
+                .session_history_sidecar
+                .as_ref()
+                .map(|sidecar| sidecar.raw_size_bucket),
+        );
+    };
+    let Some(sidecar) = workspace.session_history_sidecar.as_ref() else {
+        return (WorkspaceSessionHistorySidecarRelationship::Absent, None);
+    };
+    let relationship = match sidecar.history_generation_run_id {
+        Some(generation_run_id) if generation_run_id == target_generation_run_id => {
+            WorkspaceSessionHistorySidecarRelationship::Exact
+        }
+        Some(_) => WorkspaceSessionHistorySidecarRelationship::Different,
+        None => WorkspaceSessionHistorySidecarRelationship::Legacy,
+    };
+    (relationship, Some(sidecar.raw_size_bucket))
 }
 
 fn diagnostic_session_fingerprint(session_id: &str) -> String {

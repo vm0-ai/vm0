@@ -1,16 +1,17 @@
 use super::super::super::*;
 use super::super::support::{
-    TestParkedIdleCandidateSpec, assert_run_exits_within, context_with_session, minimal_context,
-    mock_run_config, mock_run_config_with_overrides, push_job, seed_idle_pool,
-    seed_idle_pool_with_history_generation, seed_idle_pool_with_overrides,
-    seed_idle_pool_with_timing, seed_workspace_cache_state, shutdown, test_profiles,
-    wait_budget_count, wait_cancel_token, wait_cancel_token_removed, wait_discover_entered,
+    TestParkedIdleCandidateSpec, TestWorkspaceSidecar, assert_run_exits_within,
+    context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
+    push_job, seed_idle_pool, seed_idle_pool_with_history_generation,
+    seed_idle_pool_with_overrides, seed_idle_pool_with_timing, seed_workspace_cache_state,
+    shutdown, test_profiles, wait_budget_count, wait_cancel_token, wait_cancel_token_removed,
+    wait_discover_entered,
 };
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
-use crate::types::{SandboxReuseResult, SessionAffinityResource};
+use crate::types::{SandboxReuseResult, SessionAffinityResource, SessionHistorySizeBucket};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
 const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
@@ -909,6 +910,7 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
         session_id,
         "vm0/default",
         image_size_bytes,
+        None,
     )
     .await;
     let cache_key = crate::paths::scoped_session_workspace_cache_key(
@@ -978,7 +980,10 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
         .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
     env.handle
         .discover_tx
-        .send(workspace_affinity_protected_candidate(run_id, session_id))
+        .send(
+            workspace_affinity_protected_candidate(run_id, session_id)
+                .with_history_generation_run_id(Some(RunId::new_v4())),
+        )
         .unwrap();
 
     let completion = env
@@ -1012,12 +1017,147 @@ async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspac
         Some(crate::provider::LocalAdmissionResourceKind::Fresh)
     );
     assert_eq!(
+        claimed_candidate.workspace_session_history_sidecar_relationship(),
+        Some(crate::provider::WorkspaceSessionHistorySidecarRelationship::Absent)
+    );
+    assert_eq!(
+        claimed_candidate.workspace_session_history_sidecar_raw_size_bucket(),
+        None
+    );
+    assert_eq!(
         env.handle.deferred_poll_delays().len(),
         2,
         "the workspace-selected candidate should not add another deferral"
     );
 
     shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn workspace_selected_claim_records_observed_sidecar_relationship() {
+    #[derive(Clone, Copy, Debug)]
+    enum Case {
+        Exact,
+        Different,
+        Legacy,
+        Absent,
+        NoTarget,
+    }
+
+    for case in [
+        Case::Exact,
+        Case::Different,
+        Case::Legacy,
+        Case::Absent,
+        Case::NoTarget,
+    ] {
+        let session_id = format!("sess-cache-sidecar-{case:?}").to_ascii_lowercase();
+        let image_size_bytes = 1024 * 1024;
+        let producing_run_id = RunId::new_v4();
+        let (sidecar, target_generation_run_id, expected_relationship, expected_bucket) = match case
+        {
+            Case::Exact => (
+                Some(TestWorkspaceSidecar::Attributed(producing_run_id)),
+                Some(producing_run_id),
+                crate::provider::WorkspaceSessionHistorySidecarRelationship::Exact,
+                Some(SessionHistorySizeBucket::LessThan64Kib),
+            ),
+            Case::Different => (
+                Some(TestWorkspaceSidecar::Attributed(producing_run_id)),
+                Some(RunId::new_v4()),
+                crate::provider::WorkspaceSessionHistorySidecarRelationship::Different,
+                Some(SessionHistorySizeBucket::LessThan64Kib),
+            ),
+            Case::Legacy => (
+                Some(TestWorkspaceSidecar::Legacy),
+                Some(RunId::new_v4()),
+                crate::provider::WorkspaceSessionHistorySidecarRelationship::Legacy,
+                Some(SessionHistorySizeBucket::LessThan64Kib),
+            ),
+            Case::Absent => (
+                None,
+                Some(RunId::new_v4()),
+                crate::provider::WorkspaceSessionHistorySidecarRelationship::Absent,
+                None,
+            ),
+            Case::NoTarget => (
+                Some(TestWorkspaceSidecar::Attributed(producing_run_id)),
+                None,
+                crate::provider::WorkspaceSessionHistorySidecarRelationship::NoTarget,
+                Some(SessionHistorySizeBucket::LessThan64Kib),
+            ),
+        };
+
+        let mut profiles = test_profiles();
+        profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
+        let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+        let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+        let workspace_cache = SessionWorkspaceCache::shared(
+            runner_paths.clone(),
+            &config.paths.home,
+            &config.runner.group,
+        );
+        seed_workspace_cache_state(
+            &workspace_cache,
+            &runner_paths,
+            &session_id,
+            "vm0/default",
+            image_size_bytes,
+            sidecar,
+        )
+        .await;
+        Arc::get_mut(&mut config.exec_config)
+            .unwrap()
+            .workspace_cache = Some(workspace_cache);
+        let run_handle = tokio::spawn(run(config));
+        wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+        let run_id = RunId::new_v4();
+        env.provider
+            .set_claim_result(run_id, Some(context_with_session(run_id, &session_id)));
+        env.handle
+            .discover_tx
+            .send(
+                workspace_affinity_protected_candidate(run_id, &session_id)
+                    .with_history_generation_run_id(target_generation_run_id),
+            )
+            .unwrap();
+        assert!(
+            env.handle
+                .wait_completion(run_id, Duration::from_secs(5))
+                .await
+                .is_some(),
+            "case {case:?} should claim and complete"
+        );
+
+        let claim_candidates = env.handle.claim_candidates();
+        let claimed_candidate = claim_candidates
+            .iter()
+            .find(|candidate| candidate.run_id() == run_id)
+            .expect("claim should record the workspace-selected candidate");
+        assert_eq!(
+            claimed_candidate.session_affinity_local_resource(),
+            Some(crate::provider::SessionAffinityLocalResource::WorkspaceCache),
+            "case: {case:?}"
+        );
+        assert_eq!(
+            claimed_candidate.local_admission_resource(),
+            Some(crate::provider::LocalAdmissionResourceKind::Fresh),
+            "case: {case:?}"
+        );
+        assert_eq!(
+            claimed_candidate.workspace_session_history_sidecar_relationship(),
+            Some(expected_relationship),
+            "case: {case:?}"
+        );
+        assert_eq!(
+            claimed_candidate.workspace_session_history_sidecar_raw_size_bucket(),
+            expected_bucket,
+            "case: {case:?}"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
 }
 
 #[tokio::test]
@@ -1039,6 +1179,7 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
         session_id,
         "vm0/default",
         image_size_bytes,
+        None,
     )
     .await;
     Arc::get_mut(&mut config.exec_config)

@@ -634,6 +634,10 @@ impl SessionWorkspaceCache {
                 )
                 .await
             {
+                let session_history_sidecar = self
+                    .observe_session_history_sidecar(cache_key, &metadata.session_id)
+                    .await
+                    .ok();
                 states.push(HeldSessionState {
                     session_id: metadata.session_id,
                     last_completed_at: metadata.last_completed_at,
@@ -641,6 +645,7 @@ impl SessionWorkspaceCache {
                     workspace_caches: vec![WorkspaceCacheState {
                         profile: metadata.profile_name,
                         workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                        session_history_sidecar,
                     }],
                 });
             }
@@ -1490,42 +1495,69 @@ impl WorkspaceSessionHistorySidecarEntryGuard {
 pub(crate) fn cap_workspace_held_session_states(
     states: Vec<HeldSessionState>,
 ) -> Vec<HeldSessionState> {
-    let mut by_session = BTreeMap::<String, HeldSessionState>::new();
-    for mut state in states {
-        match by_session.get_mut(&state.session_id) {
-            Some(existing) => {
-                if state.last_completed_at > existing.last_completed_at {
-                    existing.last_completed_at = state.last_completed_at;
+    struct ObservedSessionState {
+        last_completed_at: String,
+        reusable_sandbox: Option<crate::types::ReusableSandboxState>,
+        workspace_caches: BTreeMap<String, (String, WorkspaceCacheState)>,
+    }
+
+    let mut by_session = BTreeMap::<String, ObservedSessionState>::new();
+    for state in states {
+        let session = by_session
+            .entry(state.session_id.clone())
+            .or_insert_with(|| ObservedSessionState {
+                last_completed_at: state.last_completed_at.clone(),
+                reusable_sandbox: state.reusable_sandbox.clone(),
+                workspace_caches: BTreeMap::new(),
+            });
+        if state.last_completed_at > session.last_completed_at {
+            session.last_completed_at = state.last_completed_at.clone();
+        }
+        if session.reusable_sandbox.is_none() {
+            session.reusable_sandbox = state.reusable_sandbox;
+        }
+        for workspace_cache in state.workspace_caches {
+            match session
+                .workspace_caches
+                .entry(workspace_cache.profile.clone())
+            {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert((state.last_completed_at.clone(), workspace_cache));
                 }
-                if existing.reusable_sandbox.is_none() {
-                    existing.reusable_sandbox = state.reusable_sandbox;
+                std::collections::btree_map::Entry::Occupied(mut entry) => {
+                    let (existing_completed_at, existing) = entry.get_mut();
+                    let capability_order = workspace_cache
+                        .workspace_affinity_version
+                        .cmp(&existing.workspace_affinity_version);
+                    if capability_order.is_gt()
+                        || (capability_order.is_eq()
+                            && state.last_completed_at > *existing_completed_at)
+                    {
+                        *existing_completed_at = state.last_completed_at.clone();
+                        *existing = workspace_cache;
+                    } else if capability_order.is_eq()
+                        && state.last_completed_at == *existing_completed_at
+                        && workspace_cache != *existing
+                    {
+                        existing.session_history_sidecar = None;
+                    }
                 }
-                existing
-                    .workspace_caches
-                    .append(&mut state.workspace_caches);
-            }
-            None => {
-                by_session.insert(state.session_id.clone(), state);
             }
         }
     }
 
     let mut states: Vec<HeldSessionState> = by_session
-        .into_values()
-        .map(|mut state| {
-            state.workspace_caches.sort_unstable_by(|a, b| {
-                a.profile.cmp(&b.profile).then_with(|| {
-                    b.workspace_affinity_version
-                        .cmp(&a.workspace_affinity_version)
-                })
-            });
-            state
+        .into_iter()
+        .map(|(session_id, state)| HeldSessionState {
+            session_id,
+            last_completed_at: state.last_completed_at,
+            reusable_sandbox: state.reusable_sandbox,
+            workspace_caches: state
                 .workspace_caches
-                .dedup_by(|a, b| a.profile == b.profile);
-            state
-                .workspace_caches
-                .truncate(MAX_WORKSPACE_CACHES_PER_SESSION);
-            state
+                .into_values()
+                .map(|(_, workspace_cache)| workspace_cache)
+                .take(MAX_WORKSPACE_CACHES_PER_SESSION)
+                .collect(),
         })
         .collect();
     states.sort_unstable_by(|a, b| {

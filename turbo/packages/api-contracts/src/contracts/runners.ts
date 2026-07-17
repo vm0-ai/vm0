@@ -44,6 +44,15 @@ export const sessionHistoryDownloadSourceSchema = z.enum([
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
 ]);
+export const sessionHistorySizeBucketSchema = z.enum([
+  "lt_64_kib",
+  "64_256_kib",
+  "256_kib_1_mib",
+  "1_4_mib",
+  "4_16_mib",
+  "16_64_mib",
+  "64_128_mib",
+]);
 
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
@@ -97,6 +106,13 @@ export const sessionHistoryGenerationLocalAvailabilitySchema = z.enum([
   "parked_before_discovery_lt_heartbeat_period",
   "parked_before_discovery_ge_heartbeat_period",
 ]);
+export const workspaceSessionHistorySidecarRelationshipSchema = z.enum([
+  "exact",
+  "different",
+  "legacy",
+  "absent",
+  "no_target",
+]);
 
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
@@ -118,6 +134,10 @@ const runnerClaimTelemetrySchema = z.object({
     sessionHistoryGenerationRelationshipSchema.optional(),
   sessionHistoryGenerationLocalAvailability:
     sessionHistoryGenerationLocalAvailabilitySchema.optional(),
+  workspaceSessionHistorySidecarRelationship:
+    workspaceSessionHistorySidecarRelationshipSchema.optional(),
+  workspaceSessionHistorySidecarRawSizeBucket:
+    sessionHistorySizeBucketSchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
@@ -223,6 +243,12 @@ export const heldSessionStateSchema = z.object({
       z.object({
         profile: z.string(),
         workspaceAffinityVersion: z.literal(1).optional(),
+        sessionHistorySidecar: z
+          .object({
+            historyGenerationRunId: z.uuid().optional(),
+            rawSizeBucket: sessionHistorySizeBucketSchema,
+          })
+          .optional(),
       }),
     )
     .max(8)
@@ -720,6 +746,12 @@ export type SessionHistoryGenerationRelationship = z.infer<
 >;
 export type SessionHistoryGenerationLocalAvailability = z.infer<
   typeof sessionHistoryGenerationLocalAvailabilitySchema
+>;
+export type SessionHistorySizeBucket = z.infer<
+  typeof sessionHistorySizeBucketSchema
+>;
+export type WorkspaceSessionHistorySidecarRelationship = z.infer<
+  typeof workspaceSessionHistorySidecarRelationshipSchema
 >;
 export type SessionAffinityResource = z.infer<
   typeof sessionAffinityResourceSchema

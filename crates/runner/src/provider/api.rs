@@ -74,6 +74,10 @@ struct ClaimRequestTelemetry {
     #[serde(skip_serializing_if = "Option::is_none")]
     session_history_generation_local_availability: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_session_history_sidecar_relationship: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_session_history_sidecar_raw_size_bucket: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     poll_due_to_job_discovered_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_http_request_ms: Option<u64>,
@@ -871,6 +875,12 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             session_history_generation_local_availability: candidate
                 .session_history_generation_local_availability()
                 .map(SessionHistoryGenerationLocalAvailability::as_str),
+            workspace_session_history_sidecar_relationship: candidate
+                .workspace_session_history_sidecar_relationship()
+                .map(crate::provider::WorkspaceSessionHistorySidecarRelationship::as_str),
+            workspace_session_history_sidecar_raw_size_bucket: candidate
+                .workspace_session_history_sidecar_raw_size_bucket()
+                .map(crate::types::SessionHistorySizeBucket::as_str),
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -1677,6 +1687,10 @@ mod tests {
         candidate.set_session_history_generation_local_availability(
             SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod,
         );
+        candidate.set_workspace_session_history_sidecar_observation(
+            crate::provider::WorkspaceSessionHistorySidecarRelationship::Different,
+            Some(crate::types::SessionHistorySizeBucket::From256KibTo1Mib),
+        );
         candidate
             .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
         candidate.set_local_admission_resource(LocalAdmissionResourceKind::ReusableSandbox);
@@ -1717,11 +1731,24 @@ mod tests {
             body["telemetry"]["sessionHistoryGenerationLocalAvailability"],
             "parked_before_discovery_ge_heartbeat_period"
         );
+        assert_eq!(
+            body["telemetry"]["workspaceSessionHistorySidecarRelationship"],
+            "different"
+        );
+        assert_eq!(
+            body["telemetry"]["workspaceSessionHistorySidecarRawSizeBucket"],
+            "256_kib_1_mib"
+        );
         assert!(
             !body
                 .to_string()
                 .contains(&target_generation_run_id.to_string())
         );
+        assert!(!body.to_string().contains("rawSizeBytes"));
+        assert!(!body.to_string().contains("sessionId"));
+        assert!(!body.to_string().contains("historyHash"));
+        assert!(!body.to_string().contains("cacheKey"));
+        assert!(!body.to_string().contains("path"));
         assert!(body.get("capabilities").is_none());
     }
 
