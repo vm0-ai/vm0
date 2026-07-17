@@ -9,6 +9,57 @@ export interface ComposerChatThreadSuggestion {
   readonly title: string;
 }
 
+export interface ChatThreadMentionTextSegment {
+  readonly type: "text";
+  readonly text: string;
+}
+
+export interface ChatThreadMentionSegment {
+  readonly type: "mention";
+  readonly threadId: string;
+  readonly title: string;
+}
+
+export type ChatThreadLineSegment =
+  | ChatThreadMentionTextSegment
+  | ChatThreadMentionSegment;
+
+// Matches `[title](/chats/<uuid>)` where the title backslash-escapes
+// `\`, `[` and `]` (the characters escaped by serializeChatThreadMention).
+const CHAT_THREAD_MENTION_PATTERN =
+  /\[((?:\\[\\[\]]|[^[\]\\])+)\]\(\/chats\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/g;
+
+export function serializeChatThreadMention(
+  threadId: string,
+  title: string,
+): string {
+  const escapedTitle = title.replace(/[\\[\]]/g, "\\$&");
+  return `[${escapedTitle}](/chats/${threadId})`;
+}
+
+export function splitChatThreadMentionSegments(
+  line: string,
+): readonly ChatThreadLineSegment[] {
+  const segments: ChatThreadLineSegment[] = [];
+  let lastIndex = 0;
+  for (const match of line.matchAll(CHAT_THREAD_MENTION_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) {
+      segments.push({ type: "text", text: line.slice(lastIndex, index) });
+    }
+    segments.push({
+      type: "mention",
+      threadId: match[2] ?? "",
+      title: (match[1] ?? "").replace(/\\([\\[\]])/g, "$1"),
+    });
+    lastIndex = index + match[0].length;
+  }
+  if (lastIndex < line.length) {
+    segments.push({ type: "text", text: line.slice(lastIndex) });
+  }
+  return segments;
+}
+
 export function findActiveChatThreadSuggestionRange(
   value: string,
   caretIndex: number,
