@@ -7,6 +7,17 @@ use crate::paths::SnapshotOutputPaths;
 
 use super::SnapshotError;
 
+/// Exact versioned payload written to [`SnapshotOutputPaths::complete_marker`].
+///
+/// Writers must use the full byte sequence verbatim, including the trailing
+/// line feed (`\n`), after all required snapshot artifacts are present as
+/// regular files and the output directory has been synced. Readers must compare
+/// the full sequence without trimming or reconstructing it.
+///
+/// The marker is the snapshot publication commit signal, not standalone proof
+/// of completeness: [`crate::FirecrackerSnapshotProvider`] also validates the
+/// required artifact files. Changing `v1` or any other byte is a compatibility
+/// change for independently deployed readers and writers.
 pub const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
 
 pub(super) fn snapshot_artifact_paths(output: &SnapshotOutputPaths) -> [PathBuf; 4] {
