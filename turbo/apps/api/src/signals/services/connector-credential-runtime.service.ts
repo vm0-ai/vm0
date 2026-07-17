@@ -246,6 +246,7 @@ export async function loadConnectorCredentialValues(args: {
 
 async function upsertConnectorSecret(args: {
   readonly db: Db;
+  readonly description: string;
   readonly name: string;
   readonly orgId: string;
   readonly userId: string;
@@ -259,14 +260,13 @@ async function upsertConnectorSecret(args: {
       userId: args.userId,
       name: args.name,
       encryptedValue,
-      description: null,
+      description: args.description,
       type: "connector",
     })
     .onConflictDoUpdate({
       target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
       set: {
         encryptedValue,
-        description: null,
         updatedAt: sql`clock_timestamp()`,
       },
     });
@@ -298,7 +298,6 @@ async function upsertConnectorVariable(args: {
       ],
       set: {
         value: args.value,
-        description: null,
         updatedAt: sql`clock_timestamp()`,
       },
     });
@@ -406,6 +405,7 @@ async function persistConnectorRefresh(args: {
       if (target.kind === "secret") {
         await upsertConnectorSecret({
           db: tx,
+          description: `Connector token output for ${args.connection.connectorRef}: ${target.name}`,
           name: target.name,
           orgId: args.orgId,
           userId: args.userId,

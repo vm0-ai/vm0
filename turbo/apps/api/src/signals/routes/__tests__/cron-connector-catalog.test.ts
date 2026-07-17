@@ -2303,6 +2303,20 @@ describe("connector catalog valid lifecycle", () => {
       code: "external-readiness",
       state: oauthState,
     });
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const headers = { authorization: "Bearer clerk-session" };
+    const initialSecrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({ headers }),
+      [200],
+    );
+    const initialAccessTokenDescription = initialSecrets.body.secrets.find(
+      (secret) => {
+        return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
+      },
+    )?.description;
+    expect(initialAccessTokenDescription).toBe(
+      "Connector token output for gmail: CATALOG_GMAIL_ACCESS_TOKEN",
+    );
     mockNow(new Date("2026-07-15T10:00:00.000Z"));
     const refreshBodies: URLSearchParams[] = [];
     server.use(
@@ -2323,8 +2337,6 @@ describe("connector catalog valid lifecycle", () => {
       visibility: "private",
     });
     created.agentId = agent.agentId;
-    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const headers = { authorization: "Bearer clerk-session" };
     const workflow = await accept(
       setupApp({ context })(zeroWorkflowsCollectionContract).create({
         headers,
@@ -2355,6 +2367,15 @@ describe("connector catalog valid lifecycle", () => {
     expect(refreshBodies).toHaveLength(1);
     expect(refreshBodies[0]?.get("grant_type")).toBe("refresh_token");
     expect(refreshBodies[0]?.get("refresh_token")).toBe("gmail-refresh-token");
+    const refreshedSecrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({ headers }),
+      [200],
+    );
+    expect(
+      refreshedSecrets.body.secrets.find((secret) => {
+        return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
+      })?.description,
+    ).toBe(initialAccessTokenDescription);
     const unavailableRelease = buildRelease({
       version: "2026-07-15.external-readiness-unavailable",
       connectorRef: "gmail",
