@@ -1121,7 +1121,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [prompt, agentId]);
   });
 
-  it("emits api dispatch timing for direct create route runs", async () => {
+  it("retains direct plan admission and emits direct create timing", async () => {
     const api = createRunsApi(context);
     const { actor } = await entitledRunActor();
     const prompt = "direct route api dispatch timing should not leak prompt";
@@ -1198,6 +1198,33 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
+
+    if (!actor.orgId) {
+      throw new Error("Expected suspended direct-run actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    const suspendedPrompt = `suspended direct ${randomUUID()}`;
+    const rejected = await api.requestDirectRun(
+      actor,
+      { agentComposeVersionId: headVersionId, prompt: suspendedPrompt },
+      [402],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+
+    const runs = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    expect(
+      runs.runs.filter((run) => {
+        return run.prompt === suspendedPrompt;
+      }),
+    ).toHaveLength(0);
   });
 
   it("emits bucketed storage manifest shape dimensions without leaking storage identifiers", async () => {
