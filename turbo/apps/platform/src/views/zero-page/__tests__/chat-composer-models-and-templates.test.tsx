@@ -789,6 +789,18 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+async function expectTemplateAttachedToComposer(
+  removeAriaLabel: string,
+): Promise<void> {
+  const editor = await findComposerEditor();
+  const removeButton = screen.getByLabelText(removeAriaLabel);
+  const attachment = removeButton.closest(
+    "[data-composer-template-attachment]",
+  );
+  expect(attachment).toBeInTheDocument();
+  expect(editor).toContainElement(attachment as HTMLElement);
+}
+
 function placeCaretAfterText(root: HTMLElement, text: string): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -3650,6 +3662,7 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${template.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(`Remove template ${template.title}`);
 
     click(screen.getByLabelText(`Remove template ${template.title}`));
 
@@ -4777,6 +4790,9 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove template ${illustrationTemplate.title}`,
+    );
 
     click(
       screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
@@ -5321,6 +5337,9 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove video template ${videoStyle.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove video template ${videoStyle.title}`,
+    );
 
     click(screen.getByLabelText(`Remove video template ${videoStyle.title}`));
 
@@ -5396,6 +5415,9 @@ describe("chat composer templates", () => {
         ),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove workflow template ${workflowTemplate.title}`,
+    );
 
     const editor = await findComposerEditor();
     await sendMessageInUI(user, editor, "Create this inbox workflow");
@@ -5482,6 +5504,9 @@ describe("chat composer templates", () => {
         ),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove website template ${websiteTemplate.title}`,
+    );
 
     click(
       screen.getByLabelText(

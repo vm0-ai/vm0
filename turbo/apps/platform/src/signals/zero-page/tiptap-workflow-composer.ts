@@ -92,6 +92,7 @@ export interface WorkflowComposerSignals {
   >;
   readonly focus$: Command<void, []>;
   readonly hasInput$: Computed<boolean>;
+  readonly hasTemplateAttachment$: Computed<boolean>;
   readonly activeSlashRange$: Computed<SlashWorkflowRange | null>;
   readonly activeChatThreadSuggestionRange$: Computed<ChatThreadSuggestionRange | null>;
   readonly chatThreadSuggestions$: Computed<
@@ -105,8 +106,35 @@ export interface WorkflowComposerSignals {
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
+  readonly setTemplateAttachment$: Command<
+    void,
+    [ComposerTemplateAttachment | undefined]
+  >;
+  readonly setTemplateAttachmentHandlers$: Command<
+    void,
+    [ComposerTemplateAttachmentHandlers]
+  >;
   readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
   readonly feedback: FeedbackSignals;
+}
+
+export type ComposerTemplateAttachmentType =
+  | "presentation"
+  | "illustration"
+  | "video"
+  | "workflow"
+  | "website";
+
+export interface ComposerTemplateAttachment {
+  readonly type: ComposerTemplateAttachmentType;
+  readonly title: string;
+  readonly category: string;
+  readonly previewImageUrl?: string;
+}
+
+export interface ComposerTemplateAttachmentHandlers {
+  readonly onOpen: (category: string) => void;
+  readonly onRemove: () => void;
 }
 
 export interface WorkflowComposerEventHandlers {
@@ -119,6 +147,7 @@ export interface WorkflowComposerEventHandlers {
 }
 
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
+const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 const CHAT_THREAD_MENTION_CLASS =
   "rounded bg-primary/10 px-1 text-primary whitespace-nowrap";
@@ -211,7 +240,7 @@ function feedbackItemNodeAttributes(
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
-function createFeedbackIcon(
+function createComposerIcon(
   size: number,
   strokeWidth: number,
   paths: readonly string[],
@@ -252,7 +281,7 @@ function createFeedbackItemNodeView(
   const quoteIconContainer = document.createElement("span");
   quoteIconContainer.className =
     "flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted";
-  const quoteIcon = createFeedbackIcon(12, 1.5, [
+  const quoteIcon = createComposerIcon(12, 1.5, [
     "M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
     "M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5",
   ]);
@@ -270,7 +299,7 @@ function createFeedbackItemNodeView(
   removeButton.setAttribute("aria-label", "Remove feedback");
   removeButton.title = "Remove feedback";
   removeButton.append(
-    createFeedbackIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
+    createComposerIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
   );
   quoteChip.append(quoteIconContainer, quoteText, removeButton);
   quoteDom.append(quoteChip);
@@ -332,6 +361,180 @@ function createFeedbackItemNodeView(
       return (
         mutation.type !== "selection" && !contentDOM.contains(mutation.target)
       );
+    },
+  };
+}
+
+function templateAttachmentNodeAttributes(
+  node: ProseMirrorNode,
+): ComposerTemplateAttachment {
+  const type: unknown = node.attrs.templateType;
+  const title: unknown = node.attrs.title;
+  const category: unknown = node.attrs.category;
+  const previewImageUrl: unknown = node.attrs.previewImageUrl;
+  if (
+    (type !== "presentation" &&
+      type !== "illustration" &&
+      type !== "video" &&
+      type !== "workflow" &&
+      type !== "website") ||
+    typeof title !== "string" ||
+    typeof category !== "string" ||
+    (previewImageUrl !== null && typeof previewImageUrl !== "string")
+  ) {
+    throw new Error("Template attachment node attributes are invalid");
+  }
+  return {
+    type,
+    title,
+    category,
+    ...(previewImageUrl === null ? {} : { previewImageUrl }),
+  };
+}
+
+function templateAttachmentPreviewLabel(
+  attachment: ComposerTemplateAttachment,
+): string {
+  if (attachment.type === "video") {
+    return `Preview video template ${attachment.title}`;
+  }
+  if (attachment.type === "workflow") {
+    return `Preview workflow template ${attachment.title}`;
+  }
+  if (attachment.type === "website") {
+    return `Preview website template ${attachment.title}`;
+  }
+  return `Preview template ${attachment.title}`;
+}
+
+function templateAttachmentRemoveLabel(
+  attachment: ComposerTemplateAttachment,
+): string {
+  if (attachment.type === "video") {
+    return `Remove video template ${attachment.title}`;
+  }
+  if (attachment.type === "workflow") {
+    return `Remove workflow template ${attachment.title}`;
+  }
+  if (attachment.type === "website") {
+    return `Remove website template ${attachment.title}`;
+  }
+  return `Remove template ${attachment.title}`;
+}
+
+function templateAttachmentTypeLabel(
+  type: ComposerTemplateAttachmentType,
+): string {
+  return `${type.charAt(0).toUpperCase()}${type.slice(1)}`;
+}
+
+function createTemplateAttachmentNodeView(
+  node: ProseMirrorNode,
+  openTemplate: (category: string) => void,
+  removeTemplate: () => void,
+): NodeView {
+  const dom = document.createElement("div");
+  dom.dataset.composerTemplateAttachment = "";
+  dom.className = "flex pb-1.5";
+  dom.contentEditable = "false";
+
+  const chip = document.createElement("div");
+  chip.className =
+    "inline-flex h-8 max-w-full items-center gap-1 rounded-lg border " +
+    "border-border/80 bg-background/90 pl-1 pr-1 text-foreground " +
+    "shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className =
+    "flex min-w-0 items-center gap-2 rounded-md px-1 py-1 " +
+    "transition-colors hover:bg-muted focus-visible:outline-none " +
+    "focus-visible:ring-2 focus-visible:ring-ring";
+  const iconContainer = document.createElement("span");
+  iconContainer.className =
+    "flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden " +
+    "rounded-md bg-muted";
+  const typeText = document.createElement("span");
+  typeText.className = "shrink-0 text-[11px] font-medium text-muted-foreground";
+  const divider = document.createElement("span");
+  divider.className = "h-3.5 w-px shrink-0 bg-border/70";
+  const titleText = document.createElement("span");
+  titleText.className = "min-w-0 truncate text-xs font-medium";
+  openButton.append(iconContainer, typeText, divider, titleText);
+
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className =
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md " +
+    "text-muted-foreground/70 transition-colors hover:bg-muted " +
+    "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 " +
+    "focus-visible:ring-ring";
+  removeButton.append(
+    createComposerIcon(14, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
+  );
+  chip.append(openButton, removeButton);
+  dom.append(chip);
+
+  let currentNode = node;
+  function render(nextNode: ProseMirrorNode): void {
+    const attachment = templateAttachmentNodeAttributes(nextNode);
+    openButton.setAttribute(
+      "aria-label",
+      templateAttachmentPreviewLabel(attachment),
+    );
+    removeButton.setAttribute(
+      "aria-label",
+      templateAttachmentRemoveLabel(attachment),
+    );
+    removeButton.title = templateAttachmentRemoveLabel(attachment);
+    typeText.textContent = templateAttachmentTypeLabel(attachment.type);
+    titleText.textContent = attachment.title;
+    iconContainer.replaceChildren();
+    if (attachment.previewImageUrl) {
+      const image = document.createElement("img");
+      image.src = attachment.previewImageUrl;
+      image.alt = "";
+      image.className = "h-full w-full object-cover";
+      iconContainer.append(image);
+    } else {
+      const icon = createComposerIcon(12, 1.5, [
+        "M4 4h16v16h-16z",
+        "M8 8h8",
+        "M8 12h8",
+        "M8 16h5",
+      ]);
+      icon.setAttribute("class", "text-muted-foreground");
+      iconContainer.append(icon);
+    }
+  }
+  openButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  openButton.addEventListener("click", () => {
+    openTemplate(templateAttachmentNodeAttributes(currentNode).category);
+  });
+  removeButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  removeButton.addEventListener("click", removeTemplate);
+  render(currentNode);
+
+  return {
+    dom,
+    update(nextNode) {
+      if (nextNode.type !== currentNode.type) {
+        return false;
+      }
+      currentNode = nextNode;
+      render(nextNode);
+      return true;
+    },
+    stopEvent(event) {
+      return (
+        event.target instanceof globalThis.Node && dom.contains(event.target)
+      );
+    },
+    ignoreMutation() {
+      return true;
     },
   };
 }
@@ -456,6 +659,95 @@ function feedbackItemsFromWorkflowComposer(
   return items;
 }
 
+interface LocatedTemplateAttachment {
+  readonly node: ProseMirrorNode;
+  readonly position: number;
+}
+
+function locateTemplateAttachment(
+  document: ProseMirrorNode,
+): LocatedTemplateAttachment | null {
+  let position = 0;
+  for (let index = 0; index < document.childCount; index++) {
+    const node = document.child(index);
+    if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
+      return { node, position };
+    }
+    position += node.nodeSize;
+  }
+  return null;
+}
+
+function templateAttachmentsEqual(
+  first: ComposerTemplateAttachment,
+  second: ComposerTemplateAttachment,
+): boolean {
+  return (
+    first.type === second.type &&
+    first.title === second.title &&
+    first.category === second.category &&
+    first.previewImageUrl === second.previewImageUrl
+  );
+}
+
+function templateAttachmentNode(
+  editor: Editor,
+  attachment: ComposerTemplateAttachment,
+): ProseMirrorNode {
+  return editor.schema.nodeFromJSON({
+    type: TEMPLATE_ATTACHMENT_NODE_NAME,
+    attrs: {
+      templateType: attachment.type,
+      title: attachment.title,
+      category: attachment.category,
+      previewImageUrl: attachment.previewImageUrl ?? null,
+    },
+  });
+}
+
+function setTemplateAttachmentNode(
+  editor: Editor,
+  attachment: ComposerTemplateAttachment | undefined,
+): void {
+  const located = locateTemplateAttachment(editor.state.doc);
+  if (!attachment) {
+    if (!located) {
+      return;
+    }
+    const transaction = editor.state.tr.delete(
+      located.position,
+      located.position + located.node.nodeSize,
+    );
+    if (transaction.doc.childCount === 0) {
+      transaction.insert(0, editor.schema.node("paragraph"));
+    }
+    editor.view.dispatch(transaction.scrollIntoView());
+    return;
+  }
+  if (located) {
+    const currentAttachment = templateAttachmentNodeAttributes(located.node);
+    if (templateAttachmentsEqual(currentAttachment, attachment)) {
+      return;
+    }
+    editor.view.dispatch(
+      editor.state.tr
+        .setNodeMarkup(located.position, undefined, {
+          templateType: attachment.type,
+          title: attachment.title,
+          category: attachment.category,
+          previewImageUrl: attachment.previewImageUrl ?? null,
+        })
+        .scrollIntoView(),
+    );
+    return;
+  }
+  editor.view.dispatch(
+    editor.state.tr
+      .insert(0, templateAttachmentNode(editor, attachment))
+      .scrollIntoView(),
+  );
+}
+
 function valueToWorkflowComposerDoc(value: string): JSONContent {
   const content: JSONContent[] = value.split("\n").map((line) => {
     if (line.length === 0) {
@@ -511,6 +803,9 @@ function workflowComposerDocToString(editor: Editor): string {
 
   for (let index = 0; index < editor.state.doc.childCount; index++) {
     const node = editor.state.doc.child(index);
+    if (node.type.name === TEMPLATE_ATTACHMENT_NODE_NAME) {
+      continue;
+    }
     if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
       flushTextBlocks();
       const attributes = feedbackItemNodeAttributes(node);
@@ -638,10 +933,82 @@ interface WorkflowComposerRuntime {
   focus(editor: Editor): void;
   blur(): void;
   input(): void;
+  templateAttachment: ComposerTemplateAttachment | undefined;
+  openTemplate(category: string): void;
+  removeTemplate(): void;
+  templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
   removeFeedback(id: number): void;
   keyDown(event: KeyboardEvent): boolean;
   paste(event: ClipboardEvent, currentTarget: HTMLElement): boolean;
+}
+
+function createTemplateAttachmentNode(
+  runtime: WorkflowComposerRuntime,
+): Node<undefined, unknown> {
+  return Node.create({
+    name: TEMPLATE_ATTACHMENT_NODE_NAME,
+    group: "block",
+    atom: true,
+    defining: true,
+    isolating: true,
+    selectable: false,
+    addAttributes() {
+      return {
+        templateType: { default: "presentation" },
+        title: { default: "" },
+        category: { default: "slides" },
+        previewImageUrl: { default: null },
+      };
+    },
+    parseHTML() {
+      return [{ tag: "div[data-composer-template-attachment]" }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return [
+        "div",
+        { ...HTMLAttributes, "data-composer-template-attachment": "" },
+      ];
+    },
+    addNodeView() {
+      return ({ node }) => {
+        return createTemplateAttachmentNodeView(
+          node,
+          (category) => {
+            runtime.openTemplate(category);
+          },
+          () => {
+            runtime.removeTemplate();
+          },
+        );
+      };
+    },
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          key: new PluginKey("templateAttachmentGuard"),
+          appendTransaction(_transactions, _oldState, newState) {
+            const attachment = runtime.templateAttachment;
+            if (
+              attachment === undefined ||
+              locateTemplateAttachment(newState.doc) !== null
+            ) {
+              return null;
+            }
+            return newState.tr.insert(
+              0,
+              newState.schema.node(TEMPLATE_ATTACHMENT_NODE_NAME, {
+                templateType: attachment.type,
+                title: attachment.title,
+                category: attachment.category,
+                previewImageUrl: attachment.previewImageUrl ?? null,
+              }),
+            );
+          },
+        }),
+      ];
+    },
+  });
 }
 
 function createFeedbackItemNode(
@@ -683,6 +1050,7 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
     element: null,
     extensions: [
       STARTER_KIT,
+      createTemplateAttachmentNode(runtime),
       createFeedbackItemNode(runtime),
       ChatThreadMentionNode,
       WorkflowHighlight,
@@ -726,6 +1094,24 @@ function setWorkflowComposerDocument(
   }
   editor.commands.setContent(nextDocument, { emitUpdate: false });
   return true;
+}
+
+function workflowComposerDocumentForValue(
+  editor: Editor,
+  value: string,
+): ProseMirrorNode {
+  const textDocument = editor.schema.nodeFromJSON(
+    valueToWorkflowComposerDoc(value),
+  );
+  const templateAttachment = locateTemplateAttachment(editor.state.doc)?.node;
+  if (!templateAttachment) {
+    return textDocument;
+  }
+  const content = [templateAttachment];
+  for (let index = 0; index < textDocument.childCount; index++) {
+    content.push(textDocument.child(index));
+  }
+  return editor.schema.node("doc", undefined, content);
 }
 
 function createMountEditorCommand({
@@ -796,7 +1182,7 @@ function createMountEditorCommand({
       if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
         setWorkflowComposerDocument(
           editor,
-          editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(input)),
+          workflowComposerDocumentForValue(editor, input),
         );
       }
       editor.mount(element);
@@ -807,7 +1193,7 @@ function createMountEditorCommand({
           }
           const changed = setWorkflowComposerDocument(
             editor,
-            editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value)),
+            workflowComposerDocumentForValue(editor, value),
           );
           if (changed) {
             runtime.replaceFeedbackItems(
@@ -930,6 +1316,10 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     focus(_editor: Editor): void {},
     blur(): void {},
     input(): void {},
+    templateAttachment: undefined,
+    openTemplate(_category: string): void {},
+    removeTemplate(): void {},
+    templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
     removeFeedback(_id: number): void {},
     keyDown(_event: KeyboardEvent): boolean {
@@ -939,6 +1329,38 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
       return false;
     },
   };
+}
+
+function createTemplateAttachmentControls(
+  editor: Editor,
+  runtime: WorkflowComposerRuntime,
+) {
+  const activeState$ = state(false);
+  runtime.removeTemplate = () => {
+    if (runtime.templateAttachment === undefined) {
+      return;
+    }
+    runtime.templateAttachment = undefined;
+    setTemplateAttachmentNode(editor, undefined);
+    runtime.templateRemoved();
+  };
+  const set$ = command(
+    ({ set }, attachment: ComposerTemplateAttachment | undefined) => {
+      runtime.templateAttachment = attachment;
+      set(activeState$, attachment !== undefined);
+      setTemplateAttachmentNode(editor, attachment);
+    },
+  );
+  const setHandlers$ = command(
+    (_context, handlers: ComposerTemplateAttachmentHandlers) => {
+      runtime.openTemplate = handlers.onOpen;
+      runtime.templateRemoved = handlers.onRemove;
+    },
+  );
+  const active$ = computed((get) => {
+    return get(activeState$);
+  });
+  return { active$, set$, setHandlers$ };
 }
 
 export function createWorkflowComposerSignals(
@@ -952,6 +1374,7 @@ export function createWorkflowComposerSignals(
   const templatePreview = createTemplatePreviewRuntime();
 
   const editor = createWorkflowEditor(runtime);
+  const templateAttachment = createTemplateAttachmentControls(editor, runtime);
   const feedback = createFeedbackSignals(threadId ?? "", {
     insertItem(item) {
       insertFeedbackItem(editor, item);
@@ -1046,6 +1469,7 @@ export function createWorkflowComposerSignals(
     setCompactContainerRef$: mountEditor(false, true),
     focus$,
     hasInput$,
+    hasTemplateAttachment$: templateAttachment.active$,
     activeSlashRange$,
     activeChatThreadSuggestionRange$,
     chatThreadSuggestions$,
@@ -1057,6 +1481,8 @@ export function createWorkflowComposerSignals(
     insertChatThread$,
     insertText$,
     appendText$,
+    setTemplateAttachment$: templateAttachment.set$,
+    setTemplateAttachmentHandlers$: templateAttachment.setHandlers$,
     setEventHandlers$,
     feedback,
   };

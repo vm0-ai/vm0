@@ -88,7 +88,10 @@ import {
   openChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
-import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
+import type {
+  ComposerTemplateAttachment,
+  WorkflowComposerSignals,
+} from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -208,8 +211,6 @@ import {
   setTemplateCardThemeId$,
   templateCardHtmlPreview$,
   setTemplateCardHtmlPreview$,
-  templateCardDefaultHtmlPreviews$,
-  setTemplateCardDefaultHtmlPreview$,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
   setTemplateDetailHtmlPreview$,
@@ -5072,373 +5073,75 @@ function TemplatePickerCategoryContent({
   return null;
 }
 
-function SelectedTemplateChip({
-  colorSystemId,
-  item,
-  onOpen,
-  onRemove,
-  runtime,
-}: {
-  colorSystemId?: string;
-  item: PresentationTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-  runtime: TemplatePreviewRuntime;
-}) {
-  const label = item.title;
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview template ${label}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <SelectedPresentationTemplateChipPreview
-                colorSystemId={colorSystemId}
-                item={item}
-                runtime={runtime}
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Presentation
-            </span>
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {label}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove template ${label}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedPresentationTemplateChipPreview({
-  colorSystemId,
-  item,
-  runtime,
-}: {
-  colorSystemId?: string;
-  item: PresentationTemplateItem;
-  runtime: TemplatePreviewRuntime;
-}) {
-  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
-  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
-  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
-  const selectedTheme = findPresentationTemplateTheme(
-    colorSystemId?.replace("color-system:", "") ??
-      themeIdBySlug[item.slug] ??
-      defaultPresentationTemplateThemeId(item),
-  );
-  const previewKey = `${item.embedUrl}#selected-chip:${selectedTheme.id}`;
-  const htmlPreview = defaultHtmlPreviews[previewKey] ?? null;
-  const fallbackImageUrl = presentationTemplateCardSlideImage(
-    item,
-    0,
-    selectedTheme,
-    SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-  );
-
-  const loadChipHtmlPreviewAfterMount = (node: HTMLElement | null) => {
-    if (node === null || isHappyDomTestEnvironment() || htmlPreview !== null) {
-      return;
-    }
-
-    const cache = runtime.presentation;
-    const setChipPreview = (draft: PresentationEditDraft) => {
-      if (!node.isConnected) {
-        return;
-      }
-      const previewState = createPresentationTemplateHtmlPreviewState({
-        draft,
-        index: 0,
-        item,
-        previousFrameUrl: null,
-        theme: selectedTheme,
-      });
-      if (previewState !== null) {
-        setDefaultHtmlPreview(previewKey, previewState);
-      }
-    };
-
-    const cachedDraft = cache.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      setChipPreview(cachedDraft);
-      return;
-    }
-
-    if (cache.failed.has(item.embedUrl)) {
-      return;
-    }
-
-    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
-    if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
-      cache.pendingLoads.set(item.embedUrl, pendingLoad);
-    }
-    detach(
-      (async () => {
-        const result = await tapError(pendingLoad);
-        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-          cache.pendingLoads.delete(item.embedUrl);
-        }
-        if (result === undefined || result === null) {
-          cache.failed.add(item.embedUrl);
-          return;
-        }
-        cache.drafts.set(item.embedUrl, result);
-        setChipPreview(result);
-      })(),
-      Reason.DomCallback,
+function selectedComposerTemplateAttachment(
+  value: GenerationTemplateRequest | undefined,
+  hasWebsiteTab: boolean,
+): ComposerTemplateAttachment | undefined {
+  const presentationItem = selectedPresentationTemplateItem(value);
+  if (presentationItem && value?.type === "presentation") {
+    const selectedTheme = findPresentationTemplateTheme(
+      value.selection.colorSystemId?.replace("color-system:", "") ??
+        defaultPresentationTemplateThemeId(presentationItem),
     );
-  };
-
-  return htmlPreview?.frameUrl ? (
-    <iframe
-      title={`${item.title} selected template preview`}
-      src={htmlPreview.frameUrl}
-      sandbox="allow-same-origin"
-      tabIndex={-1}
-      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
-    />
-  ) : (
-    <img
-      ref={loadChipHtmlPreviewAfterMount}
-      src={fallbackImageUrl}
-      alt=""
-      className="h-full w-full object-cover"
-      loading="lazy"
-    />
-  );
+    return {
+      type: "presentation",
+      title: presentationItem.title,
+      category: "slides",
+      previewImageUrl: presentationTemplateCardSlideImage(
+        presentationItem,
+        0,
+        selectedTheme,
+        SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+      ),
+    };
+  }
+  const illustrationItem = selectedIllustrationTemplateItem(value);
+  if (illustrationItem) {
+    return {
+      type: "illustration",
+      title: illustrationItem.title,
+      category: "illustration",
+      previewImageUrl: r2ImageTransformUrl(
+        illustrationItem.previewImage,
+        SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+      ),
+    };
+  }
+  const videoItem = selectedVideoTemplateItem(value);
+  if (videoItem) {
+    return { type: "video", title: videoItem.title, category: "video" };
+  }
+  const workflowItem = selectedWorkflowTemplateItem(value);
+  if (workflowItem) {
+    return {
+      type: "workflow",
+      title: workflowItem.title,
+      category: "workflow",
+    };
+  }
+  const websiteItem = hasWebsiteTab
+    ? selectedWebsiteTemplateItem(value)
+    : undefined;
+  return websiteItem
+    ? { type: "website", title: websiteItem.title, category: "website" }
+    : undefined;
 }
 
-function SelectedVideoTemplateChip({
-  item,
-  onOpen,
-  onRemove,
-}: {
-  item: VideoTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview video template ${item.title}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <IconVideo
-                size={12}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Video
-            </span>
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {item.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove video template ${item.title}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedIllustrationTemplateChip({
-  item,
-  onOpen,
-  onRemove,
-}: {
-  item: IllustrationTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview template ${item.title}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <img
-                src={r2ImageTransformUrl(
-                  item.previewImage,
-                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-                )}
-                alt=""
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Illustration
-            </span>
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {item.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove template ${item.title}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedWorkflowTemplateChip({
-  item,
-  onOpen,
-  onRemove,
-}: {
-  item: WorkflowTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview workflow template ${item.title}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <IconRoute
-                size={12}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Workflow
-            </span>
-            <WorkflowTemplateConnectorIcons
-              connectors={item.connectors}
-              compact
-              withDivider
-            />
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {item.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove workflow template ${item.title}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedWebsiteTemplateChip({
-  item,
-  onOpen,
-  onRemove,
-}: {
-  item: WebsiteTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview website template ${item.title}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <IconWorld
-                size={12}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Website
-            </span>
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {item.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove website template ${item.title}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedTemplateChipSlot({
+function ComposerTemplateAttachmentSync({
+  composer,
   picker,
   onDraftChange,
   runtime,
 }: {
+  composer: WorkflowComposerSignals;
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
   runtime: TemplatePreviewRuntime;
 }) {
+  const setTemplateAttachment = useSet(composer.setTemplateAttachment$);
+  const setTemplateAttachmentHandlers = useSet(
+    composer.setTemplateAttachmentHandlers$,
+  );
   const setOpen = useSet(setTemplatePickerOpen$);
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
@@ -5446,18 +5149,10 @@ function SelectedTemplateChipSlot({
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const features = useLastResolved(featureSwitch$);
   const hasWebsiteTab = features?.[FeatureSwitchKey.WebsiteTemplates] ?? false;
-  const presentationItem = selectedPresentationTemplateItem(picker?.value);
-  const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
-  const videoItem = selectedVideoTemplateItem(picker?.value);
-  const workflowItem = selectedWorkflowTemplateItem(picker?.value);
-  const websiteItem = hasWebsiteTab
-    ? selectedWebsiteTemplateItem(picker?.value)
-    : undefined;
-  if (!picker) {
-    return null;
-  }
-  // Reopen the picker on the tab matching the selected template's type so the
-  // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
+  const attachment = selectedComposerTemplateAttachment(
+    picker?.value,
+    hasWebsiteTab,
+  );
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
       runtime,
@@ -5476,83 +5171,24 @@ function SelectedTemplateChipSlot({
     setCategory(category);
     setOpen(true);
   };
-  if (presentationItem) {
-    return (
-      <SelectedTemplateChip
-        colorSystemId={
-          picker.value?.type === "presentation"
-            ? picker.value.selection.colorSystemId
-            : undefined
+  return (
+    <span
+      hidden
+      ref={(element) => {
+        if (!element) {
+          return;
         }
-        item={presentationItem}
-        runtime={runtime}
-        onOpen={() => {
-          return openPicker("slides");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  if (videoItem) {
-    return (
-      <SelectedVideoTemplateChip
-        item={videoItem}
-        onOpen={() => {
-          return openPicker("video");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  if (illustrationItem) {
-    return (
-      <SelectedIllustrationTemplateChip
-        item={illustrationItem}
-        onOpen={() => {
-          return openPicker("illustration");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  if (workflowItem) {
-    return (
-      <SelectedWorkflowTemplateChip
-        item={workflowItem}
-        onOpen={() => {
-          return openPicker("workflow");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  if (websiteItem) {
-    return (
-      <SelectedWebsiteTemplateChip
-        item={websiteItem}
-        onOpen={() => {
-          return openPicker("website");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  return null;
+        setTemplateAttachmentHandlers({
+          onOpen: openPicker,
+          onRemove: () => {
+            picker?.onChange(undefined);
+            onDraftChange?.();
+          },
+        });
+        setTemplateAttachment(attachment);
+      }}
+    />
+  );
 }
 
 function TemplatePickerButton({
@@ -7281,7 +6917,8 @@ export function useZeroChatComposer({
         >
           <CardContent className="p-0">
             <div className="flex flex-col">
-              <SelectedTemplateChipSlot
+              <ComposerTemplateAttachmentSync
+                composer={composer}
                 picker={templatePicker}
                 onDraftChange={onDraftChange}
                 runtime={composer.templatePreview}
