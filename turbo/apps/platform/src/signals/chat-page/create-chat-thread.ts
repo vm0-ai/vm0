@@ -82,12 +82,26 @@ import {
   loadIndexedDbChatMessages$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
-import type { BodyRenderBlock } from "./parse-body-blocks.ts";
+import type { BodyRenderBlock, ParsedBodyBlock } from "./parse-body-blocks.ts";
 import { parseMessageBodyBlocks } from "./chat-message-body-blocks.ts";
 import {
-  createChatCardSignalsRegistry,
-  type ChatCardSignalsRegistry,
-} from "./chat-card-signals.ts";
+  createArtifactCardSignalsRegistry,
+  type ArtifactCardSignalsRegistry,
+} from "./artifact-card-signals.ts";
+import {
+  createConnectorCardSignalsRegistry,
+  createCustomConnectorCardSignalsRegistry,
+  type ConnectorCardSignalsRegistry,
+  type CustomConnectorCardSignalsRegistry,
+} from "./connector-action-block.ts";
+import {
+  createPermissionCardSignalsRegistry,
+  type PermissionCardSignalsRegistry,
+} from "./permission-card-signals.ts";
+import {
+  createComputerUseAuthorizationCardSignalsRegistry,
+  type ComputerUseAuthorizationCardSignalsRegistry,
+} from "./computer-use-authorization-block.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
@@ -1291,6 +1305,10 @@ interface RegisteredChatMessage {
 
 type PersistentChatMessages$ = State<RegisteredChatMessage[]>;
 
+type BodyBlocksRenderer = (
+  blocks: readonly ParsedBodyBlock[],
+) => BodyRenderBlock[];
+
 function compareCursorString(left: string, right: string): number {
   if (left < right) {
     return -1;
@@ -1356,11 +1374,11 @@ function skipsMessageBodyRendering(message: PagedChatMessage): boolean {
 
 function registerChatMessage(
   message: PagedChatMessage,
-  cardSignals: ChatCardSignalsRegistry,
+  registerBodyBlocks: BodyBlocksRenderer,
 ): RegisteredChatMessage {
   const blocks = skipsMessageBodyRendering(message)
     ? []
-    : cardSignals.registerBodyBlocks(parseMessageBodyBlocks(message));
+    : registerBodyBlocks(parseMessageBodyBlocks(message));
   return { message, blocks };
 }
 
@@ -1368,7 +1386,7 @@ function createWritePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
   registerMailDraftMessages$: Command<void, [readonly PagedChatMessage[]]>,
-  cardSignals: ChatCardSignalsRegistry,
+  registerBodyBlocks: BodyBlocksRenderer,
 ) {
   return command(
     async (
@@ -1396,7 +1414,7 @@ function createWritePersistentMessages(
       }
       set(registerMailDraftMessages$, msgs);
       const registeredMessages = msgs.map((message) => {
-        return registerChatMessage(message, cardSignals);
+        return registerChatMessage(message, registerBodyBlocks);
       });
       set(persistentMessages$, (prev) => {
         return mergeRegisteredMessages([prev, registeredMessages]);
@@ -1418,11 +1436,11 @@ interface ChatMessageProjectionEntry {
 function projectRawMessages({
   persistentMessages,
   optimisticEntries,
-  cardSignals,
+  resolveBodyBlocks,
 }: {
   persistentMessages: readonly RegisteredChatMessage[];
   optimisticEntries: readonly OptimisticChatMessageEntry[];
-  cardSignals: ChatCardSignalsRegistry;
+  resolveBodyBlocks: BodyBlocksRenderer;
 }): ChatMessageProjectionEntry[] {
   const serverIds = new Set(
     persistentMessages.map((entry) => {
@@ -1439,7 +1457,7 @@ function projectRawMessages({
     ...optimistic.map((entry) => {
       return {
         message: entry.message,
-        blocks: cardSignals.resolveBodyBlocks(entry.parsedBodyBlocks),
+        blocks: resolveBodyBlocks(entry.parsedBodyBlocks),
         source: "optimistic" as const,
         optimisticUserMessageAssociation:
           entry.optimisticUserMessageAssociation,
@@ -1451,17 +1469,17 @@ function projectRawMessages({
 function createRawMessagesComputed({
   persistentMessages$,
   optimisticMessages$,
-  cardSignals,
+  resolveBodyBlocks,
 }: {
   persistentMessages$: PersistentChatMessages$;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
-  cardSignals: ChatCardSignalsRegistry;
+  resolveBodyBlocks: BodyBlocksRenderer;
 }): Computed<ChatMessageProjectionEntry[]> {
   return computed((get): ChatMessageProjectionEntry[] => {
     return projectRawMessages({
       persistentMessages: get(persistentMessages$),
       optimisticEntries: get(optimisticMessages$),
-      cardSignals,
+      resolveBodyBlocks,
     });
   });
 }
@@ -2237,15 +2255,106 @@ function createActiveGoalObjectiveComputed(
   });
 }
 
+function createBodyBlocksRenderer(
+  artifactCardSignals: ArtifactCardSignalsRegistry,
+  connectorCardSignals: ConnectorCardSignalsRegistry,
+  customConnectorCardSignals: CustomConnectorCardSignalsRegistry,
+  permissionCardSignals: PermissionCardSignalsRegistry,
+  computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry,
+): (resolution: "register" | "resolve") => BodyBlocksRenderer {
+  return (resolution) => {
+    return (blocks) => {
+      return blocks.map((block): BodyRenderBlock => {
+        switch (block.type) {
+          case "markdown": {
+            return block;
+          }
+          case "artifact": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? artifactCardSignals.register(block.descriptor)
+                  : artifactCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "connector-action": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? connectorCardSignals.register(block.descriptor)
+                  : connectorCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "custom-connector-action": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? customConnectorCardSignals.register(block.descriptor)
+                  : customConnectorCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "permission-action": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? permissionCardSignals.register(block.descriptor)
+                  : permissionCardSignals.resolve(block.resourceKey),
+            };
+          }
+          case "computer-use-authorization": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? computerUseAuthorizationCardSignals.register(
+                      block.descriptor,
+                    )
+                  : computerUseAuthorizationCardSignals.resolve(
+                      block.resourceKey,
+                    ),
+            };
+          }
+        }
+        const exhaustive: never = block;
+        return exhaustive;
+      });
+    };
+  };
+}
+
 function createPagedMessages(
   threadId: string,
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
 ) {
   const mailDraftCards = createMailDraftCardRegistry();
-  const cardSignals = createChatCardSignalsRegistry();
+  const artifactCardSignals = createArtifactCardSignalsRegistry();
+  const connectorCardSignals = createConnectorCardSignalsRegistry();
+  const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
+  const permissionCardSignals = createPermissionCardSignalsRegistry();
+  const computerUseAuthorizationCardSignals =
+    createComputerUseAuthorizationCardSignalsRegistry();
+  const bodyBlocksRenderer = createBodyBlocksRenderer(
+    artifactCardSignals,
+    connectorCardSignals,
+    customConnectorCardSignals,
+    permissionCardSignals,
+    computerUseAuthorizationCardSignals,
+  );
+  const registerBodyBlocks = bodyBlocksRenderer("register");
+  const resolveBodyBlocks = bodyBlocksRenderer("resolve");
+
   for (const entry of initialOptimisticEntries) {
-    cardSignals.registerBodyBlocks(entry.parsedBodyBlocks);
+    registerBodyBlocks(entry.parsedBodyBlocks);
   }
   const persistentChatMessages$ = state<RegisteredChatMessage[]>([]);
   const hasReachedOldestMessage$ = state(false);
@@ -2253,7 +2362,7 @@ function createPagedMessages(
   const appendOptimisticMessage$ = command(
     ({ set }, input: OptimisticChatMessageInput): void => {
       const entry = createOptimisticChatMessageEntry(input);
-      cardSignals.registerBodyBlocks(entry.parsedBodyBlocks);
+      registerBodyBlocks(entry.parsedBodyBlocks);
       set(appendOptimisticChatMessage$, entry);
     },
   );
@@ -2261,7 +2370,7 @@ function createPagedMessages(
   const rawMessages$ = createRawMessagesComputed({
     persistentMessages$: persistentChatMessages$,
     optimisticMessages$,
-    cardSignals,
+    resolveBodyBlocks,
   });
   const semanticMessages$ = computed((get): SemanticChatMessage[] => {
     return semanticTranscriptMessagesFromRaw(get(rawMessages$));
@@ -2287,14 +2396,14 @@ function createPagedMessages(
     threadId,
     persistentChatMessages$,
     mailDraftCards.registerMailDraftMessages$,
-    cardSignals,
+    registerBodyBlocks,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
       set(mailDraftCards.registerMailDraftMessages$, messages);
       const registeredMessages = messages.map((message) => {
-        return registerChatMessage(message, cardSignals);
+        return registerChatMessage(message, registerBodyBlocks);
       });
       set(persistentChatMessages$, (previous) => {
         return mergeRegisteredMessages([registeredMessages, previous]);

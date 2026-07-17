@@ -18,6 +18,8 @@ surface; the index does not replace their detailed rules.
 - [React commit analysis](./react-commit.md): measuring and attributing React
   work without confusing executions, scheduler events, or DOM mutations with
   commits.
+- [Chat cards](./chat-cards.md): recognizing links in chat messages, creating
+  thread-scoped card signals, and rendering rich interactive cards.
 - [CLI design](./cli-design-guideline.md): command behavior and interface
   conventions.
 - [Resource model](./resource-model.md): resource relationships and ownership.

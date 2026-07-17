@@ -2,6 +2,10 @@ import {
   resolvePlatformOriginForTarget,
   rewritePlatformHostname,
 } from "../api-base.ts";
+import {
+  getOrCreateCardSignals,
+  registeredCardSignals,
+} from "./card-signal-map.ts";
 
 export interface ComputerUseAuthorizationDescriptor {
   requestToken: string;
@@ -11,6 +15,13 @@ export interface ComputerUseAuthorizationDescriptor {
 
 export type ComputerUseAuthorizationSignals =
   ComputerUseAuthorizationDescriptor;
+
+export interface ComputerUseAuthorizationCardSignalsRegistry {
+  register(
+    descriptor: ComputerUseAuthorizationDescriptor,
+  ): ComputerUseAuthorizationSignals;
+  resolve(resourceKey: string): ComputerUseAuthorizationSignals;
+}
 
 function browserOrigin(): string | null {
   if (typeof location === "undefined" || !location.origin) {
@@ -131,4 +142,25 @@ export function createComputerUseAuthorizationSignals(
   descriptor: ComputerUseAuthorizationDescriptor,
 ): ComputerUseAuthorizationSignals {
   return descriptor;
+}
+
+export function createComputerUseAuthorizationCardSignalsRegistry(): ComputerUseAuthorizationCardSignalsRegistry {
+  const signalsByResourceKey = new Map<
+    string,
+    ComputerUseAuthorizationSignals
+  >();
+  return {
+    register(descriptor) {
+      return getOrCreateCardSignals(
+        signalsByResourceKey,
+        descriptor.href,
+        () => {
+          return createComputerUseAuthorizationSignals(descriptor);
+        },
+      );
+    },
+    resolve(resourceKey) {
+      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    },
+  };
 }
