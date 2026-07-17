@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.129](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.128...sandbox-fc-v0.37.129) (2026-07-17)
+
+
+### Documentation
+
+* **sandbox-fc:** document outbound tcp proxy routing ([#21935](https://github.com/vm0-ai/vm0/issues/21935)) ([5ffa25b](https://github.com/vm0-ai/vm0/commit/5ffa25bb75a4df91a195de1b632e59ec0925274d))
+
 ## [0.37.128](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.127...sandbox-fc-v0.37.128) (2026-07-16)
 
 
