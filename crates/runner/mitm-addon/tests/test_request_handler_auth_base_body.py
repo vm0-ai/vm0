@@ -356,6 +356,9 @@ async def test_auth_base_requestheaders_accepts_matching_duplicate_content_lengt
         mitm_addon.requestheaders(flow)
 
     assert flow.response is None
+    assert flow.error is None
+    assert flow.live is True
+    assert metadata_keys.FIREWALL_ERROR not in flow.metadata
 
 
 @pytest.mark.parametrize("method", ["GET", "HEAD"])
