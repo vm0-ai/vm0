@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import difflib
 import http.client
-import importlib.util
 import re
+import runpy
 import ssl
 import sys
 import tempfile
@@ -14,7 +14,6 @@ import urllib.error
 import urllib.request
 from http import HTTPStatus
 from pathlib import Path
-from types import ModuleType
 from typing import NamedTuple
 
 SOURCE_HOST = "data.iana.org"
@@ -152,19 +151,10 @@ def render_module(version: str, tlds: tuple[str, ...]) -> str:
     return "\n".join(lines)
 
 
-def load_generated_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("x_tlds_generated", OUTPUT_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"could not load module spec for {OUTPUT_PATH}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def read_existing_snapshot() -> tuple[str, tuple[str, ...]]:
-    module = load_generated_module()
-    version = getattr(module, "IANA_TLD_VERSION", None)
-    tlds = getattr(module, "IANA_TLDS", None)
+    namespace = runpy.run_path(str(OUTPUT_PATH), run_name="x_tlds_generated")
+    version = namespace.get("IANA_TLD_VERSION")
+    tlds = namespace.get("IANA_TLDS")
     if not isinstance(version, str) or not version:
         raise ValueError("generated module has invalid IANA_TLD_VERSION")
     if not isinstance(tlds, frozenset) or not all(isinstance(tld, str) for tld in tlds):
