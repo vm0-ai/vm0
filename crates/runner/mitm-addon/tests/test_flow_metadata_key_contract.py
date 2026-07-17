@@ -137,6 +137,17 @@ def test_registered_flow_metadata_guard_flags_direct_literals(tmp_path):
     )
 
 
+def test_registered_flow_metadata_guard_flags_direct_unbound_mapping_reads(tmp_path):
+    source_path = tmp_path / "unbound_calls.py"
+    _write_python_source(source_path, "unbound_calls.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "unbound_calls.expected.txt"
+    )
+
+
 def test_registered_flow_metadata_guard_flags_literals_after_dynamic_star_args(tmp_path):
     source_path = tmp_path / "dynamic_star_args.py"
     _write_python_source(source_path, "dynamic_star_args.base.py.txt")
