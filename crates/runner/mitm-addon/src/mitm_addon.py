@@ -550,8 +550,8 @@ def _endpoint_text(address: tuple[str, int] | None) -> str:
     return f"{host}:{port}"
 
 
-async def server_connect(data: object) -> None:
-    await upstream_admission.handle_server_connect(
+def server_connect(data: object) -> None:
+    upstream_admission.handle_server_connect(
         data,
         registry_path=get_registry_path(),
         api_url=get_api_url(),

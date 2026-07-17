@@ -1,24 +1,20 @@
 """Tests for upstream destination binding in server_connect()."""
 
-import asyncio
-import socket
-import threading
 import uuid
-from unittest.mock import patch
 
 import pytest
+from mitmproxy import connection
 
+import flow_metadata_keys as metadata_keys
 import matching
 import mitm_addon
-import upstream_admission
 import upstream_destination_binding
 from tests.request_handler_helpers import (
     _single_firewall_vm,
     _write_github_firewall_registry,
     _write_registry,
 )
-
-_API_ADDRINFO = [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))]
+from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
 
 def _record_authority_checks(
@@ -74,7 +70,7 @@ class _Client:
 
 
 class _ServerConnectData:
-    def __init__(self, *, client: object, server: _Server) -> None:
+    def __init__(self, *, client: object, server: _Server | connection.Server) -> None:
         self.client = client
         self.server = server
 
@@ -94,12 +90,12 @@ def _data(
     )
 
 
-async def test_server_connect_retargets_credentialed_connector_host(tmp_path, mitm_ctx):
+def test_server_connect_retargets_credentialed_connector_host(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data()
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("api.github.com", 443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
@@ -109,7 +105,7 @@ async def test_server_connect_retargets_credentialed_connector_host(tmp_path, mi
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(
+def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(
     tmp_path,
     mitm_ctx,
     make_tls_data,
@@ -125,7 +121,7 @@ async def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.tls_clienthello(tls_data)
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("api.github.com", 443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
@@ -133,7 +129,7 @@ async def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(
     assert binding.kinds == frozenset(("connector_auth",))
 
 
-async def test_server_connect_preserves_clienthello_original_address(
+def test_server_connect_preserves_clienthello_original_address(
     tmp_path,
     mitm_ctx,
     make_tls_data,
@@ -148,7 +144,7 @@ async def test_server_connect_preserves_clienthello_original_address(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.tls_clienthello(tls_data)
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert binding.host == "api.github.com"
@@ -156,7 +152,7 @@ async def test_server_connect_preserves_clienthello_original_address(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_server_connect_reuses_clienthello_binding_without_rechecking_authority(
+def test_server_connect_reuses_clienthello_binding_without_rechecking_authority(
     tmp_path,
     mitm_ctx,
     make_tls_data,
@@ -173,7 +169,7 @@ async def test_server_connect_reuses_clienthello_binding_without_rechecking_auth
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.tls_clienthello(tls_data)
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert authority_checks == [("api.github.com", 443)]
@@ -182,7 +178,7 @@ async def test_server_connect_reuses_clienthello_binding_without_rechecking_auth
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_server_connect_wrong_kind_binding_still_checks_current_authority(
+def test_server_connect_wrong_kind_binding_still_checks_current_authority(
     tmp_path,
     mitm_ctx,
     make_tls_data,
@@ -204,14 +200,14 @@ async def test_server_connect_wrong_kind_binding_still_checks_current_authority(
     assert api_binding.kinds == frozenset(("api_allow",))
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     connector_binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert authority_checks == [("api.github.com", 443)]
     assert connector_binding.kinds == frozenset(("api_allow", "connector_auth"))
 
 
-async def test_server_connect_does_not_overwrite_clienthello_binding_after_address_changes(
+def test_server_connect_does_not_overwrite_clienthello_binding_after_address_changes(
     tmp_path,
     mitm_ctx,
     make_tls_data,
@@ -229,7 +225,7 @@ async def test_server_connect_does_not_overwrite_clienthello_binding_after_addre
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         mitm_addon.tls_clienthello(tls_data)
         data.server.address = ("203.0.113.99", 443)
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert authority_checks == [
@@ -242,18 +238,18 @@ async def test_server_connect_does_not_overwrite_clienthello_binding_after_addre
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
+def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
     data = _data(client_ip="10.200.0.1", sni="api.vm0.ai")
 
     with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("api.vm0.ai", 443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert binding.kinds == frozenset(("api_allow",))
 
 
-async def test_server_connect_does_not_prebind_platform_connector_auth(tmp_path, mitm_ctx):
+def test_server_connect_does_not_prebind_platform_connector_auth(tmp_path, mitm_ctx):
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -270,16 +266,14 @@ async def test_server_connect_does_not_prebind_platform_connector_auth(tmp_path,
     data = _data(sni="api.vm0.ai")
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("api.vm0.ai", 443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert binding.kinds == frozenset(("api_allow",))
 
 
-async def test_server_connect_does_not_bind_connected_api_edge_from_sni_only(
-    registry_file, mitm_ctx
-):
+def test_server_connect_does_not_bind_connected_api_edge_from_sni_only(registry_file, mitm_ctx):
     data = _data(
         client_ip="10.200.0.1",
         sni="pr-test-api.vm6.ai",
@@ -288,21 +282,14 @@ async def test_server_connect_does_not_bind_connected_api_edge_from_sni_only(
         server_connected=True,
     )
 
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(
-            upstream_admission.socket,
-            "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("66.33.60.34", 443))],
-        ),
-    ):
-        await mitm_addon.server_connect(data)
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"):
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("76.76.21.164", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_server_connect_does_not_bind_connected_connector_from_sni_only(tmp_path, mitm_ctx):
+def test_server_connect_does_not_bind_connected_connector_from_sni_only(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data(
         sni="api.github.com",
@@ -311,94 +298,88 @@ async def test_server_connect_does_not_bind_connected_connector_from_sni_only(tm
         server_connected=True,
     )
 
-    with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        patch.object(
-            upstream_admission.socket,
-            "getaddrinfo",
-            side_effect=AssertionError("connector binding must not use fresh DNS"),
-        ),
-    ):
-        await mitm_addon.server_connect(data)
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("140.82.112.5", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_server_connect_binds_api_host_from_original_address(registry_file, mitm_ctx):
-    data = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO),
-    ):
-        await mitm_addon.server_connect(data)
-
-    assert data.server.address == ("pr-test-api.vm6.ai", 443)
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
-    assert binding.host == "pr-test-api.vm6.ai"
-    assert binding.kinds == frozenset(("api_allow",))
-    assert binding.original_address == ("198.18.20.34", 443)
-
-
-async def test_server_connect_does_not_bind_connected_api_host_from_original_address(
-    registry_file, mitm_ctx
+async def test_server_connect_does_not_bind_api_authority_from_shared_cdn_ip(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    data = _data(
-        client_ip="10.200.0.1",
-        sni="",
-        address=("198.18.20.34", 443),
-        server_peername=("198.18.20.34", 443),
-        server_connected=True,
+    shared_address = ("198.18.20.34", 443)
+    model_base = "https://www.vm0.ai/api/internal/vm0-model/v1/responses"
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="model-provider:vm0-model",
+            api_entry={
+                "base": model_base,
+                "auth": {
+                    "headers": {
+                        "Authorization": "Bearer ${{ secrets.OPENAI_API_KEY }}",
+                        "X-VM0-Upstream-Authorization": (
+                            "Bearer ${{ secrets.VM0_MODEL_UPSTREAM_API_KEY }}"
+                        ),
+                    }
+                },
+                "permissions": [],
+            },
+            network_policy=None,
+        ),
     )
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO),
-    ):
-        await mitm_addon.server_connect(data)
-
-    assert data.server.address == ("198.18.20.34", 443)
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
-
-
-async def test_server_connect_binds_api_host_from_transparent_sockname(registry_file, mitm_ctx):
-    data = _data(
-        client_ip="10.200.0.1",
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host=shared_address[0],
         sni="",
-        address=("127.0.0.1", 8080),
-        client_sockname=("198.18.20.34", 443),
+        method="POST",
+        path="/api/internal/vm0-model/v1/responses",
+        request_headers=headers(("Host", "www.vm0.ai")),
     )
+    data = _ServerConnectData(client=flow.client_conn, server=flow.server_conn)
 
     with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO),
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(
+            headers={
+                "Authorization": "Bearer resolved-proxy-token",
+                "X-VM0-Upstream-Authorization": "Bearer resolved-upstream-token",
+            }
+        ) as auth_fetch,
     ):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
-    assert data.server.address == ("pr-test-api.vm6.ai", 443)
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
-    assert binding.host == "pr-test-api.vm6.ai"
-    assert binding.kinds == frozenset(("api_allow",))
-    assert binding.original_address == ("198.18.20.34", 443)
+        assert flow.server_conn.address == shared_address
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+        flow.client_conn.sni = "www.vm0.ai"
+        mark_connected_tls_upstream(
+            flow,
+            sni="www.vm0.ai",
+            server_address=shared_address,
+            peername=shared_address,
+        )
+        mitm_addon.requestheaders(flow)
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.server_conn.address == shared_address
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "model-provider:vm0-model"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == model_base
+    assert flow.request.headers["Authorization"] == "Bearer resolved-proxy-token"
+    assert flow.request.headers["X-VM0-Upstream-Authorization"] == "Bearer resolved-upstream-token"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "www.vm0.ai"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == shared_address
 
 
-async def test_server_connect_does_not_bind_api_host_when_original_address_misses_dns(
-    registry_file, mitm_ctx
-):
-    data = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.35", 443))
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO),
-    ):
-        await mitm_addon.server_connect(data)
-
-    assert data.server.address == ("198.18.20.35", 443)
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
-
-
-async def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_path, mitm_ctx):
+def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_path, mitm_ctx):
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -414,329 +395,47 @@ async def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_pat
     data = _data(sni="placeholder.example.com")
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_server_connect_ignores_unregistered_vm(registry_file, mitm_ctx):
+def test_server_connect_ignores_unregistered_vm(registry_file, mitm_ctx):
     data = _data(client_ip="192.168.99.99")
 
     with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_server_connect_ignores_invalid_sni(tmp_path, mitm_ctx):
+def test_server_connect_ignores_invalid_sni(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data(sni="api.github.com..")
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.address == ("203.0.113.10", 443)
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-async def test_server_disconnect_and_connect_error_clear_binding(tmp_path, mitm_ctx):
+def test_server_disconnect_and_connect_error_clear_binding(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data()
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.id in upstream_destination_binding.binding_snapshot_for_tests()
     mitm_addon.server_disconnected(data)
     assert data.server.id not in upstream_destination_binding.binding_snapshot_for_tests()
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
-        await mitm_addon.server_connect(data)
+        mitm_addon.server_connect(data)
 
     assert data.server.id in upstream_destination_binding.binding_snapshot_for_tests()
     mitm_addon.server_connect_error(data)
     assert data.server.id not in upstream_destination_binding.binding_snapshot_for_tests()
-
-
-async def test_server_connect_negative_caches_dns_errors(registry_file, mitm_ctx):
-    first = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    second = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission, "trusted_host_address_cache_time", return_value=10.0),
-        patch.object(
-            upstream_admission.socket,
-            "getaddrinfo",
-            side_effect=OSError("dns down"),
-        ) as dns,
-    ):
-        await mitm_addon.server_connect(first)
-        await mitm_addon.server_connect(second)
-
-    assert dns.call_count == 1
-    assert first.server.address == ("198.18.20.34", 443)
-    assert second.server.address == ("198.18.20.34", 443)
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
-
-
-async def test_server_connect_negative_caches_empty_dns_results(registry_file, mitm_ctx):
-    first = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    second = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission, "trusted_host_address_cache_time", return_value=10.0),
-        patch.object(upstream_admission.socket, "getaddrinfo", return_value=[]) as dns,
-    ):
-        await mitm_addon.server_connect(first)
-        await mitm_addon.server_connect(second)
-
-    assert dns.call_count == 1
-    assert first.server.address == ("198.18.20.34", 443)
-    assert second.server.address == ("198.18.20.34", 443)
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
-
-
-async def test_server_connect_retries_after_negative_dns_cache_expires(registry_file, mitm_ctx):
-    failed = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    retried = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-
-    monotonic_values = [10.0, 10.0, 20.0, 20.0]
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(
-            upstream_admission,
-            "trusted_host_address_cache_time",
-            side_effect=monotonic_values,
-        ),
-        patch.object(
-            upstream_admission.socket,
-            "getaddrinfo",
-            side_effect=[OSError("dns down"), _API_ADDRINFO],
-        ) as dns,
-    ):
-        await mitm_addon.server_connect(failed)
-        await mitm_addon.server_connect(retried)
-
-    assert dns.call_count == 2
-    assert failed.server.address == ("198.18.20.34", 443)
-    assert retried.server.address == ("pr-test-api.vm6.ai", 443)
-    assert retried.server.id in upstream_destination_binding.binding_snapshot_for_tests()
-
-
-async def test_server_connect_positive_caches_dns_results(registry_file, mitm_ctx):
-    first = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    second = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission, "trusted_host_address_cache_time", return_value=10.0),
-        patch.object(upstream_admission.socket, "getaddrinfo", return_value=_API_ADDRINFO) as dns,
-    ):
-        await mitm_addon.server_connect(first)
-        await mitm_addon.server_connect(second)
-
-    assert dns.call_count == 1
-    assert first.server.address == ("pr-test-api.vm6.ai", 443)
-    assert second.server.address == ("pr-test-api.vm6.ai", 443)
-
-
-async def test_server_connect_coalesces_concurrent_dns_resolution(registry_file, mitm_ctx):
-    first = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    second = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    lookup_started = threading.Event()
-    release_lookup = threading.Event()
-    calls: list[tuple[str, int]] = []
-
-    def getaddrinfo(host: str, port: int, *args, **kwargs):
-        calls.append((host, port))
-        lookup_started.set()
-        if not release_lookup.wait(timeout=5):
-            raise AssertionError("timed out waiting to release DNS lookup")
-        return _API_ADDRINFO
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
-    ):
-        first_task = asyncio.create_task(mitm_addon.server_connect(first))
-        assert await asyncio.to_thread(lookup_started.wait, 5)
-        second_task = asyncio.create_task(mitm_addon.server_connect(second))
-        await asyncio.sleep(0)
-        release_lookup.set()
-        await asyncio.gather(first_task, second_task)
-
-    assert calls == [("pr-test-api.vm6.ai", 443)]
-    assert first.server.address == ("pr-test-api.vm6.ai", 443)
-    assert second.server.address == ("pr-test-api.vm6.ai", 443)
-
-
-async def test_server_connect_cancelled_waiter_does_not_cancel_shared_dns_lookup(
-    registry_file, mitm_ctx
-):
-    cancelled = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    completed = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    lookup_started = threading.Event()
-    release_lookup = threading.Event()
-    calls: list[tuple[str, int]] = []
-
-    def getaddrinfo(host: str, port: int, *args, **kwargs):
-        calls.append((host, port))
-        lookup_started.set()
-        if not release_lookup.wait(timeout=5):
-            raise AssertionError("timed out waiting to release DNS lookup")
-        return _API_ADDRINFO
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
-    ):
-        cancelled_task = asyncio.create_task(mitm_addon.server_connect(cancelled))
-        assert await asyncio.to_thread(lookup_started.wait, 5)
-        completed_task = asyncio.create_task(mitm_addon.server_connect(completed))
-        await asyncio.sleep(0)
-        cancelled_task.cancel()
-        release_lookup.set()
-        with pytest.raises(asyncio.CancelledError):
-            _ = await cancelled_task
-        _ = await completed_task
-
-    assert calls == [("pr-test-api.vm6.ai", 443)]
-    assert cancelled.server.address == ("198.18.20.34", 443)
-    assert completed.server.address == ("pr-test-api.vm6.ai", 443)
-
-
-async def test_server_connect_does_not_bind_after_connect_error_during_dns(registry_file, mitm_ctx):
-    data = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
-    lookup_started = threading.Event()
-    release_lookup = threading.Event()
-
-    def getaddrinfo(host: str, port: int, *args, **kwargs):
-        lookup_started.set()
-        if not release_lookup.wait(timeout=5):
-            raise AssertionError("timed out waiting to release DNS lookup")
-        return _API_ADDRINFO
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
-    ):
-        connect_task = asyncio.create_task(mitm_addon.server_connect(data))
-        assert await asyncio.to_thread(lookup_started.wait, 5)
-        data.server.error = "connect failed"
-        mitm_addon.server_connect_error(data)
-        release_lookup.set()
-        _ = await connect_task
-
-    assert data.server.address == ("198.18.20.34", 443)
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
-
-
-async def test_server_connect_does_not_bind_after_client_disconnect_during_dns(
-    registry_file,
-    mitm_ctx,
-    make_tls_data,
-):
-    tls_data = make_tls_data(
-        client_ip="10.200.0.1",
-        sni="",
-        client_sni="",
-        server_address=("198.18.20.34", 443),
-    )
-    data = _ServerConnectData(
-        client=tls_data.context.client,
-        server=tls_data.context.server,
-    )
-    lookup_started = threading.Event()
-    release_lookup = threading.Event()
-
-    def getaddrinfo(host: str, port: int, *args, **kwargs):
-        lookup_started.set()
-        if not release_lookup.wait(timeout=5):
-            raise AssertionError("timed out waiting to release DNS lookup")
-        return _API_ADDRINFO
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
-    ):
-        mitm_addon.tls_clienthello(tls_data)
-        assert upstream_admission.tls_admission_for_client(data.client) is not None
-        connect_task = asyncio.create_task(mitm_addon.server_connect(data))
-        assert await asyncio.to_thread(lookup_started.wait, 5)
-        tls_data.context.client.timestamp_end = 1.0
-        mitm_addon.client_disconnected(tls_data.context.client)
-        assert upstream_admission.tls_admission_for_client(data.client) is None
-        release_lookup.set()
-        _ = await connect_task
-
-    assert data.server.address == ("198.18.20.34", 443)
-    assert upstream_admission.tls_admission_for_client(data.client) is None
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
-
-
-async def test_server_connect_does_not_bind_when_source_endpoint_changes_during_dns(
-    registry_file, mitm_ctx
-):
-    data = _data(
-        client_ip="10.200.0.1",
-        sni="",
-        address=("198.18.20.34", 443),
-        client_sockname=("198.18.20.34", 443),
-    )
-    lookup_started = threading.Event()
-    release_lookup = threading.Event()
-
-    def getaddrinfo(host: str, port: int, *args, **kwargs):
-        lookup_started.set()
-        if not release_lookup.wait(timeout=5):
-            raise AssertionError("timed out waiting to release DNS lookup")
-        return _API_ADDRINFO
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
-    ):
-        connect_task = asyncio.create_task(mitm_addon.server_connect(data))
-        assert await asyncio.to_thread(lookup_started.wait, 5)
-        data.server.address = ("203.0.113.99", 443)
-        release_lookup.set()
-        _ = await connect_task
-
-    assert data.server.address == ("203.0.113.99", 443)
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
-
-
-async def test_server_connect_does_not_bind_sockname_source_after_server_address_changes(
-    registry_file, mitm_ctx
-):
-    data = _data(
-        client_ip="10.200.0.1",
-        sni="",
-        address=("127.0.0.1", 8080),
-        client_sockname=("198.18.20.34", 443),
-    )
-    lookup_started = threading.Event()
-    release_lookup = threading.Event()
-
-    def getaddrinfo(host: str, port: int, *args, **kwargs):
-        lookup_started.set()
-        if not release_lookup.wait(timeout=5):
-            raise AssertionError("timed out waiting to release DNS lookup")
-        return _API_ADDRINFO
-
-    with (
-        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
-        patch.object(upstream_admission.socket, "getaddrinfo", side_effect=getaddrinfo),
-    ):
-        connect_task = asyncio.create_task(mitm_addon.server_connect(data))
-        assert await asyncio.to_thread(lookup_started.wait, 5)
-        data.server.address = ("203.0.113.99", 443)
-        release_lookup.set()
-        _ = await connect_task
-
-    assert data.server.address == ("203.0.113.99", 443)
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
