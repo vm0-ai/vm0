@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.7...runner-rs-v0.146.8) (2026-07-17)
+
+
+### Bug Fixes
+
+* **mitm-addon:** avoid api authority binding from shared ips ([#22004](https://github.com/vm0-ai/vm0/issues/22004)) ([3f42bd9](https://github.com/vm0-ai/vm0/commit/3f42bd9f07a7f96ddb3192109ac8ca8730b800ef))
+
 ## [0.146.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.6...runner-rs-v0.146.7) (2026-07-17)
 
 
