@@ -1,22 +1,27 @@
-import { computed, type Computed } from "ccstate";
 import {
-  createCustomConnectorActionBlock,
-  createConnectorActionBlock,
   parseCustomConnectorProposalUrl,
   parseConnectorAuthorizeUrl,
-  type CustomConnectorActionBlock,
-  type ConnectorActionBlock,
+  type ConnectorActionDescriptor,
+  type ConnectorSignals,
+  type CustomConnectorActionDescriptor,
+  type CustomConnectorSignals,
 } from "./connector-action-block.ts";
 import {
-  createPermissionActionBlock,
   parsePermissionActionUrl,
-  type PermissionActionBlock,
+  permissionActionResourceKey,
+  type PermissionActionDescriptor,
 } from "./permission-action-block.ts";
 import {
-  createComputerUseAuthorizationBlock,
   parseComputerUseAuthorizationUrl,
-  type ComputerUseAuthorizationBlock,
+  type ComputerUseAuthorizationDescriptor,
+  type ComputerUseAuthorizationSignals,
 } from "./computer-use-authorization-block.ts";
+import type {
+  ArtifactDescriptor,
+  ArtifactKind,
+  ArtifactSignals,
+} from "./artifact-card-signals.ts";
+import type { PermissionSignals } from "./permission-card-signals.ts";
 import {
   resolvePublicArtifactsBaseUrl,
   resolveZeroHostDomain,
@@ -26,17 +31,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-export type BodyPreviewKind =
-  | "image"
-  | "video"
-  | "audio"
-  | "markdown"
-  | "text"
-  | "json"
-  | "csv"
-  | "pdf"
-  | "html"
-  | "file";
+export type BodyPreviewKind = ArtifactKind;
 
 export type BodyRenderBlock =
   | {
@@ -45,19 +40,58 @@ export type BodyRenderBlock =
       content: string;
     }
   | {
-      type: "preview";
-      id: string;
-      preview: {
-        filename: string;
-        url: string;
-        kind: BodyPreviewKind;
-        text$?: Computed<Promise<string>>;
-      };
+      type: "artifact";
+      resourceKey: string;
+      signals: ArtifactSignals;
     }
-  | ConnectorActionBlock
-  | CustomConnectorActionBlock
-  | PermissionActionBlock
-  | ComputerUseAuthorizationBlock;
+  | {
+      type: "connector-action";
+      resourceKey: string;
+      signals: ConnectorSignals;
+    }
+  | {
+      type: "custom-connector-action";
+      resourceKey: string;
+      signals: CustomConnectorSignals;
+    }
+  | {
+      type: "permission-action";
+      resourceKey: string;
+      signals: PermissionSignals;
+    }
+  | {
+      type: "computer-use-authorization";
+      resourceKey: string;
+      signals: ComputerUseAuthorizationSignals;
+    };
+
+export type ParsedBodyBlock =
+  | Extract<BodyRenderBlock, { type: "markdown" }>
+  | {
+      type: "artifact";
+      resourceKey: string;
+      descriptor: ArtifactDescriptor;
+    }
+  | {
+      type: "connector-action";
+      resourceKey: string;
+      descriptor: ConnectorActionDescriptor;
+    }
+  | {
+      type: "custom-connector-action";
+      resourceKey: string;
+      descriptor: CustomConnectorActionDescriptor;
+    }
+  | {
+      type: "permission-action";
+      resourceKey: string;
+      descriptor: PermissionActionDescriptor;
+    }
+  | {
+      type: "computer-use-authorization";
+      resourceKey: string;
+      descriptor: ComputerUseAuthorizationDescriptor;
+    };
 
 type ChatAttachmentKind = BodyPreviewKind;
 
@@ -83,7 +117,6 @@ type OpenMarkdownFence = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const TEXT_PREVIEW_MAX_BYTES = 65_536;
 const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
@@ -674,15 +707,16 @@ function extractActionUrlFromLine(line: string): string | null {
   return urls.length === 1 ? urls[0]! : null;
 }
 
-function createActionBlockFromLine(
-  line: string,
-  id: (type: BodyRenderBlock["type"]) => string,
-):
-  | ConnectorActionBlock
-  | CustomConnectorActionBlock
-  | PermissionActionBlock
-  | ComputerUseAuthorizationBlock
-  | null {
+function createActionBlockFromLine(line: string): Extract<
+  ParsedBodyBlock,
+  {
+    type:
+      | "connector-action"
+      | "custom-connector-action"
+      | "permission-action"
+      | "computer-use-authorization";
+  }
+> | null {
   const url = extractActionUrlFromLine(line);
   if (!url) {
     return null;
@@ -690,31 +724,38 @@ function createActionBlockFromLine(
 
   const connectorAction = parseConnectorAuthorizeUrl(url);
   if (connectorAction) {
-    return createConnectorActionBlock(id("connector-action"), connectorAction);
+    return {
+      type: "connector-action",
+      resourceKey: connectorAction.originalUrl,
+      descriptor: connectorAction,
+    };
   }
 
   const customConnectorAction = parseCustomConnectorProposalUrl(url);
   if (customConnectorAction) {
-    return createCustomConnectorActionBlock(
-      id("custom-connector-action"),
-      customConnectorAction,
-    );
+    return {
+      type: "custom-connector-action",
+      resourceKey: customConnectorAction.originalUrl,
+      descriptor: customConnectorAction,
+    };
   }
 
   const permissionAction = parsePermissionActionUrl(url);
   if (permissionAction) {
-    return createPermissionActionBlock(
-      id("permission-action"),
-      permissionAction,
-    );
+    return {
+      type: "permission-action",
+      resourceKey: permissionActionResourceKey(permissionAction),
+      descriptor: permissionAction,
+    };
   }
 
   const computerUseAuthorization = parseComputerUseAuthorizationUrl(url);
   if (computerUseAuthorization) {
-    return createComputerUseAuthorizationBlock(
-      id("computer-use-authorization"),
-      computerUseAuthorization,
-    );
+    return {
+      type: "computer-use-authorization",
+      resourceKey: computerUseAuthorization.href,
+      descriptor: computerUseAuthorization,
+    };
   }
 
   return null;
@@ -805,24 +846,24 @@ function markdownTableRowIndexes(lines: string[]): Set<number> {
 // Block parsing
 // ---------------------------------------------------------------------------
 
-export function parseBodyRenderBlocks(
+export function parseBodyBlocks(
   content: string,
   options: { previews?: boolean } = {},
 ): {
   cleanContent: string;
-  blocks: BodyRenderBlock[];
+  blocks: ParsedBodyBlock[];
 } {
   const previews = options.previews ?? true;
-  const blocks: BodyRenderBlock[] = [];
+  const blocks: ParsedBodyBlock[] = [];
   const lines = content.split("\n");
   const tableRowIndexes = markdownTableRowIndexes(lines);
   const keptLines: string[] = [];
   const markdownBuffer: string[] = [];
   let blockSequence = 0;
   let openFence: OpenMarkdownFence | null = null;
-  const nextBlockId = (type: BodyRenderBlock["type"]) => {
+  const nextMarkdownBlockId = () => {
     blockSequence += 1;
-    return `${type}-${blockSequence}`;
+    return `markdown-${blockSequence}`;
   };
 
   const flushMarkdownBuffer = () => {
@@ -830,7 +871,7 @@ export function parseBodyRenderBlocks(
     if (joined) {
       blocks.push({
         type: "markdown",
-        id: nextBlockId("markdown"),
+        id: nextMarkdownBlockId(),
         content: joined,
       });
     }
@@ -847,9 +888,9 @@ export function parseBodyRenderBlocks(
   ) => {
     flushMarkdownBuffer();
     blocks.push({
-      type: "preview",
-      id: nextBlockId("preview"),
-      preview,
+      type: "artifact",
+      resourceKey: preview.url,
+      descriptor: preview,
     });
   };
 
@@ -877,7 +918,7 @@ export function parseBodyRenderBlocks(
       continue;
     }
 
-    const actionBlock = createActionBlockFromLine(line, nextBlockId);
+    const actionBlock = createActionBlockFromLine(line);
     if (actionBlock) {
       flushMarkdownBuffer();
       blocks.push(actionBlock);
@@ -900,9 +941,9 @@ export function parseBodyRenderBlocks(
 
     flushMarkdownBuffer();
     blocks.push({
-      type: "preview",
-      id: nextBlockId("preview"),
-      preview: renderedLine.preview,
+      type: "artifact",
+      resourceKey: renderedLine.preview.url,
+      descriptor: renderedLine.preview,
     });
   }
 
@@ -917,93 +958,4 @@ export function parseBodyRenderBlocks(
     cleanContent,
     blocks,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Text preview fetch (no AbortSignal — managed by computed lifecycle)
-// ---------------------------------------------------------------------------
-
-async function readLimitedText(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return "";
-  }
-
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  let reachedLimit = false;
-
-  while (received < TEXT_PREVIEW_MAX_BYTES) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    const remaining = TEXT_PREVIEW_MAX_BYTES - received;
-    const chunk =
-      value.byteLength > remaining ? value.slice(0, remaining) : value;
-    chunks.push(chunk);
-    received += chunk.byteLength;
-    if (received >= TEXT_PREVIEW_MAX_BYTES) {
-      reachedLimit = true;
-      break;
-    }
-  }
-
-  if (reachedLimit) {
-    await reader.cancel();
-  }
-
-  const bytes = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
-}
-
-function toRawUrl(url: string): string {
-  return url;
-}
-
-export async function fetchPreviewText(
-  url: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const response = await fetch(toRawUrl(url), {
-    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(`HTTP ${String(response.status)}`);
-  }
-  return readLimitedText(response);
-}
-
-function needsTextPreview(kind: BodyPreviewKind): boolean {
-  return kind === "text" || kind === "json";
-}
-
-function getTextPreview$(url: string): Computed<Promise<string>> {
-  return computed(() => {
-    return fetchPreviewText(url);
-  });
-}
-
-export function enrichBlocksWithTextPreviews(
-  blocks: BodyRenderBlock[],
-): BodyRenderBlock[] {
-  return blocks.map((block) => {
-    if (block.type === "preview" && needsTextPreview(block.preview.kind)) {
-      return {
-        ...block,
-        preview: {
-          ...block.preview,
-          text$: getTextPreview$(block.preview.url),
-        },
-      };
-    }
-    return block;
-  });
 }

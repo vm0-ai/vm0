@@ -1,12 +1,27 @@
 import { command, computed, state } from "ccstate";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import { parseMessageBodyBlocks } from "./chat-message-body-blocks.ts";
+import type { ParsedBodyBlock } from "./parse-body-blocks.ts";
 
 export type OptimisticUserMessageAssociation = "run" | "queue";
 
-export interface OptimisticChatMessageEntry {
+export interface OptimisticChatMessageInput {
   threadId: string;
   message: PagedChatMessage;
   optimisticUserMessageAssociation?: OptimisticUserMessageAssociation;
+}
+
+export interface OptimisticChatMessageEntry extends OptimisticChatMessageInput {
+  parsedBodyBlocks: ParsedBodyBlock[];
+}
+
+export function createOptimisticChatMessageEntry(
+  input: OptimisticChatMessageInput,
+): OptimisticChatMessageEntry {
+  return {
+    ...input,
+    parsedBodyBlocks: parseMessageBodyBlocks(input.message),
+  };
 }
 
 const internalOptimisticChatMessages$ = state<OptimisticChatMessageEntry[]>([]);

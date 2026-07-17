@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { reloadTelegramConnectLinkStatus$ } from "./zero-page/telegram-connect-signals.ts";
 import { onRef, setLoop, throwIfAbort } from "./utils.ts";
-import { fetchPreviewText } from "./chat-page/parse-body-blocks.ts";
+import { fetchPreviewText } from "./chat-page/artifact-card-signals.ts";
 
 type ImageLoadStatus = "loading" | "loaded" | "error";
 

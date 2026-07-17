@@ -3,7 +3,8 @@ import type {
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
-import { parseBodyRenderBlocks } from "../../../signals/chat-page/parse-body-blocks.ts";
+import { createChatCardSignalsRegistry } from "../../../signals/chat-page/chat-card-signals.ts";
+import { parseBodyBlocks } from "../../../signals/chat-page/parse-body-blocks.ts";
 import { currentMessageImageArtifactNavigation } from "../zero-artifact-image-navigation.ts";
 
 type MessageFixture = Parameters<
@@ -27,8 +28,11 @@ function artifactFile(
 }
 
 function assistantMessage({ content }: { content: string }): MessageFixture {
+  const cardSignals = createChatCardSignalsRegistry();
   return {
-    blocks: parseBodyRenderBlocks(content, { previews: true }).blocks,
+    blocks: cardSignals.registerBodyBlocks(
+      parseBodyBlocks(content, { previews: true }).blocks,
+    ),
   };
 }
 

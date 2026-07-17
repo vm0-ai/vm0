@@ -11,6 +11,7 @@ import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
+import { createOptimisticChatMessagesForThread } from "./optimistic-chat-messages.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
@@ -120,7 +121,7 @@ const resolvePaneThread$ = command(
 
 const setupPaneThread$ = command(
   async (
-    { set },
+    { get, set },
     spec: PaneSpec,
     threadId: string,
     parentSignal: AbortSignal,
@@ -131,7 +132,15 @@ const setupPaneThread$ = command(
 
     const { draft, isNew } = set(ensureDraft$, threadId);
     const dataSource = createRemoteChatThreadDataSource(threadId);
-    const thread = createChatThreadSignals(threadId, draft, dataSource);
+    const initialOptimisticEntries = get(
+      createOptimisticChatMessagesForThread(threadId),
+    );
+    const thread = createChatThreadSignals(
+      threadId,
+      draft,
+      dataSource,
+      initialOptimisticEntries,
+    );
     set(spec.setPaneThread$, thread);
 
     await set(

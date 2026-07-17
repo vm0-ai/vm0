@@ -33,13 +33,14 @@ import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
-  ATTACH_ONLY_PLACEHOLDER,
 } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatMessage$,
+  createOptimisticChatMessageEntry,
   createOptimisticChatMessagesForThread,
   reconcileOptimisticChatMessages$,
   type OptimisticChatMessageEntry,
+  type OptimisticChatMessageInput,
 } from "./optimistic-chat-messages.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import {
@@ -81,11 +82,12 @@ import {
   loadIndexedDbChatMessages$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
+import type { BodyRenderBlock } from "./parse-body-blocks.ts";
+import { parseMessageBodyBlocks } from "./chat-message-body-blocks.ts";
 import {
-  enrichBlocksWithTextPreviews,
-  parseBodyRenderBlocks,
-  type BodyRenderBlock,
-} from "./parse-body-blocks.ts";
+  createChatCardSignalsRegistry,
+  type ChatCardSignalsRegistry,
+} from "./chat-card-signals.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
@@ -107,9 +109,6 @@ import {
 } from "../zero-page/model-first-personal-oauth.ts";
 import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/codex-device-auth.ts";
-import { createPermissionCardRegistry } from "./permission-card-signals.ts";
-import type { PermissionActionBlock } from "./permission-action-block.ts";
-
 import type {
   ChatThreadSignals,
   ComposerSendButtonStatus,
@@ -1251,12 +1250,10 @@ function setLatestUsageForRun(
 function createRenderedChatGroups(
   semanticMessages$: Computed<SemanticChatMessage[]>,
   mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
-  messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ) {
   const transcriptMessages$ = createTranscriptMessagesComputed(
     semanticMessages$,
     mailDraftCardSignals$,
-    messageBlocksById$,
   );
 
   const allRenderedChatGroups$ = computed(
@@ -1287,7 +1284,12 @@ function createRenderedChatGroups(
   };
 }
 
-type PersistentChatMessages$ = State<PagedChatMessage[]>;
+interface RegisteredChatMessage {
+  readonly message: PagedChatMessage;
+  readonly blocks: BodyRenderBlock[];
+}
+
+type PersistentChatMessages$ = State<RegisteredChatMessage[]>;
 
 function compareCursorString(left: string, right: string): number {
   if (left < right) {
@@ -1329,35 +1331,21 @@ function compareServerMessageOrder(
   return 0;
 }
 
-function mergeServerMessages(
-  messageSets: readonly (readonly PagedChatMessage[])[],
-): PagedChatMessage[] {
-  const byId = new Map<string, PagedChatMessage>();
-  for (const messages of messageSets) {
-    for (const message of messages) {
-      byId.set(message.id, message);
+function mergeRegisteredMessages(
+  messageSets: readonly (readonly RegisteredChatMessage[])[],
+): RegisteredChatMessage[] {
+  const byId = new Map<string, RegisteredChatMessage>();
+  for (const entries of messageSets) {
+    for (const entry of entries) {
+      byId.set(entry.message.id, entry);
     }
   }
-  return Array.from(byId.values()).sort(compareServerMessageOrder);
-}
-
-function parseMessageBodyBlocks(message: PagedChatMessage): BodyRenderBlock[] {
-  const content = chatMessageBodyContent(message);
-  const { blocks } = parseBodyRenderBlocks(content, {
-    previews: message.role === "assistant",
+  return Array.from(byId.values()).sort((left, right) => {
+    return compareServerMessageOrder(left.message, right.message);
   });
-  return enrichBlocksWithTextPreviews(blocks);
 }
 
-/**
- * Whether the message's blocks must not be cached under its own id. Interrupt
- * control rows are projected onto a synthetic "Run cancelled" assistant
- * message that reuses the same id (see createInterruptedAssistantProjection),
- * so a cache entry parsed from the control row's content would be wrong.
- * Other control markers are filtered from the transcript entirely, so parsing
- * them is wasted work; a cache miss falls back to parsing on read.
- */
-function skipsMessageBlocksCache(message: PagedChatMessage): boolean {
+function skipsMessageBodyRendering(message: PagedChatMessage): boolean {
   return (
     isInterruptControlMessage(message) ||
     isRecallControlMessage(message) ||
@@ -1366,64 +1354,21 @@ function skipsMessageBlocksCache(message: PagedChatMessage): boolean {
   );
 }
 
-interface MessageBlocksRegistrySignals {
-  readonly messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>;
-  readonly registerMessageBlocks$: Command<void, [readonly PagedChatMessage[]]>;
-}
-
-/**
- * Parses message bodies into render blocks once, at persistent-message write
- * time, instead of re-parsing the whole transcript on every evaluation of the
- * transcript computed. Permission action URLs found during parsing are
- * registered with the thread's permission card registry so cards read stable
- * signals keyed by URL.
- */
-function createMessageBlocksRegistry(
-  registerPermissionCardBlocks$: Command<
-    void,
-    [readonly PermissionActionBlock[]]
-  >,
-): MessageBlocksRegistrySignals {
-  const internalBlocksById$ = state<ReadonlyMap<string, BodyRenderBlock[]>>(
-    new Map(),
-  );
-  const messageBlocksById$ = computed((get) => {
-    return get(internalBlocksById$);
-  });
-  const registerMessageBlocks$ = command(
-    ({ get, set }, messages: readonly PagedChatMessage[]) => {
-      if (messages.length === 0) {
-        return;
-      }
-      const current = get(internalBlocksById$);
-      const next = new Map(current);
-      const permissionBlocks: PermissionActionBlock[] = [];
-      for (const message of messages) {
-        if (skipsMessageBlocksCache(message)) {
-          continue;
-        }
-        const blocks = parseMessageBodyBlocks(message);
-        next.set(message.id, blocks);
-        for (const block of blocks) {
-          if (block.type === "permission-action") {
-            permissionBlocks.push(block);
-          }
-        }
-      }
-      set(internalBlocksById$, next);
-      if (permissionBlocks.length > 0) {
-        set(registerPermissionCardBlocks$, permissionBlocks);
-      }
-    },
-  );
-  return { messageBlocksById$, registerMessageBlocks$ };
+function registerChatMessage(
+  message: PagedChatMessage,
+  cardSignals: ChatCardSignalsRegistry,
+): RegisteredChatMessage {
+  const blocks = skipsMessageBodyRendering(message)
+    ? []
+    : cardSignals.registerBodyBlocks(parseMessageBodyBlocks(message));
+  return { message, blocks };
 }
 
 function createWritePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
   registerMailDraftMessages$: Command<void, [readonly PagedChatMessage[]]>,
-  registerMessageBlocks$: Command<void, [readonly PagedChatMessage[]]>,
+  cardSignals: ChatCardSignalsRegistry,
 ) {
   return command(
     async (
@@ -1435,7 +1380,11 @@ function createWritePersistentMessages(
         return;
       }
       const reportedCompletedRunIds = new Set(
-        completedRunIdsFromMessages(get(persistentMessages$)),
+        completedRunIdsFromMessages(
+          get(persistentMessages$).map((entry) => {
+            return entry.message;
+          }),
+        ),
       );
       const newlyCompletedRunIds = completedRunIdsFromMessages(msgs).filter(
         (runId) => {
@@ -1446,9 +1395,11 @@ function createWritePersistentMessages(
         captureTaskCompletedSuccessfully();
       }
       set(registerMailDraftMessages$, msgs);
-      set(registerMessageBlocks$, msgs);
+      const registeredMessages = msgs.map((message) => {
+        return registerChatMessage(message, cardSignals);
+      });
       set(persistentMessages$, (prev) => {
-        return mergeServerMessages([prev, msgs]);
+        return mergeRegisteredMessages([prev, registeredMessages]);
       });
       set(reconcileOptimisticChatMessages$, { threadId, messages: msgs });
       await set(writeIndexedDbChatMessages$, threadId, msgs, signal);
@@ -1460,30 +1411,39 @@ function createWritePersistentMessages(
 interface ChatMessageProjectionEntry {
   message: PagedChatMessage;
   source: "server" | "optimistic";
+  blocks: BodyRenderBlock[];
   optimisticUserMessageAssociation?: OptimisticChatMessageEntry["optimisticUserMessageAssociation"];
 }
 
 function projectRawMessages({
   persistentMessages,
   optimisticEntries,
+  cardSignals,
 }: {
-  persistentMessages: readonly PagedChatMessage[];
+  persistentMessages: readonly RegisteredChatMessage[];
   optimisticEntries: readonly OptimisticChatMessageEntry[];
+  cardSignals: ChatCardSignalsRegistry;
 }): ChatMessageProjectionEntry[] {
   const serverIds = new Set(
-    persistentMessages.map((message) => {
-      return message.id;
+    persistentMessages.map((entry) => {
+      return entry.message.id;
     }),
   );
   const optimistic = optimisticEntries.filter((entry) => {
     return !serverIds.has(entry.message.id);
   });
   return [
-    ...persistentMessages.map((message) => {
-      return { message, source: "server" as const };
+    ...persistentMessages.map((entry) => {
+      return { ...entry, source: "server" as const };
     }),
     ...optimistic.map((entry) => {
-      return { ...entry, source: "optimistic" as const };
+      return {
+        message: entry.message,
+        blocks: cardSignals.resolveBodyBlocks(entry.parsedBodyBlocks),
+        source: "optimistic" as const,
+        optimisticUserMessageAssociation:
+          entry.optimisticUserMessageAssociation,
+      };
     }),
   ];
 }
@@ -1491,14 +1451,17 @@ function projectRawMessages({
 function createRawMessagesComputed({
   persistentMessages$,
   optimisticMessages$,
+  cardSignals,
 }: {
   persistentMessages$: PersistentChatMessages$;
   optimisticMessages$: Computed<OptimisticChatMessageEntry[]>;
+  cardSignals: ChatCardSignalsRegistry;
 }): Computed<ChatMessageProjectionEntry[]> {
   return computed((get): ChatMessageProjectionEntry[] => {
     return projectRawMessages({
       persistentMessages: get(persistentMessages$),
       optimisticEntries: get(optimisticMessages$),
+      cardSignals,
     });
   });
 }
@@ -1506,20 +1469,12 @@ function createRawMessagesComputed({
 function createTranscriptMessagesComputed(
   semanticMessages$: Computed<SemanticChatMessage[]>,
   mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
-  messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
   return computed((get): Promise<EnrichedChatMessage[]> => {
     const mailDraftCardSignals = get(mailDraftCardSignals$);
-    const blocksById = get(messageBlocksById$);
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
         const { message, isQueued, isOptimisticRun } = entry;
-        // Persistent messages have their blocks registered at write time.
-        // Optimistic messages and synthetic projections (e.g. the "Run
-        // cancelled" interrupt projection) are not registered — they are few
-        // and short-lived, so parse them on read.
-        const enrichedBlocks =
-          blocksById.get(message.id) ?? parseMessageBodyBlocks(message);
         let mailDraftCard: EnrichedChatMessage["mailDraftCard"] = null;
         if (message.mailDraftId !== undefined) {
           const signals = mailDraftCardSignals.get(message.mailDraftId);
@@ -1538,7 +1493,7 @@ function createTranscriptMessagesComputed(
           return {
             ...message,
             role: "user" as const,
-            blocks: enrichedBlocks,
+            blocks: entry.blocks,
             isQueued,
             isOptimisticRun,
             mailDraftCard,
@@ -1547,7 +1502,7 @@ function createTranscriptMessagesComputed(
         return {
           ...message,
           role: "assistant" as const,
-          blocks: enrichedBlocks,
+          blocks: entry.blocks,
           isQueued,
           isOptimisticRun: false,
           mailDraftCard,
@@ -1557,26 +1512,9 @@ function createTranscriptMessagesComputed(
   });
 }
 
-function chatMessageBodyContent(message: PagedChatMessage): string {
-  if (message.role === "assistant") {
-    return message.content ?? "";
-  }
-  const content = (message.content ?? "").replace(
-    /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
-    "",
-  );
-  if (
-    message.attachFiles &&
-    message.attachFiles.length > 0 &&
-    content.trim() === ATTACH_ONLY_PLACEHOLDER
-  ) {
-    return "";
-  }
-  return content.trim();
-}
-
 interface SemanticChatMessage {
   readonly message: PagedChatMessage;
+  readonly blocks: BodyRenderBlock[];
   readonly isQueued: boolean;
   readonly isOptimisticRun: boolean;
 }
@@ -1638,6 +1576,7 @@ function semanticTranscriptMessagesFromRaw(
             message,
             message.interruptsRunId,
           ),
+          blocks: [],
           isQueued: false,
           isOptimisticRun: false,
         },
@@ -1653,7 +1592,7 @@ function semanticTranscriptMessagesFromRaw(
       isUnassociatedUser &&
       optimisticAssociation !== "run" &&
       message.error === undefined;
-    return [{ message, isQueued, isOptimisticRun }];
+    return [{ message, blocks: entry.blocks, isQueued, isOptimisticRun }];
   });
 }
 
@@ -2145,7 +2084,7 @@ function createSyncRemoteMessagesCommand({
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
   const sinceId$ = computed((get): string | undefined => {
-    return get(persistentMessages$).at(-1)?.id;
+    return get(persistentMessages$).at(-1)?.message.id;
   });
 
   return command(async ({ get, set }, signal: AbortSignal) => {
@@ -2194,7 +2133,7 @@ function createSyncRemoteMessagesCommand({
       return;
     }
 
-    let beforeId = get(persistentMessages$)[0]!.id;
+    let beforeId = get(persistentMessages$)[0]!.message.id;
     async function syncMessagesBefore(): Promise<void> {
       const result = await set(
         dataSource.listMessagesBefore$,
@@ -2298,19 +2237,31 @@ function createActiveGoalObjectiveComputed(
   });
 }
 
-function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
+function createPagedMessages(
+  threadId: string,
+  dataSource: ChatThreadRemote,
+  initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
+) {
   const mailDraftCards = createMailDraftCardRegistry();
-  const permissionCards = createPermissionCardRegistry();
-  const messageBlocks = createMessageBlocksRegistry(
-    permissionCards.registerPermissionCardBlocks$,
-  );
-  const persistentChatMessages$ = state<PagedChatMessage[]>([]);
+  const cardSignals = createChatCardSignalsRegistry();
+  for (const entry of initialOptimisticEntries) {
+    cardSignals.registerBodyBlocks(entry.parsedBodyBlocks);
+  }
+  const persistentChatMessages$ = state<RegisteredChatMessage[]>([]);
   const hasReachedOldestMessage$ = state(false);
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
+  const appendOptimisticMessage$ = command(
+    ({ set }, input: OptimisticChatMessageInput): void => {
+      const entry = createOptimisticChatMessageEntry(input);
+      cardSignals.registerBodyBlocks(entry.parsedBodyBlocks);
+      set(appendOptimisticChatMessage$, entry);
+    },
+  );
 
   const rawMessages$ = createRawMessagesComputed({
     persistentMessages$: persistentChatMessages$,
     optimisticMessages$,
+    cardSignals,
   });
   const semanticMessages$ = computed((get): SemanticChatMessage[] => {
     return semanticTranscriptMessagesFromRaw(get(rawMessages$));
@@ -2330,22 +2281,23 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
   const renderedMessages = createRenderedChatGroups(
     semanticMessages$,
     mailDraftCards.mailDraftCardSignals$,
-    messageBlocks.messageBlocksById$,
   );
 
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
     persistentChatMessages$,
     mailDraftCards.registerMailDraftMessages$,
-    messageBlocks.registerMessageBlocks$,
+    cardSignals,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
       set(mailDraftCards.registerMailDraftMessages$, messages);
-      set(messageBlocks.registerMessageBlocks$, messages);
+      const registeredMessages = messages.map((message) => {
+        return registerChatMessage(message, cardSignals);
+      });
       set(persistentChatMessages$, (previous) => {
-        return mergeServerMessages([messages, previous]);
+        return mergeRegisteredMessages([registeredMessages, previous]);
       });
     },
   );
@@ -2400,7 +2352,7 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
     latestChatMessageId$,
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
-    permissionCardSignalsByUrl$: permissionCards.permissionCardSignalsByUrl$,
+    appendOptimisticMessage$,
     ...semanticSignals,
     ...renderedMessages,
     rawMessages$,
@@ -2414,12 +2366,14 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
 function createChatThreadMessagePipeline({
   threadId,
   dataSource,
+  initialOptimisticEntries,
   recordScrollHeightForPrepend$,
   clearScrollHeightForPrepend$,
   awayFromBottom$,
 }: {
   threadId: string;
   dataSource: ChatThreadRemote;
+  initialOptimisticEntries: readonly OptimisticChatMessageEntry[];
   recordScrollHeightForPrepend$: Command<
     PrependScrollCompensationToken | null,
     []
@@ -2430,7 +2384,11 @@ function createChatThreadMessagePipeline({
   >;
   awayFromBottom$: Computed<boolean>;
 }) {
-  const pagedMessages = createPagedMessages(threadId, dataSource);
+  const pagedMessages = createPagedMessages(
+    threadId,
+    dataSource,
+    initialOptimisticEntries,
+  );
   const renderWindow = createChatRenderWindow({
     threadId,
     allRenderedChatGroups$: pagedMessages.allRenderedChatGroups$,
@@ -2922,7 +2880,7 @@ function createSendOptimisticMessageEntry({
   result: PreparedSendMessageResult;
   generationTemplate: GenerationTemplateRequest | undefined;
   options: SendMessageOptions | undefined;
-}): OptimisticChatMessageEntry {
+}): OptimisticChatMessageInput {
   return {
     threadId,
     optimisticUserMessageAssociation: "run",
@@ -2980,39 +2938,43 @@ function sendMessageRequestBody(params: {
   };
 }
 
-const appendOptimisticSendMessage$ = command(
-  (
-    { set },
-    args: {
-      readonly threadId: string;
-      readonly agentId: string;
-      readonly clientMessageId: string;
-      readonly chatThreadSortEventId: string;
-      readonly createdAt: string;
-      readonly result: PreparedSendMessageResult;
-      readonly generationTemplate: GenerationTemplateRequest | undefined;
-      readonly options: SendMessageOptions | undefined;
-    },
-  ) => {
-    set(touchOptimisticChatThreadSort$, {
-      id: args.chatThreadSortEventId,
-      threadId: args.threadId,
-      agentId: args.agentId,
-      createdAt: args.createdAt,
-    });
-    set(
-      appendOptimisticChatMessage$,
-      createSendOptimisticMessageEntry({
+function createAppendOptimisticSendMessage(
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>,
+) {
+  return command(
+    (
+      { set },
+      args: {
+        readonly threadId: string;
+        readonly agentId: string;
+        readonly clientMessageId: string;
+        readonly chatThreadSortEventId: string;
+        readonly createdAt: string;
+        readonly result: PreparedSendMessageResult;
+        readonly generationTemplate: GenerationTemplateRequest | undefined;
+        readonly options: SendMessageOptions | undefined;
+      },
+    ) => {
+      set(touchOptimisticChatThreadSort$, {
+        id: args.chatThreadSortEventId,
         threadId: args.threadId,
-        clientMessageId: args.clientMessageId,
+        agentId: args.agentId,
         createdAt: args.createdAt,
-        result: args.result,
-        generationTemplate: args.generationTemplate,
-        options: args.options,
-      }),
-    );
-  },
-);
+      });
+      set(
+        appendOptimisticMessage$,
+        createSendOptimisticMessageEntry({
+          threadId: args.threadId,
+          clientMessageId: args.clientMessageId,
+          createdAt: args.createdAt,
+          result: args.result,
+          generationTemplate: args.generationTemplate,
+          options: args.options,
+        }),
+      );
+    },
+  );
+}
 
 function createComposerSendButtonSignals(messages: {
   allFinished$: Computed<Promise<boolean>>;
@@ -3047,6 +3009,7 @@ interface SendMessageDeps {
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   scrollToBottom$: Command<void, []>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
 }
 
 interface ValidatedSendMessageRequest {
@@ -3112,7 +3075,11 @@ function createPerformSendMessage(deps: SendMessageDeps) {
     flushDraftClear$,
     scrollToBottom$,
     syncRemoteMessages$,
+    appendOptimisticMessage$,
   } = deps;
+  const appendOptimisticSendMessage$ = createAppendOptimisticSendMessage(
+    appendOptimisticMessage$,
+  );
   return command(
     async (
       { get, set },
@@ -3261,6 +3228,7 @@ interface QueueMessageDeps {
     Promise<void>,
     [PagedChatMessage[], AbortSignal]
   >;
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
   dataSource: ChatThreadRemote;
 }
 
@@ -3274,6 +3242,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     flushDraftClear$,
     scrollToBottom$,
     writePersistentMessages$,
+    appendOptimisticMessage$,
     dataSource,
   } = deps;
   const optimisticCreateUnsettled$ =
@@ -3339,7 +3308,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         agentId: meta.agentId,
         createdAt: nowIso,
       });
-      set(appendOptimisticChatMessage$, {
+      set(appendOptimisticMessage$, {
         threadId,
         optimisticUserMessageAssociation: "queue",
         message: {
@@ -3406,6 +3375,7 @@ interface RecallMessageDeps {
     Promise<void>,
     [PagedChatMessage[], AbortSignal]
   >;
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
   dataSource: ChatThreadRemote;
 }
 
@@ -3416,6 +3386,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
     rawMessages$,
     draft,
     writePersistentMessages$,
+    appendOptimisticMessage$,
     dataSource,
   } = deps;
 
@@ -3437,7 +3408,7 @@ function createRecallMessage(deps: RecallMessageDeps) {
       }
 
       const clientMessageId = crypto.randomUUID();
-      set(appendOptimisticChatMessage$, {
+      set(appendOptimisticMessage$, {
         threadId,
         message: {
           id: clientMessageId,
@@ -3497,6 +3468,7 @@ function createCancelRunWithQueuedRecall({
   threadMeta$,
   rawMessages$,
   writePersistentMessages$,
+  appendOptimisticMessage$,
   dataSource,
 }: {
   threadId: string;
@@ -3506,6 +3478,7 @@ function createCancelRunWithQueuedRecall({
     Promise<void>,
     [PagedChatMessage[], AbortSignal]
   >;
+  appendOptimisticMessage$: Command<void, [OptimisticChatMessageInput]>;
   dataSource: ChatThreadRemote;
 }) {
   const optimisticCreateUnsettled$ =
@@ -3529,7 +3502,7 @@ function createCancelRunWithQueuedRecall({
     const interruptRequests = cancellableRunIdsFromRawMessages(raw).map(
       (runId) => {
         const clientMessageId = crypto.randomUUID();
-        set(appendOptimisticChatMessage$, {
+        set(appendOptimisticMessage$, {
           threadId,
           message: {
             id: clientMessageId,
@@ -3545,7 +3518,7 @@ function createCancelRunWithQueuedRecall({
 
     const recallRequests = queuedMessages.map((message) => {
       const clientMessageId = crypto.randomUUID();
-      set(appendOptimisticChatMessage$, {
+      set(appendOptimisticMessage$, {
         threadId,
         message: {
           id: clientMessageId,
@@ -3994,6 +3967,7 @@ export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
+  initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
 ): ChatThreadSignals {
   const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
     createRemoteThreadDetail(dataSource);
@@ -4028,6 +4002,7 @@ export function createChatThreadSignals(
   const messages = createChatThreadMessagePipeline({
     threadId,
     dataSource,
+    initialOptimisticEntries,
     recordScrollHeightForPrepend$,
     clearScrollHeightForPrepend$,
     awayFromBottom$,
@@ -4062,13 +4037,10 @@ export function createChatThreadSignals(
     scrollToBottom$: scrollSignals.scrollToBottom$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
     writePersistentMessages$: messages.writePersistentMessages$,
+    appendOptimisticMessage$: messages.appendOptimisticMessage$,
     dataSource,
   });
   const workflowComposer = createWorkflowComposerSignals(draft, threadId);
-  const thinkingIndicator = createThinkingIndicatorSignals(
-    messages.thinkingText$,
-    messages.thinkingMessageId$,
-  );
   return {
     threadId,
     remoteThreadDetail$,
@@ -4095,7 +4067,6 @@ export function createChatThreadSignals(
     latestChatMessageId$: messages.latestChatMessageId$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
-    permissionCardSignalsByUrl$: messages.permissionCardSignalsByUrl$,
     visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
     messageImageGroups$: messages.messageImageGroups$,
@@ -4113,7 +4084,10 @@ export function createChatThreadSignals(
     resetRenderedChatGroupsIfAtBottom$:
       messages.resetRenderedChatGroupsIfAtBottom$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
-    ...thinkingIndicator,
+    ...createThinkingIndicatorSignals(
+      messages.thinkingText$,
+      messages.thinkingMessageId$,
+    ),
     ...artifact,
   };
 }
