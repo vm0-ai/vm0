@@ -758,7 +758,8 @@ const getSlackState$ = computed(async (get) => {
   }
 
   const query = get(queryOf(testSlackStateContract.get));
-  if (!query.team_id && !query.org_id) {
+  const lookupEmptyTeamId = query.empty_team_id === "1";
+  if (!query.team_id && !query.org_id && !lookupEmptyTeamId) {
     return {
       status: 400 as const,
       body: { error: "team_id or org_id query param is required" },
@@ -766,11 +767,12 @@ const getSlackState$ = computed(async (get) => {
   }
 
   const db = get(db$);
-  const teamId = query.team_id ?? "";
-  const installationRow = query.team_id
+  const teamId = lookupEmptyTeamId ? "" : (query.team_id ?? "");
+  const hasTeamIdLookup = Boolean(query.team_id) || lookupEmptyTeamId;
+  const installationRow = hasTeamIdLookup
     ? await slackInstallation(db, teamId)
     : null;
-  const connections = query.team_id ? await slackConnections(db, teamId) : [];
+  const connections = hasTeamIdLookup ? await slackConnections(db, teamId) : [];
   const stateOrgId = query.org_id ?? installationRow?.orgId;
   const recentRuns = await recentSlackRuns(db, stateOrgId);
   const artifactStorage = await artifactStorageFor(db, {

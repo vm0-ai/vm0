@@ -42,11 +42,16 @@ export async function exchangeSlackOAuthCode(
       `OAuth exchange failed: ${result.error ?? "unknown error"}`,
     );
   }
+  if (!result.team.id) {
+    throw new Error(
+      "OAuth exchange failed: Slack response omitted workspace ID",
+    );
+  }
 
   return {
     accessToken: result.access_token,
     botUserId: result.bot_user_id,
-    teamId: result.team.id ?? "",
+    teamId: result.team.id,
     teamName: result.team.name ?? "",
     authedUserId: result.authed_user?.id ?? "",
     scope: typeof result.scope === "string" ? result.scope : "",
