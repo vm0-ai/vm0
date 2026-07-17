@@ -111,7 +111,7 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
 VERIFY_PROMPT=$(cat <<'PROMPT'
 set -eu
 marker=/tmp/vm0-process-containment
-base=/sys/fs/cgroup/vm0-supervised
+base=/sys/fs/cgroup/vm0-exec
 test -f "$marker/vm-reuse-marker"
 
 for identity in "$marker/user.identity" "$marker/root.identity"; do
@@ -153,13 +153,13 @@ sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
 LOGS=$(sudo journalctl --no-pager "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
   || fail "failed to read runner logs"
 LEAK_LINE=$(printf '%s\n' "$LOGS" \
-  | grep -F 'supervised process containment cleaned' \
+  | grep -F 'exec process containment cleaned' \
   | grep -F 'descendants_observed=true' \
   | grep -F 'cgroup_kill_used=true' \
   | head -1) \
   || fail "missing populated cleanup that used cgroup.kill"
 HEALTHY_LINE=$(printf '%s\n' "$LOGS" \
-  | grep -F 'supervised process containment cleaned' \
+  | grep -F 'exec process containment cleaned' \
   | grep -F 'descendants_observed=false' \
   | grep -F 'cgroup_kill_used=false' \
   | head -1) \
