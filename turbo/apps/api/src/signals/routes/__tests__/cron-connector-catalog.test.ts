@@ -1695,6 +1695,191 @@ describe("connector catalog valid lifecycle", () => {
     ).not.toContain("CURRENT_CREDENTIAL");
   });
 
+  it("fails stored connector replacement and deletion closed when its method is removed", async () => {
+    configureSource();
+    const legacyMethod = publicAuthMethod({
+      id: "legacy",
+      grantKind: "manual",
+      manual: true,
+    });
+    const currentMethod = publicAuthMethod({
+      id: "current",
+      grantKind: "manual",
+      manual: true,
+    });
+    const initial = buildRelease({
+      version: "2026-07-15.external-stored-method-present",
+      connectorRef: "agora",
+      label: "Catalog Agora",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [legacyMethod]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          manualPrivateAuthMethod({
+            id: "legacy",
+            prefix: "LEGACY",
+            access: "static",
+            revoke: "none",
+          }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([initial], initial));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      mockEnv("CRON_SECRET", CRON_SECRET);
+      configureSource();
+      serveObjects(catalogObjects([initial], initial));
+      await syncCatalog();
+      await connectorsApi.deleteConnectorByType(actor, "agora", [204, 404]);
+    });
+    await connectorsApi.connectManualGrant(actor, "agora", "legacy", {
+      credential: "legacy-catalog-secret",
+    });
+
+    const removed = buildRelease({
+      version: "2026-07-15.external-stored-method-removed",
+      connectorRef: "agora",
+      label: "Catalog Agora",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [currentMethod]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          manualPrivateAuthMethod({
+            id: "current",
+            prefix: "CURRENT",
+            access: "static",
+            revoke: "none",
+          }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([initial, removed], removed));
+    await syncCatalog();
+
+    const replacement = await connectorsApi.requestManualGrant(
+      actor,
+      "agora",
+      "current",
+      { credential: "current-catalog-secret" },
+      { statuses: [500] },
+    );
+    expect(replacement.status).toBe(500);
+    await connectorsApi.deleteConnectorByType(actor, "agora", [404]);
+
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const secrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      secrets.body.secrets.map((secret) => {
+        return secret.name;
+      }),
+    ).toContain("LEGACY_CREDENTIAL");
+
+    serveObjects(catalogObjects([initial, removed], initial));
+    await syncCatalog();
+    await expect(
+      connectorsApi.readConnectorByType(actor, "agora"),
+    ).resolves.toMatchObject({ authMethod: "legacy" });
+  });
+
+  it("fails token replacement closed when the stored method is removed", async () => {
+    configureSource();
+    const initial = buildRelease({
+      version: "2026-07-15.external-token-stored-method-present",
+      connectorRef: "gmail",
+      label: "Catalog Gmail",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "legacy", grantKind: "manual", manual: true }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          manualPrivateAuthMethod({
+            id: "legacy",
+            prefix: "LEGACY_GMAIL",
+            access: "static",
+            revoke: "none",
+          }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([initial], initial));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    onTestFinished(async () => {
+      mockEnv("CRON_SECRET", CRON_SECRET);
+      configureSource();
+      serveObjects(catalogObjects([initial], initial));
+      await syncCatalog();
+      await connectorsApi.deleteConnectorByType(actor, "gmail", [204, 404]);
+    });
+    await connectorsApi.connectManualGrant(actor, "gmail", "legacy", {
+      credential: "legacy-gmail-secret",
+    });
+
+    mockGmailConnectorOAuth({ email: "removed-method@example.test" });
+    const replacement = buildRelease({
+      version: "2026-07-15.external-token-stored-method-removed",
+      connectorRef: "gmail",
+      label: "Catalog Gmail",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "auth-code" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([initial, replacement], replacement));
+    await syncCatalog();
+
+    const oauth = await connectorsApi.startOauth(actor, "gmail", "oauth");
+    const state = new URL(oauth.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Gmail authorization state");
+    }
+    const callback = await connectorsApi.completeOauthCallback("gmail", {
+      code: "removed-stored-method",
+      state,
+    });
+    const callbackLocation = new URL(callback.headers.get("location") ?? "");
+    expect(callbackLocation.pathname).toBe("/connector/error");
+
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const secrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const secretNames = secrets.body.secrets.map((secret) => {
+      return secret.name;
+    });
+    expect(secretNames).toContain("LEGACY_GMAIL_CREDENTIAL");
+    expect(secretNames).not.toContain("CATALOG_GMAIL_ACCESS_TOKEN");
+    expect(secretNames).not.toContain("CATALOG_GMAIL_REFRESH_TOKEN");
+
+    serveObjects(catalogObjects([initial, replacement], initial));
+    await syncCatalog();
+    await expect(
+      connectorsApi.readConnectorByType(actor, "gmail"),
+    ).resolves.toMatchObject({ authMethod: "legacy" });
+  });
+
   it("materializes external runtime bindings for runs and firewall auth", async () => {
     const connectorRef = "external-runtime";
     configureSource();

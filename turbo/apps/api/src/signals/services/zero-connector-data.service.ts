@@ -700,6 +700,25 @@ function resolveTokenRevokeRuntimeMethod(args: {
     : null;
 }
 
+function requireStoredConnectorRuntimeMethod(args: {
+  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly type: string;
+  readonly authMethod: string;
+}): ConnectorRuntimeMethod {
+  const runtimeMethod = getConnectorRuntimeMethod({
+    snapshot: args.snapshot,
+    connectorRef: args.type,
+    authMethodId: args.authMethod,
+    requireExecutable: false,
+  });
+  if (runtimeMethod === undefined) {
+    throw new Error(
+      `Current connector catalog cannot describe stored method ${args.type}:${args.authMethod}`,
+    );
+  }
+  return runtimeMethod;
+}
+
 function resolveReplaceTokenRevokeRuntimeMethod(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly type: string;
@@ -812,20 +831,16 @@ async function deleteManualGrantConnectorLocalStateForAuthMethods(args: {
 
   for (const authMethod of cleanupAuthMethods) {
     args.signal.throwIfAborted();
-    const runtimeMethod = getConnectorRuntimeMethod({
+    const runtimeMethod = requireStoredConnectorRuntimeMethod({
       snapshot: args.snapshot,
-      connectorRef: args.type,
-      authMethodId: authMethod,
-      requireExecutable: false,
+      type: args.type,
+      authMethod,
     });
     await deleteManualGrantConnectorLocalState({
       db: args.db,
       orgId: args.orgId,
       userId: args.userId,
-      fields:
-        runtimeMethod === undefined
-          ? null
-          : connectorAuthMethodManualGrantFieldNames(runtimeMethod.method),
+      fields: connectorAuthMethodManualGrantFieldNames(runtimeMethod.method),
       signal: args.signal,
     });
   }
@@ -888,6 +903,9 @@ export const deleteZeroConnectorLocalState$ = command(
         authMethodId: existing.authMethod,
         requireExecutable: false,
       });
+      if (existingRuntimeMethod === undefined) {
+        return { deleted: false, pendingTokenRevoke: null };
+      }
 
       let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
       const tokenRevokeRuntimeMethod = resolveTokenRevokeRuntimeMethod({
@@ -914,7 +932,7 @@ export const deleteZeroConnectorLocalState$ = command(
         orgId: args.orgId,
         userId: args.userId,
         names: connectorAuthMethodOwnedSecretNames(
-          existingRuntimeMethod?.method,
+          existingRuntimeMethod.method,
         ),
         signal,
       });
@@ -922,7 +940,7 @@ export const deleteZeroConnectorLocalState$ = command(
         orgId: args.orgId,
         userId: args.userId,
         names: connectorAuthMethodOwnedVariableNames(
-          existingRuntimeMethod?.method,
+          existingRuntimeMethod.method,
         ),
         signal,
       });
@@ -1199,11 +1217,10 @@ async function cleanupExistingStoredConnectorForLocalConnect(
   }
 
   let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-  const existingRuntimeMethod = getConnectorRuntimeMethod({
+  const existingRuntimeMethod = requireStoredConnectorRuntimeMethod({
     snapshot: args.snapshot,
-    connectorRef: args.type,
-    authMethodId: existing.authMethod,
-    requireExecutable: false,
+    type: args.type,
+    authMethod: existing.authMethod,
   });
   const tokenRevokeRuntimeMethod = resolveTokenRevokeRuntimeMethod({
     snapshot: args.snapshot,
@@ -1224,13 +1241,13 @@ async function cleanupExistingStoredConnectorForLocalConnect(
   await deleteConnectorScopedSecretNames(db, {
     orgId: args.orgId,
     userId: args.userId,
-    names: connectorAuthMethodOwnedSecretNames(existingRuntimeMethod?.method),
+    names: connectorAuthMethodOwnedSecretNames(existingRuntimeMethod.method),
     signal: args.signal,
   });
   await deleteConnectorScopedVariableNames(db, {
     orgId: args.orgId,
     userId: args.userId,
-    names: connectorAuthMethodOwnedVariableNames(existingRuntimeMethod?.method),
+    names: connectorAuthMethodOwnedVariableNames(existingRuntimeMethod.method),
     signal: args.signal,
   });
 
@@ -2004,11 +2021,10 @@ async function commitConnectorTokenConnection(args: {
     signal: args.signal,
   });
   const existingRuntimeMethod = existingAuthMethod
-    ? getConnectorRuntimeMethod({
+    ? requireStoredConnectorRuntimeMethod({
         snapshot: args.snapshot,
-        connectorRef: args.runtimeMethod.connectorRef,
-        authMethodId: existingAuthMethod,
-        requireExecutable: false,
+        type: args.runtimeMethod.connectorRef,
+        authMethod: existingAuthMethod,
       })
     : null;
   const replaceTokenRevokeMethod = resolveReplaceTokenRevokeRuntimeMethod({
@@ -2051,7 +2067,7 @@ async function commitConnectorTokenConnection(args: {
     orgId: args.orgId,
     userId: args.userId,
     runtimeMethod: args.runtimeMethod,
-    existingRuntimeMethod: existingRuntimeMethod ?? null,
+    existingRuntimeMethod,
     signal: args.signal,
   });
   await deleteManualGrantConnectorLocalStateForAuthMethods({
