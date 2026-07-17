@@ -47,6 +47,9 @@ export function isAdminOnlySettingsSection(section: SettingsSection): boolean {
 const internalSettingsDialogOpen$ = state(false);
 const internalSettingsDialogSignal$ = state<AbortSignal | null>(null);
 const resetSettingsDialogSignal$ = resetSignal();
+const internalSettingsDialogSessionActive$ = state(false);
+const internalSettingsDialogInitialized$ = state(false);
+const internalSettingsDialogHandoffPending$ = state(false);
 const internalExternalProfileModalOpen$ = state(false);
 const pendingAccountMenuSettingsSection$ = state<{
   readonly ownerId: string;
@@ -124,10 +127,28 @@ export const openSettingsBillingPlans$ = command(({ get, set }) => {
   set(updateSearchParams$, params);
 });
 
-const clearSettingsDialogSession$ = command(({ set }) => {
+const releaseSettingsDialogSession$ = command(({ get, set }) => {
   set(internalSettingsDialogSignal$, null);
-  set(internalSettingsDialogOpen$, false);
+  set(internalSettingsDialogSessionActive$, false);
   set(clearPendingLogo$);
+
+  const handoffPending = get(internalSettingsDialogHandoffPending$);
+  set(internalSettingsDialogHandoffPending$, false);
+  if (!handoffPending) {
+    set(internalSettingsDialogOpen$, false);
+    set(internalSettingsDialogInitialized$, false);
+  }
+});
+
+const clearSettingsDialogSession$ = command(({ set }) => {
+  set(releaseSettingsDialogSession$);
+  set(internalSettingsDialogOpen$, false);
+  set(internalSettingsDialogInitialized$, false);
+  set(internalSettingsDialogHandoffPending$, false);
+});
+
+export const handoffSettingsDialogSession$ = command(({ set }) => {
+  set(internalSettingsDialogHandoffPending$, true);
 });
 
 export const closeSettingsModal$ = command(({ get, set }) => {
@@ -149,20 +170,30 @@ export const setSettingsDialogOpen$ = command(
       return;
     }
 
+    if (get(internalSettingsDialogSessionActive$)) {
+      set(setSettingsActiveSection$, get(internalActiveSection$));
+      return;
+    }
+
+    const dialogInitialized = get(internalSettingsDialogInitialized$);
     const modalSignal = set(resetSettingsDialogSignal$, pageSignal);
     modalSignal.addEventListener(
       "abort",
       () => {
-        set(clearSettingsDialogSession$);
+        set(releaseSettingsDialogSession$);
       },
       { once: true },
     );
     set(internalSettingsDialogSignal$, modalSignal);
+    set(internalSettingsDialogSessionActive$, true);
     set(internalSettingsDialogOpen$, true);
-    await set(initProfileName$, modalSignal);
-    pageSignal.throwIfAborted();
-    modalSignal.throwIfAborted();
-    set(reloadBillingStatus$);
+    if (!dialogInitialized) {
+      await set(initProfileName$, modalSignal);
+      pageSignal.throwIfAborted();
+      modalSignal.throwIfAborted();
+      set(reloadBillingStatus$);
+      set(internalSettingsDialogInitialized$, true);
+    }
     const params = new URLSearchParams(get(searchParams$));
     const section = get(internalActiveSection$);
     if (section === "model") {
