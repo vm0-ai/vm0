@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -252,6 +253,7 @@ function buildIntegrationToolsPrompt(
   zeroMailEnabled: boolean,
 ): readonly string[] {
   const localFileContext = [
+    `Prefer the workspace directory (\`${CANONICAL_WORKING_DIR}\`) for file operations and project work.`,
     "Local filesystem paths are only visible to the agent runtime. Users cannot open local paths directly.",
     "Localhost URLs, local dev server ports, and processes started inside the agent runtime are generally only reachable inside that runtime; users cannot rely on them as a way to view the result directly.",
     "Local dev servers are useful for agent-side verification, but they are not by themselves a user-facing deliverable.",
