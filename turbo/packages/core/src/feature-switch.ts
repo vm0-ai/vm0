@@ -308,7 +308,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Vm0Model]: {
     maintainer: "yuma@vm0.ai",
-    description: "Show VM0 Model in the workspace Add model selector.",
+    description: "Show Auto in the workspace Add model selector.",
     enabled: false,
   },
   [FeatureSwitchKey.RealAgentInPreview]: {

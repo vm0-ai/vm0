@@ -155,7 +155,7 @@ export function getVm0ModelCodexRuntimeConfig(
 ): ModelProviderCodexRuntimeConfig {
   return {
     providerId: "vm0-model",
-    name: "VM0 Model",
+    name: "Auto",
     baseUrl,
     envKey: "OPENAI_API_KEY",
     wireApi: "responses",
@@ -164,7 +164,7 @@ export function getVm0ModelCodexRuntimeConfig(
       models: [
         {
           slug: "vm0-model",
-          display_name: "VM0 Model",
+          display_name: "Auto",
           description: "Automatically routes each task to a VM0 model.",
           default_reasoning_level: null,
           supported_reasoning_levels: [],
@@ -303,7 +303,7 @@ export interface DefaultOrgModelPolicySeed {
 }
 
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
-  "vm0-model": "VM0 Model",
+  "vm0-model": "Auto",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-opus-4-7": "Claude Opus 4.7",

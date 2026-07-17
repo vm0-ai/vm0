@@ -202,7 +202,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("surfaces display labels for canonical models", () => {
-    expect(getCanonicalModelDisplayName("vm0-model")).toBe("VM0 Model");
+    expect(getCanonicalModelDisplayName("vm0-model")).toBe("Auto");
     expect(getCanonicalModelDisplayName("claude-opus-4-8")).toBe(
       "Claude Opus 4.8",
     );

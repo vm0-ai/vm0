@@ -300,7 +300,7 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
-  it("only offers VM0 Model when its feature switch is enabled", async () => {
+  it("only offers Auto when its feature switch is enabled", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
@@ -311,18 +311,18 @@ describe("organization model providers settings", () => {
     click(within(dialog).getByRole("combobox"));
 
     expect(
-      screen.queryByRole("option", { name: "VM0 Model" }),
+      screen.queryByRole("option", { name: "Auto" }),
     ).not.toBeInTheDocument();
   });
 
-  it("shows the VM0 Model description without provider routing choices", async () => {
+  it("shows the Auto description without provider routing choices", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
     await openProvidersTab({ vm0ModelEnabled: true });
 
     click(buttonByText("Add model"));
-    await selectDialogModel("VM0 Model");
+    await selectDialogModel("Auto");
 
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     expect(
@@ -336,7 +336,7 @@ describe("organization model providers settings", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("lets limited-free-1 workspaces add VM0 Model without upgrading", async () => {
+  it("lets limited-free-1 workspaces add Auto without upgrading", async () => {
     mockAdminOrg();
     mockBillingCapabilities({
       supportByok: false,
@@ -354,7 +354,7 @@ describe("organization model providers settings", () => {
     await openProvidersTab({ vm0ModelEnabled: true });
 
     click(buttonByText("Add model"));
-    await selectDialogModel("VM0 Model");
+    await selectDialogModel("Auto");
 
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     expect(buttonByText("Add model", dialog)).toBeInTheDocument();
@@ -364,7 +364,7 @@ describe("organization model providers settings", () => {
     const vm0ModelRow = await screen.findByTestId(
       "org-model-policy-row-vm0-model",
     );
-    expect(within(vm0ModelRow).getByText("VM0 Model")).toBeInTheDocument();
+    expect(within(vm0ModelRow).getByText("Auto")).toBeInTheDocument();
   });
 
   it("opens a workspace API key model route form", async () => {
