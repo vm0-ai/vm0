@@ -263,9 +263,9 @@ class TestDecompressBody:
     ``LARGE_RESPONSE_DECOMPRESS_LIMIT``) for JSON parsing.
 
     Focus: verify the documented ``max_output`` cap is enforced during
-    decompression (not only via after-the-fact slicing) for codecs with
-    hard output-limit APIs.  Brotli's Python binding is best-effort; the
-    high-compression capture regression is covered in ``TestDecompression``.
+    decompression (not only via after-the-fact slicing). Brotli uses a soft
+    output threshold plus exact accumulator slicing; its high-compression
+    regression is covered in ``TestDecompression``.
     """
 
     def test_gzip_respects_max_output(self, headers):
@@ -482,6 +482,74 @@ class TestDecodeRequestBodyForNetworkLogCapture:
 
 class TestDecompressJsonUsageBody:
     """Direct tests for strict JSON usage decompression."""
+
+    def test_brotli_exact_limit_consumes_later_frame_trailer(self, headers, monkeypatch):
+        body = pseudo_random_ascii(13)
+        compressed = brotli.compress(body)
+        assert len(compressed) == 17
+
+        boundary_decoder = brotli.Decompressor()
+        assert boundary_decoder.process(compressed[:16]) == body
+        assert not boundary_decoder.is_finished()
+
+        stats = track_brotli_decompressor(monkeypatch)
+        hdrs = headers(("Content-Encoding", "br"))
+        decoded, error = decompress_json_usage_body(
+            compressed,
+            hdrs,
+            max_output=len(body),
+        )
+        assert stats["calls"] == 2
+        assert stats["max_input"] == 16
+
+        truncated, truncated_error = decompress_json_usage_body(
+            compressed[:-1],
+            hdrs,
+            max_output=len(body),
+        )
+
+        assert decoded == body
+        assert error is None
+        assert truncated == body
+        assert truncated_error == "incomplete compressed body"
+
+    def test_brotli_exact_limit_validates_later_wire_input(self, headers, monkeypatch):
+        body = pseudo_random_ascii(12)
+        compressed = brotli.compress(body)
+        assert len(compressed) == 16
+        malformed = compressed + b"trailing garbage"
+
+        stats = track_brotli_decompressor(monkeypatch)
+        hdrs = headers(("Content-Encoding", "br"))
+        decoded, error = decompress_json_usage_body(
+            malformed,
+            hdrs,
+            max_output=len(body),
+        )
+
+        assert stats["calls"] == 2
+        assert stats["max_input"] == 16
+        assert decoded == b""
+        assert error == "invalid compressed body"
+        assert (
+            decode_request_body_for_network_log_capture(
+                malformed,
+                hdrs,
+                max_output=len(body),
+            )
+            is None
+        )
+        assert decompress_body(malformed, hdrs, max_output=len(body)) == body
+
+    def test_brotli_single_frame_exceeding_limit_returns_error(self, headers):
+        body = pseudo_random_ascii(33)
+        compressed = brotli.compress(body)
+        hdrs = headers(("Content-Encoding", "br"))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=32)
+
+        assert decoded == body[:32]
+        assert error == "decoded body limit exceeded"
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_zlib_exact_limit_accepts_empty_trailing_members(self, headers, encoding):
