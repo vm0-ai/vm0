@@ -518,6 +518,8 @@ pub(crate) async fn spawn_mitmdump(
         .arg("--set")
         .arg(format!("confdir={}", config.ca_dir.display()))
         .arg("--set")
+        .arg("upstream_cert=false")
+        .arg("--set")
         .arg(format!(
             "vm0_proxy_registry_path={}",
             config.registry_path.display()
@@ -1050,7 +1052,7 @@ PY
     }
 
     #[tokio::test]
-    async fn spawn_mitmdump_passes_usage_state_id_option() {
+    async fn spawn_mitmdump_passes_runner_options_and_preserves_ca() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
         crate::ca::ensure(&home).await.unwrap();
@@ -1090,6 +1092,10 @@ PY
         assert!(
             std::fs::read(home.ca_dir().join(crate::ca::CA_CERT)).unwrap() == original_cert,
             "proxy preparation must not rotate the standalone identity"
+        );
+        assert!(
+            args.lines().any(|arg| arg == "upstream_cert=false"),
+            "mitmdump args should scope generated certificates to TLS SNI; got:\n{args}",
         );
         assert!(
             args.lines()
