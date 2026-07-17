@@ -296,7 +296,6 @@ impl AppServerState {
             write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
             for index in 0..EVENT_DELIVERY_FLOOD_COUNT {
                 write_json_line(output, &warning_notification(&thread_id, index))?;
-                output.flush()?;
                 thread::sleep(std::time::Duration::from_millis(1));
             }
             write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
@@ -312,7 +311,6 @@ impl AppServerState {
                         EVENT_DELIVERY_LARGE_EVENT_BYTES,
                     ),
                 )?;
-                output.flush()?;
                 thread::sleep(std::time::Duration::from_millis(50));
             }
             write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
