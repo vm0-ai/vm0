@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.605.0](https://github.com/vm0-ai/vm0/compare/app-v0.604.1...app-v0.605.0) (2026-07-17)
+
+
+### Features
+
+* **platform:** render @-mentioned chat threads as atomic chips in the composer ([#21917](https://github.com/vm0-ai/vm0/issues/21917)) ([71f5380](https://github.com/vm0-ai/vm0/commit/71f5380a97ac0fe5db1b6b5587236d2e8aa5baaa))
+
+
+### Bug Fixes
+
+* **platform:** release workspace logo previews with settings modal ([#21916](https://github.com/vm0-ai/vm0/issues/21916)) ([f1c9fa9](https://github.com/vm0-ai/vm0/commit/f1c9fa95d9db9b4bee61dd9b9510527d13db5759))
+* **platform:** reset chat indexeddb cache at schema v14 ([#21912](https://github.com/vm0-ai/vm0/issues/21912)) ([600d83b](https://github.com/vm0-ai/vm0/commit/600d83b397206e5eb7d0946d3abbc882ddcb2a83))
+
+
+### Refactoring
+
+* **platform:** bound frontend resource caches to their owners ([#21911](https://github.com/vm0-ai/vm0/issues/21911)) ([890616a](https://github.com/vm0-ai/vm0/commit/890616a1ce09cccd1fb521187bbf056acf1015c0))
+* **platform:** derive chat since id from persistent messages ([#21910](https://github.com/vm0-ai/vm0/issues/21910)) ([db034d2](https://github.com/vm0-ai/vm0/commit/db034d200fcfce5e9ed151eda12f0001e4ba9a71))
+* **platform:** publish environment-neutral app artifacts to r2 ([#21914](https://github.com/vm0-ai/vm0/issues/21914)) ([0196dbe](https://github.com/vm0-ai/vm0/commit/0196dbe88111077eb14ba8fa0d2374d5edd38b04))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.1
+    * @vm0/core bumped to 8.439.1
+
 ## [0.604.1](https://github.com/vm0-ai/vm0/compare/app-v0.604.0...app-v0.604.1) (2026-07-16)
 
 

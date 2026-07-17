@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.282.2](https://github.com/vm0-ai/vm0/compare/api-v1.282.1...api-v1.282.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* **api:** cache clerk identity reads in e2e setup ([#21909](https://github.com/vm0-ai/vm0/issues/21909)) ([5dbe55f](https://github.com/vm0-ai/vm0/commit/5dbe55fd1cc4f5f63eed4141c9c7ec2075d82955))
+
+
+### Documentation
+
+* **api:** clarify dev seed database contents ([#21891](https://github.com/vm0-ai/vm0/issues/21891)) ([bb18877](https://github.com/vm0-ai/vm0/commit/bb1887759521fb7a1c6cc320767a9bcc61ef35f0))
+
+
+### Refactoring
+
+* **api:** remove legacy web client compatibility endpoint ([#21915](https://github.com/vm0-ai/vm0/issues/21915)) ([f899f65](https://github.com/vm0-ai/vm0/commit/f899f65e7d2977cd0207432f10621d8ff0c81d58))
+* **runner:** add generic workspace affinity resource classes ([#21888](https://github.com/vm0-ai/vm0/issues/21888)) ([92bf6af](https://github.com/vm0-ai/vm0/commit/92bf6af909f9aa3666a256edbfdad016b94947a6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.1
+    * @vm0/core bumped to 8.439.1
+    * @vm0/db bumped to 1.119.2
+
 ## [1.282.1](https://github.com/vm0-ai/vm0/compare/api-v1.282.0...api-v1.282.1) (2026-07-16)
 
 
