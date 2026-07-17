@@ -1,12 +1,15 @@
 //! Public types for the ably-subscriber crate.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite;
+
+pub(crate) const REDACTED_DEBUG_VALUE: &str = "[redacted]";
 
 pub(crate) fn redact_access_token(input: &str) -> String {
     const PARAM: &str = "access_token=";
@@ -38,7 +41,7 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 /// Your server creates this using `client.auth.createTokenRequest()` and
 /// returns it to the client. The client then exchanges it with Ably's REST API
 /// for an actual token.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenRequest {
     /// Ably API key name used to sign this token request.
@@ -59,8 +62,22 @@ pub struct TokenRequest {
     pub client_id: Option<String>,
 }
 
+impl fmt::Debug for TokenRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TokenRequest")
+            .field("key_name", &self.key_name)
+            .field("timestamp", &self.timestamp)
+            .field("nonce", &self.nonce)
+            .field("mac", &REDACTED_DEBUG_VALUE)
+            .field("capability", &self.capability)
+            .field("ttl", &self.ttl)
+            .field("client_id", &self.client_id)
+            .finish()
+    }
+}
+
 /// Ably TokenDetails — the actual token returned by Ably's REST API.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenDetails {
     /// Ably token string used to authenticate realtime requests.
@@ -77,6 +94,18 @@ pub struct TokenDetails {
     /// Client ID associated with the token, when present.
     #[serde(default)]
     pub client_id: Option<String>,
+}
+
+impl fmt::Debug for TokenDetails {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TokenDetails")
+            .field("token", &REDACTED_DEBUG_VALUE)
+            .field("expires", &self.expires)
+            .field("issued", &self.issued)
+            .field("capability", &self.capability)
+            .field("client_id", &self.client_id)
+            .finish()
+    }
 }
 
 /// A message received from an Ably channel.
@@ -342,8 +371,8 @@ pub enum Error {
     Url(#[from] url::ParseError),
 }
 
-impl std::fmt::Debug for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Error")
             .field(&redact_access_token(&self.to_string()))
             .finish()
