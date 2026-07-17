@@ -1049,6 +1049,7 @@ PY
         // `sleep` never listens on TCP — guarantees timeout.
         let mut child = tokio::process::Command::new("sleep")
             .arg("60")
+            .kill_on_drop(true)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -1123,6 +1124,7 @@ PY
         let dir = tempfile::tempdir().unwrap();
         let mut child = tokio::process::Command::new("sleep")
             .arg("60")
+            .kill_on_drop(true)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -1153,6 +1155,7 @@ PY
         std::fs::write(&addon_ready_path, "old-usage-state").unwrap();
         let mut child = tokio::process::Command::new("sleep")
             .arg("60")
+            .kill_on_drop(true)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
