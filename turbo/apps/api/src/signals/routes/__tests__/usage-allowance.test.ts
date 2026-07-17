@@ -601,8 +601,14 @@ describe("Usage Allowance", () => {
   });
 
   it("does not apply newly created allowance to older runs", async () => {
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const runCreatedAt = nowDate();
+    mockNow(runCreatedAt);
     const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
     const run = await createVm0Run(actor, agentId, "run before entitlement");
+    mockNow(addHours(runCreatedAt, 1));
     await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 100,
       weeklyWindowUnits: 200,
@@ -689,10 +695,16 @@ describe("Usage Allowance", () => {
   });
 
   it("denies billable firewall auth when the run has no allowance window", async () => {
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const runCreatedAt = nowDate();
+    mockNow(runCreatedAt);
     const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
     const api = createRunsApi(context);
     // The run predates the entitlement, so it has no allowance windows.
     const run = await createVm0Run(actor, agentId, "run without windows");
+    mockNow(addHours(runCreatedAt, 1));
     await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 2,
       weeklyWindowUnits: 2,
