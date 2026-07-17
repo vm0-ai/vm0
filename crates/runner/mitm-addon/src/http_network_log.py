@@ -23,8 +23,11 @@ def fallback_host_port(flow: http.HTTPFlow, original_url: str) -> tuple[str, int
     try:
         parsed_url = urllib.parse.urlparse(original_url)
         host = parsed_url.hostname or flow.request.pretty_host
-        port = parsed_url.port or (
-            _HTTPS_DEFAULT_PORT if parsed_url.scheme == "https" else _HTTP_DEFAULT_PORT
+        parsed_port = parsed_url.port
+        port = (
+            (_HTTPS_DEFAULT_PORT if parsed_url.scheme == "https" else _HTTP_DEFAULT_PORT)
+            if parsed_port is None
+            else parsed_port
         )
     except ValueError:
         host = flow.request.pretty_host

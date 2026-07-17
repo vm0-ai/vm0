@@ -497,6 +497,24 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
+    def test_error_logs_explicit_zero_original_url_port(self, tmp_path, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="request.example.com", port=9443)
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://target.example.com:0/path"
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.error = Error("connection reset by peer")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        [entry] = read_jsonl_entries_after_flush(Path(log_path))
+        assert entry["host"] == "target.example.com"
+        assert entry["port"] == 0
+        assert entry["url"] == "https://target.example.com:0/path"
+        assert entry["error"] == "connection reset by peer"
+
     def test_error_logs_legacy_target_when_original_url_port_is_invalid(
         self, tmp_path, real_flow, mitm_ctx
     ):

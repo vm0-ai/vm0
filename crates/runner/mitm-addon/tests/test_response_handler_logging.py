@@ -192,6 +192,36 @@ def test_network_log_target_url_strips_query_and_fragment(
     assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
 
 
+@pytest.mark.parametrize(
+    ("original_url", "expected_port"),
+    [
+        ("http://target.example.com:0/path", 0),
+        ("https://target.example.com:0/path", 0),
+        ("http://target.example.com/path", 80),
+        ("https://target.example.com/path", 443),
+    ],
+)
+def test_logs_explicit_or_default_original_url_port(
+    tmp_path, real_flow, mitm_ctx, original_url, expected_port
+):
+    flow = real_flow(with_response=False, host="request.example.com", port=9443)
+    log_path = str(tmp_path / "network.jsonl")
+
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
+    flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    [entry] = read_jsonl_entries_after_flush(Path(log_path))
+    assert entry["host"] == "target.example.com"
+    assert entry["port"] == expected_port
+    assert entry["url"] == original_url
+
+
 def test_logs_legacy_target_when_original_url_port_is_invalid(tmp_path, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, host="fallback.example.com", port=9443)
     log_path = str(tmp_path / "network.jsonl")
