@@ -134,7 +134,6 @@ import {
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
-  completeChatConnectorActionConnect$,
   type CustomConnectorActionBlock,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
@@ -4782,10 +4781,14 @@ function BodyContentBlocks({
 function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const available = useLastResolved(block.available$) ?? false;
-  const complete = useLastResolved(block.complete$) ?? false;
+  const completeLoadable = useLoadable(block.complete$);
+  const complete =
+    completeLoadable.state === "hasData" && completeLoadable.data;
   const displayMetadata = useLastResolved(block.displayMetadata$);
   const [activateLoadable, activate] = useLoadableSet(block.activate$);
-  const activating = activateLoadable.state === "loading";
+  const loading =
+    completeLoadable.state === "loading" ||
+    activateLoadable.state === "loading";
   if (!available || !displayMetadata) {
     return null;
   }
@@ -4810,13 +4813,13 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
       </div>
       <button
         type="button"
-        disabled={complete || activating}
+        disabled={complete || loading}
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {activating && <IconLoader2 size={15} className="animate-spin" />}
+        {loading && <IconLoader2 size={15} className="animate-spin" />}
         {complete ? "Connected" : "Connect"}
       </button>
     </div>
@@ -5503,21 +5506,12 @@ function PermissionActionCard({
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
-  const complete = useSet(completeChatConnectorActionConnect$);
 
   if (!active) {
     return null;
   }
 
-  return (
-    <ConnectModal
-      agentId={active.agentId}
-      onClose={close}
-      onSuccess={() => {
-        complete();
-      }}
-    />
-  );
+  return <ConnectModal agentId={active.agentId} onClose={close} />;
 }
 
 function isImageFilename(filename: string): boolean {

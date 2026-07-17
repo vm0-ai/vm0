@@ -1,4 +1,5 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { zeroConnectorManualGrantContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
@@ -642,34 +643,64 @@ describe("chat message action cards", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
-  it("keeps catalog-visible connectors actionable without a bundled type", async () => {
+  it("completes catalog-visible connectors without a bundled type", async () => {
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
-    mockConnectorCatalogStatus([
-      publicConnectorStatusItem({
-        connectorRef: "future-connector",
-        label: "Catalog Future Connector",
-        description: "Catalog future connector help text",
-        authMethods: [
-          {
-            id: "partner-token",
-            label: "Partner token",
-            description: null,
-            grantKind: "manual",
-            manualFields: [
+    let connected = false;
+    let authorized = false;
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "future-connector",
+            label: "Catalog Future Connector",
+            description: "Catalog future connector help text",
+            connected,
+            connectionStatus: connected ? "connected" : "not-connected",
+            authMethods: [
               {
-                id: "apiKey",
-                label: "API key",
-                required: true,
-                placeholder: null,
-                inputType: "password",
+                id: "partner-token",
+                label: "Partner token",
+                description: null,
+                grantKind: "manual",
+                manualFields: [
+                  {
+                    id: "apiKey",
+                    label: "API key",
+                    required: true,
+                    placeholder: "future-api-key",
+                    inputType: "password",
+                  },
+                ],
+                startOptions: [],
               },
             ],
-            startOptions: [],
-          },
+          }),
         ],
-      }),
-    ]);
+      });
+    });
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: authorized ? ["future-connector"] : [],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("future-connector");
+        expect(body.agentId).toBe(AGENT_ID);
+        expect(body.authorizeAgent).toBeTruthy();
+        connected = true;
+        authorized = true;
+        return respond(
+          200,
+          connectedConnector({
+            type: "future-connector",
+            authMethod: body.authMethod,
+          }),
+        );
+      },
+    );
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-future-connector`,
       threadTitle: "Future connector",
@@ -706,7 +737,27 @@ describe("chat message action cards", () => {
     const connectButton = buttonByText("Connect", connectorCard);
     expect(connectButton).toBeEnabled();
     await user.click(connectButton);
-    expect((await screen.findAllByText("API key")).length).toBeGreaterThan(0);
+    const apiKeyInputs =
+      await screen.findAllByPlaceholderText("future-api-key");
+    const apiKeyInput = apiKeyInputs.at(-1);
+    if (!apiKeyInput) {
+      throw new Error("Future connector API key input not found");
+    }
+    await user.type(apiKeyInput, "future-token");
+    const currentApiKeyInput = screen
+      .getAllByPlaceholderText("future-api-key")
+      .at(-1);
+    const saveButton = currentApiKeyInput
+      ?.closest("form")
+      ?.querySelector<HTMLElement>('button[type="submit"]');
+    if (!saveButton) {
+      throw new Error("Future connector save button not found");
+    }
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+    });
   });
 
   it("fails closed when permission action metadata is hidden", async () => {
