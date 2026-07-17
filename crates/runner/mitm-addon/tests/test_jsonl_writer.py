@@ -341,6 +341,44 @@ def test_shutdown_writer_returns_when_normal_write_backlog_is_full(tmp_path):
     )
 
 
+def test_shutdown_writer_timeout_preserves_state_for_retry(tmp_path):
+    log_path = str(tmp_path / "net.jsonl")
+    accepted_line = b'{"action":"ALLOW"}\n'
+    rejected_line = b'{"action":"BLOCK"}\n'
+    append_started = threading.Event()
+    release_append = threading.Event()
+    original_append_lines = jsonl_writer._append_lines
+
+    def append_lines(path: str, content: bytes) -> None:
+        append_started.set()
+        release_append.wait()
+        original_append_lines(path, content)
+
+    with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
+        try:
+            jsonl_writer.write_jsonl_line(log_path, accepted_line, "network")
+            assert append_started.wait(timeout=1)
+
+            worker = jsonl_writer._worker
+            assert worker is not None
+            assert worker.is_alive()
+
+            assert jsonl_writer.shutdown_writer(timeout=0) is False
+            assert jsonl_writer._worker is worker
+            assert worker.is_alive()
+            assert jsonl_writer._stop_enqueued
+
+            jsonl_writer.write_jsonl_line(log_path, rejected_line, "network")
+        finally:
+            release_append.set()
+
+        assert jsonl_writer.shutdown_writer(timeout=None) is True
+
+    assert jsonl_writer._worker is None
+    assert not jsonl_writer._stop_enqueued
+    assert (tmp_path / "net.jsonl").read_bytes() == accepted_line
+
+
 def test_flush_log_path_timeout_returns_false_and_cleans_waiter(tmp_path):
     log_path = str(tmp_path / "net.jsonl")
     append_started = threading.Event()
