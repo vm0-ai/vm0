@@ -348,18 +348,6 @@ export interface ZeroChatComposerProps {
   activeGoal?: ActiveGoalComposerItem;
   /** Cancels the active goal through the goal API. */
   onCancelActiveGoal?: () => void;
-  /**
-   * Inline feedback drafted from selected assistant text. The quoted fragments
-   * and editable notes live in the same TipTap document as the normal draft.
-   */
-  feedback?: ComposerFeedback;
-}
-
-export interface ComposerFeedback {
-  /** Fragments carrying a non-empty note — what Send will dispatch. */
-  sendCount: number;
-  onSubmit: () => void;
-  onDismiss: () => void;
 }
 
 export interface QueuedComposerItem {
@@ -6447,14 +6435,12 @@ function ComposerAttachButton({
 }
 
 function ComposerUploadMenu({
-  readInput,
   onDraftChange,
-  onInputChange,
+  onAppendText,
   onSelectFile,
 }: {
-  readonly readInput: () => string;
   readonly onDraftChange?: () => void;
-  readonly onInputChange: (value: string) => void;
+  readonly onAppendText: (value: string) => void;
   readonly onSelectFile: () => void;
 }) {
   const uploadOpen = useGet(uploadPopoverOpen$);
@@ -6469,9 +6455,7 @@ function ComposerUploadMenu({
       return;
     }
     const normalized = new URL(trimmed).toString();
-    const input = readInput();
-    const base = input.trimEnd();
-    onInputChange(base ? `${base}\n${normalized}` : normalized);
+    onAppendText(normalized);
     onDraftChange?.();
     form.reset();
     setUploadOpen(false);
@@ -6553,22 +6537,19 @@ function ComposerUploadMenu({
 }
 
 function ComposerUploadControl({
-  readInput,
   onDraftChange,
-  onInputChange,
+  onAppendText,
   onSelectFile,
 }: {
-  readonly readInput: () => string;
   readonly onDraftChange?: () => void;
-  readonly onInputChange: (value: string) => void;
+  readonly onAppendText: (value: string) => void;
   readonly onSelectFile: () => void;
 }) {
   const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
   return uploadPopoverEnabled ? (
     <ComposerUploadMenu
-      readInput={readInput}
       onDraftChange={onDraftChange}
-      onInputChange={onInputChange}
+      onAppendText={onAppendText}
       onSelectFile={onSelectFile}
     />
   ) : (
@@ -6592,7 +6573,6 @@ function useResolvedComposerSignals(
     draft.attachmentUploadsReady$,
   );
   const readInput = useSet(draft.readInput$);
-  const setInput = useSet(draft.setInput$);
   const uploadAttachment = useSet(draft.uploadAttachment$);
   const restoreAttachments = useSet(draft.restoreAttachments$);
   const removeAttachment = useSet(draft.removeAttachment$);
@@ -6604,11 +6584,9 @@ function useResolvedComposerSignals(
   );
   const dragOver = useGet(draft.dragOver$);
   const setDragOver = useSet(draft.setDragOver$);
-  const appendInput = useSet(draft.appendInput$);
 
   return {
     readInput,
-    setInput,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -6618,24 +6596,7 @@ function useResolvedComposerSignals(
     setFileInputEl,
     dragOver,
     setDragOver,
-    appendInput,
   };
-}
-
-function insertPastedText(
-  target: HTMLElement,
-  currentValue: string,
-  pastedText: string,
-): string {
-  if (!pastedText) {
-    return currentValue;
-  }
-  if (!(target instanceof HTMLTextAreaElement)) {
-    return [currentValue.trimEnd(), pastedText].filter(Boolean).join("\n");
-  }
-  const start = target.selectionStart;
-  const end = target.selectionEnd;
-  return `${currentValue.slice(0, start)}${pastedText}${currentValue.slice(end)}`;
 }
 
 function toPersistedAttachments(
@@ -6666,7 +6627,6 @@ type KeyboardSendAction = "none" | "send" | "queue";
 
 function ComposerInputSlot({
   composer,
-  feedback,
   onDraftChange,
   sending,
   autoFocus,
@@ -6675,7 +6635,6 @@ function ComposerInputSlot({
   onPaste,
 }: {
   readonly composer: WorkflowComposerSignals;
-  readonly feedback: ComposerFeedback | null;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
@@ -6688,7 +6647,6 @@ function ComposerInputSlot({
   return (
     <TiptapWorkflowComposer
       composer={composer}
-      feedbackActive={feedback !== null}
       onDraftChange={onDraftChange}
       sending={sending}
       autoFocus={autoFocus}
@@ -6716,31 +6674,19 @@ function resolveKeyboardSendAction({
   return sending ? "queue" : "send";
 }
 
-function resolveActiveFeedback(
-  feedback: ComposerFeedback | undefined,
-): ComposerFeedback | null {
-  return feedback ?? null;
-}
-
-// Stop while an empty composer is mid-run; otherwise Send. In feedback mode the
-// same button dispatches the feedback turn and stays disabled until a note is
-// written.
+// Stop while an empty composer is mid-run; otherwise Send.
 function ComposerSendButton({
   showStopButton,
   onCancel,
-  activeFeedback,
   sendAction,
-  submissionLoading,
   onSend,
 }: {
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
-  activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
-  submissionLoading: boolean;
   onSend: () => void;
 }) {
-  if (showStopButton && !activeFeedback) {
+  if (showStopButton) {
     return (
       <Button
         size="sm"
@@ -6750,19 +6696,6 @@ function ComposerSendButton({
         aria-label="Stop"
       >
         <IconPlayerStop size={16} />
-      </Button>
-    );
-  }
-  if (activeFeedback) {
-    return (
-      <Button
-        size="sm"
-        className="rounded-lg h-9 w-9 p-0 shrink-0"
-        onClick={activeFeedback.onSubmit}
-        disabled={activeFeedback.sendCount === 0 || submissionLoading}
-        aria-label="Send feedback"
-      >
-        <IconArrowUp size={18} stroke={2} />
       </Button>
     );
   }
@@ -6788,7 +6721,6 @@ function ComposerSendControl({
   queueWhileSending,
   hasQueueHandler,
   onCancel,
-  activeFeedback,
   actionsLoading,
   submissionLoading,
   onSend,
@@ -6801,7 +6733,6 @@ function ComposerSendControl({
   queueWhileSending: boolean;
   hasQueueHandler: boolean;
   onCancel: (() => void) | undefined;
-  activeFeedback: ComposerFeedback | null;
   actionsLoading: boolean;
   submissionLoading: boolean;
   onSend: () => void;
@@ -6822,48 +6753,36 @@ function ComposerSendControl({
     actionsLoading,
     showStopButton: Boolean(sending && onCancel) && !canSend,
     onCancel,
-    activeFeedback,
     sendAction,
   });
-  return (
-    <ComposerSendButton
-      {...state}
-      submissionLoading={submissionLoading}
-      onSend={onSend}
-    />
-  );
+  return <ComposerSendButton {...state} onSend={onSend} />;
 }
 
 function resolveSendButtonStateForActionsLoading({
   actionsLoading,
   showStopButton,
   onCancel,
-  activeFeedback,
   sendAction,
 }: {
   actionsLoading: boolean;
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
-  activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
 }): {
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
-  activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
 } {
   if (actionsLoading) {
     return {
       showStopButton: false,
       onCancel: undefined,
-      activeFeedback: null,
       sendAction: "none",
     };
   }
   return {
     showStopButton,
     onCancel,
-    activeFeedback,
     sendAction,
   };
 }
@@ -6977,7 +6896,6 @@ export function useZeroChatComposer({
   onRemoveQueuedItem,
   activeGoal,
   onCancelActiveGoal,
-  feedback,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -6990,7 +6908,6 @@ export function useZeroChatComposer({
   );
   const {
     readInput,
-    setInput,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -7000,8 +6917,9 @@ export function useZeroChatComposer({
     setFileInputEl,
     dragOver,
     setDragOver,
-    appendInput,
   } = resolved;
+  const insertComposerText = useSet(composer.insertText$);
+  const appendComposerText = useSet(composer.appendText$);
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
@@ -7013,13 +6931,8 @@ export function useZeroChatComposer({
   );
   const uploadsReady = attachmentUploadsState === "hasData";
 
-  // Feedback changes what the shared TipTap document and Send action represent;
-  // it never swaps the editor surface.
-  const activeFeedback = resolveActiveFeedback(feedback);
-
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ComposerPasteEvent) => {
-    const input = readInput();
     if (!e.clipboardData) {
       return;
     }
@@ -7041,13 +6954,8 @@ export function useZeroChatComposer({
           showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
         }
         e.preventDefault();
-        const nextInput = insertPastedText(
-          e.currentTarget,
-          input,
-          chatPayload.text,
-        );
-        if (nextInput !== input) {
-          setInput(nextInput);
+        if (chatPayload.text) {
+          insertComposerText(chatPayload.text);
         }
         if (allowedAttachments.length > 0) {
           restoreAttachments(allowedAttachments);
@@ -7067,10 +6975,7 @@ export function useZeroChatComposer({
       if (pastedPlainText || !plainText) {
         return;
       }
-      const nextInput = insertPastedText(e.currentTarget, input, plainText);
-      if (nextInput !== input) {
-        setInput(nextInput);
-      }
+      insertComposerText(plainText);
       pastedPlainText = true;
     };
     for (const item of items) {
@@ -7272,20 +7177,6 @@ export function useZeroChatComposer({
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
 
   const handleKeyDown = (e: KeyboardEventLike) => {
-    if (activeFeedback) {
-      processShortcut(
-        {
-          enter: () => {
-            if (!submissionLoading) {
-              activeFeedback.onSubmit();
-            }
-          },
-          escape: activeFeedback.onDismiss,
-        },
-        e,
-      );
-      return;
-    }
     const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
     const isTouchOnlyDevice =
       isTouchDevice && !window.matchMedia("(any-pointer: fine)").matches;
@@ -7390,9 +7281,6 @@ export function useZeroChatComposer({
         >
           <CardContent className="p-0">
             <div className="flex flex-col">
-              {/* Template + attachment chips are shared by both modes: a feedback
-                  turn can also carry a template or attachments, so they render
-                  above the feedback rows just as they do above the textarea. */}
               <SelectedTemplateChipSlot
                 picker={templatePicker}
                 onDraftChange={onDraftChange}
@@ -7409,7 +7297,6 @@ export function useZeroChatComposer({
               )}
               <ComposerInputSlot
                 composer={composer}
-                feedback={activeFeedback}
                 onDraftChange={onDraftChange}
                 sending={sending}
                 autoFocus={autoFocus}
@@ -7420,9 +7307,8 @@ export function useZeroChatComposer({
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                   <ComposerUploadControl
-                    readInput={readInput}
                     onDraftChange={onDraftChange}
-                    onInputChange={setInput}
+                    onAppendText={appendComposerText}
                     onSelectFile={handleFileSelect}
                   />
                   <ComposerTemplatePickerSlot
@@ -7453,7 +7339,7 @@ export function useZeroChatComposer({
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                   <MicButton
                     onTranscribed={(text) => {
-                      appendInput(text);
+                      appendComposerText(text);
                       onDraftChange?.();
                     }}
                   />
@@ -7466,7 +7352,6 @@ export function useZeroChatComposer({
                     queueWhileSending={queueWhileSending}
                     hasQueueHandler={onQueue !== undefined}
                     onCancel={onCancel}
-                    activeFeedback={activeFeedback}
                     actionsLoading={actionsLoading}
                     submissionLoading={submissionLoading}
                     onSend={handleButtonSend}

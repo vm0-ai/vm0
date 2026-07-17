@@ -8,13 +8,19 @@ import {
 } from "ccstate";
 import { Editor, Extension, Node, type JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
+import {
+  Plugin,
+  PluginKey,
+  type EditorState,
+  type Transaction,
+} from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
 import { onRef } from "../utils.ts";
 import type { DraftSignals } from "./chat-draft.ts";
 import {
   createFeedbackSignals,
+  formatFeedbackPrompt,
   type FeedbackItem,
   type FeedbackSignals,
 } from "./chat-feedback.ts";
@@ -97,6 +103,8 @@ export interface WorkflowComposerSignals {
   readonly setWorkflowNames$: Command<void, [readonly string[]]>;
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
+  readonly insertText$: Command<void, [string]>;
+  readonly appendText$: Command<void, [string]>;
   readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
   readonly feedback: FeedbackSignals;
 }
@@ -337,47 +345,96 @@ function feedbackNoteContent(note: string): JSONContent[] {
 }
 
 function feedbackNoteFromNode(node: ProseMirrorNode): string {
-  return node.textBetween(0, node.content.size, "\n", (leafNode) => {
-    return leafNode.type.name === "hardBreak" ? "\n" : "";
+  return nodeText(node);
+}
+
+function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
+  return editor.schema.nodeFromJSON({
+    type: FEEDBACK_ITEM_NODE_NAME,
+    attrs: {
+      feedbackId: item.id,
+      quote: item.quote,
+      showDivider: false,
+      fill: false,
+    },
+    content: feedbackNoteContent(item.note),
   });
 }
 
-function feedbackItemsToWorkflowComposerDoc(
-  editor: Editor,
-  items: readonly FeedbackItem[],
-): ProseMirrorNode {
-  const existingNodes = new Map<number, ProseMirrorNode>();
-  for (let index = 0; index < editor.state.doc.childCount; index++) {
-    const node = editor.state.doc.child(index);
-    if (node.type.name !== FEEDBACK_ITEM_NODE_NAME) {
+function withFeedbackItemLayout(transaction: Transaction): Transaction {
+  const feedbackNodes: {
+    readonly node: ProseMirrorNode;
+    readonly position: number;
+  }[] = [];
+  let position = 0;
+  for (let index = 0; index < transaction.doc.childCount; index++) {
+    const node = transaction.doc.child(index);
+    if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
+      feedbackNodes.push({ node, position });
+    }
+    position += node.nodeSize;
+  }
+  for (const [index, feedbackNode] of feedbackNodes.entries()) {
+    const { node, position: nodePosition } = feedbackNode;
+    const attributes = feedbackItemNodeAttributes(node);
+    const showDivider = index > 0;
+    const fill = index === feedbackNodes.length - 1;
+    if (attributes.showDivider === showDivider && attributes.fill === fill) {
       continue;
     }
-    existingNodes.set(feedbackItemNodeAttributes(node).feedbackId, node);
+    transaction.setNodeMarkup(nodePosition, undefined, {
+      ...attributes,
+      showDivider,
+      fill,
+    });
   }
-  const nodes = items.map((item, index) => {
-    const existingNode = existingNodes.get(item.id);
-    const canReuseContent =
-      existingNode !== undefined &&
-      feedbackItemNodeAttributes(existingNode).quote === item.quote &&
-      feedbackNoteFromNode(existingNode) === item.note;
-    const content = canReuseContent
-      ? existingNode.content
-      : editor.schema.nodeFromJSON({
-          type: FEEDBACK_ITEM_NODE_NAME,
-          content: feedbackNoteContent(item.note),
-        }).content;
-    return editor.schema.node(
-      FEEDBACK_ITEM_NODE_NAME,
-      {
-        feedbackId: item.id,
-        quote: item.quote,
-        showDivider: index > 0,
-        fill: index === items.length - 1,
-      },
-      content,
-    );
-  });
-  return editor.schema.topNodeType.create(null, nodes);
+  return transaction;
+}
+
+function isEmptyComposerDocument(document: ProseMirrorNode): boolean {
+  return (
+    document.childCount === 1 &&
+    document.firstChild?.type.name === "paragraph" &&
+    document.firstChild.content.size === 0
+  );
+}
+
+function insertFeedbackItem(editor: Editor, item: FeedbackItem): void {
+  const node = feedbackItemNode(editor, item);
+  const transaction = isEmptyComposerDocument(editor.state.doc)
+    ? editor.state.tr.replaceWith(0, editor.state.doc.content.size, node)
+    : editor.state.tr.insert(editor.state.doc.content.size, node);
+  editor.view.dispatch(withFeedbackItemLayout(transaction).scrollIntoView());
+  editor.commands.focus("end");
+}
+
+function removeFeedbackItem(editor: Editor, id: number): void {
+  let itemPosition: number | null = null;
+  let itemSize = 0;
+  let position = 0;
+  for (let index = 0; index < editor.state.doc.childCount; index++) {
+    const node = editor.state.doc.child(index);
+    if (
+      node.type.name === FEEDBACK_ITEM_NODE_NAME &&
+      feedbackItemNodeAttributes(node).feedbackId === id
+    ) {
+      itemPosition = position;
+      itemSize = node.nodeSize;
+      break;
+    }
+    position += node.nodeSize;
+  }
+  if (itemPosition === null) {
+    return;
+  }
+  const transaction = editor.state.tr.delete(
+    itemPosition,
+    itemPosition + itemSize,
+  );
+  if (transaction.doc.childCount === 0) {
+    transaction.insert(0, editor.schema.node("paragraph"));
+  }
+  editor.view.dispatch(withFeedbackItemLayout(transaction).scrollIntoView());
 }
 
 function feedbackItemsFromWorkflowComposer(
@@ -419,28 +476,73 @@ function valueToWorkflowComposerDoc(value: string): JSONContent {
   return { type: "doc", content };
 }
 
-function workflowComposerDocToString(editor: Editor): string {
-  return editor.getText({
-    blockSeparator: "\n",
-    textSerializers: {
-      hardBreak: () => {
-        return "\n";
-      },
-      [CHAT_THREAD_MENTION_NODE_NAME]: ({ node }) => {
-        return chatThreadMentionText(node);
-      },
-    },
-  });
-}
-
-function caretStringIndex(editor: Editor): number {
-  const head = editor.state.selection.head;
-  return editor.state.doc.textBetween(0, head, "\n", (leafNode) => {
+function nodeText(
+  node: ProseMirrorNode,
+  to: number = node.content.size,
+): string {
+  return node.textBetween(0, to, "\n", (leafNode) => {
     if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
       return chatThreadMentionText(leafNode);
     }
     return leafNode.type.name === "hardBreak" ? "\n" : "";
-  }).length;
+  });
+}
+
+function workflowComposerDocToString(editor: Editor): string {
+  const sections: string[] = [];
+  let textBlocks: string[] = [];
+  let feedbackItems: FeedbackItem[] = [];
+  const flushTextBlocks = () => {
+    const text = textBlocks.join("\n");
+    if (text.trim().length > 0) {
+      sections.push(text);
+    }
+    textBlocks = [];
+  };
+  const flushFeedbackItems = () => {
+    const notedItems = feedbackItems.filter((item) => {
+      return item.note.trim().length > 0;
+    });
+    if (notedItems.length > 0) {
+      sections.push(formatFeedbackPrompt(notedItems));
+    }
+    feedbackItems = [];
+  };
+
+  for (let index = 0; index < editor.state.doc.childCount; index++) {
+    const node = editor.state.doc.child(index);
+    if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
+      flushTextBlocks();
+      const attributes = feedbackItemNodeAttributes(node);
+      feedbackItems.push({
+        id: attributes.feedbackId,
+        quote: attributes.quote,
+        note: feedbackNoteFromNode(node),
+      });
+      continue;
+    }
+    flushFeedbackItems();
+    textBlocks.push(nodeText(node));
+  }
+  flushTextBlocks();
+  flushFeedbackItems();
+  return sections.join("\n\n");
+}
+
+interface ActiveTextblock {
+  readonly value: string;
+  readonly caretIndex: number;
+}
+
+function activeTextblock(editor: Editor): ActiveTextblock | null {
+  const { $head } = editor.state.selection;
+  if (!$head.parent.isTextblock) {
+    return null;
+  }
+  return {
+    value: nodeText($head.parent),
+    caretIndex: nodeText($head.parent, $head.parentOffset).length,
+  };
 }
 
 function buildWorkflowDecorations(
@@ -650,23 +752,20 @@ function createMountEditorCommand({
   return onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
-        if (get(feedback.active$)) {
-          runtime.replaceFeedbackItems(
-            feedbackItemsFromWorkflowComposer(updatedEditor),
-          );
-        } else {
-          set(draft.setInput$, workflowComposerDocToString(updatedEditor));
-          runtime.input();
-        }
+        runtime.replaceFeedbackItems(
+          feedbackItemsFromWorkflowComposer(updatedEditor),
+        );
+        set(draft.setInput$, workflowComposerDocToString(updatedEditor));
+        runtime.input();
         set(selectedSuggestionIndexState$, 0);
-        set(caretIndex$, caretStringIndex(updatedEditor));
+        set(caretIndex$, updatedEditor.state.selection.head);
       };
       runtime.selectionUpdate = (updatedEditor) => {
-        set(caretIndex$, caretStringIndex(updatedEditor));
+        set(caretIndex$, updatedEditor.state.selection.head);
       };
       runtime.focus = (focusedEditor) => {
         set(editorFocusedState$, true);
-        set(caretIndex$, caretStringIndex(focusedEditor));
+        set(caretIndex$, focusedEditor.state.selection.head);
       };
       runtime.blur = () => {
         set(editorFocusedState$, false);
@@ -694,7 +793,7 @@ function createMountEditorCommand({
         },
       });
       const input = get(draft.input$);
-      if (!get(feedback.active$)) {
+      if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
         setWorkflowComposerDocument(
           editor,
           editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(input)),
@@ -703,10 +802,16 @@ function createMountEditorCommand({
       editor.mount(element);
       set(draft.setInputSyncTarget$, {
         syncInput(value: string) {
-          if (!get(feedback.active$)) {
-            setWorkflowComposerDocument(
-              editor,
-              editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value)),
+          if (workflowComposerDocToString(editor) === value) {
+            return;
+          }
+          const changed = setWorkflowComposerDocument(
+            editor,
+            editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value)),
+          );
+          if (changed) {
+            runtime.replaceFeedbackItems(
+              feedbackItemsFromWorkflowComposer(editor),
             );
           }
         },
@@ -738,7 +843,6 @@ function createMountEditorCommand({
 
 function createInsertWorkflowCommand(
   editor: Editor,
-  draft: DraftSignals,
   activeSlashRange$: Computed<SlashWorkflowRange | null>,
 ) {
   return command(({ get }, workflow: ComposerSlashWorkflow) => {
@@ -746,25 +850,29 @@ function createInsertWorkflowCommand(
     if (!slashRange) {
       return;
     }
-    const input = get(draft.input$);
+    const textblock = activeTextblock(editor);
+    if (!textblock) {
+      return;
+    }
     const head = editor.state.selection.head;
     const from = head - (slashRange.end - slashRange.start);
     const token = `/${workflow.name}`;
-    const suffix = input.slice(slashRange.end).startsWith(" ") ? "" : " ";
+    const suffix = textblock.value.slice(slashRange.end).startsWith(" ")
+      ? ""
+      : " ";
     editor
       .chain()
       .focus()
       .insertContentAt({ from, to: head }, [
         { type: "text", text: `${token}${suffix}` },
       ])
-      .setTextSelection(from + token.length + 1)
+      .setTextSelection(from + token.length + suffix.length)
       .run();
   });
 }
 
 function createInsertChatThreadCommand(
   editor: Editor,
-  draft: DraftSignals,
   activeRange$: Computed<ChatThreadSuggestionRange | null>,
 ) {
   return command(({ get }, chatThread: ComposerChatThreadSuggestion) => {
@@ -772,7 +880,10 @@ function createInsertChatThreadCommand(
     if (!range) {
       return;
     }
-    const input = get(draft.input$);
+    const textblock = activeTextblock(editor);
+    if (!textblock) {
+      return;
+    }
     const head = editor.state.selection.head;
     const from = head - (range.end - range.start);
     const content: JSONContent[] = [
@@ -781,7 +892,7 @@ function createInsertChatThreadCommand(
         attrs: { threadId: chatThread.id, title: chatThread.title },
       },
     ];
-    if (!input.slice(range.end).startsWith(" ")) {
+    if (!textblock.value.slice(range.end).startsWith(" ")) {
       content.push({ type: "text", text: " " });
     }
     editor
@@ -793,6 +904,23 @@ function createInsertChatThreadCommand(
       .setTextSelection(from + 2)
       .run();
   });
+}
+
+function createInsertTextCommands(editor: Editor) {
+  const insertText$ = command((_context, value: string) => {
+    editor.chain().focus().insertContent(value).run();
+  });
+  const appendText$ = command((_context, value: string) => {
+    const text = value.trim();
+    if (!text) {
+      return;
+    }
+    editor.commands.focus("end");
+    const textblock = activeTextblock(editor);
+    const content = textblock?.value.trimEnd() ? `\n${text}` : text;
+    editor.commands.insertContent(content);
+  });
+  return { insertText$, appendText$ };
 }
 
 function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
@@ -824,22 +952,12 @@ export function createWorkflowComposerSignals(
   const templatePreview = createTemplatePreviewRuntime();
 
   const editor = createWorkflowEditor(runtime);
-  const feedback = createFeedbackSignals(threadId ?? "", draft, {
-    replaceItems(items, draftValue, focusNewest) {
-      const activeItems = items && items.length > 0 ? items : null;
-      const currentFeedbackCount =
-        feedbackItemsFromWorkflowComposer(editor).length;
-      const shouldFocusNewest =
-        activeItems !== null &&
-        focusNewest &&
-        activeItems.length > currentFeedbackCount;
-      const document = activeItems
-        ? feedbackItemsToWorkflowComposerDoc(editor, activeItems)
-        : editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(draftValue));
-      const changed = setWorkflowComposerDocument(editor, document);
-      if (changed && shouldFocusNewest && editor.isInitialized) {
-        editor.commands.focus("end");
-      }
+  const feedback = createFeedbackSignals(threadId ?? "", {
+    insertItem(item) {
+      insertFeedbackItem(editor, item);
+    },
+    removeItem(id) {
+      removeFeedbackItem(editor, id);
     },
   });
 
@@ -847,19 +965,27 @@ export function createWorkflowComposerSignals(
     return get(selectedSuggestionIndexState$);
   });
   const activeSlashRange$ = computed((get) => {
-    if (get(feedback.active$) || !get(editorFocusedState$)) {
+    const caretIndex = get(caretIndex$);
+    if (caretIndex < 0 || !get(editorFocusedState$)) {
       return null;
     }
-    return findActiveSlashWorkflowRange(get(draft.input$), get(caretIndex$));
+    const textblock = activeTextblock(editor);
+    return textblock
+      ? findActiveSlashWorkflowRange(textblock.value, textblock.caretIndex)
+      : null;
   });
   const activeChatThreadSuggestionRange$ = computed((get) => {
-    if (get(feedback.active$) || !get(editorFocusedState$)) {
+    const caretIndex = get(caretIndex$);
+    if (caretIndex < 0 || !get(editorFocusedState$)) {
       return null;
     }
-    return findActiveChatThreadSuggestionRange(
-      get(draft.input$),
-      get(caretIndex$),
-    );
+    const textblock = activeTextblock(editor);
+    return textblock
+      ? findActiveChatThreadSuggestionRange(
+          textblock.value,
+          textblock.caretIndex,
+        )
+      : null;
   });
   const chatThreadSuggestions$ = createComposerChatThreadSuggestions(
     activeChatThreadSuggestionRange$,
@@ -901,14 +1027,16 @@ export function createWorkflowComposerSignals(
   };
   const insertWorkflow$ = createInsertWorkflowCommand(
     editor,
-    draft,
     activeSlashRange$,
   );
   const insertChatThread$ = createInsertChatThreadCommand(
     editor,
-    draft,
     activeChatThreadSuggestionRange$,
   );
+  const { insertText$, appendText$ } = createInsertTextCommands(editor);
+  const hasInput$ = computed((get) => {
+    return get(draft.hasInput$) || get(feedback.active$);
+  });
 
   return {
     editor,
@@ -917,7 +1045,7 @@ export function createWorkflowComposerSignals(
     setAutoFocusContainerRef$: mountEditor(true, false),
     setCompactContainerRef$: mountEditor(false, true),
     focus$,
-    hasInput$: draft.hasInput$,
+    hasInput$,
     activeSlashRange$,
     activeChatThreadSuggestionRange$,
     chatThreadSuggestions$,
@@ -927,6 +1055,8 @@ export function createWorkflowComposerSignals(
     setWorkflowNames$,
     insertWorkflow$,
     insertChatThread$,
+    insertText$,
+    appendText$,
     setEventHandlers$,
     feedback,
   };

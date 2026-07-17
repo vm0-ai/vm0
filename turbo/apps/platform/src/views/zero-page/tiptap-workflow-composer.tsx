@@ -136,14 +136,12 @@ function workflowComposerPlaceholder(sending: boolean | undefined): string {
 function WorkflowComposerPlaceholder({
   composer,
   sending,
-  feedbackActive,
 }: {
   composer: WorkflowComposerSignals;
   sending: boolean | undefined;
-  feedbackActive: boolean;
 }) {
   const hasInput = useGet(composer.hasInput$);
-  if (feedbackActive || hasInput) {
+  if (hasInput) {
     return null;
   }
   return (
@@ -164,7 +162,6 @@ export interface TiptapWorkflowComposerProps {
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
   readonly singleLineOnMobile: boolean;
-  readonly feedbackActive: boolean;
 }
 
 interface ComposerKeyDownContext {
@@ -386,7 +383,6 @@ export function TiptapWorkflowComposer({
   onKeyDown,
   onPaste,
   singleLineOnMobile,
-  feedbackActive,
 }: TiptapWorkflowComposerProps) {
   const suggestionMenu = useComposerSuggestionMenu({
     composer,
@@ -459,11 +455,7 @@ export function TiptapWorkflowComposer({
       <div
         className={`relative ${singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]"}`}
       >
-        <WorkflowComposerPlaceholder
-          composer={composer}
-          sending={sending}
-          feedbackActive={feedbackActive}
-        />
+        <WorkflowComposerPlaceholder composer={composer} sending={sending} />
         <div ref={setContainerRef} />
       </div>
       {suggestionMenu.showWorkflows && (
