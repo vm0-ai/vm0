@@ -256,6 +256,51 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
     expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledWith(invoiceId);
   });
 
+  it("uses an attached card when no default payment method is configured", async () => {
+    const { admin, entitlement } = await createProActor();
+    const status = await billingApi.readBillingStatus(admin);
+    const threshold = status.credits + 1000;
+    const amount = threshold + 5000;
+    const invoiceId = acceptAutoRechargeStripeInvoice(entitlement.customerId);
+
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: entitlement.customerId,
+      deleted: false,
+      invoice_settings: { default_payment_method: null },
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: entitlement.subscriptionId,
+      default_payment_method: null,
+    });
+    context.mocks.stripe.paymentMethods.list.mockResolvedValue({
+      data: [{ id: "pm_attached_card" }],
+    });
+
+    await billingApi.updateAutoRecharge(
+      admin,
+      { enabled: true, threshold, amount },
+      [200],
+    );
+
+    expect(context.mocks.stripe.paymentMethods.list).toHaveBeenCalledWith({
+      customer: entitlement.customerId,
+      type: "card",
+      limit: 1,
+    });
+    expect(context.mocks.stripe.invoices.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: entitlement.customerId,
+        default_payment_method: "pm_attached_card",
+        metadata: expect.objectContaining({
+          type: "auto_recharge",
+          orgId: admin.orgId,
+          creditsAmount: String(amount),
+        }),
+      }),
+    );
+    expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledWith(invoiceId);
+  });
+
   it("disables auto-recharge after a public recharge trigger", async () => {
     const { admin, entitlement } = await createProActor();
     const status = await billingApi.readBillingStatus(admin);
