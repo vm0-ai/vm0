@@ -249,10 +249,14 @@ profiles:
 - Guest fixed IP: `192.168.241.2` (same across VMs, isolated by namespace)
 - NAT/MASQUERADE: Guest traffic routed through namespace to external network
 
-**HTTP Proxy**: mitmproxy (dynamically allocated port)
+**Transparent TCP Proxy**: mitmproxy (dynamically allocated port)
 
-- Intercepts all HTTP/HTTPS traffic
-- Logs requests/responses to per-run JSONL files
+- Redirects outbound TCP through mitmproxy
+- Intercepts HTTP/HTTPS; non-HTTP TCP uses raw TCP passthrough
+- When DNS proxying is enabled, UDP/TCP 53 is redirected to dnsmasq and TCP 853
+  is blocked; TCP 53 and 853 are excluded from the general mitmproxy redirect
+- Logs HTTP requests/responses and raw TCP connection metadata to per-run JSONL
+  files
 - CA certificate injected into VM trust store
 - Proxy registry: `{base_dir}/proxy-registry.json` (flock-based coordination)
 
