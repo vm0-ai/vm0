@@ -150,6 +150,9 @@ export interface ApiTestMocks {
     readonly fetchFile: AsyncMock;
   };
   readonly stripe: {
+    readonly paymentMethods: {
+      readonly list: AsyncMock;
+    };
     readonly invoices: {
       readonly list: AsyncMock;
       readonly create: AsyncMock;
@@ -303,6 +306,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   const stripe = {
+    paymentMethods: {
+      list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     invoices: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -705,6 +711,9 @@ vi.mock("stripe", async (importOriginal) => {
   const MockStripe = Object.assign(
     vi.fn(() => {
       return {
+        paymentMethods: {
+          list: apiTestMocks.stripe.paymentMethods.list,
+        },
         invoices: {
           list: apiTestMocks.stripe.invoices.list,
           create: apiTestMocks.stripe.invoices.create,
@@ -955,6 +964,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.slack.views.open.mockReset();
   apiTestMocks.slack.users.info.mockReset();
   apiTestMocks.slack.fetchFile.mockReset();
+  apiTestMocks.stripe.paymentMethods.list.mockReset();
+  apiTestMocks.stripe.paymentMethods.list.mockResolvedValue({ data: [] });
   apiTestMocks.stripe.invoices.list.mockReset();
   apiTestMocks.stripe.invoices.create.mockReset();
   apiTestMocks.stripe.invoices.finalizeInvoice.mockReset();
