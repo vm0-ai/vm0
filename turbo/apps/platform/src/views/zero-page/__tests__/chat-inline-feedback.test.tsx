@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
@@ -147,6 +147,17 @@ function feedbackNotes(): HTMLElement[] {
   );
 }
 
+function pastePlainText(element: HTMLElement, value: string): void {
+  fireEvent.paste(element, {
+    clipboardData: {
+      getData: (type: string) => {
+        return type === "text/plain" ? value : "";
+      },
+      items: [],
+    },
+  });
+}
+
 async function findFeedbackNotes(count = 1): Promise<HTMLElement[]> {
   return await waitFor(() => {
     const notes = feedbackNotes();
@@ -232,7 +243,10 @@ describe("chat inline feedback", () => {
 
     const composerEditor = await findComposerEditor();
     await user.click(composerEditor);
-    await user.keyboard("Mention the dates before the risk summary.");
+    pastePlainText(
+      composerEditor,
+      "Mention the dates before the risk summary.",
+    );
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
 
@@ -261,7 +275,7 @@ describe("chat inline feedback", () => {
       "Mention the dates before the risk summary.",
     );
     await user.click(feedbackComment);
-    await user.keyboard("Make the dates explicit.");
+    pastePlainText(feedbackComment, "Make the dates explicit.");
 
     await user.click(screen.getByLabelText("Send"));
 
