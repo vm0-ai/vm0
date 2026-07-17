@@ -121,6 +121,20 @@ pub(super) fn warning_notification(thread_id: &str, index: usize) -> Value {
     })
 }
 
+pub(super) fn large_warning_notification(
+    thread_id: &str,
+    index: usize,
+    message_bytes: usize,
+) -> Value {
+    json!({
+        "method": "warning",
+        "params": {
+            "threadId": thread_id,
+            "message": format!("{index}:{}", "x".repeat(message_bytes)),
+        }
+    })
+}
+
 pub(super) fn write_turn_notifications<W: Write>(
     output: &mut W,
     thread_id: &str,
