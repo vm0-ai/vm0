@@ -1,4 +1,19 @@
-"""Builtin firewall credentialed host policy validation."""
+"""Validate credentialed builtin firewall host policies across their lifecycle.
+
+Production enforces a builtin ``hostPolicy`` through up to three distinct stages:
+
+1. The catalog cache validates policy shape before publishing a catalog snapshot.
+2. Builtin registry expansion validates a resolved credentialed base and may compile the policy
+   into snapshot-owned runtime state.
+3. Request dispatch validates the current destination before injecting ordinary upstream
+   credentials. In particular, a resolved-base ``publicDestination`` check never replaces the
+   request-time check against the current bound upstream endpoint.
+
+Base validation uses the broad managed-credential predicate, which includes auth-base forwarding.
+Request validation uses the narrower ordinary-upstream predicate for header, query, and AWS SigV4
+injection. The compiled policy remains paired with its resolved registry snapshot; the raw policy
+remains available for routing and the separate ``publicDestination`` request-classification path.
+"""
 
 import ipaddress
 import re
@@ -37,11 +52,18 @@ _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
 
 
 class BuiltinHostPolicyError(ValueError):
-    """Builtin firewall host policy rejected a credentialed runtime base URL."""
+    """Reject a cached policy shape or credentialed resolved builtin base.
+
+    This validation exception carries a diagnostic message but no public runtime reason code.
+    """
 
 
 class BuiltinRuntimeHostPolicyError(ValueError):
-    """Builtin firewall host policy rejected a credentialed request destination."""
+    """Reject ordinary credential injection for the current request destination.
+
+    ``reason`` is propagated to the proxy log and public denial response. Request dispatch may also
+    construct this exception for failures detected before the destination validator runs.
+    """
 
     def __init__(self, *, reason: str, message: str) -> None:
         super().__init__(message)
@@ -67,7 +89,12 @@ _ParsedHostPolicy = _ConfiguredHostPolicy | None
 
 @dataclass(frozen=True)
 class CompiledBuiltinHostPolicy:
-    """Opaque validated host policy owned by one resolved registry snapshot."""
+    """Opaque validated host policy owned by one resolved registry snapshot.
+
+    Resolved-base validation creates this value for a non-null policy. Keep it paired with the API
+    entry from that snapshot and pass it to request-destination validation to avoid reparsing the
+    raw policy. Routing and request classification continue to use the raw ``hostPolicy`` value.
+    """
 
     _policy: _ConfiguredHostPolicy
 
@@ -92,6 +119,17 @@ def validate_credentialed_builtin_base(
     auth_config: object,
     host_policy: object,
 ) -> CompiledBuiltinHostPolicy | None:
+    """Validate a resolved builtin base that can receive managed credentials.
+
+    The broad credential gate includes ordinary upstream injection and auth-base forwarding. If it
+    is inactive, return ``None`` without inspecting the base or policy. Otherwise require a valid
+    HTTPS base, parse the raw policy, and apply its base-stage constraints: ``providerOwned`` checks
+    the resolved host and port, while ``publicDestination`` rejects a non-public base IP literal.
+
+    Return a snapshot-owned ``CompiledBuiltinHostPolicy`` for a valid non-null policy, or ``None``
+    when no policy is configured. Raise ``BuiltinHostPolicyError`` for an invalid credentialed base
+    or policy. The resolver publishes any compiled result with the same resolved registry snapshot.
+    """
     if not auth_config_injects_credentials(auth_config):
         return None
     try:
@@ -130,6 +168,22 @@ def validate_credentialed_builtin_request_destination(
     host_policy: object,
     upstream_endpoint: tuple[str, int] | None,
 ) -> None:
+    """Validate the current destination before ordinary upstream credential injection.
+
+    The narrower credential gate covers header, query, and AWS SigV4 injection. If it is inactive,
+    return without inspecting the policy or destination. ``host_policy`` may be raw policy state or
+    the ``CompiledBuiltinHostPolicy`` owned by the same resolved registry snapshot.
+
+    ``providerOwned`` validates the trusted request host and port. ``publicDestination`` rejects a
+    non-public trusted-host IP literal and, when ``upstream_endpoint`` is supplied, a non-public
+    bound upstream IP. Production request dispatch supplies that endpoint after upstream admission;
+    direct callers may pass ``None`` to omit only the endpoint check.
+
+    Successful and gated calls return ``None``. Rejections raise ``BuiltinRuntimeHostPolicyError``
+    with one of these validator-owned public reasons: ``invalid_host_policy``,
+    ``provider_host_not_allowed``, ``provider_non_default_port``,
+    ``public_host_non_public_ip``, or ``public_endpoint_non_public_ip``.
+    """
     if not auth_config_injects_ordinary_upstream_credentials(auth_config):
         return
     try:
@@ -433,7 +487,13 @@ def validate_host_policy_shape_for_cache(
     firewall_name: str,
     host_policy: object,
 ) -> None:
-    """Validate cache-level hostPolicy shape without binding it to a resolved base."""
+    """Validate raw policy shape before publishing a builtin catalog cache snapshot.
+
+    This stage has no credential gate and does not bind the policy to a base or request destination.
+    It validates the object shape, kind, supported fields, field types, provider ownership, and
+    normalization inputs. Return ``None`` on success and raise ``BuiltinHostPolicyError`` for an
+    invalid policy.
+    """
     _parse_host_policy(
         firewall_name=firewall_name,
         host_policy=host_policy,
