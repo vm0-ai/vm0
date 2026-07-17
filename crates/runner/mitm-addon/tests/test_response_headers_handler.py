@@ -1,54 +1,11 @@
 """Tests for the mitm addon responseheaders hook."""
 
-import base64
-import hashlib
-import hmac
-import json
-import time
-
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.flow_helpers import header_map, response_stream
-
-
-def signed_usage_pricing_headers() -> dict[str, str]:
-    pricing = (
-        base64.urlsafe_b64encode(
-            json.dumps(
-                {
-                    "version": 1,
-                    "issuedAt": int(time.time()),
-                    "unitSize": 1_000_000,
-                    "unitPrices": {
-                        "tokens.input": 1000,
-                        "tokens.cache_read": 100,
-                        "tokens.cache_creation": 1250,
-                        "tokens.output": 6000,
-                    },
-                },
-                separators=(",", ":"),
-            ).encode()
-        )
-        .decode()
-        .rstrip("=")
-    )
-    signature = (
-        base64.urlsafe_b64encode(
-            hmac.new(
-                b"proxy-secret",
-                b"vm0-model-usage-pricing-v1\0" + pricing.encode(),
-                hashlib.sha256,
-            ).digest()
-        )
-        .decode()
-        .rstrip("=")
-    )
-    return {
-        "x-vm0-usage-pricing": pricing,
-        "x-vm0-usage-pricing-signature": signature,
-    }
+from tests.model_provider_flow_helpers import signed_usage_pricing_headers
 
 
 class TestResponseHeadersHandler:

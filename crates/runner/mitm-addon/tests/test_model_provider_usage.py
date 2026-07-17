@@ -13,6 +13,14 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
+from tests.model_provider_flow_helpers import signed_usage_pricing_headers
+
+_MODEL_USAGE_UNIT_PRICES: dict[str, object] = {
+    "tokens.input": 7,
+    "tokens.output": 13,
+    "tokens.cache_read": 11,
+    "tokens.cache_creation": 17,
+}
 
 
 class TestReportModelProviderUsage:
@@ -87,21 +95,21 @@ class TestReportModelProviderUsage:
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-luna"
-        flow.metadata[metadata_keys.MODEL_USAGE_PRICING] = {
-            "unitSize": 100,
-            "unitPrices": {
-                "tokens.input": 7,
-                "tokens.output": 13,
-                "tokens.cache_read": 11,
-                "tokens.cache_creation": 17,
-            },
-        }
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "tokens.input": 100,
             "tokens.output": 50,
             "tokens.cache_read": 25,
             "tokens.cache_creation": 10,
         }
+        flow.request.headers["authorization"] = "Bearer proxy-secret"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                signed_usage_pricing_headers(_MODEL_USAGE_UNIT_PRICES, unit_size=100)
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
 
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -114,6 +122,60 @@ class TestReportModelProviderUsage:
             "tokens.cache_read": 3,
             "tokens.cache_creation": 2,
         }
+
+    @pytest.mark.parametrize(
+        "unit_prices",
+        [
+            {
+                category: price
+                for category, price in _MODEL_USAGE_UNIT_PRICES.items()
+                if category != "tokens.output"
+            },
+            {**_MODEL_USAGE_UNIT_PRICES, "tokens.unknown": 19},
+            {**_MODEL_USAGE_UNIT_PRICES, "tokens.output": True},
+        ],
+        ids=["partial", "extra", "invalid"],
+    )
+    def test_rejects_malformed_model_pricing_atomically(
+        self,
+        real_flow,
+        usage_webhook_api,
+        unit_prices,
+    ):
+        flow = real_flow(with_response=False, host="model.vm0.ai")
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
+        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+        flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = "tok-xyz"
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-luna"
+        flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
+            "tokens.input": 100,
+            "tokens.output": 50,
+            "tokens.cache_read": 25,
+            "tokens.cache_creation": 10,
+        }
+        flow.request.headers["authorization"] = "Bearer proxy-secret"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(signed_usage_pricing_headers(unit_prices, unit_size=100)),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+
+        # Exercise the primitive metadata boundary independently of signed ingestion.
+        flow.metadata[metadata_keys.MODEL_USAGE_PRICING] = {
+            "unitSize": 100,
+            "unitPrices": unit_prices,
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+
+        events = webhook.requests[0].json_body()["events"]
+        assert {event["category"] for event in events} == set(_MODEL_USAGE_UNIT_PRICES)
+        assert all("grossCredits" not in event for event in events)
 
     def test_falls_back_to_response_model_then_unknown(self, real_flow, usage_webhook_api):
         """Provider falls back only when selected vm0 model metadata is absent."""

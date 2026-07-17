@@ -22,6 +22,7 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import model_usage_pricing
 from logging_utils import log_proxy_entry
 
 from ..buffer import (
@@ -46,7 +47,6 @@ from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
-ModelUsagePricing = tuple[int, dict[str, int]]
 _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
     (
         MODEL_USAGE_CATEGORY_INPUT,
@@ -374,7 +374,7 @@ def _build_model_provider_usage_events(
     run_id: str,
     namespace: uuid.UUID,
     *,
-    billing_pricing: ModelUsagePricing | None,
+    billing_pricing: model_usage_pricing.ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for source_id, usage in _iter_model_provider_usage_sources(flow):
@@ -415,7 +415,7 @@ def _build_usage_events(
     usage: dict,
     namespace: uuid.UUID,
     *,
-    billing_pricing: ModelUsagePricing | None,
+    billing_pricing: model_usage_pricing.ModelUsagePricing | None,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
     for category in MODEL_USAGE_CATEGORIES:
@@ -433,18 +433,16 @@ def _build_usage_events(
             "quantity": quantity,
         }
         if billing_pricing is not None:
-            unit_price = billing_pricing[1].get(category)
-            if unit_price is not None:
-                event["billingUnitPrice"] = unit_price
-                event["billingUnitSize"] = billing_pricing[0]
+            event["billingUnitPrice"] = billing_pricing.unit_prices[category]
+            event["billingUnitSize"] = billing_pricing.unit_size
         events.append(event)
     return events
 
 
 def _model_usage_pricing(
     flow: http.HTTPFlow,
-) -> ModelUsagePricing | None:
-    return flow_metadata.model_usage_pricing(flow.metadata)
+) -> model_usage_pricing.ModelUsagePricing | None:
+    return model_usage_pricing.from_flow_metadata(flow.metadata)
 
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:

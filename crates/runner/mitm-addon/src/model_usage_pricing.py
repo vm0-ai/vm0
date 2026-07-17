@@ -6,6 +6,8 @@ import hashlib
 import hmac
 import json
 import time
+from collections.abc import Mapping
+from dataclasses import dataclass
 
 from mitmproxy import http
 
@@ -18,6 +20,14 @@ PRICING_SIGNATURE_HEADER = "x-vm0-usage-pricing-signature"
 _PRICING_SIGNATURE_DOMAIN = b"vm0-model-usage-pricing-v1\0"
 _MAX_PRICING_BYTES = 2048
 _MAX_CLOCK_SKEW_SECONDS = 300
+
+
+@dataclass(frozen=True)
+class ModelUsagePricing:
+    """Validated model token prices used while constructing usage events."""
+
+    unit_size: int
+    unit_prices: dict[str, int]
 
 
 def apply_signed_usage_pricing(flow: http.HTTPFlow) -> bool:
@@ -68,10 +78,18 @@ def apply_signed_usage_pricing(flow: http.HTTPFlow) -> bool:
     if pricing is None:
         return False
     flow.metadata[metadata_keys.MODEL_USAGE_PRICING] = {
-        "unitSize": pricing[0],
-        "unitPrices": pricing[1],
+        "unitSize": pricing.unit_size,
+        "unitPrices": pricing.unit_prices,
     }
     return True
+
+
+def from_flow_metadata(meta: Mapping[str, object]) -> ModelUsagePricing | None:
+    """Read one complete pricing schedule from primitive flow metadata."""
+    value = meta.get(metadata_keys.MODEL_USAGE_PRICING)
+    if not isinstance(value, dict) or set(value) != {"unitSize", "unitPrices"}:
+        return None
+    return _pricing_from_fields(value["unitSize"], value["unitPrices"])
 
 
 def _bearer_token(value: str) -> str | None:
@@ -98,7 +116,7 @@ def _decode_base64url(value: str) -> bytes | None:
         return None
 
 
-def _decode_pricing(value: str) -> tuple[int, dict[str, int]] | None:
+def _decode_pricing(value: str) -> ModelUsagePricing | None:
     decoded = _decode_base64url(value)
     if decoded is None:
         return None
@@ -120,10 +138,14 @@ def _decode_pricing(value: str) -> tuple[int, dict[str, int]] | None:
         return None
     if abs(int(time.time()) - issued_at) > _MAX_CLOCK_SKEW_SECONDS:
         return None
-    unit_size = pricing["unitSize"]
+
+    return _pricing_from_fields(pricing["unitSize"], pricing["unitPrices"])
+
+
+def _pricing_from_fields(unit_size: object, raw_unit_prices: object) -> ModelUsagePricing | None:
+    """Construct an atomic schedule or reject all of its prices."""
     if not isinstance(unit_size, int) or isinstance(unit_size, bool) or unit_size <= 0:
         return None
-    raw_unit_prices = pricing["unitPrices"]
     if not isinstance(raw_unit_prices, dict) or set(raw_unit_prices) != set(MODEL_USAGE_CATEGORIES):
         return None
     unit_prices: dict[str, int] = {}
@@ -132,4 +154,4 @@ def _decode_pricing(value: str) -> tuple[int, dict[str, int]] | None:
         if not isinstance(unit_price, int) or isinstance(unit_price, bool) or unit_price < 0:
             return None
         unit_prices[category] = unit_price
-    return unit_size, unit_prices
+    return ModelUsagePricing(unit_size=unit_size, unit_prices=unit_prices)
