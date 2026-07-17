@@ -371,10 +371,10 @@ class TestRunnerUsageFlushSignal:
         original_append_lines = jsonl_writer._append_lines
         log = MagicMock()
 
-        def append_lines(path: str, content: bytes) -> None:
+        def append_lines(path: str, lines: list[bytes]) -> None:
             append_started.set()
             release_append.wait()
-            original_append_lines(path, content)
+            original_append_lines(path, lines)
 
         with (
             patch.object(

@@ -12,6 +12,7 @@ from mitmproxy import ctx
 
 MAX_PENDING_JSONL_WRITES = 4096
 MAX_PENDING_JSONL_BYTES = 32 * 1024 * 1024
+MAX_JSONL_IOVECS = os.sysconf("SC_IOV_MAX")
 SHUTDOWN_JOIN_TIMEOUT_SECONDS = 1.0
 
 
@@ -238,21 +239,42 @@ def _write_batch(items: list[object]) -> None:
         if not path_items:
             continue
         try:
-            _append_lines(log_path, b"".join(item.line for item in path_items))
+            _append_lines(log_path, [item.line for item in path_items])
         except Exception as exc:
             log_name = path_items[0].log_name
             _warn(f"Failed to write {log_name} log: {type(exc).__name__}: {exc}")
 
 
-def _append_lines(log_path: str, content: bytes) -> None:
+def _append_lines(log_path: str, lines: list[bytes]) -> None:
     fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
     try:
-        written = 0
-        while written < len(content):
-            chunk = os.write(fd, content[written:])
-            if chunk == 0:
+        line_index = 0
+        line_offset = 0
+        while line_index < len(lines):
+            while line_index < len(lines) and not lines[line_index]:
+                line_index += 1
+            if line_index == len(lines):
+                return
+
+            batch_end = min(line_index + MAX_JSONL_IOVECS, len(lines))
+            buffers: list[bytes | memoryview] = list(lines[line_index:batch_end])
+            if line_offset:
+                buffers[0] = memoryview(lines[line_index])[line_offset:]
+
+            written = os.writev(fd, buffers)
+            if written == 0:
                 raise OSError("write returned 0 bytes")
-            written += chunk
+
+            while line_index < batch_end:
+                remaining = len(lines[line_index]) - line_offset
+                if written < remaining:
+                    line_offset += written
+                    break
+                written -= remaining
+                line_index += 1
+                line_offset = 0
+                if written == 0:
+                    break
     finally:
         os.close(fd)
 
