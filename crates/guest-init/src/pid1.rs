@@ -1,63 +1,83 @@
-//! PID 1 responsibilities: signal handling and zombie reaping.
+//! Event-driven signal handling and child supervision for PID 1.
 //!
-//! Based on [tini](https://github.com/krallin/tini) signal handling patterns.
-//! Uses `sigaction` (not `signal`) for reliable, non-resetting handlers.
-//!
-//! When running as PID 1 (init process), we must:
-//! 1. Handle signals properly (SIGTERM, SIGINT for graceful shutdown)
-//! 2. Reap zombie child processes to prevent resource leaks
+//! `SIGCHLD`, `SIGTERM`, and `SIGINT` are blocked before `fork()` so PID 1 can
+//! synchronously wait for them without a race between checking child state and
+//! going to sleep. The child restores the pre-existing mask before running
+//! `vsock-guest`.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
-/// Flag indicating whether shutdown was requested via signal
-static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+use nix::errno::Errno;
+use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, SigmaskHow, Signal, sigaction};
 
-/// Check if shutdown was requested via signal (SIGTERM or SIGINT)
-pub fn shutdown_requested() -> bool {
-    SHUTDOWN_REQUESTED.load(Ordering::SeqCst)
+/// Signals consumed synchronously by the PID 1 supervision loop.
+pub struct SignalContext {
+    wait_set: SigSet,
+    child_mask: SigSet,
 }
 
-/// Install a `sigaction` handler for the given signal with `SA_RESTART`.
-///
-/// Unlike `signal()`, `sigaction()` does not reset the handler after first
-/// invocation and has well-defined behavior across platforms.
-fn set_handler(sig: libc::c_int, handler: libc::sighandler_t) {
-    // SAFETY: zeroed sigaction is valid; we fill sa_handler and sa_flags.
-    let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
-    sa.sa_sigaction = handler;
-    sa.sa_flags = libc::SA_RESTART;
-    // SAFETY: sa is properly initialized, sig is a valid signal number.
-    unsafe {
-        libc::sigaction(sig, &sa, std::ptr::null_mut());
+impl SignalContext {
+    /// Configure inherited ignored dispositions and block supervised signals.
+    ///
+    /// This must run before `fork()` so a child exit or shutdown request cannot
+    /// arrive before PID 1 is ready to wait for it.
+    pub fn setup() -> Result<Self, Errno> {
+        let ignore = SigAction::new(SigHandler::SigIgn, SaFlags::empty(), SigSet::empty());
+        for signal in [Signal::SIGTTIN, Signal::SIGTTOU, Signal::SIGPIPE] {
+            // SAFETY: the action contains SIG_IGN, so it cannot invoke an
+            // invalid function pointer.
+            unsafe {
+                sigaction(signal, &ignore)?;
+            }
+        }
+
+        Self::block()
+    }
+
+    fn block() -> Result<Self, Errno> {
+        let wait_set = Signal::SIGCHLD | Signal::SIGTERM | Signal::SIGINT;
+        let child_mask = wait_set.thread_swap_mask(SigmaskHow::SIG_BLOCK)?;
+        Ok(Self {
+            wait_set,
+            child_mask,
+        })
+    }
+
+    /// Restore the signal mask inherited by the child during `fork()`.
+    pub fn restore_child_mask(&self) -> Result<(), Errno> {
+        self.child_mask.thread_set_mask()
+    }
+
+    fn wait(&self) -> Result<Signal, Errno> {
+        self.wait_set.wait()
+    }
+
+    fn wait_timeout(&self, timeout: Duration) -> Result<SignalWait, Errno> {
+        let timeout = libc::timespec {
+            tv_sec: timeout.as_secs().try_into().map_err(|_| Errno::EINVAL)?,
+            tv_nsec: timeout.subsec_nanos().into(),
+        };
+        // SAFETY: wait_set and timeout are initialized and remain valid for the
+        // duration of the call. The signal information is intentionally unused.
+        let result =
+            unsafe { libc::sigtimedwait(self.wait_set.as_ref(), std::ptr::null_mut(), &timeout) };
+        if result >= 0 {
+            return Signal::try_from(result)
+                .map(SignalWait::Received)
+                .map_err(|_| Errno::EINVAL);
+        }
+
+        match Errno::last() {
+            Errno::EAGAIN => Ok(SignalWait::TimedOut),
+            error => Err(error),
+        }
     }
 }
 
-/// Setup signal handlers for PID 1 operation.
-///
-/// - SIGTERM/SIGINT: Set shutdown flag for graceful exit
-/// - SIGTTIN/SIGTTOU: Ignore to prevent blocking on TTY operations
-/// - SIGPIPE: Ignore to prevent termination when writing to closed pipes
-///
-/// SIG_IGN dispositions survive both `fork()` and `exec()`, so the child
-/// process inherits SIGTTIN/SIGTTOU/SIGPIPE as ignored. The child resets
-/// SIGTERM/SIGINT to SIG_DFL after fork.
-pub fn setup_signal_handlers() {
-    set_handler(
-        libc::SIGTERM,
-        handle_shutdown_signal as *const () as libc::sighandler_t,
-    );
-    set_handler(
-        libc::SIGINT,
-        handle_shutdown_signal as *const () as libc::sighandler_t,
-    );
-    set_handler(libc::SIGTTIN, libc::SIG_IGN);
-    set_handler(libc::SIGTTOU, libc::SIG_IGN);
-    set_handler(libc::SIGPIPE, libc::SIG_IGN);
-}
-
-/// Signal handler that sets the shutdown flag
-extern "C" fn handle_shutdown_signal(_sig: libc::c_int) {
-    SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
+#[derive(Debug, PartialEq, Eq)]
+enum SignalWait {
+    Received(Signal),
+    TimedOut,
 }
 
 fn decode_wait_status(status: libc::c_int) -> i32 {
@@ -71,66 +91,133 @@ fn decode_wait_status(status: libc::c_int) -> i32 {
     }
 }
 
-fn last_errno() -> libc::c_int {
-    // SAFETY: __errno_location() is valid after a failed libc call.
-    unsafe { *libc::__errno_location() }
-}
-
-fn wait_blocking_with<F>(pid: libc::pid_t, mut wait: F) -> i32
+fn wait_blocking_with<F>(pid: libc::pid_t, mut wait: F) -> Result<i32, Errno>
 where
-    F: FnMut(&mut libc::c_int) -> Result<libc::pid_t, libc::c_int>,
+    F: FnMut(&mut libc::c_int) -> Result<libc::pid_t, Errno>,
 {
     loop {
         let mut status: libc::c_int = 0;
         match wait(&mut status) {
-            Ok(result) if result == pid => return decode_wait_status(status),
-            Ok(_) => return 1,
-            Err(errno) if errno == libc::EINTR => {}
-            Err(_) => return 1,
+            Ok(result) if result == pid => return Ok(decode_wait_status(status)),
+            Ok(_) => return Err(Errno::ECHILD),
+            Err(Errno::EINTR) => {}
+            Err(error) => return Err(error),
         }
     }
 }
 
-/// Block until a specific child exits and return its exit code.
-///
-/// Uses `waitpid(pid, 0)` (blocking) which only returns `pid` on success
-/// or `-1` on error. Retries on `EINTR`; returns 1 on unexpected errors.
-pub fn wait_blocking(pid: i32) -> i32 {
+fn wait_blocking(pid: libc::pid_t) -> Result<i32, Errno> {
     wait_blocking_with(pid, |status| {
         // SAFETY: pid is a valid child PID; status is written on success.
         let result = unsafe { libc::waitpid(pid, status, 0) };
         if result == -1 {
-            Err(last_errno())
+            Err(Errno::last())
         } else {
             Ok(result)
         }
     })
 }
 
-/// Reap zombie child processes (non-blocking) and detect watched child exit.
-///
-/// Calls `waitpid(-1, WNOHANG)` in a loop to reap all available zombies.
-/// If `watched_pid` is reaped, returns its exit code. Orphaned processes
-/// are silently reaped and discarded.
-///
-/// Returns `Some(exit_code)` if the watched child was reaped, `None` otherwise.
-pub fn reap_zombies(watched_pid: i32) -> Option<i32> {
+fn reap_zombies(watched_pid: libc::pid_t) -> Result<Option<i32>, Errno> {
+    let mut watched_exit = None;
+
     loop {
         let mut status: libc::c_int = 0;
         // SAFETY: waitpid(-1) is valid; status is initialized before use on success.
         let result = unsafe { libc::waitpid(-1, &mut status, libc::WNOHANG) };
-        // result > 0: reaped a zombie, continue loop
-        // result == 0: no more zombies ready to be reaped
-        // result < 0: error (ECHILD = no children)
-        if result <= 0 {
+        if result > 0 {
+            if result == watched_pid {
+                watched_exit = Some(decode_wait_status(status));
+            }
+            continue;
+        }
+        if result == 0 {
+            return Ok(watched_exit);
+        }
+
+        match Errno::last() {
+            Errno::ECHILD => return Ok(watched_exit),
+            Errno::EINTR => {}
+            error => return Err(error),
+        }
+    }
+}
+
+fn send_signal(pid: libc::pid_t, signal: Signal) -> Result<(), Errno> {
+    // SAFETY: pid identifies the supervised child and signal is valid.
+    let result = unsafe { libc::kill(pid, signal as libc::c_int) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Errno::last())
+    }
+}
+
+fn shutdown(
+    signals: &SignalContext,
+    child_pid: libc::pid_t,
+    grace_period: Duration,
+) -> Result<i32, Errno> {
+    eprintln!("[guest-init] Shutdown requested, sending SIGTERM to vsock-guest");
+    let deadline = Instant::now() + grace_period;
+    send_signal(child_pid, Signal::SIGTERM)?;
+
+    if let Some(exit_code) = reap_zombies(child_pid)? {
+        return Ok(exit_code);
+    }
+
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
             break;
         }
-        if result == watched_pid {
-            return Some(decode_wait_status(status));
+
+        match signals.wait_timeout(remaining) {
+            Ok(SignalWait::Received(Signal::SIGCHLD)) => {
+                if let Some(exit_code) = reap_zombies(child_pid)? {
+                    return Ok(exit_code);
+                }
+            }
+            Ok(SignalWait::Received(Signal::SIGTERM | Signal::SIGINT)) | Err(Errno::EINTR) => {}
+            Ok(SignalWait::TimedOut) => break,
+            Ok(SignalWait::Received(_)) => return Err(Errno::EINVAL),
+            Err(error) => return Err(error),
         }
-        // Orphaned zombie — reaped and discarded
     }
-    None
+
+    if let Some(exit_code) = reap_zombies(child_pid)? {
+        return Ok(exit_code);
+    }
+
+    eprintln!("[guest-init] vsock-guest did not exit after SIGTERM, sending SIGKILL");
+    send_signal(child_pid, Signal::SIGKILL)?;
+    wait_blocking(child_pid)
+}
+
+/// Wait for the supervised child to exit while reaping all orphaned children.
+pub fn supervise(
+    signals: &SignalContext,
+    child_pid: libc::pid_t,
+    grace_period: Duration,
+) -> Result<i32, Errno> {
+    loop {
+        match signals.wait()? {
+            Signal::SIGCHLD => {
+                if let Some(exit_code) = reap_zombies(child_pid)? {
+                    return Ok(exit_code);
+                }
+            }
+            Signal::SIGTERM | Signal::SIGINT => {
+                // Prefer an already-available child exit over initiating
+                // shutdown when exit and shutdown signals arrive together.
+                if let Some(exit_code) = reap_zombies(child_pid)? {
+                    return Ok(exit_code);
+                }
+                return shutdown(signals, child_pid, grace_period);
+            }
+            _ => return Err(Errno::EINVAL),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -138,6 +225,7 @@ mod tests {
     use super::*;
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
     use std::sync::Mutex;
+    use std::thread;
 
     static PID1_TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -175,7 +263,7 @@ mod tests {
                     if result == self.pid {
                         break;
                     }
-                    if result == -1 && last_errno() == libc::EINTR {
+                    if result == -1 && Errno::last() == Errno::EINTR {
                         continue;
                     }
                     break;
@@ -187,7 +275,7 @@ mod tests {
     fn fork_exiting_child(exit_code: libc::c_int) -> ChildGuard {
         // SAFETY: the child calls only _exit after fork.
         let pid = unsafe { libc::fork() };
-        assert!(pid >= 0, "fork failed with errno {}", last_errno());
+        assert!(pid >= 0, "fork failed with errno {}", Errno::last());
         if pid == 0 {
             // SAFETY: _exit is async-signal-safe and avoids running Rust destructors
             // in the forked child.
@@ -198,11 +286,11 @@ mod tests {
         ChildGuard::new(pid)
     }
 
-    fn fork_paused_child() -> ChildGuard {
+    fn fork_paused_child(child_mask: &SigSet, ignore_sigterm: bool) -> ChildGuard {
         let mut fds = [0; 2];
         // SAFETY: fds points to two valid integers for pipe to initialize.
         let pipe_result = unsafe { libc::pipe(fds.as_mut_ptr()) };
-        assert_eq!(pipe_result, 0, "pipe failed with errno {}", last_errno());
+        assert_eq!(pipe_result, 0, "pipe failed with errno {}", Errno::last());
 
         // SAFETY: the child uses only async-signal-safe libc calls before _exit.
         let pid = unsafe { libc::fork() };
@@ -212,7 +300,7 @@ mod tests {
                 libc::close(fds[0]);
                 libc::close(fds[1]);
             }
-            panic!("fork failed with errno {}", last_errno());
+            panic!("fork failed with errno {}", Errno::last());
         }
 
         if pid == 0 {
@@ -220,11 +308,24 @@ mod tests {
             // exits through _exit to avoid running Rust destructors.
             unsafe {
                 libc::close(fds[0]);
+                if libc::sigprocmask(libc::SIG_SETMASK, child_mask.as_ref(), std::ptr::null_mut())
+                    != 0
+                {
+                    libc::_exit(124);
+                }
+                let sigterm_disposition = if ignore_sigterm {
+                    libc::SIG_IGN
+                } else {
+                    libc::SIG_DFL
+                };
+                if libc::signal(libc::SIGTERM, sigterm_disposition) == libc::SIG_ERR {
+                    libc::_exit(125);
+                }
                 let ready = [1_u8];
                 let written = libc::write(fds[1], ready.as_ptr().cast(), ready.len());
                 libc::close(fds[1]);
                 if written != 1 {
-                    libc::_exit(125);
+                    libc::_exit(126);
                 }
                 loop {
                     libc::pause();
@@ -248,23 +349,31 @@ mod tests {
         // SAFETY: read_fd is a valid pipe read end and ready points to writable memory.
         let result =
             unsafe { libc::read(read_fd.as_raw_fd(), ready.as_mut_ptr().cast(), ready.len()) };
-        assert_eq!(result, 1, "read failed with errno {}", last_errno());
+        assert_eq!(result, 1, "read failed with errno {}", Errno::last());
     }
 
-    fn wait_until_waitable(pid: libc::pid_t) {
-        // SAFETY: zeroed siginfo_t is valid for waitid to fill.
-        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
-        // SAFETY: pid is a child created by this test. WNOWAIT observes its
-        // waitable status without reaping it.
-        let result = unsafe {
-            libc::waitid(
-                libc::P_PID,
-                pid as libc::id_t,
-                &mut info,
-                libc::WEXITED | libc::WNOWAIT,
-            )
-        };
-        assert_eq!(result, 0, "waitid failed with errno {}", last_errno());
+    fn wait_until_waitable(pid: libc::pid_t) -> Result<(), Errno> {
+        loop {
+            // SAFETY: zeroed siginfo_t is valid for waitid to fill.
+            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            // SAFETY: pid is a child created by this test. WNOWAIT observes its
+            // waitable status without reaping it.
+            let result = unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    pid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOWAIT,
+                )
+            };
+            if result == 0 {
+                return Ok(());
+            }
+            match Errno::last() {
+                Errno::EINTR => {}
+                error => return Err(error),
+            }
+        }
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -279,13 +388,65 @@ mod tests {
         // SAFETY: pid was created by this test. WNOHANG prevents blocking if a
         // regression leaves the child unreaped.
         let result = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
-        if result == -1 && last_errno() == libc::ECHILD {
+        if result == -1 && Errno::last() == Errno::ECHILD {
             ReapCheck::AlreadyReaped
         } else if result == pid {
             ReapCheck::ReapedDuringCheck
         } else {
             ReapCheck::StillPresent
         }
+    }
+
+    fn send_thread_signal(signal: Signal) {
+        // SAFETY: pthread_self identifies the calling test thread and signal is
+        // blocked there before this helper is used.
+        let result = unsafe { libc::pthread_kill(libc::pthread_self(), signal as libc::c_int) };
+        assert_eq!(result, 0, "pthread_kill failed with errno {result}");
+    }
+
+    fn drain_pending_signals(signals: &SignalContext) {
+        loop {
+            match signals.wait_timeout(Duration::ZERO) {
+                Ok(SignalWait::Received(_)) | Err(Errno::EINTR) => {}
+                Ok(SignalWait::TimedOut) => return,
+                Err(error) => panic!("sigtimedwait failed with errno {error}"),
+            }
+        }
+    }
+
+    fn finish_signal_test(signals: &SignalContext) {
+        drain_pending_signals(signals);
+        signals.restore_child_mask().unwrap();
+    }
+
+    #[test]
+    fn blocking_and_restoring_signals_preserves_the_original_mask() {
+        let _guard = PID1_TEST_LOCK.lock().unwrap();
+        let original_mask = SigSet::thread_get_mask().unwrap();
+        let signals = SignalContext::block().unwrap();
+        let blocked_mask = SigSet::thread_get_mask().unwrap();
+        let mut expected_mask = original_mask;
+        expected_mask.add(Signal::SIGCHLD);
+        expected_mask.add(Signal::SIGTERM);
+        expected_mask.add(Signal::SIGINT);
+
+        assert_eq!(blocked_mask, expected_mask);
+
+        signals.restore_child_mask().unwrap();
+        assert_eq!(SigSet::thread_get_mask().unwrap(), original_mask);
+    }
+
+    #[test]
+    fn synchronously_waits_for_shutdown_signals() {
+        let _guard = PID1_TEST_LOCK.lock().unwrap();
+        let signals = SignalContext::block().unwrap();
+
+        send_thread_signal(Signal::SIGTERM);
+        assert_eq!(signals.wait().unwrap(), Signal::SIGTERM);
+        send_thread_signal(Signal::SIGINT);
+        assert_eq!(signals.wait().unwrap(), Signal::SIGINT);
+
+        finish_signal_test(&signals);
     }
 
     #[test]
@@ -296,24 +457,24 @@ mod tests {
         let exit_code = wait_blocking_with(123, |status| {
             calls += 1;
             if calls == 1 {
-                Err(libc::EINTR)
+                Err(Errno::EINTR)
             } else {
                 *status = 0;
                 Ok(123)
             }
         });
 
-        assert_eq!(exit_code, 0);
+        assert_eq!(exit_code, Ok(0));
         assert_eq!(calls, 2);
     }
 
     #[test]
-    fn wait_loop_returns_one_for_non_eintr_error() {
+    fn wait_loop_propagates_non_eintr_error() {
         let _guard = PID1_TEST_LOCK.lock().unwrap();
 
-        let exit_code = wait_blocking_with(123, |_status| Err(libc::ECHILD));
+        let exit_code = wait_blocking_with(123, |_status| Err(Errno::ECHILD));
 
-        assert_eq!(exit_code, 1);
+        assert_eq!(exit_code, Err(Errno::ECHILD));
     }
 
     #[test]
@@ -324,29 +485,31 @@ mod tests {
         let exit_code = wait_blocking(child.pid());
         child.disarm();
 
-        assert_eq!(exit_code, 42);
+        assert_eq!(exit_code, Ok(42));
     }
 
     #[test]
     fn wait_blocking_maps_signal_exit_code() {
         let _guard = PID1_TEST_LOCK.lock().unwrap();
-        let mut child = fork_paused_child();
+        let child_mask = SigSet::thread_get_mask().unwrap();
+        let mut child = fork_paused_child(&child_mask, false);
         // SAFETY: pid belongs to the paused child created by this test.
         let kill_result = unsafe { libc::kill(child.pid(), libc::SIGKILL) };
-        assert_eq!(kill_result, 0, "kill failed with errno {}", last_errno());
+        assert_eq!(kill_result, 0, "kill failed with errno {}", Errno::last());
 
         let exit_code = wait_blocking(child.pid());
         child.disarm();
 
-        assert_eq!(exit_code, 128 + libc::SIGKILL);
+        assert_eq!(exit_code, Ok(128 + libc::SIGKILL));
     }
 
     #[test]
     fn reap_zombies_reaps_unrelated_child_without_watched_result() {
         let _guard = PID1_TEST_LOCK.lock().unwrap();
-        let watched = fork_paused_child();
+        let child_mask = SigSet::thread_get_mask().unwrap();
+        let watched = fork_paused_child(&child_mask, false);
         let mut unrelated = fork_exiting_child(17);
-        wait_until_waitable(unrelated.pid());
+        wait_until_waitable(unrelated.pid()).unwrap();
 
         let result = reap_zombies(watched.pid());
         let unrelated_state = check_child_reaped(unrelated.pid());
@@ -354,19 +517,73 @@ mod tests {
             unrelated.disarm();
         }
 
-        assert_eq!(result, None);
+        assert_eq!(result, Ok(None));
         assert_eq!(unrelated_state, ReapCheck::AlreadyReaped);
     }
 
     #[test]
-    fn reap_zombies_returns_watched_child_exit_code() {
+    fn supervision_reaps_all_waitable_children_on_one_event() {
         let _guard = PID1_TEST_LOCK.lock().unwrap();
+        let signals = SignalContext::block().unwrap();
         let mut watched = fork_exiting_child(23);
-        wait_until_waitable(watched.pid());
+        let mut unrelated = fork_exiting_child(17);
+        wait_until_waitable(watched.pid()).unwrap();
+        wait_until_waitable(unrelated.pid()).unwrap();
+        send_thread_signal(Signal::SIGCHLD);
 
-        let result = reap_zombies(watched.pid());
+        let exit_code = supervise(&signals, watched.pid(), Duration::from_secs(1)).unwrap();
         watched.disarm();
+        let unrelated_state = check_child_reaped(unrelated.pid());
+        if unrelated_state != ReapCheck::StillPresent {
+            unrelated.disarm();
+        }
+        finish_signal_test(&signals);
 
-        assert_eq!(result, Some(23));
+        assert_eq!(exit_code, 23);
+        assert_eq!(unrelated_state, ReapCheck::AlreadyReaped);
+    }
+
+    #[test]
+    fn shutdown_forwards_sigterm_and_returns_child_status() {
+        let _guard = PID1_TEST_LOCK.lock().unwrap();
+        let signals = SignalContext::block().unwrap();
+        let mut child = fork_paused_child(&signals.child_mask, false);
+        // SAFETY: pthread_self returns the calling test thread identifier.
+        let supervisor_thread = unsafe { libc::pthread_self() };
+        let child_pid = child.pid();
+        let notifier = thread::spawn(move || match wait_until_waitable(child_pid) {
+            Ok(()) => {
+                // SAFETY: supervisor_thread remains alive until this thread is
+                // joined and SIGCHLD is blocked in that thread.
+                let result = unsafe {
+                    libc::pthread_kill(supervisor_thread, Signal::SIGCHLD as libc::c_int)
+                };
+                assert_eq!(result, 0, "pthread_kill failed with errno {result}");
+            }
+            Err(Errno::ECHILD) => {}
+            Err(error) => panic!("waitid failed with errno {error}"),
+        });
+        send_thread_signal(Signal::SIGTERM);
+
+        let exit_code = supervise(&signals, child.pid(), Duration::from_secs(1)).unwrap();
+        child.disarm();
+        notifier.join().unwrap();
+        finish_signal_test(&signals);
+
+        assert_eq!(exit_code, 128 + libc::SIGTERM);
+    }
+
+    #[test]
+    fn shutdown_escalates_to_sigkill_after_the_fixed_deadline() {
+        let _guard = PID1_TEST_LOCK.lock().unwrap();
+        let signals = SignalContext::block().unwrap();
+        let mut child = fork_paused_child(&signals.child_mask, true);
+        send_thread_signal(Signal::SIGINT);
+
+        let exit_code = supervise(&signals, child.pid(), Duration::ZERO).unwrap();
+        child.disarm();
+        finish_signal_test(&signals);
+
+        assert_eq!(exit_code, 128 + libc::SIGKILL);
     }
 }

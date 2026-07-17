@@ -7,7 +7,7 @@ description = "Guest init process for Firecracker - filesystem setup, PID 1, and
 [dependencies]
 guest-contracts.workspace = true
 libc.workspace = true
-nix = { workspace = true, features = ["mount"] }
+nix = { workspace = true, features = ["mount", "signal"] }
 vsock-guest.workspace = true
 
 [dev-dependencies]
