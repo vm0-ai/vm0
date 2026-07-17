@@ -68,6 +68,17 @@ export const runnerClaimPollReasonSchema = z.enum([
   "fast",
 ]);
 
+export const sessionAffinityResourceSchema = z.enum([
+  "reusableSandbox",
+  "workspaceCache",
+]);
+const sessionAffinityLocalResourceSchema = z.enum([
+  "reusableSandbox",
+  "workspaceCache",
+  "legacySession",
+]);
+const runnerLocalAdmissionResourceSchema = z.enum(["reusableSandbox", "fresh"]);
+
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
 const runnerPreLocalAdmissionOutcomeSchema = z.enum([
   "not_protected",
@@ -100,6 +111,9 @@ const runnerClaimTelemetrySchema = z.object({
   providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
   mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
   preLocalAdmissionOutcome: runnerPreLocalAdmissionOutcomeSchema.optional(),
+  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
+  sessionAffinityLocalResource: sessionAffinityLocalResourceSchema.optional(),
+  localAdmissionResource: runnerLocalAdmissionResourceSchema.optional(),
   sessionHistoryGenerationRelationship:
     sessionHistoryGenerationRelationshipSchema.optional(),
   sessionHistoryGenerationLocalAvailability:
@@ -190,6 +204,7 @@ export const jobSchema = z.object({
     .datetime({ offset: true })
     .nullable()
     .optional(),
+  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
 });
 
 export const heldSessionStateSchema = z.object({
@@ -207,6 +222,7 @@ export const heldSessionStateSchema = z.object({
     .array(
       z.object({
         profile: z.string(),
+        workspaceAffinityVersion: z.literal(1).optional(),
       }),
     )
     .max(8)
@@ -704,6 +720,9 @@ export type SessionHistoryGenerationRelationship = z.infer<
 >;
 export type SessionHistoryGenerationLocalAvailability = z.infer<
   typeof sessionHistoryGenerationLocalAvailabilitySchema
+>;
+export type SessionAffinityResource = z.infer<
+  typeof sessionAffinityResourceSchema
 >;
 
 export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;
