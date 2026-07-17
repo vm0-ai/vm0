@@ -528,9 +528,7 @@ describe("Usage Allowance", () => {
     expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("does not backfill allowance windows during usage settlement", async () => {
-    // A non-vm0 run never activates allowance windows, so settlement must
-    // charge org credits in full even though an active entitlement exists.
+  it("backfills allowance windows during non-vm0 usage settlement", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const actor = bdd.user();
@@ -555,7 +553,7 @@ describe("Usage Allowance", () => {
     });
     const run = await api.createRun(actor, {
       agentId: agent.agentId,
-      prompt: "non-vm0 run bypasses allowance",
+      prompt: "non-vm0 run uses allowance",
       modelProvider: "anthropic-api-key",
     });
     const provider = usageProvider();
@@ -568,11 +566,11 @@ describe("Usage Allowance", () => {
 
     await processUsageEvents();
 
-    await expect(readOrgCredits(actor)).resolves.toBe(20);
+    await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 
-  it("does not apply allowance to non-vm0 runs inside active allowance windows", async () => {
+  it("applies allowance to non-vm0 runs inside active allowance windows", async () => {
     const { actor, agentId } = await vm0AllowanceActor({
       credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
@@ -598,7 +596,7 @@ describe("Usage Allowance", () => {
 
     await processUsageEvents();
 
-    await expect(readOrgCredits(actor)).resolves.toBe(20);
+    await expect(readOrgCredits(actor)).resolves.toBe(100);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 

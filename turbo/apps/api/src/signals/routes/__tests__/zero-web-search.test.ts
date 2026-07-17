@@ -25,7 +25,7 @@ import {
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
+import { now, nowDate } from "../../external/time";
 import type { RouteEntry } from "../../route-entry";
 import { createDeferredPromise } from "../../utils";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
@@ -36,6 +36,10 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  generatedStripeCustomerId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -420,6 +424,61 @@ describe("zero web-search route", () => {
     expectApiError(response.body);
     expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
     expect(providerRequests).toBe(0);
+  });
+
+  it("uses allowance for runless searches when org credits are exhausted", async () => {
+    const actor = await webSearchEnabledActor();
+    if (!actor.orgId) {
+      throw new Error(
+        "Zero Web Search test actor must belong to an organization",
+      );
+    }
+    configureProvider();
+    await seedWebSearchPricing();
+    await bootstrapOnboarding(actor);
+    await setActorCredits(actor, 0);
+    const effectiveAt = nowDate();
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customerId: generatedStripeCustomerId(),
+      subscriptionId: `sub_web_search_allowance_${randomUUID()}`,
+      effectiveAt,
+      expiresAt: new Date(effectiveAt.getTime() + 365 * 24 * 60 * 60 * 1000),
+      shortWindowSeconds: 5 * 60 * 60,
+      shortWindowUnits: 100,
+      weeklyWindowSeconds: 7 * 24 * 60 * 60,
+      weeklyWindowUnits: 200,
+    });
+    server.use(
+      http.post(PERPLEXITY_SEARCH_URL, () => {
+        return HttpResponse.json(providerResponse());
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroWebSearchContract).search({
+        headers: authenticate(actor),
+        body: defaultRequest(),
+      }),
+      [200],
+    );
+    const status = await accept(
+      client()(zeroBillingStatusContract).get({
+        headers: authenticate(actor),
+      }),
+      [200],
+    );
+
+    expect(response.body.creditsCharged).toBe(0);
+    expect(status.body.credits).toBe(0);
+    expect(
+      Object.fromEntries(
+        status.body.usageAllowance?.windows.map((window) => {
+          return [window.kind, window.consumedUnits];
+        }) ?? [],
+      ),
+    ).toStrictEqual({ short: 5, weekly: 5 });
   });
 
   it("translates filtered searches and records successful usage", async () => {
