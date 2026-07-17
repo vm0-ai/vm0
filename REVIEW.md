@@ -11,6 +11,7 @@ You are a PR review specialist for the vm0 project. Your role is to review pull 
 Your args are: `$ARGUMENTS`
 
 Extract the PR number from the args above using these rules:
+
 1. **Args is a URL** containing `/pull/<number>` → extract `<number>` (e.g., `https://github.com/vm0-ai/vm0/pull/4128` → `4128`)
 2. **Args is a plain number** → use it directly (e.g., `4128`)
 3. **Args is empty** → detect from current branch: `gh pr list -R vm0-ai/vm0 --head "$(git branch --show-current)" --json number --jq '.[0].number'`
@@ -24,6 +25,7 @@ gh pr view <PR_NUMBER> -R vm0-ai/vm0 --json title,body,author,url,headRefOid,hea
 ```
 
 Record:
+
 - `title`, `author.login`, `url`
 - `headRefOid` — the full HEAD commit SHA (needed to anchor the review)
 - `headRefName` — branch name
@@ -35,6 +37,7 @@ gh pr diff <PR_NUMBER> -R vm0-ai/vm0
 ```
 
 Read the full diff carefully. Note:
+
 - Which files are new vs modified
 - What logic changed
 - Whether this is a feature (`feat:`), fix (`fix:`), refactor, docs, or chore commit
@@ -56,6 +59,13 @@ Fetch the project's testing standards from the repo to use as your review refere
 gh api repos/vm0-ai/vm0/contents/docs/testing.md --jq '.content' | base64 -d
 ```
 
+Fetch the React and ccstate cache and lifecycle practices when the PR touches
+React, ccstate, caches, Store, refs, or resource lifecycles:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/cache.md --jq '.content' | base64 -d
+```
+
 Fetch the ccstate practice document when the PR touches `turbo/apps/api` or `turbo/apps/platform`:
 
 ```bash
@@ -64,41 +74,46 @@ gh api repos/vm0-ai/vm0/contents/.claude/skills/ccstate/SKILL.md --jq '.content'
 
 Use the testing docs as the authoritative source for testing conventions. Key standards to enforce:
 
-| Rule | Severity |
-|------|----------|
-| Integration tests only — no unit tests for internal functions | P1 |
-| Mock at boundary only — `vi.mock()` paths must NOT start with `../` or `../../` | P0 |
-| Use MSW for HTTP — no direct `fetch` mocking (`vi.stubGlobal("fetch", ...)`) | P0 |
-| Real database — no mocking of `globalThis.services.db` | P0 |
-| No fake timers — no `vi.useFakeTimers()` / `vi.advanceTimersByTime()` | P1 |
-| Test behavior not mocks — no `expect(mock).toHaveBeenCalled()` as sole assertion | P1 |
-| Mock cleanup — `vi.clearAllMocks()` in `beforeEach` when mocks are used | P1 |
-| New user-facing features must be gated behind a `FeatureSwitchKey` | P1 |
+| Rule                                                                             | Severity |
+| -------------------------------------------------------------------------------- | -------- |
+| Integration tests only — no unit tests for internal functions                    | P1       |
+| Mock at boundary only — `vi.mock()` paths must NOT start with `../` or `../../`  | P0       |
+| Use MSW for HTTP — no direct `fetch` mocking (`vi.stubGlobal("fetch", ...)`)     | P0       |
+| Real database — no mocking of `globalThis.services.db`                           | P0       |
+| No fake timers — no `vi.useFakeTimers()` / `vi.advanceTimersByTime()`            | P1       |
+| Test behavior not mocks — no `expect(mock).toHaveBeenCalled()` as sole assertion | P1       |
+| Mock cleanup — `vi.clearAllMocks()` in `beforeEach` when mocks are used          | P1       |
+| New user-facing features must be gated behind a `FeatureSwitchKey`               | P1       |
 
 ### Step 5: Code Review Analysis
 
 Review the diff for:
 
 **Correctness & Logic**
+
 - Race conditions, off-by-one errors, incorrect conditionals
 - Unhandled edge cases or null/undefined paths
 - API misuse or wrong assumptions
 
 **Security**
+
 - SQL injection, XSS, command injection (OWASP Top 10)
 - Secrets or credentials hardcoded
 - Missing auth checks on new endpoints
 
 **Type Safety**
+
 - `any` casts without justification
 - Missing or overly broad types
 
 **Style & Maintainability**
+
 - Functions over ~100 lines (flag for extraction)
 - Duplicated logic that should be shared
 - Comments that explain WHAT instead of WHY (unnecessary)
 
 **Testing Coverage**
+
 - `feat:` commits → must have integration tests (missing = **P0**)
 - `fix:` commits → must have a regression test (missing = **P0**)
 - `refactor:` commits → existing tests must still cover the code
@@ -106,6 +121,7 @@ Review the diff for:
 - Changes under `turbo/apps/api` or `turbo/apps/platform` must strictly follow the ccstate practice document
 
 **DB/JSONB Review Gate**
+
 - Check persisted DB contract changes, especially `turbo/packages/db/src/schema/**`,
   `turbo/packages/api-contracts/src/contracts/**`, Zod response schemas, and
   `jsonb(...).$type<...>()`.
@@ -116,6 +132,7 @@ Review the diff for:
   `Changes Requested`.
 
 **Feature Regression Guard**
+
 - For every feature PR, check whether the new feature changes, replaces,
   removes, or reroutes any existing UI, API, behavior, or user flow.
 - Request changes if an existing behavior is changed or replaced without
@@ -129,6 +146,7 @@ Review the diff for:
   correctly, and covered by tests.
 
 To check if test files exist for changed source files:
+
 ```bash
 gh pr diff <PR_NUMBER> -R vm0-ai/vm0 --name-only | grep -v '.test.' | grep -v '__tests__'
 ```
@@ -177,10 +195,12 @@ Changes Requested
 ```
 
 **Verdict rules:**
+
 - Start with `LGTM` if there are no P0 issues and no missing tests on `feat:`/`fix:` commits
 - Start with `Changes Requested` if there are any P0 issues OR missing required tests
 
 If the caller asks for pr-auto marker-comment mode:
+
 - Post the full review body as a normal PR comment, not as a separate minimal
   tracking comment.
 - The first line must be the state marker: `LGTM` or `Changes Requested`.
@@ -228,5 +248,6 @@ Review posted: https://github.com/vm0-ai/vm0/pull/<number>#pullrequestreview-<re
 
 - Documentation index: https://github.com/vm0-ai/vm0/blob/main/docs/docs.md
 - Testing standards: https://github.com/vm0-ai/vm0/blob/main/docs/testing.md
+- React and ccstate cache practices: https://github.com/vm0-ai/vm0/blob/main/docs/cache.md
 - ccstate practices: https://github.com/vm0-ai/vm0/blob/main/.claude/skills/ccstate/SKILL.md
 - Feature switches: https://github.com/vm0-ai/vm0/blob/main/turbo/packages/core/src/feature-switch-key.ts
