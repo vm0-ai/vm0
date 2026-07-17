@@ -68,9 +68,22 @@ async function resolvePaymentMethod(
     }
   }
 
-  L.warn("No payment method found on customer or subscription", {
-    stripeCustomerId: org.stripeCustomerId,
+  const paymentMethods = await stripe.paymentMethods.list({
+    customer: org.stripeCustomerId,
+    type: "card",
+    limit: 1,
   });
+  const attachedPm = paymentMethods.data[0]?.id;
+  if (attachedPm) {
+    return attachedPm;
+  }
+
+  L.warn(
+    "No payment method found on customer, subscription, or attached cards",
+    {
+      stripeCustomerId: org.stripeCustomerId,
+    },
+  );
   return null;
 }
 
