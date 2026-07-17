@@ -62,6 +62,7 @@ import {
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
+import { reloadAgentConnectorAuthorizations$ } from "../agent-connector-authorizations.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 
@@ -935,6 +936,9 @@ const finishConnectorConnection$ = command(
     });
     if (options.reloadConnectors !== false) {
       set(reloadConnectors$);
+    }
+    if (options.agentId) {
+      set(reloadAgentConnectorAuthorizations$);
     }
 
     const hidden = new Set(get(hiddenConnectorTypes$));
