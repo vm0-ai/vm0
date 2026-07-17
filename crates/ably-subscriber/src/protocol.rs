@@ -7,7 +7,7 @@ use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
-use crate::types::REDACTED_DEBUG_VALUE;
+use crate::types::{REDACTED_DEBUG_VALUE, redact_access_token};
 
 // ---------------------------------------------------------------------------
 // Protocol action constants
@@ -85,7 +85,7 @@ pub struct ConnectionDetails {
     pub server_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ErrorInfo {
     pub code: i32,
@@ -137,6 +137,16 @@ impl fmt::Debug for ConnectionDetails {
             .field("max_message_size", &self.max_message_size)
             .field("max_frame_size", &self.max_frame_size)
             .field("server_id", &self.server_id)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ErrorInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ErrorInfo")
+            .field("code", &self.code)
+            .field("status_code", &self.status_code)
+            .field("message", &redact_access_token(&self.message))
             .finish()
     }
 }
