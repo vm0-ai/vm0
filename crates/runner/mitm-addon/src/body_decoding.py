@@ -23,10 +23,10 @@ from body_limits import (
     STREAM_DECODE_CHUNK_LIMIT,
 )
 
-# Python's brotli binding has no max-output API, and one process() call can
-# still transiently emit multi-MB output. Keep small compressed inputs on tiny
-# chunks to preserve the best-effort high-compression guard, but scale up for
-# larger inputs to avoid thousands of Python-to-C calls.
+# Brotli 1.2's output_buffer_limit is a soft allocation threshold, not a hard
+# returned-byte cap. Keep small compressed inputs on tiny chunks as a second
+# high-compression guard, but scale up for larger inputs to avoid thousands of
+# Python-to-C calls.
 _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
@@ -233,11 +233,10 @@ def decompress_body(
     - zstd: hard cap via ``ZstdDecompressor.stream_reader(data).read(max_output)``;
       zstd reads incrementally so total memory is bounded by
       ``max_output`` plus library internal buffers.
-    - br: bounded accumulator over small compressed input chunks.  The
-      Python ``brotli`` bindings expose no max-output API, so ``process`` may
-      still transiently emit a multi-MB chunk, but decoding stops once
-      ``max_output`` bytes have been accumulated instead of materialising the
-      full response before slicing.
+    - br: exact accumulator cap over adaptive compressed-input chunks.
+      Brotli 1.2's ``output_buffer_limit`` keeps transient output near the
+      remaining budget, plus library allocation blocks; returned chunks may
+      exceed that soft threshold and are sliced to the exact cap.
 
     Returns the original data unchanged when the encoding is missing,
     ``identity``, unrecognised, or invalid before any compressed member
@@ -336,7 +335,10 @@ def _decode_body_bounded(
 
 
 def _decompress_brotli_bounded_with_status(
-    data: bytes, max_output: int
+    data: bytes,
+    max_output: int,
+    *,
+    validate_complete_input: bool,
 ) -> tuple[bytes, bool, bool]:
     if max_output <= 0:
         return b"", False, bool(data)
@@ -354,27 +356,29 @@ def _decompress_brotli_bounded_with_status(
     out = bytearray()
     for offset in range(0, len(data), chunk_size):
         chunk = data[offset : offset + chunk_size]
-        decoded = dec.process(chunk)
-        if not decoded:
-            continue
-
         remaining = max_output - len(out)
-        if remaining <= 0:
-            return bytes(out), dec.is_finished(), True
+        # The binding may return more than this soft threshold because it fills
+        # allocation blocks before checking. Using one probe byte beyond the
+        # remaining budget means a paused decoder has already proven overflow;
+        # non-overflow results consume the complete input chunk, so another
+        # nonempty chunk remains safe without an empty-input drain loop.
+        decoded = dec.process(chunk, output_buffer_limit=remaining + 1)
         if len(decoded) > remaining:
             out.extend(decoded[:remaining])
             return bytes(out), dec.is_finished(), True
-        if len(decoded) == remaining:
-            out.extend(decoded)
-            finished = dec.is_finished()
-            return bytes(out), finished, not finished
         out.extend(decoded)
+        if not validate_complete_input and len(out) == max_output:
+            return bytes(out), dec.is_finished(), False
 
     return bytes(out), dec.is_finished(), False
 
 
 def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
-    body, _finished, _limited = _decompress_brotli_bounded_with_status(data, max_output)
+    body, _finished, _limited = _decompress_brotli_bounded_with_status(
+        data,
+        max_output,
+        validate_complete_input=False,
+    )
     return body
 
 
@@ -477,7 +481,11 @@ def _decode_supported_body_with_complete_status(
         return _decompress_zlib_json_usage_body(data, encoding, max_output)
     if encoding == "br":
         try:
-            body, finished, limited = _decompress_brotli_bounded_with_status(data, max_output)
+            body, finished, limited = _decompress_brotli_bounded_with_status(
+                data,
+                max_output,
+                validate_complete_input=True,
+            )
         except brotli.error as exc:
             with contextlib.suppress(AttributeError):
                 # ctx.log unavailable outside mitmproxy runtime

@@ -23,9 +23,9 @@ interface OrgCreditAvailability {
   readonly spendableCredits: number;
 }
 
-type OrgModelAdmissionCapabilities = Pick<
+type OrgPlanRunAdmissionCapabilities = Pick<
   OrgPlanCapabilities,
-  "supportByok" | "restrictedVm0Models"
+  "status" | "supportByok" | "restrictedVm0Models"
 >;
 
 export async function resolveOrgCreditAvailability(params: {
@@ -94,16 +94,13 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
   if (!availability) {
     return insufficientCredits();
   }
-  const modelAdmission = checkOrgModelRunAdmission({
+  const planAdmission = checkOrgPlanRunAdmission({
     capabilities: availability,
     modelProviderType: params.modelProviderType,
     selectedModel: params.selectedModel,
   });
-  if (modelAdmission) {
-    return modelAdmission;
-  }
-  if (availability.status !== "active") {
-    return insufficientCredits();
+  if (planAdmission) {
+    return planAdmission;
   }
 
   if (params.modelProviderType !== "vm0") {
@@ -123,14 +120,14 @@ export async function checkResolvedOrgCreditsForRunAdmission(params: {
     : insufficientCredits();
 }
 
-export function checkOrgModelRunAdmission(params: {
-  readonly capabilities: OrgModelAdmissionCapabilities | null;
+export function checkOrgPlanRunAdmission(params: {
+  readonly capabilities: OrgPlanRunAdmissionCapabilities | null;
   readonly modelProviderType: string | null | undefined;
   readonly selectedModel: string | null | undefined;
 }): ReturnType<typeof insufficientCredits> | undefined {
   const { capabilities } = params;
-  if (!capabilities) {
-    return undefined;
+  if (!capabilities || capabilities.status !== "active") {
+    return insufficientCredits();
   }
   return (!capabilities.supportByok && params.modelProviderType !== "vm0") ||
     (capabilities.restrictedVm0Models &&

@@ -141,12 +141,15 @@ function WorkflowComposerPlaceholder({
   sending: boolean | undefined;
 }) {
   const hasInput = useGet(composer.hasInput$);
+  const hasTemplateAttachment = useGet(composer.hasTemplateAttachment$);
   if (hasInput) {
     return null;
   }
   return (
     <div
-      className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
+      className={`pointer-events-none absolute left-0 px-4 text-[0.9375rem] leading-6 text-muted-foreground/40 ${
+        hasTemplateAttachment ? "top-[54px]" : "top-0 pt-4"
+      }`}
       aria-hidden="true"
     >
       {workflowComposerPlaceholder(sending)}

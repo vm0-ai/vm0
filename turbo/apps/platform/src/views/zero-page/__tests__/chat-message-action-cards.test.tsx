@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
@@ -199,13 +200,16 @@ async function confirmPermissionAction(
 }
 
 describe("chat message action cards", () => {
-  it("renders a persistent mail draft and sends the reviewed fields", async () => {
+  it("keeps one mail draft consistent across persistent messages", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000010";
     const messageId = "c0000000-0000-4000-a000-000000000011";
+    const secondMessageId = "c0000000-0000-4000-a000-000000000013";
     const mailDraftId = "c0000000-0000-4000-a000-000000000012";
+    const runId = "d0000000-0000-4000-a000-000000000020";
     const createdAt = "2026-07-14T10:00:00.000Z";
     let draftRequests = 0;
+    let savedBody: unknown = null;
     let sentBody: unknown = null;
 
     context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
@@ -226,6 +230,7 @@ describe("chat message action cards", () => {
       });
     });
     context.mocks.api(zeroMailContract.updateDraft, ({ body, respond }) => {
+      savedBody = body;
       return respond(200, {
         mailDraftId,
         mailDraft: {
@@ -263,10 +268,20 @@ describe("chat message action cards", () => {
           id: messageId,
           role: "assistant",
           content: null,
+          runId,
           createdAt,
           mailDraftId,
         },
+        {
+          id: secondMessageId,
+          role: "assistant",
+          content: null,
+          runId,
+          createdAt: "2026-07-14T10:00:01.000Z",
+          mailDraftId,
+        },
       ],
+      activeRunIds: [runId],
     });
 
     detachedSetupPage({
@@ -275,36 +290,68 @@ describe("chat message action cards", () => {
       featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
-    const from = await screen.findByRole("textbox", { name: "From" });
-    const card = from.closest<HTMLElement>("[data-mail-draft-card]");
-    if (!card) {
-      throw new Error("Mail draft card not found");
+    await waitFor(() => {
+      expect(screen.getAllByRole("textbox", { name: "From" })).toHaveLength(2);
+    });
+    const fromFields = screen.getAllByRole("textbox", { name: "From" });
+    const cards = fromFields.map((from) => {
+      const card = from.closest<HTMLElement>("[data-mail-draft-card]");
+      if (!card) {
+        throw new Error("Mail draft card not found");
+      }
+      return card;
+    });
+    const [firstCard, secondCard] = cards;
+    if (!firstCard || !secondCard) {
+      throw new Error("Expected two mail draft cards");
     }
-    expect(from).toHaveValue("sender@example.com");
-    expect(within(card).getByRole("textbox", { name: "To" })).toHaveValue(
+    expect(fromFields[0]).toHaveValue("sender@example.com");
+    expect(within(firstCard).getByRole("textbox", { name: "To" })).toHaveValue(
       "recipient@example.com",
     );
-    expect(within(card).getByRole("textbox", { name: "Subject" })).toHaveValue(
-      "Hello",
-    );
-    expect(within(card).getByRole("textbox", { name: "Message" })).toHaveValue(
-      "Mail body",
-    );
+    expect(
+      within(firstCard).getByRole("textbox", { name: "Subject" }),
+    ).toHaveValue("Hello");
+    expect(
+      within(firstCard).getByRole("textbox", { name: "Message" }),
+    ).toHaveValue("Mail body");
 
-    await user.click(buttonByText("Send", card));
+    const firstSubject = within(firstCard).getByRole("textbox", {
+      name: "Subject",
+    });
+    await fill(firstSubject, "Shared subject");
+    firstSubject.blur();
+
+    await waitFor(() => {
+      expect(savedBody).toStrictEqual({
+        to: ["recipient@example.com"],
+        subject: "Shared subject",
+        body: "Mail body",
+      });
+      expect(
+        within(secondCard).getByRole("textbox", { name: "Subject" }),
+      ).toHaveValue("Shared subject");
+    });
+
+    await user.click(buttonByText("Send", secondCard));
 
     await waitFor(() => {
       expect(sentBody).toStrictEqual({
         to: ["recipient@example.com"],
-        subject: "Hello",
+        subject: "Shared subject",
         body: "Mail body",
       });
-      expect(within(card).getByText("Sent")).toBeInTheDocument();
+      expect(within(firstCard).getByText("Sent")).toBeInTheDocument();
+      expect(within(secondCard).getByText("Sent")).toBeInTheDocument();
     });
-    expect(queryButtonByText("Send", card)).toBeNull();
-    expect(within(card).getByRole("textbox", { name: "From" })).toHaveAttribute(
-      "readonly",
-    );
+    expect(queryButtonByText("Send", firstCard)).toBeNull();
+    expect(queryButtonByText("Send", secondCard)).toBeNull();
+    expect(
+      within(firstCard).getByRole("textbox", { name: "From" }),
+    ).toHaveAttribute("readonly");
+    expect(
+      within(secondCard).getByRole("textbox", { name: "From" }),
+    ).toHaveAttribute("readonly");
     expect(draftRequests).toBe(1);
   });
 
@@ -1800,17 +1847,17 @@ describe("chat message action cards", () => {
       threadTitle: "Permission action",
       chatMessages: [
         {
-          id: "msg-user-permission-deny-request",
+          id: "msg-user-permission-block-request",
           role: "user",
           content: "Block Slack analytics access",
-          runId: "run-permission-deny",
+          runId: "run-permission-block",
           createdAt: "2026-06-09T11:00:00Z",
         },
         {
-          id: "msg-assistant-permission-deny-card",
+          id: "msg-assistant-permission-block-card",
           role: "assistant",
           content: permissionDenyUrl,
-          runId: "run-permission-deny",
+          runId: "run-permission-block",
           createdAt: "2026-06-09T11:01:00Z",
         },
       ],

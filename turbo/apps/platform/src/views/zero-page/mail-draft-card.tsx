@@ -13,24 +13,20 @@ import type {
   ZeroMailDraft,
   ZeroMailDraftStatus,
 } from "@vm0/api-contracts/contracts/zero-mail";
-import type { Computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button, Input, cn } from "@vm0/ui";
 
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  cancelMailDraft$,
-  mailDraftOverrides$,
-  sendMailDraft$,
-  updateMailDraft$,
+  newestMailDraft,
   type MailDraftFields,
+  type MailDraftSignals,
 } from "../../signals/chat-page/mail-draft.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 interface MailDraftCardProps {
-  readonly mailDraftId: string;
-  readonly mailDraft$: Computed<Promise<ZeroMailDraft>>;
+  readonly signals: MailDraftSignals;
 }
 
 interface DraftStatusCopy {
@@ -83,18 +79,6 @@ function statusCopy(status: ZeroMailDraftStatus): DraftStatusCopy {
       };
     }
   }
-}
-
-function newestDraft(
-  serverDraft: ZeroMailDraft,
-  localDraft: ZeroMailDraft | undefined,
-): ZeroMailDraft {
-  if (!localDraft) {
-    return serverDraft;
-  }
-  return Date.parse(localDraft.updatedAt) >= Date.parse(serverDraft.updatedAt)
-    ? localDraft
-    : serverDraft;
 }
 
 function fieldsFromForm(form: HTMLFormElement): MailDraftFields {
@@ -288,18 +272,16 @@ function MailDraftActions({
 }
 
 function ReadyMailDraftCard({
-  mailDraftId,
-  serverMailDraft,
+  signals,
+  mailDraft,
 }: {
-  readonly mailDraftId: string;
-  readonly serverMailDraft: ZeroMailDraft;
+  readonly signals: MailDraftSignals;
+  readonly mailDraft: ZeroMailDraft;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const localDraft = useGet(mailDraftOverrides$)[mailDraftId];
-  const mailDraft = newestDraft(serverMailDraft, localDraft);
-  const [updateLoadable, updateDraft] = useLoadableSet(updateMailDraft$);
-  const [cancelLoadable, cancelDraft] = useLoadableSet(cancelMailDraft$);
-  const [sendLoadable, sendDraft] = useLoadableSet(sendMailDraft$);
+  const [updateLoadable, updateDraft] = useLoadableSet(signals.update$);
+  const [cancelLoadable, cancelDraft] = useLoadableSet(signals.cancel$);
+  const [sendLoadable, sendDraft] = useLoadableSet(signals.send$);
   const editable =
     mailDraft.status === "draft" || mailDraft.status === "failed";
   const updatePending = updateLoadable.state === "loading";
@@ -325,25 +307,19 @@ function ReadyMailDraftCard({
     ) {
       return;
     }
-    detach(
-      updateDraft({ mailDraftId, fields: fieldsFromForm(form) }, pageSignal),
-      Reason.DomCallback,
-    );
+    detach(updateDraft(fieldsFromForm(form), pageSignal), Reason.DomCallback);
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     detach(
-      sendDraft(
-        { mailDraftId, fields: fieldsFromForm(event.currentTarget) },
-        pageSignal,
-      ),
+      sendDraft(fieldsFromForm(event.currentTarget), pageSignal),
       Reason.DomCallback,
     );
   };
 
   const onCancel = () => {
-    detach(cancelDraft({ mailDraftId }, pageSignal), Reason.DomCallback);
+    detach(cancelDraft(pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -375,8 +351,9 @@ function ReadyMailDraftCard({
   );
 }
 
-function EnabledMailDraftCard({ mailDraftId, mailDraft$ }: MailDraftCardProps) {
-  const mailDraftLoadable = useLoadable(mailDraft$);
+function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
+  const mailDraftLoadable = useLoadable(signals.serverDraft$);
+  const mutationDraft = useGet(signals.mutationDraft$);
   if (mailDraftLoadable.state === "loading") {
     return (
       <section
@@ -401,8 +378,12 @@ function EnabledMailDraftCard({ mailDraftId, mailDraft$ }: MailDraftCardProps) {
   }
   return (
     <ReadyMailDraftCard
-      mailDraftId={mailDraftId}
-      serverMailDraft={mailDraftLoadable.data}
+      signals={signals}
+      mailDraft={
+        mutationDraft === undefined
+          ? mailDraftLoadable.data
+          : newestMailDraft(mailDraftLoadable.data, mutationDraft)
+      }
     />
   );
 }

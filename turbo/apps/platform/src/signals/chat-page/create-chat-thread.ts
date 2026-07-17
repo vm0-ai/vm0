@@ -120,8 +120,8 @@ import type {
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import {
-  createMailDraftLoaderSignals,
-  type MailDraftResource,
+  createMailDraftCardRegistry,
+  type MailDraftSignals,
 } from "./mail-draft.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
@@ -1249,11 +1249,11 @@ function setLatestUsageForRun(
 
 function createRenderedChatGroups(
   semanticMessages$: Computed<SemanticChatMessage[]>,
-  mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>,
+  mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
 ) {
   const transcriptMessages$ = createTranscriptMessagesComputed(
     semanticMessages$,
-    mailDraftById$,
+    mailDraftCardSignals$,
   );
 
   const allRenderedChatGroups$ = computed(
@@ -1468,24 +1468,25 @@ function createRawMessagesComputed({
 
 function createTranscriptMessagesComputed(
   semanticMessages$: Computed<SemanticChatMessage[]>,
-  mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>,
+  mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
   return computed((get): Promise<EnrichedChatMessage[]> => {
-    const mailDraftById = get(mailDraftById$);
+    const mailDraftCardSignals = get(mailDraftCardSignals$);
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
         const { message, isQueued, isOptimisticRun } = entry;
-        let mailDraftResource: EnrichedChatMessage["mailDraftResource"] = null;
+        let mailDraftCard: EnrichedChatMessage["mailDraftCard"] = null;
         if (message.mailDraftId !== undefined) {
-          const mailDraft$ = mailDraftById.get(message.mailDraftId);
-          if (mailDraft$ === undefined) {
+          const signals = mailDraftCardSignals.get(message.mailDraftId);
+          if (signals === undefined) {
             throw new Error(
-              `Mail draft resource was not registered: ${message.mailDraftId}`,
+              `Mail draft signals were not registered: ${message.mailDraftId}`,
             );
           }
-          mailDraftResource = {
-            mailDraftId: message.mailDraftId,
-            mailDraft$,
+          mailDraftCard = {
+            type: "mail-draft",
+            resourceKey: message.mailDraftId,
+            signals,
           };
         }
         if (message.role !== "assistant") {
@@ -1495,7 +1496,7 @@ function createTranscriptMessagesComputed(
             blocks: entry.blocks,
             isQueued,
             isOptimisticRun,
-            mailDraftResource,
+            mailDraftCard,
           };
         }
         return {
@@ -1504,7 +1505,7 @@ function createTranscriptMessagesComputed(
           blocks: entry.blocks,
           isQueued,
           isOptimisticRun: false,
-          mailDraftResource,
+          mailDraftCard,
         };
       }),
     );
@@ -2241,7 +2242,7 @@ function createPagedMessages(
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
 ) {
-  const mailDrafts = createMailDraftLoaderSignals();
+  const mailDraftCards = createMailDraftCardRegistry();
   const cardSignals = createChatCardSignalsRegistry();
   for (const entry of initialOptimisticEntries) {
     cardSignals.registerBodyBlocks(entry.parsedBodyBlocks);
@@ -2279,19 +2280,19 @@ function createPagedMessages(
 
   const renderedMessages = createRenderedChatGroups(
     semanticMessages$,
-    mailDrafts.mailDraftById$,
+    mailDraftCards.mailDraftCardSignals$,
   );
 
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
     persistentChatMessages$,
-    mailDrafts.registerMailDraftMessages$,
+    mailDraftCards.registerMailDraftMessages$,
     cardSignals,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
-      set(mailDrafts.registerMailDraftMessages$, messages);
+      set(mailDraftCards.registerMailDraftMessages$, messages);
       const registeredMessages = messages.map((message) => {
         return registerChatMessage(message, cardSignals);
       });

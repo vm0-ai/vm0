@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.146.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.4...runner-rs-v0.146.5) (2026-07-17)
+
+
+### Bug Fixes
+
+* **mitm-addon:** avoid stale bytecode in tld snapshot checks ([#21948](https://github.com/vm0-ai/vm0/issues/21948)) ([78c511b](https://github.com/vm0-ai/vm0/commit/78c511bec86c587a2a7dabfb0658bff41b264bab))
+* **runner:** validate brotli tails at decode limit ([#21961](https://github.com/vm0-ai/vm0/issues/21961)) ([786172a](https://github.com/vm0-ai/vm0/commit/786172ac3c3493ad5cde0c21e63ff2308f4ae3ec))
+
 ## [0.146.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.3...runner-rs-v0.146.4) (2026-07-17)
 
 

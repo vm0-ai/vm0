@@ -9,7 +9,7 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../../../mocks/server";
-import { checkConnectorCommand } from "../check-connector";
+import { checkConnectorCommand } from "../check";
 
 const API_BASE_URL = "https://app.vm0.ai";
 const AGENT_ID = "00000000-0000-4000-8000-000000000001";
@@ -224,7 +224,7 @@ function stubResolvedDependencies(
   );
 }
 
-describe("zero doctor check-connector command", () => {
+describe("zero connector check command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -304,7 +304,7 @@ describe("zero doctor check-connector command", () => {
         "URL https://service.example.com/api/items matches the Server Only connector",
       );
       expect(getOutput()).toContain(
-        "zero doctor check-connector --url 'https://service.example.com/api/items' --connector 'server-only' --env-name 'SERVER_ONLY_TOKEN' --method 'POST'",
+        "zero connector check --url 'https://service.example.com/api/items' --connector 'server-only' --env-name 'SERVER_ONLY_TOKEN' --method 'POST'",
       );
       expect(getOutput()).not.toContain("access_token=secret");
       expect(getOutput()).not.toContain("#private");
@@ -367,6 +367,33 @@ describe("zero doctor check-connector command", () => {
       expect(getOutput()).toContain(
         'Result: "contents:write" is in the deny list — denied.',
       );
+      expect(getOutput()).toContain(
+        "zero connector permission-request github --permission contents:write --duration 1h",
+      );
+    });
+
+    it.each([
+      {
+        name: "Computer Use URL",
+        args: ["--url", "https://api.vm0.ai/computer-use/commands"],
+      },
+      {
+        name: "Computer Use permission",
+        args: [
+          "--env-name",
+          "COMPUTER_USE_HOST",
+          "--check-permission",
+          "computer-use:write",
+        ],
+      },
+    ])("handles a $name locally", async ({ args }) => {
+      await checkConnectorCommand.parseAsync(["node", "cli", ...args]);
+
+      expect(getOutput()).toContain(
+        "Computer Use access is not managed as a connector permission.",
+      );
+      expect(getOutput()).toContain("selected for the chat or thread");
+      expect(getOutput()).not.toContain("Step 1");
     });
 
     it.each([
@@ -795,6 +822,13 @@ describe("zero doctor check-connector command", () => {
         expect(getOutput()).not.toContain("allow list: [");
         expect(getOutput()).not.toContain("deny list:  [");
         expect(getOutput()).not.toContain("ask list:   [");
+        const requestCommand =
+          "zero connector permission-request github --permission contents:read --duration 1h";
+        if (policy.outcome === "deny" || policy.outcome === "ask") {
+          expect(getOutput()).toContain(requestCommand);
+        } else {
+          expect(getOutput()).not.toContain(requestCommand);
+        }
       },
     );
 
@@ -830,6 +864,12 @@ describe("zero doctor check-connector command", () => {
       );
       expect(getOutput()).toContain('"contents:read" is in the allow list');
       expect(getOutput()).toContain('"metadata:read" is in the ask list');
+      expect(getOutput()).not.toContain(
+        "--permission contents:read --duration 1h",
+      );
+      expect(getOutput()).toContain(
+        "zero connector permission-request github --permission metadata:read --duration 1h",
+      );
     });
 
     interface UnknownPolicyCase {
@@ -893,7 +933,7 @@ describe("zero doctor check-connector command", () => {
         expect(getOutput()).toContain(expected);
         if (expectsGuidance) {
           expect(getOutput()).toContain(
-            "permission-change github --permission __unknown__ --enable --duration 1h",
+            "zero connector permission-request github --permission __unknown__ --duration 1h",
           );
         } else {
           expect(getOutput()).not.toContain("--permission __unknown__");

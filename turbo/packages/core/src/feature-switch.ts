@@ -308,7 +308,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Vm0Model]: {
     maintainer: "yuma@vm0.ai",
-    description: "Show VM0 Model in the workspace Add model selector.",
+    description: "Show Auto in the workspace Add model selector.",
     enabled: false,
   },
   [FeatureSwitchKey.RealAgentInPreview]: {
@@ -440,7 +440,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Show the Artifacts manage page for generated artifacts in the current organization.",
-    enabled: true,
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ArtifactFavorites]: {
     maintainer: "bingjie@vm0.ai",

@@ -183,7 +183,7 @@ import {
 } from "./org-concurrency-entitlements.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
-  checkOrgModelRunAdmission,
+  checkOrgPlanRunAdmission,
   checkOrgCreditsForRunAdmission,
   checkResolvedOrgCreditsForRunAdmission,
   resolveOrgCreditAvailability,
@@ -4001,7 +4001,7 @@ async function checkFinalRunAdmission(
   const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
   args.signal.throwIfAborted();
   return (
-    checkOrgModelRunAdmission({
+    checkOrgPlanRunAdmission({
       capabilities,
       modelProviderType: args.modelProviderType,
       selectedModel: args.selectedModel,
@@ -7403,6 +7403,7 @@ interface PreparedAgentRun {
 interface PrepareAgentRunArgs {
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
+  readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
 }
 
@@ -7436,16 +7437,18 @@ export const prepareAgentRun$ = command(
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
     const { args, timing } = input;
     const db = set(writeDb$);
-    const tierGate = await timing.measure(
-      "api_dispatch_check_org_tier",
-      "top_level",
-      async () => {
-        return await checkOrgRunPlanStatus(db, { orgId: args.orgId });
-      },
-    );
-    signal.throwIfAborted();
-    if (tierGate) {
-      return tierGate;
+    if (input.checkOrgPlanStatusBeforeContext) {
+      const tierGate = await timing.measure(
+        "api_dispatch_check_org_tier",
+        "top_level",
+        async () => {
+          return await checkOrgRunPlanStatus(db, { orgId: args.orgId });
+        },
+      );
+      signal.throwIfAborted();
+      if (tierGate) {
+        return tierGate;
+      }
     }
 
     const context = await timing.measure(
@@ -7550,7 +7553,11 @@ export const createAgentRun$ = command(
       "top_level",
       args.apiStartTime,
     );
-    const prepared = await set(prepareAgentRun$, { args, timing }, signal);
+    const prepared = await set(
+      prepareAgentRun$,
+      { args, timing, checkOrgPlanStatusBeforeContext: true },
+      signal,
+    );
     if (isRouteError(prepared)) {
       return prepared;
     }
