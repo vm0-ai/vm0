@@ -30,6 +30,8 @@ pub(crate) struct SupervisedProcessContainment {
 enum ContainmentBackend {
     Cgroup(CgroupGuard),
     TestNoop,
+    #[cfg(test)]
+    TestDirectory(PathBuf),
 }
 
 struct CgroupGuard {
@@ -88,6 +90,8 @@ impl SupervisedProcessContainment {
         match &self.backend {
             ContainmentBackend::Cgroup(guard) => guard.configure_command(command),
             ContainmentBackend::TestNoop => Ok(()),
+            #[cfg(test)]
+            ContainmentBackend::TestDirectory(_) => Ok(()),
         }
     }
 
@@ -95,22 +99,44 @@ impl SupervisedProcessContainment {
         match self.backend {
             ContainmentBackend::Cgroup(guard) => guard.cleanup(),
             ContainmentBackend::TestNoop => Ok(()),
+            #[cfg(test)]
+            ContainmentBackend::TestDirectory(group_path) => fs::remove_dir(group_path)
+                .map_err(|error| ProcessContainmentError::new("remove test cgroup", error)),
         }
     }
 }
 
 impl CgroupGuard {
     fn create(sequence: u32) -> Result<Self, ProcessContainmentError> {
+        Self::create_in(Path::new(SUPERVISED_CGROUP_BASE_PATH), sequence)
+    }
+
+    fn create_in(base_path: &Path, sequence: u32) -> Result<Self, ProcessContainmentError> {
         let started = Instant::now();
         let id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
         let group_name = format!("exec-{}-{sequence}-{id}", std::process::id());
-        let group_path = Path::new(SUPERVISED_CGROUP_BASE_PATH).join(&group_name);
+        let group_path = base_path.join(&group_name);
         fs::create_dir(&group_path)
             .map_err(|error| ProcessContainmentError::new("create cgroup", error))?;
-        let placement = OpenOptions::new()
+        let placement = match OpenOptions::new()
             .write(true)
             .open(group_path.join(CGROUP_PROCS_FILE))
-            .map_err(|error| ProcessContainmentError::new("open cgroup.procs", error))?;
+        {
+            Ok(placement) => placement,
+            Err(source) => {
+                let original = ProcessContainmentError::new("open cgroup.procs", source);
+                if let Err(rollback) = remove_empty_cgroup(&group_path) {
+                    log(
+                        "ERROR",
+                        &format!(
+                            "supervised process containment creation rollback failed group={group_name} original_stage={} original_error={} rollback_stage={} rollback_error={}",
+                            original.stage, original.source, rollback.stage, rollback.source
+                        ),
+                    );
+                }
+                return Err(original);
+            }
+        };
 
         Ok(Self {
             group_name,
@@ -446,6 +472,68 @@ mod tests {
         let mut content = String::new();
         placement.read_to_string(&mut content).unwrap();
         assert_eq!(content, "0");
+    }
+
+    #[test]
+    fn partial_creation_failure_removes_operation_cgroup() {
+        let base = tempfile::tempdir().unwrap();
+
+        let result = CgroupGuard::create_in(base.path(), 17);
+        let Err(error) = result else {
+            panic!("placement-file open unexpectedly succeeded");
+        };
+
+        assert_eq!(error.stage, "open cgroup.procs");
+        assert!(fs::read_dir(base.path()).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn spawn_failure_removes_owned_operation_cgroup() {
+        let base = tempfile::tempdir().unwrap();
+        let group_path = base.path().join("exec-spawn-failure");
+        fs::create_dir(&group_path).unwrap();
+        let containment = SupervisedProcessContainment {
+            backend: ContainmentBackend::TestDirectory(group_path.clone()),
+        };
+
+        let result = crate::shell_command::spawn_shell_command_with_pipes(
+            "bad\0command",
+            &[],
+            false,
+            false,
+            Some(containment),
+        );
+        let Err(error) = result else {
+            panic!("invalid command unexpectedly spawned");
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(!group_path.exists());
+    }
+
+    #[test]
+    fn spawn_failure_preserves_primary_error_when_cleanup_fails() {
+        let base = tempfile::tempdir().unwrap();
+        let group_path = base.path().join("exec-cleanup-failure");
+        fs::create_dir(&group_path).unwrap();
+        fs::write(group_path.join("blocker"), b"keep directory non-empty").unwrap();
+        let containment = SupervisedProcessContainment {
+            backend: ContainmentBackend::TestDirectory(group_path.clone()),
+        };
+
+        let result = crate::shell_command::spawn_shell_command_with_pipes(
+            "bad\0command",
+            &[],
+            false,
+            false,
+            Some(containment),
+        );
+        let Err(error) = result else {
+            panic!("invalid command unexpectedly spawned");
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(group_path.is_dir());
     }
 
     #[test]
