@@ -659,6 +659,38 @@ async fn affinity_protected_candidate_without_local_session_defers_before_claim(
 }
 
 #[tokio::test(start_paused = true)]
+async fn affinity_protected_candidate_without_session_metadata_defers_before_claim() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(minimal_context(run_id)));
+    env.handle
+        .discover_tx
+        .send(
+            crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+                .with_affinity_metadata(None, Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()))
+                .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox)),
+        )
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert!(
+        env.handle.claim_candidates().is_empty(),
+        "a protected candidate without session metadata must not reach claim"
+    );
+    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn affinity_protected_candidate_without_resource_defers_even_when_session_is_local() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
