@@ -250,28 +250,6 @@ Permission changes can arrive from another card or another product surface. A
 user-level realtime event invalidates the shared grants source, so mounted
 permission cards refresh without replacing their signals identities.
 
-### Non-link extension: mail draft card
-
-Mail draft cards use the same resource-signals-rendering principle but do not
-come from body link recognition. A chat message carries an immutable
-`mailDraftId`, and the thread registers that ID in an independent mail draft
-registry.
-
-Mail draft signals contain both server state and mutations:
-
-```ts
-interface MailDraftSignals {
-  serverDraft$: Computed<Promise<ZeroMailDraft>>;
-  mutationDraft$: Computed<ZeroMailDraft | undefined>;
-  update$: Command<Promise<ZeroMailDraft>, [MailDraftFields, AbortSignal]>;
-  cancel$: Command<Promise<ZeroMailDraft>, [AbortSignal]>;
-  send$: Command<Promise<ZeroMailDraft>, [MailDraftFields, AbortSignal]>;
-}
-```
-
-This example shows that link parsing is one way to discover a chat card, not a
-requirement of the underlying card model.
-
 ## Adding a Card Type
 
 When adding a new link-backed card:
@@ -301,6 +279,4 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/connector-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/computer-use-authorization-block.ts`
-- `turbo/apps/platform/src/signals/chat-page/mail-draft.ts`
 - `turbo/apps/platform/src/views/zero-page/zero-chat-thread-page.tsx`
-- `turbo/apps/platform/src/views/zero-page/mail-draft-card.tsx`
