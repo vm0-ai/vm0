@@ -10,7 +10,7 @@ pub const REUSE_PREPARATION_EXIT_INVALID_REQUEST: i32 = 2;
 pub const REUSE_PREPARATION_EXIT_INSPECTION_FAILED: i32 = 3;
 /// Stale runner-owned runtime state could not be safely removed.
 pub const REUSE_PREPARATION_EXIT_CLEANUP_FAILED: i32 = 4;
-/// Supervised process containment could not be proven healthy and empty.
+/// Exec process containment could not be proven ready for reuse.
 pub const REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED: i32 = 5;
 
 /// Runtime directories that must remain available after reuse preparation.

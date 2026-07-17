@@ -3,9 +3,11 @@
 use std::ffi::{CString, OsStr, OsString};
 use std::io::{self, Read};
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
-use guest_contracts::process_containment::{CGROUP_V2_MOUNT_PATH, EXEC_CGROUP_BASE_PATH};
+use guest_contracts::process_containment::{
+    CGROUP_V2_MOUNT_PATH, EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX,
+};
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
     REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
@@ -21,6 +23,9 @@ const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const CGROUP_SUBTREE_CONTROL_FILE: &str = "cgroup.subtree_control";
 #[cfg(debug_assertions)]
 const TEST_CONTAINMENT_ROOT_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_ROOT";
+#[cfg(debug_assertions)]
+const TEST_CONTAINMENT_CURRENT_GROUP_ENV: &str = "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP";
+const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 
 /// Failure returned by the reuse-preparation helper.
 #[derive(Debug)]
@@ -31,7 +36,7 @@ pub enum ReusePreparationError {
     Inspection(io::Error),
     /// Stale runtime entries could not be safely removed.
     Cleanup(io::Error),
-    /// Exec process containment could not be proven healthy and empty.
+    /// Exec process containment could not be proven ready for reuse.
     Containment(io::Error),
 }
 
@@ -175,6 +180,7 @@ struct ProcessContainmentPaths {
 
 fn verify_process_containment() -> io::Result<()> {
     let paths = process_containment_paths();
+    let current_group = current_process_cgroup_name()?;
     if paths.require_cgroup2_filesystem && !is_cgroup2_filesystem(&paths.mount)? {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -217,22 +223,101 @@ fn verify_process_containment() -> io::Result<()> {
         ));
     }
 
+    let base_procs = std::fs::read_to_string(paths.base.join(CGROUP_PROCS_FILE))?;
+    if !base_procs.trim().is_empty() {
+        return Err(io::Error::other(
+            "exec cgroup base contains direct processes",
+        ));
+    }
+
+    let mut current_group_found = false;
     for entry in std::fs::read_dir(&paths.base)? {
         let entry = entry?;
-        if entry.file_type()?.is_dir() {
+        let file_type = entry.file_type()?;
+        if entry.file_name() == current_group {
+            if !file_type.is_dir() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "current exec operation cgroup is not a directory",
+                ));
+            }
+            current_group_found = true;
+        } else if file_type.is_dir() {
             return Err(io::Error::other("stale exec operation cgroup remains"));
         }
+    }
+    if !current_group_found {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "current exec operation cgroup is missing",
+        ));
     }
 
     let events = std::fs::read_to_string(paths.base.join(CGROUP_EVENTS_FILE))?;
     match parse_populated(&events) {
-        Some(false) => Ok(()),
-        Some(true) => Err(io::Error::other("exec cgroup remains populated")),
+        Some(true) => Ok(()),
+        Some(false) => Err(io::Error::other(
+            "exec cgroup does not contain the current operation",
+        )),
         None => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "cgroup.events is missing valid populated state",
         )),
     }
+}
+
+fn current_process_cgroup_name() -> io::Result<OsString> {
+    #[cfg(debug_assertions)]
+    if let Some(cgroup_path) = std::env::var_os(TEST_CONTAINMENT_CURRENT_GROUP_ENV) {
+        return current_group_name_from_path(Path::new(&cgroup_path));
+    }
+
+    let content = std::fs::read_to_string(PROC_SELF_CGROUP)?;
+    let cgroup_path = content
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "current unified cgroup path is missing",
+            )
+        })?;
+    current_group_name_from_path(Path::new(cgroup_path))
+}
+
+fn current_group_name_from_path(cgroup_path: &Path) -> io::Result<OsString> {
+    let relative_base = Path::new(EXEC_CGROUP_BASE_PATH)
+        .strip_prefix(CGROUP_V2_MOUNT_PATH)
+        .map_err(|_| io::Error::other("exec cgroup base is outside the cgroup v2 mount"))?;
+    let relative_path = cgroup_path.strip_prefix(Path::new("/")).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "current unified cgroup path is not absolute",
+        )
+    })?;
+    let group_path = relative_path.strip_prefix(relative_base).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "current process is outside the exec cgroup base",
+        )
+    })?;
+    let mut components = group_path.components();
+    let group = match (components.next(), components.next()) {
+        (Some(Component::Normal(group)), None)
+            if group
+                .as_bytes()
+                .starts_with(EXEC_CGROUP_NAME_PREFIX.as_bytes()) =>
+        {
+            group.to_os_string()
+        }
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "current process is not in an exec operation leaf",
+            ));
+        }
+    };
+    Ok(group)
 }
 
 fn process_containment_paths() -> ProcessContainmentPaths {

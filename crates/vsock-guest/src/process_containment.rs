@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use guest_contracts::process_containment::EXEC_CGROUP_BASE_PATH;
+use guest_contracts::process_containment::{EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX};
 
 use crate::log::log;
 
@@ -123,7 +123,10 @@ impl CgroupGuard {
     fn create_in(base_path: &Path, sequence: u32) -> Result<Self, ProcessContainmentError> {
         let started = Instant::now();
         let id = NEXT_CGROUP_ID.fetch_add(1, Ordering::Relaxed);
-        let group_name = format!("exec-{}-{sequence}-{id}", std::process::id());
+        let group_name = format!(
+            "{EXEC_CGROUP_NAME_PREFIX}{}-{sequence}-{id}",
+            std::process::id()
+        );
         let group_path = base_path.join(&group_name);
         fs::create_dir(&group_path)
             .map_err(|error| ProcessContainmentError::new("create cgroup", error))?;
