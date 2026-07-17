@@ -361,11 +361,13 @@ describe("runner resume session contract", () => {
       checkpointId: null,
       historyGenerationRunId,
       historyGenerationAffinityProtectedUntil,
+      sessionAffinityResource: "reusableSandbox",
     });
     expect(job.historyGenerationRunId).toBe(historyGenerationRunId);
     expect(job.historyGenerationAffinityProtectedUntil).toBe(
       historyGenerationAffinityProtectedUntil,
     );
+    expect(job.sessionAffinityResource).toBe("reusableSandbox");
 
     const heldSessionState = heldSessionStateSchema.parse({
       sessionId: "sess-123",
@@ -374,13 +376,16 @@ describe("runner resume session contract", () => {
         profile: "vm0/default",
         historyGenerationRunId,
       },
-      workspaceCaches: [{ profile: "vm0/default" }, { profile: "vm0/large" }],
+      workspaceCaches: [
+        { profile: "vm0/default", workspaceAffinityVersion: 1 },
+        { profile: "vm0/large" },
+      ],
     });
     expect(heldSessionState.reusableSandbox?.historyGenerationRunId).toBe(
       historyGenerationRunId,
     );
     expect(heldSessionState.workspaceCaches).toEqual([
-      { profile: "vm0/default" },
+      { profile: "vm0/default", workspaceAffinityVersion: 1 },
       { profile: "vm0/large" },
     ]);
   });
@@ -396,6 +401,7 @@ describe("runner resume session contract", () => {
       historyGenerationAffinityProtectedUntil: null,
     });
     expect(job.historyGenerationAffinityProtectedUntil).toBeNull();
+    expect(job.sessionAffinityResource).toBeUndefined();
 
     const heldSessionState = heldSessionStateSchema.parse({
       sessionId: "sess-legacy",
@@ -457,6 +463,15 @@ describe("runner resume session contract", () => {
         workspaceCaches: [
           ...workspaceCaches,
           { profile: "vm0/profile-over-cap" },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      heldSessionStateSchema.safeParse({
+        sessionId: "sess-invalid-capability",
+        lastCompletedAt: "2026-07-15T00:00:00.000Z",
+        workspaceCaches: [
+          { profile: "vm0/default", workspaceAffinityVersion: 2 },
         ],
       }).success,
     ).toBe(false);
@@ -629,6 +644,9 @@ describe("runner claim capability contract", () => {
         providerDiscoveryToMainLoopMs: 3,
         mainLoopToLocalAdmissionMs: 4,
         preLocalAdmissionOutcome: "local_holder",
+        sessionAffinityResource: "workspaceCache",
+        sessionAffinityLocalResource: "workspaceCache",
+        localAdmissionResource: "fresh",
         sessionHistoryGenerationRelationship: "exact",
       },
     });
@@ -664,6 +682,18 @@ describe("runner claim capability contract", () => {
 
   it("accepts old claim bodies without generation telemetry", () => {
     expect(runnersJobClaimContract.claim.body.safeParse({}).success).toBe(true);
+  });
+
+  it("rejects non-enum affinity resource telemetry", () => {
+    const result = runnersJobClaimContract.claim.body.safeParse({
+      telemetry: {
+        sessionAffinityResource: "legacySession",
+        sessionAffinityLocalResource: "workspaceCache",
+        localAdmissionResource: "fresh",
+      },
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 

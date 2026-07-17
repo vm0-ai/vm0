@@ -26,6 +26,8 @@ import {
 } from "./chat-feedback.ts";
 import {
   findActiveChatThreadSuggestionRange,
+  serializeChatThreadMention,
+  splitChatThreadMentionSegments,
   type ChatThreadSuggestionRange,
   type ComposerChatThreadSuggestion,
 } from "./chat-thread-suggestion-domain.ts";
@@ -117,6 +119,70 @@ export interface WorkflowComposerEventHandlers {
 }
 
 const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
+const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
+const CHAT_THREAD_MENTION_CLASS =
+  "rounded bg-primary/10 px-1 text-primary whitespace-nowrap";
+
+interface ChatThreadMentionAttributes {
+  readonly threadId: string;
+  readonly title: string;
+}
+
+function chatThreadMentionAttributes(
+  node: ProseMirrorNode,
+): ChatThreadMentionAttributes {
+  const threadId: unknown = node.attrs.threadId;
+  const title: unknown = node.attrs.title;
+  if (typeof threadId !== "string" || typeof title !== "string") {
+    throw new Error("Chat thread mention node attributes are invalid");
+  }
+  return { threadId, title };
+}
+
+function chatThreadMentionText(node: ProseMirrorNode): string {
+  const { threadId, title } = chatThreadMentionAttributes(node);
+  return serializeChatThreadMention(threadId, title);
+}
+
+const ChatThreadMentionNode = Node.create({
+  name: CHAT_THREAD_MENTION_NODE_NAME,
+  group: "inline",
+  inline: true,
+  atom: true,
+  addAttributes() {
+    return {
+      threadId: { default: "" },
+      title: { default: "" },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: "span[data-chat-thread-mention]",
+        getAttrs: (element) => {
+          return {
+            threadId: element.dataset.chatThreadMention ?? "",
+            title: element.textContent ?? "",
+          };
+        },
+      },
+    ];
+  },
+  renderHTML({ node }) {
+    const { threadId, title } = chatThreadMentionAttributes(node);
+    return [
+      "span",
+      {
+        "data-chat-thread-mention": threadId,
+        class: CHAT_THREAD_MENTION_CLASS,
+      },
+      title,
+    ];
+  },
+  renderText({ node }) {
+    return chatThreadMentionText(node);
+  },
+});
 
 interface FeedbackItemNodeAttributes {
   readonly feedbackId: number;
@@ -279,9 +345,7 @@ function feedbackNoteContent(note: string): JSONContent[] {
 }
 
 function feedbackNoteFromNode(node: ProseMirrorNode): string {
-  return node.textBetween(0, node.content.size, "\n", (leafNode) => {
-    return leafNode.type.name === "hardBreak" ? "\n" : "";
-  });
+  return nodeText(node);
 }
 
 function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
@@ -394,15 +458,32 @@ function feedbackItemsFromWorkflowComposer(
 
 function valueToWorkflowComposerDoc(value: string): JSONContent {
   const content: JSONContent[] = value.split("\n").map((line) => {
-    return line.length > 0
-      ? { type: "paragraph", content: [{ type: "text", text: line }] }
-      : { type: "paragraph" };
+    if (line.length === 0) {
+      return { type: "paragraph" };
+    }
+    const inlineContent = splitChatThreadMentionSegments(line).map(
+      (segment): JSONContent => {
+        return segment.type === "text"
+          ? { type: "text", text: segment.text }
+          : {
+              type: CHAT_THREAD_MENTION_NODE_NAME,
+              attrs: { threadId: segment.threadId, title: segment.title },
+            };
+      },
+    );
+    return { type: "paragraph", content: inlineContent };
   });
   return { type: "doc", content };
 }
 
-function nodeText(node: ProseMirrorNode): string {
-  return node.textBetween(0, node.content.size, "\n", (leafNode) => {
+function nodeText(
+  node: ProseMirrorNode,
+  to: number = node.content.size,
+): string {
+  return node.textBetween(0, to, "\n", (leafNode) => {
+    if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
+      return chatThreadMentionText(leafNode);
+    }
     return leafNode.type.name === "hardBreak" ? "\n" : "";
   });
 }
@@ -451,7 +532,6 @@ function workflowComposerDocToString(editor: Editor): string {
 interface ActiveTextblock {
   readonly value: string;
   readonly caretIndex: number;
-  readonly start: number;
 }
 
 function activeTextblock(editor: Editor): ActiveTextblock | null {
@@ -461,8 +541,7 @@ function activeTextblock(editor: Editor): ActiveTextblock | null {
   }
   return {
     value: nodeText($head.parent),
-    caretIndex: $head.parentOffset,
-    start: $head.start(),
+    caretIndex: nodeText($head.parent, $head.parentOffset).length,
   };
 }
 
@@ -605,6 +684,7 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
     extensions: [
       STARTER_KIT,
       createFeedbackItemNode(runtime),
+      ChatThreadMentionNode,
       WorkflowHighlight,
     ],
     content: valueToWorkflowComposerDoc(""),
@@ -774,8 +854,8 @@ function createInsertWorkflowCommand(
     if (!textblock) {
       return;
     }
-    const from = textblock.start + slashRange.start;
-    const to = textblock.start + slashRange.end;
+    const head = editor.state.selection.head;
+    const from = head - (slashRange.end - slashRange.start);
     const token = `/${workflow.name}`;
     const suffix = textblock.value.slice(slashRange.end).startsWith(" ")
       ? ""
@@ -783,7 +863,7 @@ function createInsertWorkflowCommand(
     editor
       .chain()
       .focus()
-      .insertContentAt({ from, to }, [
+      .insertContentAt({ from, to: head }, [
         { type: "text", text: `${token}${suffix}` },
       ])
       .setTextSelection(from + token.length + suffix.length)
@@ -804,17 +884,24 @@ function createInsertChatThreadCommand(
     if (!textblock) {
       return;
     }
-    const from = textblock.start + range.start;
-    const to = textblock.start + range.end;
-    const token = `/chats/${chatThread.id}`;
-    const suffix = textblock.value.slice(range.end).startsWith(" ") ? "" : " ";
+    const head = editor.state.selection.head;
+    const from = head - (range.end - range.start);
+    const content: JSONContent[] = [
+      {
+        type: CHAT_THREAD_MENTION_NODE_NAME,
+        attrs: { threadId: chatThread.id, title: chatThread.title },
+      },
+    ];
+    if (!textblock.value.slice(range.end).startsWith(" ")) {
+      content.push({ type: "text", text: " " });
+    }
     editor
       .chain()
       .focus()
-      .insertContentAt({ from, to }, [
-        { type: "text", text: `${token}${suffix}` },
-      ])
-      .setTextSelection(from + token.length + suffix.length)
+      .insertContentAt({ from, to: head }, content)
+      // The mention node occupies a single document position; place the
+      // caret after the node and the following space.
+      .setTextSelection(from + 2)
       .run();
   });
 }

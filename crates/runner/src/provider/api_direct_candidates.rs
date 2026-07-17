@@ -8,6 +8,7 @@ use tracing::warn;
 
 use super::{JobCandidate, JobDiscoverySource};
 use crate::ids::RunId;
+use crate::types::SessionAffinityResource;
 
 pub(super) const DIRECT_CANDIDATE_STALE_AFTER: Duration = Duration::from_secs(60);
 
@@ -18,6 +19,7 @@ pub(super) struct DirectJobCandidate {
     discovered_at: StdInstant,
     enqueued_at: Option<StdInstant>,
     cli_agent_session_id: Option<String>,
+    session_affinity_resource: Option<SessionAffinityResource>,
     history_generation_run_id: Option<RunId>,
     history_generation_affinity_protected_until: Option<String>,
     affinity_protected_until: Option<String>,
@@ -64,6 +66,7 @@ impl DirectJobCandidate {
             discovered_at,
             enqueued_at: None,
             cli_agent_session_id,
+            session_affinity_resource: None,
             history_generation_run_id: None,
             history_generation_affinity_protected_until: None,
             affinity_protected_until,
@@ -102,6 +105,14 @@ impl DirectJobCandidate {
         self
     }
 
+    pub(super) fn with_session_affinity_resource(
+        mut self,
+        resource: Option<SessionAffinityResource>,
+    ) -> Self {
+        self.session_affinity_resource = resource;
+        self
+    }
+
     pub(super) fn with_history_generation_affinity_protected_until(
         mut self,
         protected_until: Option<String>,
@@ -120,6 +131,7 @@ impl DirectJobCandidate {
             .map(|enqueued_at| dequeued_at.saturating_duration_since(enqueued_at));
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
             .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
+            .with_session_affinity_resource(self.session_affinity_resource)
             .with_history_generation_run_id(self.history_generation_run_id)
             .with_history_generation_affinity_protected_until(
                 self.history_generation_affinity_protected_until,
@@ -143,6 +155,11 @@ impl DirectJobCandidate {
         }
         if candidate.affinity_protected_until.is_some() {
             self.affinity_protected_until = candidate.affinity_protected_until;
+        }
+        if self.session_affinity_resource.is_none()
+            || candidate.session_affinity_resource == Some(SessionAffinityResource::ReusableSandbox)
+        {
+            self.session_affinity_resource = candidate.session_affinity_resource;
         }
         if candidate
             .history_generation_affinity_protected_until
@@ -424,13 +441,16 @@ mod tests {
         let run_id = run_id(1);
 
         let inserted = inbox
-            .push(DirectJobCandidate::new_with_affinity_metadata(
-                run_id,
-                "vm0/default".to_string(),
-                first_discovered_at,
-                Some("sess-1".to_string()),
-                None,
-            ))
+            .push(
+                DirectJobCandidate::new_with_affinity_metadata(
+                    run_id,
+                    "vm0/default".to_string(),
+                    first_discovered_at,
+                    Some("sess-1".to_string()),
+                    None,
+                )
+                .with_session_affinity_resource(Some(SessionAffinityResource::WorkspaceCache)),
+            )
             .await;
         assert_eq!(
             inserted.snapshot(),
@@ -452,7 +472,8 @@ mod tests {
                 .with_history_generation_run_id(Some(history_generation_run_id))
                 .with_history_generation_affinity_protected_until(Some(
                     "2999-01-01T00:00:00.000Z".to_string(),
-                )),
+                ))
+                .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox)),
             )
             .await;
         assert!(matches!(
@@ -466,6 +487,23 @@ mod tests {
             }
         ));
 
+        let downgraded = inbox
+            .push(
+                DirectJobCandidate::new_with_affinity_metadata(
+                    run_id,
+                    "vm0/default".to_string(),
+                    second_discovered_at,
+                    None,
+                    None,
+                )
+                .with_session_affinity_resource(Some(SessionAffinityResource::WorkspaceCache)),
+            )
+            .await;
+        assert!(matches!(
+            downgraded,
+            DirectCandidateInsertOutcome::Updated { .. }
+        ));
+
         let candidate = inbox.try_pop().await.expect("direct candidate");
         assert_eq!(candidate.discovered_at(), first_discovered_at);
         assert!(candidate.enqueued_at().is_some());
@@ -477,6 +515,10 @@ mod tests {
         );
         assert!(candidate.is_affinity_protected());
         assert!(candidate.is_history_generation_affinity_protected());
+        assert_eq!(
+            candidate.session_affinity_resource(),
+            Some(SessionAffinityResource::ReusableSandbox)
+        );
         assert!(
             candidate
                 .direct_candidate_notification_to_enqueue_elapsed()

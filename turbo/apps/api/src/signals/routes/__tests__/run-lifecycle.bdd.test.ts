@@ -102,6 +102,12 @@ function historyGenerationAffinityProtectedUntil(
   return job?.historyGenerationAffinityProtectedUntil ?? null;
 }
 
+function sessionAffinityResource(
+  job: RunnerJob | null | undefined,
+): RunnerJob["sessionAffinityResource"] {
+  return job?.sessionAffinityResource;
+}
+
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_custom_connector_auth_refs",
@@ -2252,6 +2258,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         readonly profile: string;
         readonly historyGenerationRunId?: string;
       };
+      readonly workspaceCaches?: {
+        readonly profile: string;
+        readonly workspaceAffinityVersion?: 1;
+      }[];
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
@@ -2264,6 +2274,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
             ...(args.reusableSandbox
               ? { reusableSandbox: args.reusableSandbox }
               : {}),
+            workspaceCaches: args.workspaceCaches,
           },
         ],
         mode: args.mode,
@@ -2367,6 +2378,109 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       historyGenerationAffinityProtectedUntil(finalHeartbeatHolder.job),
     ).toBeNull();
+    expect(sessionAffinityResource(finalHeartbeatHolder.job)).toBeUndefined();
+
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/default"],
+      workspaceCaches: [
+        { profile: "vm0/default", workspaceAffinityVersion: 1 },
+      ],
+    });
+    const capableWorkspaceHolder = await pollFollowUp(
+      "continue with a capable workspace holder",
+    );
+    expect(
+      sessionAffinityProtectedUntil(capableWorkspaceHolder.job),
+    ).toStrictEqual(expect.any(String));
+    expect(sessionAffinityResource(capableWorkspaceHolder.job)).toBe(
+      "workspaceCache",
+    );
+
+    const reusableRunnerId = randomUUID();
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: reusableRunnerId,
+      group: runnerGroup,
+      admittableProfiles: [],
+      heldSessionStates: [
+        {
+          sessionId: cliAgentSessionId,
+          lastCompletedAt: nowDate().toISOString(),
+          reusableSandbox: { profile: "vm0/default" },
+        },
+      ],
+    });
+    const reusableOverWorkspace = await pollFollowUp(
+      "prefer a reusable holder over a capable workspace holder",
+    );
+    expect(sessionAffinityResource(reusableOverWorkspace.job)).toBe(
+      "reusableSandbox",
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "job",
+      expect.objectContaining({
+        runId: reusableOverWorkspace.run.runId,
+        sessionAffinityResource: "reusableSandbox",
+      }),
+    );
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: reusableRunnerId,
+      group: runnerGroup,
+      admittableProfiles: [],
+      heldSessionStates: [],
+      mode: "stopping",
+    });
+
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/default"],
+      workspaceCaches: [{ profile: "vm0/large", workspaceAffinityVersion: 1 }],
+    });
+    const mismatchedCapableWorkspace = await pollFollowUp(
+      "continue with a mismatched capable workspace",
+    );
+    expect(
+      sessionAffinityProtectedUntil(mismatchedCapableWorkspace.job),
+    ).toBeNull();
+    expect(
+      sessionAffinityResource(mismatchedCapableWorkspace.job),
+    ).toBeUndefined();
+
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: affinityRunnerId,
+      group: runnerGroup,
+      admittableProfiles: ["vm0/default"],
+      heldSessionStates: [
+        {
+          sessionId: cliAgentSessionId,
+          lastCompletedAt: nowDate().toISOString(),
+          workspaceCaches: [
+            { profile: "vm0/large", workspaceAffinityVersion: 1 },
+          ],
+        },
+        {
+          sessionId: cliAgentSessionId,
+          lastCompletedAt: nowDate().toISOString(),
+        },
+      ],
+    });
+    const duplicateLegacyParent = await pollFollowUp(
+      "continue with a duplicate legacy parent beside a capable mismatch",
+    );
+    expect(sessionAffinityProtectedUntil(duplicateLegacyParent.job)).toBeNull();
+    expect(sessionAffinityResource(duplicateLegacyParent.job)).toBeUndefined();
+
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/default"],
+      workspaceCaches: [{ profile: "vm0/default" }],
+    });
+    const observationOnlyWorkspace = await pollFollowUp(
+      "continue with an observation-only workspace holder",
+    );
+    expect(
+      sessionAffinityProtectedUntil(observationOnlyWorkspace.job),
+    ).toStrictEqual(expect.any(String));
+    expect(
+      sessionAffinityResource(observationOnlyWorkspace.job),
+    ).toBeUndefined();
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -2381,6 +2495,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       sessionAffinityProtectedUntil(differentGenerationHolder.job),
     ).toStrictEqual(expect.any(String));
+    expect(sessionAffinityResource(differentGenerationHolder.job)).toBe(
+      "reusableSandbox",
+    );
     expect(
       historyGenerationAffinityProtectedUntil(differentGenerationHolder.job),
     ).toBeNull();
@@ -2401,6 +2518,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       historyGenerationAffinityProtectedUntil(exactGenerationHolder.job),
     ).toStrictEqual(expect.any(String));
+    expect(sessionAffinityResource(exactGenerationHolder.job)).toBe(
+      "reusableSandbox",
+    );
 
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
@@ -2530,6 +2650,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         runId: protectedFollowUp.runId,
         historyGenerationRunId: first.runId,
         affinityProtectedUntil: new Date(queueInsertedAt + 2000).toISOString(),
+        sessionAffinityResource: "reusableSandbox",
         historyGenerationAffinityProtectedUntil: new Date(
           queueInsertedAt + 500,
         ).toISOString(),
@@ -2552,6 +2673,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       historyGenerationAffinityProtectedUntil(protectedPoll.body.job),
     ).toBe(new Date(queueInsertedAt + 500).toISOString());
+    expect(sessionAffinityResource(protectedPoll.body.job)).toBe(
+      "reusableSandbox",
+    );
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
     expect(protectedClaim.prompt).toBe("continue affinity-protected session");
@@ -2593,6 +2717,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           profile: "vm0/default",
           notification_target: "broadcast",
           session_affinity: "protected",
+          session_affinity_resource: "reusableSandbox",
           history_generation_affinity: "protected",
         }),
       );
@@ -2709,6 +2834,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
       expect.any(String),
     );
+    expect(protectedPoll.body.job?.sessionAffinityResource).toBe(
+      "reusableSandbox",
+    );
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
 
     const olderGeneric = await api.createRun(actor, {
@@ -2792,6 +2920,102 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(expiredPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
 
     await api.requestCancelRun(actor, newerReusable.runId, [200]);
+    await api.requestCancelRun(actor, olderGeneric.runId, [200]);
+  });
+
+  it("prioritizes capable workspace work only for its matching runner", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start workspace-priority session",
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-workspace-priority-${first.runId}`;
+    const history = `bdd workspace priority history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const workspaceRunnerId = randomUUID();
+    const priorityBase = now();
+    mockNow(priorityBase);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: workspaceRunnerId,
+      group: runnerGroup,
+      admittableProfiles: ["vm0/default"],
+      heldSessionStates: [
+        {
+          sessionId: cliAgentSessionId,
+          lastCompletedAt: nowDate().toISOString(),
+          workspaceCaches: [
+            { profile: "vm0/default", workspaceAffinityVersion: 1 },
+          ],
+        },
+      ],
+    });
+
+    const olderGeneric = await api.createRun(actor, {
+      agentId,
+      prompt: "older workspace-priority FIFO work",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(priorityBase + 1);
+    const newerWorkspace = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "newer capable workspace work",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const fifoPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (fifoPoll.status !== 200) {
+      throw new Error("Expected workspace FIFO poll to return 200");
+    }
+    expect(fifoPoll.body.job?.runId).toBe(olderGeneric.runId);
+
+    const workspacePoll = await api.requestPollRunner(
+      true,
+      {
+        runnerId: workspaceRunnerId,
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (workspacePoll.status !== 200) {
+      throw new Error("Expected workspace-priority poll to return 200");
+    }
+    expect(workspacePoll.body.job?.runId).toBe(newerWorkspace.runId);
+    expect(workspacePoll.body.job?.sessionAffinityResource).toBe(
+      "workspaceCache",
+    );
+
+    await api.requestCancelRun(actor, newerWorkspace.runId, [200]);
     await api.requestCancelRun(actor, olderGeneric.runId, [200]);
   });
 });
@@ -3053,6 +3277,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           profile: "vm0/default",
           notification_target: "broadcast",
           session_affinity: "no_session",
+          session_affinity_resource: "none",
           history_generation_affinity: "no_session",
         }),
       );
@@ -7534,6 +7759,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           discoverySource: "poll",
           jobDiscoveredToClaimRequestMs: 1234,
           localAdmissionToClaimRequestMs: 56,
+          sessionAffinityResource: "workspaceCache",
+          sessionAffinityLocalResource: "reusableSandbox",
+          localAdmissionResource: "reusableSandbox",
           pollDueToJobDiscoveredMs: 789,
           pollHttpRequestMs: 321,
           pollReason: "deferred",
@@ -7629,6 +7857,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         auth_type: "user",
         discovery_source: "poll",
         poll_reason: "deferred",
+        session_affinity_resource: "workspaceCache",
+        session_affinity_local_resource: "reusableSandbox",
+        local_admission_resource: "reusableSandbox",
       }),
     );
     expect(
@@ -7646,6 +7877,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         auth_type: "user",
         discovery_source: "poll",
         poll_reason: "deferred",
+        session_affinity_resource: "workspaceCache",
+        session_affinity_local_resource: "reusableSandbox",
+        local_admission_resource: "reusableSandbox",
       }),
     );
     for (const actionType of RUNNER_POLL_TIMING_ACTION_TYPES) {
@@ -7692,6 +7926,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           auth_type: "user",
           discovery_source: "poll",
           poll_reason: "deferred",
+          session_affinity_resource: "workspaceCache",
+          session_affinity_local_resource: "reusableSandbox",
+          local_admission_resource: "reusableSandbox",
         }),
       );
     }

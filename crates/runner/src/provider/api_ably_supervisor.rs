@@ -32,6 +32,7 @@ use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+use crate::types::SessionAffinityResource;
 
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -687,6 +688,7 @@ async fn handle_ably_message_with_network_policy_refresh(
                         notif.affinity_protected_until.map(str::to_owned),
                     )
                     .with_history_generation_run_id(notif.history_generation_run_id)
+                    .with_session_affinity_resource(notif.session_affinity_resource)
                     .with_history_generation_affinity_protected_until(
                         notif
                             .history_generation_affinity_protected_until
@@ -731,6 +733,7 @@ struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
     cli_agent_session_id: Option<&'a str>,
+    session_affinity_resource: Option<SessionAffinityResource>,
     history_generation_run_id: Option<RunId>,
     history_generation_affinity_protected_until: Option<&'a str>,
     affinity_protected_until: Option<&'a str>,
@@ -882,6 +885,22 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("affinityProtectedUntil")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
+    let session_affinity_resource = match msg.data.get("sessionAffinityResource") {
+        Some(value) if value.as_str() == Some("reusableSandbox") => {
+            Some(SessionAffinityResource::ReusableSandbox)
+        }
+        Some(value) if value.as_str() == Some("workspaceCache") => {
+            Some(SessionAffinityResource::WorkspaceCache)
+        }
+        Some(value) => {
+            warn!(
+                value = %value,
+                "ably: invalid session affinity resource, ignoring job notification"
+            );
+            return None;
+        }
+        None => None,
+    };
     let history_generation_affinity_protected_until = msg
         .data
         .get("historyGenerationAffinityProtectedUntil")
@@ -896,6 +915,7 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         run_id,
         profile,
         cli_agent_session_id,
+        session_affinity_resource,
         history_generation_run_id,
         history_generation_affinity_protected_until,
         affinity_protected_until,
@@ -1749,7 +1769,8 @@ mod tests {
                 "cliAgentSessionId": "sess-ably",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
                 "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
+                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
+                "sessionAffinityResource": "workspaceCache"
             }),
         );
 
@@ -1765,6 +1786,10 @@ mod tests {
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
         assert!(candidate.is_affinity_protected());
         assert!(candidate.is_history_generation_affinity_protected());
+        assert_eq!(
+            candidate.session_affinity_resource(),
+            Some(SessionAffinityResource::WorkspaceCache)
+        );
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
     }
@@ -2215,12 +2240,17 @@ mod tests {
                 "cliAgentSessionId": "sess-target",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
                 "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
+                "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
+                "sessionAffinityResource": "reusableSandbox"
             }),
         );
         let notif = parse_job_notification(&msg).unwrap();
         assert_eq!(notif.profile, Some("vm0/default"));
         assert_eq!(notif.cli_agent_session_id, Some("sess-target"));
+        assert_eq!(
+            notif.session_affinity_resource,
+            Some(SessionAffinityResource::ReusableSandbox)
+        );
         assert_eq!(
             notif.history_generation_run_id,
             Some("00000000-0000-0000-0000-000000000098".parse().unwrap())
@@ -2233,6 +2263,20 @@ mod tests {
             notif.affinity_protected_until,
             Some("2999-01-01T00:00:00.000Z")
         );
+    }
+
+    #[test]
+    fn parse_job_notification_rejects_unknown_session_affinity_resource() {
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default",
+                "sessionAffinityResource": "futureResource"
+            }),
+        );
+
+        assert!(parse_job_notification(&msg).is_none());
     }
 
     #[test]

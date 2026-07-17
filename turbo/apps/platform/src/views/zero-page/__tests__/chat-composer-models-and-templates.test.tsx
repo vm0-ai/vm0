@@ -1097,7 +1097,7 @@ describe("chat composer models", () => {
     expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
-  it("inserts a current-agent chat thread URL from @ suggestions", async () => {
+  it("inserts a current-agent chat thread mention chip from @ suggestions", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -1137,10 +1137,12 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}next");
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent(
-        `Review /chats/${SUGGESTED_THREAD_ID} next`,
-      );
+      expect(editor).toHaveTextContent("Review Project Alpha next");
     });
+    const chip = editor.querySelector(
+      `span[data-chat-thread-mention="${SUGGESTED_THREAD_ID}"]`,
+    );
+    expect(chip).toHaveTextContent("Project Alpha");
   });
 
   it("hides @ suggestions when no titled thread matches", async () => {

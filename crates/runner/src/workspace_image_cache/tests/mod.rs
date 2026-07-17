@@ -26,7 +26,7 @@ use crate::storage_fingerprints::StorageFingerprint;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{
     HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
-    MAX_WORKSPACE_CACHES_PER_SESSION, ResumeSessionHistoryRefKind,
+    MAX_WORKSPACE_CACHES_PER_SESSION, ResumeSessionHistoryRefKind, WORKSPACE_AFFINITY_VERSION,
     WorkspaceCacheState as HeldWorkspaceCacheState,
 };
 use sha2::{Digest, Sha256};
@@ -1076,6 +1076,7 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
             reusable_sandbox: None,
             workspace_caches: vec![HeldWorkspaceCacheState {
                 profile: TEST_PROFILE_NAME.to_owned(),
+                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
             }],
         })
         .collect();
@@ -1085,6 +1086,7 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
         reusable_sandbox: None,
         workspace_caches: vec![HeldWorkspaceCacheState {
             profile: TEST_PROFILE_NAME.to_owned(),
+            workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
         }],
     });
 
@@ -1115,6 +1117,7 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
             reusable_sandbox: None,
             workspace_caches: vec![HeldWorkspaceCacheState {
                 profile: format!("vm0/profile-{index:02}"),
+                workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
             }],
         })
         .collect();
@@ -1137,6 +1140,7 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
             workspace_caches: (0..8)
                 .map(|profile| HeldWorkspaceCacheState {
                     profile: format!("vm0/profile-{profile}"),
+                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
                 })
                 .collect(),
         })
@@ -1213,9 +1217,11 @@ async fn held_session_states_for_profiles_filters_and_aggregates_current_identit
             workspace_caches: vec![
                 HeldWorkspaceCacheState {
                     profile: "vm0/default".into(),
+                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
                 },
                 HeldWorkspaceCacheState {
                     profile: "vm0/large".into(),
+                    workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
                 },
             ],
         }]

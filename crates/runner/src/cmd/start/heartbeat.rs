@@ -399,9 +399,12 @@ fn merge_held_session_state(existing: &mut HeldSessionState, mut incoming: HeldS
     existing
         .workspace_caches
         .append(&mut incoming.workspace_caches);
-    existing
-        .workspace_caches
-        .sort_unstable_by(|a, b| a.profile.cmp(&b.profile));
+    existing.workspace_caches.sort_unstable_by(|a, b| {
+        a.profile.cmp(&b.profile).then_with(|| {
+            b.workspace_affinity_version
+                .cmp(&a.workspace_affinity_version)
+        })
+    });
     existing
         .workspace_caches
         .dedup_by(|a, b| a.profile == b.profile);
@@ -566,6 +569,7 @@ mod tests {
     fn workspace_cache(profile: &str) -> WorkspaceCacheState {
         WorkspaceCacheState {
             profile: profile.to_owned(),
+            workspace_affinity_version: Some(crate::types::WORKSPACE_AFFINITY_VERSION),
         }
     }
 
@@ -1150,6 +1154,38 @@ mod tests {
 
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn merge_held_session_states_preserves_workspace_affinity_capability() {
+        let legacy = HeldSessionState {
+            session_id: "sess-capability".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+            reusable_sandbox: None,
+            workspace_caches: vec![WorkspaceCacheState {
+                profile: "vm0/default".into(),
+                workspace_affinity_version: None,
+            }],
+        };
+        let capable = HeldSessionState {
+            session_id: "sess-capability".into(),
+            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+            reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/default")],
+        };
+
+        let merged = merge_held_session_states(
+            vec![legacy],
+            vec![capable],
+            &std::collections::HashSet::new(),
+        );
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].workspace_caches.len(), 1);
+        assert_eq!(
+            merged[0].workspace_caches[0].workspace_affinity_version,
+            Some(crate::types::WORKSPACE_AFFINITY_VERSION)
+        );
     }
 
     #[test]
