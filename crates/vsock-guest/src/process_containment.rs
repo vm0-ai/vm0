@@ -222,16 +222,15 @@ fn cleanup_cgroup(
 ) -> Result<CleanupReport, ProcessContainmentError> {
     let descendants_observed = match read_populated(group_path) {
         Ok(populated) => populated,
-        Err(error) if mode == ProcessContainmentCleanupMode::Forced => {
+        Err(error) => {
             log(
                 "WARN",
                 &format!(
-                    "exec process containment forced cleanup could not read populated state error={error}"
+                    "exec process containment cleanup could not read initial populated state mode={mode:?} error={error}"
                 ),
             );
             true
         }
-        Err(error) => return Err(error),
     };
     let mut cgroup_kill_used = false;
     let mut initial_members = 0;
@@ -252,10 +251,33 @@ fn cleanup_cgroup(
             }
         }
 
-        let _ = wait_until_empty(group_path, TERM_GRACE)?;
+        if let Err(error) = wait_until_empty(group_path, TERM_GRACE) {
+            log(
+                "WARN",
+                &format!(
+                    "exec process containment graceful wait could not read populated state error={error}"
+                ),
+            );
+        }
     }
 
-    if mode == ProcessContainmentCleanupMode::Forced || read_populated(group_path)? {
+    let remains_populated = if mode == ProcessContainmentCleanupMode::Forced {
+        true
+    } else {
+        match read_populated(group_path) {
+            Ok(populated) => populated,
+            Err(error) => {
+                log(
+                    "WARN",
+                    &format!(
+                        "exec process containment cleanup could not confirm empty state before cgroup.kill error={error}"
+                    ),
+                );
+                true
+            }
+        }
+    };
+    if remains_populated {
         fs::write(group_path.join(CGROUP_KILL_FILE), b"1")
             .map_err(|error| ProcessContainmentError::new("write cgroup.kill", error))?;
         cgroup_kill_used = true;
@@ -492,6 +514,19 @@ mod tests {
         fs::write(&kill_path, b"").unwrap();
 
         let error = cleanup_cgroup(group.path(), ProcessContainmentCleanupMode::Forced)
+            .expect_err("missing cgroup.events should leave cleanup unproven");
+
+        assert_eq!(error.stage, "read cgroup.events");
+        assert_eq!(fs::read(&kill_path).unwrap(), b"1");
+    }
+
+    #[test]
+    fn graceful_cleanup_attempts_cgroup_kill_when_events_are_unreadable() {
+        let group = tempfile::tempdir().unwrap();
+        let kill_path = group.path().join(CGROUP_KILL_FILE);
+        fs::write(&kill_path, b"").unwrap();
+
+        let error = cleanup_cgroup(group.path(), ProcessContainmentCleanupMode::Graceful)
             .expect_err("missing cgroup.events should leave cleanup unproven");
 
         assert_eq!(error.stage, "read cgroup.events");

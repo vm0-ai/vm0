@@ -468,10 +468,13 @@ impl ExecSetup {
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
         kill_and_reap_child(child);
-        let _ =
+        let containment_result =
             cleanup_process_containment(process_containment, ProcessContainmentCleanupMode::Forced);
         join_stdin_writer_after_kill(stdin_writer);
-        completion.wait_failed(diagnostic);
+        let containment_error = containment_result.as_ref().err().map(ToString::to_string);
+        let diagnostic =
+            append_containment_cleanup_failure(diagnostic, containment_error.as_deref());
+        completion.wait_failed(&diagnostic);
     }
 
     fn abort_exec_started_send_failed(self, completion: &ExecCompletion<'_>) {
@@ -528,11 +531,14 @@ impl ExecSetupWithStdout {
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
         kill_and_reap_child(child);
-        let _ =
+        let containment_result =
             cleanup_process_containment(process_containment, ProcessContainmentCleanupMode::Forced);
         join_stdin_writer_after_kill(stdin_writer);
         let _ = stdout_handle.join();
-        completion.wait_failed(diagnostic);
+        let containment_error = containment_result.as_ref().err().map(ToString::to_string);
+        let diagnostic =
+            append_containment_cleanup_failure(diagnostic, containment_error.as_deref());
+        completion.wait_failed(&diagnostic);
     }
 
     fn into_running(
@@ -697,16 +703,7 @@ fn resolve_exec_result(
     lifecycle: ExecOperationLifecycle,
     containment_error: Option<&str>,
 ) -> (ExecTermination, String) {
-    if lifecycle == ExecOperationLifecycle::OneShot
-        && let Some(error) = containment_error
-    {
-        return (
-            ExecTermination::WaitFailed,
-            format!("Failed to clean process containment: {error}"),
-        );
-    }
-
-    match outcome {
+    let (termination, diagnostic) = match outcome {
         WaitOutcome::Exited(status) => (
             ExecTermination::Exited {
                 exit_code: extract_exit_code(status),
@@ -719,6 +716,24 @@ fn resolve_exec_result(
             ExecTermination::WaitFailed,
             format!("Failed to wait: {msg}"),
         ),
+    };
+    if lifecycle == ExecOperationLifecycle::OneShot && containment_error.is_some() {
+        return (
+            ExecTermination::WaitFailed,
+            append_containment_cleanup_failure(&diagnostic, containment_error),
+        );
+    }
+    (termination, diagnostic)
+}
+
+fn append_containment_cleanup_failure(diagnostic: &str, containment_error: Option<&str>) -> String {
+    let Some(error) = containment_error else {
+        return diagnostic.to_string();
+    };
+    if diagnostic.is_empty() {
+        format!("Failed to clean process containment: {error}")
+    } else {
+        format!("{diagnostic}; failed to clean process containment: {error}")
     }
 }
 
@@ -1697,6 +1712,20 @@ mod tests {
 
         assert_eq!(termination, ExecTermination::WaitFailed);
         assert!(diagnostic.contains("Failed to clean process containment"));
+        assert!(diagnostic.contains("wait for cgroup.kill"));
+    }
+
+    #[test]
+    fn one_shot_containment_failure_preserves_wait_diagnostic() {
+        let (termination, diagnostic) = resolve_exec_result(
+            WaitOutcome::WaitFailed("wait observer failed".to_string()),
+            ExecOperationLifecycle::OneShot,
+            Some("wait for cgroup.kill: timed out"),
+        );
+
+        assert_eq!(termination, ExecTermination::WaitFailed);
+        assert!(diagnostic.contains("Failed to wait: wait observer failed"));
+        assert!(diagnostic.contains("failed to clean process containment"));
         assert!(diagnostic.contains("wait for cgroup.kill"));
     }
 

@@ -421,19 +421,59 @@ OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo hello-from-
 echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', got: $OUTPUT"
 echo "PASS: basic exec"
 
-# Test 3: exit code propagation
+# Test 3: one-shot exec owns detached descendants, including through the
+# production non-sudo `su` boundary.
+echo "--- Test: one-shot process containment ---"
+ONE_SHOT_COMMAND=$(cat <<'SCRIPT'
+set -eu
+identity=/tmp/vm0-one-shot-containment.identity
+rm -f "$identity"
+setsid python3 -c 'import os, pathlib, signal, time; p=pathlib.Path("/tmp/vm0-one-shot-containment.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); signal.signal(signal.SIGTERM, signal.SIG_IGN); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >/dev/null 2>&1 &
+for _ in $(seq 1 100); do
+  [ -s "$identity" ] && break
+  sleep 0.01
+done
+test -s "$identity"
+SCRIPT
+)
+sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "$ONE_SHOT_COMMAND" \
+  || fail "one-shot descendant setup failed"
+VERIFY_ONE_SHOT_COMMAND=$(cat <<'SCRIPT'
+set -eu
+identity=/tmp/vm0-one-shot-containment.identity
+read -r pid start_time < "$identity"
+if [ -r "/proc/$pid/stat" ]; then
+  current_start=$(awk '{print $22}' "/proc/$pid/stat")
+  [ "$current_start" != "$start_time" ] || {
+    echo "one-shot descendant is still alive: pid=$pid" >&2
+    exit 1
+  }
+fi
+base=/sys/fs/cgroup/vm0-exec
+relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
+own_group=${relative##*/}
+test -n "$own_group"
+test -d "$base/$own_group"
+test -z "$(find "$base" -mindepth 1 -maxdepth 1 -type d ! -name "$own_group" -print -quit)"
+SCRIPT
+)
+sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "$VERIFY_ONE_SHOT_COMMAND" \
+  || fail "one-shot descendant or cgroup leaf survived cleanup"
+echo "PASS: one-shot process containment"
+
+# Test 4: exit code propagation
 echo "--- Test: exit code propagation ---"
 sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- false && fail "expected non-zero exit"
 echo "PASS: exit code propagation"
 
-# Test 4: prefix matching
+# Test 5: prefix matching
 echo "--- Test: prefix matching ---"
 PREFIX=$(echo "$SANDBOX_ID" | cut -c1-8)
 OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$PREFIX" -- hostname)
 [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
 echo "PASS: prefix matching"
 
-# Test 5: argv boundary preservation — regression guard for #9019.
+# Test 6: argv boundary preservation — regression guard for #9019.
 # NOTE: each assertion relies on the surrounding bash (this
 # heredoc, running on the metal runner) to tokenise quoted
 # arguments and pass them to runner as separate argv entries.
@@ -477,7 +517,7 @@ OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- echo "roo
 [ "$OUTPUT" = "root with space" ] || fail "--sudo quoting: got '$OUTPUT'"
 echo "PASS: argv boundary preservation"
 
-# Test 6: verify pre-installed language runtimes and databases
+# Test 7: verify pre-installed language runtimes and databases
 echo "--- Test: runtime availability ---"
 for cmd in \
   "node --version" \
@@ -540,7 +580,7 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c '
 echo "  PostgreSQL start/stop: ok"
 echo "PASS: runtime availability"
 
-# Test 7: verify /etc/environment is loaded for both user and root
+# Test 8: verify /etc/environment is loaded for both user and root
 # [sync:etc-environment] Keep in sync with: crates/runner/scripts/customize-rootfs.sh
 echo "--- Test: environment variables ---"
 EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -571,7 +611,7 @@ check_env "user" ""
 check_env "root" "--sudo"
 echo "PASS: environment variables"
 
-# Test 8: verify HTTPS works through proxy for each runtime
+# Test 9: verify HTTPS works through proxy for each runtime
 # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
 echo "--- Test: HTTPS through proxy ---"
 TLS_URL="https://www.vm0.ai"
@@ -609,7 +649,7 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "cd /tmp && printf 
 echo "  HTTPS go: ok"
 echo "PASS: HTTPS through proxy"
 
-# Test 9: verify DNS resolution works inside sandbox
+# Test 10: verify DNS resolution works inside sandbox
 # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
 echo "--- Test: DNS resolution ---"
 OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts localhost 2>&1) \
