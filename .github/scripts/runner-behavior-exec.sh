@@ -422,12 +422,21 @@ echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', 
 echo "PASS: basic exec"
 
 # Test 3: one-shot exec owns detached descendants, including through the
-# production non-sudo `su` boundary.
+# production non-sudo `su` boundary. The long-running job above can own another
+# valid leaf concurrently, so record and verify this exec's exact leaf.
 echo "--- Test: one-shot process containment ---"
 ONE_SHOT_COMMAND=$(cat <<'SCRIPT'
 set -eu
 identity=/tmp/vm0-one-shot-containment.identity
-rm -f "$identity"
+group_file=/tmp/vm0-one-shot-containment.group
+rm -f "$identity" "$group_file"
+relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
+own_group=${relative##*/}
+case "$own_group" in
+  exec-*) ;;
+  *) echo "unexpected one-shot cgroup: $relative" >&2; exit 1 ;;
+esac
+printf '%s\n' "$own_group" > "$group_file"
 setsid python3 -c 'import os, pathlib, signal, time; p=pathlib.Path("/tmp/vm0-one-shot-containment.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); signal.signal(signal.SIGTERM, signal.SIG_IGN); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >/dev/null 2>&1 &
 for _ in $(seq 1 100); do
   [ -s "$identity" ] && break
@@ -441,6 +450,7 @@ sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "$ONE_SHOT_COMMAND"
 VERIFY_ONE_SHOT_COMMAND=$(cat <<'SCRIPT'
 set -eu
 identity=/tmp/vm0-one-shot-containment.identity
+group_file=/tmp/vm0-one-shot-containment.group
 read -r pid start_time < "$identity"
 if [ -r "/proc/$pid/stat" ]; then
   current_start=$(awk '{print $22}' "/proc/$pid/stat")
@@ -454,7 +464,19 @@ relative=$(awk -F: '$1 == "0" { print $3 }' /proc/self/cgroup)
 own_group=${relative##*/}
 test -n "$own_group"
 test -d "$base/$own_group"
-test -z "$(find "$base" -mindepth 1 -maxdepth 1 -type d ! -name "$own_group" -print -quit)"
+old_group=$(cat "$group_file")
+case "$old_group" in
+  exec-*) ;;
+  *) echo "unexpected recorded one-shot cgroup: $old_group" >&2; exit 1 ;;
+esac
+[ "$old_group" != "$own_group" ] || {
+  echo "one-shot cgroup was reused: $old_group" >&2
+  exit 1
+}
+[ ! -e "$base/$old_group" ] || {
+  echo "one-shot cgroup leaf survived cleanup: $old_group" >&2
+  exit 1
+}
 SCRIPT
 )
 sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "$VERIFY_ONE_SHOT_COMMAND" \
