@@ -24,7 +24,10 @@ import type {
 
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { publishNetworkPolicyRefreshToRunnerGroup } from "../external/realtime";
+import {
+  publishConnectorPermissionUpdatedSafely,
+  publishNetworkPolicyRefreshToRunnerGroup,
+} from "../external/realtime";
 import { nowDate } from "../external/time";
 import {
   defaultFirewallPolicyForPermissionIndex,
@@ -709,6 +712,8 @@ export const applyUserPermissionGrants$ = command(
     if ("status" in rows) {
       return rows;
     }
+    await publishConnectorPermissionUpdatedSafely(args.userId);
+    signal.throwIfAborted();
     const responseScope = applyPermissionGrantResponseScope(args);
 
     return {

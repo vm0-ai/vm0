@@ -21,6 +21,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
+import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -958,6 +959,76 @@ describe("chat message action cards", () => {
       within(permissionCard).queryByLabelText("Permission duration"),
     ).not.toBeInTheDocument();
     expect(applyRequests).toBe(0);
+  });
+
+  it("reloads permission cards when a connectorPermissionUpdated event arrives", async () => {
+    mockNow();
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    let grantAllowed = false;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(
+        200,
+        grantAllowed
+          ? [
+              {
+                agentId: AGENT_ID,
+                connectorRef: "youtube",
+                permission: "videos.write",
+                action: "allow" as const,
+                expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
+                createdAt: "2026-06-09T11:00:00Z",
+                updatedAt: "2026-06-09T11:01:00Z",
+              },
+            ]
+          : [],
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-permission-updated-event`,
+      threadTitle: "Permission updated event",
+      chatMessages: [
+        {
+          id: "msg-user-permission-updated-event",
+          role: "user",
+          content: "Upload the video",
+          runId: "run-permission-updated-event",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-updated-event-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-permission-updated-event",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-permission-updated-event`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitForButtonByText("Confirm", permissionCard);
+    expect(
+      within(permissionCard).queryByText("Already allowed"),
+    ).not.toBeInTheDocument();
+
+    // The authenticated bootstrap owns one user-level subscription shared by
+    // every permission-grant reader, including all open chat threads.
+    await waitFor(() => {
+      expect(hasSubscription("connectorPermissionUpdated")).toBeTruthy();
+    });
+    grantAllowed = true;
+    triggerAblyEvent("connectorPermissionUpdated");
+
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Already allowed"),
+      ).toBeInTheDocument();
+    });
+    expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
   });
 
   it("renders custom connector proposal links as configure cards", async () => {
