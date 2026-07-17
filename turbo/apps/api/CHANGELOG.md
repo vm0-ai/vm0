@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.282.3](https://github.com/vm0-ai/vm0/compare/api-v1.282.2...api-v1.282.3) (2026-07-17)
+
+
+### Refactoring
+
+* **platform:** cache chat blocks and share permission card signals ([#21919](https://github.com/vm0-ai/vm0/issues/21919)) ([f04823d](https://github.com/vm0-ai/vm0/commit/f04823da274101b5a921bce0c3eb6246e8f89f75))
+
 ## [1.282.2](https://github.com/vm0-ai/vm0/compare/api-v1.282.1...api-v1.282.2) (2026-07-17)
 
 
