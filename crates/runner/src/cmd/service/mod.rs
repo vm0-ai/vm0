@@ -460,8 +460,8 @@ async fn signal_resume_after_restart_policy_restored(
     ops: &mut impl ServiceResumeOps,
 ) -> RunnerResult<()> {
     match ops.signal_resume(unit).await {
-        Ok(ServiceSignalOutcome::Sent { pid }) => {
-            info!(unit = %unit.unit_name(), pid, "sent SIGUSR2 (resume)");
+        Ok(ServiceSignalOutcome::Sent) => {
+            info!(unit = %unit.unit_name(), "sent SIGUSR2 (resume)");
             Ok(())
         }
         Ok(ServiceSignalOutcome::AlreadyGone) => {
@@ -550,8 +550,7 @@ async fn drain_with_ops(
     }
 
     if should_signal {
-        // `is_unit_active` above can race against the runner exiting on its own:
-        // by the time we read MainPID or call `kill`, the process may be gone.
+        // `is_unit_active` above can race against the runner exiting on its own.
         // Both outcomes ("live, signal delivered" and "already gone") must still
         // run `systemctl disable` below so the unit does not auto-start at the
         // next boot.
@@ -560,8 +559,8 @@ async fn drain_with_ops(
                 rollback_drain_restart_override(unit, ops, "signal_drain").await;
                 return Err(e);
             }
-            Ok(ServiceSignalOutcome::Sent { pid }) => {
-                info!(unit = %unit.unit_name(), pid, "sent SIGUSR1 (drain)");
+            Ok(ServiceSignalOutcome::Sent) => {
+                info!(unit = %unit.unit_name(), "sent SIGUSR1 (drain)");
             }
             Ok(ServiceSignalOutcome::AlreadyGone) => {
                 info!(unit = %unit.unit_name(), "runner already exited; drain signal not needed");
@@ -1335,7 +1334,7 @@ profiles:
                 restart_policy_error: false,
                 restart_policy: "no".to_string(),
                 signal_error: false,
-                signal_outcome: ServiceSignalOutcome::Sent { pid: 123 },
+                signal_outcome: ServiceSignalOutcome::Sent,
                 disable_error: false,
             }
         }
@@ -1350,7 +1349,7 @@ profiles:
                 removed_restart_override: true,
                 reload_errors: VecDeque::new(),
                 signal_error: false,
-                signal_outcome: ServiceSignalOutcome::Sent { pid: 123 },
+                signal_outcome: ServiceSignalOutcome::Sent,
             }
         }
     }
