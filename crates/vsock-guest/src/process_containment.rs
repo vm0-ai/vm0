@@ -180,18 +180,25 @@ impl CgroupGuard {
         let result = cleanup_cgroup(&group_path, mode);
         match result {
             Ok(report) => {
-                log(
-                    "INFO",
-                    &format!(
-                        "exec process containment cleaned group={group_name} mode={mode:?} descendants_observed={} cgroup_kill_used={} initial_members={} graceful_errors={} create_us={} cleanup_ms={}",
-                        report.descendants_observed,
-                        report.cgroup_kill_used,
-                        report.initial_members,
-                        report.graceful_errors,
-                        create_elapsed.as_micros(),
-                        started.elapsed().as_millis()
-                    ),
-                );
+                // Healthy exec cleanup is a hot path. Emit diagnostics
+                // only when containment had work beyond removing an empty leaf.
+                if report.descendants_observed
+                    || report.cgroup_kill_used
+                    || report.graceful_errors > 0
+                {
+                    log(
+                        "INFO",
+                        &format!(
+                            "exec process containment cleaned group={group_name} mode={mode:?} descendants_observed={} cgroup_kill_used={} initial_members={} graceful_errors={} create_us={} cleanup_ms={}",
+                            report.descendants_observed,
+                            report.cgroup_kill_used,
+                            report.initial_members,
+                            report.graceful_errors,
+                            create_elapsed.as_micros(),
+                            started.elapsed().as_millis()
+                        ),
+                    );
+                }
                 Ok(())
             }
             Err(error) => {
