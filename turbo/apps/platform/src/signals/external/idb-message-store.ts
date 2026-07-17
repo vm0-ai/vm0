@@ -14,7 +14,6 @@ import {
   logChatIdbDisabled,
   withChatIdbTimeout,
 } from "./chat-idb-safe.ts";
-import { openChatIdb } from "./chat-idb-store.ts";
 
 const L = logger("ChatMessageIndexedDb");
 
@@ -127,11 +126,10 @@ function createMessageWriteStore(
   };
 }
 
-function createIdbMessageStores(userId: string, orgId: string) {
-  const dbName = `vm0-chat-${userId}-${orgId}`;
+function createIdbMessageStores(getChatIdb: GetDb) {
+  const dbName = "current chat IndexedDB";
   const storeName = CHAT_MESSAGES_STORE;
 
-  let dbPromise: Promise<IDBPDatabase> | null = null;
   let disabled = false;
 
   function disableForSession(reason: unknown): void {
@@ -147,23 +145,13 @@ function createIdbMessageStores(userId: string, orgId: string) {
       throw disabledChatIdbError(dbName);
     }
 
-    if (!dbPromise) {
-      L.debug("openDB", { dbName, storeName });
-      const openPromise = openChatIdb(userId, orgId);
-      dbPromise = openPromise;
-    }
-
-    const pending = dbPromise;
     // IDB open is a cache fast path; timeout/rejection disables it for this tab.
     // eslint-disable-next-line no-restricted-syntax
     try {
       return await withChatIdbTimeout("messages:openDB", () => {
-        return pending;
+        return getChatIdb();
       });
     } catch (error) {
-      if (dbPromise === pending) {
-        dbPromise = null;
-      }
       disableForSession(error);
       throw error;
     }

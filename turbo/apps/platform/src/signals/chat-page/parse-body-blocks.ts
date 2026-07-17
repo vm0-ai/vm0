@@ -986,20 +986,9 @@ function needsTextPreview(kind: BodyPreviewKind): boolean {
 }
 
 function getTextPreview$(url: string): Computed<Promise<string>> {
-  const self = getTextPreview$ as typeof getTextPreview$ & {
-    _cache?: Map<string, Computed<Promise<string>>>;
-  };
-  if (!self._cache) {
-    self._cache = new Map();
-  }
-  let c = self._cache.get(url);
-  if (!c) {
-    c = computed(() => {
-      return fetchPreviewText(url);
-    });
-    self._cache.set(url, c);
-  }
-  return c;
+  return computed(() => {
+    return fetchPreviewText(url);
+  });
 }
 
 export function enrichBlocksWithTextPreviews(
