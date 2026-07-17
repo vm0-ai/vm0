@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.606.0](https://github.com/vm0-ai/vm0/compare/app-v0.605.2...app-v0.606.0) (2026-07-17)
+
+
+### Features
+
+* enable website templates rollout ([#21203](https://github.com/vm0-ai/vm0/issues/21203)) ([5a16112](https://github.com/vm0-ai/vm0/commit/5a161121a2fdfaffcd38c87755fdeb05d849c665))
+
+
+### Refactoring
+
+* **chat:** scope card signals to threads ([#21970](https://github.com/vm0-ai/vm0/issues/21970)) ([99f8f99](https://github.com/vm0-ai/vm0/commit/99f8f991bc57db3ce10356333f09e0699d9637a9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.3
+    * @vm0/core bumped to 8.440.0
+
 ## [0.605.2](https://github.com/vm0-ai/vm0/compare/app-v0.605.1...app-v0.605.2) (2026-07-17)
 
 

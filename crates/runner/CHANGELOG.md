@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.146.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.5...runner-rs-v0.146.6) (2026-07-17)
+
+
+### Performance Improvements
+
+* **runner:** attribute generation-specific workspace sidecars ([#21972](https://github.com/vm0-ai/vm0/issues/21972)) ([315f271](https://github.com/vm0-ai/vm0/commit/315f27174d6a759204e378a793acf03ed89bddd8))
+* **runner:** release status lock before persistence ([#21976](https://github.com/vm0-ai/vm0/issues/21976)) ([38da2d0](https://github.com/vm0-ai/vm0/commit/38da2d0ce4e7fc0623dfd30a9beeb145781aa6f8))
+
 ## [0.146.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.4...runner-rs-v0.146.5) (2026-07-17)
 
 
