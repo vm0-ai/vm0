@@ -152,6 +152,7 @@ export interface ApiTestMocks {
   readonly stripe: {
     readonly paymentMethods: {
       readonly list: AsyncMock;
+      readonly retrieve: AsyncMock;
     };
     readonly invoices: {
       readonly list: AsyncMock;
@@ -166,9 +167,6 @@ export interface ApiTestMocks {
       readonly retrieve: AsyncMock;
       readonly create: AsyncMock;
       readonly update: AsyncMock;
-    };
-    readonly paymentMethods: {
-      readonly retrieve: AsyncMock;
     };
     readonly subscriptions: {
       readonly list: AsyncMock;
@@ -311,6 +309,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   const stripe = {
     paymentMethods: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     invoices: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -325,9 +324,6 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-    },
-    paymentMethods: {
-      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     subscriptions: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -719,6 +715,7 @@ vi.mock("stripe", async (importOriginal) => {
       return {
         paymentMethods: {
           list: apiTestMocks.stripe.paymentMethods.list,
+          retrieve: apiTestMocks.stripe.paymentMethods.retrieve,
         },
         invoices: {
           list: apiTestMocks.stripe.invoices.list,
@@ -733,9 +730,6 @@ vi.mock("stripe", async (importOriginal) => {
           retrieve: apiTestMocks.stripe.customers.retrieve,
           create: apiTestMocks.stripe.customers.create,
           update: apiTestMocks.stripe.customers.update,
-        },
-        paymentMethods: {
-          retrieve: apiTestMocks.stripe.paymentMethods.retrieve,
         },
         subscriptions: {
           list: apiTestMocks.stripe.subscriptions.list,
