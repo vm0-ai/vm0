@@ -9,6 +9,7 @@ requires-python = ">=3.10"
 
 [project.optional-dependencies]
 dev = [
+    "Brotli>=1.2.0",
     "basedpyright>=1.39",
     "mitmproxy>=10.0",
     "pytest>=7.0",
@@ -17,6 +18,7 @@ dev = [
     "wsproto>=1.2",
 ]
 test = [
+    "Brotli>=1.2.0",
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
     "mitmproxy>=10.0",

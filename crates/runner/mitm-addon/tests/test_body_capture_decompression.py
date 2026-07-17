@@ -155,7 +155,8 @@ class TestDecompression:
         assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
         assert stats["max_input"] < len(compressed)
         assert stats["max_input"] <= 16
-        assert stats["max_output"] < len(original)
+        assert stats["max_output_buffer_limit"] == BODY_CAPTURE_LIMIT + 2
+        assert stats["max_output"] < BODY_CAPTURE_LIMIT * 4
 
     def test_zstd_decompressed(self, real_flow):
         original = b'{"result": "hello world"}'
