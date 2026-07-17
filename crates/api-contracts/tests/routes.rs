@@ -1,4 +1,4 @@
-use api_contracts::{Method, RouteTemplate, generated::routes};
+use api_contracts::{Method, ResolvedRoute, RouteTemplate, generated::routes};
 
 #[test]
 fn exposes_generated_webhook_route_constants() {
@@ -101,12 +101,25 @@ fn generated_routes_build_resolved_routes_with_params() {
         resolved.url("https://api.vm0.dev/"),
         "https://api.vm0.dev/api/runners/jobs/550e8400-e29b-41d4-a716-446655440000/claim"
     );
+    assert_eq!(
+        resolved.url(""),
+        "/api/runners/jobs/550e8400-e29b-41d4-a716-446655440000/claim",
+        "empty base URL must preserve the path-only behavior"
+    );
 }
 
 #[test]
 #[should_panic(expected = "api route path must start with '/'")]
-fn generated_route_urls_reject_paths_without_leading_slash() {
+fn route_urls_reject_paths_without_leading_slash() {
     let route = api_contracts::Route::new(Method::Post, "api/runners/poll");
+
+    let _ = route.url("https://api.vm0.dev");
+}
+
+#[test]
+#[should_panic(expected = "api route path must start with '/'")]
+fn resolved_route_urls_reject_paths_without_leading_slash() {
+    let route = ResolvedRoute::new(Method::Post, "api/runners/poll".to_owned());
 
     let _ = route.url("https://api.vm0.dev");
 }
