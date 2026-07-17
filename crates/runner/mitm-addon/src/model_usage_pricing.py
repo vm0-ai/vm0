@@ -1,4 +1,4 @@
-"""Verification for signed model token price schedules."""
+"""Signed response-header verification for model token price schedules."""
 
 import base64
 import binascii
@@ -11,7 +11,7 @@ from mitmproxy import http
 
 import flow_metadata
 import flow_metadata_keys as metadata_keys
-from usage.model_tokens import MODEL_USAGE_CATEGORIES
+from usage.model_pricing import ModelUsagePricing, parse_model_usage_pricing
 
 PRICING_HEADER = "x-vm0-usage-pricing"
 PRICING_SIGNATURE_HEADER = "x-vm0-usage-pricing-signature"
@@ -68,8 +68,8 @@ def apply_signed_usage_pricing(flow: http.HTTPFlow) -> bool:
     if pricing is None:
         return False
     flow.metadata[metadata_keys.MODEL_USAGE_PRICING] = {
-        "unitSize": pricing[0],
-        "unitPrices": pricing[1],
+        "unitSize": pricing.unit_size,
+        "unitPrices": pricing.unit_prices,
     }
     return True
 
@@ -98,7 +98,7 @@ def _decode_base64url(value: str) -> bytes | None:
         return None
 
 
-def _decode_pricing(value: str) -> tuple[int, dict[str, int]] | None:
+def _decode_pricing(value: str) -> ModelUsagePricing | None:
     decoded = _decode_base64url(value)
     if decoded is None:
         return None
@@ -120,16 +120,5 @@ def _decode_pricing(value: str) -> tuple[int, dict[str, int]] | None:
         return None
     if abs(int(time.time()) - issued_at) > _MAX_CLOCK_SKEW_SECONDS:
         return None
-    unit_size = pricing["unitSize"]
-    if not isinstance(unit_size, int) or isinstance(unit_size, bool) or unit_size <= 0:
-        return None
-    raw_unit_prices = pricing["unitPrices"]
-    if not isinstance(raw_unit_prices, dict) or set(raw_unit_prices) != set(MODEL_USAGE_CATEGORIES):
-        return None
-    unit_prices: dict[str, int] = {}
-    for category in MODEL_USAGE_CATEGORIES:
-        unit_price = raw_unit_prices[category]
-        if not isinstance(unit_price, int) or isinstance(unit_price, bool) or unit_price < 0:
-            return None
-        unit_prices[category] = unit_price
-    return unit_size, unit_prices
+
+    return parse_model_usage_pricing(pricing["unitSize"], pricing["unitPrices"])

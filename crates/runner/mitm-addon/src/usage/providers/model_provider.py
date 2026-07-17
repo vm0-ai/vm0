@@ -36,6 +36,7 @@ from ..idempotency import (
     USAGE_OBSERVATION_NAMESPACE_MODEL,
     derive_usage_idempotency_key,
 )
+from ..model_pricing import ModelUsagePricing, from_flow_metadata
 from ..model_tokens import (
     MODEL_USAGE_CATEGORIES,
     MODEL_USAGE_CATEGORY_CACHE_CREATION,
@@ -46,7 +47,6 @@ from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
-ModelUsagePricing = tuple[int, dict[str, int]]
 _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
     (
         MODEL_USAGE_CATEGORY_INPUT,
@@ -433,10 +433,8 @@ def _build_usage_events(
             "quantity": quantity,
         }
         if billing_pricing is not None:
-            unit_price = billing_pricing[1].get(category)
-            if unit_price is not None:
-                event["billingUnitPrice"] = unit_price
-                event["billingUnitSize"] = billing_pricing[0]
+            event["billingUnitPrice"] = billing_pricing.unit_prices[category]
+            event["billingUnitSize"] = billing_pricing.unit_size
         events.append(event)
     return events
 
@@ -444,7 +442,7 @@ def _build_usage_events(
 def _model_usage_pricing(
     flow: http.HTTPFlow,
 ) -> ModelUsagePricing | None:
-    return flow_metadata.model_usage_pricing(flow.metadata)
+    return from_flow_metadata(flow.metadata)
 
 
 def _reported_model(flow: http.HTTPFlow, usage: dict) -> str:

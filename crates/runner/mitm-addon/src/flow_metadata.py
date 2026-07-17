@@ -97,28 +97,6 @@ def model_usage_provider(meta: Mapping[str, object]) -> str:
     return _metadata_str(meta, metadata_keys.MODEL_USAGE_PROVIDER)
 
 
-def model_usage_pricing(
-    meta: Mapping[str, object],
-) -> tuple[int, dict[str, int]] | None:
-    value = meta.get(metadata_keys.MODEL_USAGE_PRICING)
-    if not isinstance(value, dict):
-        return None
-    unit_size = value.get("unitSize")
-    raw_unit_prices = value.get("unitPrices")
-    if not isinstance(unit_size, int) or isinstance(unit_size, bool) or unit_size <= 0:
-        return None
-    if not isinstance(raw_unit_prices, dict):
-        return None
-    unit_prices: dict[str, int] = {}
-    for category, unit_price in raw_unit_prices.items():
-        if not isinstance(category, str):
-            return None
-        if not isinstance(unit_price, int) or isinstance(unit_price, bool) or unit_price < 0:
-            return None
-        unit_prices[category] = unit_price
-    return unit_size, unit_prices
-
-
 def start_request_timing(meta: MutableMapping[str, object]) -> None:
     if metadata_keys.HTTP_REQUEST_START_MONOTONIC not in meta:
         meta[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
