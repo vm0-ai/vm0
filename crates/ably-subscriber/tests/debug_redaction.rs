@@ -68,13 +68,14 @@ fn auth_debug_redacts_access_token_directly_and_when_nested() {
 }
 
 #[test]
-fn protocol_error_debug_redacts_access_token_directly_and_when_nested() {
+fn protocol_error_debug_redacts_auth_query_params_directly_and_when_nested() {
     let access_token = "protocol-error-access-token-secret";
+    let connection_key = "protocol-error-connection-key-secret";
     let error = ErrorInfo {
         code: 80_003,
         status_code: Some(401),
         message: format!(
-            "failed wss://realtime.ably.io/?access_token={access_token}&format=msgpack"
+            "failed wss://realtime.ably.io/?access_token={access_token}&resume={connection_key}&format=msgpack"
         ),
     };
 
@@ -82,7 +83,9 @@ fn protocol_error_debug_redacts_access_token_directly_and_when_nested() {
     assert!(error_debug.contains("ErrorInfo"));
     assert!(error_debug.contains("code: 80003"));
     assert!(error_debug.contains("access_token=<redacted>"));
+    assert!(error_debug.contains("resume=<redacted>"));
     assert!(!error_debug.contains(access_token));
+    assert!(!error_debug.contains(connection_key));
 
     let message = ProtocolMessage {
         action: action::ERROR,
@@ -93,7 +96,9 @@ fn protocol_error_debug_redacts_access_token_directly_and_when_nested() {
     let message_debug = format!("{message:?}");
     assert!(message_debug.contains("error: Some(ErrorInfo"));
     assert!(message_debug.contains("access_token=<redacted>"));
+    assert!(message_debug.contains("resume=<redacted>"));
     assert!(!message_debug.contains(access_token));
+    assert!(!message_debug.contains(connection_key));
 }
 
 #[test]

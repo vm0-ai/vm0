@@ -7,7 +7,7 @@ use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
 use crate::Error;
-use crate::types::{REDACTED_DEBUG_VALUE, redact_access_token};
+use crate::types::{REDACTED_DEBUG_VALUE, redact_auth_query_params};
 
 // ---------------------------------------------------------------------------
 // Protocol action constants
@@ -146,7 +146,7 @@ impl fmt::Debug for ErrorInfo {
         f.debug_struct("ErrorInfo")
             .field("code", &self.code)
             .field("status_code", &self.status_code)
-            .field("message", &redact_access_token(&self.message))
+            .field("message", &redact_auth_query_params(&self.message))
             .finish()
     }
 }
