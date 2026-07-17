@@ -5127,6 +5127,19 @@ function selectedComposerTemplateAttachment(
     : undefined;
 }
 
+function composerTemplateAttachmentLifecycleKey(
+  attachment: ComposerTemplateAttachment | undefined,
+): string {
+  return attachment
+    ? JSON.stringify([
+        attachment.type,
+        attachment.title,
+        attachment.category,
+        attachment.previewImageUrl,
+      ])
+    : "none";
+}
+
 function ComposerTemplateAttachmentSync({
   composer,
   picker,
@@ -5138,10 +5151,7 @@ function ComposerTemplateAttachmentSync({
   onDraftChange: (() => void) | undefined;
   runtime: TemplatePreviewRuntime;
 }) {
-  const setTemplateAttachment = useSet(composer.setTemplateAttachment$);
-  const setTemplateAttachmentHandlers = useSet(
-    composer.setTemplateAttachmentHandlers$,
-  );
+  const setLifecycleRef = useSet(composer.setTemplateAttachmentLifecycleRef$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
@@ -5171,21 +5181,25 @@ function ComposerTemplateAttachmentSync({
     setCategory(category);
     setOpen(true);
   };
+
   return (
-    <span
+    <button
+      key={composerTemplateAttachmentLifecycleKey(attachment)}
+      ref={setLifecycleRef}
+      type="button"
       hidden
-      ref={(element) => {
-        if (!element) {
-          return;
+      data-template-type={attachment?.type}
+      data-template-title={attachment?.title}
+      data-template-category={attachment?.category}
+      data-template-preview-url={attachment?.previewImageUrl}
+      onClick={(event) => {
+        const action = event.currentTarget.dataset.templateAction;
+        if (action === "open") {
+          openPicker(event.currentTarget.dataset.templateCategory ?? "slides");
+        } else if (action === "remove") {
+          picker?.onChange(undefined);
+          onDraftChange?.();
         }
-        setTemplateAttachmentHandlers({
-          onOpen: openPicker,
-          onRemove: () => {
-            picker?.onChange(undefined);
-            onDraftChange?.();
-          },
-        });
-        setTemplateAttachment(attachment);
       }}
     />
   );

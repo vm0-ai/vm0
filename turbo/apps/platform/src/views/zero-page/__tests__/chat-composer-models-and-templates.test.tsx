@@ -3677,6 +3677,55 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("keeps a selected template attached when replacing all prompt text", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    let submittedPrompt: string | undefined;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedPrompt = body.prompt;
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await selectTemplate(user, template);
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Initial prompt");
+    await fill(editor, "Replacement prompt");
+
+    await waitFor(() => {
+      expect(
+        editor.querySelectorAll("[data-composer-template-attachment]"),
+      ).toHaveLength(1);
+      expect(editor).toHaveTextContent("Replacement prompt");
+      expect(editor).not.toHaveTextContent("Initial prompt");
+    });
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedPrompt).toBe("Replacement prompt");
+      expect(submittedTemplate).toMatchObject({
+        type: "presentation",
+        selection: { templateId: template.templateId },
+      });
+      expect(
+        editor.querySelectorAll("[data-composer-template-attachment]"),
+      ).toHaveLength(0);
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps the draft visible while send waits for draft attachments", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;

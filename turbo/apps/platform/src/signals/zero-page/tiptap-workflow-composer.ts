@@ -106,13 +106,9 @@ export interface WorkflowComposerSignals {
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
-  readonly setTemplateAttachment$: Command<
-    void,
-    [ComposerTemplateAttachment | undefined]
-  >;
-  readonly setTemplateAttachmentHandlers$: Command<
-    void,
-    [ComposerTemplateAttachmentHandlers]
+  readonly setTemplateAttachmentLifecycleRef$: Command<
+    (() => void) | undefined,
+    [HTMLButtonElement | null]
   >;
   readonly setEventHandlers$: Command<void, [WorkflowComposerEventHandlers]>;
   readonly feedback: FeedbackSignals;
@@ -130,11 +126,6 @@ export interface ComposerTemplateAttachment {
   readonly title: string;
   readonly category: string;
   readonly previewImageUrl?: string;
-}
-
-export interface ComposerTemplateAttachmentHandlers {
-  readonly onOpen: (category: string) => void;
-  readonly onRemove: () => void;
 }
 
 export interface WorkflowComposerEventHandlers {
@@ -688,6 +679,38 @@ function templateAttachmentsEqual(
     first.category === second.category &&
     first.previewImageUrl === second.previewImageUrl
   );
+}
+
+function isComposerTemplateAttachmentType(
+  value: string | undefined,
+): value is ComposerTemplateAttachmentType {
+  return (
+    value === "presentation" ||
+    value === "illustration" ||
+    value === "video" ||
+    value === "workflow" ||
+    value === "website"
+  );
+}
+
+function templateAttachmentFromLifecycleElement(
+  element: HTMLButtonElement,
+): ComposerTemplateAttachment | undefined {
+  const { templateType, templateTitle, templateCategory, templatePreviewUrl } =
+    element.dataset;
+  if (
+    !isComposerTemplateAttachmentType(templateType) ||
+    templateTitle === undefined ||
+    templateCategory === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    type: templateType,
+    title: templateTitle,
+    category: templateCategory,
+    previewImageUrl: templatePreviewUrl || undefined,
+  };
 }
 
 function templateAttachmentNode(
@@ -1344,23 +1367,34 @@ function createTemplateAttachmentControls(
     setTemplateAttachmentNode(editor, undefined);
     runtime.templateRemoved();
   };
-  const set$ = command(
-    ({ set }, attachment: ComposerTemplateAttachment | undefined) => {
+  const setLifecycleRef$ = onRef(
+    command(({ set }, element: HTMLButtonElement, signal: AbortSignal) => {
+      const attachment = templateAttachmentFromLifecycleElement(element);
       runtime.templateAttachment = attachment;
       set(activeState$, attachment !== undefined);
       setTemplateAttachmentNode(editor, attachment);
-    },
-  );
-  const setHandlers$ = command(
-    (_context, handlers: ComposerTemplateAttachmentHandlers) => {
-      runtime.openTemplate = handlers.onOpen;
-      runtime.templateRemoved = handlers.onRemove;
-    },
+      runtime.openTemplate = (category) => {
+        element.dataset.templateAction = "open";
+        element.dataset.templateCategory = category;
+        element.click();
+      };
+      runtime.templateRemoved = () => {
+        element.dataset.templateAction = "remove";
+        element.click();
+      };
+      signal.addEventListener("abort", () => {
+        runtime.templateAttachment = undefined;
+        runtime.openTemplate = () => {};
+        runtime.templateRemoved = () => {};
+        set(activeState$, false);
+        setTemplateAttachmentNode(editor, undefined);
+      });
+    }),
   );
   const active$ = computed((get) => {
     return get(activeState$);
   });
-  return { active$, set$, setHandlers$ };
+  return { active$, setLifecycleRef$ };
 }
 
 export function createWorkflowComposerSignals(
@@ -1481,8 +1515,7 @@ export function createWorkflowComposerSignals(
     insertChatThread$,
     insertText$,
     appendText$,
-    setTemplateAttachment$: templateAttachment.set$,
-    setTemplateAttachmentHandlers$: templateAttachment.setHandlers$,
+    setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
     setEventHandlers$,
     feedback,
   };
