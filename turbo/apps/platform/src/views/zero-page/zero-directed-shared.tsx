@@ -1,11 +1,9 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { detach, Reason } from "../../signals/utils.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 import {
+  closeSettingsModal$,
   settingsDialogOpen$,
-  setSettingsDialogOpen$,
 } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { SettingsDialog } from "./components/settings/settings-dialog.tsx";
 import { AccountDropdown } from "./zero-sidebar.tsx";
@@ -14,15 +12,16 @@ import { Link } from "../router/link.tsx";
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
   const dialogOpen = useGet(settingsDialogOpen$);
-  const setDialogOpen = useSet(setSettingsDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
+  const closeSettingsModal = useSet(closeSettingsModal$);
 
   return (
     <div className="zero-app zero-viewport-shell flex w-full bg-background">
       <SettingsDialog
         open={dialogOpen}
         onOpenChange={(open) => {
-          detach(setDialogOpen(open, pageSignal), Reason.DomCallback);
+          if (!open) {
+            closeSettingsModal();
+          }
         }}
       />
       <aside className="zero-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
