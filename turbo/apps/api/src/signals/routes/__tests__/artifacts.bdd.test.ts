@@ -734,17 +734,6 @@ describe("GET /api/zero/artifacts", () => {
     if (!owner.actor.orgId) {
       throw new Error("Expected preview image test actor to have an org");
     }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactPreviewImage]: true,
-      },
-    );
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
     const snapshotRequests = mockCloudflareSnapshot();

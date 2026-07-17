@@ -1,4 +1,5 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { and, eq, like, or, sql } from "drizzle-orm";
 
 import { db } from "../lib/db";
@@ -158,6 +159,63 @@ export async function holdOrgAdmissionLockFixture(args: {
               AND held.pid = ${holderPid}
               AND held.granted
           )
+      `);
+      return result.rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
+ * Holds a table lock that permits row selection but pauses chat-message writes.
+ * This is a timing-only boundary exception for proving queue claim races through
+ * the product API; the transaction neither creates nor changes product rows.
+ */
+export async function holdChatMessageWritesFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    await tx.execute(sql`LOCK TABLE ${chatMessages} IN SHARE MODE`);
+    const result = await tx.execute<{ readonly pid: number }>(sql`
+      SELECT pg_backend_pid() AS "pid"
+    `);
+    const holderPid = result.rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat-message lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      const result = await db().execute<{ readonly waiterCount: number }>(sql`
+        WITH RECURSIVE blocked("pid") AS (
+          SELECT activity.pid
+          FROM pg_stat_activity AS activity
+          WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+
+          UNION
+
+          SELECT activity.pid
+          FROM pg_stat_activity AS activity
+          INNER JOIN blocked AS blocker
+            ON blocker.pid = ANY(pg_blocking_pids(activity.pid))
+        )
+        SELECT count(*)::int AS "waiterCount"
+        FROM blocked
       `);
       return result.rows[0]?.waiterCount ?? 0;
     },

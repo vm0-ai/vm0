@@ -183,7 +183,7 @@ import {
 } from "./org-concurrency-entitlements.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
-  checkOrgModelRunAdmission,
+  checkOrgPlanRunAdmission,
   checkOrgCreditsForRunAdmission,
   checkResolvedOrgCreditsForRunAdmission,
   resolveOrgCreditAvailability,
@@ -4001,7 +4001,7 @@ async function checkFinalRunAdmission(
   const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
   args.signal.throwIfAborted();
   return (
-    checkOrgModelRunAdmission({
+    checkOrgPlanRunAdmission({
       capabilities,
       modelProviderType: args.modelProviderType,
       selectedModel: args.selectedModel,
@@ -4113,6 +4113,47 @@ async function resolveByComposeId(
   };
 }
 
+interface ResumeSessionSnapshot {
+  readonly runId: string;
+  readonly cliAgentSessionId: string;
+  readonly cliAgentSessionHistory: string | null;
+  readonly cliAgentSessionHistoryHash: string | null;
+  readonly sessionHistoryBlobEncoding: string | null;
+}
+
+function resumeSessionFromSnapshot(
+  snapshot: ResumeSessionSnapshot,
+): StoredExecutionContext["resumeSession"] | undefined {
+  const hash = snapshot.cliAgentSessionHistoryHash;
+  let encoding: CompressedSessionHistoryBlobEncoding | undefined;
+  if (snapshot.sessionHistoryBlobEncoding !== null) {
+    const parsedEncoding = normalizeSessionHistoryBlobEncoding(
+      snapshot.sessionHistoryBlobEncoding,
+    );
+    if (isCompressedSessionHistoryBlobEncoding(parsedEncoding)) {
+      encoding = parsedEncoding;
+    }
+  }
+  if (hash) {
+    return {
+      sessionId: snapshot.cliAgentSessionId,
+      historyGenerationRunId: snapshot.runId,
+      historyRef: {
+        kind: "blob",
+        hash,
+        ...(encoding ? { encoding } : {}),
+      },
+    };
+  }
+  if (snapshot.cliAgentSessionHistory) {
+    return {
+      sessionId: snapshot.cliAgentSessionId,
+      sessionHistory: snapshot.cliAgentSessionHistory,
+    };
+  }
+  return undefined;
+}
+
 function resolveBySessionId(
   db: Db,
   agentSessionId: string,
@@ -4120,88 +4161,119 @@ function resolveBySessionId(
   orgId: string,
   timing?: ApiDispatchTimingCollector,
 ): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
-  return computed(
-    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
-      const [session] = await measureApiDispatchTiming(
-        timing,
-        "api_dispatch_resolve_compose_lookup_session",
-        "nested",
-        async () => {
-          return await db
-            .select({
+  return computed(async (): Promise<ResolvedCompose | CreateRunErrorResult> => {
+    const [snapshot] = await measureApiDispatchTiming(
+      timing,
+      "api_dispatch_resolve_compose_lookup_session_snapshot",
+      "nested",
+      async () => {
+        return await db
+          .select({
+            session: {
               id: agentSessions.id,
-              agentComposeId: agentSessions.agentComposeId,
-              conversationId: agentSessions.conversationId,
               artifacts: agentSessions.artifacts,
-              conversationRunId: conversations.runId,
-            })
-            .from(agentSessions)
-            .leftJoin(
-              conversations,
-              eq(agentSessions.conversationId, conversations.id),
-            )
-            .where(
-              and(
-                eq(agentSessions.id, agentSessionId),
-                eq(agentSessions.userId, userId),
-                eq(agentSessions.orgId, orgId),
-              ),
-            )
-            .limit(1);
-        },
-      );
-
-      if (!session) {
-        return notFound("Agent session not found");
-      }
-
-      const resolved = await resolveByComposeId(
-        db,
-        session.agentComposeId,
-        timing,
-      );
-      if (isRouteError(resolved)) {
-        return resolved;
-      }
-
-      const conversationId = session.conversationId;
-      const resumeSession =
-        conversationId === null
-          ? undefined
-          : await measureApiDispatchTiming(
-              timing,
-              "api_dispatch_resolve_compose_load_resume_session",
-              "nested",
-              async () => {
-                return await get(loadResumeSession(db, conversationId, timing));
-              },
-            );
-      const conversationRunId = session.conversationRunId;
-      const [lastRun] = conversationRunId
-        ? await measureApiDispatchTiming(
-            timing,
-            "api_dispatch_resolve_compose_lookup_session_vars",
-            "nested",
-            async () => {
-              return await db
-                .select({ vars: agentRuns.vars })
-                .from(agentRuns)
-                .where(eq(agentRuns.id, conversationRunId))
-                .limit(1);
             },
+            compose: {
+              id: agentComposes.id,
+              name: agentComposes.name,
+              orgId: agentComposes.orgId,
+              userId: agentComposes.userId,
+              headVersionId: agentComposes.headVersionId,
+            },
+            version: {
+              id: agentComposeVersions.id,
+              content: agentComposeVersions.content,
+            },
+            conversation: {
+              id: conversations.id,
+              runId: conversations.runId,
+              cliAgentSessionId: conversations.cliAgentSessionId,
+              cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+              cliAgentSessionHistoryHash:
+                conversations.cliAgentSessionHistoryHash,
+            },
+            historyBlob: {
+              hash: blobs.hash,
+              encoding: blobs.encoding,
+            },
+            previousRun: {
+              id: agentRuns.id,
+              vars: agentRuns.vars,
+            },
+          })
+          .from(agentSessions)
+          .leftJoin(
+            agentComposes,
+            eq(agentSessions.agentComposeId, agentComposes.id),
           )
-        : [];
+          .leftJoin(
+            agentComposeVersions,
+            eq(agentComposeVersions.id, agentComposes.headVersionId),
+          )
+          .leftJoin(
+            conversations,
+            eq(agentSessions.conversationId, conversations.id),
+          )
+          .leftJoin(
+            blobs,
+            eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+          )
+          .leftJoin(agentRuns, eq(conversations.runId, agentRuns.id))
+          .where(
+            and(
+              eq(agentSessions.id, agentSessionId),
+              eq(agentSessions.userId, userId),
+              eq(agentSessions.orgId, orgId),
+            ),
+          )
+          .limit(1);
+      },
+    );
 
-      return {
-        ...resolved,
-        artifacts: session.artifacts ?? [],
-        vars: (lastRun?.vars as Record<string, string> | null) ?? undefined,
-        agentSessionId: session.id,
-        continuedFromAgentSessionId: session.id,
-        resumeSession,
-      };
-    },
-  );
+    if (!snapshot) {
+      return notFound("Agent session not found");
+    }
+    if (!snapshot.compose) {
+      return notFound("Agent compose not found");
+    }
+    if (!snapshot.compose.headVersionId || !snapshot.version) {
+      return badRequestMessage(
+        "Agent compose has no versions. Run 'vm0 build' first.",
+      );
+    }
+
+    const conversation = snapshot.conversation;
+    const resumeSession = conversation
+      ? await measureApiDispatchTiming(
+          timing,
+          "api_dispatch_resolve_compose_resolve_session_history",
+          "nested",
+          (): StoredExecutionContext["resumeSession"] | undefined => {
+            return resumeSessionFromSnapshot({
+              ...conversation,
+              sessionHistoryBlobEncoding:
+                snapshot.historyBlob?.encoding ?? null,
+            });
+          },
+        )
+      : undefined;
+
+    return {
+      agentComposeVersionId: snapshot.version.id,
+      composeId: snapshot.compose.id,
+      composeUserId: snapshot.compose.userId,
+      agentName: snapshot.compose.name || undefined,
+      orgId: snapshot.compose.orgId,
+      content: snapshot.version.content as AgentComposeContent,
+      artifacts: snapshot.session.artifacts ?? [],
+      vars:
+        (snapshot.previousRun?.vars as Record<string, string> | null) ??
+        undefined,
+      agentSessionId: snapshot.session.id,
+      continuedFromAgentSessionId: snapshot.session.id,
+      resumeSession,
+    };
+  });
 }
 
 function resolveByCheckpointId(
@@ -4306,49 +4378,14 @@ function loadResumeSession(
         return undefined;
       }
 
-      const resumeSession = await measureApiDispatchTiming(
+      return await measureApiDispatchTiming(
         timing,
         "api_dispatch_resolve_compose_resolve_session_history",
         "nested",
-        (): Promise<StoredExecutionContext["resumeSession"] | null> => {
-          const cliAgentSessionId = conversation.cliAgentSessionId;
-          const hash = conversation.cliAgentSessionHistoryHash;
-          let encoding: CompressedSessionHistoryBlobEncoding | undefined;
-          if (conversation.sessionHistoryBlobEncoding !== null) {
-            const parsedEncoding = normalizeSessionHistoryBlobEncoding(
-              conversation.sessionHistoryBlobEncoding,
-            );
-            if (isCompressedSessionHistoryBlobEncoding(parsedEncoding)) {
-              encoding = parsedEncoding;
-            }
-          }
-          if (hash) {
-            return Promise.resolve({
-              sessionId: cliAgentSessionId,
-              historyGenerationRunId: conversation.runId,
-              historyRef: {
-                kind: "blob",
-                hash,
-                ...(encoding ? { encoding } : {}),
-              },
-            });
-          }
-          const sessionHistory = conversation.cliAgentSessionHistory;
-          if (sessionHistory) {
-            return Promise.resolve({
-              sessionId: cliAgentSessionId,
-              sessionHistory,
-            });
-          }
-          return Promise.resolve(null);
+        (): StoredExecutionContext["resumeSession"] | undefined => {
+          return resumeSessionFromSnapshot(conversation);
         },
       );
-
-      if (resumeSession === null) {
-        return undefined;
-      }
-
-      return resumeSession;
     },
   );
 }
@@ -7366,6 +7403,7 @@ interface PreparedAgentRun {
 interface PrepareAgentRunArgs {
   readonly args: CreateAgentRunArgs;
   readonly timing: ApiDispatchTimingCollector;
+  readonly checkOrgPlanStatusBeforeContext: boolean;
   readonly preloadedFeatureSwitchContext?: FeatureSwitchContext;
 }
 
@@ -7399,16 +7437,18 @@ export const prepareAgentRun$ = command(
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
     const { args, timing } = input;
     const db = set(writeDb$);
-    const tierGate = await timing.measure(
-      "api_dispatch_check_org_tier",
-      "top_level",
-      async () => {
-        return await checkOrgRunPlanStatus(db, { orgId: args.orgId });
-      },
-    );
-    signal.throwIfAborted();
-    if (tierGate) {
-      return tierGate;
+    if (input.checkOrgPlanStatusBeforeContext) {
+      const tierGate = await timing.measure(
+        "api_dispatch_check_org_tier",
+        "top_level",
+        async () => {
+          return await checkOrgRunPlanStatus(db, { orgId: args.orgId });
+        },
+      );
+      signal.throwIfAborted();
+      if (tierGate) {
+        return tierGate;
+      }
     }
 
     const context = await timing.measure(
@@ -7513,7 +7553,11 @@ export const createAgentRun$ = command(
       "top_level",
       args.apiStartTime,
     );
-    const prepared = await set(prepareAgentRun$, { args, timing }, signal);
+    const prepared = await set(
+      prepareAgentRun$,
+      { args, timing, checkOrgPlanStatusBeforeContext: true },
+      signal,
+    );
     if (isRouteError(prepared)) {
       return prepared;
     }

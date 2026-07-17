@@ -86,6 +86,11 @@ interface ImageDimensionsMockValue {
 
 type ImageDimensionsMockResult = ImageDimensionsMockValue | null;
 
+interface ImageDimensionsMock {
+  readonly createdUrls: string[];
+  readonly revokedUrls: string[];
+}
+
 interface Bb0BluetoothRequestDeviceOptions {
   readonly acceptAllDevices?: boolean;
   readonly filters?: readonly {
@@ -290,8 +295,8 @@ export function createTestMocks(getSignal: () => AbortSignal) {
         results:
           | ImageDimensionsMockResult
           | readonly ImageDimensionsMockResult[],
-      ): void => {
-        mockImageDimensions(getSignal(), results);
+      ): ImageDimensionsMock => {
+        return mockImageDimensions(getSignal(), results);
       },
       webBluetoothSupport: (): void => {
         mockSupportedWebBluetooth(getSignal());
@@ -697,8 +702,10 @@ function mockVoiceInput(
 function mockImageDimensions(
   signal: AbortSignal,
   results: ImageDimensionsMockResult | readonly ImageDimensionsMockResult[],
-): void {
+): ImageDimensionsMock {
   const pendingResults = Array.isArray(results) ? [...results] : [results];
+  const createdUrls: string[] = [];
+  const revokedUrls: string[] = [];
   let objectUrlIndex = 0;
 
   class TestImage extends EventTarget {
@@ -725,13 +732,17 @@ function mockImageDimensions(
     "createObjectURL",
     (_object: Blob | MediaSource) => {
       objectUrlIndex += 1;
-      return `blob:mock-image-${objectUrlIndex}`;
+      const url = `blob:mock-image-${objectUrlIndex}`;
+      createdUrls.push(url);
+      return url;
     },
   );
   const revokeObjectUrlDescriptor = defineWindowProperty(
     URL,
     "revokeObjectURL",
-    (_url: string) => {},
+    (url: string) => {
+      revokedUrls.push(url);
+    },
   );
   const imageDescriptor = defineWindowProperty(
     window,
@@ -744,6 +755,8 @@ function mockImageDimensions(
     restoreWindowProperty(URL, "revokeObjectURL", revokeObjectUrlDescriptor);
     restoreWindowProperty(window, "Image", imageDescriptor);
   });
+
+  return { createdUrls, revokedUrls };
 }
 
 function mockSupportedWebBluetooth(signal: AbortSignal): void {

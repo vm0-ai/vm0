@@ -551,26 +551,6 @@ function mockAgentConnectorAuthorizations(
   });
 }
 
-function resetPresentationTemplateHtmlPreviewCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateHtmlPreviewCache");
-}
-
-function resetPresentationCardPreviewImageDecodeCache(): void {
-  Reflect.deleteProperty(
-    globalThis,
-    "vm0PresentationCardPreviewImageDecodeCache",
-  );
-}
-
-function resetPresentationTemplateThumbnailCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0PresentationTemplateThumbnailCache");
-}
-
-function resetTemplatePreviewPrewarmCache(): void {
-  Reflect.deleteProperty(globalThis, "vm0TemplatePreviewPrewarmCache");
-  Reflect.deleteProperty(globalThis, "vm0TemplatePreviewIdlePrewarmKeys");
-}
-
 function trackTemplatePreviewImagePreloads(): {
   readonly srcs: readonly string[];
   readonly restore: () => void;
@@ -809,6 +789,18 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+async function expectTemplateAttachedToComposer(
+  removeAriaLabel: string,
+): Promise<void> {
+  const editor = await findComposerEditor();
+  const removeButton = screen.getByLabelText(removeAriaLabel);
+  const attachment = removeButton.closest(
+    "[data-composer-template-attachment]",
+  );
+  expect(attachment).toBeInTheDocument();
+  expect(editor).toContainElement(attachment as HTMLElement);
+}
+
 function placeCaretAfterText(root: HTMLElement, text: string): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -864,10 +856,6 @@ function workflowSummary({
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
-  resetPresentationTemplateHtmlPreviewCache();
-  resetPresentationCardPreviewImageDecodeCache();
-  resetPresentationTemplateThumbnailCache();
-  resetTemplatePreviewPrewarmCache();
 });
 
 describe("chat composer models", () => {
@@ -1121,7 +1109,7 @@ describe("chat composer models", () => {
     expect(highlightedWorkflow).toHaveClass("text-primary");
   });
 
-  it("inserts a current-agent chat thread URL from @ suggestions", async () => {
+  it("inserts a current-agent chat thread mention chip from @ suggestions", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -1161,10 +1149,12 @@ describe("chat composer models", () => {
     await user.keyboard("{Enter}next");
 
     await waitFor(() => {
-      expect(editor).toHaveTextContent(
-        `Review /chats/${SUGGESTED_THREAD_ID} next`,
-      );
+      expect(editor).toHaveTextContent("Review Project Alpha next");
     });
+    const chip = editor.querySelector(
+      `span[data-chat-thread-mention="${SUGGESTED_THREAD_ID}"]`,
+    );
+    expect(chip).toHaveTextContent("Project Alpha");
   });
 
   it("hides @ suggestions when no titled thread matches", async () => {
@@ -2468,7 +2458,7 @@ describe("chat composer models", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("keeps VM0 Model available when VM0 models and BYOK are restricted", async () => {
+  it("keeps Auto available when VM0 models and BYOK are restricted", async () => {
     const user = userEvent.setup({ delay: null });
     mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
     context.mocks.data.orgModelPolicies([
@@ -2483,7 +2473,7 @@ describe("chat composer models", () => {
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000704",
         model: "vm0-model",
-        modelLabel: "VM0 Model",
+        modelLabel: "Auto",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -2494,9 +2484,9 @@ describe("chat composer models", () => {
 
     await expectComposerModel("Kimi K2.7 Code");
     await user.click(screen.getByRole("combobox", { name: "Kimi K2.7 Code" }));
-    await user.click(await screen.findByRole("option", { name: /VM0 Model/u }));
+    await user.click(await screen.findByRole("option", { name: /Auto/u }));
 
-    await expectComposerModel("VM0 Model");
+    await expectComposerModel("Auto");
     expect(
       screen.queryByRole("heading", { name: "Compare plans" }),
     ).not.toBeInTheDocument();
@@ -3454,7 +3444,6 @@ describe("chat composer templates", () => {
     } finally {
       restoreIdleCallback();
       imagePreloads.restore();
-      resetTemplatePreviewPrewarmCache();
     }
   });
 
@@ -3673,6 +3662,7 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${template.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(`Remove template ${template.title}`);
 
     click(screen.getByLabelText(`Remove template ${template.title}`));
 
@@ -3681,6 +3671,55 @@ describe("chat composer templates", () => {
         "aria-pressed",
         "false",
       );
+      expect(
+        screen.queryByLabelText(`Remove template ${template.title}`),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps a selected template attached when replacing all prompt text", async () => {
+    const user = userEvent.setup({ delay: null });
+    const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+    let submittedPrompt: string | undefined;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedPrompt = body.prompt;
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await selectTemplate(user, template);
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Initial prompt");
+    await fill(editor, "Replacement prompt");
+
+    await waitFor(() => {
+      expect(
+        editor.querySelectorAll("[data-composer-template-attachment]"),
+      ).toHaveLength(1);
+      expect(editor).toHaveTextContent("Replacement prompt");
+      expect(editor).not.toHaveTextContent("Initial prompt");
+    });
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedPrompt).toBe("Replacement prompt");
+      expect(submittedTemplate).toMatchObject({
+        type: "presentation",
+        selection: { templateId: template.templateId },
+      });
+      expect(
+        editor.querySelectorAll("[data-composer-template-attachment]"),
+      ).toHaveLength(0);
       expect(
         screen.queryByLabelText(`Remove template ${template.title}`),
       ).not.toBeInTheDocument();
@@ -4498,33 +4537,16 @@ describe("chat composer templates", () => {
 
   it("navigates presentation template detail previews from the main preview", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    Reflect.set(globalThis, "vm0PresentationTemplateHtmlPreviewCache", {
-      activeIndexes: new Map<string, number>(),
-      activeTokens: new Map<string, symbol>(),
-      defaultLoads: new Set<string>(),
-      detailTokens: new Map<string, symbol>(),
-      drafts: new Map([
-        [
-          template.embedUrl,
-          {
-            blocks: [],
-            html: `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
-              .map((_, index) => {
-                return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
-              })
-              .join("")}</body></html>`,
-            slides: template.previewImages.map((_, index) => {
-              return {
-                id: `slide-${index + 1}`,
-                notes: "",
-                title: `Slide ${index + 1}`,
-              };
-            }),
-          },
-        ],
-      ]),
-      failed: new Set<string>(),
-      pendingLoads: new Map<string, Promise<null>>(),
+    vi.stubGlobal("vm0LoadTemplateDetailHtmlPreviewInHappyDom", true);
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(
+        `<!doctype html><html><head><style>:root { --bg: white; --ink: black; } section { width: 1600px; height: 900px; background: var(--bg); color: var(--ink); }</style></head><body>${template.previewImages
+          .map((_, index) => {
+            return `<section data-vm0-slide data-slide-id="slide-${index + 1}"><h1>Slide ${index + 1}</h1></section>`;
+          })
+          .join("")}</body></html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
     });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
@@ -4817,6 +4839,9 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove template ${illustrationTemplate.title}`,
+    );
 
     click(
       screen.getByLabelText(`Remove template ${illustrationTemplate.title}`),
@@ -5361,6 +5386,9 @@ describe("chat composer templates", () => {
         screen.getByLabelText(`Remove video template ${videoStyle.title}`),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove video template ${videoStyle.title}`,
+    );
 
     click(screen.getByLabelText(`Remove video template ${videoStyle.title}`));
 
@@ -5436,6 +5464,9 @@ describe("chat composer templates", () => {
         ),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove workflow template ${workflowTemplate.title}`,
+    );
 
     const editor = await findComposerEditor();
     await sendMessageInUI(user, editor, "Create this inbox workflow");
@@ -5522,6 +5553,9 @@ describe("chat composer templates", () => {
         ),
       ).toBeInTheDocument();
     });
+    await expectTemplateAttachedToComposer(
+      `Remove website template ${websiteTemplate.title}`,
+    );
 
     click(
       screen.getByLabelText(

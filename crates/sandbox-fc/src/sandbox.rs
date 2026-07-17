@@ -12,7 +12,8 @@ use sandbox::{
     GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter, ProcessControlAck,
     ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig,
     SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, StartProcessRequest, WriteFileEntry,
+    SandboxOperationReason, SandboxParkNonReusableReason, SandboxParkOutcome, StartProcessRequest,
+    WriteFileEntry,
 };
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
@@ -37,6 +38,9 @@ use crate::exec_operation_result::{
     validate_exec_capture_timeout,
 };
 use crate::factory::InvariantConfig;
+use crate::guest_dns_failure_diagnostics::{
+    GuestDnsFailureDiagnosticContext, capture_guest_dns_failure_snapshot,
+};
 use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
@@ -468,6 +472,10 @@ pub struct FirecrackerSandbox {
     /// touch the balloon controller, and to let `stop()` skip vsock
     /// graceful shutdown (guest can't respond with paused vCPUs).
     is_parked: bool,
+    /// Eligibility returned by the completed park that set `is_parked`.
+    /// Retained so an idempotent repeated park cannot upgrade a non-reusable
+    /// sandbox to reusable.
+    park_outcome: Option<SandboxParkOutcome>,
     /// Host-side normal-operation fence held while this sandbox is parked.
     park_fence: Option<NormalOperationFence>,
 }
@@ -502,6 +510,10 @@ impl SandboxNetwork {
 
     fn peer_ip(&self) -> &str {
         self.info.peer_ip()
+    }
+
+    fn host_device(&self) -> &str {
+        self.info.host_device()
     }
 
     fn mark_non_reusable(&mut self) -> sandbox::Result<()> {
@@ -566,6 +578,7 @@ impl FirecrackerSandbox {
             delete_workspace_on_leak_cleanup: true,
             destroyed: false,
             is_parked: false,
+            park_outcome: None,
             park_fence: None,
         }
     }
@@ -1473,7 +1486,7 @@ fn exec_capture_request<'a>(
         label,
         stdout_limit_bytes: limits.stdout_limit_bytes,
         stderr_limit_bytes: limits.stderr_limit_bytes,
-        expected_exit_codes: &[],
+        expected_exit_codes: request.expected_exit_codes,
         stdin_bytes: request.stdin_bytes,
         wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
     }
@@ -1564,7 +1577,7 @@ impl Sandbox for FirecrackerSandbox {
 
         let vsock_guest = Arc::new(vsock_guest);
 
-        if self.factory_config.dns_port.is_some() {
+        if let Some(dns_port) = self.factory_config.dns_port {
             match wait_for_guest_dns_readiness(&vsock_guest).await {
                 Ok(()) => {
                     if let Err(error) = self.network.mark_reusable() {
@@ -1573,6 +1586,18 @@ impl Sandbox for FirecrackerSandbox {
                     }
                 }
                 Err(error) => {
+                    capture_guest_dns_failure_snapshot(
+                        vsock_guest.as_ref(),
+                        GuestDnsFailureDiagnosticContext {
+                            sandbox_id: &self.id,
+                            profile: &self.factory_config.profile,
+                            namespace: self.network.name(),
+                            host_device: self.network.host_device(),
+                            peer_ip: self.network.peer_ip(),
+                            dns_port,
+                        },
+                    )
+                    .await;
                     warn!(
                         id = %self.id,
                         profile = %self.factory_config.profile,
@@ -1585,7 +1610,7 @@ impl Sandbox for FirecrackerSandbox {
                         "guest DNS readiness probe failed"
                     );
                     self.runtime.kill_process().await;
-                    return Err(SandboxError::Start {
+                    return Err(SandboxError::GuestDnsReadiness {
                         message: format!(
                             "guest DNS readiness for namespace {}: {error}",
                             self.network.name(),
@@ -1656,7 +1681,11 @@ impl Sandbox for FirecrackerSandbox {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
                 self.guest.lock().await.take();
-                release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
+                release_park_state_for_termination(
+                    &mut self.is_parked,
+                    &mut self.park_outcome,
+                    &mut self.park_fence,
+                );
                 self.runtime.kill_process().await;
             }
             return Ok(());
@@ -1685,7 +1714,11 @@ impl Sandbox for FirecrackerSandbox {
         {
             warn!(id = %self.id, "graceful shutdown timed out");
         }
-        release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
+        release_park_state_for_termination(
+            &mut self.is_parked,
+            &mut self.park_outcome,
+            &mut self.park_fence,
+        );
 
         self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
@@ -1698,14 +1731,22 @@ impl Sandbox for FirecrackerSandbox {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
                 self.guest.lock().await.take();
-                release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
+                release_park_state_for_termination(
+                    &mut self.is_parked,
+                    &mut self.park_outcome,
+                    &mut self.park_fence,
+                );
                 self.runtime.kill_process().await;
             }
             return Ok(());
         }
         self.runtime.shutdown_services().await;
         self.guest.lock().await.take();
-        release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
+        release_park_state_for_termination(
+            &mut self.is_parked,
+            &mut self.park_outcome,
+            &mut self.park_fence,
+        );
         self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
         info!(id = %self.id, "sandbox killed");
@@ -1746,14 +1787,20 @@ impl Sandbox for FirecrackerSandbox {
     // coordinator is still checked on no-op paths so Dirty/desynchronised gates
     // cannot be silently reused.
 
-    async fn park(&mut self) -> sandbox::Result<()> {
+    async fn park(&mut self) -> sandbox::Result<SandboxParkOutcome> {
         if self.is_parked {
             if self.park_fence.is_none() {
                 let message = "sandbox is parked without a normal-operation fence";
                 self.park_coordinator.mark_dirty(DirtyReason::new(message));
                 return Err(idle_transition_error(SandboxIdleTransition::Park, message));
             }
-            return ensure_park_noop_state(&self.park_coordinator);
+            let Some(outcome) = self.park_outcome else {
+                let message = "sandbox is parked without a recorded park outcome";
+                self.park_coordinator.mark_dirty(DirtyReason::new(message));
+                return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+            };
+            ensure_park_noop_state(&self.park_coordinator)?;
+            return Ok(outcome);
         }
 
         let coordinator = self.park_coordinator.clone();
@@ -1761,7 +1808,7 @@ impl Sandbox for FirecrackerSandbox {
         let fence_guest = Arc::clone(&guest);
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
-        let normal_operations_fence = park_with_ready_for_park(
+        let (normal_operations_fence, outcome) = park_with_ready_for_park(
             &id,
             &coordinator,
             || async move {
@@ -1796,13 +1843,22 @@ impl Sandbox for FirecrackerSandbox {
         )
         .await?;
         self.park_fence = Some(normal_operations_fence);
-        Ok(())
+        self.park_outcome = Some(outcome);
+        Ok(outcome)
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
         if !self.is_parked {
             if self.park_fence.is_some() {
                 let message = "sandbox has a normal-operation fence while unpark is a no-op";
+                self.park_coordinator.mark_dirty(DirtyReason::new(message));
+                return Err(idle_transition_error(
+                    SandboxIdleTransition::Unpark,
+                    message,
+                ));
+            }
+            if self.park_outcome.is_some() {
+                let message = "sandbox has a recorded park outcome while unpark is a no-op";
                 self.park_coordinator.mark_dirty(DirtyReason::new(message));
                 return Err(idle_transition_error(
                     SandboxIdleTransition::Unpark,
@@ -1855,7 +1911,9 @@ impl Sandbox for FirecrackerSandbox {
                 drop(park_fence.take());
             },
         )
-        .await
+        .await?;
+        self.park_outcome = None;
+        Ok(())
     }
 
     // -- operations --
@@ -2250,25 +2308,30 @@ impl Drop for UnparkBoundaryGuard {
     }
 }
 
-fn release_park_state_for_termination<Fence>(is_parked: &mut bool, park_fence: &mut Option<Fence>) {
+fn release_park_state_for_termination<Fence>(
+    is_parked: &mut bool,
+    park_outcome: &mut Option<SandboxParkOutcome>,
+    park_fence: &mut Option<Fence>,
+) {
     *is_parked = false;
+    *park_outcome = None;
     drop(park_fence.take());
 }
 
-async fn park_with_ready_for_park<Fence, F, FF, Q, QF, P, PF>(
+async fn park_with_ready_for_park<Fence, Outcome, F, FF, Q, QF, P, PF>(
     log_id: &str,
     coordinator: &ParkCoordinator,
     fence_normal_operations: F,
     quiesce_guest: Q,
     park_firecracker: P,
-) -> sandbox::Result<Fence>
+) -> sandbox::Result<(Fence, Outcome)>
 where
     F: FnOnce() -> FF,
     FF: Future<Output = Result<Fence, ParkNormalOperationFenceError>>,
     Q: FnOnce() -> QF,
     QF: Future<Output = io::Result<()>>,
     P: FnOnce() -> PF,
-    PF: Future<Output = sandbox::Result<()>>,
+    PF: Future<Output = sandbox::Result<Outcome>>,
 {
     info!(
         id = %log_id,
@@ -2403,20 +2466,23 @@ where
         phase = "ready_for_park",
         "sandbox park lifecycle ReadyForPark reached"
     );
-    if let Err(error) = park_firecracker().await {
-        warn!(
-            id = %log_id,
-            transition = "park",
-            phase = "firecracker_park",
-            reason_kind = "firecracker",
-            error = %error,
-            "sandbox park lifecycle Firecracker park failed after ReadyForPark"
-        );
-        guard.mark_dirty(format!(
-            "Firecracker park failed after ReadyForPark: {error}"
-        ));
-        return Err(error);
-    }
+    let outcome = match park_firecracker().await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "firecracker_park",
+                reason_kind = "firecracker",
+                error = %error,
+                "sandbox park lifecycle Firecracker park failed after ReadyForPark"
+            );
+            guard.mark_dirty(format!(
+                "Firecracker park failed after ReadyForPark: {error}"
+            ));
+            return Err(error);
+        }
+    };
 
     let normal_operations_fence = match guard.mark_parked() {
         Ok(fence) => fence,
@@ -2445,7 +2511,7 @@ where
         phase = "parked",
         "sandbox park lifecycle marked parked"
     );
-    Ok(normal_operations_fence)
+    Ok((normal_operations_fence, outcome))
 }
 
 async fn unpark_with_ready_for_operations<U, UF, R, RF, F>(
@@ -2780,10 +2846,7 @@ impl BalloonSettleSummary {
             return "target_not_observed";
         }
 
-        if self
-            .last_deficit_mib
-            .is_some_and(|deficit| deficit >= self.severe_deficit_threshold_mib())
-        {
+        if self.is_severe_deficit() {
             return "severe_deficit";
         }
 
@@ -2795,6 +2858,21 @@ impl BalloonSettleSummary {
         }
 
         "actual_stalled"
+    }
+
+    fn is_severe_deficit(&self) -> bool {
+        self.target_observed
+            && self
+                .last_deficit_mib
+                .is_some_and(|deficit| deficit >= self.severe_deficit_threshold_mib())
+    }
+
+    fn park_outcome(&self) -> SandboxParkOutcome {
+        if self.is_severe_deficit() {
+            SandboxParkOutcome::NonReusable(SandboxParkNonReusableReason::SevereMemoryRetention)
+        } else {
+            SandboxParkOutcome::Reusable
+        }
     }
 
     fn is_pressure_limited_partial_reclaim(&self, deficit_mib: u32, tolerance_mib: u32) -> bool {
@@ -2819,6 +2897,7 @@ fn log_balloon_settle_timeout(
     target_mib: u32,
     tolerance_mib: u32,
     summary: &BalloonSettleSummary,
+    outcome: SandboxParkOutcome,
 ) {
     warn!(
         id = %log_id,
@@ -2839,9 +2918,17 @@ fn log_balloon_settle_timeout(
         reported_available_mib = ?summary.reported_available_mib(),
         reported_total_mib = ?summary.reported_total_mib(),
         reason = summary.reason(),
+        admission_action = park_admission_action(outcome),
         "balloon inflate incomplete after {}s, pausing anyway",
         BALLOON_SETTLE_TIMEOUT.as_secs()
     );
+}
+
+fn park_admission_action(outcome: SandboxParkOutcome) -> &'static str {
+    match outcome {
+        SandboxParkOutcome::Reusable => "reuse",
+        SandboxParkOutcome::NonReusable(_) => "reject_and_destroy",
+    }
 }
 
 /// Wait until the guest balloon driver inflates close enough to `target_mib`.
@@ -2850,17 +2937,19 @@ fn log_balloon_settle_timeout(
 /// **before** pausing. Returns when `actual_mib >= target_mib`, when
 /// the remaining deficit is within [`balloon_settle_tolerance_mib`],
 /// when guest pressure indicates further reclaim is unsafe, or after
-/// [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better than none).
+/// [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better than none). The
+/// returned outcome rejects only the existing severe-deficit classification.
 /// Errors from stats fetching are non-fatal — we log and
 /// proceed to pause.
-async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) {
+async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> SandboxParkOutcome {
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
     loop {
         if tokio::time::Instant::now() >= deadline {
-            log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary);
-            return;
+            let outcome = summary.park_outcome();
+            log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary, outcome);
+            return outcome;
         }
 
         match tokio::time::timeout_at(deadline, client.get_balloon_statistics()).await {
@@ -2887,7 +2976,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) {
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon fully inflated, proceeding to pause"
                     );
-                    return;
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 if deficit_mib <= tolerance_mib {
@@ -2911,7 +3000,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) {
                         reported_total_mib = ?summary.reported_total_mib(),
                         "balloon inflated within tolerance, proceeding to pause"
                     );
-                    return;
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 if summary.is_pressure_limited_partial_reclaim(deficit_mib, tolerance_mib) {
@@ -2936,7 +3025,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) {
                         reason = BALLOON_PRESSURE_LIMITED_REASON,
                         "balloon pressure-limited partial reclaim, proceeding to pause"
                     );
-                    return;
+                    return SandboxParkOutcome::Reusable;
                 }
 
                 trace!(
@@ -2951,6 +3040,7 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) {
                 );
             }
             Ok(Err(e)) => {
+                let outcome = summary.park_outcome();
                 warn!(
                     id = %log_id,
                     actual = ?summary.last_actual_mib,
@@ -2970,14 +3060,16 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) {
                     reported_available_mib = ?summary.reported_available_mib(),
                     reported_total_mib = ?summary.reported_total_mib(),
                     reason = summary.reason(),
+                    admission_action = park_admission_action(outcome),
                     %e,
                     "balloon stats unavailable, proceeding to pause"
                 );
-                return;
+                return outcome;
             }
             Err(_) => {
-                log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary);
-                return;
+                let outcome = summary.park_outcome();
+                log_balloon_settle_timeout(log_id, target_mib, tolerance_mib, &summary, outcome);
+                return outcome;
             }
         }
 
@@ -2997,9 +3089,9 @@ async fn park_inner(
     balloon_controller: &mut Option<balloon::ControllerHandle>,
     api_sock: &std::path::Path,
     log_id: &str,
-) -> sandbox::Result<()> {
+) -> sandbox::Result<SandboxParkOutcome> {
     if *is_parked {
-        return Ok(());
+        return Ok(SandboxParkOutcome::Reusable);
     }
 
     let target = memory_mb.saturating_sub(balloon::MIN_GUEST_MIB);
@@ -3008,7 +3100,7 @@ async fn park_inner(
         message: format!("create API client: {e}"),
     })?;
 
-    if target > 0 {
+    let outcome = if target > 0 {
         // Stop the reactive controller so we're the sole writer to /balloon.
         // abort() + await ensures any in-flight PATCH from the controller
         // completes (or is cancelled) before ours lands.
@@ -3040,8 +3132,10 @@ async fn park_inner(
         // pausing vCPUs. The guest balloon driver needs running vCPUs to
         // process the inflate — pausing immediately would negate the memory
         // savings.
-        wait_for_balloon(&client, target, log_id).await;
-    }
+        wait_for_balloon(&client, target, log_id).await
+    } else {
+        SandboxParkOutcome::Reusable
+    };
 
     // Pause vCPUs to eliminate idle CPU overhead (timer ticks, kernel
     // scheduling). For small VMs (target == 0) we skip the balloon but
@@ -3066,11 +3160,20 @@ async fn park_inner(
 
     *is_parked = true;
     if target > 0 {
-        info!(id = %log_id, target_mib = target, "sandbox parked (balloon settled, vCPUs paused)");
+        info!(
+            id = %log_id,
+            target_mib = target,
+            admission_action = park_admission_action(outcome),
+            "sandbox parked (balloon settled, vCPUs paused)"
+        );
     } else {
-        info!(id = %log_id, "sandbox parked (vCPUs paused, balloon skipped)");
+        info!(
+            id = %log_id,
+            admission_action = park_admission_action(outcome),
+            "sandbox parked (vCPUs paused, balloon skipped)"
+        );
     }
-    Ok(())
+    Ok(outcome)
 }
 
 async fn unpark_inner(

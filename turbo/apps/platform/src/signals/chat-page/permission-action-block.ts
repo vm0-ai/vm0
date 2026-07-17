@@ -21,6 +21,11 @@ export interface PermissionActionDescriptor {
   originalUrl: string;
 }
 
+/**
+ * Pure data parsed from a permission URL in a message body. The reactive
+ * resources backing the rendered card live in the thread-scoped permission
+ * card registry (see permission-card-signals.ts), keyed by `href`.
+ */
 export type PermissionActionBlock = PermissionActionDescriptor & {
   type: "permission-action";
   id: string;

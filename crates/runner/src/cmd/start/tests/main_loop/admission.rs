@@ -10,7 +10,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
-use crate::types::SandboxReuseResult;
+use crate::types::{SandboxReuseResult, SessionAffinityResource};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
 const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
@@ -20,6 +20,22 @@ fn affinity_protected_candidate(run_id: RunId, session_id: &str) -> crate::provi
         Some(session_id.to_string()),
         Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
     )
+}
+
+fn reusable_affinity_protected_candidate(
+    run_id: RunId,
+    session_id: &str,
+) -> crate::provider::JobCandidate {
+    affinity_protected_candidate(run_id, session_id)
+        .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))
+}
+
+fn workspace_affinity_protected_candidate(
+    run_id: RunId,
+    session_id: &str,
+) -> crate::provider::JobCandidate {
+    affinity_protected_candidate(run_id, session_id)
+        .with_session_affinity_resource(Some(SessionAffinityResource::WorkspaceCache))
 }
 
 fn generation_affinity_protected_candidate(
@@ -388,6 +404,48 @@ async fn exact_idle_reservation_is_restored_after_claim_conflict() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn reusable_affinity_reservation_is_restored_after_claim_conflict() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    let session_id = "sess-generic-conflict-restore";
+    seed_idle_pool(&idle_pool, &budget, session_id, "vm0/default", 2, 4096).await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider.set_claim_result(run_id, None);
+    env.handle
+        .discover_tx
+        .send(reusable_affinity_protected_candidate(run_id, session_id))
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    assert_eq!(
+        idle_pool.lock().await.held_sessions(),
+        vec![session_id.to_string()],
+        "lost claim should restore the generic reusable reservation"
+    );
+    assert_eq!(budget.allocated(), (2, 4096, 1));
+    let candidates = env.handle.claim_candidates();
+    let candidate = candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("generic reusable candidate should reach claim");
+    assert_eq!(
+        candidate.session_affinity_local_resource(),
+        Some(crate::provider::SessionAffinityLocalResource::ReusableSandbox)
+    );
+    assert_eq!(
+        candidate.local_admission_resource(),
+        Some(crate::provider::LocalAdmissionResourceKind::ReusableSandbox)
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn reusable_generation_parked_after_discovery_is_attributed_at_claim() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
@@ -470,7 +528,7 @@ async fn reusable_claim_without_generation_target_omits_local_availability() {
         .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
     env.handle
         .discover_tx
-        .send(affinity_protected_candidate(run_id, session_id))
+        .send(reusable_affinity_protected_candidate(run_id, session_id))
         .unwrap();
 
     let completion = env
@@ -491,6 +549,18 @@ async fn reusable_claim_without_generation_target_omits_local_availability() {
     assert_eq!(
         candidate.session_history_generation_local_availability(),
         None
+    );
+    assert_eq!(
+        candidate.session_affinity_resource(),
+        Some(SessionAffinityResource::ReusableSandbox)
+    );
+    assert_eq!(
+        candidate.session_affinity_local_resource(),
+        Some(crate::provider::SessionAffinityLocalResource::ReusableSandbox)
+    );
+    assert_eq!(
+        candidate.local_admission_resource(),
+        Some(crate::provider::LocalAdmissionResourceKind::ReusableSandbox)
     );
 
     shutdown(&env, run_handle).await;
@@ -565,7 +635,10 @@ async fn affinity_protected_candidate_without_local_session_defers_before_claim(
     );
     env.handle
         .discover_tx
-        .send(affinity_protected_candidate(run_id, "sess-owned-elsewhere"))
+        .send(reusable_affinity_protected_candidate(
+            run_id,
+            "sess-owned-elsewhere",
+        ))
         .unwrap();
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
@@ -762,7 +835,7 @@ async fn expired_generation_protection_preserves_local_session_claim() {
     env.handle
         .discover_tx
         .send(
-            affinity_protected_candidate(run_id, "sess-held-local")
+            workspace_affinity_protected_candidate(run_id, "sess-held-local")
                 .with_history_generation_run_id(Some(RunId::new_v4()))
                 .with_history_generation_affinity_protected_until(Some(
                     "2000-01-01T00:00:00Z".to_string(),
@@ -785,6 +858,14 @@ async fn expired_generation_protection_preserves_local_session_claim() {
     assert_eq!(
         claimed_candidate.pre_local_admission_outcome(),
         Some(crate::provider::PreLocalAdmissionOutcome::LocalHolder)
+    );
+    assert_eq!(
+        claimed_candidate.session_affinity_local_resource(),
+        Some(crate::provider::SessionAffinityLocalResource::ReusableSandbox)
+    );
+    assert_eq!(
+        claimed_candidate.local_admission_resource(),
+        Some(crate::provider::LocalAdmissionResourceKind::ReusableSandbox)
     );
     assert_eq!(
         claimed_candidate.session_history_generation_relationship(),
@@ -810,7 +891,7 @@ async fn expired_generation_protection_preserves_local_session_claim() {
 }
 
 #[tokio::test]
-async fn generation_protected_workspace_cache_defers_then_legacy_candidate_claims() {
+async fn resource_class_workspace_cache_defers_for_reusable_then_claims_workspace() {
     let session_id = "sess-cache-local";
     let image_size_bytes = 1024 * 1024;
     let mut profiles = test_profiles();
@@ -849,6 +930,25 @@ async fn generation_protected_workspace_cache_defers_then_legacy_candidate_claim
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
+    let reusable_protected_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        reusable_protected_run_id,
+        Some(context_with_session(reusable_protected_run_id, session_id)),
+    );
+    env.handle
+        .discover_tx
+        .send(reusable_affinity_protected_candidate(
+            reusable_protected_run_id,
+            session_id,
+        ))
+        .unwrap();
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle.claim_candidates().is_empty(),
+        "workspace-only state must not satisfy reusable-sandbox selection"
+    );
+    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+
     tokio::fs::remove_dir_all(&cache_entry_dir).await.unwrap();
     let generation_protected_run_id = RunId::new_v4();
     env.provider.set_claim_result(
@@ -871,14 +971,14 @@ async fn generation_protected_workspace_cache_defers_then_legacy_candidate_claim
         env.handle.claim_candidates().is_empty(),
         "workspace-cache state and fresh capacity must not impersonate an exact reusable generation"
     );
-    assert_eq!(env.handle.deferred_poll_delays().len(), 1);
+    assert_eq!(env.handle.deferred_poll_delays().len(), 2);
 
     let run_id = RunId::new_v4();
     env.provider
         .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
     env.handle
         .discover_tx
-        .send(affinity_protected_candidate(run_id, session_id))
+        .send(workspace_affinity_protected_candidate(run_id, session_id))
         .unwrap();
 
     let completion = env
@@ -900,9 +1000,21 @@ async fn generation_protected_workspace_cache_defers_then_legacy_candidate_claim
         Some(crate::provider::PreLocalAdmissionOutcome::LocalHolder)
     );
     assert_eq!(
+        claimed_candidate.session_affinity_resource(),
+        Some(SessionAffinityResource::WorkspaceCache)
+    );
+    assert_eq!(
+        claimed_candidate.session_affinity_local_resource(),
+        Some(crate::provider::SessionAffinityLocalResource::WorkspaceCache)
+    );
+    assert_eq!(
+        claimed_candidate.local_admission_resource(),
+        Some(crate::provider::LocalAdmissionResourceKind::Fresh)
+    );
+    assert_eq!(
         env.handle.deferred_poll_delays().len(),
-        1,
-        "the legacy candidate should not add another deferral"
+        2,
+        "the workspace-selected candidate should not add another deferral"
     );
 
     shutdown(&env, run_handle).await;
@@ -952,7 +1064,7 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
         .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
     env.handle
         .discover_tx
-        .send(affinity_protected_candidate(run_id, session_id))
+        .send(workspace_affinity_protected_candidate(run_id, session_id))
         .unwrap();
 
     wait_discover_entered(&env, Duration::from_secs(5)).await;
@@ -963,7 +1075,7 @@ async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
     assert_eq!(
         env.handle.deferred_poll_delays().len(),
         1,
-        "protected cache-only work should wait for the exact reusable holder"
+        "workspace-selected work should defer when fresh budget is unavailable"
     );
     assert_eq!(
         idle_pool.lock().await.held_sessions(),
@@ -1130,14 +1242,16 @@ async fn unknown_profile_skipped() {
 
 #[tokio::test(start_paused = true)]
 async fn duplicate_discovery_deduplicated() {
-    // Budget for 2 jobs — enough for the duplicate to pass the budget
-    // check and reach the cancel_tokens dedup logic.
+    // Budget for the running job plus one reusable idle sandbox.
     let gate = Arc::new(tokio::sync::Notify::new());
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
     let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    let session_id = "sess-duplicate-reservation";
+    seed_idle_pool(&idle_pool, &budget, session_id, "vm0/default", 2, 4096).await;
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
@@ -1149,17 +1263,19 @@ async fn duplicate_discovery_deduplicated() {
     let _token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
-    // Push the same run_id again (simulates duplicate discovery).
-    // Budget has room, but cancel_tokens already contains this run_id →
-    // the duplicate is rejected and budget is released.
+    // Push the same run_id again with reusable affinity. The duplicate first
+    // owns the idle reservation, then must restore it when cancel_tokens shows
+    // that the original run already owns local admission.
     env.handle
         .discover_tx
-        .send(crate::provider::JobCandidate::new(
-            run_id,
-            "vm0/default".into(),
-        ))
+        .send(reusable_affinity_protected_candidate(run_id, session_id))
         .unwrap();
     wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert_eq!(
+        idle_pool.lock().await.held_sessions(),
+        vec![session_id.to_string()],
+        "duplicate rejection should restore the reusable reservation"
+    );
 
     // Wait for the original job to complete.
     gate.notify_one();
@@ -1178,7 +1294,8 @@ async fn duplicate_discovery_deduplicated() {
             "duplicate discovery should not produce a second completion"
         );
     }
-    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 }

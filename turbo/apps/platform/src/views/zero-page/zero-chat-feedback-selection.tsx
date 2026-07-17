@@ -9,14 +9,9 @@ import {
 } from "@vm0/ui";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import {
-  closeFeedbackSelectionToolbar$,
-  copyFeedbackSelection$,
-  feedbackSelectionValue$,
-  setFeedbackSelectionListenersRef$,
-  setFeedbackSelectionToolbarRef$,
-  startFeedback$,
-  type FeedbackSelection,
+import type {
+  FeedbackSelection,
+  FeedbackSignals,
 } from "../../signals/zero-page/chat-feedback.ts";
 
 function anchorStyle(selection: FeedbackSelection): CSSProperties {
@@ -98,18 +93,22 @@ function FeedbackToolbar({
 // toolbar anchored to the highlighted passage. Picking "Provide feedback"
 // drops the quoted passage straight into the composer (see ComposerFeedbackRows
 // in zero-chat-composer.tsx) — there is no separate feedback panel.
-export function ChatFeedbackSelection() {
-  const selection = useGet(feedbackSelectionValue$);
+export function ChatFeedbackSelection({
+  feedback,
+}: {
+  readonly feedback: FeedbackSignals;
+}) {
+  const selection = useGet(feedback.selection$);
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(
-    setFeedbackSelectionListenersRef$,
+    feedback.setSelectionListenersRef$,
   );
   const setFeedbackSelectionToolbarRef = useSet(
-    setFeedbackSelectionToolbarRef$,
+    feedback.setSelectionToolbarRef$,
   );
-  const startFeedback = useSet(startFeedback$);
-  const closeSelectionToolbar = useSet(closeFeedbackSelectionToolbar$);
-  const copy = useSet(copyFeedbackSelection$);
+  const startFeedback = useSet(feedback.startFeedback$);
+  const closeSelectionToolbar = useSet(feedback.closeSelectionToolbar$);
+  const copy = useSet(feedback.copySelection$);
 
   return (
     <>

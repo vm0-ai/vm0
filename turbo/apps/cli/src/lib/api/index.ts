@@ -152,7 +152,6 @@ export {
   listZeroConnectorCatalog,
   listZeroConnectorCatalogStatus,
   getZeroConnectorCatalogPermissions,
-  diagnoseZeroConnectorPermissionDeny,
   connectZeroConnectorManualGrant,
   listZeroCustomConnectors,
   getZeroCustomConnector,
@@ -214,27 +213,6 @@ export {
   searchZeroChat,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
-
-// Domain modules - Zero Relationships
-export {
-  resolveZeroRelationship,
-  searchZeroRelationships,
-} from "./domains/zero-relationships";
-
-// Domain modules - Zero Memory
-export {
-  createZeroMemory,
-  forgetZeroMemory,
-  forgetZeroMemoryByPrompt,
-  getZeroMemoryContext,
-  listZeroMemory,
-  listZeroMemoryDocuments,
-  listZeroMemoryForgotten,
-  listZeroMemoryHistory,
-  recallZeroMemory,
-  searchZeroMemory,
-  updateZeroMemory,
-} from "./domains/zero-memory";
 
 // Domain modules - Logs
 export {

@@ -1,5 +1,5 @@
 import type { ChangeEvent, FocusEvent, FormEvent, MouseEvent } from "react";
-import { useGet } from "ccstate-react";
+import { useGet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconAlertTriangle,
@@ -19,18 +19,14 @@ import { Button, Input, cn } from "@vm0/ui";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  cancelMailDraft$,
-  mailDraftOverrides$,
-  sendMailDraft$,
-  updateMailDraft$,
+  newestMailDraft,
   type MailDraftFields,
+  type MailDraftSignals,
 } from "../../signals/chat-page/mail-draft.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 interface MailDraftCardProps {
-  readonly threadId: string;
-  readonly messageId: string;
-  readonly mailDraft: ZeroMailDraft;
+  readonly signals: MailDraftSignals;
 }
 
 interface DraftStatusCopy {
@@ -83,18 +79,6 @@ function statusCopy(status: ZeroMailDraftStatus): DraftStatusCopy {
       };
     }
   }
-}
-
-function newestDraft(
-  serverDraft: ZeroMailDraft,
-  localDraft: ZeroMailDraft | undefined,
-): ZeroMailDraft {
-  if (!localDraft) {
-    return serverDraft;
-  }
-  return Date.parse(localDraft.updatedAt) >= Date.parse(serverDraft.updatedAt)
-    ? localDraft
-    : serverDraft;
 }
 
 function fieldsFromForm(form: HTMLFormElement): MailDraftFields {
@@ -287,17 +271,17 @@ function MailDraftActions({
   );
 }
 
-function EnabledMailDraftCard({
-  threadId,
-  messageId,
-  mailDraft: serverMailDraft,
-}: MailDraftCardProps) {
+function ReadyMailDraftCard({
+  signals,
+  mailDraft,
+}: {
+  readonly signals: MailDraftSignals;
+  readonly mailDraft: ZeroMailDraft;
+}) {
   const pageSignal = useGet(pageSignal$);
-  const localDraft = useGet(mailDraftOverrides$)[messageId];
-  const mailDraft = newestDraft(serverMailDraft, localDraft);
-  const [updateLoadable, updateDraft] = useLoadableSet(updateMailDraft$);
-  const [cancelLoadable, cancelDraft] = useLoadableSet(cancelMailDraft$);
-  const [sendLoadable, sendDraft] = useLoadableSet(sendMailDraft$);
+  const [updateLoadable, updateDraft] = useLoadableSet(signals.update$);
+  const [cancelLoadable, cancelDraft] = useLoadableSet(signals.cancel$);
+  const [sendLoadable, sendDraft] = useLoadableSet(signals.send$);
   const editable =
     mailDraft.status === "draft" || mailDraft.status === "failed";
   const updatePending = updateLoadable.state === "loading";
@@ -323,31 +307,19 @@ function EnabledMailDraftCard({
     ) {
       return;
     }
-    detach(
-      updateDraft(
-        { threadId, messageId, fields: fieldsFromForm(form) },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
+    detach(updateDraft(fieldsFromForm(form), pageSignal), Reason.DomCallback);
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     detach(
-      sendDraft(
-        { threadId, messageId, fields: fieldsFromForm(event.currentTarget) },
-        pageSignal,
-      ),
+      sendDraft(fieldsFromForm(event.currentTarget), pageSignal),
       Reason.DomCallback,
     );
   };
 
   const onCancel = () => {
-    detach(
-      cancelDraft({ threadId, messageId }, pageSignal),
-      Reason.DomCallback,
-    );
+    detach(cancelDraft(pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -376,6 +348,43 @@ function EnabledMailDraftCard({
         ) : null}
       </section>
     </form>
+  );
+}
+
+function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
+  const mailDraftLoadable = useLoadable(signals.serverDraft$);
+  const mutationDraft = useGet(signals.mutationDraft$);
+  if (mailDraftLoadable.state === "loading") {
+    return (
+      <section
+        aria-label="Review email"
+        className="flex w-full max-w-2xl items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm"
+      >
+        <IconLoader2 size={16} className="animate-spin" aria-hidden />
+        Loading email draft
+      </section>
+    );
+  }
+  if (mailDraftLoadable.state === "hasError") {
+    return (
+      <section
+        aria-label="Review email"
+        className="flex w-full max-w-2xl items-center gap-2 rounded-2xl border border-destructive/30 bg-card px-4 py-3 text-sm text-destructive shadow-sm"
+      >
+        <IconAlertTriangle size={16} aria-hidden />
+        The email draft could not be loaded.
+      </section>
+    );
+  }
+  return (
+    <ReadyMailDraftCard
+      signals={signals}
+      mailDraft={
+        mutationDraft === undefined
+          ? mailDraftLoadable.data
+          : newestMailDraft(mailDraftLoadable.data, mutationDraft)
+      }
+    />
   );
 }
 

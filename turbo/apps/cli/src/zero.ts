@@ -30,8 +30,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
   connector: "connector:read",
   mail: "connector:read",
-  memory: "relationship:read",
-  relationship: "relationship:read",
   doctor: null,
   credit: ["billing:read", "billing:write"],
   model: null,
@@ -101,21 +99,6 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Review and send mail through Gmail or Outlook Mail",
     load: async () => {
       return (await import("./commands/zero/mail")).zeroMailCommand;
-    },
-  },
-  {
-    name: "relationship",
-    description: "Query relationship memory",
-    load: async () => {
-      return (await import("./commands/zero/relationship"))
-        .zeroRelationshipCommand;
-    },
-  },
-  {
-    name: "memory",
-    description: "Recall structured memory",
-    load: async () => {
-      return (await import("./commands/zero/memory")).zeroMemoryCommand;
     },
   },
   {
@@ -408,7 +391,7 @@ export function buildZeroHelpText(
   const canReadHost = !payload || payload.capabilities.includes("host:read");
   const canWriteHost = !payload || payload.capabilities.includes("host:write");
   const examples = [
-    "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
+    "  Check a connector?     zero connector check --env-name <ENV_NAME>",
     ...(payload && !payload.capabilities.includes("billing:read")
       ? []
       : ["  Check credits?         zero credit"]),
@@ -438,9 +421,6 @@ export function buildZeroHelpText(
     ...(shouldHideCommand("chat", payload)
       ? []
       : ['  Rename this chat?     zero chat rename "New title"']),
-    ...(shouldHideCommand("memory", payload)
-      ? []
-      : ['  Recall memory?       zero memory recall "customer follow up"']),
     "  Introduce Zero?       zero intro",
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --raw-prompt "..."',

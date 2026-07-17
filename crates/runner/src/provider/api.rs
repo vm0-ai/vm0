@@ -25,8 +25,8 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    PreLocalAdmissionOutcome, SessionHistoryGenerationLocalAvailability,
-    SessionHistoryGenerationRelationship,
+    LocalAdmissionResourceKind, PreLocalAdmissionOutcome, SessionAffinityLocalResource,
+    SessionHistoryGenerationLocalAvailability, SessionHistoryGenerationRelationship,
 };
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
@@ -63,6 +63,12 @@ struct ClaimRequestTelemetry {
     main_loop_to_local_admission_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pre_local_admission_outcome: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_affinity_resource: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_affinity_local_resource: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local_admission_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_history_generation_relationship: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -366,12 +372,14 @@ impl JobProvider for ApiProvider {
                     let history_generation_affinity_protected_until =
                         job.history_generation_affinity_protected_until;
                     let affinity_protected_until = job.affinity_protected_until;
+                    let session_affinity_resource = job.session_affinity_resource;
                     let profile = job
                         .experimental_profile
                         .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
+                        .with_session_affinity_resource(session_affinity_resource)
                         .with_history_generation_run_id(history_generation_run_id)
                         .with_history_generation_affinity_protected_until(
                             history_generation_affinity_protected_until,
@@ -848,6 +856,15 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             provider_discovery_to_main_loop_ms,
             main_loop_to_local_admission_ms,
             pre_local_admission_outcome,
+            session_affinity_resource: candidate
+                .session_affinity_resource()
+                .map(crate::types::SessionAffinityResource::as_str),
+            session_affinity_local_resource: candidate
+                .session_affinity_local_resource()
+                .map(SessionAffinityLocalResource::as_str),
+            local_admission_resource: candidate
+                .local_admission_resource()
+                .map(LocalAdmissionResourceKind::as_str),
             session_history_generation_relationship: candidate
                 .session_history_generation_relationship()
                 .map(SessionHistoryGenerationRelationship::as_str),
@@ -1450,6 +1467,7 @@ mod tests {
                 session_id: "held-session-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
                 reusable_sandbox: None,
+                workspace_caches: Vec::new(),
             }],
             mode: "running".to_string(),
         }
@@ -1647,6 +1665,9 @@ mod tests {
             Some(now.checked_sub(Duration::from_millis(7)).unwrap()),
         )
         .with_discovery_source(JobDiscoverySource::Poll)
+        .with_session_affinity_resource(Some(
+            crate::types::SessionAffinityResource::ReusableSandbox,
+        ))
         .with_history_generation_run_id(Some(target_generation_run_id))
         .with_poll_reason("deferred")
         .with_poll_timing(Duration::from_millis(19), Duration::from_millis(11));
@@ -1656,6 +1677,9 @@ mod tests {
         candidate.set_session_history_generation_local_availability(
             SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod,
         );
+        candidate
+            .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
+        candidate.set_local_admission_resource(LocalAdmissionResourceKind::ReusableSandbox);
 
         let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
 
@@ -1673,6 +1697,18 @@ mod tests {
         assert_eq!(body["telemetry"]["pollDueToJobDiscoveredMs"], 19);
         assert_eq!(body["telemetry"]["pollHttpRequestMs"], 11);
         assert_eq!(body["telemetry"]["pollReason"], "deferred");
+        assert_eq!(
+            body["telemetry"]["sessionAffinityResource"],
+            "reusableSandbox"
+        );
+        assert_eq!(
+            body["telemetry"]["sessionAffinityLocalResource"],
+            "reusableSandbox"
+        );
+        assert_eq!(
+            body["telemetry"]["localAdmissionResource"],
+            "reusableSandbox"
+        );
         assert_eq!(
             body["telemetry"]["sessionHistoryGenerationRelationship"],
             "exact"
@@ -1924,7 +1960,8 @@ mod tests {
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
                         "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
-                        "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
+                        "affinityProtectedUntil": "2999-01-01T00:00:00.000Z",
+                        "sessionAffinityResource": "reusableSandbox"
                     }
                 }));
             })
@@ -1949,6 +1986,10 @@ mod tests {
         );
         assert!(discovered.is_affinity_protected());
         assert!(discovered.is_history_generation_affinity_protected());
+        assert_eq!(
+            discovered.session_affinity_resource(),
+            Some(crate::types::SessionAffinityResource::ReusableSandbox)
+        );
         assert_eq!(
             discovered.discovery_source(),
             Some(JobDiscoverySource::Poll)

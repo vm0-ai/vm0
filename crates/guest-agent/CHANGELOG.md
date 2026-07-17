@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.53.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.4...guest-agent-v0.53.5) (2026-07-17)
+
+
+### Refactoring
+
+* **guest-agent:** drop masker build patterns ([#21936](https://github.com/vm0-ai/vm0/issues/21936)) ([97501a7](https://github.com/vm0-ai/vm0/commit/97501a75824a060fd3bc20b20b5f068746899b6f))
+
+## [0.53.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.3...guest-agent-v0.53.4) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+
 ## [0.53.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.2...guest-agent-v0.53.3) (2026-07-16)
 
 

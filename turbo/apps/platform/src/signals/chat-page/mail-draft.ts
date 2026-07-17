@@ -1,4 +1,5 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
+import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroMailContract,
   type ZeroMailDraft,
@@ -6,6 +7,7 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { pageSignal$ } from "../page-signal.ts";
 
 export interface MailDraftFields {
   readonly to: readonly string[];
@@ -13,102 +15,183 @@ export interface MailDraftFields {
   readonly body: string;
 }
 
-interface MailDraftCommandArgs {
-  readonly threadId: string;
-  readonly messageId: string;
+export interface MailDraftSignals {
+  readonly serverDraft$: Computed<Promise<ZeroMailDraft>>;
+  readonly mutationDraft$: Computed<ZeroMailDraft | undefined>;
+  readonly update$: Command<
+    Promise<ZeroMailDraft>,
+    [MailDraftFields, AbortSignal]
+  >;
+  readonly cancel$: Command<Promise<ZeroMailDraft>, [AbortSignal]>;
+  readonly send$: Command<
+    Promise<ZeroMailDraft>,
+    [MailDraftFields, AbortSignal]
+  >;
 }
 
-interface SaveMailDraftCommandArgs extends MailDraftCommandArgs {
-  readonly fields: MailDraftFields;
+export interface MailDraftCard {
+  readonly type: "mail-draft";
+  readonly resourceKey: string;
+  readonly signals: MailDraftSignals;
 }
 
-const internalMailDraftOverrides$ = state<Record<string, ZeroMailDraft>>({});
+export interface MailDraftCardRegistrySignals {
+  readonly mailDraftCardSignals$: Computed<
+    ReadonlyMap<string, MailDraftSignals>
+  >;
+  readonly registerMailDraftMessages$: Command<
+    void,
+    [readonly PagedChatMessage[]]
+  >;
+}
 
-export const mailDraftOverrides$ = computed((get) => {
-  return get(internalMailDraftOverrides$);
-});
+export function newestMailDraft(
+  first: ZeroMailDraft,
+  second: ZeroMailDraft,
+): ZeroMailDraft {
+  return Date.parse(second.updatedAt) >= Date.parse(first.updatedAt)
+    ? second
+    : first;
+}
 
-export const updateMailDraft$ = command(
-  async (
-    { get, set },
-    args: SaveMailDraftCommandArgs,
-    signal: AbortSignal,
-  ): Promise<ZeroMailDraft> => {
-    const client = get(zeroClient$)(zeroMailContract);
+function createMailDraftSignals(mailDraftId: string): MailDraftSignals {
+  const internalMutationDraft$ = state<ZeroMailDraft | undefined>(undefined);
+  const serverDraft$ = computed(async (get): Promise<ZeroMailDraft> => {
     const response = await accept(
-      client.updateDraft({
-        params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
-        },
-        body: {
-          to: [...args.fields.to],
-          subject: args.fields.subject,
-          body: args.fields.body,
-        },
-        fetchOptions: { signal },
+      get(zeroClient$)(zeroMailContract).getDraft({
+        params: { mailDraftId },
+        fetchOptions: { signal: get(pageSignal$) },
       }),
       [200],
     );
-    signal.throwIfAborted();
-    set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
-    });
     return response.body.mailDraft;
-  },
-);
+  });
+  const mutationDraft$ = computed((get) => {
+    return get(internalMutationDraft$);
+  });
 
-export const cancelMailDraft$ = command(
-  async (
-    { get, set },
-    args: MailDraftCommandArgs,
-    signal: AbortSignal,
-  ): Promise<ZeroMailDraft> => {
-    const client = get(zeroClient$)(zeroMailContract);
-    const response = await accept(
-      client.cancelDraft({
-        params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
-    });
-    return response.body.mailDraft;
-  },
-);
+  const update$ = command(
+    async (
+      { get, set },
+      fields: MailDraftFields,
+      signal: AbortSignal,
+    ): Promise<ZeroMailDraft> => {
+      const client = get(zeroClient$)(zeroMailContract);
+      const response = await accept(
+        client.updateDraft({
+          params: { mailDraftId },
+          body: {
+            to: [...fields.to],
+            subject: fields.subject,
+            body: fields.body,
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      set(internalMutationDraft$, (current) => {
+        return current === undefined
+          ? response.body.mailDraft
+          : newestMailDraft(current, response.body.mailDraft);
+      });
+      return response.body.mailDraft;
+    },
+  );
 
-export const sendMailDraft$ = command(
-  async (
-    { get, set },
-    args: SaveMailDraftCommandArgs,
-    signal: AbortSignal,
-  ): Promise<ZeroMailDraft> => {
-    const client = get(zeroClient$)(zeroMailContract);
-    const response = await accept(
-      client.sendDraft({
-        params: {
-          threadId: args.threadId,
-          messageId: args.messageId,
-        },
-        body: {
-          to: [...args.fields.to],
-          subject: args.fields.subject,
-          body: args.fields.body,
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(internalMailDraftOverrides$, (current) => {
-      return { ...current, [args.messageId]: response.body.mailDraft };
-    });
-    return response.body.mailDraft;
-  },
-);
+  const cancel$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<ZeroMailDraft> => {
+      const client = get(zeroClient$)(zeroMailContract);
+      const response = await accept(
+        client.cancelDraft({
+          params: { mailDraftId },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      set(internalMutationDraft$, (current) => {
+        return current === undefined
+          ? response.body.mailDraft
+          : newestMailDraft(current, response.body.mailDraft);
+      });
+      return response.body.mailDraft;
+    },
+  );
+
+  const send$ = command(
+    async (
+      { get, set },
+      fields: MailDraftFields,
+      signal: AbortSignal,
+    ): Promise<ZeroMailDraft> => {
+      const client = get(zeroClient$)(zeroMailContract);
+      const response = await accept(
+        client.sendDraft({
+          params: { mailDraftId },
+          body: {
+            to: [...fields.to],
+            subject: fields.subject,
+            body: fields.body,
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
+      set(internalMutationDraft$, (current) => {
+        return current === undefined
+          ? response.body.mailDraft
+          : newestMailDraft(current, response.body.mailDraft);
+      });
+      return response.body.mailDraft;
+    },
+  );
+
+  return {
+    serverDraft$,
+    mutationDraft$,
+    update$,
+    cancel$,
+    send$,
+  };
+}
+
+/**
+ * Thread-scoped registry of mail draft signals keyed by draft ID. Persistent
+ * messages register their draft before entering the transcript, so every card
+ * for the same draft reuses one signals object for the thread's lifetime.
+ */
+export function createMailDraftCardRegistry(): MailDraftCardRegistrySignals {
+  const internalSignalsByResourceKey$ = state<
+    ReadonlyMap<string, MailDraftSignals>
+  >(new Map());
+  const mailDraftCardSignals$ = computed((get) => {
+    return get(internalSignalsByResourceKey$);
+  });
+  const registerMailDraftMessages$ = command(
+    ({ get, set }, messages: readonly PagedChatMessage[]) => {
+      const current = get(internalSignalsByResourceKey$);
+      let next: Map<string, MailDraftSignals> | undefined;
+      for (const message of messages) {
+        const resourceKey = message.mailDraftId;
+        if (
+          resourceKey === undefined ||
+          current.has(resourceKey) ||
+          next?.has(resourceKey)
+        ) {
+          continue;
+        }
+        next ??= new Map(current);
+        next.set(resourceKey, createMailDraftSignals(resourceKey));
+      }
+      if (next !== undefined) {
+        set(internalSignalsByResourceKey$, next);
+      }
+    },
+  );
+  return {
+    mailDraftCardSignals$,
+    registerMailDraftMessages$,
+  };
+}

@@ -1,4 +1,5 @@
 import Ably from "ably";
+import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
@@ -133,21 +134,6 @@ export async function publishChatThreadMessageCreatedSafely(
 }
 
 /**
- * Notify a chat thread's UI that an existing message row changed in place.
- * The payload lets clients refetch that exact row instead of relying on the
- * append-only message cursor, which cannot observe updates to an older row.
- */
-export async function publishChatThreadMessageUpdated(
-  userId: string,
-  threadId: string,
-  messageId: string,
-): Promise<void> {
-  await publishUserSignal([userId], `chatThreadMessageUpdated:${threadId}`, {
-    messageId,
-  });
-}
-
-/**
  * Notify a chat thread's UI that its linked automation set changed (created,
  * deleted, enabled, or disabled). The chat-thread header automation menu
  * subscribes to this topic and refetches its thread-scoped list.
@@ -165,6 +151,30 @@ export async function publishChatThreadAutomationsChangedSafely(
     (error) => {
       L.warn("Failed to publish chat thread automations changed signal", {
         threadId,
+        error,
+      });
+    },
+  );
+}
+
+/**
+ * Notify the user's chat threads that their connector permission grants
+ * changed (allowed or denied from any client: chat permission card,
+ * permission-allow page, or settings dialog). Chat threads subscribe to this
+ * topic and invalidate all rendered permission cards at once — grants are few
+ * and re-fetching them is cheap, so a single user-level signal beats
+ * per-permission topics. Payload is intentionally empty.
+ *
+ * Best-effort: a failed publish must not fail the grant mutation that
+ * triggers it.
+ */
+export async function publishConnectorPermissionUpdatedSafely(
+  userId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "connectorPermissionUpdated"),
+    (error) => {
+      L.warn("Failed to publish connector permission updated signal", {
         error,
       });
     },
@@ -277,6 +287,7 @@ export async function publishRunnerJobNotification(
     readonly cliAgentSessionId: string | null;
     readonly historyGenerationAffinityProtectedUntil: string | null;
     readonly affinityProtectedUntil: string | null;
+    readonly sessionAffinityResource: SessionAffinityResource | null;
     readonly historyGenerationRunId: string | undefined;
   },
 ): Promise<boolean> {
@@ -291,6 +302,9 @@ export async function publishRunnerJobNotification(
           : {}),
         ...(metadata?.affinityProtectedUntil
           ? { affinityProtectedUntil: metadata.affinityProtectedUntil }
+          : {}),
+        ...(metadata?.sessionAffinityResource
+          ? { sessionAffinityResource: metadata.sessionAffinityResource }
           : {}),
         ...(metadata?.historyGenerationAffinityProtectedUntil
           ? {

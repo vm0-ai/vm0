@@ -35,7 +35,6 @@ import {
   IconPlug,
   IconPhoto,
   IconPlus,
-  IconQuote,
   IconRoute,
   IconSearch,
   IconTarget,
@@ -71,7 +70,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
-  matchShortcut,
   processShortcut,
   type KeyboardEventLike,
 } from "@vm0/ui";
@@ -90,7 +88,11 @@ import {
   openChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
-import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
+import type {
+  ComposerTemplateAttachment,
+  WorkflowComposerSignals,
+} from "../../signals/zero-page/tiptap-workflow-composer.ts";
+import type { TemplatePreviewRuntime } from "../../signals/zero-page/template-preview-runtime.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
 import {
@@ -209,8 +211,6 @@ import {
   setTemplateCardThemeId$,
   templateCardHtmlPreview$,
   setTemplateCardHtmlPreview$,
-  templateCardDefaultHtmlPreviews$,
-  setTemplateCardDefaultHtmlPreview$,
   type TemplateCardHtmlPreviewState,
   templateDetailHtmlPreview$,
   setTemplateDetailHtmlPreview$,
@@ -231,7 +231,6 @@ import {
   stopAndTranscribe$,
 } from "../../signals/voice-io/voice-io-stt.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
-import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 
@@ -350,23 +349,6 @@ export interface ZeroChatComposerProps {
   activeGoal?: ActiveGoalComposerItem;
   /** Cancels the active goal through the goal API. */
   onCancelActiveGoal?: () => void;
-  /**
-   * Inline feedback drafted from selected assistant text. When at least one
-   * quoted fragment is present the composer swaps its textarea for the stacked
-   * quote + note rows and its Send button dispatches the feedback turn — so the
-   * feedback lives inside the composer instead of a separate panel above it.
-   */
-  feedback?: ComposerFeedback;
-}
-
-export interface ComposerFeedback {
-  items: readonly FeedbackItem[];
-  /** Fragments carrying a non-empty note — what Send will dispatch. */
-  sendCount: number;
-  onChangeNote: (id: number, note: string) => void;
-  onRemove: (id: number) => void;
-  onSubmit: () => void;
-  onDismiss: () => void;
 }
 
 export interface QueuedComposerItem {
@@ -747,172 +729,6 @@ function QueuedMessagesStrip({
           />
         ) : null}
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Inline feedback rows — the docked feedback stack, rendered inside the
-// composer card in place of the textarea. Each selected passage is a quote line
-// above a borderless, composer-styled note input; fragments append to the
-// bottom so reading order matches selection order, and they share the
-// composer's toolbar and Send button.
-// ---------------------------------------------------------------------------
-
-// Grow the note input to fit its content so multi-line comments expand the
-// composer instead of scrolling inside a single row.
-function autoGrowFeedbackNote(element: HTMLTextAreaElement | null): void {
-  if (!element) {
-    return;
-  }
-  element.style.height = "auto";
-  element.style.height = `${element.scrollHeight}px`;
-}
-
-function autoGrowFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
-  autoGrowFeedbackNote(element);
-}
-
-function focusFeedbackNoteRef(element: HTMLTextAreaElement | null): void {
-  if (!element) {
-    return;
-  }
-  window.requestAnimationFrame(() => {
-    if (element.isConnected) {
-      element.focus({ preventScroll: true });
-    }
-  });
-  autoGrowFeedbackNote(element);
-}
-
-function ComposerFeedbackRow({
-  item,
-  autoFocus,
-  showDivider,
-  fill,
-  onChangeNote,
-  onRemove,
-  onKeyDown,
-}: {
-  item: FeedbackItem;
-  autoFocus: boolean;
-  showDivider: boolean;
-  fill: boolean;
-  onChangeNote: (note: string) => void;
-  onRemove: () => void;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-}) {
-  return (
-    <div
-      className={cn(
-        // Bottom padding on every row; top padding only when a dashed divider
-        // separates stacked fragments. The first row gets no top inset so the
-        // quote chip sits as high as the attachment chips do (matching the
-        // composer's pt-3), letting the card extend upward instead of leaving a
-        // gap above the chip.
-        "flex flex-col gap-1.5 pb-1.5",
-        showDivider && "border-t border-dashed border-border/60 pt-1.5",
-      )}
-    >
-      {/* Quote reference reuses the selected-template chip treatment (bordered
-          pill, icon square, in-pill remove) so feedback references read the same
-          as template chips. */}
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg border border-border/80 bg-background/90 pl-1.5 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted">
-            <IconQuote
-              size={12}
-              stroke={1.5}
-              className="-scale-x-100 text-muted-foreground"
-            />
-          </span>
-          <span className="min-w-0 truncate text-xs font-medium">
-            {item.quote}
-          </span>
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label="Remove feedback"
-            title="Remove feedback"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <textarea
-        ref={autoFocus ? focusFeedbackNoteRef : autoGrowFeedbackNoteRef}
-        value={item.note}
-        onChange={(event) => {
-          autoGrowFeedbackNote(event.target);
-          return onChangeNote(event.target.value);
-        }}
-        onKeyDown={onKeyDown}
-        rows={1}
-        placeholder="What should change about this?"
-        className={cn(
-          "w-full resize-none overflow-hidden border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-snug text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0",
-          // The active (newest) note carries the composer's resting height so the
-          // ghost text stays anchored above the toolbar — matching the textarea
-          // body. Quote chips then stack above it and grow the card upward,
-          // mirroring the attachment-chips layout, instead of the chip eating
-          // into a fixed-height container and pushing the ghost text down.
-          fill && "min-h-[96px]",
-        )}
-      />
-    </div>
-  );
-}
-
-function ComposerFeedbackRows({
-  feedback,
-  submissionLoading,
-}: {
-  feedback: ComposerFeedback;
-  submissionLoading: boolean;
-}) {
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sends, Shift+Enter inserts a newline — matching the main composer.
-    // Escape clears the drafted feedback.
-    if (matchShortcut("enter", event)) {
-      event.preventDefault();
-      if (!submissionLoading) {
-        feedback.onSubmit();
-      }
-    } else if (matchShortcut("escape", event)) {
-      event.preventDefault();
-      feedback.onDismiss();
-    }
-  };
-
-  // Newest fragment sits at the bottom (nearest Send) and takes focus.
-  const newestId = feedback.items[feedback.items.length - 1]?.id;
-
-  return (
-    // px-4 / pt-3 mirror the attachment-chips inset so the feedback chip lines
-    // up with attachments on both the left and top edges. The resting height
-    // lives on the newest note (via `fill`) rather than this container, so the
-    // quote chip grows the card upward instead of being capped inside a fixed
-    // height — keeping the layout consistent with the attachment-chips band.
-    <div className="flex flex-col px-4 pb-2 pt-3">
-      {feedback.items.map((item, index) => {
-        return (
-          <ComposerFeedbackRow
-            key={item.id}
-            item={item}
-            autoFocus={item.id === newestId}
-            showDivider={index > 0}
-            fill={item.id === newestId}
-            onChangeNote={(note) => {
-              return feedback.onChangeNote(item.id, note);
-            }}
-            onRemove={() => {
-              return feedback.onRemove(item.id);
-            }}
-            onKeyDown={handleKeyDown}
-          />
-        );
-      })}
     </div>
   );
 }
@@ -1685,33 +1501,15 @@ function presentationTemplateFallbackSlideImage(
   return r2ImageTransformUrl(image, size);
 }
 
-interface TemplatePreviewPrewarmCache {
-  readonly preloads: Map<string, HTMLImageElement>;
-}
-
-function templatePreviewPrewarmCache(): TemplatePreviewPrewarmCache {
-  const cacheKey = "vm0TemplatePreviewPrewarmCache";
-  const existingCache = Reflect.get(globalThis, cacheKey) as
-    | TemplatePreviewPrewarmCache
-    | undefined;
-  if (existingCache !== undefined) {
-    return existingCache;
-  }
-
-  const cache: TemplatePreviewPrewarmCache = {
-    preloads: new Map<string, HTMLImageElement>(),
-  };
-  Reflect.set(globalThis, cacheKey, cache);
-  return cache;
-}
-
-function prewarmTemplatePreviewImage(url: string): void {
+function prewarmTemplatePreviewImage(
+  runtime: TemplatePreviewRuntime,
+  url: string,
+): void {
   if (typeof Image === "undefined") {
     return;
   }
 
-  const cache = templatePreviewPrewarmCache();
-  const cachedImage = cache.preloads.get(url);
+  const cachedImage = runtime.imagePreloads.get(url);
   if (cachedImage !== undefined) {
     return;
   }
@@ -1721,7 +1519,7 @@ function prewarmTemplatePreviewImage(url: string): void {
   image.loading = "eager";
   image.fetchPriority = "high";
   image.src = url;
-  cache.preloads.set(url, image);
+  runtime.imagePreloads.set(url, image);
   if (image.decode !== undefined) {
     detach(bestEffort(image.decode()), Reason.DomCallback);
   }
@@ -1743,12 +1541,13 @@ function uniqueTemplatePreviewImageUrls(
 }
 
 function prewarmTemplatePreviewImages(
+  runtime: TemplatePreviewRuntime,
   imageUrls: readonly string[],
   count = TEMPLATE_PREWARM_IMAGE_COUNT,
 ): void {
   const uniqueUrls = uniqueTemplatePreviewImageUrls(imageUrls);
   for (const imageUrl of uniqueUrls.slice(0, count)) {
-    prewarmTemplatePreviewImage(imageUrl);
+    prewarmTemplatePreviewImage(runtime, imageUrl);
   }
 }
 
@@ -1842,10 +1641,12 @@ function templatePreviewPrewarmImageCountForCategory(category: string): number {
 
 function prewarmIllustrationPreviewImagesNearScroll({
   items,
+  runtime,
   scrollContainer,
   variantIndexBySlug,
 }: {
   items: readonly IllustrationTemplateItem[];
+  runtime: TemplatePreviewRuntime;
   scrollContainer: HTMLElement;
   variantIndexBySlug: Readonly<Record<string, number>>;
 }): void {
@@ -1884,6 +1685,7 @@ function prewarmIllustrationPreviewImagesNearScroll({
   scrollContainer.dataset.illustrationPreviewPrewarmBucket = key;
 
   prewarmTemplatePreviewImages(
+    runtime,
     illustrationPreviewImageUrlsForItems({
       items: items.slice(
         startIndex,
@@ -2444,48 +2246,13 @@ async function loadPresentationTemplateHtmlPreview(params: {
   return draft.slides.length > 0 ? draft : null;
 }
 
-interface PresentationTemplateHtmlPreviewCache {
-  readonly drafts: Map<string, PresentationEditDraft>;
-  readonly failed: Set<string>;
-  readonly pendingLoads: Map<string, Promise<PresentationEditDraft | null>>;
-  readonly activeTokens: Map<string, symbol>;
-  readonly activeIndexes: Map<string, number>;
-  readonly detailTokens: Map<string, symbol>;
-  pendingSlideAnimationFrames: Map<string, number>;
-  pendingSlideIndexes: Map<string, number>;
-}
-
-function presentationTemplateHtmlPreviewCache(): PresentationTemplateHtmlPreviewCache {
-  const cacheKey = "vm0PresentationTemplateHtmlPreviewCache";
-  const existingCache = Reflect.get(globalThis, cacheKey) as
-    | PresentationTemplateHtmlPreviewCache
-    | undefined;
-  if (existingCache !== undefined) {
-    existingCache.pendingSlideAnimationFrames ??= new Map<string, number>();
-    existingCache.pendingSlideIndexes ??= new Map<string, number>();
-    return existingCache;
-  }
-
-  const cache: PresentationTemplateHtmlPreviewCache = {
-    activeIndexes: new Map<string, number>(),
-    activeTokens: new Map<string, symbol>(),
-    detailTokens: new Map<string, symbol>(),
-    drafts: new Map<string, PresentationEditDraft>(),
-    failed: new Set<string>(),
-    pendingLoads: new Map<string, Promise<PresentationEditDraft | null>>(),
-    pendingSlideAnimationFrames: new Map<string, number>(),
-    pendingSlideIndexes: new Map<string, number>(),
-  };
-  Reflect.set(globalThis, cacheKey, cache);
-  return cache;
-}
-
 function schedulePresentationTemplateCardSlideIndex(params: {
   readonly apply: (index: number) => void;
   readonly embedUrl: string;
   readonly index: number;
+  readonly runtime: TemplatePreviewRuntime;
 }): void {
-  const cache = presentationTemplateHtmlPreviewCache();
+  const cache = params.runtime.presentation;
   cache.pendingSlideIndexes.set(params.embedUrl, params.index);
   if (cache.pendingSlideAnimationFrames.has(params.embedUrl)) {
     return;
@@ -2504,8 +2271,11 @@ function schedulePresentationTemplateCardSlideIndex(params: {
   cache.pendingSlideAnimationFrames.set(params.embedUrl, frameId);
 }
 
-function cancelPresentationTemplateCardSlideIndex(embedUrl: string): void {
-  const cache = presentationTemplateHtmlPreviewCache();
+function cancelPresentationTemplateCardSlideIndex(
+  runtime: TemplatePreviewRuntime,
+  embedUrl: string,
+): void {
+  const cache = runtime.presentation;
   const frameId = cache.pendingSlideAnimationFrames.get(embedUrl);
   if (frameId !== undefined) {
     window.cancelAnimationFrame(frameId);
@@ -2592,77 +2362,20 @@ function presentationTemplateThemeVariables(
   };
 }
 
-interface PresentationTemplateThumbnailCache {
-  readonly htmlByHost: WeakMap<HTMLDivElement, string>;
-  readonly previewHtmlsByDraft: WeakMap<
-    PresentationEditDraft,
-    Map<string, string>
-  >;
-  readonly themeVariablesByTheme: WeakMap<
-    PresentationTemplateThemeOption,
-    PresentationTemplateThemeVariables
-  >;
-}
-
-function presentationTemplateThumbnailCache(): PresentationTemplateThumbnailCache {
-  const cacheKey = "vm0PresentationTemplateThumbnailCache";
-  const existingCache = Reflect.get(globalThis, cacheKey) as
-    | PresentationTemplateThumbnailCache
-    | undefined;
-  if (existingCache !== undefined) {
-    return existingCache;
-  }
-
-  const cache: PresentationTemplateThumbnailCache = {
-    htmlByHost: new WeakMap<HTMLDivElement, string>(),
-    previewHtmlsByDraft: new WeakMap<
-      PresentationEditDraft,
-      Map<string, string>
-    >(),
-    themeVariablesByTheme: new WeakMap<
-      PresentationTemplateThemeOption,
-      PresentationTemplateThemeVariables
-    >(),
-  };
-  Reflect.set(globalThis, cacheKey, cache);
-  return cache;
-}
-
 function getPresentationTemplateThumbnailThemeVariables(
   theme: PresentationTemplateThemeOption,
 ): PresentationTemplateThemeVariables {
-  const cache = presentationTemplateThumbnailCache();
-  const cachedVariables = cache.themeVariablesByTheme.get(theme);
-  if (cachedVariables !== undefined) {
-    return cachedVariables;
-  }
-
-  const variables = presentationTemplateThemeVariables(theme);
-  cache.themeVariablesByTheme.set(theme, variables);
-  return variables;
+  return presentationTemplateThemeVariables(theme);
 }
 
 function getPresentationTemplateThumbnailPreviewHtml(
   draft: PresentationEditDraft,
   slideId: string,
 ): string {
-  const cache = presentationTemplateThumbnailCache();
-  let htmls = cache.previewHtmlsByDraft.get(draft);
-  if (htmls === undefined) {
-    htmls = new Map<string, string>();
-    cache.previewHtmlsByDraft.set(draft, htmls);
-  }
-  const cachedHtml = htmls.get(slideId);
-  if (cachedHtml !== undefined) {
-    return cachedHtml;
-  }
-
-  const html = previewPresentationHtml({
+  return previewPresentationHtml({
     activeSlideId: slideId,
     html: draft.html,
   });
-  htmls.set(slideId, html);
-  return html;
 }
 
 function applyPresentationTemplateThumbnailTheme(
@@ -2684,16 +2397,17 @@ function applyPresentationTemplateThumbnailTheme(
 }
 
 function renderPresentationTemplateShadowThumbnail(
+  runtime: TemplatePreviewRuntime,
   host: HTMLDivElement,
   html: string,
   themeVariables: PresentationTemplateThemeVariables,
 ): void {
-  const cache = presentationTemplateThumbnailCache();
-  if (cache.htmlByHost.get(host) === html) {
+  const htmlByHost = runtime.presentation.thumbnailHtmlByHost;
+  if (htmlByHost.get(host) === html) {
     applyPresentationTemplateThumbnailTheme(host, themeVariables);
     return;
   }
-  cache.htmlByHost.set(host, html);
+  htmlByHost.set(host, html);
 
   const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -2759,12 +2473,14 @@ function renderPresentationTemplateShadowThumbnail(
 function PresentationTemplateShadowThumbnail({
   draft,
   fallbackImage,
+  runtime,
   slideId,
   themeVariables,
   title,
 }: {
   readonly draft: PresentationEditDraft | undefined;
   readonly fallbackImage: string;
+  readonly runtime: TemplatePreviewRuntime;
   readonly slideId: string | null;
   readonly themeVariables: PresentationTemplateThemeVariables;
   readonly title: string;
@@ -2785,6 +2501,7 @@ function PresentationTemplateShadowThumbnail({
           ref={(node) => {
             if (node !== null) {
               renderPresentationTemplateShadowThumbnail(
+                runtime,
                 node,
                 getPresentationTemplateThumbnailPreviewHtml(draft, slideId),
                 themeVariables,
@@ -2994,11 +2711,13 @@ function TemplatePreviewFrames({
 function TemplatePreview({
   item,
   onPreview,
+  runtime,
   theme,
 }: {
   item: PresentationTemplateItem;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
+  runtime: TemplatePreviewRuntime;
   theme?: PresentationTemplateThemeOption;
 }) {
   const hover = useGet(templateCardHover$);
@@ -3038,7 +2757,7 @@ function TemplatePreview({
     });
   const scrubSlideCount = activeHtmlPreview?.slideCount ?? fallbackSlideCount;
   const currentPreviewSlideIndex = () => {
-    const cache = presentationTemplateHtmlPreviewCache();
+    const cache = runtime.presentation;
     const index =
       cache.pendingSlideIndexes.get(item.embedUrl) ??
       cache.activeIndexes.get(item.embedUrl) ??
@@ -3066,7 +2785,7 @@ function TemplatePreview({
   };
 
   const startHtmlPreviewLoad = () => {
-    const cache = presentationTemplateHtmlPreviewCache();
+    const cache = runtime.presentation;
     const activeIndex = cache.activeIndexes.get(item.embedUrl) ?? 0;
     const cachedDraft = cache.drafts.get(item.embedUrl);
     if (cachedDraft !== undefined) {
@@ -3152,9 +2871,7 @@ function TemplatePreview({
   };
 
   const applySlideIndex = (index: number) => {
-    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-      item.embedUrl,
-    );
+    const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
     setHover({ slug: item.slug, index });
     if (cachedDraft !== undefined) {
       setHtmlPreview(
@@ -3170,7 +2887,7 @@ function TemplatePreview({
   };
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const cache = presentationTemplateHtmlPreviewCache();
+    const cache = runtime.presentation;
     if (!cache.drafts.has(item.embedUrl)) {
       return;
     }
@@ -3199,6 +2916,7 @@ function TemplatePreview({
       apply: applySlideIndex,
       embedUrl: item.embedUrl,
       index: nextIndex,
+      runtime,
     });
     event.currentTarget.dataset.targetSlideIndex = String(nextIndex);
   };
@@ -3207,19 +2925,16 @@ function TemplatePreview({
     <div
       className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted"
       onMouseEnter={() => {
-        cancelPresentationTemplateCardSlideIndex(item.embedUrl);
-        presentationTemplateHtmlPreviewCache().activeIndexes.set(
-          item.embedUrl,
-          0,
-        );
+        cancelPresentationTemplateCardSlideIndex(runtime, item.embedUrl);
+        runtime.presentation.activeIndexes.set(item.embedUrl, 0);
         setHover({ slug: item.slug, index: 0 });
         startHtmlPreviewLoad();
       }}
       onMouseMove={handleMouseMove}
       onMouseLeave={(event) => {
         delete event.currentTarget.dataset.targetSlideIndex;
-        const cache = presentationTemplateHtmlPreviewCache();
-        cancelPresentationTemplateCardSlideIndex(item.embedUrl);
+        const cache = runtime.presentation;
+        cancelPresentationTemplateCardSlideIndex(runtime, item.embedUrl);
         cache.activeIndexes.delete(item.embedUrl);
         cache.activeTokens.delete(item.embedUrl);
         setHover(null);
@@ -3362,6 +3077,7 @@ function selectPresentationTemplateDetailSlide({
   selectedTheme,
   setDetailPreview,
   setSlideIndex,
+  runtime,
 }: {
   readonly detailPreview: PresentationTemplateDetailPreviewState | null;
   readonly detailSlideCount: number;
@@ -3370,12 +3086,11 @@ function selectPresentationTemplateDetailSlide({
   readonly selectedTheme: PresentationTemplateThemeOption;
   readonly setDetailPreview: SetPresentationTemplateDetailPreview;
   readonly setSlideIndex: SetPresentationTemplateDetailSlideIndex;
+  readonly runtime: TemplatePreviewRuntime;
 }) {
   const nextIndex = Math.max(0, Math.min(detailSlideCount - 1, index));
   setSlideIndex(item.slug, nextIndex);
-  const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-    item.embedUrl,
-  );
+  const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
   if (cachedDraft !== undefined) {
     setLoadedPresentationTemplateDetailPreview({
       draft: cachedDraft,
@@ -3392,10 +3107,12 @@ function TemplatePreviewPage({
   item,
   onBack,
   onSelect,
+  runtime,
 }: {
   item: PresentationTemplateItem;
   onBack: () => void;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
+  runtime: TemplatePreviewRuntime;
 }) {
   const detailPreview = useGet(templateDetailHtmlPreview$);
   const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
@@ -3418,9 +3135,7 @@ function TemplatePreviewPage({
   const fallbackSlideCount = presentationTemplateSlideCount(item);
   const detailSlideCount =
     visibleDetailPreview?.slideCount ?? fallbackSlideCount;
-  const cachedDetailDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-    item.embedUrl,
-  );
+  const cachedDetailDraft = runtime.presentation.drafts.get(item.embedUrl);
   const thumbnailThemeVariables =
     getPresentationTemplateThumbnailThemeVariables(selectedTheme);
   const detailFallbackImage = presentationTemplateFallbackSlideImage(
@@ -3457,7 +3172,7 @@ function TemplatePreviewPage({
       return;
     }
 
-    const cache = presentationTemplateHtmlPreviewCache();
+    const cache = runtime.presentation;
     const detailTokenKey = `detail:${item.embedUrl}`;
     const detailToken = Symbol(detailTokenKey);
     cache.detailTokens.set(detailTokenKey, detailToken);
@@ -3559,14 +3274,13 @@ function TemplatePreviewPage({
       selectedTheme,
       setDetailPreview,
       setSlideIndex,
+      runtime,
     });
   };
 
   const selectDetailTheme = (theme: PresentationTemplateThemeOption) => {
     setThemeId(item.slug, theme.id);
-    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-      item.embedUrl,
-    );
+    const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
     if (cachedDraft !== undefined) {
       setLoadedDetailPreview({
         draft: cachedDraft,
@@ -3730,6 +3444,7 @@ function TemplatePreviewPage({
                   <PresentationTemplateShadowThumbnail
                     draft={cachedDetailDraft}
                     fallbackImage={thumbnailImage}
+                    runtime={runtime}
                     slideId={thumbnailSlide?.id ?? null}
                     themeVariables={thumbnailThemeVariables}
                     title={`${item.title} slide ${slideNumber} preview`}
@@ -3864,12 +3579,14 @@ function PptCard({
   selected,
   onSelect,
   onPreview,
+  runtime,
 }: {
   item: PresentationTemplateItem;
   selected: boolean;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
   priority?: boolean;
+  runtime: TemplatePreviewRuntime;
 }) {
   const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const selectedTheme = findPresentationTemplateTheme(
@@ -3887,6 +3604,7 @@ function PptCard({
       <TemplatePreview
         item={item}
         onPreview={onPreview}
+        runtime={runtime}
         theme={selectedTheme}
       />
       <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
@@ -3930,6 +3648,7 @@ function IllustrationTemplateHero({
   priority = false,
   source,
   onVariantChange,
+  runtime,
 }: {
   item: IllustrationTemplateItem;
   images: readonly string[];
@@ -3937,6 +3656,7 @@ function IllustrationTemplateHero({
   priority?: boolean;
   source: string;
   onVariantChange: (slug: string, index: number) => void;
+  runtime: TemplatePreviewRuntime;
 }) {
   const heroImage = illustrationHeroImageUrl(source);
   const navigable = images.length > 1;
@@ -3944,8 +3664,8 @@ function IllustrationTemplateHero({
     return (activeIndex + direction + images.length) % images.length;
   };
   const preloadNeighbors = (): void => {
-    preloadIllustrationVariant(images, variantAt(1));
-    preloadIllustrationVariant(images, variantAt(-1));
+    preloadIllustrationVariant(runtime, images, variantAt(1));
+    preloadIllustrationVariant(runtime, images, variantAt(-1));
   };
 
   return (
@@ -3980,6 +3700,7 @@ function IllustrationTemplateHero({
                   index: variantAt(direction),
                   item,
                   onVariantChange,
+                  runtime,
                 });
               }
             : undefined
@@ -3987,7 +3708,7 @@ function IllustrationTemplateHero({
         onLoad={(event) => {
           const image = event.currentTarget;
           detach(
-            markIllustrationPreviewImageLoaded(heroImage, image),
+            markIllustrationPreviewImageLoaded(runtime, heroImage, image),
             Reason.DomCallback,
           );
         }}
@@ -4008,42 +3729,19 @@ function IllustrationTemplateHero({
   );
 }
 
-interface IllustrationPreviewImageCache {
-  readonly decoded: Set<string>;
-  readonly pendingDecodes: Map<string, Promise<void>>;
-  readonly preloads: Map<string, HTMLImageElement>;
-}
-
-function illustrationPreviewImageCache(): IllustrationPreviewImageCache {
-  const cacheKey = "vm0IllustrationPreviewImageDecodeCache";
-  const existingCache = Reflect.get(globalThis, cacheKey) as
-    | IllustrationPreviewImageCache
-    | undefined;
-  if (existingCache !== undefined) {
-    return existingCache;
-  }
-
-  const cache: IllustrationPreviewImageCache = {
-    decoded: new Set<string>(),
-    pendingDecodes: new Map<string, Promise<void>>(),
-    preloads: new Map<string, HTMLImageElement>(),
-  };
-  Reflect.set(globalThis, cacheKey, cache);
-  return cache;
-}
-
 function illustrationHeroImageUrl(source: string): string {
   return r2ImageTransformUrl(source, ILLUSTRATION_CARD_PREVIEW_SIZE);
 }
 
 function preloadIllustrationPreviewImage(
+  runtime: TemplatePreviewRuntime,
   url: string,
 ): HTMLImageElement | undefined {
   if (typeof Image === "undefined") {
     return undefined;
   }
 
-  const cache = illustrationPreviewImageCache();
+  const cache = runtime.illustration;
   const cachedImage = cache.preloads.get(url);
   if (cachedImage !== undefined) {
     return cachedImage;
@@ -4058,8 +3756,11 @@ function preloadIllustrationPreviewImage(
   return image;
 }
 
-async function decodeIllustrationPreviewImage(url: string): Promise<void> {
-  const cache = illustrationPreviewImageCache();
+async function decodeIllustrationPreviewImage(
+  runtime: TemplatePreviewRuntime,
+  url: string,
+): Promise<void> {
+  const cache = runtime.illustration;
   if (cache.decoded.has(url)) {
     return;
   }
@@ -4075,7 +3776,7 @@ async function decodeIllustrationPreviewImage(url: string): Promise<void> {
     return;
   }
 
-  const image = preloadIllustrationPreviewImage(url);
+  const image = preloadIllustrationPreviewImage(runtime, url);
   if (image === undefined) {
     return;
   }
@@ -4087,16 +3788,17 @@ async function decodeIllustrationPreviewImage(url: string): Promise<void> {
     return;
   }
 
-  const decode = markIllustrationPreviewImageDecoded(url, image);
+  const decode = markIllustrationPreviewImageDecoded(runtime, url, image);
   cache.pendingDecodes.set(url, decode);
   await decode;
 }
 
 async function markIllustrationPreviewImageDecoded(
+  runtime: TemplatePreviewRuntime,
   url: string,
   image: HTMLImageElement,
 ): Promise<void> {
-  const cache = illustrationPreviewImageCache();
+  const cache = runtime.illustration;
   await tapError(image.decode(), () => {});
   if (image.complete && image.naturalWidth > 0) {
     cache.decoded.add(url);
@@ -4105,10 +3807,11 @@ async function markIllustrationPreviewImageDecoded(
 }
 
 async function markIllustrationPreviewImageLoaded(
+  runtime: TemplatePreviewRuntime,
   url: string,
   image: HTMLImageElement,
 ): Promise<void> {
-  const cache = illustrationPreviewImageCache();
+  const cache = runtime.illustration;
   if (image.decode !== undefined) {
     await tapError(image.decode(), () => {});
   }
@@ -4121,8 +3824,11 @@ async function markIllustrationPreviewImageLoaded(
     ?.setAttribute("hidden", "");
 }
 
-function illustrationPreviewImageDecoded(url: string): boolean {
-  return illustrationPreviewImageCache().decoded.has(url);
+function illustrationPreviewImageDecoded(
+  runtime: TemplatePreviewRuntime,
+  url: string,
+): boolean {
+  return runtime.illustration.decoded.has(url);
 }
 
 async function selectDecodedIllustrationVariant({
@@ -4131,17 +3837,19 @@ async function selectDecodedIllustrationVariant({
   index,
   item,
   onVariantChange,
+  runtime,
 }: {
   card: HTMLElement;
   imageUrl: string;
   index: number;
   item: IllustrationTemplateItem;
   onVariantChange: (slug: string, index: number) => void;
+  runtime: TemplatePreviewRuntime;
 }): Promise<void> {
-  await decodeIllustrationPreviewImage(imageUrl);
+  await decodeIllustrationPreviewImage(runtime, imageUrl);
   if (
     card.dataset.targetVariantIndex === String(index) &&
-    illustrationPreviewImageDecoded(imageUrl)
+    illustrationPreviewImageDecoded(runtime, imageUrl)
   ) {
     onVariantChange(item.slug, index);
   }
@@ -4152,11 +3860,13 @@ function selectIllustrationVariant({
   index,
   item,
   onVariantChange,
+  runtime,
 }: {
   card: HTMLElement | null;
   index: number;
   item: IllustrationTemplateItem;
   onVariantChange: (slug: string, index: number) => void;
+  runtime: TemplatePreviewRuntime;
 }): void {
   const image = item.previewImages[index];
   if (image === undefined) {
@@ -4166,7 +3876,7 @@ function selectIllustrationVariant({
   const imageUrl = illustrationHeroImageUrl(image);
   // Swap immediately only when the target hero is already decoded; otherwise
   // decode it off-screen first so the hero never flashes a blank/loading frame.
-  if (card === null || illustrationPreviewImageDecoded(imageUrl)) {
+  if (card === null || illustrationPreviewImageDecoded(runtime, imageUrl)) {
     onVariantChange(item.slug, index);
     return;
   }
@@ -4179,12 +3889,14 @@ function selectIllustrationVariant({
       index,
       item,
       onVariantChange,
+      runtime,
     }),
     Reason.DomCallback,
   );
 }
 
 function preloadIllustrationVariant(
+  runtime: TemplatePreviewRuntime,
   images: readonly string[],
   index: number,
 ): void {
@@ -4194,7 +3906,7 @@ function preloadIllustrationVariant(
   }
 
   detach(
-    decodeIllustrationPreviewImage(illustrationHeroImageUrl(image)),
+    decodeIllustrationPreviewImage(runtime, illustrationHeroImageUrl(image)),
     Reason.DomCallback,
   );
 }
@@ -4340,6 +4052,7 @@ function IllustrationTemplateCard({
   priority = false,
   onSelect,
   onVariantChange,
+  runtime,
 }: {
   item: IllustrationTemplateItem;
   selected: boolean;
@@ -4347,6 +4060,7 @@ function IllustrationTemplateCard({
   priority?: boolean;
   onSelect: (item: IllustrationTemplateItem) => void;
   onVariantChange: (slug: string, index: number) => void;
+  runtime: TemplatePreviewRuntime;
 }) {
   const images = item.previewImages;
   const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
@@ -4371,6 +4085,7 @@ function IllustrationTemplateCard({
         priority={priority}
         source={heroSource}
         onVariantChange={onVariantChange}
+        runtime={runtime}
       />
       {hasMultipleVariants && (
         <div
@@ -4395,11 +4110,13 @@ function IllustrationTemplateCard({
                 )}
                 onFocus={() => {
                   preloadIllustrationPreviewImage(
+                    runtime,
                     illustrationHeroImageUrl(image),
                   );
                 }}
                 onMouseEnter={() => {
                   preloadIllustrationPreviewImage(
+                    runtime,
                     illustrationHeroImageUrl(image),
                   );
                 }}
@@ -4411,6 +4128,7 @@ function IllustrationTemplateCard({
                     index,
                     item,
                     onVariantChange,
+                    runtime,
                   });
                   const scrollDirection = active
                     ? activeIllustrationThumbnailScrollDirection(
@@ -4731,12 +4449,14 @@ function TemplatePickerWorkflowSearch({
 
 function IllustrationTemplateGrid({
   items,
+  runtime,
   value,
   variantIndexBySlug,
   onSelect,
   onVariantChange,
 }: {
   items: readonly IllustrationTemplateItem[];
+  runtime: TemplatePreviewRuntime;
   value: GenerationTemplateRequest | undefined;
   variantIndexBySlug: Readonly<Record<string, number>>;
   onSelect: (item: IllustrationTemplateItem) => void;
@@ -4757,6 +4477,7 @@ function IllustrationTemplateGrid({
             priority={index < ILLUSTRATION_EAGER_IMAGE_COUNT}
             onSelect={onSelect}
             onVariantChange={onVariantChange}
+            runtime={runtime}
           />
         );
       })}
@@ -4766,11 +4487,13 @@ function IllustrationTemplateGrid({
 
 function PptTemplateGrid({
   items,
+  runtime,
   value,
   onSelect,
   onPreview,
 }: {
   items: readonly PresentationTemplateItem[];
+  runtime: TemplatePreviewRuntime;
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
@@ -4785,6 +4508,7 @@ function PptTemplateGrid({
             selected={isSelectedPresentationTemplate(item, value)}
             onSelect={onSelect}
             onPreview={onPreview}
+            runtime={runtime}
           />
         );
       })}
@@ -4802,6 +4526,7 @@ function TemplatePickerDialog({
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
+  runtime,
 }: {
   value: GenerationTemplateRequest | undefined;
   onChange: (value: GenerationTemplateRequest | undefined) => void;
@@ -4812,6 +4537,7 @@ function TemplatePickerDialog({
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
+  runtime: TemplatePreviewRuntime;
 }) {
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
@@ -4893,6 +4619,7 @@ function TemplatePickerDialog({
 
   const prewarmTemplatePreviewsForCategory = (targetCategory: string) => {
     prewarmTemplatePreviewImages(
+      runtime,
       previewImageUrlsForCategory(targetCategory),
       templatePreviewPrewarmImageCountForCategory(targetCategory),
     );
@@ -4942,9 +4669,7 @@ function TemplatePickerDialog({
     const selectedSlideIndex = Math.max(0, Math.floor(slideIndex));
     setDetailThemeId(item.slug, selectedTheme.id);
     setDetailSlideIndex(item.slug, selectedSlideIndex);
-    const cachedDraft = presentationTemplateHtmlPreviewCache().drafts.get(
-      item.embedUrl,
-    );
+    const cachedDraft = runtime.presentation.drafts.get(item.embedUrl);
     if (cachedDraft !== undefined) {
       setLoadedPresentationTemplateDetailPreview({
         draft: cachedDraft,
@@ -4999,6 +4724,7 @@ function TemplatePickerDialog({
       selectedTheme: navigationState.selectedTheme,
       setDetailPreview,
       setSlideIndex: setDetailSlideIndex,
+      runtime,
     });
   };
 
@@ -5082,6 +4808,7 @@ function TemplatePickerDialog({
               setPreviewSlug(null);
             }}
             onSelect={handleSelectPresentation}
+            runtime={runtime}
           />
         ) : (
           <>
@@ -5133,6 +4860,7 @@ function TemplatePickerDialog({
                   onSelectVideo={handleSelectVideo}
                   onWorkflowCategoryChange={setWorkflowCategoryFilter}
                   onSelectWorkflow={handleSelectWorkflow}
+                  runtime={runtime}
                 />
               </div>
             </div>
@@ -5167,6 +4895,7 @@ function TemplatePickerCategoryContent({
   onSelectVideo,
   onWorkflowCategoryChange,
   onSelectWorkflow,
+  runtime,
 }: {
   selectedCategory: string;
   hasPptTab: boolean;
@@ -5197,6 +4926,7 @@ function TemplatePickerCategoryContent({
   onSelectVideo: (item: VideoTemplateItem) => void;
   onWorkflowCategoryChange: (category: string) => void;
   onSelectWorkflow: (item: WorkflowTemplateItem) => void;
+  runtime: TemplatePreviewRuntime;
 }) {
   if (selectedCategory === "slides" && hasPptTab) {
     return (
@@ -5214,6 +4944,7 @@ function TemplatePickerCategoryContent({
             value={value}
             onSelect={onSelectPresentation}
             onPreview={onPreviewPresentation}
+            runtime={runtime}
           />
         ) : (
           <TemplateEmptyPanel
@@ -5256,6 +4987,7 @@ function TemplatePickerCategoryContent({
         onScroll={(event) => {
           prewarmIllustrationPreviewImagesNearScroll({
             items: filteredIllustrationItems,
+            runtime,
             scrollContainer: event.currentTarget,
             variantIndexBySlug: illustrationVariantIndex,
           });
@@ -5268,6 +5000,7 @@ function TemplatePickerCategoryContent({
             variantIndexBySlug={illustrationVariantIndex}
             onSelect={onSelectIllustration}
             onVariantChange={onIllustrationVariantChange}
+            runtime={runtime}
           />
         ) : (
           <TemplateEmptyPanel
@@ -5340,366 +5073,85 @@ function TemplatePickerCategoryContent({
   return null;
 }
 
-function SelectedTemplateChip({
-  colorSystemId,
-  item,
-  onOpen,
-  onRemove,
-}: {
-  colorSystemId?: string;
-  item: PresentationTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  const label = item.title;
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview template ${label}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <SelectedPresentationTemplateChipPreview
-                colorSystemId={colorSystemId}
-                item={item}
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Presentation
-            </span>
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {label}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove template ${label}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedPresentationTemplateChipPreview({
-  colorSystemId,
-  item,
-}: {
-  colorSystemId?: string;
-  item: PresentationTemplateItem;
-}) {
-  const themeIdBySlug = useGet(templateDetailThemeIdBySlug$);
-  const defaultHtmlPreviews = useGet(templateCardDefaultHtmlPreviews$);
-  const setDefaultHtmlPreview = useSet(setTemplateCardDefaultHtmlPreview$);
-  const selectedTheme = findPresentationTemplateTheme(
-    colorSystemId?.replace("color-system:", "") ??
-      themeIdBySlug[item.slug] ??
-      defaultPresentationTemplateThemeId(item),
-  );
-  const previewKey = `${item.embedUrl}#selected-chip:${selectedTheme.id}`;
-  const htmlPreview = defaultHtmlPreviews[previewKey] ?? null;
-  const fallbackImageUrl = presentationTemplateCardSlideImage(
-    item,
-    0,
-    selectedTheme,
-    SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-  );
-
-  const loadChipHtmlPreviewAfterMount = (node: HTMLElement | null) => {
-    if (node === null || isHappyDomTestEnvironment() || htmlPreview !== null) {
-      return;
-    }
-
-    const cache = presentationTemplateHtmlPreviewCache();
-    const setChipPreview = (draft: PresentationEditDraft) => {
-      if (!node.isConnected) {
-        return;
-      }
-      const previewState = createPresentationTemplateHtmlPreviewState({
-        draft,
-        index: 0,
-        item,
-        previousFrameUrl: null,
-        theme: selectedTheme,
-      });
-      if (previewState !== null) {
-        setDefaultHtmlPreview(previewKey, previewState);
-      }
-    };
-
-    const cachedDraft = cache.drafts.get(item.embedUrl);
-    if (cachedDraft !== undefined) {
-      setChipPreview(cachedDraft);
-      return;
-    }
-
-    if (cache.failed.has(item.embedUrl)) {
-      return;
-    }
-
-    let pendingLoad = cache.pendingLoads.get(item.embedUrl);
-    if (pendingLoad === undefined) {
-      pendingLoad = loadPresentationTemplateHtmlPreview({ item });
-      cache.pendingLoads.set(item.embedUrl, pendingLoad);
-    }
-    detach(
-      (async () => {
-        const result = await tapError(pendingLoad);
-        if (cache.pendingLoads.get(item.embedUrl) === pendingLoad) {
-          cache.pendingLoads.delete(item.embedUrl);
-        }
-        if (result === undefined || result === null) {
-          cache.failed.add(item.embedUrl);
-          return;
-        }
-        cache.drafts.set(item.embedUrl, result);
-        setChipPreview(result);
-      })(),
-      Reason.DomCallback,
+function selectedComposerTemplateAttachment(
+  value: GenerationTemplateRequest | undefined,
+  hasWebsiteTab: boolean,
+): ComposerTemplateAttachment | undefined {
+  const presentationItem = selectedPresentationTemplateItem(value);
+  if (presentationItem && value?.type === "presentation") {
+    const selectedTheme = findPresentationTemplateTheme(
+      value.selection.colorSystemId?.replace("color-system:", "") ??
+        defaultPresentationTemplateThemeId(presentationItem),
     );
-  };
-
-  return htmlPreview?.frameUrl ? (
-    <iframe
-      title={`${item.title} selected template preview`}
-      src={htmlPreview.frameUrl}
-      sandbox="allow-same-origin"
-      tabIndex={-1}
-      className="pointer-events-none absolute left-0 top-0 h-[800%] w-[800%] origin-top-left scale-[0.125] border-0 bg-background"
-    />
-  ) : (
-    <img
-      ref={loadChipHtmlPreviewAfterMount}
-      src={fallbackImageUrl}
-      alt=""
-      className="h-full w-full object-cover"
-      loading="lazy"
-    />
-  );
+    return {
+      type: "presentation",
+      title: presentationItem.title,
+      category: "slides",
+      previewImageUrl: presentationTemplateCardSlideImage(
+        presentationItem,
+        0,
+        selectedTheme,
+        SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+      ),
+    };
+  }
+  const illustrationItem = selectedIllustrationTemplateItem(value);
+  if (illustrationItem) {
+    return {
+      type: "illustration",
+      title: illustrationItem.title,
+      category: "illustration",
+      previewImageUrl: r2ImageTransformUrl(
+        illustrationItem.previewImage,
+        SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
+      ),
+    };
+  }
+  const videoItem = selectedVideoTemplateItem(value);
+  if (videoItem) {
+    return { type: "video", title: videoItem.title, category: "video" };
+  }
+  const workflowItem = selectedWorkflowTemplateItem(value);
+  if (workflowItem) {
+    return {
+      type: "workflow",
+      title: workflowItem.title,
+      category: "workflow",
+    };
+  }
+  const websiteItem = hasWebsiteTab
+    ? selectedWebsiteTemplateItem(value)
+    : undefined;
+  return websiteItem
+    ? { type: "website", title: websiteItem.title, category: "website" }
+    : undefined;
 }
 
-function SelectedVideoTemplateChip({
-  item,
-  onOpen,
-  onRemove,
-}: {
-  item: VideoTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview video template ${item.title}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <IconVideo
-                size={12}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Video
-            </span>
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {item.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove video template ${item.title}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
+function composerTemplateAttachmentLifecycleKey(
+  attachment: ComposerTemplateAttachment | undefined,
+): string {
+  return attachment
+    ? JSON.stringify([
+        attachment.type,
+        attachment.title,
+        attachment.category,
+        attachment.previewImageUrl,
+      ])
+    : "none";
 }
 
-function SelectedIllustrationTemplateChip({
-  item,
-  onOpen,
-  onRemove,
-}: {
-  item: IllustrationTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview template ${item.title}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <img
-                src={r2ImageTransformUrl(
-                  item.previewImage,
-                  SELECTED_TEMPLATE_CHIP_PREVIEW_SIZE,
-                )}
-                alt=""
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Illustration
-            </span>
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {item.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove template ${item.title}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedWorkflowTemplateChip({
-  item,
-  onOpen,
-  onRemove,
-}: {
-  item: WorkflowTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview workflow template ${item.title}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <IconRoute
-                size={12}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Workflow
-            </span>
-            <WorkflowTemplateConnectorIcons
-              connectors={item.connectors}
-              compact
-              withDivider
-            />
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {item.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove workflow template ${item.title}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedWebsiteTemplateChip({
-  item,
-  onOpen,
-  onRemove,
-}: {
-  item: WebsiteTemplateItem;
-  onOpen: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="px-4 pt-3">
-      <div className="flex">
-        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-          <button
-            type="button"
-            aria-label={`Preview website template ${item.title}`}
-            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onOpen}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
-              <IconWorld
-                size={12}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-            </span>
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
-              Website
-            </span>
-            <span className="h-3.5 w-px shrink-0 bg-border/70" />
-            <span className="min-w-0 truncate text-xs font-medium">
-              {item.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={`Remove website template ${item.title}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onRemove}
-          >
-            <IconX size={14} stroke={1.8} />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 h-px bg-border/50" />
-    </div>
-  );
-}
-
-function SelectedTemplateChipSlot({
+function ComposerTemplateAttachmentSync({
+  composer,
   picker,
   onDraftChange,
+  runtime,
 }: {
+  composer: WorkflowComposerSignals;
   picker: ComposerTemplatePicker | undefined;
   onDraftChange: (() => void) | undefined;
+  runtime: TemplatePreviewRuntime;
 }) {
+  const setLifecycleRef = useSet(composer.setTemplateAttachmentLifecycleRef$);
   const setOpen = useSet(setTemplatePickerOpen$);
   const setCategory = useSet(setTemplatePickerCategory$);
   const setSearch = useSet(setTemplatePickerSearch$);
@@ -5707,20 +5159,13 @@ function SelectedTemplateChipSlot({
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const features = useLastResolved(featureSwitch$);
   const hasWebsiteTab = features?.[FeatureSwitchKey.WebsiteTemplates] ?? false;
-  const presentationItem = selectedPresentationTemplateItem(picker?.value);
-  const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
-  const videoItem = selectedVideoTemplateItem(picker?.value);
-  const workflowItem = selectedWorkflowTemplateItem(picker?.value);
-  const websiteItem = hasWebsiteTab
-    ? selectedWebsiteTemplateItem(picker?.value)
-    : undefined;
-  if (!picker) {
-    return null;
-  }
-  // Reopen the picker on the tab matching the selected template's type so the
-  // user can re-preview and switch styles. Mirrors TemplatePickerButton's reset.
+  const attachment = selectedComposerTemplateAttachment(
+    picker?.value,
+    hasWebsiteTab,
+  );
   const openPicker = (category: string) => {
     prewarmTemplatePreviewImages(
+      runtime,
       initialTemplatePreviewImageUrlsForCategory({
         category,
         hasPptTab: true,
@@ -5736,82 +5181,28 @@ function SelectedTemplateChipSlot({
     setCategory(category);
     setOpen(true);
   };
-  if (presentationItem) {
-    return (
-      <SelectedTemplateChip
-        colorSystemId={
-          picker.value?.type === "presentation"
-            ? picker.value.selection.colorSystemId
-            : undefined
+
+  return (
+    <button
+      key={composerTemplateAttachmentLifecycleKey(attachment)}
+      ref={setLifecycleRef}
+      type="button"
+      hidden
+      data-template-type={attachment?.type}
+      data-template-title={attachment?.title}
+      data-template-category={attachment?.category}
+      data-template-preview-url={attachment?.previewImageUrl}
+      onClick={(event) => {
+        const action = event.currentTarget.dataset.templateAction;
+        if (action === "open") {
+          openPicker(event.currentTarget.dataset.templateCategory ?? "slides");
+        } else if (action === "remove") {
+          picker?.onChange(undefined);
+          onDraftChange?.();
         }
-        item={presentationItem}
-        onOpen={() => {
-          return openPicker("slides");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  if (videoItem) {
-    return (
-      <SelectedVideoTemplateChip
-        item={videoItem}
-        onOpen={() => {
-          return openPicker("video");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  if (illustrationItem) {
-    return (
-      <SelectedIllustrationTemplateChip
-        item={illustrationItem}
-        onOpen={() => {
-          return openPicker("illustration");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  if (workflowItem) {
-    return (
-      <SelectedWorkflowTemplateChip
-        item={workflowItem}
-        onOpen={() => {
-          return openPicker("workflow");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  if (websiteItem) {
-    return (
-      <SelectedWebsiteTemplateChip
-        item={websiteItem}
-        onOpen={() => {
-          return openPicker("website");
-        }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
-      />
-    );
-  }
-  return null;
+      }}
+    />
+  );
 }
 
 function TemplatePickerButton({
@@ -5822,6 +5213,7 @@ function TemplatePickerButton({
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
+  runtime,
 }: {
   picker: ComposerTemplatePicker;
   hasPptTab: boolean;
@@ -5830,6 +5222,7 @@ function TemplatePickerButton({
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
+  runtime: TemplatePreviewRuntime;
 }) {
   const open = useGet(templatePickerOpen$);
   const category = useGet(templatePickerCategory$);
@@ -5848,6 +5241,7 @@ function TemplatePickerButton({
   });
   const prewarmPicker = () => {
     prewarmTemplatePreviewImages(
+      runtime,
       initialTemplatePreviewImageUrlsForCategory({
         category: selectedCategory,
         hasPptTab,
@@ -5905,6 +5299,7 @@ function TemplatePickerButton({
           hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
           hasWorkflowTab={hasWorkflowTab}
+          runtime={runtime}
         />
       )}
     </>
@@ -5912,8 +5307,10 @@ function TemplatePickerButton({
 }
 
 function ComposerTemplatePickerSlot({
+  composer,
   picker,
 }: {
+  composer: WorkflowComposerSignals;
   picker: ComposerTemplatePicker | undefined;
 }) {
   const hasPptTab = true;
@@ -5935,6 +5332,7 @@ function ComposerTemplatePickerSlot({
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
       hasWorkflowTab={hasWorkflowTab}
+      runtime={composer.templatePreview}
     />
   );
 }
@@ -6687,14 +6085,12 @@ function ComposerAttachButton({
 }
 
 function ComposerUploadMenu({
-  readInput,
   onDraftChange,
-  onInputChange,
+  onAppendText,
   onSelectFile,
 }: {
-  readonly readInput: () => string;
   readonly onDraftChange?: () => void;
-  readonly onInputChange: (value: string) => void;
+  readonly onAppendText: (value: string) => void;
   readonly onSelectFile: () => void;
 }) {
   const uploadOpen = useGet(uploadPopoverOpen$);
@@ -6709,9 +6105,7 @@ function ComposerUploadMenu({
       return;
     }
     const normalized = new URL(trimmed).toString();
-    const input = readInput();
-    const base = input.trimEnd();
-    onInputChange(base ? `${base}\n${normalized}` : normalized);
+    onAppendText(normalized);
     onDraftChange?.();
     form.reset();
     setUploadOpen(false);
@@ -6793,22 +6187,19 @@ function ComposerUploadMenu({
 }
 
 function ComposerUploadControl({
-  readInput,
   onDraftChange,
-  onInputChange,
+  onAppendText,
   onSelectFile,
 }: {
-  readonly readInput: () => string;
   readonly onDraftChange?: () => void;
-  readonly onInputChange: (value: string) => void;
+  readonly onAppendText: (value: string) => void;
   readonly onSelectFile: () => void;
 }) {
   const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
   return uploadPopoverEnabled ? (
     <ComposerUploadMenu
-      readInput={readInput}
       onDraftChange={onDraftChange}
-      onInputChange={onInputChange}
+      onAppendText={onAppendText}
       onSelectFile={onSelectFile}
     />
   ) : (
@@ -6832,7 +6223,6 @@ function useResolvedComposerSignals(
     draft.attachmentUploadsReady$,
   );
   const readInput = useSet(draft.readInput$);
-  const setInput = useSet(draft.setInput$);
   const uploadAttachment = useSet(draft.uploadAttachment$);
   const restoreAttachments = useSet(draft.restoreAttachments$);
   const removeAttachment = useSet(draft.removeAttachment$);
@@ -6844,11 +6234,9 @@ function useResolvedComposerSignals(
   );
   const dragOver = useGet(draft.dragOver$);
   const setDragOver = useSet(draft.setDragOver$);
-  const appendInput = useSet(draft.appendInput$);
 
   return {
     readInput,
-    setInput,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -6858,24 +6246,7 @@ function useResolvedComposerSignals(
     setFileInputEl,
     dragOver,
     setDragOver,
-    appendInput,
   };
-}
-
-function insertPastedText(
-  target: HTMLElement,
-  currentValue: string,
-  pastedText: string,
-): string {
-  if (!pastedText) {
-    return currentValue;
-  }
-  if (!(target instanceof HTMLTextAreaElement)) {
-    return [currentValue.trimEnd(), pastedText].filter(Boolean).join("\n");
-  }
-  const start = target.selectionStart;
-  const end = target.selectionEnd;
-  return `${currentValue.slice(0, start)}${pastedText}${currentValue.slice(end)}`;
 }
 
 function toPersistedAttachments(
@@ -6953,34 +6324,19 @@ function resolveKeyboardSendAction({
   return sending ? "queue" : "send";
 }
 
-function resolveActiveFeedback(
-  feedback: ComposerFeedback | undefined,
-): ComposerFeedback | null {
-  if (feedback && feedback.items.length > 0) {
-    return feedback;
-  }
-  return null;
-}
-
-// Stop while an empty composer is mid-run; otherwise Send. In feedback mode the
-// same button dispatches the feedback turn and stays disabled until a note is
-// written.
+// Stop while an empty composer is mid-run; otherwise Send.
 function ComposerSendButton({
   showStopButton,
   onCancel,
-  activeFeedback,
   sendAction,
-  submissionLoading,
   onSend,
 }: {
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
-  activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
-  submissionLoading: boolean;
   onSend: () => void;
 }) {
-  if (showStopButton && !activeFeedback) {
+  if (showStopButton) {
     return (
       <Button
         size="sm"
@@ -6990,19 +6346,6 @@ function ComposerSendButton({
         aria-label="Stop"
       >
         <IconPlayerStop size={16} />
-      </Button>
-    );
-  }
-  if (activeFeedback) {
-    return (
-      <Button
-        size="sm"
-        className="rounded-lg h-9 w-9 p-0 shrink-0"
-        onClick={activeFeedback.onSubmit}
-        disabled={activeFeedback.sendCount === 0 || submissionLoading}
-        aria-label="Send feedback"
-      >
-        <IconArrowUp size={18} stroke={2} />
       </Button>
     );
   }
@@ -7028,7 +6371,6 @@ function ComposerSendControl({
   queueWhileSending,
   hasQueueHandler,
   onCancel,
-  activeFeedback,
   actionsLoading,
   submissionLoading,
   onSend,
@@ -7041,7 +6383,6 @@ function ComposerSendControl({
   queueWhileSending: boolean;
   hasQueueHandler: boolean;
   onCancel: (() => void) | undefined;
-  activeFeedback: ComposerFeedback | null;
   actionsLoading: boolean;
   submissionLoading: boolean;
   onSend: () => void;
@@ -7062,48 +6403,36 @@ function ComposerSendControl({
     actionsLoading,
     showStopButton: Boolean(sending && onCancel) && !canSend,
     onCancel,
-    activeFeedback,
     sendAction,
   });
-  return (
-    <ComposerSendButton
-      {...state}
-      submissionLoading={submissionLoading}
-      onSend={onSend}
-    />
-  );
+  return <ComposerSendButton {...state} onSend={onSend} />;
 }
 
 function resolveSendButtonStateForActionsLoading({
   actionsLoading,
   showStopButton,
   onCancel,
-  activeFeedback,
   sendAction,
 }: {
   actionsLoading: boolean;
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
-  activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
 }): {
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
-  activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
 } {
   if (actionsLoading) {
     return {
       showStopButton: false,
       onCancel: undefined,
-      activeFeedback: null,
       sendAction: "none",
     };
   }
   return {
     showStopButton,
     onCancel,
-    activeFeedback,
     sendAction,
   };
 }
@@ -7217,7 +6546,6 @@ export function useZeroChatComposer({
   onRemoveQueuedItem,
   activeGoal,
   onCancelActiveGoal,
-  feedback,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -7230,7 +6558,6 @@ export function useZeroChatComposer({
   );
   const {
     readInput,
-    setInput,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -7240,8 +6567,9 @@ export function useZeroChatComposer({
     setFileInputEl,
     dragOver,
     setDragOver,
-    appendInput,
   } = resolved;
+  const insertComposerText = useSet(composer.insertText$);
+  const appendComposerText = useSet(composer.appendText$);
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
@@ -7253,14 +6581,8 @@ export function useZeroChatComposer({
   );
   const uploadsReady = attachmentUploadsState === "hasData";
 
-  // When feedback fragments are present the composer is in "feedback mode": the
-  // textarea is replaced by the stacked quote + note rows and Send dispatches
-  // the feedback turn instead of the draft.
-  const activeFeedback = resolveActiveFeedback(feedback);
-
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ComposerPasteEvent) => {
-    const input = readInput();
     if (!e.clipboardData) {
       return;
     }
@@ -7282,13 +6604,8 @@ export function useZeroChatComposer({
           showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
         }
         e.preventDefault();
-        const nextInput = insertPastedText(
-          e.currentTarget,
-          input,
-          chatPayload.text,
-        );
-        if (nextInput !== input) {
-          setInput(nextInput);
+        if (chatPayload.text) {
+          insertComposerText(chatPayload.text);
         }
         if (allowedAttachments.length > 0) {
           restoreAttachments(allowedAttachments);
@@ -7308,10 +6625,7 @@ export function useZeroChatComposer({
       if (pastedPlainText || !plainText) {
         return;
       }
-      const nextInput = insertPastedText(e.currentTarget, input, plainText);
-      if (nextInput !== input) {
-        setInput(nextInput);
-      }
+      insertComposerText(plainText);
       pastedPlainText = true;
     };
     for (const item of items) {
@@ -7617,12 +6931,11 @@ export function useZeroChatComposer({
         >
           <CardContent className="p-0">
             <div className="flex flex-col">
-              {/* Template + attachment chips are shared by both modes: a feedback
-                  turn can also carry a template or attachments, so they render
-                  above the feedback rows just as they do above the textarea. */}
-              <SelectedTemplateChipSlot
+              <ComposerTemplateAttachmentSync
+                composer={composer}
                 picker={templatePicker}
                 onDraftChange={onDraftChange}
+                runtime={composer.templatePreview}
               />
               {visibleAttachments.length > 0 && (
                 <AttachmentChips
@@ -7633,33 +6946,26 @@ export function useZeroChatComposer({
                   }}
                 />
               )}
-              {activeFeedback ? (
-                <ComposerFeedbackRows
-                  feedback={activeFeedback}
-                  submissionLoading={submissionLoading}
-                />
-              ) : (
-                <>
-                  <ComposerInputSlot
-                    composer={composer}
-                    onDraftChange={onDraftChange}
-                    sending={sending}
-                    autoFocus={autoFocus}
-                    enableMobileSingleLine={enableMobileSingleLine}
-                    onKeyDown={handleKeyDown}
-                    onPaste={handlePaste}
-                  />
-                </>
-              )}
+              <ComposerInputSlot
+                composer={composer}
+                onDraftChange={onDraftChange}
+                sending={sending}
+                autoFocus={autoFocus}
+                enableMobileSingleLine={enableMobileSingleLine}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+              />
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                   <ComposerUploadControl
-                    readInput={readInput}
                     onDraftChange={onDraftChange}
-                    onInputChange={setInput}
+                    onAppendText={appendComposerText}
                     onSelectFile={handleFileSelect}
                   />
-                  <ComposerTemplatePickerSlot picker={templatePicker} />
+                  <ComposerTemplatePickerSlot
+                    composer={composer}
+                    picker={templatePicker}
+                  />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
                   />
@@ -7684,7 +6990,7 @@ export function useZeroChatComposer({
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                   <MicButton
                     onTranscribed={(text) => {
-                      appendInput(text);
+                      appendComposerText(text);
                       onDraftChange?.();
                     }}
                   />
@@ -7697,7 +7003,6 @@ export function useZeroChatComposer({
                     queueWhileSending={queueWhileSending}
                     hasQueueHandler={onQueue !== undefined}
                     onCancel={onCancel}
-                    activeFeedback={activeFeedback}
                     actionsLoading={actionsLoading}
                     submissionLoading={submissionLoading}
                     onSend={handleButtonSend}

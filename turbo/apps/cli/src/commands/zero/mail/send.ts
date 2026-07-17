@@ -56,7 +56,7 @@ Notes:
       });
       console.log(chalk.green("✓ Mail draft card created"));
       console.log(chalk.dim(`  Sender: ${result.mailDraft.from}`));
-      console.log(chalk.dim(`  Message: ${result.messageId}`));
+      console.log(chalk.dim(`  Draft: ${result.mailDraftId}`));
       console.log(
         chalk.dim(
           "  The card is already visible in chat; do not repeat the draft in your response",

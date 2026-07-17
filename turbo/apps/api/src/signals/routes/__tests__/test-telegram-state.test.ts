@@ -693,7 +693,7 @@ describe("POST /api/test/telegram-state", () => {
     expect(defaultAgentIds).not.toContain(null);
   });
 
-  it("emits Slack source pre-create timing without leaking Slack payload values", async () => {
+  it("emits Slack pre-create timing without leaking Slack payload values", async () => {
     mockEnv("ENV", "development");
     const userId = uniqueId("user");
     const orgId = uniqueId("org");
@@ -718,7 +718,6 @@ describe("POST /api/test/telegram-state", () => {
     for (const actionType of [
       "api_dispatch_pre_create_zero_slack_entrypoint_gap",
       "api_dispatch_pre_create_zero_slack_resolve_message",
-      "api_dispatch_pre_create_zero_slack_record_memory_source",
       "api_dispatch_pre_create_zero_slack_set_thread_status",
       "api_dispatch_pre_create_zero_slack_build_run_params",
       "api_dispatch_pre_create_zero_slack_build_run_params_enrich_message",

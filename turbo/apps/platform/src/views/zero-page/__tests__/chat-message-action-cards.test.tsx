@@ -1,4 +1,5 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { zeroConnectorManualGrantContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   zeroConnectorCatalogContract,
@@ -18,9 +19,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
+import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -197,16 +200,39 @@ async function confirmPermissionAction(
 }
 
 describe("chat message action cards", () => {
-  it("renders a persistent mail draft and sends the reviewed fields", async () => {
+  it("keeps one mail draft consistent across persistent messages", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000010";
     const messageId = "c0000000-0000-4000-a000-000000000011";
+    const secondMessageId = "c0000000-0000-4000-a000-000000000013";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000012";
+    const runId = "d0000000-0000-4000-a000-000000000020";
     const createdAt = "2026-07-14T10:00:00.000Z";
+    let draftRequests = 0;
+    let savedBody: unknown = null;
     let sentBody: unknown = null;
 
-    context.mocks.api(zeroMailContract.updateDraft, ({ body, respond }) => {
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      draftRequests += 1;
       return respond(200, {
-        messageId,
+        mailDraftId,
+        mailDraft: {
+          version: 1,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: ["recipient@example.com"],
+          subject: "Hello",
+          body: "Mail body",
+          status: "draft",
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    context.mocks.api(zeroMailContract.updateDraft, ({ body, respond }) => {
+      savedBody = body;
+      return respond(200, {
+        mailDraftId,
         mailDraft: {
           version: 1,
           provider: "gmail",
@@ -221,7 +247,7 @@ describe("chat message action cards", () => {
     context.mocks.api(zeroMailContract.sendDraft, ({ body, respond }) => {
       sentBody = body;
       return respond(200, {
-        messageId,
+        mailDraftId,
         mailDraft: {
           version: 1,
           provider: "gmail",
@@ -242,20 +268,20 @@ describe("chat message action cards", () => {
           id: messageId,
           role: "assistant",
           content: null,
+          runId,
           createdAt,
-          mailDraft: {
-            version: 1,
-            provider: "gmail",
-            from: "sender@example.com",
-            to: ["recipient@example.com"],
-            subject: "Hello",
-            body: "Mail body",
-            status: "draft",
-            createdAt,
-            updatedAt: createdAt,
-          },
+          mailDraftId,
+        },
+        {
+          id: secondMessageId,
+          role: "assistant",
+          content: null,
+          runId,
+          createdAt: "2026-07-14T10:00:01.000Z",
+          mailDraftId,
         },
       ],
+      activeRunIds: [runId],
     });
 
     detachedSetupPage({
@@ -264,34 +290,69 @@ describe("chat message action cards", () => {
       featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
-    const card = await screen.findByRole("region", { name: "Review email" });
-    expect(within(card).getByRole("textbox", { name: "From" })).toHaveValue(
-      "sender@example.com",
-    );
-    expect(within(card).getByRole("textbox", { name: "To" })).toHaveValue(
+    await waitFor(() => {
+      expect(screen.getAllByRole("textbox", { name: "From" })).toHaveLength(2);
+    });
+    const fromFields = screen.getAllByRole("textbox", { name: "From" });
+    const cards = fromFields.map((from) => {
+      const card = from.closest<HTMLElement>("[data-mail-draft-card]");
+      if (!card) {
+        throw new Error("Mail draft card not found");
+      }
+      return card;
+    });
+    const [firstCard, secondCard] = cards;
+    if (!firstCard || !secondCard) {
+      throw new Error("Expected two mail draft cards");
+    }
+    expect(fromFields[0]).toHaveValue("sender@example.com");
+    expect(within(firstCard).getByRole("textbox", { name: "To" })).toHaveValue(
       "recipient@example.com",
     );
-    expect(within(card).getByRole("textbox", { name: "Subject" })).toHaveValue(
-      "Hello",
-    );
-    expect(within(card).getByRole("textbox", { name: "Message" })).toHaveValue(
-      "Mail body",
-    );
+    expect(
+      within(firstCard).getByRole("textbox", { name: "Subject" }),
+    ).toHaveValue("Hello");
+    expect(
+      within(firstCard).getByRole("textbox", { name: "Message" }),
+    ).toHaveValue("Mail body");
 
-    await user.click(buttonByText("Send", card));
+    const firstSubject = within(firstCard).getByRole("textbox", {
+      name: "Subject",
+    });
+    await fill(firstSubject, "Shared subject");
+    firstSubject.blur();
+
+    await waitFor(() => {
+      expect(savedBody).toStrictEqual({
+        to: ["recipient@example.com"],
+        subject: "Shared subject",
+        body: "Mail body",
+      });
+      expect(
+        within(secondCard).getByRole("textbox", { name: "Subject" }),
+      ).toHaveValue("Shared subject");
+    });
+
+    await user.click(buttonByText("Send", secondCard));
 
     await waitFor(() => {
       expect(sentBody).toStrictEqual({
         to: ["recipient@example.com"],
-        subject: "Hello",
+        subject: "Shared subject",
         body: "Mail body",
       });
-      expect(within(card).getByText("Sent")).toBeInTheDocument();
+      expect(within(firstCard).getByText("Sent")).toBeInTheDocument();
+      expect(within(secondCard).getByText("Sent")).toBeInTheDocument();
     });
-    expect(queryButtonByText("Send", card)).toBeNull();
-    expect(within(card).getByRole("textbox", { name: "From" })).toHaveAttribute(
-      "readonly",
-    );
+    expect(queryButtonByText("Send", firstCard)).toBeNull();
+    expect(queryButtonByText("Send", secondCard)).toBeNull();
+    expect(
+      within(firstCard).getByRole("textbox", { name: "From" }),
+    ).toHaveAttribute("readonly");
+    expect(
+      within(secondCard).getByRole("textbox", { name: "From" }),
+    ).toHaveAttribute("readonly");
+    expect(draftRequests).toBe(1);
   });
 
   it("lets users authorize connectors and confirm permissions from assistant messages", async () => {
@@ -629,34 +690,64 @@ describe("chat message action cards", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
-  it("keeps catalog-visible connectors actionable without a bundled type", async () => {
+  it("completes catalog-visible connectors without a bundled type", async () => {
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
-    mockConnectorCatalogStatus([
-      publicConnectorStatusItem({
-        connectorRef: "future-connector",
-        label: "Catalog Future Connector",
-        description: "Catalog future connector help text",
-        authMethods: [
-          {
-            id: "partner-token",
-            label: "Partner token",
-            description: null,
-            grantKind: "manual",
-            manualFields: [
+    let connected = false;
+    let authorized = false;
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          publicConnectorStatusItem({
+            connectorRef: "future-connector",
+            label: "Catalog Future Connector",
+            description: "Catalog future connector help text",
+            connected,
+            connectionStatus: connected ? "connected" : "not-connected",
+            authMethods: [
               {
-                id: "apiKey",
-                label: "API key",
-                required: true,
-                placeholder: null,
-                inputType: "password",
+                id: "partner-token",
+                label: "Partner token",
+                description: null,
+                grantKind: "manual",
+                manualFields: [
+                  {
+                    id: "apiKey",
+                    label: "API key",
+                    required: true,
+                    placeholder: "future-api-key",
+                    inputType: "password",
+                  },
+                ],
+                startOptions: [],
               },
             ],
-            startOptions: [],
-          },
+          }),
         ],
-      }),
-    ]);
+      });
+    });
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: authorized ? ["future-connector"] : [],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("future-connector");
+        expect(body.agentId).toBe(AGENT_ID);
+        expect(body.authorizeAgent).toBeTruthy();
+        connected = true;
+        authorized = true;
+        return respond(
+          200,
+          connectedConnector({
+            type: "future-connector",
+            authMethod: body.authMethod,
+          }),
+        );
+      },
+    );
     mockChatLifecycle(context, {
       threadId: `${THREAD_ID}-future-connector`,
       threadTitle: "Future connector",
@@ -693,7 +784,27 @@ describe("chat message action cards", () => {
     const connectButton = buttonByText("Connect", connectorCard);
     expect(connectButton).toBeEnabled();
     await user.click(connectButton);
-    expect((await screen.findAllByText("API key")).length).toBeGreaterThan(0);
+    const apiKeyInputs =
+      await screen.findAllByPlaceholderText("future-api-key");
+    const apiKeyInput = apiKeyInputs.at(-1);
+    if (!apiKeyInput) {
+      throw new Error("Future connector API key input not found");
+    }
+    await user.type(apiKeyInput, "future-token");
+    const currentApiKeyInput = screen
+      .getAllByPlaceholderText("future-api-key")
+      .at(-1);
+    const saveButton = currentApiKeyInput
+      ?.closest("form")
+      ?.querySelector<HTMLElement>('button[type="submit"]');
+    if (!saveButton) {
+      throw new Error("Future connector save button not found");
+    }
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+    });
   });
 
   it("fails closed when permission action metadata is hidden", async () => {
@@ -946,6 +1057,76 @@ describe("chat message action cards", () => {
       within(permissionCard).queryByLabelText("Permission duration"),
     ).not.toBeInTheDocument();
     expect(applyRequests).toBe(0);
+  });
+
+  it("reloads permission cards when a connectorPermissionUpdated event arrives", async () => {
+    mockNow();
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    let grantAllowed = false;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(
+        200,
+        grantAllowed
+          ? [
+              {
+                agentId: AGENT_ID,
+                connectorRef: "youtube",
+                permission: "videos.write",
+                action: "allow" as const,
+                expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
+                createdAt: "2026-06-09T11:00:00Z",
+                updatedAt: "2026-06-09T11:01:00Z",
+              },
+            ]
+          : [],
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-permission-updated-event`,
+      threadTitle: "Permission updated event",
+      chatMessages: [
+        {
+          id: "msg-user-permission-updated-event",
+          role: "user",
+          content: "Upload the video",
+          runId: "run-permission-updated-event",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-updated-event-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-permission-updated-event",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-permission-updated-event`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitForButtonByText("Confirm", permissionCard);
+    expect(
+      within(permissionCard).queryByText("Already allowed"),
+    ).not.toBeInTheDocument();
+
+    // The authenticated bootstrap owns one user-level subscription shared by
+    // every permission-grant reader, including all open chat threads.
+    await waitFor(() => {
+      expect(hasSubscription("connectorPermissionUpdated")).toBeTruthy();
+    });
+    grantAllowed = true;
+    triggerAblyEvent("connectorPermissionUpdated");
+
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Already allowed"),
+      ).toBeInTheDocument();
+    });
+    expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
   });
 
   it("renders custom connector proposal links as configure cards", async () => {
@@ -1646,17 +1827,17 @@ describe("chat message action cards", () => {
       threadTitle: "Permission action",
       chatMessages: [
         {
-          id: "msg-user-permission-deny-request",
+          id: "msg-user-permission-block-request",
           role: "user",
           content: "Block Slack analytics access",
-          runId: "run-permission-deny",
+          runId: "run-permission-block",
           createdAt: "2026-06-09T11:00:00Z",
         },
         {
-          id: "msg-assistant-permission-deny-card",
+          id: "msg-assistant-permission-block-card",
           role: "assistant",
           content: permissionDenyUrl,
-          runId: "run-permission-deny",
+          runId: "run-permission-block",
           createdAt: "2026-06-09T11:01:00Z",
         },
       ],

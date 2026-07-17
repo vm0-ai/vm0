@@ -20,7 +20,9 @@ pub struct FirecrackerConfig {
     pub base_dir: PathBuf,
     /// Profile name (e.g., "vm0/default") used for per-profile isolation.
     pub profile: String,
-    /// Port of the HTTP/HTTPS proxy. When set, iptables rules redirect traffic through it.
+    /// Host proxy port for outbound TCP redirects. When `dns_port` is also set,
+    /// those redirects exclude TCP 53 and 853: TCP 53 is redirected to
+    /// `dns_port`, while TCP 853 is blocked.
     pub proxy_port: Option<u16>,
     /// Port of the DNS proxy. When set, iptables rules redirect DNS queries through it.
     pub dns_port: Option<u16>,

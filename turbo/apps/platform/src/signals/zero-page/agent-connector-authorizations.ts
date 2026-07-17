@@ -21,17 +21,6 @@ export const reloadAgentConnectorAuthorizations$ = command(({ set }) => {
   });
 });
 
-interface AgentConnectorAuthorizationsFactory {
-  (params: {
-    readonly agentId: string;
-    readonly missing: "null";
-  }): Computed<Promise<AgentConnectorAuthorizations | null>>;
-  (params: {
-    readonly agentId: string;
-    readonly missing?: "throw";
-  }): Computed<Promise<AgentConnectorAuthorizations>>;
-}
-
 function createAuthorizationsAtom(
   agentId: string,
   options: { readonly missing: "throw" },
@@ -59,85 +48,32 @@ function createAuthorizationsAtom(
   });
 }
 
-function createAgentConnectorAuthorizationsFactory(): AgentConnectorAuthorizationsFactory {
-  const authorizationsCache = new Map<
-    string,
-    Computed<Promise<AgentConnectorAuthorizations>>
-  >();
-  const nullableAuthorizationsCache = new Map<
-    string,
-    Computed<Promise<AgentConnectorAuthorizations | null>>
-  >();
-
-  const createAuthorizations = (
-    agentId: string,
-  ): Computed<Promise<AgentConnectorAuthorizations>> => {
-    const existing = authorizationsCache.get(agentId);
-    if (existing) {
-      return existing;
-    }
-    const atom$ = createAuthorizationsAtom(agentId, { missing: "throw" });
-    authorizationsCache.set(agentId, atom$);
-    return atom$;
-  };
-
-  const createNullableAuthorizations = (
-    agentId: string,
-  ): Computed<Promise<AgentConnectorAuthorizations | null>> => {
-    const existing = nullableAuthorizationsCache.get(agentId);
-    if (existing) {
-      return existing;
-    }
-    const atom$ = createAuthorizationsAtom(agentId, { missing: "null" });
-    nullableAuthorizationsCache.set(agentId, atom$);
-    return atom$;
-  };
-
-  function authorizations(params: {
-    readonly agentId: string;
-    readonly missing: "null";
-  }): Computed<Promise<AgentConnectorAuthorizations | null>>;
-  function authorizations(params: {
-    readonly agentId: string;
-    readonly missing?: "throw";
-  }): Computed<Promise<AgentConnectorAuthorizations>>;
-  function authorizations(params: {
-    readonly agentId: string;
-    readonly missing?: "throw" | "null";
-  }): Computed<Promise<AgentConnectorAuthorizations | null>> {
-    if (params.missing === "null") {
-      return createNullableAuthorizations(params.agentId);
-    }
-    return createAuthorizations(params.agentId);
+export function agentConnectorAuthorizations(params: {
+  readonly agentId: string;
+  readonly missing: "null";
+}): Computed<Promise<AgentConnectorAuthorizations | null>>;
+export function agentConnectorAuthorizations(params: {
+  readonly agentId: string;
+  readonly missing?: "throw";
+}): Computed<Promise<AgentConnectorAuthorizations>>;
+export function agentConnectorAuthorizations(params: {
+  readonly agentId: string;
+  readonly missing?: "throw" | "null";
+}): Computed<Promise<AgentConnectorAuthorizations | null>> {
+  if (params.missing === "null") {
+    return createAuthorizationsAtom(params.agentId, { missing: "null" });
   }
-
-  return authorizations;
+  return createAuthorizationsAtom(params.agentId, { missing: "throw" });
 }
 
-function createAgentConnectorAuthorizedFactory(): (params: {
+export function isAgentConnectorAuthorized(params: {
   readonly agentId: string;
   readonly connectorType: ConnectorCatalogRef;
-}) => Computed<Promise<boolean>> {
-  const cache = new Map<string, Computed<Promise<boolean>>>();
-  return (params) => {
-    const key = `${params.agentId}:${params.connectorType}`;
-    const existing = cache.get(key);
-    if (existing) {
-      return existing;
-    }
-    const atom$ = computed(async (get): Promise<boolean> => {
-      const authorizations = await get(
-        agentConnectorAuthorizations({ agentId: params.agentId }),
-      );
-      return authorizations.enabledTypes.includes(params.connectorType);
-    });
-    cache.set(key, atom$);
-    return atom$;
-  };
+}): Computed<Promise<boolean>> {
+  return computed(async (get): Promise<boolean> => {
+    const authorizations = await get(
+      agentConnectorAuthorizations({ agentId: params.agentId }),
+    );
+    return authorizations.enabledTypes.includes(params.connectorType);
+  });
 }
-
-export const agentConnectorAuthorizations =
-  createAgentConnectorAuthorizationsFactory();
-
-export const isAgentConnectorAuthorized =
-  createAgentConnectorAuthorizedFactory();

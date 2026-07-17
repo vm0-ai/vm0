@@ -8,7 +8,10 @@ use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
-use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
+use sandbox::{
+    DeviceRateLimits, Sandbox, SandboxFactory, SandboxId, SandboxParkNonReusableReason,
+    SandboxParkOutcome,
+};
 
 use crate::idle_reuse_preparation::prepare_sandbox_for_idle_reuse;
 use crate::ids::RunId;
@@ -230,6 +233,16 @@ pub struct ParkedIdleCandidate {
     budget_lease: BudgetLease,
 }
 
+/// Result after the sandbox successfully reaches the parked state.
+#[must_use = "parked outcomes must be admitted for reuse or explicitly destroyed"]
+pub(crate) enum IdleParkOutcome {
+    Reusable(ParkedIdleCandidate),
+    NonReusable {
+        candidate: ParkedIdleCandidate,
+        reason: SandboxParkNonReusableReason,
+    },
+}
+
 #[must_use = "idle park failures must be explicitly destroyed or otherwise handled"]
 pub(crate) struct IdleParkFailure {
     resources: IdleSandboxResources,
@@ -258,7 +271,7 @@ impl IdleParkRequest {
         Self { parts }
     }
 
-    pub(crate) async fn park_for_idle(self) -> Result<ParkedIdleCandidate, IdleParkFailure> {
+    pub(crate) async fn park_for_idle(self) -> Result<IdleParkOutcome, IdleParkFailure> {
         let IdleParkRequestParts {
             run_id,
             mut sandbox,
@@ -346,15 +359,23 @@ impl IdleParkRequest {
         }
 
         match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
-            Ok(Ok(())) => Ok(ParkedIdleCandidate {
-                resources: IdleSandboxResources {
-                    sandbox,
-                    factory,
-                    workspace_promotion,
-                },
-                metadata,
-                budget_lease,
-            }),
+            Ok(Ok(outcome)) => {
+                let candidate = ParkedIdleCandidate {
+                    resources: IdleSandboxResources {
+                        sandbox,
+                        factory,
+                        workspace_promotion,
+                    },
+                    metadata,
+                    budget_lease,
+                };
+                Ok(match outcome {
+                    SandboxParkOutcome::Reusable => IdleParkOutcome::Reusable(candidate),
+                    SandboxParkOutcome::NonReusable(reason) => {
+                        IdleParkOutcome::NonReusable { candidate, reason }
+                    }
+                })
+            }
             Ok(Err(e)) => Err(IdleParkFailure {
                 resources: IdleSandboxResources {
                     sandbox,
@@ -379,6 +400,28 @@ impl IdleParkRequest {
                     reason: "park_panicked",
                     error: "sandbox park panicked".into(),
                 })
+            }
+        }
+    }
+}
+
+impl IdleParkOutcome {
+    pub(crate) fn into_parts(self) -> (ParkedIdleCandidate, Option<SandboxParkNonReusableReason>) {
+        match self {
+            Self::Reusable(candidate) => (candidate, None),
+            Self::NonReusable { candidate, reason } => (candidate, Some(reason)),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn expect_reusable(self) -> ParkedIdleCandidate {
+        match self {
+            Self::Reusable(candidate) => candidate,
+            Self::NonReusable { reason, .. } => {
+                panic!(
+                    "expected reusable parked candidate, got {}",
+                    reason.as_str()
+                )
             }
         }
     }
@@ -1164,6 +1207,7 @@ impl IdlePool {
                             profile: entry.metadata.profile_name.clone(),
                             history_generation_run_id: entry.metadata.history_generation_run_id,
                         }),
+                        workspace_caches: Vec::new(),
                     })
             })
             .collect();
@@ -1342,7 +1386,7 @@ mod tests {
         .await;
 
         let candidate = match request.park_for_idle().await {
-            Ok(candidate) => candidate,
+            Ok(outcome) => outcome.expect_reusable(),
             Err(_) => panic!("park should succeed"),
         };
 
@@ -1462,7 +1506,7 @@ mod tests {
         });
 
         let candidate = match request.park_for_idle().await {
-            Ok(candidate) => candidate,
+            Ok(outcome) => outcome.expect_reusable(),
             Err(_) => panic!("park should succeed"),
         };
 
@@ -1973,6 +2017,7 @@ mod tests {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: Some(history_generation_run_id),
                     }),
+                    workspace_caches: Vec::new(),
                 },
                 HeldSessionState {
                     session_id: "sess-b".to_string(),
@@ -1981,6 +2026,7 @@ mod tests {
                         profile: "vm0/default".to_string(),
                         history_generation_run_id: None,
                     }),
+                    workspace_caches: Vec::new(),
                 },
             ],
         );

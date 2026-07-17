@@ -28,9 +28,9 @@ import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrum
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
+  closeSettingsModal$,
   openSettingsDialogAt$,
   settingsDialogOpen$,
-  setSettingsDialogOpen$,
 } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -134,10 +134,7 @@ function MobileAutomationButtonLeaf() {
   }
 
   return (
-    <AutomationMenuButton
-      threadId={thread.threadId}
-      ariaLabel="Open mobile automations"
-    />
+    <AutomationMenuButton thread={thread} ariaLabel="Open mobile automations" />
   );
 }
 
@@ -206,14 +203,15 @@ function MobileTopBar() {
 
 function SettingsDialogMount() {
   const dialogOpen = useGet(settingsDialogOpen$);
-  const setDialogOpen = useSet(setSettingsDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
+  const closeSettingsModal = useSet(closeSettingsModal$);
 
   return (
     <SettingsDialog
       open={dialogOpen}
       onOpenChange={(open) => {
-        detach(setDialogOpen(open, pageSignal), Reason.DomCallback);
+        if (!open) {
+          closeSettingsModal();
+        }
       }}
     />
   );

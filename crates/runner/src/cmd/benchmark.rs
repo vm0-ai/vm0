@@ -450,6 +450,7 @@ async fn run_in_sandbox(
                 timeout: Duration::from_secs(args.timeout_secs),
                 env: &env_refs,
                 sudo: args.sudo,
+                expected_exit_codes: &[],
                 stdin_bytes: None,
                 output_limits: EXEC_OUTPUT_LIMIT_7_MIB,
             },

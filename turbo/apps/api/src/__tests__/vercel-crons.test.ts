@@ -11,7 +11,6 @@ import {
   cronConnectorCatalogContract,
   cronComputerUseScreenshotCleanupContract,
   cronDrainEmailOutboxContract,
-  cronDrainRelationshipMemoryContract,
   cronExecuteWorkflowAutomationsContract,
   cronProcessUsageEventsContract,
   cronRenewGoogleCalendarWatchesContract,
@@ -86,10 +85,6 @@ const expectedVercelCrons = [
   },
   {
     path: cronDrainEmailOutboxContract.drain.path,
-    schedule: "* * * * *",
-  },
-  {
-    path: cronDrainRelationshipMemoryContract.drain.path,
     schedule: "* * * * *",
   },
   {

@@ -5,6 +5,7 @@ import {
 } from "@clerk/clerk-react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";
+import { resolvePlatformRuntimeConfig } from "../../lib/platform-host.ts";
 import {
   clerk$,
   getAllowedAuthRedirectOriginsForCurrentPage,
@@ -25,7 +26,7 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
     return null;
   }
 
-  const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
   const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
 

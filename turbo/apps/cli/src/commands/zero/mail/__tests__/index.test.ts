@@ -12,7 +12,7 @@ import { zeroMailCommand } from "../index";
 
 const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
 const THREAD_ID = "550e8400-e29b-41d4-a716-446655440001";
-const MESSAGE_ID = "550e8400-e29b-41d4-a716-446655440002";
+const MAIL_DRAFT_ID = "550e8400-e29b-41d4-a716-446655440002";
 
 function stubAgentContext(enabledTypes: readonly string[]) {
   return [
@@ -122,7 +122,7 @@ describe("zero mail", () => {
           });
           return HttpResponse.json(
             {
-              messageId: MESSAGE_ID,
+              mailDraftId: MAIL_DRAFT_ID,
               mailDraft: {
                 version: 1,
                 provider: "gmail",
@@ -158,6 +158,7 @@ describe("zero mail", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("Mail draft card created");
     expect(output).toContain("sender@example.com");
+    expect(output).toContain(MAIL_DRAFT_ID);
     expect(output).toContain("do not repeat the draft");
     expect(output).not.toContain('"mailDraft"');
   });

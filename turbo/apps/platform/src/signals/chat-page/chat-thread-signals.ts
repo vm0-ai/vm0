@@ -11,8 +11,11 @@ import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
+import type { PermissionCardSignals } from "./permission-card-signals.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
+import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
+import type { WorkflowQueueSignals } from "./workflow-queue.ts";
 
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
@@ -110,6 +113,9 @@ export interface ChatThreadSignals {
   agentId$: Computed<Promise<string | null>>;
   agentDisplayName$: Computed<Promise<string | null>>;
   agentPinned$: Computed<Promise<boolean | null>>;
+  // -- Thread-owned automation resources -----------------------------------
+  headerAutomations: HeaderAutomationSignals;
+  workflowQueue: WorkflowQueueSignals;
   // -- Per-thread UI state --------------------------------------------------
   timelineExpandedIds$: Computed<Set<string>>;
   toggleTimelineExpanded$: Command<void, [string]>;
@@ -126,6 +132,12 @@ export interface ChatThreadSignals {
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
+  // Signals backing rendered permission action cards, keyed by the card's
+  // normalized permission URL. Populated when persistent messages are written;
+  // cards look up their signals at render time.
+  permissionCardSignalsByUrl$: Computed<
+    ReadonlyMap<string, PermissionCardSignals>
+  >;
   visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;

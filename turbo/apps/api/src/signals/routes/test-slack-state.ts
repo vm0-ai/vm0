@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import type { createClerkClient } from "@clerk/backend";
 import { command, computed } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -33,9 +32,9 @@ import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
-import { clerk$ } from "../external/clerk";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { resolveTestOrgId$, testUserId$ } from "../services/cli-auth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
@@ -70,7 +69,6 @@ const SLACK_E2E_FIXTURES = {
   botToken: "xoxb-e2e-test-bot-token",
 } as const;
 
-type ClerkClient = ReturnType<typeof createClerkClient>;
 type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function isoString(value: Date): string {
@@ -98,37 +96,6 @@ function resolvedSlackApiUrl(): string | null {
   }
 
   return null;
-}
-
-async function resolveTestUserId(
-  clerk: ClerkClient,
-  email: string = DEFAULT_TEST_EMAIL,
-): Promise<string> {
-  const { data: users } = await clerk.users.getUserList({
-    emailAddress: [email],
-  });
-  const userId = users[0]?.id;
-  if (!userId) {
-    throw new Error(`Test user not found for email: ${email}`);
-  }
-  return userId;
-}
-
-async function resolveTestOrgId(
-  clerk: ClerkClient,
-  userId: string,
-): Promise<string> {
-  const memberships = await clerk.users.getOrganizationMembershipList({
-    userId,
-  });
-  const sorted = [...memberships.data].sort((a, b) => {
-    return a.createdAt - b.createdAt;
-  });
-  const orgId = sorted[0]?.organization.id;
-  if (!orgId) {
-    throw new Error(`Test user ${userId} has no organization membership`);
-  }
-  return orgId;
 }
 
 interface UpsertSlackInstallationInput {
@@ -875,23 +842,6 @@ function postSlackStateValidationError(
   return null;
 }
 
-async function resolvePostSlackStateActor(
-  clerk: ClerkClient | null,
-  body: TestSlackStatePostBody,
-): Promise<{ readonly orgId: string; readonly userId: string }> {
-  if (body.org_id && !body.vm0_user_id && !body.email) {
-    return {
-      orgId: body.org_id,
-      userId: `user_${body.org_id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
-    };
-  }
-  const userId =
-    body.vm0_user_id ??
-    (await resolveTestUserId(clerk!, body.email ?? DEFAULT_TEST_EMAIL));
-  const orgId = body.org_id ?? (await resolveTestOrgId(clerk!, userId));
-  return { orgId, userId };
-}
-
 async function maybeUpsertSlackInstallationForPost(
   db: Db,
   body: TestSlackStatePostBody,
@@ -1049,8 +999,24 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
     };
   }
 
-  const clerk = body.vm0_user_id && body.org_id ? null : get(clerk$);
-  const actor = await resolvePostSlackStateActor(clerk, body);
+  let actor: { readonly orgId: string; readonly userId: string };
+  if (body.org_id && !body.vm0_user_id && !body.email) {
+    actor = {
+      orgId: body.org_id,
+      userId: `user_${body.org_id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+    };
+  } else {
+    const userId =
+      body.vm0_user_id ??
+      (await set(
+        testUserId$,
+        { email: body.email ?? DEFAULT_TEST_EMAIL, refresh: false },
+        signal,
+      ));
+    signal.throwIfAborted();
+    const orgId = body.org_id ?? (await set(resolveTestOrgId$, userId, signal));
+    actor = { orgId, userId };
+  }
   signal.throwIfAborted();
 
   const db = set(writeDb$);

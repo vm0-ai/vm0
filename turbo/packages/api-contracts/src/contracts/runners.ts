@@ -68,6 +68,17 @@ export const runnerClaimPollReasonSchema = z.enum([
   "fast",
 ]);
 
+export const sessionAffinityResourceSchema = z.enum([
+  "reusableSandbox",
+  "workspaceCache",
+]);
+const sessionAffinityLocalResourceSchema = z.enum([
+  "reusableSandbox",
+  "workspaceCache",
+  "legacySession",
+]);
+const runnerLocalAdmissionResourceSchema = z.enum(["reusableSandbox", "fresh"]);
+
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
 const runnerPreLocalAdmissionOutcomeSchema = z.enum([
   "not_protected",
@@ -100,6 +111,9 @@ const runnerClaimTelemetrySchema = z.object({
   providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
   mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
   preLocalAdmissionOutcome: runnerPreLocalAdmissionOutcomeSchema.optional(),
+  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
+  sessionAffinityLocalResource: sessionAffinityLocalResourceSchema.optional(),
+  localAdmissionResource: runnerLocalAdmissionResourceSchema.optional(),
   sessionHistoryGenerationRelationship:
     sessionHistoryGenerationRelationshipSchema.optional(),
   sessionHistoryGenerationLocalAvailability:
@@ -190,6 +204,7 @@ export const jobSchema = z.object({
     .datetime({ offset: true })
     .nullable()
     .optional(),
+  sessionAffinityResource: sessionAffinityResourceSchema.optional(),
 });
 
 export const heldSessionStateSchema = z.object({
@@ -202,6 +217,15 @@ export const heldSessionStateSchema = z.object({
       profile: z.string(),
       historyGenerationRunId: z.uuid().optional(),
     })
+    .optional(),
+  workspaceCaches: z
+    .array(
+      z.object({
+        profile: z.string(),
+        workspaceAffinityVersion: z.literal(1).optional(),
+      }),
+    )
+    .max(8)
     .optional(),
 });
 
@@ -607,20 +631,38 @@ export const runnersBuiltinFirewallsResolveContract = c.router({
 /**
  * Runner heartbeat body — periodic state report from each runner
  */
-export const heartbeatBodySchema = z.object({
-  runnerId: z.uuid(),
-  runnerName: z.string(),
-  group: runnerGroupSchema,
-  totalVcpu: z.number().int().nonnegative(),
-  totalMemoryMb: z.number().int().nonnegative(),
-  maxConcurrent: z.number().int().nonnegative(),
-  allocatedVcpu: z.number().int().nonnegative(),
-  allocatedMemoryMb: z.number().int().nonnegative(),
-  runningCount: z.number().int().nonnegative(),
-  admittableProfiles: runnerProfileListSchema,
-  heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-  mode: z.enum(["starting", "running", "draining", "stopping"]),
-});
+export const heartbeatBodySchema = z
+  .object({
+    runnerId: z.uuid(),
+    runnerName: z.string(),
+    group: runnerGroupSchema,
+    totalVcpu: z.number().int().nonnegative(),
+    totalMemoryMb: z.number().int().nonnegative(),
+    maxConcurrent: z.number().int().nonnegative(),
+    allocatedVcpu: z.number().int().nonnegative(),
+    allocatedMemoryMb: z.number().int().nonnegative(),
+    runningCount: z.number().int().nonnegative(),
+    admittableProfiles: runnerProfileListSchema,
+    heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+    mode: z.enum(["starting", "running", "draining", "stopping"]),
+  })
+  .superRefine((heartbeat, ctx) => {
+    const workspaceCacheCount = heartbeat.heldSessionStates.reduce(
+      (count, state) => {
+        return count + (state.workspaceCaches?.length ?? 0);
+      },
+      0,
+    );
+    if (workspaceCacheCount <= 1024) {
+      return;
+    }
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["heldSessionStates"],
+      message: "heldSessionStates may contain at most 1024 workspace caches",
+    });
+  });
 
 /**
  * Runners heartbeat contract - POST /api/runners/heartbeat
@@ -678,6 +720,9 @@ export type SessionHistoryGenerationRelationship = z.infer<
 >;
 export type SessionHistoryGenerationLocalAvailability = z.infer<
   typeof sessionHistoryGenerationLocalAvailabilitySchema
+>;
+export type SessionAffinityResource = z.infer<
+  typeof sessionAffinityResourceSchema
 >;
 
 export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

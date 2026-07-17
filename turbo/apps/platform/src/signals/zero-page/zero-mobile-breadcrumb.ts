@@ -12,7 +12,7 @@ import {
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { workflowDetail } from "../workflows-page/workflows-signals.ts";
+import { currentWorkflowDetail$ } from "../workflows-page/workflows-signals.ts";
 
 interface MobileBreadcrumb {
   section: string;
@@ -85,7 +85,7 @@ const workflowsBreadcrumb$ = computed(
     const params = get(pathParams$) as Params;
     const workflowId = getStringParam(params, "workflowId");
     if (workflowId) {
-      const detail = await get(workflowDetail(workflowId));
+      const detail = await get(currentWorkflowDetail$);
       if (detail) {
         return {
           section,

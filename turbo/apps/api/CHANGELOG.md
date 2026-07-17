@@ -1,5 +1,154 @@
 # Changelog
 
+## [1.282.4](https://github.com/vm0-ai/vm0/compare/api-v1.282.3...api-v1.282.4) (2026-07-17)
+
+
+### Bug Fixes
+
+* rename vm0 model to auto ([#21969](https://github.com/vm0-ai/vm0/issues/21969)) ([aa7fd46](https://github.com/vm0-ai/vm0/commit/aa7fd46efde4f8400539a53adf71461105cb4aa5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.2
+    * @vm0/core bumped to 8.439.2
+    * @vm0/db bumped to 1.119.3
+
+## [1.282.3](https://github.com/vm0-ai/vm0/compare/api-v1.282.2...api-v1.282.3) (2026-07-17)
+
+
+### Refactoring
+
+* **platform:** cache chat blocks and share permission card signals ([#21919](https://github.com/vm0-ai/vm0/issues/21919)) ([f04823d](https://github.com/vm0-ai/vm0/commit/f04823da274101b5a921bce0c3eb6246e8f89f75))
+
+## [1.282.2](https://github.com/vm0-ai/vm0/compare/api-v1.282.1...api-v1.282.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* **api:** cache clerk identity reads in e2e setup ([#21909](https://github.com/vm0-ai/vm0/issues/21909)) ([5dbe55f](https://github.com/vm0-ai/vm0/commit/5dbe55fd1cc4f5f63eed4141c9c7ec2075d82955))
+
+
+### Documentation
+
+* **api:** clarify dev seed database contents ([#21891](https://github.com/vm0-ai/vm0/issues/21891)) ([bb18877](https://github.com/vm0-ai/vm0/commit/bb1887759521fb7a1c6cc320767a9bcc61ef35f0))
+
+
+### Refactoring
+
+* **api:** remove legacy web client compatibility endpoint ([#21915](https://github.com/vm0-ai/vm0/issues/21915)) ([f899f65](https://github.com/vm0-ai/vm0/commit/f899f65e7d2977cd0207432f10621d8ff0c81d58))
+* **runner:** add generic workspace affinity resource classes ([#21888](https://github.com/vm0-ai/vm0/issues/21888)) ([92bf6af](https://github.com/vm0-ai/vm0/commit/92bf6af909f9aa3666a256edbfdad016b94947a6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.1
+    * @vm0/core bumped to 8.439.1
+    * @vm0/db bumped to 1.119.2
+
+## [1.282.1](https://github.com/vm0-ai/vm0/compare/api-v1.282.0...api-v1.282.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **db:** enforce append-only chat event tables ([#21903](https://github.com/vm0-ai/vm0/issues/21903)) ([880cffc](https://github.com/vm0-ai/vm0/commit/880cffc307658b6fd865b233c5a7675271a965fd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.119.1
+
+## [1.282.0](https://github.com/vm0-ai/vm0/compare/api-v1.281.1...api-v1.282.0) (2026-07-16)
+
+
+### Features
+
+* add kimi k3 pricing and managed keys ([#21892](https://github.com/vm0-ai/vm0/issues/21892)) ([5b5901f](https://github.com/vm0-ai/vm0/commit/5b5901f21453723a299ab0c71d1a47ce3d14cf87))
+
+
+### Refactoring
+
+* reduce fallback slop in cli auth ([#21898](https://github.com/vm0-ai/vm0/issues/21898)) ([89601f9](https://github.com/vm0-ai/vm0/commit/89601f96e1216c34fcf8202860f50a2eaa74bcfb))
+* remove relationship memory experiments ([#21890](https://github.com/vm0-ai/vm0/issues/21890)) ([2009691](https://github.com/vm0-ai/vm0/commit/2009691cb46549e3c79304cfc5a4658be2091720))
+
+
+### Performance Improvements
+
+* **api:** bulk upsert development seed data ([#21894](https://github.com/vm0-ai/vm0/issues/21894)) ([a3eddfb](https://github.com/vm0-ai/vm0/commit/a3eddfb32d9b665f87d746b241d99d12b63702e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.0
+    * @vm0/connectors bumped to 1.169.1
+    * @vm0/core bumped to 8.439.0
+    * @vm0/db bumped to 1.119.0
+
+## [1.281.1](https://github.com/vm0-ai/vm0/compare/api-v1.281.0...api-v1.281.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **chat:** append insufficient-credit replacements ([#21884](https://github.com/vm0-ai/vm0/issues/21884)) ([9bd1ec4](https://github.com/vm0-ai/vm0/commit/9bd1ec4f6c43a3e466ad305b336d518a4e345007))
+* **chat:** restore append-only queued message claims ([#21883](https://github.com/vm0-ai/vm0/issues/21883)) ([c4ba9fd](https://github.com/vm0-ai/vm0/commit/c4ba9fd85a3010950cd95cc2be0db75fc2997472))
+* emit one complete usage chat message per run ([#21885](https://github.com/vm0-ai/vm0/issues/21885)) ([6a0446d](https://github.com/vm0-ai/vm0/commit/6a0446db9ab725dc26017308bef383f11a8e8a60))
+
+
+### Refactoring
+
+* **mail:** store email drafts outside chat messages ([#21887](https://github.com/vm0-ai/vm0/issues/21887)) ([b269ede](https://github.com/vm0-ai/vm0/commit/b269edec386afe0413eddb62bfc90c046a91be89))
+* **runner:** publish profile-qualified workspace cache state ([#21874](https://github.com/vm0-ai/vm0/issues/21874)) ([68b399b](https://github.com/vm0-ai/vm0/commit/68b399b571023b63db4a2f4f625eef1c9ded9b48))
+
+
+### Performance Improvements
+
+* **api:** collapse resumed-session resolution into one snapshot query ([#21872](https://github.com/vm0-ai/vm0/issues/21872)) ([856b69d](https://github.com/vm0-ai/vm0/commit/856b69d5cee4241d1f0b09cad1b58747a68d6c2d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.1
+    * @vm0/core bumped to 8.438.1
+    * @vm0/db bumped to 1.118.1
+
+## [1.281.0](https://github.com/vm0-ai/vm0/compare/api-v1.280.2...api-v1.281.0) (2026-07-16)
+
+
+### Features
+
+* bill model usage from signed proxy price schedules ([#21696](https://github.com/vm0-ai/vm0/issues/21696)) ([e4c9fc7](https://github.com/vm0-ai/vm0/commit/e4c9fc72ec4004b8ff6db197c6e4ee1a888e9d30))
+* enable workflow queue for all orgs ([#21853](https://github.com/vm0-ai/vm0/issues/21853)) ([5076e79](https://github.com/vm0-ai/vm0/commit/5076e79781786049aa346dcd908661388dbe7a3a))
+
+
+### Bug Fixes
+
+* **cli:** enforce source-first image template generation ([#21472](https://github.com/vm0-ai/vm0/issues/21472)) ([e686661](https://github.com/vm0-ai/vm0/commit/e686661b6fe100cbf821810daf9b1d00a587fc78))
+
+
+### Performance Improvements
+
+* **api:** lower postgres dns hedge delay and attribute budget misses ([#21846](https://github.com/vm0-ai/vm0/issues/21846)) ([a29eb59](https://github.com/vm0-ai/vm0/commit/a29eb5996c49bc329cf42b2f767debb9e1f8f5f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.199.0
+    * @vm0/connectors bumped to 1.169.0
+    * @vm0/core bumped to 8.438.0
+    * @vm0/db bumped to 1.118.0
+
 ## [1.280.2](https://github.com/vm0-ai/vm0/compare/api-v1.280.1...api-v1.280.2) (2026-07-16)
 
 

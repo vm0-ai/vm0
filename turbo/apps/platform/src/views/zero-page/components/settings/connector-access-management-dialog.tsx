@@ -22,11 +22,11 @@ import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/co
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
 import { applyUserPermissionGrants$ } from "../../../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../../../signals/user-permission-grants.ts";
 import {
-  connectorAgentAccessRows,
+  managedConnectorAgentAccessRows$,
+  managedConnectorFirewallPermissionMetadata$,
   connectorAccessManagementPermissionAgentId$,
   connectorAccessManagementSavingAgentId$,
   connectorAccessManagementSearch$,
@@ -46,7 +46,6 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
-import { useUserPermissionGrantExpiryTick } from "../../../user-permission-grant-expiry-tick.ts";
 
 interface ConnectorAccessManagementDialogProps {
   readonly connectorType: ConnectorType;
@@ -328,7 +327,6 @@ function AgentPermissionDialog({
   readonly onClose: () => void;
 }) {
   const grants = row?.grants ?? [];
-  useUserPermissionGrantExpiryTick(grants);
   if (!row || !metadata) {
     return null;
   }
@@ -340,6 +338,7 @@ function AgentPermissionDialog({
       agentId={row.agent.id}
       connectorType={connectorType}
       connectorLabel={connectorLabel}
+      metadata$={managedConnectorFirewallPermissionMetadata$}
       displayName={agentName(row.agent)}
       initialPolicies={initialPolicies}
       initialGrants={activeSnapshot.grants}
@@ -368,11 +367,9 @@ export function ConnectorAccessManagementDialog({
   connectorLabel,
   onClose,
 }: ConnectorAccessManagementDialogProps) {
-  const rowsLoadable = useLastLoadable(
-    connectorAgentAccessRows({ connectorType }),
-  );
+  const rowsLoadable = useLastLoadable(managedConnectorAgentAccessRows$);
   const metadataLoadable = useLastLoadable(
-    firewallPermissionMetadataByConnector({ connectorRef: connectorType }),
+    managedConnectorFirewallPermissionMetadata$,
   );
   const pageSignal = useGet(pageSignal$);
   const search = useGet(connectorAccessManagementSearch$);

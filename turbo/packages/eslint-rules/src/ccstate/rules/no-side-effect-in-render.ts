@@ -184,6 +184,18 @@ export default createRule<Options, MessageIds>({
         }
 
         const callee = node.callee;
+        if (
+          callee.type === "CallExpression" &&
+          callee.callee.type === "Identifier" &&
+          callee.callee.name === "useSet"
+        ) {
+          context.report({
+            node,
+            messageId: "noSetInRender",
+          });
+          return;
+        }
+
         if (callee.type !== "Identifier") {
           return;
         }

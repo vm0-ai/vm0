@@ -38,7 +38,6 @@ import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
-  publishChatThreadMessageUpdated,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -66,7 +65,7 @@ import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.ser
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
-  deleteUserMessageQueueItem,
+  appendClaimedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
@@ -347,15 +346,6 @@ type CreatedQueuedRun = {
   readonly runId: string;
   readonly status: "queued" | "pending" | "running";
 };
-
-interface QueuedUserMessageClaim {
-  readonly messageId: string;
-}
-
-interface CreatedAutoSentQueuedRun {
-  readonly run: CreatedQueuedRun;
-  readonly claim: QueuedUserMessageClaim;
-}
 
 type CreateQueuedRun = (
   input: CreateQueuedChatRunInput,
@@ -1823,7 +1813,7 @@ async function claimQueuedUserMessageForDispatch(args: {
   readonly queuedMessage: QueuedUserMessage;
   readonly runId: string;
   readonly threadId: string;
-}): Promise<QueuedUserMessageClaim | null> {
+}): Promise<boolean> {
   const claimed = await args.db.transaction(async (tx) => {
     // Serialize auto-send dispatch decisions per thread. Otherwise two terminal
     // callbacks can insert candidate runs, each see the other as active, and
@@ -1891,26 +1881,14 @@ async function claimQueuedUserMessageForDispatch(args: {
       return null;
     }
 
-    // Claim both current queue items and persisted pre-convergence rows in
-    // place. Deleting a missing queue pointer is a safe no-op for legacy rows.
-    const [updated] = await tx
-      .update(chatMessages)
-      .set({ runId: args.runId })
-      .where(
-        and(
-          eq(chatMessages.id, args.queuedMessage.id),
-          eq(chatMessages.chatThreadId, args.threadId),
-          isNull(chatMessages.runId),
-        ),
-      )
-      .returning({ id: chatMessages.id });
-    if (updated) {
-      await deleteUserMessageQueueItem(tx, args.queuedMessage.id);
-    }
-    return updated ? { messageId: updated.id } : null;
+    return await appendClaimedUserMessage(tx, {
+      threadId: args.threadId,
+      messageId: args.queuedMessage.id,
+      runId: args.runId,
+    });
   });
 
-  return claimed;
+  return claimed !== null;
 }
 
 async function appendAutoSentQueuedRunMarker(args: {
@@ -1938,7 +1916,7 @@ async function appendAutoSentQueuedRunMarker(args: {
           eq(chatMessages.chatThreadId, args.threadId),
           eq(chatMessages.runId, args.runId),
           eq(chatMessages.role, "user"),
-          eq(chatMessages.id, args.queuedMessageId),
+          eq(chatMessages.revokesMessageId, args.queuedMessageId),
         ),
       )
       .limit(1);
@@ -1963,9 +1941,8 @@ async function createAutoSentQueuedRun(args: {
   readonly queuedMessage: QueuedUserMessage;
   readonly threadId: string;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-}): Promise<CreatedAutoSentQueuedRun | null> {
-  let claim: QueuedUserMessageClaim | null = null;
-  const run = await measureChatCallbackPreCreateTiming(
+}): Promise<CreatedQueuedRun | null> {
+  return await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
     "top_level",
@@ -1973,7 +1950,7 @@ async function createAutoSentQueuedRun(args: {
       return args.createRun({
         ...args.runInput,
         beforeDispatch: async ({ runId }) => {
-          claim = await measureChatCallbackPreCreateTiming(
+          const claimed = await measureChatCallbackPreCreateTiming(
             args.timing,
             "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
             "nested",
@@ -1986,7 +1963,7 @@ async function createAutoSentQueuedRun(args: {
               });
             },
           );
-          if (!claim) {
+          if (!claimed) {
             log.warn(
               "Auto-send could not claim queued message before dispatch",
               {
@@ -1996,12 +1973,11 @@ async function createAutoSentQueuedRun(args: {
               },
             );
           }
-          return claim !== null;
+          return claimed;
         },
       });
     },
   );
-  return run && claim ? { run, claim } : null;
 }
 
 async function appendAutoSentQueuedRunMarkerIfQueued(args: {
@@ -2032,8 +2008,6 @@ async function appendAutoSentQueuedRunMarkerIfQueued(args: {
 async function publishAutoSentQueuedRunSignals(args: {
   readonly threadId: string;
   readonly userId: string;
-  readonly claim: QueuedUserMessageClaim;
-  readonly runStatus: CreatedQueuedRun["status"];
   readonly timing: ChatCallbackPreCreateTimingCollector;
 }): Promise<void> {
   await measureChatCallbackPreCreateTiming(
@@ -2041,55 +2015,15 @@ async function publishAutoSentQueuedRunSignals(args: {
     "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     "nested",
     async () => {
-      // Each publish is independently best-effort: one failed Ably publish
-      // must not drop the remaining signals, or the client can be left with
-      // a stale queued row it can only heal via subscribe-time catchup.
-      await tapError(
-        publishChatThreadMessageUpdated(
-          args.userId,
-          args.threadId,
-          args.claim.messageId,
-        ),
-        (error) => {
-          log.warn("Failed to publish auto-sent queued message updated", {
-            threadId: args.threadId,
-            messageId: args.claim.messageId,
-            error,
-          });
-        },
+      await publishUserSignal(
+        [args.userId],
+        `chatThreadMessageCreated:${args.threadId}`,
       );
-      if (args.runStatus === "queued") {
-        await tapError(
-          publishUserSignal(
-            [args.userId],
-            `chatThreadMessageCreated:${args.threadId}`,
-          ),
-          (error) => {
-            log.warn("Failed to publish auto-sent queued message created", {
-              threadId: args.threadId,
-              error,
-            });
-          },
-        );
-      }
-      await tapError(
-        publishUserSignal(
-          [args.userId],
-          `chatThreadRunCreated:${args.threadId}`,
-        ),
-        (error) => {
-          log.warn("Failed to publish auto-sent queued run created", {
-            threadId: args.threadId,
-            error,
-          });
-        },
+      await publishUserSignal(
+        [args.userId],
+        `chatThreadRunCreated:${args.threadId}`,
       );
-      await tapError(publishThreadListChanged(args.userId), (error) => {
-        log.warn("Failed to publish auto-sent queued thread list changed", {
-          threadId: args.threadId,
-          error,
-        });
-      });
+      await publishThreadListChanged(args.userId);
     },
   );
 }
@@ -2172,7 +2106,7 @@ async function autoSendQueuedMessageForThread(args: {
   let createdRunId: string | null = null;
   const run = await onRejection(
     (async () => {
-      const created = await createAutoSentQueuedRun({
+      const createdRun = await createAutoSentQueuedRun({
         createRun: args.createRun,
         db: args.db,
         runInput,
@@ -2180,10 +2114,9 @@ async function autoSendQueuedMessageForThread(args: {
         threadId,
         timing: args.timing,
       });
-      if (!created) {
+      if (!createdRun) {
         return null;
       }
-      const { run: createdRun, claim } = created;
       createdRunId = createdRun.runId;
       await appendAutoSentQueuedRunMarkerIfQueued({
         db: args.db,
@@ -2195,8 +2128,6 @@ async function autoSendQueuedMessageForThread(args: {
       await publishAutoSentQueuedRunSignals({
         threadId,
         userId,
-        claim,
-        runStatus: createdRun.status,
         timing: args.timing,
       });
       return createdRun;

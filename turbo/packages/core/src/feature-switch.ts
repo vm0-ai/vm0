@@ -308,7 +308,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Vm0Model]: {
     maintainer: "yuma@vm0.ai",
-    description: "Show VM0 Model in the workspace Add model selector.",
+    description: "Show Auto in the workspace Add model selector.",
     enabled: false,
   },
   [FeatureSwitchKey.RealAgentInPreview]: {
@@ -334,20 +334,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Show the read-only memory viewer page in the Zero sidebar and at /memory, listing the files in the user's memory artifact.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.RelationshipMemory]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Inject compact relationship memory profile and prompt-relevant memories into Zero run system prompts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -454,7 +440,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Show the Artifacts manage page for generated artifacts in the current organization.",
-    enabled: true,
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ArtifactFavorites]: {
     maintainer: "bingjie@vm0.ai",
@@ -466,8 +453,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Render a static preview image (screenshot) for HTML/website artifacts on deploy so the artifacts grid shows an image instead of a live iframe.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.WebsiteTemplates]: {
     maintainer: "bingjie@vm0.ai",

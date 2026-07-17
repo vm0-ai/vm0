@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.37.129](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.128...sandbox-fc-v0.37.129) (2026-07-17)
+
+
+### Documentation
+
+* **sandbox-fc:** document outbound tcp proxy routing ([#21935](https://github.com/vm0-ai/vm0/issues/21935)) ([5ffa25b](https://github.com/vm0-ai/vm0/commit/5ffa25bb75a4df91a195de1b632e59ec0925274d))
+
+## [0.37.128](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.127...sandbox-fc-v0.37.128) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+* **runner:** recover from guest dns readiness failures ([#21879](https://github.com/vm0-ai/vm0/issues/21879)) ([38a6647](https://github.com/vm0-ai/vm0/commit/38a664712e595a88a482df90ef8012f976c3f128))
+
+## [0.37.127](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.126...sandbox-fc-v0.37.127) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** prevent stale conntrack dns failures ([#21817](https://github.com/vm0-ai/vm0/issues/21817)) ([b6d0691](https://github.com/vm0-ai/vm0/commit/b6d0691437caf15deb5c9ac9ca1bcf1d8cc859e3))
+* **runner:** reject spoofed sandbox source addresses ([#21838](https://github.com/vm0-ai/vm0/issues/21838)) ([f0888bf](https://github.com/vm0-ai/vm0/commit/f0888bfddb119701096de1eb6e0e8fc7ee79f174))
+
 ## [0.37.126](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.125...sandbox-fc-v0.37.126) (2026-07-16)
 
 ## [0.37.125](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.124...sandbox-fc-v0.37.125) (2026-07-16)

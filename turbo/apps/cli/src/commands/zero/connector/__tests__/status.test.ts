@@ -165,7 +165,7 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain("/connectors/github/connect");
       expect(logCalls).not.toContain("Authorized:");
       expect(logCalls).not.toContain("Diagnose it with");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("does not print connect guidance for unavailable connectors", async () => {
@@ -197,7 +197,7 @@ describe("zero connector status command", () => {
       );
       expect(logCalls).toContain("[Reconnect github](");
       expect(logCalls).toContain("/connectors");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
   });
 
@@ -252,7 +252,7 @@ describe("zero connector status command", () => {
       );
       expect(logCalls).not.toContain("is not connected");
       expect(logCalls).not.toContain("[Connect github]");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("uses the production app origin in authorization links", async () => {
@@ -308,7 +308,7 @@ describe("zero connector status command", () => {
         `/connectors/github/connect?agentId=${AGENT_UUID}`,
       );
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("shows connect guidance when connector is authorized but not connected", async () => {
@@ -339,7 +339,7 @@ describe("zero connector status command", () => {
         `/connectors/github/connect?agentId=${AGENT_UUID}`,
       );
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("shows reconnect guidance when connector needs reconnect", async () => {
@@ -368,7 +368,7 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain("[Reconnect github](");
       expect(logCalls).toContain("/connectors");
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero doctor check-connector");
+      expect(logCalls).not.toContain("zero connector check");
     });
 
     it("uses $ZERO_AGENT_ID when --agent flag is not provided", async () => {

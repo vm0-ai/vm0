@@ -155,7 +155,7 @@ export function getVm0ModelCodexRuntimeConfig(
 ): ModelProviderCodexRuntimeConfig {
   return {
     providerId: "vm0-model",
-    name: "VM0 Model",
+    name: "Auto",
     baseUrl,
     envKey: "OPENAI_API_KEY",
     wireApi: "responses",
@@ -164,7 +164,7 @@ export function getVm0ModelCodexRuntimeConfig(
       models: [
         {
           slug: "vm0-model",
-          display_name: "VM0 Model",
+          display_name: "Auto",
           description: "Automatically routes each task to a VM0 model.",
           default_reasoning_level: null,
           supported_reasoning_levels: [],
@@ -303,7 +303,7 @@ export interface DefaultOrgModelPolicySeed {
 }
 
 const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
-  "vm0-model": "VM0 Model",
+  "vm0-model": "Auto",
   "claude-fable-5": "Claude Fable 5",
   "claude-opus-4-8": "Claude Opus 4.8",
   "claude-opus-4-7": "Claude Opus 4.7",
@@ -311,6 +311,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-sonnet-5": "Claude Sonnet 5",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "kimi-k3": "Kimi K3",
   "kimi-k2.7-code": "Kimi K2.7 Code",
   "MiniMax-M3": "MiniMax M3",
   "glm-5.2": "GLM-5.2",
@@ -453,6 +454,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "openrouter",
     apiModel: "tencent/hy3-preview",
   },
+  "kimi-k3": {
+    concreteType: "moonshot-api-key",
+    vendor: "moonshot",
+  },
   "kimi-k2.7-code": {
     concreteType: "moonshot-api-key",
     vendor: "moonshot",
@@ -562,6 +567,7 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "anthropic/claude-opus-4.5",
   "anthropic/claude-sonnet-4.6",
   "anthropic/claude-sonnet-4.5",
+  "kimi-k3",
   "kimi-k2.7-code",
   "MiniMax-M3",
   "mimo-v2.5",
@@ -729,6 +735,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "kimi-k3",
       "kimi-k2.7-code",
       "kimi-k2-thinking-turbo",
       "kimi-k2-thinking",
@@ -1157,6 +1164,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "vercel-ai-gateway-codex",
   ],
   "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
+  "kimi-k3": ["vm0", "moonshot-api-key"],
   "kimi-k2.7-code": ["vm0", "moonshot-api-key"],
   "MiniMax-M3": ["vm0", "minimax-api-key"],
   "glm-5.2": ["vm0", "zai-api-key", "openrouter-api-key"],

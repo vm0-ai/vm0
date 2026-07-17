@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.13](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.12...guest-contracts-v0.3.13) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+
 ## [0.3.12](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.11...guest-contracts-v0.3.12) (2026-07-16)
 
 

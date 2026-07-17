@@ -135,6 +135,16 @@ ruleTester.run("no-side-effect-in-render", rule, {
       `,
       errors: [{ messageId: "noSetInRender" }],
     },
+    // Immediately invoking a useSet() result in render
+    {
+      code: `
+        function MyView() {
+          useSet(initSettingsForm$)({ name: "Zero" });
+          return <div />;
+        }
+      `,
+      errors: [{ messageId: "noSetInRender" }],
+    },
     // detach() directly in render body
     {
       code: `

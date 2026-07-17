@@ -67,9 +67,10 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
-  runnerReusableSessionPollPriority,
+  runnerSessionAffinityPollPriority,
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
+  runnerSessionAffinityTelemetryResource,
 } from "../services/runner-session-affinity";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
@@ -331,6 +332,21 @@ function canonicalizeHeldSessionStates(
             },
           }
         : {}),
+      ...(state.workspaceCaches
+        ? {
+            workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
+              return {
+                profile: workspaceCache.profile,
+                ...(workspaceCache.workspaceAffinityVersion
+                  ? {
+                      workspaceAffinityVersion:
+                        workspaceCache.workspaceAffinityVersion,
+                    }
+                  : {}),
+              };
+            }),
+          }
+        : {}),
     };
   });
 }
@@ -417,6 +433,7 @@ function recordPollTimingMetrics(args: {
   readonly authType: RunnerAuthContext["type"];
   readonly pollReason: string | undefined;
   readonly sessionAffinity: string;
+  readonly sessionAffinityResource: string;
   readonly historyGenerationAffinity: string;
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
@@ -429,6 +446,7 @@ function recordPollTimingMetrics(args: {
     profile: args.profile,
     auth_type: args.authType,
     session_affinity: args.sessionAffinity,
+    session_affinity_resource: args.sessionAffinityResource,
     history_generation_affinity: args.historyGenerationAffinity,
   };
   if (args.pollReason) {
@@ -469,6 +487,25 @@ function recordPollTimingMetrics(args: {
   ]);
 }
 
+function runnerPollPriorityOrder(args: {
+  readonly runnerId: string | undefined;
+  readonly runnerGroup: string;
+  readonly currentDate: Date;
+}): SQL<unknown>[] {
+  if (!args.runnerId) {
+    return [];
+  }
+  return [
+    desc(
+      runnerSessionAffinityPollPriority({
+        runnerId: args.runnerId,
+        runnerGroup: args.runnerGroup,
+        currentDate: args.currentDate,
+      }),
+    ),
+  ];
+}
+
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const pollRequestStartedAtMs = now();
   const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -505,17 +542,11 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
   const currentDate = nowDate();
-  const reusableSessionPriorityOrder = body.data.runnerId
-    ? [
-        desc(
-          runnerReusableSessionPollPriority({
-            runnerId: body.data.runnerId,
-            runnerGroup: group,
-            currentDate,
-          }),
-        ),
-      ]
-    : [];
+  const sessionAffinityPriorityOrder = runnerPollPriorityOrder({
+    runnerId: body.data.runnerId,
+    runnerGroup: group,
+    currentDate,
+  });
   const [pendingJob] = await db
     .select({
       runId: runnerJobQueue.runId,
@@ -535,7 +566,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
     .orderBy(
-      ...reusableSessionPriorityOrder,
+      ...sessionAffinityPriorityOrder,
       runnerJobQueue.createdAt,
       runnerJobQueue.runId,
     )
@@ -576,6 +607,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     authType: auth.type,
     pollReason: body.data.telemetry?.pollReason,
     sessionAffinity: affinity.status,
+    sessionAffinityResource: runnerSessionAffinityTelemetryResource(affinity),
     historyGenerationAffinity: affinity.historyGenerationStatus,
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
@@ -600,6 +632,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         historyGenerationAffinityProtectedUntil:
           affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
         affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
+        sessionAffinityResource: affinity.resource ?? undefined,
       },
     },
   };
@@ -1607,6 +1640,9 @@ interface ClaimTimingTelemetry {
   readonly providerDiscoveryToMainLoopMs?: number;
   readonly mainLoopToLocalAdmissionMs?: number;
   readonly preLocalAdmissionOutcome?: string;
+  readonly sessionAffinityResource?: string;
+  readonly sessionAffinityLocalResource?: string;
+  readonly localAdmissionResource?: string;
   readonly pollDueToJobDiscoveredMs?: number;
   readonly pollHttpRequestMs?: number;
   readonly pollReason?: string;
@@ -1660,6 +1696,9 @@ function scheduleSuccessfulClaimSideEffects(args: {
       args.telemetry?.providerDiscoveryToMainLoopMs,
     mainLoopToLocalAdmissionMs: args.telemetry?.mainLoopToLocalAdmissionMs,
     preLocalAdmissionOutcome: args.telemetry?.preLocalAdmissionOutcome,
+    sessionAffinityResource: args.telemetry?.sessionAffinityResource,
+    sessionAffinityLocalResource: args.telemetry?.sessionAffinityLocalResource,
+    localAdmissionResource: args.telemetry?.localAdmissionResource,
     discoverySource: args.telemetry?.discoverySource,
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
@@ -1686,6 +1725,9 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly providerDiscoveryToMainLoopMs: number | undefined;
   readonly mainLoopToLocalAdmissionMs: number | undefined;
   readonly preLocalAdmissionOutcome: string | undefined;
+  readonly sessionAffinityResource: string | undefined;
+  readonly sessionAffinityLocalResource: string | undefined;
+  readonly localAdmissionResource: string | undefined;
   readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
@@ -1722,6 +1764,9 @@ interface ClaimTimingMetricArgs {
   readonly providerDiscoveryToMainLoopMs: number | undefined;
   readonly mainLoopToLocalAdmissionMs: number | undefined;
   readonly preLocalAdmissionOutcome: string | undefined;
+  readonly sessionAffinityResource: string | undefined;
+  readonly sessionAffinityLocalResource: string | undefined;
+  readonly localAdmissionResource: string | undefined;
   readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
@@ -1822,6 +1867,16 @@ function claimTimingDimensions(
   }
   if (args.preLocalAdmissionOutcome) {
     dimensions.pre_local_admission_outcome = args.preLocalAdmissionOutcome;
+  }
+  if (args.sessionAffinityResource) {
+    dimensions.session_affinity_resource = args.sessionAffinityResource;
+  }
+  if (args.sessionAffinityLocalResource) {
+    dimensions.session_affinity_local_resource =
+      args.sessionAffinityLocalResource;
+  }
+  if (args.localAdmissionResource) {
+    dimensions.local_admission_resource = args.localAdmissionResource;
   }
   return dimensions;
 }

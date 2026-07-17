@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult, SessionAffinityResource};
 
 /// Low-cardinality source that first discovered a job candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,6 +58,38 @@ impl PreLocalAdmissionOutcome {
             Self::NotProtected => "not_protected",
             Self::LocalHolder => "local_holder",
             Self::MissingSessionMetadata => "missing_session_metadata",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionAffinityLocalResource {
+    ReusableSandbox,
+    WorkspaceCache,
+    LegacySession,
+}
+
+impl SessionAffinityLocalResource {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::ReusableSandbox => "reusableSandbox",
+            Self::WorkspaceCache => "workspaceCache",
+            Self::LegacySession => "legacySession",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum LocalAdmissionResourceKind {
+    ReusableSandbox,
+    Fresh,
+}
+
+impl LocalAdmissionResourceKind {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::ReusableSandbox => "reusableSandbox",
+            Self::Fresh => "fresh",
         }
     }
 }
@@ -120,6 +152,9 @@ pub struct JobCandidate {
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
     cli_agent_session_id: Option<String>,
+    session_affinity_resource: Option<SessionAffinityResource>,
+    session_affinity_local_resource: Option<SessionAffinityLocalResource>,
+    local_admission_resource: Option<LocalAdmissionResourceKind>,
     history_generation_run_id: Option<RunId>,
     session_history_generation_relationship: Option<SessionHistoryGenerationRelationship>,
     session_history_generation_local_availability:
@@ -156,6 +191,9 @@ impl JobCandidate {
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
             cli_agent_session_id: None,
+            session_affinity_resource: None,
+            session_affinity_local_resource: None,
+            local_admission_resource: None,
             history_generation_run_id: None,
             session_history_generation_relationship: None,
             session_history_generation_local_availability: None,
@@ -258,6 +296,18 @@ impl JobCandidate {
         self.cli_agent_session_id.as_deref()
     }
 
+    pub(crate) fn session_affinity_resource(&self) -> Option<SessionAffinityResource> {
+        self.session_affinity_resource
+    }
+
+    pub(crate) fn session_affinity_local_resource(&self) -> Option<SessionAffinityLocalResource> {
+        self.session_affinity_local_resource
+    }
+
+    pub(crate) fn local_admission_resource(&self) -> Option<LocalAdmissionResourceKind> {
+        self.local_admission_resource
+    }
+
     pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
         self.history_generation_run_id
     }
@@ -308,6 +358,14 @@ impl JobCandidate {
         self
     }
 
+    pub(crate) fn with_session_affinity_resource(
+        mut self,
+        resource: Option<SessionAffinityResource>,
+    ) -> Self {
+        self.session_affinity_resource = resource;
+        self
+    }
+
     pub(crate) fn with_history_generation_run_id(
         mut self,
         history_generation_run_id: Option<RunId>,
@@ -338,6 +396,17 @@ impl JobCandidate {
         availability: SessionHistoryGenerationLocalAvailability,
     ) {
         self.session_history_generation_local_availability = Some(availability);
+    }
+
+    pub(crate) fn set_session_affinity_local_resource(
+        &mut self,
+        resource: SessionAffinityLocalResource,
+    ) {
+        self.session_affinity_local_resource = Some(resource);
+    }
+
+    pub(crate) fn set_local_admission_resource(&mut self, resource: LocalAdmissionResourceKind) {
+        self.local_admission_resource = Some(resource);
     }
 
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {

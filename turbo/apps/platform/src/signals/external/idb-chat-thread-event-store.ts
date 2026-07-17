@@ -1,3 +1,4 @@
+import type { IDBPDatabase } from "idb";
 import {
   chatThreadEventSchema,
   chatThreadSnapshotProjectionSchema,
@@ -11,7 +12,6 @@ import {
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "./chat-idb-schema.ts";
 import { chatIdbReadOr, chatIdbWriteBestEffort } from "./chat-idb-safe.ts";
-import { openChatIdb } from "./chat-idb-store.ts";
 
 const SINGLETON_ID = "current";
 
@@ -24,13 +24,7 @@ interface StoredChatThreadSnapshot extends ChatThreadSnapshotRecord {
   readonly id: typeof SINGLETON_ID;
 }
 
-type GetDb = ReturnType<typeof createGetDb>;
-
-function createGetDb(userId: string, orgId: string) {
-  return () => {
-    return openChatIdb(userId, orgId);
-  };
-}
+type GetDb = () => Promise<IDBPDatabase>;
 
 function validateSnapshot(raw: unknown): ChatThreadSnapshotRecord | null {
   if (raw === undefined || raw === null) {
@@ -170,9 +164,7 @@ function createWriteStore(getDb: GetDb) {
   };
 }
 
-export function createIdbChatThreadEventStores(userId: string, orgId: string) {
-  const getDb = createGetDb(userId, orgId);
-
+export function createIdbChatThreadEventStores(getDb: GetDb) {
   return Object.freeze({
     readStore: createReadStore(getDb),
     writeStore: createWriteStore(getDb),

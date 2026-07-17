@@ -1641,6 +1641,9 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
     expect(continued.sessionId).toBe(r1.sessionId);
     const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.vars).toStrictEqual({
+      VOL_VERSION: versionPrefix,
+    });
     expect(continuedClaim.resumeSession).toStrictEqual({
       sessionId: `bdd-cli-${r1.runId}`,
       historyRef: {

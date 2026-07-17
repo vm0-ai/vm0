@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.116](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.115...guest-init-v0.16.116) (2026-07-17)
+
+
+### Performance Improvements
+
+* **guest-init:** replace pid 1 polling with signal waits ([#21941](https://github.com/vm0-ai/vm0/issues/21941)) ([9799699](https://github.com/vm0-ai/vm0/commit/979969903255a319417c9b212bccbc2700084a32))
+
+## [0.16.115](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.114...guest-init-v0.16.115) (2026-07-16)
+
 ## [0.16.114](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.113...guest-init-v0.16.114) (2026-07-16)
 
 

@@ -1,5 +1,77 @@
 # Changelog
 
+## [9.241.10](https://github.com/vm0-ai/vm0/compare/cli-v9.241.9...cli-v9.241.10) (2026-07-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.200.2
+    * @vm0/core bumped to 8.439.2
+
+## [9.241.9](https://github.com/vm0-ai/vm0/compare/cli-v9.241.8...cli-v9.241.9) (2026-07-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.200.1
+    * @vm0/core bumped to 8.439.1
+
+## [9.241.8](https://github.com/vm0-ai/vm0/compare/cli-v9.241.7...cli-v9.241.8) (2026-07-16)
+
+
+### Refactoring
+
+* remove relationship memory experiments ([#21890](https://github.com/vm0-ai/vm0/issues/21890)) ([2009691](https://github.com/vm0-ai/vm0/commit/2009691cb46549e3c79304cfc5a4658be2091720))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.200.0
+    * @vm0/connectors bumped to 1.169.1
+    * @vm0/core bumped to 8.439.0
+
+## [9.241.7](https://github.com/vm0-ai/vm0/compare/cli-v9.241.6...cli-v9.241.7) (2026-07-16)
+
+
+### Refactoring
+
+* **mail:** store email drafts outside chat messages ([#21887](https://github.com/vm0-ai/vm0/issues/21887)) ([b269ede](https://github.com/vm0-ai/vm0/commit/b269edec386afe0413eddb62bfc90c046a91be89))
+
+
+### Performance Improvements
+
+* **computer-use:** reduce cli result polling interval to 500ms ([#21863](https://github.com/vm0-ai/vm0/issues/21863)) ([13969e0](https://github.com/vm0-ai/vm0/commit/13969e0cb351c975815d09d83122d02cda4b4ec3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.199.1
+    * @vm0/core bumped to 8.438.1
+
+## [9.241.6](https://github.com/vm0-ai/vm0/compare/cli-v9.241.5...cli-v9.241.6) (2026-07-16)
+
+
+### Bug Fixes
+
+* **cli:** enforce source-first image template generation ([#21472](https://github.com/vm0-ai/vm0/issues/21472)) ([e686661](https://github.com/vm0-ai/vm0/commit/e686661b6fe100cbf821810daf9b1d00a587fc78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.199.0
+    * @vm0/connectors bumped to 1.169.0
+    * @vm0/core bumped to 8.438.0
+
 ## [9.241.5](https://github.com/vm0-ai/vm0/compare/cli-v9.241.4...cli-v9.241.5) (2026-07-16)
 
 

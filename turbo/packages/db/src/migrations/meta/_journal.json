@@ -4278,6 +4278,62 @@
       "when": 1784200108803,
       "tag": "0610_cheerful_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 611,
+      "version": "7",
+      "when": 1784222545951,
+      "tag": "0611_curved_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 612,
+      "version": "7",
+      "when": 1784222569566,
+      "tag": "0612_chilly_malice",
+      "breakpoints": true
+    },
+    {
+      "idx": 613,
+      "version": "7",
+      "when": 1784229392155,
+      "tag": "0613_add_kimi_k3_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 614,
+      "version": "7",
+      "when": 1784229404189,
+      "tag": "0614_migrate_kimi_k3_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1784232246678,
+      "tag": "0615_retire_orphaned_queued_chat_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 616,
+      "version": "7",
+      "when": 1784233890680,
+      "tag": "0616_white_stature",
+      "breakpoints": true
+    },
+    {
+      "idx": 617,
+      "version": "7",
+      "when": 1784235403657,
+      "tag": "0617_preserve_chat_message_run_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1784235417148,
+      "tag": "0618_protect_chat_event_rows_from_update",
+      "breakpoints": true
     }
   ]
 }

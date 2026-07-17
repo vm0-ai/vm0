@@ -27,7 +27,11 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
-import { createPresentationDraftByUrlFactory } from "../../signals/zero-page/presentation-html-editor-draft.ts";
+import { createCurrentPresentationDraft } from "../../signals/zero-page/presentation-html-editor-draft.ts";
+import {
+  createPresentationSlideListSignals,
+  type PresentationSlideListSignals,
+} from "../../signals/zero-page/presentation-html-slide-list.ts";
 import {
   presentationEditorCloseDialogOpen$,
   setPresentationEditorCloseDialogOpen$,
@@ -79,6 +83,7 @@ interface PresentationEditorSession {
   readonly publishedSignatureRef: MutableValue<string>;
   readonly publishingRef: MutableValue<boolean>;
   readonly moveBlocksRef: MutableValue<readonly PresentationMoveBlock[]>;
+  readonly slideList: PresentationSlideListSignals;
   readonly slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
   readonly statusRef: MutableValue<HTMLDivElement | null>;
   readonly thumbnailUpdateFrameRef: MutableValue<number | null>;
@@ -90,10 +95,38 @@ function mutableValue<T>(current: T): MutableValue<T> {
 
 function createPresentationEditorSession(
   draft: PresentationEditDraft,
+  publicUrl: string,
 ): PresentationEditorSession {
+  const blocksRef = mutableValue<readonly PresentationEditBlock[]>(
+    draft.blocks,
+  );
+  const moveBlocksRef = mutableValue<readonly PresentationMoveBlock[]>(
+    draft.moveBlocks,
+  );
+  const slidesRef = mutableValue<readonly PresentationSlideDraft[]>(
+    draft.slides,
+  );
+  const slideList = createPresentationSlideListSignals({
+    loadThumbnail: (frame, slideId) => {
+      setSandboxedFrameHtml(
+        frame,
+        previewPresentationHtml({
+          activeSlideId: slideId,
+          html: buildPresentationEditorHtml({
+            blocks: blocksRef.current,
+            html: draft.html,
+            moveBlocks: moveBlocksRef.current,
+            slides: slidesRef.current,
+          }),
+          sourceUrl: publicUrl,
+        }),
+      );
+    },
+    releaseThumbnail: releaseSandboxedFrameHtml,
+  });
   return {
     activeSlideIdRef: mutableValue(draft.slides[0]?.id ?? ""),
-    blocksRef: mutableValue<readonly PresentationEditBlock[]>(draft.blocks),
+    blocksRef,
     busyRef: mutableValue<SVGSVGElement | null>(null),
     pendingThumbnailSlideIdRef: mutableValue<string | null>(null),
     previewFrameRef: mutableValue<HTMLIFrameElement | null>(null),
@@ -105,16 +138,15 @@ function createPresentationEditorSession(
       }),
     ),
     publishingRef: mutableValue(false),
-    moveBlocksRef: mutableValue<readonly PresentationMoveBlock[]>(
-      draft.moveBlocks,
-    ),
-    slidesRef: mutableValue<readonly PresentationSlideDraft[]>(draft.slides),
+    moveBlocksRef,
+    slideList,
+    slidesRef,
     statusRef: mutableValue<HTMLDivElement | null>(null),
     thumbnailUpdateFrameRef: mutableValue<number | null>(null),
   };
 }
 
-const presentationDraftByUrl = createPresentationDraftByUrlFactory<EditorDraft>(
+const currentPresentationDraft$ = createCurrentPresentationDraft<EditorDraft>(
   async (url, signal) => {
     const publicUrl = publicAttachmentUrl(url);
     const response = await fetch(readableAttachmentResourceUrl(publicUrl), {
@@ -128,7 +160,7 @@ const presentationDraftByUrl = createPresentationDraftByUrlFactory<EditorDraft>(
     const draft = parsePresentationEditDraft(await response.text());
     return {
       ...draft,
-      editorSession: createPresentationEditorSession(draft),
+      editorSession: createPresentationEditorSession(draft, publicUrl),
       publicUrl,
     };
   },
@@ -141,15 +173,21 @@ const PREVIEW_CANVAS_HEIGHT = 1080;
 const PREVIEW_FIT_SCALE = 0.99;
 
 function setSandboxedFrameHtml(frame: HTMLIFrameElement, html: string): void {
-  const previousUrl = frame.dataset.vm0EditorObjectUrl;
-  if (previousUrl) {
-    URL.revokeObjectURL(previousUrl);
-  }
+  releaseSandboxedFrameHtml(frame);
   const url = URL.createObjectURL(
     new Blob([html], { type: "text/html;charset=utf-8" }),
   );
   frame.dataset.vm0EditorObjectUrl = url;
   frame.src = url;
+}
+
+function releaseSandboxedFrameHtml(frame: HTMLIFrameElement): void {
+  const url = frame.dataset.vm0EditorObjectUrl;
+  if (!url) {
+    return;
+  }
+  URL.revokeObjectURL(url);
+  delete frame.dataset.vm0EditorObjectUrl;
 }
 
 function revealPresentationPreviewSlide(
@@ -431,77 +469,19 @@ function PresentationEditorError({
 
 function SlideList({
   activeSlideId,
-  getSlideHtml,
   setActiveSlideId,
+  signals,
   slides,
 }: {
   activeSlideId: string;
-  getSlideHtml: (slideId: string) => string | null;
   setActiveSlideId: (id: string) => void;
+  signals: PresentationSlideListSignals;
   slides: readonly PresentationSlideDraft[];
 }) {
-  const rootRef = mutableValue<HTMLElement | null>(null);
-  const observerRef = mutableValue<IntersectionObserver | null>(null);
-  const observedFramesRef = mutableValue(new WeakSet<HTMLIFrameElement>());
-  const loadThumbnail = (frame: HTMLIFrameElement, slideId: string) => {
-    const html = getSlideHtml(slideId);
-    if (html) {
-      setSandboxedFrameHtml(frame, html);
-    }
-  };
-  const thumbnailObserver = () => {
-    if (typeof IntersectionObserver === "undefined") {
-      return null;
-    }
-    if (!observerRef.current) {
-      observerRef.current = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (!(entry.target instanceof HTMLIFrameElement)) {
-              continue;
-            }
-            if (!entry.isIntersecting) {
-              continue;
-            }
-            const slideId = entry.target.dataset.slideThumbnailFrame;
-            if (slideId) {
-              loadThumbnail(entry.target, slideId);
-            }
-            observerRef.current?.unobserve(entry.target);
-          }
-        },
-        { root: rootRef.current, rootMargin: "480px" },
-      );
-    }
-    return observerRef.current;
-  };
-  const setThumbnailFrame = (
-    frame: HTMLIFrameElement | null,
-    slideId: string,
-    active: boolean,
-  ) => {
-    if (!frame) {
-      return;
-    }
-    if (active) {
-      loadThumbnail(frame, slideId);
-      return;
-    }
-    const observer = thumbnailObserver();
-    if (!observer) {
-      loadThumbnail(frame, slideId);
-      return;
-    }
-    if (!observedFramesRef.current.has(frame)) {
-      observedFramesRef.current.add(frame);
-      observer.observe(frame);
-    }
-  };
+  const setRootRef = useSet(signals.setRootRef$);
   return (
     <aside
-      ref={(node) => {
-        rootRef.current = node;
-      }}
+      ref={setRootRef}
       data-testid="presentation-editor-slide-list"
       className="min-h-0 overflow-x-auto overflow-y-hidden border-b border-border/60 bg-[#eeeeee] px-3 py-3 md:overflow-auto md:border-b-0 md:border-r md:px-5 md:py-6"
     >
@@ -526,11 +506,9 @@ function SlideList({
                 )}
               >
                 <iframe
-                  ref={(frame) => {
-                    setThumbnailFrame(frame, slide.id, active);
-                  }}
                   title={`Slide ${String(index + 1)} thumbnail`}
                   data-slide-thumbnail-frame={slide.id}
+                  data-slide-thumbnail-active={active ? "true" : "false"}
                   sandbox="allow-same-origin allow-scripts"
                   onLoad={revealPresentationPreviewSlide}
                   className="pointer-events-none origin-top-left border-0 bg-white"
@@ -1406,13 +1384,13 @@ function downloadEditedPptx(params: {
 
 function buildPresentationEditorHtml(params: {
   readonly blocks: readonly PresentationEditBlock[];
-  readonly draft: EditorDraft;
+  readonly html: string;
   readonly moveBlocks: readonly PresentationMoveBlock[];
   readonly slides: readonly PresentationSlideDraft[];
 }) {
   return patchPresentationHtml({
     blocks: params.blocks,
-    html: params.draft.html,
+    html: params.html,
     moveBlocks: params.moveBlocks,
     slides: params.slides,
   });
@@ -1562,7 +1540,6 @@ async function ensurePresentationRedeployed(params: {
   readonly refreshPresentationHtmlPreviews: () => void;
   readonly setPublishing: (publishing: boolean) => void;
   readonly setStatus: (value: string) => void;
-  readonly sourceUrl: string;
 }): Promise<boolean> {
   const signature = params.currentSignature();
   if (signature === params.publishedSignatureRef.current) {
@@ -1577,8 +1554,6 @@ async function ensurePresentationRedeployed(params: {
       publicUrl: params.draft.publicUrl,
       signal: params.pageSignal,
     });
-    presentationDraftByUrl.invalidate(params.sourceUrl);
-    presentationDraftByUrl.invalidate(params.draft.publicUrl);
     params.refreshPresentationHtmlPreviews();
     params.publishedSignatureRef.current = signature;
     toast.success("Presentation updated");
@@ -1615,7 +1590,6 @@ function PresentationEditorWorkspace({
   activeSlide,
   activeSlideId,
   blocksRef,
-  buildEditedHtml,
   movementEnabled,
   moveBlocksRef,
   markDirty,
@@ -1623,14 +1597,13 @@ function PresentationEditorWorkspace({
   previewHtml,
   queueSlideThumbnailUpdate,
   showSlide,
+  slideList,
   slidesRef,
   slides,
-  sourceUrl,
 }: {
   activeSlide: PresentationSlideDraft | undefined;
   activeSlideId: string;
   blocksRef: MutableValue<readonly PresentationEditBlock[]>;
-  buildEditedHtml: () => string;
   movementEnabled: boolean;
   moveBlocksRef: MutableValue<readonly PresentationMoveBlock[]>;
   markDirty: () => void;
@@ -1638,20 +1611,13 @@ function PresentationEditorWorkspace({
   previewHtml: string | null;
   queueSlideThumbnailUpdate: (slideId: string) => void;
   showSlide: (slideId: string) => void;
+  slideList: PresentationSlideListSignals;
   slidesRef: MutableValue<readonly PresentationSlideDraft[]>;
   slides: readonly PresentationSlideDraft[];
-  sourceUrl: string;
 }) {
   if (slides.length === 0 || !activeSlide) {
     return <UnsupportedPresentation />;
   }
-  const slidePreviewHtml = (slideId: string) => {
-    return previewPresentationHtml({
-      activeSlideId: slideId,
-      html: buildEditedHtml(),
-      sourceUrl,
-    });
-  };
 
   return (
     <div
@@ -1660,8 +1626,8 @@ function PresentationEditorWorkspace({
     >
       <SlideList
         activeSlideId={activeSlideId}
-        getSlideHtml={slidePreviewHtml}
         setActiveSlideId={showSlide}
+        signals={slideList}
         slides={slides}
       />
       <div
@@ -1858,7 +1824,7 @@ function createPresentationEditorController(
   const buildEditedHtml = () => {
     return buildPresentationEditorHtml({
       blocks: params.blocksRef.current,
-      draft: params.draft,
+      html: params.draft.html,
       moveBlocks: params.moveBlocksRef.current,
       slides: params.slidesRef.current,
     });
@@ -1921,7 +1887,6 @@ function createPresentationEditorController(
       refreshPresentationHtmlPreviews: params.refreshPresentationHtmlPreviews,
       setPublishing,
       setStatus,
-      sourceUrl: params.sourceUrl,
     });
   };
   const fillEmptySpeakerNotes = () => {
@@ -1976,7 +1941,6 @@ function createPresentationEditorCloseActions(params: {
   readonly onClose: () => void;
   readonly publishingRef: MutableValue<boolean>;
   readonly setCloseDialogOpen: (open: boolean) => void;
-  readonly sourceUrl: string;
 }) {
   const requestClose = () => {
     if (!params.controller.hasUnsavedChanges()) {
@@ -1986,8 +1950,6 @@ function createPresentationEditorCloseActions(params: {
     params.setCloseDialogOpen(true);
   };
   const exitWithoutSaving = () => {
-    presentationDraftByUrl.invalidate(params.sourceUrl);
-    presentationDraftByUrl.invalidate(params.draft.publicUrl);
     params.setCloseDialogOpen(false);
     params.onClose();
   };
@@ -2080,6 +2042,7 @@ function PresentationEditorReady({
     publishedSignatureRef,
     publishingRef,
     moveBlocksRef,
+    slideList,
     slidesRef,
     statusRef,
     thumbnailUpdateFrameRef,
@@ -2110,7 +2073,6 @@ function PresentationEditorReady({
     onClose,
     publishingRef,
     setCloseDialogOpen,
-    sourceUrl,
   });
 
   return (
@@ -2154,7 +2116,6 @@ function PresentationEditorReady({
         activeSlide={controller.activeSlide}
         activeSlideId={controller.activeSlideId}
         blocksRef={blocksRef}
-        buildEditedHtml={controller.buildEditedHtml}
         movementEnabled={movementEnabled}
         moveBlocksRef={moveBlocksRef}
         markDirty={controller.markDirty}
@@ -2162,9 +2123,9 @@ function PresentationEditorReady({
         previewHtml={controller.previewHtml}
         queueSlideThumbnailUpdate={controller.queueSlideThumbnailUpdate}
         showSlide={controller.showSlide}
+        slideList={slideList}
         slidesRef={slidesRef}
         slides={controller.slides}
-        sourceUrl={draft.publicUrl}
       />
       <PresentationEditorCloseDialog
         open={closeDialogOpen}
@@ -2182,7 +2143,7 @@ export function PresentationHtmlEditor({
 }: PresentationHtmlEditorProps) {
   const filename = attachmentFilenameFromUrl(url);
   const title = fallbackHtmlPreviewTitle(filename, url);
-  const loadable = useLoadable(presentationDraftByUrl.get(url));
+  const loadable = useLoadable(currentPresentationDraft$);
   const features = useGet(featureSwitch$);
   const movementFeatureEnabled = Boolean(
     features?.[FeatureSwitchKey.PresentationElementDragging],

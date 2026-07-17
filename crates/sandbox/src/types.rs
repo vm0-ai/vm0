@@ -64,6 +64,11 @@ pub struct ExecRequest<'a> {
     pub env: &'a [(&'a str, &'a str)],
     /// Run the command with guest-side sudo privileges.
     pub sudo: bool,
+    /// Additional ordinary exit codes expected by guest-side diagnostics.
+    ///
+    /// Exit code zero is always expected. Listed codes remain unchanged in
+    /// the returned [`ExecTermination`].
+    pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
     /// Maximum captured stdout/stderr bytes.
@@ -760,6 +765,7 @@ mod tests {
             timeout: Duration::from_millis(5000),
             env: &[],
             sudo: false,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
@@ -773,6 +779,7 @@ mod tests {
             timeout: Duration::ZERO,
             env: &[],
             sudo: false,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
@@ -786,6 +793,7 @@ mod tests {
             timeout: Duration::from_nanos(1),
             env: &[],
             sudo: false,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
@@ -822,6 +830,7 @@ mod tests {
             timeout: Duration::from_secs(u64::MAX / 1000),
             env: &[],
             sudo: false,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
@@ -835,6 +844,7 @@ mod tests {
             timeout: Duration::from_millis(u32::MAX as u64),
             env: &[],
             sudo: false,
+            expected_exit_codes: &[],
             stdin_bytes: None,
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };

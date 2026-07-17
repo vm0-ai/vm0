@@ -108,6 +108,7 @@ async fn cleanup_existing_codex_session_files(
                 timeout: DEFAULT_EXEC_TIMEOUT,
                 env: &env,
                 sudo: false,
+                expected_exit_codes: &[],
                 stdin_bytes: None,
                 output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
             },

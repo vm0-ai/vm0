@@ -1360,6 +1360,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     refresh_workspace_cache_held_session_snapshot(
         &held_session_snapshot,
         exec_config.workspace_cache.as_ref(),
+        &runner.profiles,
     )
     .await;
     debug_assert!(held_session_snapshot.workspace_cache_loaded());

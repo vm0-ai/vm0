@@ -52,15 +52,15 @@ pub(crate) struct LifecycleOverrideState {
     pub(crate) start_results: Mutex<VecDeque<Result<()>>>,
     /// FIFO queue of stop behaviours consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
-    pub(crate) stop_behaviors: LifecycleBehaviors,
+    pub(crate) stop_behaviors: LifecycleBehaviors<()>,
     /// FIFO queue of park results consumed by every sandbox built with
-    /// these overrides. Empty queue → default Ok(()).
-    pub(crate) park_behaviors: LifecycleBehaviors,
+    /// these overrides. Empty queue → default reusable outcome.
+    pub(crate) park_behaviors: LifecycleBehaviors<SandboxParkOutcome>,
     /// Optional gate that records and blocks every `park()` entry until released.
     pub(crate) park_gate: Mutex<Option<BlockingGate>>,
     /// FIFO queue of unpark results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
-    pub(crate) unpark_behaviors: LifecycleBehaviors,
+    pub(crate) unpark_behaviors: LifecycleBehaviors<()>,
     /// Optional gate that records and blocks every factory `destroy()` entry
     /// until released.
     pub(crate) destroy_gate: Mutex<Option<BlockingGate>>,
@@ -387,8 +387,8 @@ impl MockSandboxOverrides {
     }
 
     /// Queue a `park()` result applied to the next factory-created sandbox.
-    /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
-    pub fn push_park_result(&self, result: Result<()>) {
+    /// Consumed FIFO across all sandboxes; empty queue → reusable.
+    pub fn push_park_result(&self, result: Result<SandboxParkOutcome>) {
         self.lifecycle.park_behaviors.push_result(result);
     }
 

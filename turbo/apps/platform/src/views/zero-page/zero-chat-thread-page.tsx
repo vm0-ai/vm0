@@ -7,6 +7,7 @@ import type {
   UIEvent as ReactUIEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import type { Computed } from "ccstate";
 import {
   useGet,
   useSet,
@@ -128,14 +129,11 @@ import { MailDraftCard } from "./mail-draft-card.tsx";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
-  enrichBlocksWithTextPreviews,
-  parseBodyRenderBlocks,
   type BodyRenderBlock,
 } from "../../signals/chat-page/parse-body-blocks.ts";
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
-  completeChatConnectorActionConnect$,
   type CustomConnectorActionBlock,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
@@ -151,6 +149,7 @@ import {
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
 import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
+import type { PermissionCardSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -165,7 +164,6 @@ import {
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
-import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
 import {
   artifactFullscreen$,
   artifactInboxQuery$,
@@ -196,14 +194,9 @@ import {
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
 import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  headerWorkflowAutomationsForThread,
-  runHeaderWorkflowAutomationNow$,
-  reloadHeaderAutomationMenu$,
-  updateHeaderWorkflowGmailLabelAppliedAutomation$,
-  updateHeaderWorkflowGmailNewMessageAutomation$,
-  updateHeaderWorkflowScheduleAutomation$,
-  type HeaderWorkflowAutomationEntry,
+import type {
+  HeaderAutomationSignals,
+  HeaderWorkflowAutomationEntry,
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
@@ -213,12 +206,6 @@ import {
   openHeaderAutomationSidebar$,
   setEditingHeaderWorkflowAutomationId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
-import {
-  clearWorkflowQueue$,
-  setWorkflowQueuePaused$,
-  skipWorkflowQueueEvent$,
-  workflowQueueForThread,
-} from "../../signals/chat-page/workflow-queue.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import {
   closeChatThreadEmojiMenu$,
@@ -280,18 +267,8 @@ import {
   useZeroChatComposer,
   type ZeroChatComposerProps,
   type QueuedComposerItem,
-  type ComposerFeedback,
 } from "./zero-chat-composer.tsx";
 import { ChatFeedbackSelection } from "./zero-chat-feedback-selection.tsx";
-import {
-  feedbackItemsValue$,
-  feedbackThreadIdValue$,
-  feedbackSendCountValue$,
-  setFeedbackItemNote$,
-  removeFeedbackItem$,
-  submitFeedback$,
-  dismissFeedback$,
-} from "../../signals/zero-page/chat-feedback.ts";
 import {
   computerUseHosts$,
   selectedComputerUseHostId as resolveSelectedComputerUseHostId,
@@ -303,14 +280,11 @@ import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import { agentById } from "../../signals/agent.ts";
 import {
   applyUserPermissionGrant$,
   findPermissionInMetadata,
   resolveUserPermissionGrantPolicy,
-  userPermissionGrantsByAgent,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
-import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
 import {
   billingStatusAsync$,
   type CreditCheckoutSelection,
@@ -378,25 +352,25 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
 // Loads automations and only renders once this thread has at least one linked
 // automation.
 export function AutomationMenuButton({
-  threadId,
+  thread,
   ariaLabel = "Automations",
 }: {
-  threadId: string;
+  thread: ChatThreadSignals;
   ariaLabel?: string;
 }) {
-  const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
+  const reloadAutomations = useSet(thread.headerAutomations.reload$);
   const openAutomationSidebar = useSet(openHeaderAutomationSidebar$);
   const openThreadId = useGet(currentHeaderAutomationThreadId$);
-  const workflowAutomations$ = headerWorkflowAutomationsForThread(threadId);
+  const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
   const workflowAutomations =
     workflowAutomationsLoadable.state === "hasData"
       ? workflowAutomationsLoadable.data
       : (lastResolvedAutomations ?? []);
-  const queue = useLastResolved(workflowQueueForThread(threadId));
+  const queue = useLastResolved(thread.workflowQueue.queue$);
   const pendingCount = queue?.pending.length ?? 0;
-  const open = openThreadId === threadId;
+  const open = openThreadId === thread.threadId;
 
   // Show the opener when the thread has a workflow automation.
   // Goals live in the composer, so a goal-only thread has nothing here.
@@ -420,7 +394,7 @@ export function AutomationMenuButton({
             aria-pressed={open}
             onClick={() => {
               reloadAutomations();
-              openAutomationSidebar(threadId);
+              openAutomationSidebar(thread.threadId);
             }}
           >
             <IconClock size={18} />
@@ -485,7 +459,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
-        <AutomationMenuButton threadId={thread.threadId} />
+        <AutomationMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
     </header>
@@ -1813,15 +1787,15 @@ function headerWorkflowAutomationRows(
 
 function HeaderWorkflowAutomationCard({
   automation,
+  headerAutomations,
 }: {
   automation: HeaderWorkflowAutomationEntry;
+  headerAutomations: HeaderAutomationSignals;
 }) {
   const pageSignal = useGet(pageSignal$);
   const editingAutomationId = useGet(currentEditingHeaderWorkflowAutomationId$);
   const setEditingAutomationId = useSet(setEditingHeaderWorkflowAutomationId$);
-  const [runningLoadable, runNow] = useLoadableSet(
-    runHeaderWorkflowAutomationNow$,
-  );
+  const [runningLoadable, runNow] = useLoadableSet(headerAutomations.runNow$);
   const running = runningLoadable.state === "loading";
   const title =
     automation.workflowDisplayName?.trim() || automation.workflowName;
@@ -1892,6 +1866,7 @@ function HeaderWorkflowAutomationCard({
       />
       <HeaderWorkflowAutomationEditDialog
         automation={automation.automation}
+        headerAutomations={headerAutomations}
         displayTimezone={automation.timezone}
         open={editing}
         onOpenChange={(open) => {
@@ -1904,11 +1879,13 @@ function HeaderWorkflowAutomationCard({
 
 function HeaderWorkflowAutomationEditDialog({
   automation,
+  headerAutomations,
   displayTimezone,
   open,
   onOpenChange,
 }: {
   readonly automation: ChatThreadWorkflowAutomation;
+  readonly headerAutomations: HeaderAutomationSignals;
   readonly displayTimezone: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -1932,6 +1909,7 @@ function HeaderWorkflowAutomationEditDialog({
         {automation.kind === "schedule" ? (
           <HeaderScheduleAutomationEditForm
             automation={automation}
+            headerAutomations={headerAutomations}
             displayTimezone={displayTimezone}
             onDone={() => {
               onOpenChange(false);
@@ -1942,6 +1920,7 @@ function HeaderWorkflowAutomationEditDialog({
         automation.eventType === "gmail-new-message" ? (
           <HeaderGmailNewMessageAutomationEditForm
             automation={automation}
+            headerAutomations={headerAutomations}
             onDone={() => {
               onOpenChange(false);
             }}
@@ -1951,6 +1930,7 @@ function HeaderWorkflowAutomationEditDialog({
         automation.eventType === "gmail-label-applied" ? (
           <HeaderGmailLabelAutomationEditForm
             automation={automation}
+            headerAutomations={headerAutomations}
             onDone={() => {
               onOpenChange(false);
             }}
@@ -2014,6 +1994,7 @@ function scheduleFromHeaderAutomationForm(
 
 function HeaderScheduleAutomationEditForm({
   automation,
+  headerAutomations,
   displayTimezone,
   onDone,
 }: {
@@ -2021,12 +2002,13 @@ function HeaderScheduleAutomationEditForm({
     ChatThreadWorkflowAutomation,
     { kind: "schedule" }
   >;
+  readonly headerAutomations: HeaderAutomationSignals;
   readonly displayTimezone: string;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
-    updateHeaderWorkflowScheduleAutomation$,
+    headerAutomations.updateSchedule$,
   );
   const saving = updateLoadable.state === "loading";
   const schedule = automation.schedule;
@@ -2143,17 +2125,19 @@ function HeaderIntervalField({
 
 function HeaderGmailNewMessageAutomationEditForm({
   automation,
+  headerAutomations,
   onDone,
 }: {
   readonly automation: Extract<
     ChatThreadWorkflowAutomation,
     { eventType: "gmail-new-message" }
   >;
+  readonly headerAutomations: HeaderAutomationSignals;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
-    updateHeaderWorkflowGmailNewMessageAutomation$,
+    headerAutomations.updateGmailNewMessage$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -2234,17 +2218,19 @@ function HeaderGmailNewMessageAutomationEditForm({
 
 function HeaderGmailLabelAutomationEditForm({
   automation,
+  headerAutomations,
   onDone,
 }: {
   readonly automation: Extract<
     ChatThreadWorkflowAutomation,
     { eventType: "gmail-label-applied" }
   >;
+  readonly headerAutomations: HeaderAutomationSignals;
   readonly onDone: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
-    updateHeaderWorkflowGmailLabelAppliedAutomation$,
+    headerAutomations.updateGmailLabelApplied$,
   );
   const saving = updateLoadable.state === "loading";
 
@@ -2301,12 +2287,12 @@ function HeaderGmailLabelAutomationEditForm({
     </form>
   );
 }
-function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
-  const queue = useLastResolved(workflowQueueForThread(threadId));
+function HeaderWorkflowQueueSection({ thread }: { thread: ChatThreadSignals }) {
+  const queue = useLastResolved(thread.workflowQueue.queue$);
   const pageSignal = useGet(pageSignal$);
-  const skipEvent = useSet(skipWorkflowQueueEvent$);
-  const clearQueue = useSet(clearWorkflowQueue$);
-  const setPaused = useSet(setWorkflowQueuePaused$);
+  const skipEvent = useSet(thread.workflowQueue.skipEvent$);
+  const clearQueue = useSet(thread.workflowQueue.clear$);
+  const setPaused = useSet(thread.workflowQueue.setPaused$);
 
   if (!queue) {
     return null;
@@ -2336,10 +2322,7 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
           className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           aria-label={paused ? "Resume queue" : "Pause queue"}
           onClick={() => {
-            detach(
-              setPaused({ threadId, paused: !paused }, pageSignal),
-              Reason.DomCallback,
-            );
+            detach(setPaused(!paused, pageSignal), Reason.DomCallback);
           }}
         >
           {paused ? (
@@ -2354,7 +2337,7 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
             type="button"
             className="inline-flex h-6 items-center rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-destructive"
             onClick={() => {
-              detach(clearQueue(threadId, pageSignal), Reason.DomCallback);
+              detach(clearQueue(pageSignal), Reason.DomCallback);
             }}
           >
             Clear queue ({queue.pending.length})
@@ -2421,8 +2404,8 @@ function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
   );
 }
 
-function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
-  const workflowAutomations$ = headerWorkflowAutomationsForThread(threadId);
+function HeaderAutomationSidebar({ thread }: { thread: ChatThreadSignals }) {
+  const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
   const close = useSet(closeHeaderAutomationSidebar$);
@@ -2467,7 +2450,7 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
           </div>
         ) : (
           <div className="grid gap-6">
-            <HeaderWorkflowQueueSection threadId={threadId} />
+            <HeaderWorkflowQueueSection thread={thread} />
             {workflowAutomations.length > 0 ? (
               <div className="grid gap-3">
                 {workflowAutomations.map((automation) => {
@@ -2475,6 +2458,7 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
                     <HeaderWorkflowAutomationCard
                       key={automation.id}
                       automation={automation}
+                      headerAutomations={thread.headerAutomations}
                     />
                   );
                 })}
@@ -2657,13 +2641,16 @@ export function ZeroChatThreadPage() {
   const artifactRef = useGet(currentArtifactRef$);
   const artifactInboxThreadId = useGet(currentArtifactInboxThreadId$);
   const automationPanelThreadId = useGet(currentHeaderAutomationThreadId$);
+  const automationPanelThread = [leftThread, rightThread].find((thread) => {
+    return thread?.threadId === automationPanelThreadId;
+  });
   const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
   const closePresentationEditor = useSet(closePresentationEditor$);
   const artifactFullscreen = useGet(artifactFullscreen$);
   const activePresentationEditorUrl = presentationEditorUrl;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
-  const automationPanelOpen = automationPanelThreadId !== null;
+  const automationPanelOpen = automationPanelThread !== undefined;
   const rightPanelOpen = artifactPanelOpen || automationPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
@@ -2726,8 +2713,8 @@ export function ZeroChatThreadPage() {
           )}
           aria-hidden={!rightPanelOpen}
         >
-          {automationPanelOpen && automationPanelThreadId ? (
-            <HeaderAutomationSidebar threadId={automationPanelThreadId} />
+          {automationPanelThread ? (
+            <HeaderAutomationSidebar thread={automationPanelThread} />
           ) : artifactPanelOpen ? (
             <ChatArtifactInboxSlot
               artifactRef={artifactRef}
@@ -3212,7 +3199,7 @@ function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
     message.role === "assistant" &&
     (Boolean(message.content) ||
       Boolean(message.error) ||
-      Boolean(message.mailDraft))
+      Boolean(message.mailDraftId))
   );
 }
 
@@ -3670,7 +3657,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         </div>
       </div>
 
-      <ChatFeedbackSelection />
+      <ChatFeedbackSelection feedback={thread.workflowComposer.feedback} />
     </>
   );
 }
@@ -4081,20 +4068,9 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleFeedbackSend = (text: string): Promise<boolean> => {
-    return send(
-      text,
-      {
-        includeDraftAttachments: true,
-      },
-      rootSignal,
-    );
-  };
-
   return {
     handleSend,
     handleQueue,
-    handleFeedbackSend,
     submissionLoading:
       sendLoadable.state === "loading" || queueLoadable.state === "loading",
     templatePicker: {
@@ -4151,55 +4127,6 @@ function useChatThreadComputerUse(
       selectedHostId: selectedComputerUseHostId,
       onChange: handleComputerUseHostChange,
       downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
-    },
-  };
-}
-
-// Bridges the global inline-feedback signals to the composer's `feedback` prop.
-// Returns undefined when no feedback is drafted in this thread, so the composer
-// keeps its textarea.
-function useChatThreadComposerFeedback(
-  thread: ChatThreadSignals,
-  sendFeedback: (prompt: string) => Promise<boolean>,
-): ComposerFeedback | undefined {
-  const items = useGet(feedbackItemsValue$);
-  const feedbackThreadId = useGet(feedbackThreadIdValue$);
-  const sendCount = useGet(feedbackSendCountValue$);
-  const setNote = useSet(setFeedbackItemNote$);
-  const removeItem = useSet(removeFeedbackItem$);
-  const compose = useSet(submitFeedback$);
-  const dismiss = useSet(dismissFeedback$);
-
-  // Feedback is owned by the thread it was drafted in; other threads keep their
-  // own composer textarea so a draft never bleeds across chats.
-  if (feedbackThreadId !== thread.threadId) {
-    return undefined;
-  }
-  return {
-    items,
-    sendCount,
-    onChangeNote: (id, note) => {
-      setNote({ id, note });
-    },
-    onRemove: (id) => {
-      removeItem(id);
-    },
-    onSubmit: () => {
-      const prompt = compose();
-      if (prompt === null) {
-        return;
-      }
-      detach(
-        (async () => {
-          if (await sendFeedback(prompt)) {
-            dismiss();
-          }
-        })(),
-        Reason.DomCallback,
-      );
-    },
-    onDismiss: () => {
-      dismiss();
     },
   };
 }
@@ -4309,17 +4236,12 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   );
   const { modelPicker, modelPickerLoading, submitBlockerProps } =
     useChatComposerModel(thread, pageSignal);
-  const {
-    handleSend,
-    handleQueue,
-    handleFeedbackSend,
-    submissionLoading,
-    templatePicker,
-  } = useChatThreadComposerSendState({
-    thread,
-    computerUseHostIdForSend,
-    clearComputerUseHostOverride,
-  });
+  const { handleSend, handleQueue, submissionLoading, templatePicker } =
+    useChatThreadComposerSendState({
+      thread,
+      computerUseHostIdForSend,
+      clearComputerUseHostOverride,
+    });
   const skeletonVisible = hasMessagesResolved === undefined;
   const composerSending = sendButtonStatus === "sending";
   const queueWhileSending = canQueueMessage({ sending: composerSending });
@@ -4328,7 +4250,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const feedback = useChatThreadComposerFeedback(thread, handleFeedbackSend);
   const workflowPrompt = useChatThreadComposerWorkflowPrompt({
     thread,
     pageSignal,
@@ -4368,7 +4289,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     onRemoveQueuedItem,
     activeGoal,
     onCancelActiveGoal,
-    feedback,
   };
   const composer = useZeroChatComposer(composerOptions);
 
@@ -4750,12 +4670,16 @@ function BodyContentBlocks({
   hardBreaks,
   escapeMarkdownHtml = false,
   markdownMediaPreview = true,
+  permissionCardSignalsByUrl$,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
   escapeMarkdownHtml?: boolean;
   markdownMediaPreview?: boolean;
+  permissionCardSignalsByUrl$: Computed<
+    ReadonlyMap<string, PermissionCardSignals>
+  >;
 }) {
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
@@ -4788,7 +4712,13 @@ function BodyContentBlocks({
         }
 
         if (block.type === "permission-action") {
-          return <PermissionActionCard key={block.id} block={block} />;
+          return (
+            <PermissionActionCard
+              key={block.id}
+              block={block}
+              permissionCardSignalsByUrl$={permissionCardSignalsByUrl$}
+            />
+          );
         }
 
         if (block.type === "computer-use-authorization") {
@@ -4851,10 +4781,14 @@ function BodyContentBlocks({
 function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const available = useLastResolved(block.available$) ?? false;
-  const complete = useLastResolved(block.complete$) ?? false;
+  const completeLoadable = useLoadable(block.complete$);
+  const complete =
+    completeLoadable.state === "hasData" && completeLoadable.data;
   const displayMetadata = useLastResolved(block.displayMetadata$);
   const [activateLoadable, activate] = useLoadableSet(block.activate$);
-  const activating = activateLoadable.state === "loading";
+  const loading =
+    completeLoadable.state === "loading" ||
+    activateLoadable.state === "loading";
   if (!available || !displayMetadata) {
     return null;
   }
@@ -4879,13 +4813,13 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
       </div>
       <button
         type="button"
-        disabled={complete || activating}
+        disabled={complete || loading}
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {activating && <IconLoader2 size={15} className="animate-spin" />}
+        {loading && <IconLoader2 size={15} className="animate-spin" />}
         {complete ? "Connected" : "Connect"}
       </button>
     </div>
@@ -5448,11 +5382,13 @@ function PermissionActionCardContent({
 
 function PermissionActionCardForTarget({
   block,
+  resource,
   hasTarget,
   targetLoadableState,
   userGrantsLoadable,
 }: {
   block: PermissionActionBlock;
+  resource: PermissionCardSignals;
   hasTarget: boolean;
   targetLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
@@ -5466,21 +5402,13 @@ function PermissionActionCardForTarget({
     expiresInByScope[durationScope] ??
     block.expiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
-  const permissionMetadataLoadable = useLoadable(
-    firewallPermissionMetadataByConnector({
-      connectorRef: block.connectorRef,
-    }),
-  );
+  const permissionMetadataLoadable = useLoadable(resource.metadata$);
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
   const savedGrant =
     grantLoadable.state === "hasData" ? grantLoadable.data : null;
   const savedGrantActive = savedGrant
     ? isActiveUserPermissionGrant(savedGrant)
     : false;
-  const rawUserGrants = loadableData(userGrantsLoadable) ?? [];
-  useUserPermissionGrantExpiryTick(
-    savedGrant ? [...rawUserGrants, savedGrant] : rawUserGrants,
-  );
   const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const existingGrantActive = existingGrant
     ? isActiveUserPermissionGrant(existingGrant)
@@ -5533,21 +5461,20 @@ function PermissionActionCardForTarget({
   );
 }
 
-function AgentPermissionActionCard({
+function AgentPermissionActionCardWithResource({
   block,
+  resource,
 }: {
   block: PermissionActionBlock;
+  resource: PermissionCardSignals;
 }) {
-  const agentLoadable = useLastLoadable(agentById(block.agentId));
-  const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByAgent({
-      agentId: block.agentId,
-    }),
-  );
+  const agentLoadable = useLastLoadable(resource.agent$);
+  const userGrantsLoadable = useLoadable(resource.grants$);
   const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
   return (
     <PermissionActionCardForTarget
       block={block}
+      resource={resource}
       hasTarget={Boolean(agent)}
       targetLoadableState={agentLoadable.state}
       userGrantsLoadable={userGrantsLoadable}
@@ -5555,28 +5482,36 @@ function AgentPermissionActionCard({
   );
 }
 
-function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
-  return <AgentPermissionActionCard block={block} />;
+function PermissionActionCard({
+  block,
+  permissionCardSignalsByUrl$,
+}: {
+  block: PermissionActionBlock;
+  permissionCardSignalsByUrl$: Computed<
+    ReadonlyMap<string, PermissionCardSignals>
+  >;
+}) {
+  const signalsByUrl = useGet(permissionCardSignalsByUrl$);
+  const signals = signalsByUrl.get(block.href);
+  if (!signals) {
+    // The block's URL was not registered (e.g. an optimistic message that
+    // never reached the persistent-message write path) — nothing to render.
+    return null;
+  }
+  return (
+    <AgentPermissionActionCardWithResource block={block} resource={signals} />
+  );
 }
 
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
-  const complete = useSet(completeChatConnectorActionConnect$);
 
   if (!active) {
     return null;
   }
 
-  return (
-    <ConnectModal
-      agentId={active.agentId}
-      onClose={close}
-      onSuccess={() => {
-        complete();
-      }}
-    />
-  );
+  return <ConnectModal agentId={active.agentId} onClose={close} />;
 }
 
 function isImageFilename(filename: string): boolean {
@@ -6422,10 +6357,14 @@ function GoalUserMessage({
   message,
   bodyBlocks,
   openLightbox,
+  permissionCardSignalsByUrl$,
 }: {
   message: EnrichedChatMessage & { role: "user" };
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
+  permissionCardSignalsByUrl$: Computed<
+    ReadonlyMap<string, PermissionCardSignals>
+  >;
 }) {
   const objectiveBrief = message.goalSnapshot?.objectiveBrief?.trim();
   return (
@@ -6455,6 +6394,7 @@ function GoalUserMessage({
                   hardBreaks
                   escapeMarkdownHtml
                   markdownMediaPreview={false}
+                  permissionCardSignalsByUrl$={permissionCardSignalsByUrl$}
                 />
               </div>
             </div>
@@ -6478,18 +6418,13 @@ function PagedUserMessage({
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
-  // `ATTACH_ONLY_PLACEHOLDER` is the server-side placeholder stored when the
-  // user sent only files with no typed text — strip it so the bubble shows
-  // just the attachments.
-  const strippedContent =
+  const copyText =
     message.attachFiles &&
     message.attachFiles.length > 0 &&
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
-  const bodyBlocks = enrichBlocksWithTextPreviews(
-    parseBodyRenderBlocks(strippedContent, { previews: false }).blocks,
-  );
+  const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
@@ -6500,7 +6435,6 @@ function PagedUserMessage({
   const copyMessage = useSet(thread.copyMessage$);
   const allAttachments = resolveAttachments(message, parsed);
   const clipboardAttachments = clipboardAttachmentsFromMessage(message, parsed);
-  const copyText = strippedContent;
   const canCopy = copyText.trim().length > 0 || clipboardAttachments.length > 0;
 
   const handleCopy = () => {
@@ -6527,6 +6461,7 @@ function PagedUserMessage({
         message={message}
         bodyBlocks={bodyBlocks}
         openLightbox={openLightbox}
+        permissionCardSignalsByUrl$={thread.permissionCardSignalsByUrl$}
       />
     );
   }
@@ -6552,6 +6487,9 @@ function PagedUserMessage({
                   hardBreaks
                   escapeMarkdownHtml
                   markdownMediaPreview={false}
+                  permissionCardSignalsByUrl$={
+                    thread.permissionCardSignalsByUrl$
+                  }
                 />
               </div>
             </div>
@@ -6672,7 +6610,8 @@ function PagedAssistantMessageItem({
     openImageLightbox(url);
   };
 
-  if (message.mailDraft) {
+  const { mailDraftCard } = message;
+  if (mailDraftCard) {
     return (
       <div
         className={cn(
@@ -6681,9 +6620,8 @@ function PagedAssistantMessageItem({
         )}
       >
         <MailDraftCard
-          threadId={thread.threadId}
-          messageId={message.id}
-          mailDraft={message.mailDraft}
+          key={mailDraftCard.resourceKey}
+          signals={mailDraftCard.signals}
         />
       </div>
     );
@@ -6716,6 +6654,7 @@ function PagedAssistantMessageItem({
             blocks={blocks}
             openLightbox={openLightbox}
             hardBreaks={false}
+            permissionCardSignalsByUrl$={thread.permissionCardSignalsByUrl$}
           />
         ) : null}
       </div>

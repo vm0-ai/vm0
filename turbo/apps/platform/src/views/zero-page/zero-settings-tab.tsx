@@ -45,20 +45,9 @@ import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { AvatarMaker } from "./avatar-maker.tsx";
 import {
-  settingsAgentName$,
-  setSettingsAgentName$,
-  settingsDesc$,
-  setSettingsDesc$,
-  settingsTone$,
-  setSettingsTone$,
-  settingsAvatarUrl$,
-  setSettingsAvatarUrl$,
-  settingsDirty$,
-  initSettingsForm$,
+  settingsFormDraft$,
+  patchSettingsForm$,
   resetSettingsForm$,
-  markSettingsSaved$,
-  settingsVisibility$,
-  setSettingsVisibility$,
   agentDemoteConfirmOpen$,
   setAgentDemoteConfirmOpen$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
@@ -66,6 +55,7 @@ import {
 export type { AgentDeleteWorkflow, AgentDeleteCopyTarget };
 
 interface ZeroSettingsTabProps {
+  agentId: string;
   displayName: string;
   description: string;
   sound: Tone;
@@ -102,6 +92,7 @@ interface ZeroSettingsTabProps {
 }
 
 export function ZeroSettingsTab({
+  agentId,
   displayName: resolvedAgentName,
   description: initialDescription,
   sound: initialSound,
@@ -116,27 +107,31 @@ export function ZeroSettingsTab({
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: ZeroSettingsTabProps) {
-  useSet(initSettingsForm$)({
+  const defaults = {
     name: resolvedAgentName,
     description: initialDescription,
     tone: initialSound,
     avatarUrl: initialAvatarUrl,
     visibility: initialVisibility,
-  });
-
-  const agentName = useGet(settingsAgentName$);
-  const setAgentName = useSet(setSettingsAgentName$);
-  const desc = useGet(settingsDesc$);
-  const setDesc = useSet(setSettingsDesc$);
-  const tone = useGet(settingsTone$);
-  const setTone = useSet(setSettingsTone$);
-  const avatarUrl = useGet(settingsAvatarUrl$);
-  const setAvatarUrl = useSet(setSettingsAvatarUrl$);
-  const visibility = useGet(settingsVisibility$);
-  const setVisibility = useSet(setSettingsVisibility$);
-  const isSettingsDirty = useGet(settingsDirty$);
+  };
+  const draft = useGet(settingsFormDraft$);
+  const values =
+    draft?.agentId === agentId ? { ...defaults, ...draft.patch } : defaults;
+  const {
+    name: agentName,
+    description: desc,
+    tone,
+    avatarUrl,
+    visibility,
+  } = values;
+  const isSettingsDirty =
+    agentName !== defaults.name ||
+    desc !== defaults.description ||
+    tone !== defaults.tone ||
+    avatarUrl !== defaults.avatarUrl ||
+    visibility !== defaults.visibility;
+  const patchForm = useSet(patchSettingsForm$);
   const resetForm = useSet(resetSettingsForm$);
-  const markSaved = useSet(markSettingsSaved$);
 
   const [settingsLoadable, triggerUpdateSettings] =
     useLoadableSet(updateSettings$);
@@ -166,7 +161,6 @@ export function ZeroSettingsTab({
           },
           pageSignal,
         );
-        markSaved();
         toast.success("Profile saved");
       })(),
       Reason.DomCallback,
@@ -210,7 +204,10 @@ export function ZeroSettingsTab({
                   <AvatarMaker
                     onConfirm={async (cfg) => {
                       const newAvatarUrl = serializeAvatarSvgConfig(cfg);
-                      setAvatarUrl(newAvatarUrl);
+                      patchForm({
+                        agentId,
+                        patch: { avatarUrl: newAvatarUrl },
+                      });
                       await triggerUpdateSettings(
                         {
                           displayName: agentName,
@@ -221,7 +218,6 @@ export function ZeroSettingsTab({
                         },
                         pageSignal,
                       );
-                      markSaved();
                       toast.success("Profile saved");
                     }}
                   />
@@ -239,7 +235,10 @@ export function ZeroSettingsTab({
                   id={inputId}
                   value={agentName}
                   onChange={(e) => {
-                    return setAgentName(e.target.value);
+                    return patchForm({
+                      agentId,
+                      patch: { name: e.target.value },
+                    });
                   }}
                   placeholder="What should we call them?"
                   className="h-9 w-full"
@@ -258,7 +257,10 @@ export function ZeroSettingsTab({
                   id={`${inputId}-description`}
                   value={desc}
                   onChange={(e) => {
-                    return setDesc(e.target.value);
+                    return patchForm({
+                      agentId,
+                      patch: { description: e.target.value },
+                    });
                   }}
                   placeholder="What does this agent do?"
                   rows={3}
@@ -289,7 +291,10 @@ export function ZeroSettingsTab({
                         key={opt}
                         type="button"
                         onClick={() => {
-                          return setTone(opt);
+                          return patchForm({
+                            agentId,
+                            patch: { tone: opt },
+                          });
                         }}
                         className={cn(
                           "w-full min-w-0 rounded-lg border border-[0.7px] px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -334,7 +339,10 @@ export function ZeroSettingsTab({
                 <Switch
                   checked={visibility === "public"}
                   onCheckedChange={(checked) => {
-                    return setVisibility(checked ? "public" : "private");
+                    return patchForm({
+                      agentId,
+                      patch: { visibility: checked ? "public" : "private" },
+                    });
                   }}
                   aria-label="Make public"
                 />

@@ -18,8 +18,8 @@ import {
   setLoop,
   withCleanup,
 } from "../utils.ts";
-import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
-import { createWorkflowQueueChangedHandler as workflowQueueHandler } from "./workflow-queue.ts";
+import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
+import { createWorkflowQueueSignals } from "./workflow-queue.ts";
 import {
   createScrollSignals,
   type PrependScrollCompensationToken,
@@ -33,6 +33,7 @@ import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
   shouldExcludeVisualAttachmentsForModel,
+  ATTACH_ONLY_PLACEHOLDER,
 } from "./resolve-draft-attachments.ts";
 import {
   appendOptimisticChatMessage$,
@@ -83,6 +84,7 @@ import {
 import {
   enrichBlocksWithTextPreviews,
   parseBodyRenderBlocks,
+  type BodyRenderBlock,
 } from "./parse-body-blocks.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
@@ -105,6 +107,8 @@ import {
 } from "../zero-page/model-first-personal-oauth.ts";
 import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/codex-device-auth.ts";
+import { createPermissionCardRegistry } from "./permission-card-signals.ts";
+import type { PermissionActionBlock } from "./permission-action-block.ts";
 
 import type {
   ChatThreadSignals,
@@ -116,6 +120,10 @@ import type {
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+import {
+  createMailDraftCardRegistry,
+  type MailDraftSignals,
+} from "./mail-draft.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -898,6 +906,18 @@ function createAgentInfoSignals(
   return { agentId$, agentDisplayName$, agentPinned$ };
 }
 
+function createThreadOwnedSignals(
+  threadId: string,
+  threadMeta$: Computed<Promise<ThreadMeta | null>>,
+) {
+  return {
+    ...createAgentInfoSignals(threadMeta$),
+    headerAutomations: createHeaderAutomationSignals(threadId),
+    workflowQueue: createWorkflowQueueSignals(threadId),
+    ...createThreadUIState(),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Sub-factory: per-thread UI state (timeline expansion, copy)
 // ---------------------------------------------------------------------------
@@ -1230,9 +1250,14 @@ function setLatestUsageForRun(
 
 function createRenderedChatGroups(
   semanticMessages$: Computed<SemanticChatMessage[]>,
+  mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
+  messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ) {
-  const transcriptMessages$ =
-    createTranscriptMessagesComputed(semanticMessages$);
+  const transcriptMessages$ = createTranscriptMessagesComputed(
+    semanticMessages$,
+    mailDraftCardSignals$,
+    messageBlocksById$,
+  );
 
   const allRenderedChatGroups$ = computed(
     async (get): Promise<GroupedChatMessageGroup[]> => {
@@ -1316,9 +1341,89 @@ function mergeServerMessages(
   return Array.from(byId.values()).sort(compareServerMessageOrder);
 }
 
+function parseMessageBodyBlocks(message: PagedChatMessage): BodyRenderBlock[] {
+  const content = chatMessageBodyContent(message);
+  const { blocks } = parseBodyRenderBlocks(content, {
+    previews: message.role === "assistant",
+  });
+  return enrichBlocksWithTextPreviews(blocks);
+}
+
+/**
+ * Whether the message's blocks must not be cached under its own id. Interrupt
+ * control rows are projected onto a synthetic "Run cancelled" assistant
+ * message that reuses the same id (see createInterruptedAssistantProjection),
+ * so a cache entry parsed from the control row's content would be wrong.
+ * Other control markers are filtered from the transcript entirely, so parsing
+ * them is wasted work; a cache miss falls back to parsing on read.
+ */
+function skipsMessageBlocksCache(message: PagedChatMessage): boolean {
+  return (
+    isInterruptControlMessage(message) ||
+    isRecallControlMessage(message) ||
+    isQueueMarkerMessage(message) ||
+    isGoalMarkerMessage(message)
+  );
+}
+
+interface MessageBlocksRegistrySignals {
+  readonly messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>;
+  readonly registerMessageBlocks$: Command<void, [readonly PagedChatMessage[]]>;
+}
+
+/**
+ * Parses message bodies into render blocks once, at persistent-message write
+ * time, instead of re-parsing the whole transcript on every evaluation of the
+ * transcript computed. Permission action URLs found during parsing are
+ * registered with the thread's permission card registry so cards read stable
+ * signals keyed by URL.
+ */
+function createMessageBlocksRegistry(
+  registerPermissionCardBlocks$: Command<
+    void,
+    [readonly PermissionActionBlock[]]
+  >,
+): MessageBlocksRegistrySignals {
+  const internalBlocksById$ = state<ReadonlyMap<string, BodyRenderBlock[]>>(
+    new Map(),
+  );
+  const messageBlocksById$ = computed((get) => {
+    return get(internalBlocksById$);
+  });
+  const registerMessageBlocks$ = command(
+    ({ get, set }, messages: readonly PagedChatMessage[]) => {
+      if (messages.length === 0) {
+        return;
+      }
+      const current = get(internalBlocksById$);
+      const next = new Map(current);
+      const permissionBlocks: PermissionActionBlock[] = [];
+      for (const message of messages) {
+        if (skipsMessageBlocksCache(message)) {
+          continue;
+        }
+        const blocks = parseMessageBodyBlocks(message);
+        next.set(message.id, blocks);
+        for (const block of blocks) {
+          if (block.type === "permission-action") {
+            permissionBlocks.push(block);
+          }
+        }
+      }
+      set(internalBlocksById$, next);
+      if (permissionBlocks.length > 0) {
+        set(registerPermissionCardBlocks$, permissionBlocks);
+      }
+    },
+  );
+  return { messageBlocksById$, registerMessageBlocks$ };
+}
+
 function createWritePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
+  registerMailDraftMessages$: Command<void, [readonly PagedChatMessage[]]>,
+  registerMessageBlocks$: Command<void, [readonly PagedChatMessage[]]>,
 ) {
   return command(
     async (
@@ -1340,6 +1445,8 @@ function createWritePersistentMessages(
       for (const _ of newlyCompletedRunIds) {
         captureTaskCompletedSuccessfully();
       }
+      set(registerMailDraftMessages$, msgs);
+      set(registerMessageBlocks$, msgs);
       set(persistentMessages$, (prev) => {
         return mergeServerMessages([prev, msgs]);
       });
@@ -1398,33 +1505,74 @@ function createRawMessagesComputed({
 
 function createTranscriptMessagesComputed(
   semanticMessages$: Computed<SemanticChatMessage[]>,
+  mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
+  messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
   return computed((get): Promise<EnrichedChatMessage[]> => {
+    const mailDraftCardSignals = get(mailDraftCardSignals$);
+    const blocksById = get(messageBlocksById$);
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
         const { message, isQueued, isOptimisticRun } = entry;
-        const { blocks } = parseBodyRenderBlocks(message.content ?? "", {
-          previews: message.role === "assistant",
-        });
+        // Persistent messages have their blocks registered at write time.
+        // Optimistic messages and synthetic projections (e.g. the "Run
+        // cancelled" interrupt projection) are not registered — they are few
+        // and short-lived, so parse them on read.
+        const enrichedBlocks =
+          blocksById.get(message.id) ?? parseMessageBodyBlocks(message);
+        let mailDraftCard: EnrichedChatMessage["mailDraftCard"] = null;
+        if (message.mailDraftId !== undefined) {
+          const signals = mailDraftCardSignals.get(message.mailDraftId);
+          if (signals === undefined) {
+            throw new Error(
+              `Mail draft signals were not registered: ${message.mailDraftId}`,
+            );
+          }
+          mailDraftCard = {
+            type: "mail-draft",
+            resourceKey: message.mailDraftId,
+            signals,
+          };
+        }
         if (message.role !== "assistant") {
           return {
             ...message,
             role: "user" as const,
-            blocks: enrichBlocksWithTextPreviews(blocks),
+            blocks: enrichedBlocks,
             isQueued,
             isOptimisticRun,
+            mailDraftCard,
           };
         }
         return {
           ...message,
           role: "assistant" as const,
-          blocks: enrichBlocksWithTextPreviews(blocks),
+          blocks: enrichedBlocks,
           isQueued,
           isOptimisticRun: false,
+          mailDraftCard,
         };
       }),
     );
   });
+}
+
+function chatMessageBodyContent(message: PagedChatMessage): string {
+  if (message.role === "assistant") {
+    return message.content ?? "";
+  }
+  const content = (message.content ?? "").replace(
+    /\[Attached file: ([^\]]+)\]\(([^)]+)\)(?:\nDownload with: curl [^\n]*)?\n?/g,
+    "",
+  );
+  if (
+    message.attachFiles &&
+    message.attachFiles.length > 0 &&
+    content.trim() === ATTACH_ONLY_PLACEHOLDER
+  ) {
+    return "";
+  }
+  return content.trim();
 }
 
 interface SemanticChatMessage {
@@ -1996,25 +2144,29 @@ function createSyncRemoteMessagesCommand({
   >;
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
+  const sinceId$ = computed((get): string | undefined => {
+    return get(persistentMessages$).at(-1)?.id;
+  });
+
   return command(async ({ get, set }, signal: AbortSignal) => {
-    let sinceId = get(persistentMessages$).at(-1)?.id;
-    const startedWithoutCursor = sinceId === undefined;
+    const startedWithoutCursor = get(sinceId$) === undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
     async function syncMessagesAfter(): Promise<void> {
+      const requestedSinceId = get(sinceId$);
       const result = await set(
         dataSource.listMessagesAfter$,
-        { threadId, sinceId },
+        { threadId, sinceId: requestedSinceId },
         signal,
       );
       signal.throwIfAborted();
       L.debug("syncRemoteMessages$ listMessagesAfter result", {
         threadId,
-        sinceId: sinceId ?? null,
+        sinceId: requestedSinceId ?? null,
         gotCount: result.messages.length,
       });
 
-      if (sinceId === undefined) {
+      if (requestedSinceId === undefined) {
         initialHasHistoryBefore = result.hasHistoryBefore;
       }
 
@@ -2024,7 +2176,6 @@ function createSyncRemoteMessagesCommand({
 
       await set(writePersistentMessages$, result.messages, signal);
       signal.throwIfAborted();
-      sinceId = result.messages.at(-1)!.id;
 
       return syncMessagesAfter();
     }
@@ -2148,6 +2299,11 @@ function createActiveGoalObjectiveComputed(
 }
 
 function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
+  const mailDraftCards = createMailDraftCardRegistry();
+  const permissionCards = createPermissionCardRegistry();
+  const messageBlocks = createMessageBlocksRegistry(
+    permissionCards.registerPermissionCardBlocks$,
+  );
   const persistentChatMessages$ = state<PagedChatMessage[]>([]);
   const hasReachedOldestMessage$ = state(false);
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
@@ -2171,15 +2327,23 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
   // because goal markers are control rows, not transcript rows.
   const activeGoalObjective$ = createActiveGoalObjectiveComputed(rawMessages$);
 
-  const renderedMessages = createRenderedChatGroups(semanticMessages$);
+  const renderedMessages = createRenderedChatGroups(
+    semanticMessages$,
+    mailDraftCards.mailDraftCardSignals$,
+    messageBlocks.messageBlocksById$,
+  );
 
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
     persistentChatMessages$,
+    mailDraftCards.registerMailDraftMessages$,
+    messageBlocks.registerMessageBlocks$,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
+      set(mailDraftCards.registerMailDraftMessages$, messages);
+      set(messageBlocks.registerMessageBlocks$, messages);
       set(persistentChatMessages$, (previous) => {
         return mergeServerMessages([messages, previous]);
       });
@@ -2230,38 +2394,13 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
     writePersistentMessages$,
   });
 
-  // Queued user rows are claimed server-side by updating the persisted row in
-  // place, which a sinceId sync can never observe. Re-fetch every locally
-  // cached row still considered queued so a lost `chatThreadMessageUpdated`
-  // event cannot leave the message pending forever.
-  const reconcileQueuedMessages$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      const persistentIds = new Set(
-        get(persistentChatMessages$).map((message) => {
-          return message.id;
-        }),
-      );
-      const queuedIds = new Set(
-        queuedMessagesFromRaw(get(rawMessages$))
-          .map((message) => {
-            return message.id;
-          })
-          .filter((id) => {
-            return persistentIds.has(id);
-          }),
-      );
-      for (const messageId of queuedIds) {
-        await set(fetchUpdatedMessage$, { messageId }, signal);
-      }
-    },
-  );
-
   return {
     initializeIndexedDbMessages$,
     writePersistentMessages$,
     latestChatMessageId$,
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
+    permissionCardSignalsByUrl$: permissionCards.permissionCardSignalsByUrl$,
     ...semanticSignals,
     ...renderedMessages,
     rawMessages$,
@@ -2269,7 +2408,6 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
     activeGoalObjective$,
     syncRemoteMessages$,
     fetchUpdatedMessage$,
-    reconcileQueuedMessages$,
   };
 }
 
@@ -2410,9 +2548,12 @@ interface RunTrackingDeps {
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
-  reconcileQueuedMessages$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   autoScroll$: Command<void, []>;
+  automationSignals: Pick<
+    ChatThreadSignals,
+    "headerAutomations" | "workflowQueue"
+  >;
   dataSource: ChatThreadRemote;
 }
 
@@ -2596,33 +2737,34 @@ function createMarkThreadReadIfNeeded({
   });
 }
 
-function createOnSubscribedCatchup({
+function createRunTracking({
   threadId,
   reloadThread$,
   remoteThreadDetail$,
   latestChatMessageId$,
+  latestRunFinishCreatedAt$,
+  initializeIndexedDbMessages$,
   syncRemoteMessages$,
   fetchUpdatedMessage$,
-  reconcileQueuedMessages$,
   reloadArtifacts$,
-  markThreadReadIfNeeded$,
-}: Pick<
-  RunTrackingDeps,
-  | "threadId"
-  | "reloadThread$"
-  | "remoteThreadDetail$"
-  | "latestChatMessageId$"
-  | "syncRemoteMessages$"
-  | "fetchUpdatedMessage$"
-  | "reconcileQueuedMessages$"
-  | "reloadArtifacts$"
-> & {
-  markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
-}) {
+  autoScroll$,
+  automationSignals,
+  dataSource,
+}: RunTrackingDeps) {
+  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
+  const resetChatSubscriptionSignal$ = resetSignalScope();
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
 
-  return command(async ({ get, set }, sig: AbortSignal) => {
+  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
+    threadId,
+    remoteThreadDetail$,
+    latestRunFinishCreatedAt$,
+    locallyMarkedReadAt$,
+    dataSource,
+  });
+
+  const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(reloadThread$);
     set(reloadArtifacts$);
@@ -2643,49 +2785,9 @@ function createOnSubscribedCatchup({
       // fetch are queued instead of missed.
       await set(fetchUpdatedMessage$, { messageId: latestMessageId }, sig);
     }
-    // In-place queue claims are equally invisible to the sinceId fetch.
-    await set(reconcileQueuedMessages$, sig);
     await set(markThreadReadIfNeeded$, sig);
     sig.throwIfAborted();
     L.debug("subscribeChatThread$ catchup done", { threadId });
-  });
-}
-
-function createRunTracking({
-  threadId,
-  reloadThread$,
-  remoteThreadDetail$,
-  latestChatMessageId$,
-  latestRunFinishCreatedAt$,
-  initializeIndexedDbMessages$,
-  syncRemoteMessages$,
-  fetchUpdatedMessage$,
-  reconcileQueuedMessages$,
-  reloadArtifacts$,
-  autoScroll$,
-  dataSource,
-}: RunTrackingDeps) {
-  const locallyMarkedReadAt$ = state<string | undefined>(undefined);
-  const resetChatSubscriptionSignal$ = resetSignalScope();
-
-  const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
-    threadId,
-    remoteThreadDetail$,
-    latestRunFinishCreatedAt$,
-    locallyMarkedReadAt$,
-    dataSource,
-  });
-
-  const onSubscribed$ = createOnSubscribedCatchup({
-    threadId,
-    reloadThread$,
-    remoteThreadDetail$,
-    latestChatMessageId$,
-    syncRemoteMessages$,
-    fetchUpdatedMessage$,
-    reconcileQueuedMessages$,
-    reloadArtifacts$,
-    markThreadReadIfNeeded$,
   });
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
@@ -2717,9 +2819,6 @@ function createRunTracking({
     const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onRunChanged$ fired", { threadId });
       await set(syncRemoteMessages$, sig);
-      // A run change is exactly when a queued row gets claimed in place, so
-      // reconcile stale queued rows even if messageUpdated was lost.
-      await set(reconcileQueuedMessages$, sig);
       sig.throwIfAborted();
       animationFrame(
         () => {
@@ -2731,8 +2830,7 @@ function createRunTracking({
     });
 
     const onAutomationsChanged$ = command(({ set }) => {
-      L.debug("onAutomationsChanged$ fired", { threadId });
-      set(reloadHeaderAutomationMenu$);
+      set(automationSignals.headerAutomations.reload$);
       return false;
     });
 
@@ -2748,7 +2846,6 @@ function createRunTracking({
       return false;
     });
 
-    L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
     const subscriptionSignal = subscriptionScope.signal;
 
@@ -2767,7 +2864,8 @@ function createRunTracking({
               onAutomationsChanged$,
               onArtifactsChanged$,
               onWorkflowsChanged$,
-              onWorkflowQueueChanged$: workflowQueueHandler(threadId),
+              onWorkflowQueueChanged$:
+                automationSignals.workflowQueue.handleChanged$,
               onSubscribed$,
             },
           },
@@ -3926,8 +4024,7 @@ export function createChatThreadSignals(
   const { containerEl$, setContainerRef$ } = createContainerRef();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
-  const agentInfo = createAgentInfoSignals(threadMeta$);
-  const threadUi = createThreadUIState();
+  const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
   const messages = createChatThreadMessagePipeline({
     threadId,
     dataSource,
@@ -3948,9 +4045,9 @@ export function createChatThreadSignals(
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
     fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
-    reconcileQueuedMessages$: messages.reconcileQueuedMessages$,
     reloadArtifacts$: artifact.reloadArtifacts$,
     autoScroll$: scrollSignals.autoScroll$,
+    automationSignals: threadOwned,
     dataSource,
   });
   const messageActions = createThreadMessageActions({
@@ -3967,7 +4064,7 @@ export function createChatThreadSignals(
     writePersistentMessages$: messages.writePersistentMessages$,
     dataSource,
   });
-  const workflowComposer = createWorkflowComposerSignals(draft);
+  const workflowComposer = createWorkflowComposerSignals(draft, threadId);
   const thinkingIndicator = createThinkingIndicatorSignals(
     messages.thinkingText$,
     messages.thinkingMessageId$,
@@ -3992,13 +4089,13 @@ export function createChatThreadSignals(
     workflowComposer,
     composerFileInput$,
     setComposerFileInput$,
-    ...agentInfo,
-    ...threadUi,
+    ...threadOwned,
     focusInput$: workflowComposer.focus$,
     queueDraftSync$,
     latestChatMessageId$: messages.latestChatMessageId$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
+    permissionCardSignalsByUrl$: messages.permissionCardSignalsByUrl$,
     visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
     messageImageGroups$: messages.messageImageGroups$,

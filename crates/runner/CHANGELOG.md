@@ -1,5 +1,72 @@
 # Changelog
 
+## [0.146.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.4...runner-rs-v0.146.5) (2026-07-17)
+
+
+### Bug Fixes
+
+* **mitm-addon:** avoid stale bytecode in tld snapshot checks ([#21948](https://github.com/vm0-ai/vm0/issues/21948)) ([78c511b](https://github.com/vm0-ai/vm0/commit/78c511bec86c587a2a7dabfb0658bff41b264bab))
+* **runner:** validate brotli tails at decode limit ([#21961](https://github.com/vm0-ai/vm0/issues/21961)) ([786172a](https://github.com/vm0-ai/vm0/commit/786172ac3c3493ad5cde0c21e63ff2308f4ae3ec))
+
+## [0.146.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.3...runner-rs-v0.146.4) (2026-07-17)
+
+
+### Bug Fixes
+
+* **runner:** scope interception certificates to tls sni ([#21939](https://github.com/vm0-ai/vm0/issues/21939)) ([7f2ca7a](https://github.com/vm0-ai/vm0/commit/7f2ca7a811ad68f38153a9fe5b9052d671b8de92))
+
+
+### Refactoring
+
+* **mitm-addon:** split websocket tests by responsibility ([#21942](https://github.com/vm0-ai/vm0/issues/21942)) ([a60ae85](https://github.com/vm0-ai/vm0/commit/a60ae85500311dfaf70b1056049c41cf68dea9ee))
+
+## [0.146.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.2...runner-rs-v0.146.3) (2026-07-17)
+
+## [0.146.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.1...runner-rs-v0.146.2) (2026-07-17)
+
+
+### Refactoring
+
+* **runner:** add generic workspace affinity resource classes ([#21888](https://github.com/vm0-ai/vm0/issues/21888)) ([92bf6af](https://github.com/vm0-ai/vm0/commit/92bf6af909f9aa3666a256edbfdad016b94947a6))
+
+## [0.146.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.0...runner-rs-v0.146.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **runner:** classify oversized sidecars as unavailable ([#21877](https://github.com/vm0-ai/vm0/issues/21877)) ([d9fde61](https://github.com/vm0-ai/vm0/commit/d9fde61a0cce1579c4cf841e3e721aaf016eb537))
+* **runner:** recover from guest dns readiness failures ([#21879](https://github.com/vm0-ai/vm0/issues/21879)) ([38a6647](https://github.com/vm0-ai/vm0/commit/38a664712e595a88a482df90ef8012f976c3f128))
+
+
+### Refactoring
+
+* **runner:** publish profile-qualified workspace cache state ([#21874](https://github.com/vm0-ai/vm0/issues/21874)) ([68b399b](https://github.com/vm0-ai/vm0/commit/68b399b571023b63db4a2f4f625eef1c9ded9b48))
+
+## [0.146.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.6...runner-rs-v0.146.0) (2026-07-16)
+
+
+### Features
+
+* bill model usage from signed proxy price schedules ([#21696](https://github.com/vm0-ai/vm0/issues/21696)) ([e4c9fc7](https://github.com/vm0-ai/vm0/commit/e4c9fc72ec4004b8ff6db197c6e4ee1a888e9d30))
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve x url prefixes at valid boundaries ([#21852](https://github.com/vm0-ai/vm0/issues/21852)) ([c9f4352](https://github.com/vm0-ai/vm0/commit/c9f4352db18a431bc78abe3f2bd374c75b386d33))
+* **runner:** extend cancel terminal grace for containment ([#21840](https://github.com/vm0-ai/vm0/issues/21840)) ([2f29ee1](https://github.com/vm0-ai/vm0/commit/2f29ee111a7efaba1cf30ea818be2d1723a8cc51))
+* **runner:** freeze workspace before cache promotion ([#21766](https://github.com/vm0-ai/vm0/issues/21766)) ([4828529](https://github.com/vm0-ai/vm0/commit/4828529d91370061e0da065c7082bada5b426e21))
+
+
+### Documentation
+
+* **mitm-addon:** clarify firewall api id resolution ([#21847](https://github.com/vm0-ai/vm0/issues/21847)) ([5cfec09](https://github.com/vm0-ai/vm0/commit/5cfec093d3870056337c8b9d6ab7135007ce168c))
+
+
+### Refactoring
+
+* **mitm-addon:** expose websocket test helper api ([#21842](https://github.com/vm0-ai/vm0/issues/21842)) ([59a3f1b](https://github.com/vm0-ai/vm0/commit/59a3f1b8b4f15fcd661360c19dfe42090c63144e))
+* **mitm-addon:** share sync and async loop traversal ([#21848](https://github.com/vm0-ai/vm0/issues/21848)) ([fd99c6f](https://github.com/vm0-ai/vm0/commit/fd99c6f96141b1dcccf771026553cc784fae6da7))
+
 ## [0.145.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.145.5...runner-rs-v0.145.6) (2026-07-16)
 
 

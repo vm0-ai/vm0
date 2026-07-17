@@ -82,10 +82,6 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
-import {
-  recordSlackMessageMemorySource,
-  type SlackMemoryChannelType,
-} from "./slack-memory-source.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
@@ -2022,32 +2018,6 @@ const handleSlackAgentMessage$ = command(
       return;
     }
 
-    await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_slack_record_memory_source",
-      "nested",
-      async () => {
-        await recordSlackMessageMemorySource({
-          db: args.db,
-          orgId: resolved.installation.orgId,
-          userId: resolved.connection.vm0UserId,
-          workspaceId: args.workspaceId,
-          channelId: args.channelId,
-          channelType:
-            args.channelType === "group_dm"
-              ? "mpim"
-              : args.channelType === "dm"
-                ? "im"
-                : "channel",
-          slackUserId: args.slackUserId,
-          messageText: args.messageText,
-          messageTs: args.messageTs,
-          threadTs: args.threadTs,
-          files: args.files,
-        });
-      },
-    );
-
     const [statusResult, runParamsResult] = await Promise.allSettled([
       measureApiDispatchTiming(
         args.timing,
@@ -2091,53 +2061,6 @@ const handleSlackAgentMessage$ = command(
       message: args,
       resolved,
       result: runResult.value,
-    });
-  },
-);
-
-const handleSlackMemoryOnlyMessage$ = command(
-  async (
-    _,
-    args: {
-      readonly db: Db;
-      readonly workspaceId: string;
-      readonly channelId: string;
-      readonly channelType: SlackMemoryChannelType;
-      readonly slackUserId: string;
-      readonly messageText: string;
-      readonly messageTs: string;
-      readonly threadTs?: string;
-      readonly files?: readonly SlackFile[];
-    },
-  ): Promise<void> => {
-    const installation = await installationForWorkspace(
-      args.db,
-      args.workspaceId,
-    );
-    if (!installation?.orgId) {
-      return;
-    }
-    const connection = await connectionForSlackUser(
-      args.db,
-      args.workspaceId,
-      args.slackUserId,
-    );
-    if (!connection) {
-      return;
-    }
-
-    await recordSlackMessageMemorySource({
-      db: args.db,
-      orgId: installation.orgId,
-      userId: connection.vm0UserId,
-      workspaceId: args.workspaceId,
-      channelId: args.channelId,
-      channelType: args.channelType,
-      slackUserId: args.slackUserId,
-      messageText: args.messageText,
-      messageTs: args.messageTs,
-      threadTs: args.threadTs,
-      files: args.files,
     });
   },
 );
@@ -2248,10 +2171,6 @@ const handleMessagesTabOpened$ = command(
   },
 );
 
-type SlackChannelMemoryMessageEvent = SlackChannelMessageEvent & {
-  readonly channel_type: "channel" | "group" | "mpim";
-};
-
 function isSlackUserMessageEvent(
   event: SlackDirectMessageEvent | SlackChannelMessageEvent,
 ): boolean {
@@ -2264,18 +2183,6 @@ function isSlackDirectAgentMessageEvent(
   return (
     event.type === "message" &&
     event.channel_type === "im" &&
-    isSlackUserMessageEvent(event)
-  );
-}
-
-function isSlackChannelMemoryMessageEvent(
-  event: SlackEventCallback["event"],
-): event is SlackChannelMemoryMessageEvent {
-  return (
-    event.type === "message" &&
-    (event.channel_type === "channel" ||
-      event.channel_type === "group" ||
-      event.channel_type === "mpim") &&
     isSlackUserMessageEvent(event)
   );
 }
@@ -2321,37 +2228,6 @@ const scheduleSlackAgentMessageEvent$ = command(
         }),
         (error) => {
           L.error(args.errorMessage, { error });
-        },
-      ),
-    );
-  },
-);
-
-const scheduleSlackChannelMemoryMessage$ = command(
-  (
-    { set },
-    args: {
-      readonly callback: SlackEventCallbackArgs;
-      readonly event: SlackChannelMemoryMessageEvent;
-    },
-  ): void => {
-    waitUntil(
-      tapError(
-        set(handleSlackMemoryOnlyMessage$, {
-          db: args.callback.db,
-          workspaceId: args.callback.payload.team_id,
-          channelId: args.event.channel,
-          channelType: args.event.channel_type,
-          slackUserId: args.event.user,
-          messageText: args.event.text,
-          messageTs: args.event.ts,
-          threadTs: args.event.thread_ts,
-          files: args.event.files,
-        }),
-        (error) => {
-          L.error("Error recording org channel message memory source", {
-            error,
-          });
         },
       ),
     );
@@ -2443,13 +2319,6 @@ const handleEventCallback$ = command(
         event,
         channelType: "dm",
         errorMessage: "Error handling org direct_message",
-      });
-    }
-
-    if (isSlackChannelMemoryMessageEvent(event)) {
-      set(scheduleSlackChannelMemoryMessage$, {
-        callback: args,
-        event,
       });
     }
 

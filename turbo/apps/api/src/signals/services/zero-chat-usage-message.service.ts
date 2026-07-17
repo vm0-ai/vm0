@@ -74,60 +74,6 @@ function buildUsageBreakdown(
   });
 }
 
-function usagePayloadKey(payload: ChatMessageUsagePayload): string {
-  return JSON.stringify({
-    version: payload.version,
-    totalCredits: payload.totalCredits,
-    settledAt: payload.settledAt,
-    breakdown: payload.breakdown
-      .map((kind) => {
-        return {
-          kind: kind.kind,
-          credits: kind.credits,
-          providers: [...kind.providers]
-            .sort((a, b) => {
-              return a.provider.localeCompare(b.provider);
-            })
-            .map((provider) => {
-              return {
-                provider: provider.provider,
-                credits: provider.credits,
-              };
-            }),
-        };
-      })
-      .sort((a, b) => {
-        return a.kind.localeCompare(b.kind);
-      }),
-  });
-}
-
-function usagePayloadEquals(
-  left: ChatMessageUsagePayload,
-  right: ChatMessageUsagePayload,
-): boolean {
-  return usagePayloadKey(left) === usagePayloadKey(right);
-}
-
-function usageMessageMatchesPayload(
-  message: {
-    readonly usagePayload: ChatMessageUsagePayload | null;
-  },
-  payload: ChatMessageUsagePayload,
-): boolean {
-  return (
-    message.usagePayload !== null &&
-    usagePayloadEquals(message.usagePayload, payload)
-  );
-}
-
-function isSameUsageSettledAt(
-  message: { readonly createdAt: Date },
-  payload: ChatMessageUsagePayload,
-): boolean {
-  return message.createdAt.getTime() === new Date(payload.settledAt).getTime();
-}
-
 function usageCreditsExpression() {
   return sql`COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)`;
 }
@@ -212,6 +158,22 @@ export const maybeEmitRunUsageMessage$ = command(
         return null;
       }
 
+      const [existingUsageMessage] = await tx
+        .select({ id: chatMessages.id })
+        .from(chatMessages)
+        .where(
+          and(
+            eq(chatMessages.runId, runId),
+            sql`${chatMessages.usagePayload} IS NOT NULL`,
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (existingUsageMessage) {
+        return null;
+      }
+
       const breakdownRows = await loadUsageBreakdownRows(tx, runId);
       signal.throwIfAborted();
 
@@ -221,47 +183,6 @@ export const maybeEmitRunUsageMessage$ = command(
         settledAt: toIsoString(context.settledAt),
         breakdown: buildUsageBreakdown(breakdownRows),
       };
-
-      const existingUsageMessages = await tx
-        .select({
-          id: chatMessages.id,
-          createdAt: chatMessages.createdAt,
-          usagePayload: chatMessages.usagePayload,
-        })
-        .from(chatMessages)
-        .where(
-          and(
-            eq(chatMessages.runId, runId),
-            sql`${chatMessages.usagePayload} IS NOT NULL`,
-          ),
-        );
-      signal.throwIfAborted();
-
-      const hasExistingPayload = existingUsageMessages.some((message) => {
-        return usageMessageMatchesPayload(message, payload);
-      });
-      if (hasExistingPayload) {
-        return null;
-      }
-
-      const staleSameSettledAtMessage = existingUsageMessages.find(
-        (message) => {
-          return isSameUsageSettledAt(message, payload);
-        },
-      );
-      if (staleSameSettledAtMessage) {
-        await tx
-          .update(chatMessages)
-          .set({ usagePayload: payload })
-          .where(eq(chatMessages.id, staleSameSettledAtMessage.id));
-        signal.throwIfAborted();
-
-        return {
-          chatThreadId: context.chatThreadId,
-          userId: context.userId,
-          totalCredits: payload.totalCredits,
-        };
-      }
 
       const [inserted] = await tx
         .insert(chatMessages)

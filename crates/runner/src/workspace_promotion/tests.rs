@@ -8,7 +8,9 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use async_trait::async_trait;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    SessionHistorySidecarExportMetadata, SessionHistorySidecarRepresentation,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+    SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE, SessionHistorySidecarExportMetadata,
+    SessionHistorySidecarRepresentation,
 };
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
@@ -118,7 +120,7 @@ impl Sandbox for PostCopyGateSandbox {
         self.inner.kill().await
     }
 
-    async fn park(&mut self) -> sandbox::Result<()> {
+    async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
         self.inner.park().await
     }
 
@@ -202,8 +204,8 @@ impl Sandbox for PanicExecSandbox {
         Ok(())
     }
 
-    async fn park(&mut self) -> sandbox::Result<()> {
-        Ok(())
+    async fn park(&mut self) -> sandbox::Result<sandbox::SandboxParkOutcome> {
+        Ok(sandbox::SandboxParkOutcome::Reusable)
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
@@ -367,6 +369,107 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
         .await
         .unwrap();
     assert_eq!(tokio::fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn active_workspace_promotion_skips_verified_unavailable_sidecar_without_warning() {
+    let session_id = "sess-active-sidecar-unavailable";
+    let history = br#"{"type":"message","content":"oversized"}"#;
+    let restored_identity = test_restored_session_identity(session_id, history);
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        session_id,
+        Some(&restored_identity),
+    )
+    .await;
+    let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE,
+        Vec::new(),
+        Vec::new(),
+    )));
+
+    let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+        &sandbox,
+        fixture.promotion,
+    ))
+    .await;
+
+    assert!(promoted);
+    assert!(sandbox.copy_file_calls().is_empty());
+    assert!(!has_captured_event(
+        &events,
+        "workspace image cache session history sidecar export failed"
+    ));
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 3);
+    assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
+    assert_eq!(
+        exec_calls[0].expected_exit_codes,
+        [SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE]
+    );
+    assert!(exec_calls[1].cmd.contains("rm -f --"));
+    assert!(exec_calls[1].expected_exit_codes.is_empty());
+    assert!(exec_calls[2].sudo);
+    assert!(exec_calls[2].expected_exit_codes.is_empty());
+
+    let lease = fixture
+        .cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default",
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Hit);
+    assert!(
+        lease
+            .probe_session_history_sidecar(&restored_identity)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn active_workspace_promotion_keeps_history_read_failure_warning() {
+    let session_id = "sess-active-sidecar-read-failure";
+    let history = br#"{"type":"message","content":"read failure"}"#;
+    let restored_identity = test_restored_session_identity(session_id, history);
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        session_id,
+        Some(&restored_identity),
+    )
+    .await;
+    let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+        Vec::new(),
+        Vec::new(),
+    )));
+
+    let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+        &sandbox,
+        fixture.promotion,
+    ))
+    .await;
+
+    assert!(promoted);
+    assert!(sandbox.copy_file_calls().is_empty());
+    captured_event(
+        &events,
+        "workspace image cache session history sidecar export failed",
+    );
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 3);
+    assert_eq!(
+        exec_calls[0].expected_exit_codes,
+        [SESSION_HISTORY_SIDECAR_EXPORT_EXIT_UNAVAILABLE]
+    );
 }
 
 #[tokio::test]
@@ -775,4 +878,13 @@ fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a Capture
                 .is_some_and(|actual| actual == message)
         })
         .unwrap_or_else(|| panic!("missing event {message:?}; captured={events:#?}"))
+}
+
+fn has_captured_event(events: &[CapturedEvent], message: &str) -> bool {
+    events.iter().any(|event| {
+        event
+            .fields
+            .get("message")
+            .is_some_and(|actual| actual == message)
+    })
 }

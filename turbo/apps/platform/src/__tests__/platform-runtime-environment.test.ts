@@ -13,6 +13,10 @@ const PRODUCTION_PLAUSIBLE_URL =
   "https://production.plausible.example/js/script.js";
 const POSTHOG_KEY = "phc_production_key";
 const SENTRY_DSN = "https://public@example.ingest.sentry.io/1";
+const PREVIEW_CLERK_KEY = "pk_test_preview";
+const PRODUCTION_CLERK_KEY = "pk_live_production";
+const PREVIEW_VAPID_KEY = "preview_vapid_key";
+const PRODUCTION_VAPID_KEY = "production_vapid_key";
 
 const { posthogInit, sentryInit } = vi.hoisted(() => {
   return {
@@ -64,10 +68,14 @@ function installImmediateIdleCallback(): void {
 }
 
 function stubPortableBuildInputs(): void {
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PREVIEW", PREVIEW_CLERK_KEY);
+  vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY_PROD", PRODUCTION_CLERK_KEY);
+  vi.stubEnv("VITE_VAPID_PUBLIC_KEY_PREVIEW", PREVIEW_VAPID_KEY);
+  vi.stubEnv("VITE_VAPID_PUBLIC_KEY_PROD", PRODUCTION_VAPID_KEY);
   vi.stubEnv("VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW", PREVIEW_PLAUSIBLE_URL);
   vi.stubEnv("VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION", PRODUCTION_PLAUSIBLE_URL);
   vi.stubEnv("VITE_POSTHOG_KEY", POSTHOG_KEY);
-  vi.stubEnv("VITE_SENTRY_DSN", SENTRY_DSN);
+  vi.stubEnv("VITE_SENTRY_DSN_PROD", SENTRY_DSN);
 }
 
 function appendWithoutLoadingExternalScripts<T extends Node>(node: T): T {
@@ -79,17 +87,33 @@ function appendWithoutLoadingExternalScripts<T extends Node>(node: T): T {
 }
 
 async function loadRuntimeSurfaces() {
-  const [apiBase, auth, attachmentUrl, plausible, posthog, sentry] =
-    await Promise.all([
-      import("../signals/api-base.ts"),
-      import("../signals/auth.ts"),
-      import("../views/zero-page/zero-attachment-url.ts"),
-      import("../lib/plausible.ts"),
-      import("../lib/posthog.ts"),
-      import("../lib/sentry.ts"),
-    ]);
+  const [
+    apiBase,
+    auth,
+    attachmentUrl,
+    platformHost,
+    plausible,
+    posthog,
+    sentry,
+  ] = await Promise.all([
+    import("../signals/api-base.ts"),
+    import("../signals/auth.ts"),
+    import("../views/zero-page/zero-attachment-url.ts"),
+    import("../lib/platform-host.ts"),
+    import("../lib/plausible.ts"),
+    import("../lib/posthog.ts"),
+    import("../lib/sentry.ts"),
+  ]);
 
-  return { apiBase, attachmentUrl, auth, plausible, posthog, sentry };
+  return {
+    apiBase,
+    attachmentUrl,
+    auth,
+    platformHost,
+    plausible,
+    posthog,
+    sentry,
+  };
 }
 
 function plausibleScriptSources(): string[] {
@@ -131,6 +155,10 @@ describe("portable platform runtime environment", () => {
 
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      clerkPublishableKey: PRODUCTION_CLERK_KEY,
+      vapidPublicKey: PRODUCTION_VAPID_KEY,
+    });
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
         "/artifacts/user_1/artifact_1/report.html",
@@ -167,6 +195,10 @@ describe("portable platform runtime environment", () => {
       "https://pr-21537-api.vm6.ai",
     );
     expect(runtime.auth.resolveWebOrigin()).toBe("https://pr-21537-www.vm6.ai");
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
+      vapidPublicKey: PREVIEW_VAPID_KEY,
+    });
     expect(
       runtime.attachmentUrl.publicAttachmentUrl(
         "/artifacts/user_1/artifact_1/report.html",

@@ -6,8 +6,9 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use sandbox::{
-    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxId,
-    SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
+    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxError,
+    SandboxFactory, SandboxId, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
+    SandboxNbdNetlinkConnectStage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -31,6 +32,7 @@ use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
     RunnerResult, SandboxPreparedNotifier, SandboxReuseResult, SessionHistoryMaterializer,
 };
+use crate::dns::{DnsReadinessLogObservation, inspect_readiness_log_segment};
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
@@ -114,6 +116,7 @@ const RUNNER_FRESH_SANDBOX_PROXY_REGISTER: &str = "runner_fresh_sandbox_proxy_re
 const RUNNER_FRESH_SANDBOX_START: &str = "runner_fresh_sandbox_start";
 const RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE: &str =
     "runner_fresh_sandbox_retry_without_workspace_image";
+const RUNNER_FRESH_SANDBOX_DNS_READINESS_RETRY: &str = "runner_fresh_sandbox_dns_readiness_retry";
 
 const WORKSPACE_IMAGE_PREPARE_INVALID_WORKING_DIR: &str =
     "workspace_image_prepare_invalid_working_dir";
@@ -124,6 +127,8 @@ const SANDBOX_FACTORY_CREATE_FAILED: &str = "sandbox_factory_create_failed";
 const SANDBOX_FACTORY_CREATE_STAGE_FAILED: &str = "sandbox_factory_create_stage_failed";
 const SANDBOX_PROXY_REGISTER_FAILED: &str = "sandbox_proxy_register_failed";
 const SANDBOX_START_FAILED: &str = "sandbox_start_failed";
+const DNS_READINESS_RETRY_PREPARE_FAILED: &str = "replacement_prepare_failed";
+const SANDBOX_PREPARE_RETRY_CLEANUP_UNCERTAIN: &str = "cleanup_uncertain";
 
 struct FreshSandboxFactoryCreateObserver<'a> {
     telemetry: &'a mut JobTelemetry,
@@ -339,28 +344,111 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         telemetry,
     )
     .await;
-    let prepared = match create_started_sandbox(
-        factory,
-        context,
-        sandbox_id,
-        config,
-        params,
-        telemetry,
-        StartSandboxOptions {
-            workspace_image: workspace_image.as_ref(),
-            sandbox_prepared,
-        },
-    )
-    .await
-    {
-        Ok(prepared) => prepared,
-        Err(e)
-            if e.retry_without_workspace_image
-                && workspace_image
-                    .as_ref()
-                    .is_some_and(WorkspaceImageLease::is_cache_hit) =>
-        {
-            let error = e.error;
+    let mut used_retry = false;
+    let mut dns_retry_started: Option<Instant> = None;
+    let prepared = loop {
+        let result = create_started_sandbox(
+            factory,
+            context,
+            sandbox_id,
+            config,
+            params,
+            telemetry,
+            StartSandboxOptions {
+                workspace_image: workspace_image.as_ref(),
+                sandbox_prepared,
+            },
+        )
+        .await;
+
+        if let Some(started) = dns_retry_started.take() {
+            let success = result.is_ok();
+            telemetry.record(
+                RUNNER_FRESH_SANDBOX_DNS_READINESS_RETRY,
+                started.elapsed(),
+                success,
+                (!success).then_some(DNS_READINESS_RETRY_PREPARE_FAILED),
+            );
+        }
+
+        let failure = match result {
+            Ok(prepared) => break prepared,
+            Err(failure) => failure,
+        };
+        if used_retry {
+            let error = failure.error;
+            telemetry.record(
+                "runner_fresh_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return Err(error);
+        }
+
+        let cache_hit = workspace_image
+            .as_ref()
+            .is_some_and(WorkspaceImageLease::is_cache_hit);
+        let retry_guest_dns = failure.retry == SandboxPrepareRetry::GuestDnsReadiness;
+        let retry_without_workspace =
+            failure.retry == SandboxPrepareRetry::WithoutWorkspaceImage && cache_hit;
+        if !failure.cleanup_completed {
+            if retry_guest_dns {
+                telemetry.record(
+                    RUNNER_FRESH_SANDBOX_DNS_READINESS_RETRY,
+                    Duration::ZERO,
+                    false,
+                    Some(SANDBOX_PREPARE_RETRY_CLEANUP_UNCERTAIN),
+                );
+                warn!(
+                    run_id = %context.run_id,
+                    sandbox_id = %sandbox_id,
+                    "guest DNS readiness replacement suppressed after uncertain cleanup"
+                );
+            } else if retry_without_workspace {
+                telemetry.record(
+                    RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE,
+                    Duration::ZERO,
+                    false,
+                    Some(SANDBOX_PREPARE_RETRY_CLEANUP_UNCERTAIN),
+                );
+                warn!(
+                    run_id = %context.run_id,
+                    sandbox_id = %sandbox_id,
+                    "workspace image fallback suppressed after uncertain cleanup"
+                );
+            }
+            let error = failure.error;
+            telemetry.record(
+                "runner_fresh_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return Err(error);
+        }
+        if !retry_guest_dns && !retry_without_workspace {
+            let error = failure.error;
+            telemetry.record(
+                "runner_fresh_sandbox_prepare",
+                prepare_started.elapsed(),
+                false,
+                Some(&error.to_string()),
+            );
+            return Err(error);
+        }
+
+        if retry_guest_dns {
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %sandbox_id,
+                error = %failure.error,
+                "guest DNS readiness failed; retrying with a fresh sandbox attachment"
+            );
+            dns_retry_started = Some(Instant::now());
+        }
+
+        if cache_hit {
             invalidate_workspace_cache_hit(
                 workspace_image.as_ref(),
                 context.run_id,
@@ -370,7 +458,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
             warn!(
                 run_id = %context.run_id,
                 sandbox_id = %sandbox_id,
-                error = %error,
+                error = %failure.error,
                 "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
             );
             telemetry.record(
@@ -388,43 +476,8 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                     controls.cancel.clone(),
                     telemetry,
                 );
-            match create_started_sandbox(
-                factory,
-                context,
-                sandbox_id,
-                config,
-                params,
-                telemetry,
-                StartSandboxOptions {
-                    workspace_image: None,
-                    sandbox_prepared,
-                },
-            )
-            .await
-            {
-                Ok(prepared) => prepared,
-                Err(e) => {
-                    let error = e.error;
-                    telemetry.record(
-                        "runner_fresh_sandbox_prepare",
-                        prepare_started.elapsed(),
-                        false,
-                        Some(&error.to_string()),
-                    );
-                    return Err(error);
-                }
-            }
         }
-        Err(e) => {
-            let error = e.error;
-            telemetry.record(
-                "runner_fresh_sandbox_prepare",
-                prepare_started.elapsed(),
-                false,
-                Some(&error.to_string()),
-            );
-            return Err(error);
-        }
+        used_retry = true;
     };
     telemetry.record(
         "runner_fresh_sandbox_prepare",
@@ -460,7 +513,15 @@ pub(super) struct PreparedSandboxRun {
 
 pub(super) struct SandboxPrepareError {
     error: RunnerError,
-    retry_without_workspace_image: bool,
+    retry: SandboxPrepareRetry,
+    cleanup_completed: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SandboxPrepareRetry {
+    None,
+    WithoutWorkspaceImage,
+    GuestDnsReadiness,
 }
 
 pub(super) struct NewSandboxHooks<'a> {
@@ -474,17 +535,27 @@ struct StartSandboxOptions<'a> {
 }
 
 impl SandboxPrepareError {
-    fn retry(error: RunnerError) -> Self {
+    fn retry_without_workspace_image(error: RunnerError, cleanup_completed: bool) -> Self {
         Self {
             error,
-            retry_without_workspace_image: true,
+            retry: SandboxPrepareRetry::WithoutWorkspaceImage,
+            cleanup_completed,
+        }
+    }
+
+    fn guest_dns_readiness(error: RunnerError, cleanup_completed: bool) -> Self {
+        Self {
+            error,
+            retry: SandboxPrepareRetry::GuestDnsReadiness,
+            cleanup_completed,
         }
     }
 
     fn fatal(error: RunnerError) -> Self {
         Self {
             error,
-            retry_without_workspace_image: false,
+            retry: SandboxPrepareRetry::None,
+            cleanup_completed: false,
         }
     }
 }
@@ -711,7 +782,10 @@ async fn create_started_sandbox(
                 Some(SANDBOX_FACTORY_CREATE_FAILED),
             );
             telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-            return Err(SandboxPrepareError::retry(e.into()));
+            return Err(SandboxPrepareError::retry_without_workspace_image(
+                e.into(),
+                true,
+            ));
         }
     };
 
@@ -750,13 +824,28 @@ async fn create_started_sandbox(
                 &e.to_string(),
             );
             telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-            destroy_sandbox_panic_safe(factory, sandbox).await;
+            let _ = destroy_sandbox_panic_safe(factory, sandbox).await;
             return Err(SandboxPrepareError::fatal(e));
         }
     };
 
+    let network_log_path = config.log_paths.network_log(context.run_id);
+    let network_log_start_offset = match tokio::fs::metadata(&network_log_path).await {
+        Ok(metadata) => Some(metadata.len()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(0),
+        Err(error) => {
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %sandbox_id,
+                io_kind = ?error.kind(),
+                "failed to capture network log offset before sandbox start"
+            );
+            None
+        }
+    };
     let sandbox_start_started = Instant::now();
     if let Err(e) = sandbox.start().await {
+        let guest_dns_readiness = matches!(&e, SandboxError::GuestDnsReadiness { .. });
         telemetry.record(
             RUNNER_FRESH_SANDBOX_START,
             sandbox_start_started.elapsed(),
@@ -764,20 +853,48 @@ async fn create_started_sandbox(
             Some(SANDBOX_START_FAILED),
         );
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-        if let Err(unregister_error) =
-            unregister_proxy_registry(config, &source_ip, context.run_id).await
-        {
-            warn!(
-                run_id = %context.run_id,
-                error = %unregister_error,
-                "failed to unregister VM from proxy after sandbox start failure"
-            );
-        }
+        let unregister_completed =
+            match unregister_proxy_registry(config, &source_ip, context.run_id).await {
+                Ok(()) => true,
+                Err(unregister_error) => {
+                    warn!(
+                        run_id = %context.run_id,
+                        error = %unregister_error,
+                        "failed to unregister VM from proxy after sandbox start failure"
+                    );
+                    false
+                }
+            };
         network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
-        destroy_sandbox_panic_safe(factory, sandbox).await;
-        return Err(SandboxPrepareError::retry(e.into()));
+        if guest_dns_readiness {
+            let observation = match network_log_start_offset {
+                Some(start_offset) => {
+                    inspect_readiness_log_segment(&network_log_path, start_offset).await
+                }
+                None => DnsReadinessLogObservation::unavailable(),
+            };
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %sandbox_id,
+                source_ip,
+                query_observed = observation.query_observed,
+                result_observed = observation.result_observed,
+                scan_status = observation.status.as_str(),
+                "guest DNS readiness network log observation"
+            );
+        }
+        let destroy_completed = destroy_sandbox_panic_safe(factory, sandbox)
+            .await
+            .is_completed();
+        let cleanup_completed = unregister_completed && destroy_completed;
+        let error = e.into();
+        return Err(if guest_dns_readiness {
+            SandboxPrepareError::guest_dns_readiness(error, cleanup_completed)
+        } else {
+            SandboxPrepareError::retry_without_workspace_image(error, cleanup_completed)
+        });
     }
     telemetry.record(
         RUNNER_FRESH_SANDBOX_START,
@@ -795,20 +912,28 @@ async fn create_started_sandbox(
             false,
             Some(&e.to_string()),
         );
-        if let Err(unregister_error) =
-            unregister_proxy_registry(config, &source_ip, context.run_id).await
-        {
-            warn!(
-                run_id = %context.run_id,
-                error = %unregister_error,
-                "failed to unregister VM from proxy after workspace mount failure"
-            );
-        }
+        let unregister_completed =
+            match unregister_proxy_registry(config, &source_ip, context.run_id).await {
+                Ok(()) => true,
+                Err(unregister_error) => {
+                    warn!(
+                        run_id = %context.run_id,
+                        error = %unregister_error,
+                        "failed to unregister VM from proxy after workspace mount failure"
+                    );
+                    false
+                }
+            };
         network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
-        destroy_sandbox_panic_safe(factory, sandbox).await;
-        return Err(SandboxPrepareError::retry(e));
+        let destroy_completed = destroy_sandbox_panic_safe(factory, sandbox)
+            .await
+            .is_completed();
+        return Err(SandboxPrepareError::retry_without_workspace_image(
+            e,
+            unregister_completed && destroy_completed,
+        ));
     }
     telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
     if let Some(notifier) = sandbox_prepared {
@@ -843,16 +968,31 @@ pub(super) async fn invalidate_workspace_cache_hit(
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum DestroySandboxOutcome {
+    Completed,
+    Uncertain,
+}
+
+impl DestroySandboxOutcome {
+    fn is_completed(self) -> bool {
+        matches!(self, Self::Completed)
+    }
+}
+
 pub(super) async fn destroy_sandbox_panic_safe(
     factory: &dyn SandboxFactory,
     sandbox: Box<dyn Sandbox>,
-) {
+) -> DestroySandboxOutcome {
     if AssertUnwindSafe(factory.destroy(sandbox))
         .catch_unwind()
         .await
         .is_err()
     {
         warn!("sandbox destroy panicked after start failure");
+        DestroySandboxOutcome::Uncertain
+    } else {
+        DestroySandboxOutcome::Completed
     }
 }
 
