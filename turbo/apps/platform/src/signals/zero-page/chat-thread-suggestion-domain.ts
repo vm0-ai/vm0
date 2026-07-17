@@ -33,7 +33,7 @@ export function serializeChatThreadMention(
   threadId: string,
   title: string,
 ): string {
-  const escapedTitle = title.replace(/[\\[\]]/g, "\\$&");
+  const escapedTitle = title.replace(/[\\[\]]/g, String.raw`\$&`);
   return `[${escapedTitle}](/chats/${threadId})`;
 }
 

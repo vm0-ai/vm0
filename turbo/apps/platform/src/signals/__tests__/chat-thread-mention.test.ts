@@ -27,14 +27,14 @@ describe("serializeChatThreadMention", () => {
 
 describe("splitChatThreadMentionSegments", () => {
   it("keeps plain text as a single text segment", () => {
-    expect(splitChatThreadMentionSegments("hello world")).toEqual([
+    expect(splitChatThreadMentionSegments("hello world")).toStrictEqual([
       { type: "text", text: "hello world" },
     ]);
   });
 
   it("splits mentions and surrounding text", () => {
     const line = `see [Weekly sync](/chats/${THREAD_ID}) for details`;
-    expect(splitChatThreadMentionSegments(line)).toEqual([
+    expect(splitChatThreadMentionSegments(line)).toStrictEqual([
       { type: "text", text: "see " },
       { type: "mention", threadId: THREAD_ID, title: "Weekly sync" },
       { type: "text", text: " for details" },
@@ -43,28 +43,28 @@ describe("splitChatThreadMentionSegments", () => {
 
   it("unescapes backslash-escaped characters in the title", () => {
     const line = serializeChatThreadMention(THREAD_ID, String.raw`a[b]c\d`);
-    expect(splitChatThreadMentionSegments(line)).toEqual([
+    expect(splitChatThreadMentionSegments(line)).toStrictEqual([
       { type: "mention", threadId: THREAD_ID, title: String.raw`a[b]c\d` },
     ]);
   });
 
   it("ignores links that are not chat thread paths", () => {
     const line = "[docs](https://example.com) and [x](/agents/abc)";
-    expect(splitChatThreadMentionSegments(line)).toEqual([
+    expect(splitChatThreadMentionSegments(line)).toStrictEqual([
       { type: "text", text: line },
     ]);
   });
 
   it("ignores chat links without a valid uuid", () => {
     const line = "[x](/chats/not-a-uuid)";
-    expect(splitChatThreadMentionSegments(line)).toEqual([
+    expect(splitChatThreadMentionSegments(line)).toStrictEqual([
       { type: "text", text: line },
     ]);
   });
 
   it("ignores links with an empty title", () => {
     const line = `[](/chats/${THREAD_ID})`;
-    expect(splitChatThreadMentionSegments(line)).toEqual([
+    expect(splitChatThreadMentionSegments(line)).toStrictEqual([
       { type: "text", text: line },
     ]);
   });
@@ -96,7 +96,7 @@ describe("chat thread mention in the workflow composer", () => {
       threadId: THREAD_ID,
       title: "Weekly sync",
     });
-    expect(mention.isAtom).toBe(true);
+    expect(mention.isAtom).toBeTruthy();
   });
 
   it("round-trips the mention between the doc and the draft string", () => {

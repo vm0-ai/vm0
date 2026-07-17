@@ -148,7 +148,7 @@ const ChatThreadMentionNode = Node.create({
         tag: "span[data-chat-thread-mention]",
         getAttrs: (element) => {
           return {
-            threadId: element.getAttribute("data-chat-thread-mention") ?? "",
+            threadId: element.dataset.chatThreadMention ?? "",
             title: element.textContent ?? "",
           };
         },
