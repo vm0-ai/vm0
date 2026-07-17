@@ -1840,6 +1840,9 @@ describe("connector catalog valid lifecycle", () => {
       "test-oauth-device",
       "oauth",
     );
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: false,
+    });
     const completed = await connectorsApi.pollDeviceAuth(
       actor,
       "test-oauth-device",
@@ -1967,6 +1970,9 @@ describe("connector catalog valid lifecycle", () => {
     });
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.AwsConnector]: false,
+    });
     const completed = await connectorsApi.completeExternalCode(actor, "aws", {
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
@@ -2643,7 +2649,7 @@ describe("connector catalog valid lifecycle", () => {
     mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
     const actor = bdd.user();
     await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.DatadogConnector]: true,
+      [FeatureSwitchKey.DatadogConnector]: false,
     });
     onTestFinished(async () => {
       await connectorsApi.deleteConnectorByType(actor, "datadog", [204, 404]);
@@ -2654,10 +2660,33 @@ describe("connector catalog valid lifecycle", () => {
     if (!state) {
       throw new Error("Expected Datadog authorization state");
     }
-    await connectorsApi.completeOauthCallback("datadog", {
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.DatadogConnector]: false,
+    });
+    const callback = await connectorsApi.completeOauthCallback("datadog", {
       code: "external-catalog-status",
       state,
       domain: "us3.datadoghq.com",
+    });
+    const callbackLocation = callback.headers.get("location");
+    expect(callbackLocation).not.toBeNull();
+    expect(
+      new URL(callbackLocation ?? "https://invalid.example").pathname,
+    ).toBe("/connector/success");
+    const hiddenConnectedList = await connectorsApi.listConnectors(actor);
+    expect(hiddenConnectedList.configuredTypes).not.toContain("datadog");
+    expect(hiddenConnectedList.connectors).toContainEqual(
+      expect.objectContaining({ type: "datadog", authMethod: "oauth" }),
+    );
+    expect(hiddenConnectedList.connectorProvidedBindings).toContainEqual(
+      expect.objectContaining({
+        connectorType: "datadog",
+        authMethod: "oauth",
+        name: "DATADOG_TOKEN",
+      }),
+    );
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.DatadogConnector]: true,
     });
 
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);

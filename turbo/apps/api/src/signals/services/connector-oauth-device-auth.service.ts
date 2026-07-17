@@ -38,7 +38,7 @@ import {
   encryptPersistentSecretValue,
 } from "./crypto.utils";
 import {
-  userConnectorActionResolver,
+  connectorActionResolver,
   type ConnectorActionMethodResolution,
   type ConnectorActionResolver,
   type ResolvedConnectorActionMethod,
@@ -204,8 +204,7 @@ function deviceAuthResolutionError(
         `${args.connectorRef} ${args.authMethodId} auth method does not use a device-auth grant`,
       );
     }
-    case "unavailable_connector":
-    case "unavailable_auth_method": {
+    case "hidden_auth_method": {
       return connectorOauthDeviceAuthDisabled;
     }
     case "missing_executable_capability": {
@@ -311,11 +310,10 @@ async function resolveRequestedDeviceAuthMethod(args: {
   readonly connectorRef: ConnectorCatalogRef;
   readonly authMethodId: ConnectorCatalogAuthMethodId;
 }) {
-  const resolved = await args.resolver.resolveMethod({
+  const resolved = await args.resolver.resolveNewActionMethod({
     connectorRef: args.connectorRef,
     authMethodId: args.authMethodId,
     expectedGrantKind: "device-auth",
-    requireAvailable: true,
   });
   if (!resolved.ok) {
     return deviceAuthResolutionError(resolved, args);
@@ -338,15 +336,8 @@ async function resolveStoredDeviceAuthMethod(args: {
     connectorRef: args.connectorRef,
     authMethodId: storedAuthMethod.data,
     expectedGrantKind: "device-auth",
-    requireAvailable: true,
   });
   if (!resolved.ok) {
-    if (
-      resolved.reason === "unavailable_connector" ||
-      resolved.reason === "unavailable_auth_method"
-    ) {
-      return connectorOauthDeviceAuthDisabled;
-    }
     return internalServerError("Invalid OAuth device authorization session");
   }
   return resolved;
@@ -777,7 +768,6 @@ const completedDeviceSessionResponse$ = command(
             orgId: args.orgId,
             userId: args.userId,
             type: args.method.connectorRef,
-            includeHiddenStoredConnector: true,
             snapshot: args.method.snapshot,
           }),
         );
@@ -909,9 +899,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       return badRequestMessage(agentTarget.message);
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(args.orgId, args.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolvedMethod = await resolveRequestedDeviceAuthMethod({
       resolver,
@@ -1049,9 +1037,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       return notFound("OAuth device authorization session not found");
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(args.orgId, args.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolvedMethod = await resolveStoredDeviceAuthMethod({
       resolver,

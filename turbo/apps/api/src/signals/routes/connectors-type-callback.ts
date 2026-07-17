@@ -26,7 +26,7 @@ import {
 } from "../services/connector-oauth-state.service";
 import { authorizeConnectedConnector$ } from "../services/connected-connector-authorization.service";
 import {
-  userConnectorActionResolverForSnapshot,
+  connectorActionResolverForSnapshot,
   type ConnectorActionResolver,
   type ResolvedConnectorActionMethod,
 } from "../services/connector-action-resolver.service";
@@ -368,7 +368,6 @@ async function resolveStoredCallbackMethod(args: {
     connectorRef: args.connectorRef,
     authMethodId: authMethodResult.data,
     expectedGrantKind: args.expectedGrantKind,
-    requireAvailable: true,
   });
   if (!resolvedMethod.ok) {
     return {
@@ -720,11 +719,7 @@ const handleOpenIdConnectorCallback$ = command(
     }
 
     const resolver = await get(
-      userConnectorActionResolverForSnapshot(
-        claimedState.storedState.orgId,
-        claimedState.storedState.userId,
-        args.snapshot,
-      ),
+      connectorActionResolverForSnapshot(args.snapshot),
     );
     signal.throwIfAborted();
     const resolvedState = await resolveOpenIdCallbackState(
@@ -881,11 +876,7 @@ const handleAuthCodeConnectorCallback$ = command(
     }
 
     const resolver = await get(
-      userConnectorActionResolverForSnapshot(
-        claimedState.storedState.orgId,
-        claimedState.storedState.userId,
-        args.snapshot,
-      ),
+      connectorActionResolverForSnapshot(args.snapshot),
     );
     signal.throwIfAborted();
     const resolvedState = await resolveCallbackState(

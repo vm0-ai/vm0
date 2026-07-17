@@ -36,7 +36,7 @@ import {
   encryptPersistentSecretValue,
 } from "./crypto.utils";
 import {
-  userConnectorActionResolver,
+  connectorActionResolver,
   type ConnectorActionMethodResolution,
   type ConnectorActionResolver,
   type ResolvedConnectorActionMethod,
@@ -123,8 +123,7 @@ function externalCodeResolutionError(
         `${args.connectorRef} ${args.authMethodId} auth method does not use an external-code grant`,
       );
     }
-    case "unavailable_connector":
-    case "unavailable_auth_method": {
+    case "hidden_auth_method": {
       return connectorExternalCodeDisabled;
     }
     case "missing_executable_capability": {
@@ -193,15 +192,8 @@ async function resolveStoredExternalCodeMethod(args: {
     connectorRef: args.connectorRef,
     authMethodId: storedAuthMethod.data,
     expectedGrantKind: "external-code",
-    requireAvailable: true,
   });
   if (!resolved.ok) {
-    if (
-      resolved.reason === "unavailable_connector" ||
-      resolved.reason === "unavailable_auth_method"
-    ) {
-      return connectorExternalCodeDisabled;
-    }
     return internalServerError("Invalid external-code authorization session");
   }
   return resolved;
@@ -598,7 +590,6 @@ const completedExternalCodeSessionResponse$ = command(
             orgId: args.orgId,
             userId: args.userId,
             type: args.method.connectorRef,
-            includeHiddenStoredConnector: true,
             snapshot: args.method.snapshot,
           }),
         );
@@ -756,15 +747,12 @@ export const startConnectorExternalCodeSession$ = command(
       return badRequestMessage(agentTarget.message);
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(args.orgId, args.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolved = await resolver.resolveMethod({
+    const resolved = await resolver.resolveNewActionMethod({
       connectorRef: args.type,
       authMethodId: args.authMethod,
       expectedGrantKind: "external-code",
-      requireAvailable: true,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
@@ -884,9 +872,7 @@ export const completeConnectorExternalCodeSession$ = command(
       return notFound("External-code authorization session not found");
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(args.orgId, args.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolvedMethod = await resolveStoredExternalCodeMethod({
       resolver,

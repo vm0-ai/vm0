@@ -21,7 +21,7 @@ import {
   linkGithubVm0User,
   verifyGithubConnectSignature,
 } from "./github-oauth.service";
-import { userConnectorActionResolver } from "./connector-action-resolver.service";
+import { connectorActionResolver } from "./connector-action-resolver.service";
 
 function errorResponse(status: 400 | 404 | 409, message: string, code: string) {
   return { status, body: { error: { message, code } } };
@@ -213,15 +213,12 @@ export const getGithubInstallation$ = command(
           });
     signal.throwIfAborted();
 
-    const resolver = await get(
-      userConnectorActionResolver(auth.orgId, auth.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolvedMethod = await resolver.resolveMethod({
+    const resolvedMethod = await resolver.resolveNewActionMethod({
       connectorRef: "github",
       authMethodId: getGithubOAuthAuthMethod(),
       expectedGrantKind: "auth-code",
-      requireAvailable: true,
     });
     signal.throwIfAborted();
     const connectUrl =

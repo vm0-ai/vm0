@@ -39,7 +39,7 @@ import {
   zeroConnectorSearch,
 } from "../services/zero-connector-data.service";
 import {
-  userConnectorActionResolver,
+  connectorActionResolver,
   type ConnectorActionMethodResolution,
   type ConnectorRefResolution,
 } from "../services/connector-action-resolver.service";
@@ -145,8 +145,7 @@ function connectorMethodResolutionError(
         `${args.connectorRef} ${args.authMethodId} auth method does not use ${args.expectedGrantLabel}`,
       );
     }
-    case "unavailable_connector":
-    case "unavailable_auth_method": {
+    case "hidden_auth_method": {
       return connectorUnavailable(args.connectorRef);
     }
     case "missing_executable_capability": {
@@ -157,14 +156,10 @@ function connectorMethodResolutionError(
 
 function connectorRefResolutionError(
   resolution: Exclude<ConnectorRefResolution, { readonly ok: true }>,
-  connectorRef: string,
 ) {
   switch (resolution.reason) {
     case "unknown_connector": {
       return notFound("Connector not found");
-    }
-    case "unavailable_connector": {
-      return connectorUnavailable(connectorRef);
     }
     case "missing_executable_capability": {
       return internalServerError("Connector execution is not configured");
@@ -183,16 +178,13 @@ const getConnectorListInner$ = computed(async (get) => {
 const getConnectorByTypeInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorsByTypeContract.get));
-  const resolver = await get(
-    userConnectorActionResolver(auth.orgId, auth.userId),
-  );
+  const resolver = await get(connectorActionResolver());
   const resolved = await resolver.resolveRef({
     connectorRef: params.type,
-    requireAvailable: false,
     requireExecutable: false,
   });
   if (!resolved.ok) {
-    return connectorRefResolutionError(resolved, params.type);
+    return connectorRefResolutionError(resolved);
   }
   const connector = await get(
     zeroConnectorByType({
@@ -213,18 +205,15 @@ const deleteConnectorByTypeInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroConnectorsByTypeContract.delete));
-    const resolver = await get(
-      userConnectorActionResolver(auth.orgId, auth.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveRef({
       connectorRef: params.type,
-      requireAvailable: false,
       requireExecutable: false,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
-      return connectorRefResolutionError(resolved, params.type);
+      return connectorRefResolutionError(resolved);
     }
     const deleted = await set(
       deleteZeroConnectorLocalState$,
@@ -249,16 +238,13 @@ const deleteConnectorByTypeInner$ = command(
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
-  const resolver = await get(
-    userConnectorActionResolver(auth.orgId, auth.userId),
-  );
+  const resolver = await get(connectorActionResolver());
   const resolved = await resolver.resolveRef({
     connectorRef: params.type,
-    requireAvailable: false,
     requireExecutable: false,
   });
   if (!resolved.ok) {
-    return connectorRefResolutionError(resolved, params.type);
+    return connectorRefResolutionError(resolved);
   }
   const diff = await get(
     zeroConnectorScopeDiff({
@@ -326,15 +312,12 @@ const connectManualGrantConnectorInner$ = command(
       return notFound(agentTarget.message);
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(auth.orgId, auth.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolved = await resolver.resolveMethod({
+    const resolved = await resolver.resolveNewActionMethod({
       connectorRef: params.type,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "manual",
-      requireAvailable: true,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
@@ -408,15 +391,12 @@ const connectNoAuthConnectorInner$ = command(
       return notFound(agentTarget.message);
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(auth.orgId, auth.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolved = await resolver.resolveMethod({
+    const resolved = await resolver.resolveNewActionMethod({
       connectorRef: params.type,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "none",
-      requireAvailable: true,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
@@ -493,15 +473,12 @@ const startConnectorOauthInner$ = command(
       return badRequestMessage(agentTarget.message);
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(auth.orgId, auth.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolved = await resolver.resolveMethod({
+    const resolved = await resolver.resolveNewActionMethod({
       connectorRef: type,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "auth-code",
-      requireAvailable: true,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
@@ -614,15 +591,12 @@ const startConnectorOpenIdInner$ = command(
       return badRequestMessage(agentTarget.message);
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(auth.orgId, auth.userId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolved = await resolver.resolveMethod({
+    const resolved = await resolver.resolveNewActionMethod({
       connectorRef: type,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "openid-auth",
-      requireAvailable: true,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {

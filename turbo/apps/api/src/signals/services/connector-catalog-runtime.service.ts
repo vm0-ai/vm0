@@ -86,6 +86,7 @@ export interface ConnectorRuntimeMethod {
   readonly authMethodId: ConnectorCatalogAuthMethodId;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
+  readonly availableForNewActions: boolean;
   readonly compatible: boolean;
   readonly executable: boolean;
   readonly registration: ConnectorAuthProviderRegistrationCapability | null;
@@ -517,6 +518,7 @@ function runtimeMethodEntry(args: {
   readonly connectorRef: ConnectorCatalogRef;
   readonly catalogMethod: PublicConnectorCatalogAuthMethodDetail;
   readonly method: ConnectorAuthMethodRuntimeConfig;
+  readonly availableForNewActions: boolean;
   readonly compatible: boolean;
 }): ConnectorRuntimeMethod {
   const registration = providerRegistrationFor(
@@ -528,6 +530,7 @@ function runtimeMethodEntry(args: {
     authMethodId: args.catalogMethod.id,
     catalogMethod: args.catalogMethod,
     method: args.method,
+    availableForNewActions: args.availableForNewActions,
     compatible: args.compatible,
     registration,
     executable:
@@ -565,6 +568,7 @@ const staticRuntimeSnapshot = singleton(() => {
             connectorRef,
             catalogMethod,
             method,
+            availableForNewActions: method.visible !== false,
             compatible: true,
           }),
         );
@@ -644,6 +648,7 @@ function externalRuntimeSnapshot(
           connectorRef: publicConnector.connectorRef,
           catalogMethod,
           method,
+          availableForNewActions: publicMethod.visible,
           compatible: acceptedConnectorCatalogMethodIsCompatible({
             snapshot: acceptedSnapshot,
             connectorRef: publicConnector.connectorRef,
@@ -712,6 +717,7 @@ interface RuntimeShadowMethod {
   readonly grantKind: ConnectorAuthMethodRuntimeConfig["grant"]["kind"];
   readonly accessKind: ConnectorAuthMethodRuntimeConfig["access"]["kind"];
   readonly revokeKind: ConnectorAuthMethodRuntimeConfig["revoke"]["kind"];
+  readonly availableForNewActions: boolean;
   readonly executable: boolean;
 }
 
@@ -727,6 +733,7 @@ function runtimeShadowMethods(
           grantKind: method.method.grant.kind,
           accessKind: method.method.access.kind,
           revokeKind: method.method.revoke.kind,
+          availableForNewActions: method.availableForNewActions,
           executable: method.executable,
         };
       });
@@ -865,7 +872,7 @@ export function getConnectorRuntimeStoredSecretDisplayInfo(
   return null;
 }
 
-export async function getConnectorRuntimeAvailableCatalogDetail(args: {
+async function getConnectorRuntimeAvailableCatalogDetail(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
   readonly connectorRef: string;
   readonly featureStates: ConnectorFeatureStates;

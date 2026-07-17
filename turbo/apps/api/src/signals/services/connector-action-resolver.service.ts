@@ -8,11 +8,9 @@ import type {
   PublicConnectorCatalogDetail,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
 
 import { db$ } from "../external/db";
 import {
-  getConnectorRuntimeAvailableCatalogDetail,
   getConnectorRuntimeConnector,
   getConnectorRuntimeMethod,
   loadConnectorRuntimeSnapshot,
@@ -20,14 +18,12 @@ import {
   type ConnectorRuntimeMethod,
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 type ConnectorCatalogGrantKind =
   PublicConnectorCatalogAuthMethodDetail["grantKind"];
 
 export type ConnectorRefResolutionFailure =
   | { readonly ok: false; readonly reason: "unknown_connector" }
-  | { readonly ok: false; readonly reason: "unavailable_connector" }
   | {
       readonly ok: false;
       readonly reason: "missing_executable_capability";
@@ -46,7 +42,7 @@ export type ConnectorActionResolutionFailure =
       readonly actualGrantKind: ConnectorCatalogGrantKind;
       readonly catalogConnector: PublicConnectorCatalogDetail;
     }
-  | { readonly ok: false; readonly reason: "unavailable_auth_method" };
+  | { readonly ok: false; readonly reason: "hidden_auth_method" };
 
 export type ResolvedConnectorRef = {
   readonly ok: true;
@@ -80,23 +76,36 @@ export type ConnectorRefsResolution =
       readonly connectorRef: ConnectorCatalogRef;
     });
 
+/**
+ * Resolves connector execution contracts, never connector discovery policy.
+ *
+ * Feature switches only filter UI/discovery projections. They are not
+ * authorization or compatibility boundaries and are never read here. Authored
+ * method visibility is separate: it controls new actions through
+ * resolveNewActionMethod, while resolveMethod deliberately lets in-flight and
+ * persisted credentials continue. Execution fails closed when the connector or
+ * method is absent, has the wrong grant kind, is incompatible, or lacks its
+ * local executable capability.
+ */
 export interface ConnectorActionResolver {
   readonly resolveRef: (args: {
     readonly connectorRef: ConnectorCatalogRef;
-    readonly requireAvailable: boolean;
     readonly requireExecutable: boolean;
-  }) => Promise<ConnectorRefResolution>;
+  }) => ConnectorRefResolution;
   readonly resolveMethod: (args: {
     readonly connectorRef: ConnectorCatalogRef;
     readonly authMethodId: ConnectorCatalogAuthMethodId;
     readonly expectedGrantKind: ConnectorCatalogGrantKind;
-    readonly requireAvailable: boolean;
-  }) => Promise<ConnectorActionMethodResolution>;
+  }) => ConnectorActionMethodResolution;
+  readonly resolveNewActionMethod: (args: {
+    readonly connectorRef: ConnectorCatalogRef;
+    readonly authMethodId: ConnectorCatalogAuthMethodId;
+    readonly expectedGrantKind: ConnectorCatalogGrantKind;
+  }) => ConnectorActionMethodResolution;
   readonly resolveRefs: (args: {
     readonly connectorRefs: readonly ConnectorCatalogRef[];
-    readonly requireAvailable: boolean;
     readonly requireExecutable: boolean;
-  }) => Promise<ConnectorRefsResolution>;
+  }) => ConnectorRefsResolution;
 }
 
 function resolvedRef(args: {
@@ -148,111 +157,86 @@ function executableMethod(args: {
   };
 }
 
-function createConnectorActionResolver(args: {
-  readonly featureStates: ReturnType<typeof getAllFeatureStates>;
-  readonly snapshot: ConnectorRuntimeSnapshot;
-}): ConnectorActionResolver {
-  const readAvailableConnector = async (connectorRef: ConnectorCatalogRef) => {
-    return await getConnectorRuntimeAvailableCatalogDetail({
-      snapshot: args.snapshot,
-      connectorRef,
-      featureStates: args.featureStates,
-    });
-  };
-
-  const resolveRef: ConnectorActionResolver["resolveRef"] = async (input) => {
+function createConnectorActionResolver(
+  snapshot: ConnectorRuntimeSnapshot,
+): ConnectorActionResolver {
+  const resolveRef: ConnectorActionResolver["resolveRef"] = (input) => {
     const runtimeConnector = getConnectorRuntimeConnector(
-      args.snapshot,
+      snapshot,
       input.connectorRef,
     );
     if (runtimeConnector === undefined) {
       return { ok: false, reason: "unknown_connector" };
     }
-    if (input.requireAvailable) {
-      const availableConnector = await readAvailableConnector(
-        input.connectorRef,
-      );
-      if (!availableConnector) {
-        return { ok: false, reason: "unavailable_connector" };
-      }
-    }
     return resolvedRef({
       connectorRef: input.connectorRef,
       requireExecutable: input.requireExecutable,
       runtimeConnector,
-      snapshot: args.snapshot,
+      snapshot,
+    });
+  };
+
+  const resolveMethod: ConnectorActionResolver["resolveMethod"] = (input) => {
+    const runtimeConnector = getConnectorRuntimeConnector(
+      snapshot,
+      input.connectorRef,
+    );
+    if (runtimeConnector === undefined) {
+      return { ok: false, reason: "unknown_connector" };
+    }
+    const catalogConnector = runtimeConnector.catalogConnector;
+    const catalogMethod = catalogConnector.authMethods.find((method) => {
+      return method.id === input.authMethodId;
+    });
+    if (!catalogMethod) {
+      return {
+        ok: false,
+        reason: "unknown_auth_method",
+        catalogConnector,
+      };
+    }
+    if (catalogMethod.grantKind !== input.expectedGrantKind) {
+      return {
+        ok: false,
+        reason: "wrong_grant_kind",
+        actualGrantKind: catalogMethod.grantKind,
+        catalogConnector,
+      };
+    }
+
+    const selectedRef = resolvedRef({
+      connectorRef: input.connectorRef,
+      requireExecutable: true,
+      runtimeConnector,
+      snapshot,
+    });
+    if (!selectedRef.ok) {
+      return selectedRef;
+    }
+    return executableMethod({
+      resolvedRef: selectedRef,
+      authMethodId: input.authMethodId,
+      catalogMethod,
     });
   };
 
   return {
     resolveRef,
+    resolveMethod,
 
-    async resolveMethod(input) {
-      const runtimeConnector = getConnectorRuntimeConnector(
-        args.snapshot,
-        input.connectorRef,
-      );
-      if (runtimeConnector === undefined) {
-        return { ok: false, reason: "unknown_connector" };
+    resolveNewActionMethod(input) {
+      const resolved = resolveMethod(input);
+      if (resolved.ok && !resolved.runtimeMethod.availableForNewActions) {
+        return { ok: false, reason: "hidden_auth_method" };
       }
-      const catalogConnector = runtimeConnector.catalogConnector;
-      const catalogMethod = catalogConnector.authMethods.find((method) => {
-        return method.id === input.authMethodId;
-      });
-      if (!catalogMethod) {
-        return {
-          ok: false,
-          reason: "unknown_auth_method",
-          catalogConnector,
-        };
-      }
-      if (catalogMethod.grantKind !== input.expectedGrantKind) {
-        return {
-          ok: false,
-          reason: "wrong_grant_kind",
-          actualGrantKind: catalogMethod.grantKind,
-          catalogConnector,
-        };
-      }
-
-      if (input.requireAvailable) {
-        const availableConnector = await readAvailableConnector(
-          input.connectorRef,
-        );
-        if (!availableConnector) {
-          return { ok: false, reason: "unavailable_connector" };
-        }
-        if (
-          !availableConnector.authMethods.some((method) => {
-            return method.id === input.authMethodId;
-          })
-        ) {
-          return { ok: false, reason: "unavailable_auth_method" };
-        }
-      }
-
-      const selectedRef = resolvedRef({
-        connectorRef: input.connectorRef,
-        requireExecutable: true,
-        runtimeConnector,
-        snapshot: args.snapshot,
-      });
-      if (!selectedRef.ok) {
-        return selectedRef;
-      }
-      return executableMethod({
-        resolvedRef: selectedRef,
-        authMethodId: input.authMethodId,
-        catalogMethod,
-      });
+      return resolved;
     },
 
-    async resolveRefs(input) {
+    resolveRefs(input) {
       const connectors: ResolvedConnectorRef[] = [];
       for (const connectorRef of input.connectorRefs) {
-        const resolved = await resolveRef({
+        const resolved = resolveRef({
           connectorRef,
-          requireAvailable: input.requireAvailable,
           requireExecutable: input.requireExecutable,
         });
         if (!resolved.ok) {
@@ -265,32 +249,19 @@ function createConnectorActionResolver(args: {
   };
 }
 
-export function userConnectorActionResolver(
-  orgId: string,
-  userId: string,
-): Computed<Promise<ConnectorActionResolver>> {
+export function connectorActionResolver(): Computed<
+  Promise<ConnectorActionResolver>
+> {
   return computed(async (get): Promise<ConnectorActionResolver> => {
-    const [overrides, snapshot] = await Promise.all([
-      get(userFeatureSwitchOverrides(orgId, userId)),
-      loadConnectorRuntimeSnapshot(get(db$)),
-    ]);
-    return createConnectorActionResolver({
-      featureStates: getAllFeatureStates({ orgId, userId, overrides }),
-      snapshot,
-    });
+    const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
+    return createConnectorActionResolver(snapshot);
   });
 }
 
-export function userConnectorActionResolverForSnapshot(
-  orgId: string,
-  userId: string,
+export function connectorActionResolverForSnapshot(
   snapshot: ConnectorRuntimeSnapshot,
-): Computed<Promise<ConnectorActionResolver>> {
-  return computed(async (get): Promise<ConnectorActionResolver> => {
-    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-    return createConnectorActionResolver({
-      featureStates: getAllFeatureStates({ orgId, userId, overrides }),
-      snapshot,
-    });
+): Computed<ConnectorActionResolver> {
+  return computed((): ConnectorActionResolver => {
+    return createConnectorActionResolver(snapshot);
   });
 }

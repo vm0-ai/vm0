@@ -41,7 +41,7 @@ import {
   ensureTestOrg$,
 } from "../services/cli-auth.service";
 import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
-import { userConnectorActionResolverForSnapshot } from "../services/connector-action-resolver.service";
+import { connectorActionResolverForSnapshot } from "../services/connector-action-resolver.service";
 import {
   getConnectorRuntimeConnector,
   loadConnectorRuntimeSnapshot,
@@ -268,13 +268,10 @@ const createTestConnector$ = command(
     }
 
     const authMethod = bodyResult.data.authMethod;
-    const resolver = await get(
-      userConnectorActionResolverForSnapshot(orgId, userId, snapshot),
-    );
+    const resolver = await get(connectorActionResolverForSnapshot(snapshot));
     signal.throwIfAborted();
     const resolvedRef = await resolver.resolveRef({
       connectorRef,
-      requireAvailable: false,
       requireExecutable: true,
     });
     signal.throwIfAborted();
@@ -306,7 +303,6 @@ const createTestConnector$ = command(
       connectorRef,
       authMethodId: authMethod,
       expectedGrantKind: catalogMethod.grantKind,
-      requireAvailable: false,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
@@ -402,13 +398,10 @@ const enableTestConnectors$ = command(
       return stringError(400, "Test user has no org — run test-token first");
     }
 
-    const resolver = await get(
-      userConnectorActionResolverForSnapshot(orgId, userId, snapshot),
-    );
+    const resolver = await get(connectorActionResolverForSnapshot(snapshot));
     signal.throwIfAborted();
     const resolvedRefs = await resolver.resolveRefs({
       connectorRefs,
-      requireAvailable: false,
       requireExecutable: true,
     });
     signal.throwIfAborted();

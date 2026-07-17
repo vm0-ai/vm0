@@ -465,14 +465,12 @@ export function zeroConnectorList(args: {
       visibleRefs,
       readEnv: optionalEnv,
     });
-    const visibleConnectorRefs = new Set(visibleRefs);
 
+    // Feature switches filter configuredTypes for discovery only. Stored
+    // connections remain manageable and executable after rollout is disabled.
     const now = nowDate();
     const connectorList: ConnectorWithRuntimeMethod[] = storedRows.flatMap(
       (row) => {
-        if (!visibleConnectorRefs.has(row.type)) {
-          return [];
-        }
         const runtimeMethod = getConnectorRuntimeMethod({
           snapshot,
           connectorRef: row.type,
@@ -602,36 +600,12 @@ export function zeroConnectorByType(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly type: string;
-  readonly includeHiddenStoredConnector?: boolean;
   readonly snapshot?: ConnectorRuntimeSnapshot;
 }): Computed<Promise<ConnectorResponse | null>> {
   return computed(async (get): Promise<ConnectorResponse | null> => {
-    const overrides = await get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    );
-    const featureStates = getAllFeatureStates({
-      userId: args.userId,
-      orgId: args.orgId,
-      overrides,
-    });
     const snapshot =
       args.snapshot ?? (await loadConnectorRuntimeSnapshot(get(db$)));
-    const storedConnector = await get(
-      storedConnectorByType({ ...args, snapshot }),
-    );
-    if (storedConnector) {
-      if (args.includeHiddenStoredConnector) {
-        return storedConnector;
-      }
-      const visibleConnectorRefs = await listConnectorRuntimeVisibleRefs({
-        snapshot,
-        featureStates,
-      });
-      if (visibleConnectorRefs.includes(args.type)) {
-        return storedConnector;
-      }
-    }
-    return null;
+    return await get(storedConnectorByType({ ...args, snapshot }));
   });
 }
 

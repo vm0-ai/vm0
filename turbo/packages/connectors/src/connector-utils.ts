@@ -1364,6 +1364,11 @@ export interface AvailableConnectorAuthMethodsOptions {
   readonly apiAuthMethodPolicy?: ApiAuthMethodPolicy;
 }
 
+/**
+ * Returns whether an auth method belongs in user-specific discovery output.
+ * Feature switches are UI rollout state, not execution authorization. Runtime
+ * callers must resolve the method contract without consulting this function.
+ */
 export function isConnectorAuthMethodAvailable(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,

@@ -24,7 +24,7 @@ import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
-  userConnectorActionResolver,
+  connectorActionResolver,
   type ConnectorActionResolver,
   type ResolvedConnectorActionMethod,
 } from "../services/connector-action-resolver.service";
@@ -111,13 +111,22 @@ function githubUserOauthClient(
 
 async function resolveGithubOauthMethod(
   resolver: ConnectorActionResolver,
-  requireAvailable: boolean,
 ): Promise<ResolvedConnectorActionMethod | null> {
   const resolved = await resolver.resolveMethod({
     connectorRef: GITHUB_CONNECTOR_TYPE,
     authMethodId: getGithubOAuthAuthMethod(),
     expectedGrantKind: "auth-code",
-    requireAvailable,
+  });
+  return resolved.ok ? resolved : null;
+}
+
+async function resolveGithubOauthMethodForNewAction(
+  resolver: ConnectorActionResolver,
+): Promise<ResolvedConnectorActionMethod | null> {
+  const resolved = await resolver.resolveNewActionMethod({
+    connectorRef: GITHUB_CONNECTOR_TYPE,
+    authMethodId: getGithubOAuthAuthMethod(),
+    expectedGrantKind: "auth-code",
   });
   return resolved.ok ? resolved : null;
 }
@@ -384,11 +393,9 @@ const connectGithubUserAfterSetup$ = command(
         sendsRedirectUri: false,
       });
 
-      const resolver = await get(
-        userConnectorActionResolver(args.orgId, vm0UserId),
-      );
+      const resolver = await get(connectorActionResolver());
       signal.throwIfAborted();
-      const resolvedMethod = await resolveGithubOauthMethod(resolver, true);
+      const resolvedMethod = await resolveGithubOauthMethod(resolver);
       signal.throwIfAborted();
       if (!resolvedMethod || resolvedMethod.method.grant.kind !== "auth-code") {
         return {
@@ -717,9 +724,9 @@ const connectGithubUserOauth$ = command(
 
     const origin = getOAuthWebOrigin(request);
     const db = set(writeDb$);
-    const resolver = await get(userConnectorActionResolver(orgId, auth.userId));
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolvedMethod = await resolveGithubOauthMethod(resolver, true);
+    const resolvedMethod = await resolveGithubOauthMethodForNewAction(resolver);
     signal.throwIfAborted();
     if (!resolvedMethod) {
       return worksErrorRedirect("GitHub OAuth is not available");
@@ -780,11 +787,9 @@ const callbackGithubUserOauth$ = command(
       );
     }
 
-    const resolver = await get(
-      userConnectorActionResolver(state.orgId, state.vm0UserId),
-    );
+    const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolvedMethod = await resolveGithubOauthMethod(resolver, true);
+    const resolvedMethod = await resolveGithubOauthMethod(resolver);
     signal.throwIfAborted();
     if (!resolvedMethod) {
       return worksErrorRedirect("GitHub OAuth is not available");

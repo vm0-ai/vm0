@@ -412,6 +412,11 @@ export async function loadAcceptedConnectorCatalogSnapshot(
   return catalog;
 }
 
+/**
+ * Applies rollout policy to discovery projections only. Feature switches must
+ * never be reused as connector authorization or execution checks;
+ * ConnectorActionResolver intentionally does not read them.
+ */
 function featureSwitchEnabled(
   method: PublicArtifactAuthMethod,
   featureStates: ConnectorFeatureStates,
