@@ -902,6 +902,7 @@ PY
             "builtin_firewall_cache.py",
             "flow_metadata_keys.py",
             "matching.py",
+            "mitmproxy_compat.py",
             "registry.py",
             "response_streaming.py",
             "runner_flush_lifecycle.py",

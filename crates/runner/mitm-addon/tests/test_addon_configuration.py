@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from mitmproxy.addonmanager import Loader
 
 import mitm_addon
@@ -119,6 +120,15 @@ class TestAddonConfiguration:
             runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
             runner_flush_lifecycle.handle_runner_usage_flush_signal,
         )
+
+    def test_load_rejects_unreviewed_mitmproxy_version(self):
+        loader = Loader(_RecordingMaster())
+
+        with (
+            patch.object(mitm_addon.mitmproxy_compat.version, "VERSION", "12.2.3"),
+            pytest.raises(RuntimeError, match=r"requires mitmproxy 12\.2\.2; found 12\.2\.3"),
+        ):
+            mitm_addon.load(loader)
 
     def test_configure_writes_pending_state_with_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
