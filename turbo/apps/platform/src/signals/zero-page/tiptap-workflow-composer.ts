@@ -819,6 +819,23 @@ function createInsertChatThreadCommand(
   });
 }
 
+function createInsertTextCommands(editor: Editor) {
+  const insertText$ = command((_context, value: string) => {
+    editor.chain().focus().insertContent(value).run();
+  });
+  const appendText$ = command((_context, value: string) => {
+    const text = value.trim();
+    if (!text) {
+      return;
+    }
+    editor.commands.focus("end");
+    const textblock = activeTextblock(editor);
+    const content = textblock?.value.trimEnd() ? `\n${text}` : text;
+    editor.commands.insertContent(content);
+  });
+  return { insertText$, appendText$ };
+}
+
 function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
   return {
     update(_editor: Editor): void {},
@@ -929,19 +946,7 @@ export function createWorkflowComposerSignals(
     editor,
     activeChatThreadSuggestionRange$,
   );
-  const insertText$ = command((_context, value: string) => {
-    editor.chain().focus().insertContent(value).run();
-  });
-  const appendText$ = command((_context, value: string) => {
-    const text = value.trim();
-    if (!text) {
-      return;
-    }
-    editor.commands.focus("end");
-    const textblock = activeTextblock(editor);
-    const content = textblock?.value.trimEnd() ? `\n${text}` : text;
-    editor.commands.insertContent(content);
-  });
+  const { insertText$, appendText$ } = createInsertTextCommands(editor);
   const hasInput$ = computed((get) => {
     return get(draft.hasInput$) || get(feedback.active$);
   });
