@@ -209,20 +209,19 @@ class UsageWebhookServer:
             self._server = None
             self._thread = None
 
-    def _next_response(self) -> WebhookResponse:
-        with self._lock:
-            if self._responses:
-                return self._responses.popleft()
-        return WebhookResponse()
-
-    def _record_request(self, request: CapturedWebhookRequest) -> None:
+    def _record_request_and_reserve_response(
+        self, request: CapturedWebhookRequest
+    ) -> WebhookResponse:
         with self._lock:
             self._requests.append(request)
+            if self._responses:
+                return self._responses.popleft()
+            return WebhookResponse()
 
     def _handle_request(self, handler: BaseHTTPRequestHandler) -> None:
         content_length = int(handler.headers.get("content-length", "0"))
         body = handler.rfile.read(content_length)
-        self._record_request(
+        response = self._record_request_and_reserve_response(
             CapturedWebhookRequest(
                 method=handler.command,
                 path=handler.path,
@@ -231,7 +230,6 @@ class UsageWebhookServer:
             )
         )
 
-        response = self._next_response()
         handler.send_response(response.status)
         for name, value in response.headers:
             handler.send_header(name, value)

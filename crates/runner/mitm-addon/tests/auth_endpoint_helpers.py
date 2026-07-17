@@ -162,21 +162,20 @@ class FakeAuthEndpoint:
             self._server = None
             self._thread = None
 
-    def _record_request(self, request: AuthEndpointRequest) -> None:
+    def _record_request_and_reserve_response(
+        self, request: AuthEndpointRequest
+    ) -> AuthEndpointResponse:
         with self._condition:
             self._requests.append(request)
             self._condition.notify_all()
-
-    def _next_response(self) -> AuthEndpointResponse:
-        with self._condition:
             if self._responses:
                 return self._responses.popleft()
-        return AuthEndpointResponse(status=500, body=b"unexpected auth request")
+            return AuthEndpointResponse(status=500, body=b"unexpected auth request")
 
     def _handle_request(self, handler: BaseHTTPRequestHandler) -> None:
         content_length = int(handler.headers.get("content-length", "0"))
         body = handler.rfile.read(content_length)
-        self._record_request(
+        response = self._record_request_and_reserve_response(
             AuthEndpointRequest(
                 method=handler.command,
                 path=handler.path,
@@ -185,7 +184,6 @@ class FakeAuthEndpoint:
             )
         )
 
-        response = self._next_response()
         if response.release_event is not None:
             response.release_event.wait()
 
