@@ -5,10 +5,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::process::{
-    ProcessTreeKillTarget, kill_and_reap_child_with_target, kill_process_tree_target,
-    process_signal_pid, process_tree_kill_target, refresh_process_tree_kill_target,
-};
+use crate::process::{kill_and_reap_child, kill_owned_child_process_group, process_signal_pid};
 use crate::threading::spawn_scoped_named;
 
 /// After the child process exits, continue draining stdout/stderr for this
@@ -65,32 +62,27 @@ pub(crate) fn await_drain_deadline(
 }
 
 /// Wait for `child` while observing its owning connection cancellation flag
-/// and allowing pre-reap process-tree cleanup after natural exit.
+/// and allowing direct-child-group cleanup before reap after natural exit.
 pub(crate) fn wait_with_kill_timeout_or_connection_cancelled(
     child: Child,
     timeout_ms: u32,
     connection_cancel: &AtomicBool,
     pre_reap_cleanup: impl FnMut() -> bool,
 ) -> WaitOutcome {
-    let kill_target = process_tree_kill_target(child.id());
     wait_with_kill_timeout_or_cancelled_by(
         child,
-        kill_target,
         timeout_ms,
         || connection_cancel.load(Ordering::Acquire),
         pre_reap_cleanup,
     )
 }
 
-/// Wait for `child` while observing either cancel flag and using a kill target
-/// snapshotted before entering the wait path.
+/// Wait for `child` while observing either cancel flag.
 ///
 /// Exec operations have both connection-level cancellation and request-level
-/// cancellation, and they snapshot process-tree targets before stdio setup can
-/// introduce cleanup races.
-pub(crate) fn wait_with_kill_timeout_or_cancelled_either_with_target(
+/// cancellation.
+pub(crate) fn wait_with_kill_timeout_or_cancelled_either(
     child: Child,
-    kill_target: ProcessTreeKillTarget,
     timeout_ms: u32,
     first_cancel: &AtomicBool,
     second_cancel: &AtomicBool,
@@ -98,7 +90,6 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled_either_with_target(
 ) -> WaitOutcome {
     wait_with_kill_timeout_or_cancelled_by(
         child,
-        kill_target,
         timeout_ms,
         || first_cancel.load(Ordering::Acquire) || second_cancel.load(Ordering::Acquire),
         pre_reap_cleanup,
@@ -107,14 +98,11 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled_either_with_target(
 
 fn wait_with_kill_timeout_or_cancelled_by(
     mut child: Child,
-    mut kill_target: ProcessTreeKillTarget,
     timeout_ms: u32,
     is_cancelled: impl Fn() -> bool,
     mut pre_reap_cleanup: impl FnMut() -> bool,
 ) -> WaitOutcome {
     let child_id = child.id();
-    debug_assert_eq!(kill_target.child_id(), child_id);
-    refresh_process_tree_kill_target(&mut kill_target);
     let deadline = if timeout_ms > 0 {
         let now = Instant::now();
         Some(
@@ -136,38 +124,36 @@ fn wait_with_kill_timeout_or_cancelled_by(
             Err(e) => {
                 // Without a non-reaping observer, natural exit cannot be
                 // distinguished safely from timeout/cancel before reap.
-                kill_and_reap_child_with_target(child, kill_target);
+                kill_and_reap_child(child);
                 return WaitOutcome::WaitFailed(format!("failed to spawn wait observer: {e}"));
             }
         };
 
-        let mut decision = wait_for_exit_timeout_or_cancelled(&observed_rx, deadline, is_cancelled);
-        if matches!(&decision, WaitDecision::Kill(_)) {
-            refresh_process_tree_kill_target(&mut kill_target);
-            decision = apply_final_exit_priority(decision, &observed_rx);
-        }
+        let decision = apply_final_exit_priority(
+            wait_for_exit_timeout_or_cancelled(&observed_rx, deadline, is_cancelled),
+            &observed_rx,
+        );
 
         match decision {
             WaitDecision::Exited => {
                 let observed = match observer.join() {
                     Ok(observed) => observed,
                     Err(panic) => {
-                        kill_and_reap_child_with_target(child, kill_target);
+                        kill_and_reap_child(child);
                         std::panic::resume_unwind(panic);
                     }
                 };
                 if let Err(e) = observed {
-                    kill_and_reap_child_with_target(child, kill_target);
+                    kill_and_reap_child(child);
                     return WaitOutcome::WaitFailed(format!(
                         "failed to observe child exit without reaping: {e}"
                     ));
                 }
 
                 if pre_reap_cleanup() {
-                    refresh_process_tree_kill_target(&mut kill_target);
                     // SAFETY: the exit observer used WNOWAIT, so this owner
                     // still holds the unreaped direct child identity.
-                    let _ = unsafe { kill_process_tree_target(kill_target) };
+                    let _ = unsafe { kill_owned_child_process_group(child_id) };
                 }
 
                 match child.wait() {
@@ -176,7 +162,7 @@ fn wait_with_kill_timeout_or_cancelled_by(
                 }
             }
             WaitDecision::Kill(reason) => {
-                let child_killed = kill_child(&mut child, kill_target);
+                let child_killed = kill_child(&mut child);
                 let observed = observer.join();
                 let status = child.wait();
 
@@ -285,99 +271,21 @@ fn wait_for_child_exit_without_reap(child_id: u32) -> io::Result<()> {
     }
 }
 
-fn kill_child(child: &mut Child, kill_target: ProcessTreeKillTarget) -> bool {
+fn kill_child(child: &mut Child) -> bool {
     // SAFETY: this owner has not reaped child, so its PID/process group cannot
-    // have been reused since the owner refreshed kill_target.
-    let tree_killed = unsafe { kill_process_tree_target(kill_target) };
+    // have been reused.
+    let group_killed = unsafe { kill_owned_child_process_group(child.id()) };
     let child_killed = child.kill().is_ok();
-    tree_killed || child_killed
+    group_killed || child_killed
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[cfg(target_os = "linux")]
-    use std::io::Write;
-    #[cfg(target_os = "linux")]
-    use std::os::unix::fs::PermissionsExt;
-    #[cfg(target_os = "linux")]
     use std::os::unix::process::CommandExt;
-    #[cfg(target_os = "linux")]
-    use std::path::{Path, PathBuf};
-    #[cfg(target_os = "linux")]
-    use std::process::Child;
     use std::process::{Command, Stdio};
     use std::sync::Arc;
-    #[cfg(target_os = "linux")]
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    #[cfg(target_os = "linux")]
-    use crate::test_support::{kill_pidfd_and_wait, open_pidfd, wait_for_pidfd_exit};
-
-    #[cfg(target_os = "linux")]
-    struct TempDirGuard(PathBuf);
-
-    #[cfg(target_os = "linux")]
-    impl Drop for TempDirGuard {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    fn temp_dir(label: &str) -> (PathBuf, TempDirGuard) {
-        let dir = std::env::temp_dir().join(format!(
-            "vsock-guest-{label}-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let guard = TempDirGuard(dir.clone());
-        (dir, guard)
-    }
-
-    #[cfg(target_os = "linux")]
-    fn wait_for_path(path: &Path, timeout: Duration) -> bool {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if path.exists() {
-                return true;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        path.exists()
-    }
-
-    #[cfg(target_os = "linux")]
-    fn read_pid_file<T: std::str::FromStr>(path: &Path) -> Option<T> {
-        std::fs::read_to_string(path).ok()?.trim().parse().ok()
-    }
-
-    #[cfg(target_os = "linux")]
-    fn wait_for_pid_file<T: std::str::FromStr>(path: &Path, timeout: Duration) -> Option<T> {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if let Some(pid) = read_pid_file(path) {
-                return Some(pid);
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        read_pid_file(path)
-    }
-
-    #[cfg(target_os = "linux")]
-    fn kill_spawned_child(child: &mut Option<Child>) {
-        if let Some(mut child) = child.take() {
-            let mut target = process_tree_kill_target(child.id());
-            refresh_process_tree_kill_target(&mut target);
-            let _ = kill_child(&mut child, target);
-            let _ = child.wait();
-        }
-    }
 
     #[test]
     fn fast_exit_wait_does_not_pay_cancel_poll_interval_per_child() {
@@ -451,20 +359,12 @@ mod tests {
             command.process_group(0);
         }
         let child = command.spawn().unwrap();
-        let kill_target = process_tree_kill_target(child.id());
-
         let cancel_thread = thread::spawn(move || {
             cancel_for_thread.store(true, Ordering::Release);
         });
 
-        let outcome = wait_with_kill_timeout_or_cancelled_either_with_target(
-            child,
-            kill_target,
-            0,
-            &cancel,
-            &other_cancel,
-            || false,
-        );
+        let outcome =
+            wait_with_kill_timeout_or_cancelled_either(child, 0, &cancel, &other_cancel, || false);
         cancel_thread.join().unwrap();
 
         assert!(matches!(outcome, WaitOutcome::Cancelled));
@@ -485,11 +385,8 @@ mod tests {
             command.process_group(0);
         }
         let child = command.spawn().unwrap();
-        let kill_target = process_tree_kill_target(child.id());
-
-        let outcome = wait_with_kill_timeout_or_cancelled_either_with_target(
+        let outcome = wait_with_kill_timeout_or_cancelled_either(
             child,
-            kill_target,
             30_000,
             &cancel,
             &other_cancel,
@@ -566,106 +463,5 @@ mod tests {
 
         assert!(cleanup_called);
         assert!(matches!(outcome, WaitOutcome::Exited(status) if status.success()));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn owner_kill_refreshes_stale_process_tree_target_before_signal() {
-        let (dir, _guard) = temp_dir("owner-kill-refresh");
-        let fifo = dir.join("parent-fifo");
-        let ready = dir.join("ready");
-        let child_pid_path = dir.join("setsid-child-pid");
-
-        let mut command = Command::new("sh");
-        command
-            .arg("-c")
-            .arg(
-                "mkfifo \"$FIFO\"; \
-                 exec 3<> \"$FIFO\"; \
-                 : > \"$READY\"; \
-                 read _ <&3; \
-                 exec 3>&-; \
-                 setsid sh -c 'printf %s \"$$\" > \"$CHILD_PID\"; sleep 60' & \
-                 wait",
-            )
-            .env("FIFO", &fifo)
-            .env("READY", &ready)
-            .env("CHILD_PID", &child_pid_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        command.process_group(0);
-
-        let mut child = Some(command.spawn().unwrap());
-        if !wait_for_path(&ready, Duration::from_secs(2)) {
-            kill_spawned_child(&mut child);
-            panic!("parent should block before spawning the setsid child");
-        }
-
-        let stale_target = process_tree_kill_target(child.as_ref().unwrap().id());
-        {
-            let mut fifo_writer = match std::fs::OpenOptions::new().write(true).open(&fifo) {
-                Ok(writer) => writer,
-                Err(e) => {
-                    kill_spawned_child(&mut child);
-                    panic!("failed to open parent fifo: {e}");
-                }
-            };
-            if let Err(e) = writeln!(fifo_writer, "go") {
-                kill_spawned_child(&mut child);
-                panic!("failed to write parent fifo: {e}");
-            }
-        }
-
-        let child_pid: libc::pid_t =
-            match wait_for_pid_file(&child_pid_path, Duration::from_secs(2)) {
-                Some(pid) => pid,
-                None => {
-                    let child_pid_text =
-                        std::fs::read_to_string(&child_pid_path).unwrap_or_default();
-                    kill_spawned_child(&mut child);
-                    panic!("failed to parse setsid child pid {child_pid_text:?}");
-                }
-            };
-        if child_pid <= 0 {
-            kill_spawned_child(&mut child);
-            panic!("setsid child pid should be positive, got {child_pid}");
-        }
-        let child_pidfd = match open_pidfd(child_pid) {
-            Ok(pidfd) => pidfd,
-            Err(e) => {
-                kill_spawned_child(&mut child);
-                // SAFETY: best-effort cleanup of a test-owned process.
-                let _ = unsafe { libc::kill(child_pid, libc::SIGKILL) };
-                panic!("failed to open pidfd for setsid child pid {child_pid}: {e}");
-            }
-        };
-
-        let mut refreshed_target = stale_target;
-        refresh_process_tree_kill_target(&mut refreshed_target);
-        let child_killed = kill_child(child.as_mut().unwrap(), refreshed_target);
-        if !child_killed {
-            kill_spawned_child(&mut child);
-            kill_pidfd_and_wait(&child_pidfd)
-                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
-            panic!("owner kill should signal at least one process target");
-        }
-        let _ = child.take().unwrap().wait().unwrap();
-
-        match wait_for_pidfd_exit(&child_pidfd, Duration::from_secs(2)) {
-            Ok(true) => {}
-            Ok(false) => {
-                kill_pidfd_and_wait(&child_pidfd)
-                    .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
-                panic!(
-                    "owner kill should terminate delayed setsid child pid {child_pid} after refreshing stale target"
-                );
-            }
-            Err(e) => {
-                let cleanup = kill_pidfd_and_wait(&child_pidfd);
-                panic!(
-                    "failed to wait for delayed setsid child pid {child_pid} exit: {e}; cleanup={cleanup:?}"
-                );
-            }
-        }
     }
 }

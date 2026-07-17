@@ -765,7 +765,7 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-cancel.sh
 
-      - name: Test supervised process containment
+      - name: Test exec process containment
         id: process_containment
         timeout-minutes: 5
         continue-on-error: true

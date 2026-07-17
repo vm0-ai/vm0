@@ -229,12 +229,56 @@ fn prepare_for_reuse_rejects_stale_operation_cgroup() -> TestResult {
 }
 
 #[test]
-fn prepare_for_reuse_rejects_populated_supervised_cgroup() -> TestResult {
+fn prepare_for_reuse_rejects_missing_current_operation_cgroup() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
-    std::fs::write(containment.base.join("cgroup.events"), b"populated 1\n")?;
+    std::fs::remove_dir(containment.base.join("exec-current"))?;
 
     let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_unpopulated_exec_cgroup() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(containment.base.join("cgroup.events"), b"populated 0\n")?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_direct_processes_in_exec_base() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(containment.base.join("cgroup.procs"), b"42\n")?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
+fn prepare_for_reuse_rejects_current_process_outside_exec_base() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+
+    let output = run_helper_with_current_group(&request, &containment, "/outside/exec-current")?;
 
     assert_eq!(
         output.status.code(),
@@ -271,11 +315,12 @@ impl ContainmentFixture {
     fn new() -> TestResult<Self> {
         let directory = tempfile::tempdir()?;
         let root = directory.path().join("cgroup");
-        let base = root.join("vm0-supervised");
+        let base = root.join("vm0-exec");
         std::fs::create_dir_all(&base)?;
+        std::fs::create_dir(base.join("exec-current"))?;
         for (filename, content) in [
             ("cgroup.procs", ""),
-            ("cgroup.events", "populated 0\nfrozen 0\n"),
+            ("cgroup.events", "populated 1\nfrozen 0\n"),
             ("cgroup.kill", ""),
             ("cgroup.subtree_control", ""),
         ] {
@@ -311,9 +356,18 @@ fn run_helper_with_containment(
     request: &ReusePreparationRequest,
     containment: &ContainmentFixture,
 ) -> Result<Output, Box<dyn std::error::Error>> {
+    run_helper_with_current_group(request, containment, "/vm0-exec/exec-current")
+}
+
+fn run_helper_with_current_group(
+    request: &ReusePreparationRequest,
+    containment: &ContainmentFixture,
+    current_group: &str,
+) -> Result<Output, Box<dyn std::error::Error>> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
         .env_clear()
         .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
+        .env("VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP", current_group)
         .arg("prepare-for-reuse")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -336,6 +390,10 @@ fn run_helper_with_bind_mount(
     let mut child = Command::new("/usr/bin/unshare")
         .env_clear()
         .env("VM0_TEST_PROCESS_CONTAINMENT_ROOT", &containment.root)
+        .env(
+            "VM0_TEST_PROCESS_CONTAINMENT_CURRENT_GROUP",
+            "/vm0-exec/exec-current",
+        )
         .env("VM0_MOUNT_SOURCE", mount_source)
         .env("VM0_MOUNT_TARGET", mount_target)
         .env("VM0_HELPER", env!("CARGO_BIN_EXE_guest-agent"))
