@@ -42,7 +42,7 @@ def _write_auth_base_firewall_registry(tmp_path: Path) -> Path:
             api_entry={
                 "base": f"https://{_PLACEHOLDER_HOST}",
                 "auth": {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
-                "permissions": [{"name": "send", "rules": ["GET /"]}],
+                "permissions": [{"name": "send", "rules": ["GET /", "HEAD /"]}],
             },
             network_policy={
                 "allow": ["send"],
@@ -74,9 +74,10 @@ def _start_http_layer(
     return client, http_layer
 
 
-def _start_http2_get(
+def _start_http2_request(
     addon_context: taddons.context,
     *,
+    method: str,
     end_stream: bool,
 ) -> tuple[HttpLayer, HttpRequestHeadersHook]:
     client, http_layer = _start_http_layer(addon_context, alpn=b"h2")
@@ -86,7 +87,7 @@ def _start_http2_get(
     http2.send_headers(
         1,
         [
-            (b":method", b"GET"),
+            (b":method", method.encode()),
             (b":scheme", b"https"),
             (b":authority", _PLACEHOLDER_HOST.encode()),
             (b":path", b"/"),
@@ -100,8 +101,10 @@ def _start_http2_get(
     return http_layer, request_headers_hook
 
 
-def _start_http1_get(
+def _start_http1_request(
     addon_context: taddons.context,
+    *,
+    method: str,
 ) -> tuple[HttpLayer, HttpRequestHeadersHook]:
     client, http_layer = _start_http_layer(addon_context, alpn=b"http/1.1")
 
@@ -109,7 +112,7 @@ def _start_http1_get(
         http_layer.handle_event(
             events.DataReceived(
                 client,
-                b"GET / HTTP/1.1\r\nHost: placeholder.example.com\r\n\r\n",
+                f"{method} / HTTP/1.1\r\nHost: placeholder.example.com\r\n\r\n".encode(),
             )
         )
     )
@@ -119,8 +122,10 @@ def _start_http1_get(
     return http_layer, request_headers_hook
 
 
-async def test_http2_open_auth_base_get_without_length_is_rejected_before_body(
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+async def test_http2_open_auth_base_request_without_length_is_rejected_before_body(
     tmp_path: Path,
+    method: Literal["GET", "HEAD"],
 ) -> None:
     registry_path = _write_auth_base_firewall_registry(tmp_path)
     get_headers = AsyncMock()
@@ -134,8 +139,9 @@ async def test_http2_open_auth_base_get_without_length_is_rejected_before_body(
             vm0_api_url="https://api.vm0.ai",
             vm0_proxy_registry_path=str(registry_path),
         )
-        http_layer, request_headers_hook = _start_http2_get(
+        http_layer, request_headers_hook = _start_http2_request(
             addon_context,
+            method=method,
             end_stream=False,
         )
         original_headers = tuple(request_headers_hook.flow.request.headers.fields)
@@ -169,9 +175,11 @@ async def test_http2_open_auth_base_get_without_length_is_rejected_before_body(
 
 
 @pytest.mark.parametrize("http_version", ["HTTP/1.1", "HTTP/2"])
-async def test_headers_only_auth_base_get_without_length_is_forwarded(
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+async def test_headers_only_auth_base_request_without_length_is_forwarded(
     tmp_path: Path,
     http_version: Literal["HTTP/1.1", "HTTP/2"],
+    method: Literal["GET", "HEAD"],
 ) -> None:
     registry_path = _write_auth_base_firewall_registry(tmp_path)
     token_meta = {
@@ -194,12 +202,16 @@ async def test_headers_only_auth_base_get_without_length_is_forwarded(
             vm0_proxy_registry_path=str(registry_path),
         )
         if http_version == "HTTP/2":
-            http_layer, request_headers_hook = _start_http2_get(
+            http_layer, request_headers_hook = _start_http2_request(
                 addon_context,
+                method=method,
                 end_stream=True,
             )
         else:
-            http_layer, request_headers_hook = _start_http1_get(addon_context)
+            http_layer, request_headers_hook = _start_http1_request(
+                addon_context,
+                method=method,
+            )
         original_headers = tuple(request_headers_hook.flow.request.headers.fields)
 
         await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
