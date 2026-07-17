@@ -1,0 +1,19 @@
+import operator
+
+dict.__getitem__(flow.metadata, "vm_run_id")
+dict.get(flow.metadata, "firewall_name")
+operator.getitem(flow.metadata, "firewall_action")
+
+meta = flow.metadata
+dict.__getitem__(meta, "firewall_error")
+dict.get(meta, "firewall_base", None)
+operator.getitem(meta, "firewall_permission")
+
+dict.__getitem__(flow.metadata, metadata_keys.VM_RUN_ID)
+dict.get(flow.metadata, metadata_keys.FIREWALL_NAME)
+operator.getitem(flow.metadata, metadata_keys.FIREWALL_ACTION)
+
+external = {"vm_run_id": "external"}
+dict.__getitem__(external, "vm_run_id")
+dict.get(external, "firewall_name")
+operator.getitem(external, "firewall_action")
