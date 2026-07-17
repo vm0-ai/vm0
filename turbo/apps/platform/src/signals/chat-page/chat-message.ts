@@ -18,7 +18,7 @@ import { zeroClient$ } from "../api-client.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
-import type { MailDraftSignals } from "./mail-draft.ts";
+import type { MailDraftCard } from "./mail-draft.ts";
 
 export { chatThreads$ } from "../agent-chat.ts";
 
@@ -46,7 +46,7 @@ export type EnrichedChatMessage = PagedChatMessage & {
   blocks: BodyRenderBlock[];
   isQueued: boolean;
   isOptimisticRun: boolean;
-  mailDraftSignals: MailDraftSignals | null;
+  mailDraftCard: MailDraftCard | null;
 };
 
 /** A group of consecutive messages with the same role. */

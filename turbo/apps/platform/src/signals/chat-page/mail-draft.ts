@@ -16,7 +16,6 @@ export interface MailDraftFields {
 }
 
 export interface MailDraftSignals {
-  readonly mailDraftId: string;
   readonly serverDraft$: Computed<Promise<ZeroMailDraft>>;
   readonly mutationDraft$: Computed<ZeroMailDraft | undefined>;
   readonly update$: Command<
@@ -30,8 +29,14 @@ export interface MailDraftSignals {
   >;
 }
 
-export interface MailDraftRegistrySignals {
-  readonly mailDraftSignalsById$: Computed<
+export interface MailDraftCard {
+  readonly type: "mail-draft";
+  readonly resourceKey: string;
+  readonly signals: MailDraftSignals;
+}
+
+export interface MailDraftCardRegistrySignals {
+  readonly mailDraftCardSignals$: Computed<
     ReadonlyMap<string, MailDraftSignals>
   >;
   readonly registerMailDraftMessages$: Command<
@@ -144,7 +149,6 @@ function createMailDraftSignals(mailDraftId: string): MailDraftSignals {
   );
 
   return {
-    mailDraftId,
     serverDraft$,
     mutationDraft$,
     update$,
@@ -158,36 +162,36 @@ function createMailDraftSignals(mailDraftId: string): MailDraftSignals {
  * messages register their draft before entering the transcript, so every card
  * for the same draft reuses one signals object for the thread's lifetime.
  */
-export function createMailDraftRegistry(): MailDraftRegistrySignals {
-  const internalSignalsById$ = state<ReadonlyMap<string, MailDraftSignals>>(
-    new Map(),
-  );
-  const mailDraftSignalsById$ = computed((get) => {
-    return get(internalSignalsById$);
+export function createMailDraftCardRegistry(): MailDraftCardRegistrySignals {
+  const internalSignalsByResourceKey$ = state<
+    ReadonlyMap<string, MailDraftSignals>
+  >(new Map());
+  const mailDraftCardSignals$ = computed((get) => {
+    return get(internalSignalsByResourceKey$);
   });
   const registerMailDraftMessages$ = command(
     ({ get, set }, messages: readonly PagedChatMessage[]) => {
-      const current = get(internalSignalsById$);
+      const current = get(internalSignalsByResourceKey$);
       let next: Map<string, MailDraftSignals> | undefined;
       for (const message of messages) {
-        const { mailDraftId } = message;
+        const resourceKey = message.mailDraftId;
         if (
-          mailDraftId === undefined ||
-          current.has(mailDraftId) ||
-          next?.has(mailDraftId)
+          resourceKey === undefined ||
+          current.has(resourceKey) ||
+          next?.has(resourceKey)
         ) {
           continue;
         }
         next ??= new Map(current);
-        next.set(mailDraftId, createMailDraftSignals(mailDraftId));
+        next.set(resourceKey, createMailDraftSignals(resourceKey));
       }
       if (next !== undefined) {
-        set(internalSignalsById$, next);
+        set(internalSignalsByResourceKey$, next);
       }
     },
   );
   return {
-    mailDraftSignalsById$,
+    mailDraftCardSignals$,
     registerMailDraftMessages$,
   };
 }

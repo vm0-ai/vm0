@@ -121,7 +121,7 @@ import type {
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import {
-  createMailDraftRegistry,
+  createMailDraftCardRegistry,
   type MailDraftSignals,
 } from "./mail-draft.ts";
 
@@ -1250,12 +1250,12 @@ function setLatestUsageForRun(
 
 function createRenderedChatGroups(
   semanticMessages$: Computed<SemanticChatMessage[]>,
-  mailDraftSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>,
+  mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
   messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ) {
   const transcriptMessages$ = createTranscriptMessagesComputed(
     semanticMessages$,
-    mailDraftSignalsById$,
+    mailDraftCardSignals$,
     messageBlocksById$,
   );
 
@@ -1505,11 +1505,11 @@ function createRawMessagesComputed({
 
 function createTranscriptMessagesComputed(
   semanticMessages$: Computed<SemanticChatMessage[]>,
-  mailDraftSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>,
+  mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
   messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
   return computed((get): Promise<EnrichedChatMessage[]> => {
-    const mailDraftSignalsById = get(mailDraftSignalsById$);
+    const mailDraftCardSignals = get(mailDraftCardSignals$);
     const blocksById = get(messageBlocksById$);
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
@@ -1520,15 +1520,19 @@ function createTranscriptMessagesComputed(
         // and short-lived, so parse them on read.
         const enrichedBlocks =
           blocksById.get(message.id) ?? parseMessageBodyBlocks(message);
-        let mailDraftSignals: EnrichedChatMessage["mailDraftSignals"] = null;
+        let mailDraftCard: EnrichedChatMessage["mailDraftCard"] = null;
         if (message.mailDraftId !== undefined) {
-          mailDraftSignals =
-            mailDraftSignalsById.get(message.mailDraftId) ?? null;
-          if (mailDraftSignals === null) {
+          const signals = mailDraftCardSignals.get(message.mailDraftId);
+          if (signals === undefined) {
             throw new Error(
               `Mail draft signals were not registered: ${message.mailDraftId}`,
             );
           }
+          mailDraftCard = {
+            type: "mail-draft",
+            resourceKey: message.mailDraftId,
+            signals,
+          };
         }
         if (message.role !== "assistant") {
           return {
@@ -1537,7 +1541,7 @@ function createTranscriptMessagesComputed(
             blocks: enrichedBlocks,
             isQueued,
             isOptimisticRun,
-            mailDraftSignals,
+            mailDraftCard,
           };
         }
         return {
@@ -1546,7 +1550,7 @@ function createTranscriptMessagesComputed(
           blocks: enrichedBlocks,
           isQueued,
           isOptimisticRun: false,
-          mailDraftSignals,
+          mailDraftCard,
         };
       }),
     );
@@ -2295,7 +2299,7 @@ function createActiveGoalObjectiveComputed(
 }
 
 function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
-  const mailDrafts = createMailDraftRegistry();
+  const mailDraftCards = createMailDraftCardRegistry();
   const permissionCards = createPermissionCardRegistry();
   const messageBlocks = createMessageBlocksRegistry(
     permissionCards.registerPermissionCardBlocks$,
@@ -2325,20 +2329,20 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
 
   const renderedMessages = createRenderedChatGroups(
     semanticMessages$,
-    mailDrafts.mailDraftSignalsById$,
+    mailDraftCards.mailDraftCardSignals$,
     messageBlocks.messageBlocksById$,
   );
 
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
     persistentChatMessages$,
-    mailDrafts.registerMailDraftMessages$,
+    mailDraftCards.registerMailDraftMessages$,
     messageBlocks.registerMessageBlocks$,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
-      set(mailDrafts.registerMailDraftMessages$, messages);
+      set(mailDraftCards.registerMailDraftMessages$, messages);
       set(messageBlocks.registerMessageBlocks$, messages);
       set(persistentChatMessages$, (previous) => {
         return mergeServerMessages([messages, previous]);
