@@ -138,7 +138,9 @@ impl Drop for NetnsLease {
 /// When both proxy and DNS ports are set, callers must start the DNS service
 /// and call [`super::NetnsPool::activate_dns_readiness`] before acquiring.
 pub struct NetnsPoolConfig {
-    /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
+    /// Host proxy port for outbound TCP redirects. When `dns_port` is also set,
+    /// those redirects exclude TCP 53 and 853: TCP 53 is redirected to
+    /// `dns_port`, while TCP 853 is blocked.
     pub proxy_port: Option<u16>,
     /// DNS proxy port for DNS query redirect. Only meaningful with `proxy_port`.
     pub dns_port: Option<u16>,

@@ -760,8 +760,11 @@ pub(super) fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)>
 // Namespace creation
 // ---------------------------------------------------------------------------
 
-/// Create a single namespace with full connectivity, optionally adding proxy
-/// REDIRECT rules for HTTP/HTTPS traffic.
+/// Create a single namespace with full connectivity, optionally adding a proxy
+/// REDIRECT rule for outbound TCP traffic.
+///
+/// When DNS proxying is enabled, the general proxy redirect excludes TCP 53
+/// and 853: TCP 53 is redirected to the DNS proxy, while TCP 853 is blocked.
 ///
 /// This is a free function (no `&self`) so it can be spawned on a `JoinSet`.
 pub(super) async fn create_single_namespace(
