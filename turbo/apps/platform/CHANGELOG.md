@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.605.2](https://github.com/vm0-ai/vm0/compare/app-v0.605.1...app-v0.605.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* rename vm0 model to auto ([#21969](https://github.com/vm0-ai/vm0/issues/21969)) ([aa7fd46](https://github.com/vm0-ai/vm0/commit/aa7fd46efde4f8400539a53adf71461105cb4aa5))
+
+
+### Refactoring
+
+* **platform:** share mail draft signals within chat threads ([#21959](https://github.com/vm0-ai/vm0/issues/21959)) ([107648a](https://github.com/vm0-ai/vm0/commit/107648ad7b86afd2db3ae7fd30e6d2605c6e284e))
+* remove connector action optimistic state ([#21960](https://github.com/vm0-ai/vm0/issues/21960)) ([5fb49cb](https://github.com/vm0-ai/vm0/commit/5fb49cb63de1caebdfdf081bc859910e9663c38f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.2
+    * @vm0/core bumped to 8.439.2
+
 ## [0.605.1](https://github.com/vm0-ai/vm0/compare/app-v0.605.0...app-v0.605.1) (2026-07-17)
 
 

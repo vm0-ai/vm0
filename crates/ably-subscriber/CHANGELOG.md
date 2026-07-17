@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.9](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.8...ably-subscriber-v1.0.9) (2026-07-17)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** redact credentials from debug output ([#21943](https://github.com/vm0-ai/vm0/issues/21943)) ([a1b6164](https://github.com/vm0-ai/vm0/commit/a1b61647dcc0d6b043a8ae0ad6d79108eaf37b23))
+
 ## [1.0.8](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.7...ably-subscriber-v1.0.8) (2026-07-16)
 
 

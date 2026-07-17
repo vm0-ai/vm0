@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.439.2](https://github.com/vm0-ai/vm0/compare/core-v8.439.1...core-v8.439.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* rename vm0 model to auto ([#21969](https://github.com/vm0-ai/vm0/issues/21969)) ([aa7fd46](https://github.com/vm0-ai/vm0/commit/aa7fd46efde4f8400539a53adf71461105cb4aa5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.2
+
 ## [8.439.1](https://github.com/vm0-ai/vm0/compare/core-v8.439.0...core-v8.439.1) (2026-07-17)
 
 
