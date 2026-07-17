@@ -5,7 +5,7 @@ use std::io::{self, Read};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
-use guest_contracts::process_containment::{CGROUP_V2_MOUNT_PATH, SUPERVISED_CGROUP_BASE_PATH};
+use guest_contracts::process_containment::{CGROUP_V2_MOUNT_PATH, EXEC_CGROUP_BASE_PATH};
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
     REUSE_PREPARATION_EXIT_INSPECTION_FAILED, REUSE_PREPARATION_EXIT_INVALID_REQUEST,
@@ -31,7 +31,7 @@ pub enum ReusePreparationError {
     Inspection(io::Error),
     /// Stale runtime entries could not be safely removed.
     Cleanup(io::Error),
-    /// Supervised process containment could not be proven healthy and empty.
+    /// Exec process containment could not be proven healthy and empty.
     Containment(io::Error),
 }
 
@@ -186,13 +186,13 @@ fn verify_process_containment() -> io::Result<()> {
     if !base_metadata.is_dir() || base_metadata.file_type().is_symlink() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "supervised cgroup base is not a directory",
+            "exec cgroup base is not a directory",
         ));
     }
     if paths.require_cgroup2_filesystem && !is_cgroup2_filesystem(&paths.base)? {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "supervised cgroup base is not on cgroup v2",
+            "exec cgroup base is not on cgroup v2",
         ));
     }
     for filename in [
@@ -204,7 +204,7 @@ fn verify_process_containment() -> io::Result<()> {
         if !std::fs::metadata(paths.base.join(filename))?.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("supervised cgroup core file is invalid: {filename}"),
+                format!("exec cgroup core file is invalid: {filename}"),
             ));
         }
     }
@@ -213,23 +213,21 @@ fn verify_process_containment() -> io::Result<()> {
     if !subtree_control.trim().is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "resource controllers are enabled for the supervised cgroup",
+            "resource controllers are enabled for the exec cgroup",
         ));
     }
 
     for entry in std::fs::read_dir(&paths.base)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
-            return Err(io::Error::other(
-                "stale supervised operation cgroup remains",
-            ));
+            return Err(io::Error::other("stale exec operation cgroup remains"));
         }
     }
 
     let events = std::fs::read_to_string(paths.base.join(CGROUP_EVENTS_FILE))?;
     match parse_populated(&events) {
         Some(false) => Ok(()),
-        Some(true) => Err(io::Error::other("supervised cgroup remains populated")),
+        Some(true) => Err(io::Error::other("exec cgroup remains populated")),
         None => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "cgroup.events is missing valid populated state",
@@ -241,7 +239,7 @@ fn process_containment_paths() -> ProcessContainmentPaths {
     #[cfg(debug_assertions)]
     if let Some(root) = std::env::var_os(TEST_CONTAINMENT_ROOT_ENV) {
         let mount = PathBuf::from(root);
-        let base = mount.join("vm0-supervised");
+        let base = mount.join("vm0-exec");
         return ProcessContainmentPaths {
             mount,
             base,
@@ -251,7 +249,7 @@ fn process_containment_paths() -> ProcessContainmentPaths {
 
     ProcessContainmentPaths {
         mount: PathBuf::from(CGROUP_V2_MOUNT_PATH),
-        base: PathBuf::from(SUPERVISED_CGROUP_BASE_PATH),
+        base: PathBuf::from(EXEC_CGROUP_BASE_PATH),
         require_cgroup2_filesystem: true,
     }
 }

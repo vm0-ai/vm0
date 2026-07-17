@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use guest_contracts::process_containment::SUPERVISED_CGROUP_BASE_PATH;
+use guest_contracts::process_containment::EXEC_CGROUP_BASE_PATH;
 
 use crate::log::log;
 
@@ -23,8 +23,14 @@ const REMOVE_TIMEOUT: Duration = Duration::from_millis(250);
 
 static NEXT_CGROUP_ID: AtomicU64 = AtomicU64::new(1);
 
-pub(crate) struct SupervisedProcessContainment {
+pub(crate) struct ExecProcessContainment {
     backend: ContainmentBackend,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ProcessContainmentCleanupMode {
+    Graceful,
+    Forced,
 }
 
 enum ContainmentBackend {
@@ -65,13 +71,13 @@ impl ProcessContainmentError {
     }
 }
 
-impl SupervisedProcessContainment {
+impl ExecProcessContainment {
     pub(crate) fn create(sequence: u32) -> Result<Self, ProcessContainmentError> {
         // Host-side debug integration tests have no guest cgroup hierarchy.
         // A real guest, including a debug build, gets the hierarchy from
         // guest-init before vsock-guest starts and therefore uses cgroups.
         if cfg!(feature = "test-support")
-            || (cfg!(debug_assertions) && !Path::new(SUPERVISED_CGROUP_BASE_PATH).is_dir())
+            || (cfg!(debug_assertions) && !Path::new(EXEC_CGROUP_BASE_PATH).is_dir())
         {
             return Ok(Self {
                 backend: ContainmentBackend::TestNoop,
@@ -95,9 +101,12 @@ impl SupervisedProcessContainment {
         }
     }
 
-    pub(crate) fn cleanup(self) -> Result<(), ProcessContainmentError> {
+    pub(crate) fn cleanup(
+        self,
+        mode: ProcessContainmentCleanupMode,
+    ) -> Result<(), ProcessContainmentError> {
         match self.backend {
-            ContainmentBackend::Cgroup(guard) => guard.cleanup(),
+            ContainmentBackend::Cgroup(guard) => guard.cleanup(mode),
             ContainmentBackend::TestNoop => Ok(()),
             #[cfg(test)]
             ContainmentBackend::TestDirectory(group_path) => fs::remove_dir(group_path)
@@ -108,7 +117,7 @@ impl SupervisedProcessContainment {
 
 impl CgroupGuard {
     fn create(sequence: u32) -> Result<Self, ProcessContainmentError> {
-        Self::create_in(Path::new(SUPERVISED_CGROUP_BASE_PATH), sequence)
+        Self::create_in(Path::new(EXEC_CGROUP_BASE_PATH), sequence)
     }
 
     fn create_in(base_path: &Path, sequence: u32) -> Result<Self, ProcessContainmentError> {
@@ -129,7 +138,7 @@ impl CgroupGuard {
                     log(
                         "ERROR",
                         &format!(
-                            "supervised process containment creation rollback failed group={group_name} original_stage={} original_error={} rollback_stage={} rollback_error={}",
+                            "exec process containment creation rollback failed group={group_name} original_stage={} original_error={} rollback_stage={} rollback_error={}",
                             original.stage, original.source, rollback.stage, rollback.source
                         ),
                     );
@@ -155,7 +164,7 @@ impl CgroupGuard {
         Ok(())
     }
 
-    fn cleanup(self) -> Result<(), ProcessContainmentError> {
+    fn cleanup(self, mode: ProcessContainmentCleanupMode) -> Result<(), ProcessContainmentError> {
         let started = Instant::now();
         let CgroupGuard {
             group_name,
@@ -165,13 +174,13 @@ impl CgroupGuard {
         } = self;
         drop(placement);
 
-        let result = cleanup_cgroup(&group_path);
+        let result = cleanup_cgroup(&group_path, mode);
         match result {
             Ok(report) => {
                 log(
                     "INFO",
                     &format!(
-                        "supervised process containment cleaned group={group_name} descendants_observed={} cgroup_kill_used={} initial_members={} graceful_errors={} create_us={} cleanup_ms={}",
+                        "exec process containment cleaned group={group_name} mode={mode:?} descendants_observed={} cgroup_kill_used={} initial_members={} graceful_errors={} create_us={} cleanup_ms={}",
                         report.descendants_observed,
                         report.cgroup_kill_used,
                         report.initial_members,
@@ -186,7 +195,7 @@ impl CgroupGuard {
                 log(
                     "ERROR",
                     &format!(
-                        "supervised process containment cleanup failed group={group_name} stage={} error={}",
+                        "exec process containment cleanup failed group={group_name} mode={mode:?} stage={} error={}",
                         error.stage, error.source
                     ),
                 );
@@ -196,6 +205,7 @@ impl CgroupGuard {
     }
 }
 
+#[derive(Debug)]
 struct CleanupReport {
     descendants_observed: bool,
     cgroup_kill_used: bool,
@@ -203,13 +213,28 @@ struct CleanupReport {
     graceful_errors: usize,
 }
 
-fn cleanup_cgroup(group_path: &Path) -> Result<CleanupReport, ProcessContainmentError> {
-    let descendants_observed = read_populated(group_path)?;
+fn cleanup_cgroup(
+    group_path: &Path,
+    mode: ProcessContainmentCleanupMode,
+) -> Result<CleanupReport, ProcessContainmentError> {
+    let descendants_observed = match read_populated(group_path) {
+        Ok(populated) => populated,
+        Err(error) if mode == ProcessContainmentCleanupMode::Forced => {
+            log(
+                "WARN",
+                &format!(
+                    "exec process containment forced cleanup could not read populated state error={error}"
+                ),
+            );
+            true
+        }
+        Err(error) => return Err(error),
+    };
     let mut cgroup_kill_used = false;
     let mut initial_members = 0;
     let mut graceful_errors = 0;
 
-    if descendants_observed {
+    if descendants_observed && mode == ProcessContainmentCleanupMode::Graceful {
         match read_member_pids(group_path) {
             Ok(pids) => {
                 initial_members = pids.len();
@@ -219,26 +244,26 @@ fn cleanup_cgroup(group_path: &Path) -> Result<CleanupReport, ProcessContainment
                 graceful_errors = 1;
                 log(
                     "WARN",
-                    &format!(
-                        "supervised process containment graceful enumeration failed error={error}"
-                    ),
+                    &format!("exec process containment graceful enumeration failed error={error}"),
                 );
             }
         }
 
-        if !wait_until_empty(group_path, TERM_GRACE)? {
-            fs::write(group_path.join(CGROUP_KILL_FILE), b"1")
-                .map_err(|error| ProcessContainmentError::new("write cgroup.kill", error))?;
-            cgroup_kill_used = true;
-            if !wait_until_empty(group_path, KILL_EMPTY_TIMEOUT)? {
-                return Err(ProcessContainmentError::new(
-                    "wait for cgroup.kill",
-                    io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        "cgroup remained populated after cgroup.kill",
-                    ),
-                ));
-            }
+        let _ = wait_until_empty(group_path, TERM_GRACE)?;
+    }
+
+    if mode == ProcessContainmentCleanupMode::Forced || read_populated(group_path)? {
+        fs::write(group_path.join(CGROUP_KILL_FILE), b"1")
+            .map_err(|error| ProcessContainmentError::new("write cgroup.kill", error))?;
+        cgroup_kill_used = true;
+        if !wait_until_empty(group_path, KILL_EMPTY_TIMEOUT)? {
+            return Err(ProcessContainmentError::new(
+                "wait for cgroup.kill",
+                io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "cgroup remained populated after cgroup.kill",
+                ),
+            ));
         }
     }
 
@@ -458,6 +483,19 @@ mod tests {
     }
 
     #[test]
+    fn forced_cleanup_attempts_cgroup_kill_when_events_are_unreadable() {
+        let group = tempfile::tempdir().unwrap();
+        let kill_path = group.path().join(CGROUP_KILL_FILE);
+        fs::write(&kill_path, b"").unwrap();
+
+        let error = cleanup_cgroup(group.path(), ProcessContainmentCleanupMode::Forced)
+            .expect_err("missing cgroup.events should leave cleanup unproven");
+
+        assert_eq!(error.stage, "read cgroup.events");
+        assert_eq!(fs::read(&kill_path).unwrap(), b"1");
+    }
+
+    #[test]
     fn pre_exec_writes_child_into_open_placement_file() {
         let mut placement = tempfile::tempfile().unwrap();
         let child_fd: OwnedFd = placement.try_clone().unwrap().into();
@@ -493,7 +531,7 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         let group_path = base.path().join("exec-spawn-failure");
         fs::create_dir(&group_path).unwrap();
-        let containment = SupervisedProcessContainment {
+        let containment = ExecProcessContainment {
             backend: ContainmentBackend::TestDirectory(group_path.clone()),
         };
 
@@ -502,7 +540,7 @@ mod tests {
             &[],
             false,
             false,
-            Some(containment),
+            containment,
         );
         let Err(error) = result else {
             panic!("invalid command unexpectedly spawned");
@@ -518,7 +556,7 @@ mod tests {
         let group_path = base.path().join("exec-cleanup-failure");
         fs::create_dir(&group_path).unwrap();
         fs::write(group_path.join("blocker"), b"keep directory non-empty").unwrap();
-        let containment = SupervisedProcessContainment {
+        let containment = ExecProcessContainment {
             backend: ContainmentBackend::TestDirectory(group_path.clone()),
         };
 
@@ -527,7 +565,7 @@ mod tests {
             &[],
             false,
             false,
-            Some(containment),
+            containment,
         );
         let Err(error) = result else {
             panic!("invalid command unexpectedly spawned");

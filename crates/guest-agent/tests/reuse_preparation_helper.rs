@@ -229,7 +229,7 @@ fn prepare_for_reuse_rejects_stale_operation_cgroup() -> TestResult {
 }
 
 #[test]
-fn prepare_for_reuse_rejects_populated_supervised_cgroup() -> TestResult {
+fn prepare_for_reuse_rejects_populated_exec_cgroup() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
     std::fs::write(containment.base.join("cgroup.events"), b"populated 1\n")?;
@@ -271,7 +271,7 @@ impl ContainmentFixture {
     fn new() -> TestResult<Self> {
         let directory = tempfile::tempdir()?;
         let root = directory.path().join("cgroup");
-        let base = root.join("vm0-supervised");
+        let base = root.join("vm0-exec");
         std::fs::create_dir_all(&base)?;
         for (filename, content) in [
             ("cgroup.procs", ""),

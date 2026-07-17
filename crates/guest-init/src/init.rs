@@ -12,7 +12,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use guest_contracts::process_containment::{CGROUP_V2_MOUNT_PATH, SUPERVISED_CGROUP_BASE_PATH};
+use guest_contracts::process_containment::{CGROUP_V2_MOUNT_PATH, EXEC_CGROUP_BASE_PATH};
 
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const CGROUP_EVENTS_FILE: &str = "cgroup.events";
@@ -157,10 +157,10 @@ fn initialize_process_containment() -> Result<(), InitError> {
         source,
     })?;
 
-    let base = Path::new(SUPERVISED_CGROUP_BASE_PATH);
+    let base = Path::new(EXEC_CGROUP_BASE_PATH);
     create_dir_all(base)?;
     verify_process_containment_base(base)?;
-    eprintln!("[guest-init] Supervised process containment initialized");
+    eprintln!("[guest-init] Exec process containment initialized");
     Ok(())
 }
 
@@ -202,7 +202,7 @@ fn verify_process_containment_base(base: &Path) -> Result<(), InitError> {
         })?;
     if !subtree_control.trim().is_empty() {
         return Err(InitError::InvalidProcessContainment(
-            "resource controllers are enabled for the supervised subtree".into(),
+            "resource controllers are enabled for the exec subtree".into(),
         ));
     }
     Ok(())
