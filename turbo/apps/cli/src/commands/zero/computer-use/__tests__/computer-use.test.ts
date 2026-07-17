@@ -235,7 +235,7 @@ describe("computer-use command visibility", () => {
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Computer Use authorization required");
     expect(errorOutput).toContain(
-      "zero doctor permission-change computer-use --permission computer-use:write --enable",
+      "zero connector permission-request computer-use --permission computer-use:write",
     );
     expect(errorOutput).toContain(
       "Existing run tokens cannot be upgraded in place",

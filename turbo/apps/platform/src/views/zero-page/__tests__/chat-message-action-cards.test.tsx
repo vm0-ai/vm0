@@ -1827,17 +1827,17 @@ describe("chat message action cards", () => {
       threadTitle: "Permission action",
       chatMessages: [
         {
-          id: "msg-user-permission-deny-request",
+          id: "msg-user-permission-block-request",
           role: "user",
           content: "Block Slack analytics access",
-          runId: "run-permission-deny",
+          runId: "run-permission-block",
           createdAt: "2026-06-09T11:00:00Z",
         },
         {
-          id: "msg-assistant-permission-deny-card",
+          id: "msg-assistant-permission-block-card",
           role: "assistant",
           content: permissionDenyUrl,
-          runId: "run-permission-deny",
+          runId: "run-permission-block",
           createdAt: "2026-06-09T11:01:00Z",
         },
       ],

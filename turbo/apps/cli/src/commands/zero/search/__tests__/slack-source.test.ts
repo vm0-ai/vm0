@@ -88,9 +88,7 @@ describe("zero search --source slack", () => {
 
       const output = mockConsoleLog.mock.calls.flat().join("\n");
       expect(output).toContain("zero connector status slack");
-      expect(output).toContain(
-        "zero doctor check-connector --env-name SLACK_TOKEN",
-      );
+      expect(output).toContain("zero connector check --env-name SLACK_TOKEN");
     });
 
     it("links to Slack's search.messages docs", async () => {

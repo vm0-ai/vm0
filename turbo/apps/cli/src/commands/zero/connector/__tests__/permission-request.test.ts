@@ -1,5 +1,5 @@
 /**
- * Tests for zero doctor permission-change command.
+ * Tests for zero connector permission-request command.
  *
  * The command always points users at the self-service permission grant page.
  */
@@ -12,9 +12,9 @@ import {
   catalogPermissionDetail,
   stubConnectorCatalogPermissions,
 } from "../../__tests__/helpers/connector-catalog";
-import { permissionChangeCommand } from "../permission-change";
+import { permissionRequestCommand } from "../permission-request";
 
-describe("zero doctor permission-change command", () => {
+describe("zero connector permission-request command", () => {
   const SLACK_READ_PERMISSION = "admin.conversations:read";
   const permissionDetails = [
     catalogPermissionDetail({
@@ -49,6 +49,7 @@ describe("zero doctor permission-change command", () => {
 
   beforeEach(() => {
     vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "");
     server.use(
       stubConnectorCatalogPermissions(permissionDetails, "https://app.vm0.ai"),
       stubConnectorCatalogPermissions(permissionDetails, "https://www.vm0.ai"),
@@ -64,17 +65,16 @@ describe("zero doctor permission-change command", () => {
     mockConsoleError.mockClear();
   });
 
-  it("outputs an allow grant link for --enable", async () => {
+  it("outputs an allow grant link with the default duration", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -98,13 +98,12 @@ describe("zero doctor permission-change command", () => {
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
     vi.stubEnv("ZERO_WORKFLOW_ID", "wf-789");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -123,13 +122,12 @@ describe("zero doctor permission-change command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
-      "--enable",
       "--duration",
       "24h",
     ]);
@@ -140,86 +138,39 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).toContain("Requested duration: 24h");
   });
 
-  it("outputs a deny grant link for --disable", async () => {
+  it("outputs an allow grant link for unknown endpoints", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
-    await permissionChangeCommand.parseAsync([
-      "node",
-      "cli",
-      "slack",
-      "--permission",
-      SLACK_READ_PERMISSION,
-      "--disable",
-    ]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain(
-      `You can deny the "${SLACK_READ_PERMISSION}" permission for your connector access`,
-    );
-    expect(logCalls).toContain("[Manage Slack permissions]");
-    expect(logCalls).toContain("action=deny");
-    expect(logCalls).not.toContain("expiresIn=");
-    expect(logCalls).not.toContain("Requested duration");
-    expect(logCalls).not.toContain("admin approval");
-  });
-
-  it("outputs a deny grant link for unknown endpoints", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "cloudflare",
       "--permission",
       UNKNOWN_PERMISSION_GRANT,
-      "--disable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain(
-      "You can deny unknown endpoints for your connector access",
+      "You can allow unknown endpoints for your connector access",
     );
     expect(logCalls).toContain("[Manage Cloudflare permissions]");
     expect(logCalls).toContain("ref=cloudflare");
     expect(logCalls).toContain("permission=__unknown__");
-    expect(logCalls).toContain("action=deny");
-    expect(logCalls).not.toContain("expiresIn=");
-  });
-
-  it("does not include --reason text in the grant URL", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
-    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-
-    await permissionChangeCommand.parseAsync([
-      "node",
-      "cli",
-      "slack",
-      "--permission",
-      SLACK_READ_PERMISSION,
-      "--enable",
-      "--reason",
-      "Need to read channel list",
-    ]);
-
-    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("[Manage Slack permissions]");
-    expect(logCalls).not.toContain("reason=");
-    expect(logCalls).not.toContain("Re-run with `--reason");
+    expect(logCalls).toContain("action=allow");
+    expect(logCalls).toContain("expiresIn=1h");
   });
 
   it("uses the agents landing page when ZERO_AGENT_ID is not set", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -231,13 +182,12 @@ describe("zero doctor permission-change command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
-      "--enable",
       "--agent",
       "target-agent-123",
     ]);
@@ -252,13 +202,12 @@ describe("zero doctor permission-change command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "env-agent-123");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
-      "--enable",
       "--agent",
       "target-agent-123",
     ]);
@@ -272,13 +221,12 @@ describe("zero doctor permission-change command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-1");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -291,13 +239,12 @@ describe("zero doctor permission-change command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "slack",
       "--permission",
       "chat:write",
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -310,13 +257,12 @@ describe("zero doctor permission-change command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "gmail",
       "--permission",
       "messages.send",
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -341,13 +287,12 @@ describe("zero doctor permission-change command", () => {
       ),
     );
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "server-only",
       "--permission",
       "records.read",
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -358,13 +303,12 @@ describe("zero doctor permission-change command", () => {
 
   it("exits with an error for an unknown connector type", async () => {
     await expect(async () => {
-      await permissionChangeCommand.parseAsync([
+      await permissionRequestCommand.parseAsync([
         "node",
         "cli",
         "unknown-service",
         "--permission",
         "foo",
-        "--enable",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -378,13 +322,12 @@ describe("zero doctor permission-change command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
 
     await expect(async () => {
-      await permissionChangeCommand.parseAsync([
+      await permissionRequestCommand.parseAsync([
         "node",
         "cli",
         "slack",
         "--permission",
         SLACK_READ_PERMISSION,
-        "--enable",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -408,13 +351,12 @@ describe("zero doctor permission-change command", () => {
     );
 
     await expect(async () => {
-      await permissionChangeCommand.parseAsync([
+      await permissionRequestCommand.parseAsync([
         "node",
         "cli",
         "slack",
         "--permission",
         SLACK_READ_PERMISSION,
-        "--enable",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -435,13 +377,12 @@ describe("zero doctor permission-change command", () => {
     );
 
     await expect(async () => {
-      await permissionChangeCommand.parseAsync([
+      await permissionRequestCommand.parseAsync([
         "node",
         "cli",
         "slack",
         "--permission",
         SLACK_READ_PERMISSION,
-        "--enable",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -468,13 +409,12 @@ describe("zero doctor permission-change command", () => {
     );
 
     await expect(async () => {
-      await permissionChangeCommand.parseAsync([
+      await permissionRequestCommand.parseAsync([
         "node",
         "cli",
         "slack",
         "--permission",
         SLACK_READ_PERMISSION,
-        "--enable",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -488,13 +428,12 @@ describe("zero doctor permission-change command", () => {
   it("explains selected-host token grants for computer-use permission changes", async () => {
     vi.stubEnv("ZERO_TOKEN", "");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "computer-use",
       "--permission",
       "computer-use:write",
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -529,13 +468,12 @@ describe("zero doctor permission-change command", () => {
       ),
     );
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "computer-use",
       "--permission",
       "computer-use:write",
-      "--enable",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -555,13 +493,12 @@ describe("zero doctor permission-change command", () => {
   it("recognizes computer-use:write even when the connector ref is wrong", async () => {
     vi.stubEnv("ZERO_TOKEN", "");
 
-    await permissionChangeCommand.parseAsync([
+    await permissionRequestCommand.parseAsync([
       "node",
       "cli",
       "agent",
       "--permission",
       "computer-use:write",
-      "--enable",
       "--duration",
       "1h",
     ]);
@@ -575,13 +512,12 @@ describe("zero doctor permission-change command", () => {
 
   it("exits with an error for an invalid permission name", async () => {
     await expect(async () => {
-      await permissionChangeCommand.parseAsync([
+      await permissionRequestCommand.parseAsync([
         "node",
         "cli",
         "slack",
         "--permission",
         "nonexistent:perm",
-        "--enable",
       ]);
     }).rejects.toThrow("process.exit called");
 
@@ -592,38 +528,19 @@ describe("zero doctor permission-change command", () => {
     );
   });
 
-  it("exits with an error when neither --enable nor --disable is provided", async () => {
-    await expect(async () => {
-      await permissionChangeCommand.parseAsync([
-        "node",
-        "cli",
-        "slack",
-        "--permission",
-        SLACK_READ_PERMISSION,
-      ]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Either --enable or --disable is required"),
-    );
-  });
-
-  it("exits with an error when --duration is used with --disable", async () => {
-    await expect(async () => {
-      await permissionChangeCommand.parseAsync([
-        "node",
-        "cli",
-        "slack",
-        "--permission",
-        SLACK_READ_PERMISSION,
-        "--disable",
-        "--duration",
-        "1h",
-      ]);
-    }).rejects.toThrow("process.exit called");
-
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("--duration is only supported with --enable"),
-    );
-  });
+  it.each(["--enable", "--disable"])(
+    "does not expose the legacy %s flag",
+    async (flag) => {
+      await expect(
+        permissionRequestCommand.parseAsync([
+          "node",
+          "cli",
+          "slack",
+          "--permission",
+          SLACK_READ_PERMISSION,
+          flag,
+        ]),
+      ).rejects.toThrow("process.exit called");
+    },
+  );
 });

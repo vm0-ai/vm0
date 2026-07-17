@@ -391,7 +391,7 @@ export function buildZeroHelpText(
   const canReadHost = !payload || payload.capabilities.includes("host:read");
   const canWriteHost = !payload || payload.capabilities.includes("host:write");
   const examples = [
-    "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
+    "  Check a connector?     zero connector check --env-name <ENV_NAME>",
     ...(payload && !payload.capabilities.includes("billing:read")
       ? []
       : ["  Check credits?         zero credit"]),

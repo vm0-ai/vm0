@@ -1113,12 +1113,6 @@ export {
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
 export {
-  connectorPermissionDenyDiagnosticResultSchema,
-  zeroConnectorPermissionDenyContract,
-  type ConnectorPermissionDenyDiagnosticResult,
-  type ZeroConnectorPermissionDenyContract,
-} from "./zero-connector-permission-deny";
-export {
   connectorCheckDiagnosticResultSchema,
   connectorCheckPolicySchema,
   connectorCheckRequestSchema,
