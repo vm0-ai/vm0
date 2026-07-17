@@ -1129,6 +1129,186 @@ jobs:
             /tmp/e2e-token-runner.json
           retention-days: 1
 
+  # Build the canonical Cloudflare app artifact independently of Vercel.
+  build-app-cf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: build-app-cf-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    if: >-
+      ${{
+        github.actor != 'dependabot[bot]' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Install AWS CLI
+        run: |
+          architecture="$(dpkg --print-architecture)"
+          case "$architecture" in
+            amd64) aws_architecture="x86_64" ;;
+            arm64) aws_architecture="aarch64" ;;
+            *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+          esac
+
+          curl -fsSL --retry 3 \
+            "https://awscli.amazonaws.com/awscli-exe-linux-${aws_architecture}.zip" \
+            --output /tmp/awscliv2.zip
+          python3 -m zipfile -e /tmp/awscliv2.zip /tmp/awscli
+          chmod +x /tmp/awscli/aws/install /tmp/awscli/aws/dist/aws
+          /tmp/awscli/aws/install
+          aws --version
+
+      - name: Resolve artifact commit SHA
+        id: artifact
+        run: |
+          sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "prefix=okou-app/$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing artifact
+        id: existing
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+
+          : "${AWS_ACCESS_KEY_ID:?R2_STATIC_ACCESS_KEY_ID secret is required}"
+          : "${AWS_SECRET_ACCESS_KEY:?R2_STATIC_SECRET_ACCESS_KEY secret is required}"
+          : "${R2_ACCOUNT_ID:?R2_ACCOUNT_ID variable is required}"
+          : "${R2_BUCKET_NAME:?R2_STATIC_BUCKET_NAME variable is required}"
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          ready_key="${ARTIFACT_PREFIX}/ready.json"
+          error_log="$(mktemp)"
+
+          set +e
+          aws s3api head-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "$ready_key" \
+            >/dev/null 2>"$error_log"
+          status=$?
+          set -e
+
+          if (( status == 0 )); then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Artifact already ready: s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/"
+          elif grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$error_log" >&2
+            exit "$status"
+          fi
+
+      - name: Build canonical app artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY_PREVIEW: ${{ vars.CLERK_PUBLISHABLE_KEY_PREVIEW }}
+          VITE_CLERK_PUBLISHABLE_KEY_PROD: ${{ vars.CLERK_PUBLISHABLE_KEY_PROD }}
+          VITE_GIT_COMMIT_SHA: ${{ steps.artifact.outputs.sha }}
+          VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW: ${{ vars.PLAUSIBLE_SCRIPT_URL }}
+          VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION: ${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
+          VITE_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
+          VITE_SENTRY_DSN_PROD: ${{ vars.SENTRY_DSN_APP_PROD }}
+          VITE_VAPID_PUBLIC_KEY_PREVIEW: ${{ vars.VAPID_PUBLIC_KEY_PREVIEW }}
+          VITE_VAPID_PUBLIC_KEY_PROD: ${{ vars.VAPID_PUBLIC_KEY_PROD }}
+        run: |
+          cd turbo
+          pnpm --filter @vm0/app exec vite build --sourcemap
+          pnpm --filter @vm0/app exec sentry-cli sourcemaps inject dist
+
+      - name: Create artifact manifest
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          dist="turbo/apps/platform/dist"
+          entries="$(mktemp)"
+
+          find "$dist" -type f -print0 | sort -z | while IFS= read -r -d '' file; do
+            relative_path="${file#"$dist"/}"
+            digest="$(sha256sum "$file" | cut -d ' ' -f 1)"
+            size="$(stat -c '%s' "$file")"
+            jq -n \
+              --arg path "$relative_path" \
+              --arg sha256 "$digest" \
+              --argjson size "$size" \
+              '{path: $path, sha256: $sha256, size: $size}' >> "$entries"
+          done
+
+          jq -s \
+            --arg commit_sha "$ARTIFACT_SHA" \
+            '{version: 1, commitSha: $commit_sha, files: .}' \
+            "$entries" > /tmp/okou-app-manifest.json
+
+          manifest_sha="$(sha256sum /tmp/okou-app-manifest.json | cut -d ' ' -f 1)"
+          jq -n \
+            --arg commit_sha "$ARTIFACT_SHA" \
+            --arg manifest_sha256 "$manifest_sha" \
+            '{version: 1, commitSha: $commit_sha, manifestSha256: $manifest_sha256}' \
+            > /tmp/okou-app-ready.json
+
+      - name: Upload canonical app artifact
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+        run: |
+          set -euo pipefail
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
+          cache_control="public, max-age=31536000, immutable"
+
+          aws s3 rm "$artifact_uri/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive
+
+          aws s3 cp turbo/apps/platform/dist "$artifact_uri/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/manifest.json" \
+            --body /tmp/okou-app-manifest.json \
+            --content-type application/json \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/ready.json" \
+            --body /tmp/okou-app-ready.json \
+            --content-type application/json \
+            --cache-control "$cache_control" \
+            --if-none-match "*"
+
+          echo "Artifact ready: ${artifact_uri}/"
+
   # Deploy app (Vite SPA)
   deploy-app:
     runs-on: ubuntu-latest
@@ -1180,13 +1360,15 @@ jobs:
           deployment-env: app
           prebuilt: "true"
           environment-variables: |
-            VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
+            VITE_CLERK_PUBLISHABLE_KEY_PREVIEW=${{ vars.CLERK_PUBLISHABLE_KEY_PREVIEW }}
+            VITE_CLERK_PUBLISHABLE_KEY_PROD=${{ vars.CLERK_PUBLISHABLE_KEY_PROD }}
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
-            VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
+            VITE_VAPID_PUBLIC_KEY_PREVIEW=${{ vars.VAPID_PUBLIC_KEY_PREVIEW }}
+            VITE_VAPID_PUBLIC_KEY_PROD=${{ vars.VAPID_PUBLIC_KEY_PROD }}
             VITE_PLAUSIBLE_SCRIPT_URL_PREVIEW=${{ vars.PLAUSIBLE_SCRIPT_URL }}
             VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
             VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
-            VITE_SENTRY_DSN=${{ vars.SENTRY_DSN_APP }}
+            VITE_SENTRY_DSN_PROD=${{ vars.SENTRY_DSN_APP_PROD }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}

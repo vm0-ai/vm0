@@ -8,6 +8,7 @@
 import { command, state } from "ccstate";
 import { fetch$ } from "../signals/fetch.ts";
 import { bestEffort } from "../signals/utils.ts";
+import { resolvePlatformRuntimeConfig } from "./platform-host.ts";
 
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -75,9 +76,7 @@ async function doSubscribe(
   fetchFn: FetchFn,
   signal: AbortSignal,
 ): Promise<void> {
-  const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
-    | string
-    | undefined;
+  const vapidPublicKey = resolvePlatformRuntimeConfig().vapidPublicKey;
   if (!vapidPublicKey) {
     return;
   }

@@ -49,6 +49,7 @@
     "yaml": "^2.7.1"
   },
   "devDependencies": {
+    "@sentry/cli": "^2.58.5",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.1.8",
     "@testing-library/jest-dom": "^6.6.3",

@@ -4,6 +4,7 @@ import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
 import {
   derivePlatformServiceOrigin,
   type PlatformService,
+  resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 
@@ -256,13 +257,7 @@ export function buildSignInRedirectUrl(
  * Initializes the real Clerk SDK with the publishable key.
  */
 export const clerk$ = computed(async () => {
-  const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as
-    | string
-    | undefined;
-
-  if (!publishableKey) {
-    throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
-  }
+  const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
 
   // Dynamic import: @clerk/clerk-js is a 2.8MB webpack monolith (53%
   // Web3/Solana/Coinbase code we don't use) that cannot be tree-shaken.

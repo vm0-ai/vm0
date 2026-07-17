@@ -4,11 +4,13 @@ export type PlatformService = "api" | "www" | "app" | "platform";
 
 export interface PlatformRuntimeConfig {
   readonly environment: PlatformEnvironment;
+  readonly clerkPublishableKey: string;
   readonly publicArtifactsBaseUrl: "https://cdn.vm0.io" | "https://cdn.vm7.io";
   readonly zeroHostDomain: "sites.vm0.io" | "sites.vm7.io";
   readonly plausibleScriptUrl: string | null;
   readonly postHogKey: string | null;
   readonly sentryDsn: string | null;
+  readonly vapidPublicKey: string | null;
 }
 
 const PRODUCTION_DOMAIN = "vm0.ai";
@@ -95,24 +97,43 @@ function optionalBuildValue(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function requiredBuildValue(value: unknown, name: string): string {
+  const normalized = optionalBuildValue(value);
+  if (!normalized) {
+    throw new Error(`Missing ${name} environment variable`);
+  }
+  return normalized;
+}
+
 export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
   const environment = resolvePlatformEnvironment();
 
   if (environment === "production") {
     return {
       environment,
+      clerkPublishableKey: requiredBuildValue(
+        import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PROD,
+        "VITE_CLERK_PUBLISHABLE_KEY_PROD",
+      ),
       publicArtifactsBaseUrl: "https://cdn.vm0.io",
       zeroHostDomain: "sites.vm0.io",
       plausibleScriptUrl: optionalBuildValue(
         import.meta.env.VITE_PLAUSIBLE_SCRIPT_URL_PRODUCTION,
       ),
       postHogKey: optionalBuildValue(import.meta.env.VITE_POSTHOG_KEY),
-      sentryDsn: optionalBuildValue(import.meta.env.VITE_SENTRY_DSN),
+      sentryDsn: optionalBuildValue(import.meta.env.VITE_SENTRY_DSN_PROD),
+      vapidPublicKey: optionalBuildValue(
+        import.meta.env.VITE_VAPID_PUBLIC_KEY_PROD,
+      ),
     };
   }
 
   return {
     environment,
+    clerkPublishableKey: requiredBuildValue(
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY_PREVIEW,
+      "VITE_CLERK_PUBLISHABLE_KEY_PREVIEW",
+    ),
     publicArtifactsBaseUrl: "https://cdn.vm7.io",
     zeroHostDomain: "sites.vm7.io",
     plausibleScriptUrl:
@@ -121,6 +142,9 @@ export function resolvePlatformRuntimeConfig(): PlatformRuntimeConfig {
         : null,
     postHogKey: null,
     sentryDsn: null,
+    vapidPublicKey: optionalBuildValue(
+      import.meta.env.VITE_VAPID_PUBLIC_KEY_PREVIEW,
+    ),
   };
 }
 
