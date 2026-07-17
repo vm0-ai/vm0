@@ -16,6 +16,7 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type NodeView } from "@tiptap/pm/view";
 import { StarterKit } from "@tiptap/starter-kit";
+import { createCompositionGate, type CompositionGate } from "@vm0/ui";
 import { onRef } from "../utils.ts";
 import type { DraftSignals } from "./chat-draft.ts";
 import {
@@ -106,6 +107,7 @@ export interface WorkflowComposerSignals {
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertText$: Command<void, [string]>;
   readonly appendText$: Command<void, [string]>;
+  readonly readInputForSubmission$: Command<Promise<string>, [AbortSignal]>;
   readonly setTemplateAttachmentLifecycleRef$: Command<
     (() => void) | undefined,
     [HTMLButtonElement | null]
@@ -1145,6 +1147,7 @@ function createMountEditorCommand({
   editorFocusedState$,
   selectedSuggestionIndexState$,
   feedback,
+  compositionGate,
   autoFocus,
   singleLineOnMobile,
 }: {
@@ -1155,6 +1158,7 @@ function createMountEditorCommand({
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
   feedback: FeedbackSignals;
+  compositionGate: CompositionGate;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
 }) {
@@ -1168,6 +1172,7 @@ function createMountEditorCommand({
         runtime.input();
         set(selectedSuggestionIndexState$, 0);
         set(caretIndex$, updatedEditor.state.selection.head);
+        compositionGate.notifySettled();
       };
       runtime.selectionUpdate = (updatedEditor) => {
         set(caretIndex$, updatedEditor.state.selection.head);
@@ -1209,6 +1214,16 @@ function createMountEditorCommand({
         );
       }
       editor.mount(element);
+      editor.view.dom.addEventListener(
+        "compositionstart",
+        compositionGate.compositionStart,
+        { signal },
+      );
+      editor.view.dom.addEventListener(
+        "compositionend",
+        compositionGate.compositionEnd,
+        { signal },
+      );
       set(draft.setInputSyncTarget$, {
         syncInput(value: string) {
           if (workflowComposerDocToString(editor) === value) {
@@ -1229,6 +1244,7 @@ function createMountEditorCommand({
         editor.commands.focus("end");
       }
       signal.addEventListener("abort", () => {
+        compositionGate.cancel(signal.reason);
         runtime.update = () => {};
         runtime.selectionUpdate = () => {};
         runtime.focus = () => {};
@@ -1406,6 +1422,7 @@ export function createWorkflowComposerSignals(
   const selectedSuggestionIndexState$ = state(0);
   const runtime = createWorkflowComposerRuntime();
   const templatePreview = createTemplatePreviewRuntime();
+  const compositionGate = createCompositionGate();
 
   const editor = createWorkflowEditor(runtime);
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
@@ -1478,6 +1495,7 @@ export function createWorkflowComposerSignals(
       editorFocusedState$,
       selectedSuggestionIndexState$,
       feedback,
+      compositionGate,
       autoFocus,
       singleLineOnMobile,
     });
@@ -1491,6 +1509,11 @@ export function createWorkflowComposerSignals(
     activeChatThreadSuggestionRange$,
   );
   const { insertText$, appendText$ } = createInsertTextCommands(editor);
+  const readInputForSubmission$ = command((_context, signal: AbortSignal) => {
+    return compositionGate.runWhenSettled(() => {
+      return workflowComposerDocToString(editor);
+    }, signal);
+  });
   const hasInput$ = computed((get) => {
     return get(draft.hasInput$) || get(feedback.active$);
   });
@@ -1515,6 +1538,7 @@ export function createWorkflowComposerSignals(
     insertChatThread$,
     insertText$,
     appendText$,
+    readInputForSubmission$,
     setTemplateAttachmentLifecycleRef$: templateAttachment.setLifecycleRef$,
     setEventHandlers$,
     feedback,

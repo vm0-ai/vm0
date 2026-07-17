@@ -109,6 +109,10 @@ export {
 
 // Utilities
 export { cn } from "./lib/utils";
+export {
+  createCompositionGate,
+  type CompositionGate,
+} from "./lib/composition-gate";
 
 // Keyboard shortcuts
 export {

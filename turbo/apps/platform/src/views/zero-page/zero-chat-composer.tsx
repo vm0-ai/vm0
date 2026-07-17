@@ -16,6 +16,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
@@ -6570,6 +6571,9 @@ export function useZeroChatComposer({
   } = resolved;
   const insertComposerText = useSet(composer.insertText$);
   const appendComposerText = useSet(composer.appendText$);
+  const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
+    composer.readInputForSubmission$,
+  );
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
@@ -6790,6 +6794,7 @@ export function useZeroChatComposer({
       canSend:
         !actionsLoading &&
         !submissionLoading &&
+        inputForSubmissionLoadable.state !== "loading" &&
         uploadsReady &&
         (input.trim().length > 0 || visibleAttachments.length > 0) &&
         !submitBlocker,
@@ -6797,29 +6802,32 @@ export function useZeroChatComposer({
       queueWhileSending,
       hasQueueHandler: onQueue !== undefined,
     });
+    if (sendAction === "none") {
+      return;
+    }
     if (sendAction === "send") {
       // Fire-and-forget: request push permission on first send, never blocks
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
-      onSend(input.trim(), templatePicker?.value);
-      return;
     }
-    if (sendAction === "queue") {
-      onQueue?.(input.trim(), templatePicker?.value);
-    }
+    const submitCurrentInput = async () => {
+      const currentInput = await readInputForSubmission(pageSignal);
+      const prompt = currentInput.trim();
+      if (prompt.length === 0 && visibleAttachments.length === 0) {
+        return;
+      }
+      if (sendAction === "send") {
+        onSend(prompt, templatePicker?.value);
+      } else {
+        onQueue?.(prompt, templatePicker?.value);
+      }
+    };
+    detach(submitCurrentInput(), Reason.DomCallback);
   };
 
   // Routes a button click to the queue path while the current thread is sending,
   // otherwise to the normal send path.
   const handleButtonSend = () => {
-    const input = readInput();
-    if (actionsLoading || submissionLoading || submitBlocker) {
-      return;
-    }
-    if (sending && queueWhileSending && onQueue) {
-      onQueue(input.trim(), templatePicker?.value);
-    } else {
-      handleSend();
-    }
+    handleSend();
   };
 
   const sendModeLoadable = useLastLoadable(sendMode$);
@@ -7004,7 +7012,10 @@ export function useZeroChatComposer({
                     hasQueueHandler={onQueue !== undefined}
                     onCancel={onCancel}
                     actionsLoading={actionsLoading}
-                    submissionLoading={submissionLoading}
+                    submissionLoading={
+                      submissionLoading ||
+                      inputForSubmissionLoadable.state === "loading"
+                    }
                     onSend={handleButtonSend}
                   />
                 </div>
