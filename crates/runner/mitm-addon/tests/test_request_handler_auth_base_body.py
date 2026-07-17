@@ -220,6 +220,8 @@ async def test_auth_base_requestheaders_rejects_saturated_admission_before_auth(
 @pytest.mark.parametrize(
     ("method", "request_header_pairs"),
     [
+        ("GET", []),
+        ("HEAD", []),
         ("POST", []),
         ("PUT", []),
         ("PATCH", []),
@@ -359,72 +361,6 @@ async def test_auth_base_requestheaders_accepts_matching_duplicate_content_lengt
     assert flow.error is None
     assert flow.live is True
     assert metadata_keys.FIREWALL_ERROR not in flow.metadata
-
-
-@pytest.mark.parametrize("method", ["GET", "HEAD"])
-async def test_auth_base_requestheaders_accepts_no_body_framing(
-    tmp_path, real_flow, mitm_ctx, headers, method
-):
-    reg_path = _write_auth_base_firewall_registry(tmp_path)
-    flow = real_flow(
-        with_response=False,
-        client_ip="10.200.0.5",
-        host="placeholder.example.com",
-        method=method,
-        path="/",
-        request_headers=headers(("Host", "placeholder.example.com")),
-    )
-    token_meta = {
-        "headers": {},
-        "base": "https://real.example.com/webhook",
-        "resolved_secrets": ["WEBHOOK_URL"],
-        "refreshed_connectors": [],
-        "refreshed_secrets": [],
-        "cache_hit": False,
-    }
-
-    with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-        fake_forwarder_upstream(status=200, body=b"ok"),
-    ):
-        mitm_addon.requestheaders(flow)
-        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
-            1,
-            0,
-        )
-        await mitm_addon.request(flow)
-
-    assert flow.response is not None
-    assert flow.response.status_code == 200
-    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
-
-
-async def test_auth_base_bodyless_requests_do_not_spend_body_budget(
-    tmp_path, real_flow, mitm_ctx, headers
-):
-    reg_path = _write_auth_base_firewall_registry(tmp_path)
-    flows = [
-        real_flow(
-            with_response=False,
-            client_ip="10.200.0.5",
-            host="placeholder.example.com",
-            method="GET",
-            path="/",
-            request_headers=headers(("Host", "placeholder.example.com")),
-        )
-        for _ in range(2)
-    ]
-
-    with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
-        patch.object(auth_base_forwarder, "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES", 1),
-    ):
-        for flow in flows:
-            mitm_addon.requestheaders(flow)
-
-    assert all(flow.response is None for flow in flows)
-    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (2, 0)
 
 
 async def test_requestheaders_skips_registry_for_bounded_body_headers(real_flow, headers):

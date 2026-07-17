@@ -48,6 +48,7 @@ import flow_metadata_keys as metadata_keys
 import http_local_responses
 import http_network_log
 import matching
+import mitmproxy_compat
 import model_usage_pricing
 import network_log_sanitization
 import platform_api
@@ -125,6 +126,7 @@ class _AuthBaseBodyCheck:
 
 def load(loader: Loader) -> None:
     """Register custom options for the addon."""
+    mitmproxy_compat.install_request_end_stream_bridge()
     signal.signal(
         runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
         runner_flush_lifecycle.handle_runner_usage_flush_signal,
@@ -157,6 +159,12 @@ def load(loader: Loader) -> None:
         typespec=str,
         default="",
         help="Runner-generated usage-pending state id",
+    )
+    loader.add_option(
+        name="vm0_addon_ready_path",
+        typespec=str,
+        default="",
+        help="Path for the runner's addon initialization marker",
     )
     loader.add_option(
         name="vm0_client_session_id",
@@ -194,6 +202,11 @@ def configure(updated: set[str]) -> None:
             str(Path(__file__).resolve().parent / "usage-pending"),
             usage_state_id=ctx.options.vm0_usage_state_id or None,
         )
+    if {"vm0_addon_ready_path", "vm0_usage_state_id"} & updated:
+        ready_path = ctx.options.vm0_addon_ready_path
+        usage_state_id = ctx.options.vm0_usage_state_id
+        if ready_path and usage_state_id:
+            Path(ready_path).write_text(usage_state_id, encoding="utf-8")
 
 
 def get_api_url() -> str:
@@ -365,7 +378,11 @@ def _builtin_host_policy_error_for_firewall_allow(
     return None
 
 
-def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
+def _auth_base_body_header_check(
+    flow: http.HTTPFlow,
+    *,
+    request_end_stream: bool | None,
+) -> _AuthBaseBodyCheck:
     if flow.request.headers.get_all("Transfer-Encoding"):
         return _AuthBaseBodyCheck(kind="length_required", reason="transfer_encoding")
 
@@ -373,6 +390,13 @@ def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
     if not raw_content_lengths:
         if flow.request.method.upper() not in _AUTH_BASE_BODYLESS_METHODS:
             return _AuthBaseBodyCheck(kind="length_required", reason="missing_content_length")
+        if request_end_stream is not True:
+            reason = (
+                "request_stream_open"
+                if request_end_stream is False
+                else "request_end_stream_unavailable"
+            )
+            return _AuthBaseBodyCheck(kind="length_required", reason=reason)
         return _AuthBaseBodyCheck(kind="ok")
 
     parsed_length: int | None = None
@@ -590,9 +614,13 @@ def client_disconnected(client: connection.Client) -> None:
 
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
+    request_end_stream = mitmproxy_compat.take_request_end_stream(flow)
     connector_intent.capture_and_strip(flow)
 
-    body_check = _auth_base_body_header_check(flow)
+    body_check = _auth_base_body_header_check(
+        flow,
+        request_end_stream=request_end_stream,
+    )
     body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
     if body_fits_stream_buffer:
         _prebind_bounded_requestheaders_upstream_destination(flow)
