@@ -35,7 +35,6 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
       false,
     );
@@ -183,7 +182,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactFavorites]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactPreviewImage]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OrgPlanEntitlementReads]).toBe(
       false,

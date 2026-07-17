@@ -2765,13 +2765,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     if (!websiteTemplate) {
       throw new Error("Expected a registered website template");
     }
-    if (!actor.orgId) {
-      throw new Error("Expected entitled actor to belong to an org");
-    }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.WebsiteTemplates]: true,
-    });
     const website = await sendChatRun(actor, {
       agentId,
       prompt: "make a campaign landing page",
@@ -2981,34 +2974,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(followUpPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);
-
-  it("rejects website template selections while the feature switch is off", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const template = WEBSITE_TEMPLATE_ITEMS[0];
-    if (!template) {
-      throw new Error("Expected a registered website template");
-    }
-
-    const clientThreadId = randomUUID();
-    const rejected = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        prompt: "make a landing page",
-        clientThreadId,
-        generationTemplate: {
-          type: "website",
-          selection: { websiteTemplateId: template.id },
-        },
-      },
-      [400],
-    );
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toBe(
-      "Website templates are not enabled",
-    );
-    await chat.requestReadThread(actor, clientThreadId, [404]);
-  }, 60_000);
 
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();
