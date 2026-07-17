@@ -1423,7 +1423,11 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
 
 
 def tcp_message(flow: tcp.TCPFlow) -> None:
-    """Schedule bounded retention cleanup for registered TCP flows."""
+    """Preserve byte totals while bounding registered TCP message retention.
+
+    The hook coalesces message events into a deferred drain, which records request and response
+    byte totals before clearing retained messages.
+    """
     tcp_logging.message(flow)
 
 
