@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.605.1](https://github.com/vm0-ai/vm0/compare/app-v0.605.0...app-v0.605.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* keep inline feedback in the shared chat composer pipeline ([#21913](https://github.com/vm0-ai/vm0/issues/21913)) ([6881075](https://github.com/vm0-ai/vm0/commit/68810759be82df46e8999d911151b8664f909923))
+
+
+### Refactoring
+
+* **platform:** cache chat blocks and share permission card signals ([#21919](https://github.com/vm0-ai/vm0/issues/21919)) ([f04823d](https://github.com/vm0-ai/vm0/commit/f04823da274101b5a921bce0c3eb6246e8f89f75))
+
 ## [0.605.0](https://github.com/vm0-ai/vm0/compare/app-v0.604.1...app-v0.605.0) (2026-07-17)
 
 
