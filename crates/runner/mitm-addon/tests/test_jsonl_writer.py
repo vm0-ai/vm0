@@ -35,6 +35,69 @@ def test_worker_start_failure_does_not_publish_or_consume_retry_capacity(tmp_pat
         assert log_path.read_bytes() == line
 
 
+def test_writer_appends_vectored_batch_across_partial_writes(tmp_path, mitm_ctx):
+    log_path = str(tmp_path / "network.jsonl")
+    gate_started = threading.Event()
+    release_gate = threading.Event()
+    writev_calls: list[tuple[bytes, ...]] = []
+    original_writev = jsonl_writer.os.writev
+
+    def writev(fd: int, buffers: list[bytes | memoryview]) -> int:
+        writev_calls.append(tuple(bytes(buffer) for buffer in buffers))
+        if not gate_started.is_set():
+            gate_started.set()
+            release_gate.wait()
+
+        remaining = 3
+        limited_buffers: list[memoryview] = []
+        for buffer in buffers:
+            if not buffer:
+                continue
+            chunk_size = min(len(buffer), remaining)
+            limited_buffers.append(memoryview(buffer)[:chunk_size])
+            remaining -= chunk_size
+            if remaining == 0:
+                break
+        return original_writev(fd, limited_buffers)
+
+    with (
+        patch.object(jsonl_writer, "MAX_JSONL_IOVECS", 2),
+        patch.object(jsonl_writer.os, "writev", side_effect=writev),
+        mitm_ctx() as log,
+    ):
+        try:
+            jsonl_writer.write_jsonl_line(log_path, b"gate\n", "network")
+            assert gate_started.wait(timeout=1)
+
+            jsonl_writer.write_jsonl_line(log_path, b"first\n", "network")
+            jsonl_writer.write_jsonl_line(log_path, b"", "network")
+            jsonl_writer.write_jsonl_line(log_path, b"second\n", "network")
+            jsonl_writer.write_jsonl_line(log_path, b"third\n", "network")
+        finally:
+            release_gate.set()
+
+        assert jsonl_writer.flush_log_path(log_path, timeout=1)
+
+    assert (tmp_path / "network.jsonl").read_bytes() == b"gate\nfirst\nsecond\nthird\n"
+    assert all(len(buffers) <= 2 for buffers in writev_calls)
+    assert any(len(buffers) == 2 and all(buffers) for buffers in writev_calls)
+    log.warn.assert_not_called()
+
+
+def test_writer_warns_and_retires_batch_when_writev_returns_zero(tmp_path, mitm_ctx):
+    log_path = str(tmp_path / "network.jsonl")
+
+    with (
+        patch.object(jsonl_writer.os, "writev", return_value=0),
+        mitm_ctx() as log,
+    ):
+        jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
+        assert jsonl_writer.flush_log_path(log_path, timeout=1)
+
+    log.warn.assert_called_once_with("Failed to write network log: OSError: write returned 0 bytes")
+    assert (tmp_path / "network.jsonl").read_bytes() == b""
+
+
 def test_writer_publishes_backlog_completion_once_per_batch(tmp_path):
     class ObservedCondition:
         def __init__(self) -> None:
@@ -99,17 +162,17 @@ def test_writer_publishes_backlog_completion_once_per_batch(tmp_path):
     later_line = b"later-2\n"
     original_append_lines = jsonl_writer._append_lines
 
-    def append_lines(path: str, content: bytes) -> None:
+    def append_lines(path: str, lines: list[bytes]) -> None:
         if path == gate_path:
             gate_started.set()
             release_gate.wait()
         elif path == pruned_path:
             target_batch_started.set()
             release_target_batch.wait()
-        elif path == later_write_path and content == later_line:
+        elif path == later_write_path and lines == [later_line]:
             later_batch_started.set()
             release_later_batch.wait()
-        original_append_lines(path, content)
+        original_append_lines(path, lines)
 
     def flush_waiter_path() -> None:
         assert jsonl_writer.flush_log_path(waiter_path)
@@ -199,10 +262,10 @@ def test_flush_prunes_completed_path_state(tmp_path):
     flush_thread: ThreadUnderTest | None = None
     original_append_lines = jsonl_writer._append_lines
 
-    def append_lines(path: str, content: bytes) -> None:
+    def append_lines(path: str, lines: list[bytes]) -> None:
         append_started.set()
         release_append.wait()
-        original_append_lines(path, content)
+        original_append_lines(path, lines)
 
     def flush_log_path() -> None:
         jsonl_writer.flush_log_path(log_path)
@@ -248,10 +311,10 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
     flush_threads: list[ThreadUnderTest] = []
     original_append_lines = jsonl_writer._append_lines
 
-    def append_lines(path: str, content: bytes) -> None:
+    def append_lines(path: str, lines: list[bytes]) -> None:
         append_started.set()
         release_append.wait()
-        original_append_lines(path, content)
+        original_append_lines(path, lines)
 
     def flush_log_path() -> None:
         jsonl_writer.flush_log_path(log_path)
@@ -300,10 +363,10 @@ def test_shutdown_writer_returns_when_normal_write_backlog_is_full(tmp_path):
     shutdown_thread: ThreadUnderTest | None = None
     original_append_lines = jsonl_writer._append_lines
 
-    def append_lines(path: str, content: bytes) -> None:
+    def append_lines(path: str, lines: list[bytes]) -> None:
         append_started.set()
         release_append.wait()
-        original_append_lines(path, content)
+        original_append_lines(path, lines)
 
     def shutdown_writer() -> None:
         jsonl_writer.shutdown_writer(timeout=0.01)
@@ -349,10 +412,10 @@ def test_shutdown_writer_timeout_preserves_state_for_retry(tmp_path):
     release_append = threading.Event()
     original_append_lines = jsonl_writer._append_lines
 
-    def append_lines(path: str, content: bytes) -> None:
+    def append_lines(path: str, lines: list[bytes]) -> None:
         append_started.set()
         release_append.wait()
-        original_append_lines(path, content)
+        original_append_lines(path, lines)
 
     with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
         try:
@@ -385,10 +448,10 @@ def test_flush_log_path_timeout_returns_false_and_cleans_waiter(tmp_path):
     release_append = threading.Event()
     original_append_lines = jsonl_writer._append_lines
 
-    def append_lines(path: str, content: bytes) -> None:
+    def append_lines(path: str, lines: list[bytes]) -> None:
         append_started.set()
         release_append.wait()
-        original_append_lines(path, content)
+        original_append_lines(path, lines)
 
     with patch.object(jsonl_writer, "_append_lines", side_effect=append_lines):
         try:
