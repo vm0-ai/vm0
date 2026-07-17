@@ -6,13 +6,17 @@ use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
 use crate::resource_budget::BudgetLease;
+use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
 use crate::storage_fingerprints::StorageFingerprints;
+use crate::types::ResumeSessionHistoryRefKind;
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
-    WorkspaceImagePrepareRequest, WorkspaceImagePromotionRequest,
+    WorkspaceImagePrepareRequest, WorkspaceImagePromotionOutcome, WorkspaceImagePromotionRequest,
+    WorkspaceSessionHistorySidecarRepresentation,
 };
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::SandboxId;
+use sha2::{Digest, Sha256};
 
 fn make_synthetic_parked_candidate(
     session_id: &str,
@@ -237,8 +241,12 @@ pub(in super::super) async fn seed_workspace_cache_state(
     session_id: &str,
     profile_name: &str,
     image_size_bytes: u64,
+    sidecar: Option<TestWorkspaceSidecar>,
 ) {
-    let run_id = RunId::new_v4();
+    let run_id = match sidecar {
+        Some(TestWorkspaceSidecar::Attributed(run_id)) => run_id,
+        Some(TestWorkspaceSidecar::Legacy) | None => RunId::new_v4(),
+    };
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -260,18 +268,83 @@ pub(in super::super) async fn seed_workspace_cache_state(
     let file = tokio::fs::File::create(&active_image).await.unwrap();
     file.set_len(image_size_bytes).await.unwrap();
     drop(file);
-    assert!(
-        lease
-            .promote(
-                run_id,
-                None,
-                WorkspaceCacheTerminalStatus::Success,
-                TEST_SESSION_LAST_COMPLETED_AT.into(),
-                &StorageFingerprints::default(),
-            )
-            .await
-            .unwrap()
+    let Some(sidecar) = sidecar else {
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    None,
+                    WorkspaceCacheTerminalStatus::Success,
+                    TEST_SESSION_LAST_COMPLETED_AT.into(),
+                    &StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+        return;
+    };
+
+    let history = br#"{"type":"message","content":"main-loop-sidecar"}"#;
+    let restored_session_identity = RestoredSessionIdentity::new(
+        RestoredSessionFramework::ClaudeCode,
+        session_id,
+        ResumeSessionHistoryRefKind::Blob,
+        hex::encode(Sha256::digest(history)),
+        Some(history.len() as u64),
     );
+    let promotion = lease
+        .into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id,
+            cli_agent_session_id_override: None,
+            restored_session_identity: Some(&restored_session_identity),
+            terminal_status: WorkspaceCacheTerminalStatus::Success,
+            completed_at: TEST_SESSION_LAST_COMPLETED_AT.into(),
+            storage_fingerprints: StorageFingerprints::default(),
+        })
+        .expect("workspace image should be promotable");
+    let guard = promotion
+        .try_acquire_session_history_sidecar_entry_guard()
+        .await
+        .expect("sidecar entry guard should be available");
+    let tmp_path = guard.session_history_sidecar_tmp_path();
+    let entry_dir = tmp_path
+        .parent()
+        .expect("sidecar temporary path should have a cache entry parent")
+        .to_path_buf();
+    tokio::fs::create_dir_all(&entry_dir).await.unwrap();
+    tokio::fs::write(&tmp_path, history).await.unwrap();
+    let source = guard.session_history_sidecar_source(
+        tmp_path,
+        WorkspaceSessionHistorySidecarRepresentation::Raw,
+        history.len() as u64,
+    );
+    assert_eq!(
+        guard
+            .promote_with_session_history_sidecar(&promotion, &source)
+            .await
+            .unwrap(),
+        WorkspaceImagePromotionOutcome::Promoted
+    );
+
+    if sidecar == TestWorkspaceSidecar::Legacy {
+        let metadata_path = entry_dir.join("session-history.metadata.json");
+        let mut metadata: serde_json::Value =
+            serde_json::from_slice(&tokio::fs::read(&metadata_path).await.unwrap()).unwrap();
+        metadata
+            .as_object_mut()
+            .unwrap()
+            .remove("historyGenerationRunId");
+        tokio::fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
+            .await
+            .unwrap();
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in super::super) enum TestWorkspaceSidecar {
+    Attributed(RunId),
+    Legacy,
 }
 
 pub(in super::super) async fn seed_idle_pool_expired(

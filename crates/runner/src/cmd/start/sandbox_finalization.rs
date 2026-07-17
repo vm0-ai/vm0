@@ -73,6 +73,7 @@ fn mark_workspace_cache_snapshot_promoted(
             workspace_caches: vec![WorkspaceCacheState {
                 profile: profile_name.to_owned(),
                 workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                session_history_sidecar: None,
             }],
         });
     }

@@ -1,13 +1,17 @@
 use std::path::Path;
 
+use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryRefKind, SESSION_HISTORY_SIDECAR_MAX_BYTES,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::fs;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::ids::RunId;
 use crate::restored_session_identity::{RestoredSessionIdentity, RestoredSessionIdentityFields};
+use crate::types::{SessionHistorySizeBucket, WorkspaceSessionHistorySidecarState};
 
 use super::fs::{
     allocated_bytes, ensure_workspace_cache_entry_dir, remove_workspace_cache_path_if_exists,
@@ -22,10 +26,19 @@ use super::{SessionWorkspaceCache, entry::CacheEntryPaths};
 
 const SESSION_HISTORY_SIDECAR_FORMAT_VERSION: u8 = 1;
 
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkspaceSessionHistorySidecarMetadata {
     version: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    history_generation_run_id: Option<RunId>,
     framework: FinalSessionHistoryFramework,
     session_id_hash: String,
     history_ref_kind: FinalSessionHistoryRefKind,
@@ -39,6 +52,7 @@ struct WorkspaceSessionHistorySidecarMetadata {
 
 impl WorkspaceSessionHistorySidecarMetadata {
     fn from_source(
+        history_generation_run_id: RunId,
         source: &WorkspaceSessionHistorySidecarPromotionSource,
         body_metadata: &std::fs::Metadata,
     ) -> Option<Self> {
@@ -51,6 +65,7 @@ impl WorkspaceSessionHistorySidecarMetadata {
         } = source.restored_session_identity.cache_fields()?;
         Some(Self {
             version: SESSION_HISTORY_SIDECAR_FORMAT_VERSION,
+            history_generation_run_id: Some(history_generation_run_id),
             framework,
             session_id_hash: session_id_hash.to_owned(),
             history_ref_kind,
@@ -97,6 +112,59 @@ impl WorkspaceSessionHistorySidecarMetadata {
             _ => Err(WorkspaceSessionHistorySidecarMiss::UnsupportedFormat),
         }
     }
+
+    fn observe(
+        &self,
+        workspace_session_id: &str,
+    ) -> Result<WorkspaceSessionHistorySidecarState, WorkspaceSessionHistorySidecarMiss> {
+        if self.version != SESSION_HISTORY_SIDECAR_FORMAT_VERSION
+            || self.encoded_size == 0
+            || self.encoded_size > SESSION_HISTORY_SIDECAR_MAX_BYTES
+            || !(1..=RESUME_SESSION_HISTORY_MAX_BYTES).contains(&self.history_size_bytes)
+            || !is_sha256_hex(&self.session_id_hash)
+            || !is_sha256_hex(&self.history_hash)
+        {
+            return Err(WorkspaceSessionHistorySidecarMiss::InvalidMetadata);
+        }
+        match (self.framework, self.representation) {
+            (_, WorkspaceSessionHistorySidecarRepresentation::Raw)
+                if self.encoded_size == self.history_size_bytes => {}
+            (
+                FinalSessionHistoryFramework::Codex,
+                WorkspaceSessionHistorySidecarRepresentation::CodexZstd,
+            ) => {}
+            _ => return Err(WorkspaceSessionHistorySidecarMiss::UnsupportedFormat),
+        }
+        let normalized_session_id = match self.framework {
+            FinalSessionHistoryFramework::ClaudeCode => workspace_session_id.to_owned(),
+            FinalSessionHistoryFramework::Codex => {
+                guest_contracts::codex_thread_id::canonical_codex_thread_id(workspace_session_id)
+                    .ok_or(WorkspaceSessionHistorySidecarMiss::IdentityMismatch)?
+            }
+        };
+        let expected_session_id_hash =
+            hex::encode(Sha256::digest(normalized_session_id.as_bytes()));
+        if self.session_id_hash != expected_session_id_hash {
+            return Err(WorkspaceSessionHistorySidecarMiss::IdentityMismatch);
+        }
+        Ok(WorkspaceSessionHistorySidecarState {
+            history_generation_run_id: self.history_generation_run_id,
+            raw_size_bucket: SessionHistorySizeBucket::from_size(self.history_size_bytes),
+        })
+    }
+
+    fn validate_body_metadata(
+        &self,
+        body_metadata: &std::fs::Metadata,
+    ) -> Result<(), WorkspaceSessionHistorySidecarMiss> {
+        if !body_metadata.is_file()
+            || WorkspaceImageFileIdentity::from_metadata(body_metadata) != self.body_file
+            || body_metadata.len() != self.encoded_size
+        {
+            return Err(WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch);
+        }
+        Ok(())
+    }
 }
 
 impl SessionWorkspaceCache {
@@ -119,12 +187,7 @@ impl SessionWorkspaceCache {
                     WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch
                 }
             })?;
-        if !body_metadata.is_file()
-            || WorkspaceImageFileIdentity::from_metadata(&body_metadata) != metadata.body_file
-            || body_metadata.len() != metadata.encoded_size
-        {
-            return Err(WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch);
-        }
+        metadata.validate_body_metadata(&body_metadata)?;
         Ok(WorkspaceSessionHistorySidecar {
             path: paths.session_history_sidecar().to_path_buf(),
             representation: metadata.representation,
@@ -132,10 +195,33 @@ impl SessionWorkspaceCache {
         })
     }
 
+    pub(super) async fn observe_session_history_sidecar(
+        &self,
+        cache_key: &str,
+        workspace_session_id: &str,
+    ) -> Result<WorkspaceSessionHistorySidecarState, WorkspaceSessionHistorySidecarMiss> {
+        let paths = self.entry_paths(cache_key);
+        let metadata = self
+            .read_session_history_sidecar_metadata(paths.session_history_sidecar_metadata())
+            .await?;
+        let state = metadata.observe(workspace_session_id)?;
+        let body_metadata = fs::symlink_metadata(paths.session_history_sidecar())
+            .await
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    WorkspaceSessionHistorySidecarMiss::BodyMissing
+                } else {
+                    WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch
+                }
+            })?;
+        metadata.validate_body_metadata(&body_metadata)?;
+        Ok(state)
+    }
+
     pub(super) async fn publish_session_history_sidecar(
         &self,
         cache_key: &str,
-        run_id: crate::ids::RunId,
+        run_id: RunId,
         source: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
     ) -> RunnerResult<()> {
         let paths = self.entry_paths(cache_key);
@@ -180,7 +266,7 @@ impl SessionWorkspaceCache {
     async fn publish_session_history_sidecar_source(
         &self,
         cache_key: &str,
-        run_id: crate::ids::RunId,
+        run_id: RunId,
         paths: &CacheEntryPaths,
         source: &WorkspaceSessionHistorySidecarPromotionSource,
     ) -> RunnerResult<()> {
@@ -195,7 +281,7 @@ impl SessionWorkspaceCache {
             return Ok(());
         }
         let Some(sidecar_metadata) =
-            WorkspaceSessionHistorySidecarMetadata::from_source(source, &tmp_metadata)
+            WorkspaceSessionHistorySidecarMetadata::from_source(run_id, source, &tmp_metadata)
         else {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             self.prune_session_history_sidecar(cache_key).await?;

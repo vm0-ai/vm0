@@ -6,6 +6,7 @@ import {
   RESUME_SESSION_HISTORY_MAX_BYTES,
   sessionHistoryDownloadSourceSchema,
   sessionHistoryEncodingSchema,
+  sessionHistorySizeBucketSchema,
   secretConnectorMetadataMapSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
@@ -680,16 +681,6 @@ const metricDataSchema = z.object({
   disk_used: z.number(),
   disk_total: z.number(),
 });
-
-const sessionHistorySizeBucketSchema = z.enum([
-  "lt_64_kib",
-  "64_256_kib",
-  "256_kib_1_mib",
-  "1_4_mib",
-  "4_16_mib",
-  "16_64_mib",
-  "64_128_mib",
-]);
 
 const sessionHistoryCompressionRatioBucketSchema = z.enum([
   "identity",

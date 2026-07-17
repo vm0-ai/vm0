@@ -396,18 +396,25 @@ fn merge_held_session_state(existing: &mut HeldSessionState, mut incoming: HeldS
     if existing.reusable_sandbox.is_none() {
         existing.reusable_sandbox = incoming.reusable_sandbox;
     }
+    for incoming_workspace in incoming.workspace_caches.drain(..) {
+        match existing
+            .workspace_caches
+            .iter_mut()
+            .find(|workspace| workspace.profile == incoming_workspace.profile)
+        {
+            Some(existing_workspace)
+                if incoming_workspace.workspace_affinity_version
+                    >= existing_workspace.workspace_affinity_version =>
+            {
+                *existing_workspace = incoming_workspace;
+            }
+            Some(_) => {}
+            None => existing.workspace_caches.push(incoming_workspace),
+        }
+    }
     existing
         .workspace_caches
-        .append(&mut incoming.workspace_caches);
-    existing.workspace_caches.sort_unstable_by(|a, b| {
-        a.profile.cmp(&b.profile).then_with(|| {
-            b.workspace_affinity_version
-                .cmp(&a.workspace_affinity_version)
-        })
-    });
-    existing
-        .workspace_caches
-        .dedup_by(|a, b| a.profile == b.profile);
+        .sort_unstable_by(|a, b| a.profile.cmp(&b.profile));
     existing
         .workspace_caches
         .truncate(MAX_WORKSPACE_CACHES_PER_SESSION);
@@ -526,7 +533,9 @@ mod tests {
     use crate::ids::RunId;
     use crate::paths::RunnerPaths;
     use crate::provider::mock::MockJobProvider;
-    use crate::types::WorkspaceCacheState;
+    use crate::types::{
+        SessionHistorySizeBucket, WorkspaceCacheState, WorkspaceSessionHistorySidecarState,
+    };
     use crate::workspace_image_cache::{
         WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
     };
@@ -570,6 +579,18 @@ mod tests {
         WorkspaceCacheState {
             profile: profile.to_owned(),
             workspace_affinity_version: Some(crate::types::WORKSPACE_AFFINITY_VERSION),
+            session_history_sidecar: None,
+        }
+    }
+
+    fn workspace_cache_with_sidecar(profile: &str, run_id: RunId) -> WorkspaceCacheState {
+        WorkspaceCacheState {
+            profile: profile.to_owned(),
+            workspace_affinity_version: Some(crate::types::WORKSPACE_AFFINITY_VERSION),
+            session_history_sidecar: Some(WorkspaceSessionHistorySidecarState {
+                history_generation_run_id: Some(run_id),
+                raw_size_bucket: SessionHistorySizeBucket::LessThan64Kib,
+            }),
         }
     }
 
@@ -1060,6 +1081,36 @@ mod tests {
         assert_eq!(states, vec![original]);
     }
 
+    #[test]
+    fn held_session_snapshot_concurrent_promotion_clears_stale_sidecar_attribution() {
+        let snapshot = HeldSessionStateSnapshot::new();
+        let run_id = RunId::new_v4();
+        let observed = HeldSessionState {
+            session_id: "sess-shared".into(),
+            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+            reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache_with_sidecar("vm0/default", run_id)],
+        };
+        refresh_snapshot(&snapshot, vec![observed.clone()]);
+
+        let refresh = snapshot.begin_workspace_cache_refresh();
+        snapshot.upsert_workspace_cache_state(HeldSessionState {
+            session_id: "sess-shared".into(),
+            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+            reusable_sandbox: None,
+            workspace_caches: vec![workspace_cache("vm0/default")],
+        });
+        let refreshed = snapshot.finish_workspace_cache_refresh(refresh, vec![observed]);
+
+        assert_eq!(refreshed.len(), 1);
+        assert_eq!(refreshed[0].workspace_caches.len(), 1);
+        assert!(
+            refreshed[0].workspace_caches[0]
+                .session_history_sidecar
+                .is_none()
+        );
+    }
+
     fn timestamp_for_index(index: usize) -> String {
         format!("2026-06-01T00:{:02}:{:02}.000Z", index / 60, index % 60)
     }
@@ -1165,6 +1216,7 @@ mod tests {
             workspace_caches: vec![WorkspaceCacheState {
                 profile: "vm0/default".into(),
                 workspace_affinity_version: None,
+                session_history_sidecar: None,
             }],
         };
         let capable = HeldSessionState {

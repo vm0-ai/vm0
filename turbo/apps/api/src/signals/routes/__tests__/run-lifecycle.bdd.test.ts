@@ -13,7 +13,10 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
+import type {
+  Job as RunnerJob,
+  SessionHistorySizeBucket,
+} from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -2294,6 +2297,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       readonly workspaceCaches?: {
         readonly profile: string;
         readonly workspaceAffinityVersion?: 1;
+        readonly sessionHistorySidecar?: {
+          readonly historyGenerationRunId?: string;
+          readonly rawSizeBucket: SessionHistorySizeBucket;
+        };
       }[];
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
@@ -2554,6 +2561,115 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(sessionAffinityResource(exactGenerationHolder.job)).toBe(
       "reusableSandbox",
     );
+
+    const sidecarVariantRunners = [
+      {
+        runnerId: randomUUID(),
+        sessionHistorySidecar: {
+          historyGenerationRunId: first.runId,
+          rawSizeBucket: "64_256_kib" as const,
+        },
+      },
+      {
+        runnerId: randomUUID(),
+        sessionHistorySidecar: {
+          historyGenerationRunId: randomUUID(),
+          rawSizeBucket: "256_kib_1_mib" as const,
+        },
+      },
+      {
+        runnerId: randomUUID(),
+        sessionHistorySidecar: {
+          rawSizeBucket: "1_4_mib" as const,
+        },
+      },
+      { runnerId: randomUUID(), sessionHistorySidecar: undefined },
+    ];
+    for (const variant of sidecarVariantRunners) {
+      await api.requestHeartbeatRunner(true, [200], {
+        runnerId: variant.runnerId,
+        group: runnerGroup,
+        admittableProfiles: ["vm0/default"],
+        heldSessionStates: [
+          {
+            sessionId: cliAgentSessionId,
+            lastCompletedAt: nowDate().toISOString(),
+            workspaceCaches: [
+              {
+                profile: "vm0/default",
+                workspaceAffinityVersion: 1,
+                ...(variant.sessionHistorySidecar
+                  ? {
+                      sessionHistorySidecar: variant.sessionHistorySidecar,
+                    }
+                  : {}),
+              },
+            ],
+          },
+        ],
+      });
+    }
+    const reusableWithCompetingWorkspaceSidecars = await pollFollowUp(
+      "observe workspace sidecars while reusable sandbox remains preferred",
+    );
+    expect(
+      sessionAffinityProtectedUntil(reusableWithCompetingWorkspaceSidecars.job),
+    ).toStrictEqual(expect.any(String));
+    expect(
+      historyGenerationAffinityProtectedUntil(
+        reusableWithCompetingWorkspaceSidecars.job,
+      ),
+    ).toStrictEqual(expect.any(String));
+    expect(
+      sessionAffinityResource(reusableWithCompetingWorkspaceSidecars.job),
+    ).toBe("reusableSandbox");
+
+    await heartbeatHolder({ admittableProfiles: [], mode: "stopping" });
+    const competingWorkspaceSidecars = await pollFollowUp(
+      "observe competing workspace sidecars without routing by them",
+    );
+    expect(sessionAffinityResource(competingWorkspaceSidecars.job)).toBe(
+      "workspaceCache",
+    );
+    expect(
+      historyGenerationAffinityProtectedUntil(competingWorkspaceSidecars.job),
+    ).toBeNull();
+    for (const { runId, resource } of [
+      {
+        runId: reusableWithCompetingWorkspaceSidecars.run.runId,
+        resource: "reusableSandbox",
+      },
+      {
+        runId: competingWorkspaceSidecars.run.runId,
+        resource: "workspaceCache",
+      },
+    ]) {
+      for (const actionType of [
+        "runner_notification_affinity_lookup",
+        "runner_poll_pending_job_lookup",
+      ]) {
+        const events = sandboxOperationEventsForRunByAction(runId, actionType);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toStrictEqual(
+          expect.objectContaining({
+            session_affinity_resource: resource,
+            workspace_sidecar_exact_holder: "true",
+            workspace_sidecar_different_holder: "true",
+            workspace_sidecar_legacy_holder: "true",
+            workspace_sidecar_absent_holder: "true",
+          }),
+        );
+      }
+    }
+    for (const variant of sidecarVariantRunners) {
+      await api.requestHeartbeatRunner(true, [200], {
+        runnerId: variant.runnerId,
+        group: runnerGroup,
+        admittableProfiles: [],
+        heldSessionStates: [],
+        mode: "stopping",
+      });
+    }
 
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
@@ -7604,6 +7720,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           sessionHistoryGenerationRelationship: "different",
           sessionHistoryGenerationLocalAvailability:
             "parked_before_discovery_lt_heartbeat_period",
+          workspaceSessionHistorySidecarRelationship: "different",
+          workspaceSessionHistorySidecarRawSizeBucket: "256_kib_1_mib",
         },
       },
     );
@@ -7617,6 +7735,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         telemetry: {
           sessionHistoryGenerationRelationship: "exact",
           sessionHistoryGenerationLocalAvailability: "parked_after_discovery",
+          workspaceSessionHistorySidecarRelationship: "exact",
+          workspaceSessionHistorySidecarRawSizeBucket: "64_256_kib",
         },
       },
     );
@@ -7636,6 +7756,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         telemetry: {
           sessionHistoryGenerationRelationship: "exact",
           sessionHistoryGenerationLocalAvailability: "parked_after_discovery",
+          workspaceSessionHistorySidecarRelationship: "exact",
+          workspaceSessionHistorySidecarRawSizeBucket: "64_256_kib",
         },
       },
     );
@@ -7651,6 +7773,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         generation_relationship: "different",
         generation_local_availability:
           "parked_before_discovery_lt_heartbeat_period",
+        workspace_sidecar_relationship: "different",
+        workspace_sidecar_raw_size_bucket: "256_kib_1_mib",
         claim_outcome: "accepted",
         auth_type: "official-runner",
         runner_group: runnerGroup,
@@ -7661,6 +7785,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         duration_ms: 0,
         generation_relationship: "exact",
         generation_local_availability: "parked_after_discovery",
+        workspace_sidecar_relationship: "exact",
+        workspace_sidecar_raw_size_bucket: "64_256_kib",
         claim_outcome: "unavailable",
         auth_type: "official-runner",
       }),
@@ -7672,6 +7798,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(event).not.toHaveProperty("parked_at");
       expect(event).not.toHaveProperty("discovered_at");
       expect(event).not.toHaveProperty("generation_local_availability_ms");
+      expect(event).not.toHaveProperty("workspace_sidecar_generation_run_id");
+      expect(event).not.toHaveProperty("workspace_sidecar_raw_size_bytes");
       expect(JSON.stringify(event)).not.toContain(actorRunnerKey.token);
     }
 
@@ -7792,6 +7920,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           sessionHistoryGenerationRelationship: "exact",
           sessionHistoryGenerationLocalAvailability:
             "parked_before_discovery_ge_heartbeat_period",
+          workspaceSessionHistorySidecarRelationship: "legacy",
+          workspaceSessionHistorySidecarRawSizeBucket: "1_4_mib",
         },
       },
     );
@@ -7808,6 +7938,8 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         generation_relationship: "exact",
         generation_local_availability:
           "parked_before_discovery_ge_heartbeat_period",
+        workspace_sidecar_relationship: "legacy",
+        workspace_sidecar_raw_size_bucket: "1_4_mib",
         claim_outcome: "preclaim_error",
         auth_type: "official-runner",
         runner_group: runnerGroup,

@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -26,8 +26,9 @@ use crate::storage_fingerprints::StorageFingerprint;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{
     HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
-    MAX_WORKSPACE_CACHES_PER_SESSION, ResumeSessionHistoryRefKind, WORKSPACE_AFFINITY_VERSION,
-    WorkspaceCacheState as HeldWorkspaceCacheState,
+    MAX_WORKSPACE_CACHES_PER_SESSION, ResumeSessionHistoryRefKind, SessionHistorySizeBucket,
+    WORKSPACE_AFFINITY_VERSION, WorkspaceCacheState as HeldWorkspaceCacheState,
+    WorkspaceSessionHistorySidecarState,
 };
 use sha2::{Digest, Sha256};
 use tokio::fs;
@@ -1077,6 +1078,7 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
             workspace_caches: vec![HeldWorkspaceCacheState {
                 profile: TEST_PROFILE_NAME.to_owned(),
                 workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                session_history_sidecar: None,
             }],
         })
         .collect();
@@ -1087,6 +1089,7 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
         workspace_caches: vec![HeldWorkspaceCacheState {
             profile: TEST_PROFILE_NAME.to_owned(),
             workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+            session_history_sidecar: None,
         }],
     });
 
@@ -1118,6 +1121,7 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
             workspace_caches: vec![HeldWorkspaceCacheState {
                 profile: format!("vm0/profile-{index:02}"),
                 workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                session_history_sidecar: None,
             }],
         })
         .collect();
@@ -1141,6 +1145,7 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
                 .map(|profile| HeldWorkspaceCacheState {
                     profile: format!("vm0/profile-{profile}"),
                     workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    session_history_sidecar: None,
                 })
                 .collect(),
         })
@@ -1159,6 +1164,47 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
         !capped.iter().any(|state| state.session_id == "sess-0000"),
         "oldest session should be dropped at the global workspace cap"
     );
+}
+
+#[test]
+fn cap_workspace_held_session_states_clears_ambiguous_equal_timestamp_sidecars() {
+    let run_id = RunId::new_v4();
+    let attributed = HeldSessionState {
+        session_id: "sess-ambiguous".into(),
+        last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+        reusable_sandbox: None,
+        workspace_caches: vec![HeldWorkspaceCacheState {
+            profile: TEST_PROFILE_NAME.to_owned(),
+            workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+            session_history_sidecar: Some(WorkspaceSessionHistorySidecarState {
+                history_generation_run_id: Some(run_id),
+                raw_size_bucket: SessionHistorySizeBucket::LessThan64Kib,
+            }),
+        }],
+    };
+    let absent = HeldSessionState {
+        session_id: "sess-ambiguous".into(),
+        last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+        reusable_sandbox: None,
+        workspace_caches: vec![HeldWorkspaceCacheState {
+            profile: TEST_PROFILE_NAME.to_owned(),
+            workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+            session_history_sidecar: None,
+        }],
+    };
+
+    for states in [
+        vec![attributed.clone(), absent.clone()],
+        vec![absent.clone(), attributed.clone()],
+    ] {
+        let capped = cap_workspace_held_session_states(states);
+        assert_eq!(capped.len(), 1);
+        assert!(
+            capped[0].workspace_caches[0]
+                .session_history_sidecar
+                .is_none()
+        );
+    }
 }
 
 #[tokio::test]
@@ -1218,10 +1264,12 @@ async fn held_session_states_for_profiles_filters_and_aggregates_current_identit
                 HeldWorkspaceCacheState {
                     profile: "vm0/default".into(),
                     workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    session_history_sidecar: None,
                 },
                 HeldWorkspaceCacheState {
                     profile: "vm0/large".into(),
                     workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
+                    session_history_sidecar: None,
                 },
             ],
         }]
@@ -1669,6 +1717,22 @@ async fn session_history_sidecar_publish_and_probe_hit() {
 
     let identity =
         publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let metadata_path = paths
+        .session_workspace_cache_entry_dir(&cache_key)
+        .join("session-history.metadata.json");
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
+    assert_eq!(metadata["historyGenerationRunId"], run_id.to_string());
+    let held_states = cache.held_session_states().await;
+    let observed_sidecar = held_states[0].workspace_caches[0]
+        .session_history_sidecar
+        .as_ref()
+        .unwrap();
+    assert_eq!(observed_sidecar.history_generation_run_id, Some(run_id));
+    assert_eq!(
+        observed_sidecar.raw_size_bucket,
+        SessionHistorySizeBucket::LessThan64Kib
+    );
     let sidecar = cache
         .probe_session_history_sidecar(&cache_key, &identity)
         .await
@@ -1680,6 +1744,199 @@ async fn session_history_sidecar_publish_and_probe_hit() {
     );
     assert_eq!(sidecar.encoded_size, history.len() as u64);
     assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn legacy_session_history_sidecar_remains_restoreable_and_observable() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-legacy";
+    let history = br#"{"type":"message","content":"legacy"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let identity =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let metadata_path = paths
+        .session_workspace_cache_entry_dir(&cache_key)
+        .join("session-history.metadata.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
+    metadata
+        .as_object_mut()
+        .unwrap()
+        .remove("historyGenerationRunId");
+    fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
+        .await
+        .unwrap();
+
+    let held_states = cache.held_session_states().await;
+    let observed_sidecar = held_states[0].workspace_caches[0]
+        .session_history_sidecar
+        .as_ref()
+        .unwrap();
+    assert_eq!(observed_sidecar.history_generation_run_id, None);
+    assert_eq!(
+        observed_sidecar.raw_size_bucket,
+        SessionHistorySizeBucket::LessThan64Kib
+    );
+    assert!(
+        cache
+            .probe_session_history_sidecar(&cache_key, &identity)
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn session_history_sidecar_observation_does_not_read_body() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-unreadable";
+    let history = br#"{"type":"message","content":"unreadable"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let body_path = paths
+        .session_workspace_cache_entry_dir(&cache_key)
+        .join("session-history.blob");
+    let mut permissions = fs::metadata(&body_path).await.unwrap().permissions();
+    permissions.set_mode(0o0);
+    fs::set_permissions(&body_path, permissions).await.unwrap();
+
+    let held_states = cache.held_session_states().await;
+    assert!(
+        held_states[0].workspace_caches[0]
+            .session_history_sidecar
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn invalid_session_history_sidecars_are_not_advertised() {
+    #[derive(Clone, Copy, Debug)]
+    enum InvalidSidecarCase {
+        MissingMetadata,
+        MalformedMetadata,
+        UnsupportedRepresentation,
+        MetadataSymlink,
+        MissingBody,
+        BodySymlink,
+        SessionMismatch,
+        InvalidHash,
+        InvalidSize,
+    }
+
+    for case in [
+        InvalidSidecarCase::MissingMetadata,
+        InvalidSidecarCase::MalformedMetadata,
+        InvalidSidecarCase::UnsupportedRepresentation,
+        InvalidSidecarCase::MetadataSymlink,
+        InvalidSidecarCase::MissingBody,
+        InvalidSidecarCase::BodySymlink,
+        InvalidSidecarCase::SessionMismatch,
+        InvalidSidecarCase::InvalidHash,
+        InvalidSidecarCase::InvalidSize,
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let session_id = "sess-sidecar-invalid-observation";
+        let history = br#"{"type":"message","content":"invalid"}"#;
+        let cache_key = write_current_cache_entry(
+            &cache,
+            run_id,
+            session_id,
+            CANONICAL_WORKING_DIR,
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+        let entry_dir = paths.session_workspace_cache_entry_dir(&cache_key);
+        let metadata_path = entry_dir.join("session-history.metadata.json");
+        let body_path = entry_dir.join("session-history.blob");
+
+        match case {
+            InvalidSidecarCase::MissingMetadata => {
+                fs::remove_file(&metadata_path).await.unwrap();
+            }
+            InvalidSidecarCase::MalformedMetadata => {
+                fs::write(&metadata_path, b"not-json").await.unwrap();
+            }
+            InvalidSidecarCase::UnsupportedRepresentation
+            | InvalidSidecarCase::SessionMismatch
+            | InvalidSidecarCase::InvalidHash
+            | InvalidSidecarCase::InvalidSize => {
+                let mut metadata: serde_json::Value =
+                    serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
+                match case {
+                    InvalidSidecarCase::UnsupportedRepresentation => {
+                        metadata["representation"] = "codex-zstd".into();
+                    }
+                    InvalidSidecarCase::SessionMismatch => {
+                        metadata["sessionIdHash"] =
+                            hex::encode(Sha256::digest(b"another-session")).into();
+                    }
+                    InvalidSidecarCase::InvalidHash => {
+                        metadata["historyHash"] = "not-a-sha256-hash".into();
+                    }
+                    InvalidSidecarCase::InvalidSize => {
+                        metadata["historySizeBytes"] = 0.into();
+                    }
+                    unexpected => {
+                        panic!("unexpected grouped invalid sidecar case: {unexpected:?}")
+                    }
+                }
+                fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
+                    .await
+                    .unwrap();
+            }
+            InvalidSidecarCase::MetadataSymlink => {
+                let target = entry_dir.join("session-history.metadata.target.json");
+                fs::rename(&metadata_path, &target).await.unwrap();
+                symlink(&target, &metadata_path).unwrap();
+            }
+            InvalidSidecarCase::MissingBody => {
+                fs::remove_file(&body_path).await.unwrap();
+            }
+            InvalidSidecarCase::BodySymlink => {
+                let target = entry_dir.join("session-history.target.blob");
+                fs::rename(&body_path, &target).await.unwrap();
+                symlink(&target, &body_path).unwrap();
+            }
+        }
+
+        let held_states = cache.held_session_states().await;
+        assert_eq!(held_states.len(), 1, "case: {case:?}");
+        assert!(
+            held_states[0].workspace_caches[0]
+                .session_history_sidecar
+                .is_none(),
+            "case: {case:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -1795,6 +2052,12 @@ async fn session_history_sidecar_probe_rejects_mismatched_body_identity() {
             .await
             .unwrap_err(),
         WorkspaceSessionHistorySidecarMiss::FileIdentityMismatch
+    );
+    let held_states = cache.held_session_states().await;
+    assert!(
+        held_states[0].workspace_caches[0]
+            .session_history_sidecar
+            .is_none()
     );
 }
 

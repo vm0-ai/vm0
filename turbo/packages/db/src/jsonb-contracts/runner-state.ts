@@ -1,3 +1,5 @@
+import type { SessionHistorySizeBucket } from "@vm0/api-contracts/contracts/runners";
+
 export type RunnerAdmittableProfiles = string[];
 
 export interface RunnerHeldSessionState {
@@ -12,6 +14,10 @@ export interface RunnerHeldSessionState {
   readonly workspaceCaches?: readonly {
     readonly profile: string;
     readonly workspaceAffinityVersion?: 1;
+    readonly sessionHistorySidecar?: {
+      readonly historyGenerationRunId?: string;
+      readonly rawSizeBucket: SessionHistorySizeBucket;
+    };
   }[];
 }
 

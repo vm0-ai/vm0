@@ -199,6 +199,14 @@ interface RunnerSessionAffinityProtection {
   readonly resource: SessionAffinityResource | null;
   readonly historyGenerationProtectedUntil: Date | null;
   readonly historyGenerationStatus: RunnerHistoryGenerationAffinityStatus;
+  readonly workspaceSidecarAvailability?: RunnerWorkspaceSidecarAvailability;
+}
+
+interface RunnerWorkspaceSidecarAvailability {
+  readonly exact: boolean;
+  readonly different: boolean;
+  readonly legacy: boolean;
+  readonly absent: boolean;
 }
 
 type RunnerHistoryGenerationAffinityStatus =
@@ -216,6 +224,21 @@ export function runnerSessionAffinityLookupError(): RunnerSessionAffinityProtect
     resource: null,
     historyGenerationProtectedUntil: null,
     historyGenerationStatus: "lookup_error",
+  };
+}
+
+export function runnerWorkspaceSidecarTelemetryDimensions(
+  affinity: RunnerSessionAffinityProtection,
+): Record<string, string> {
+  const availability = affinity.workspaceSidecarAvailability;
+  if (!availability) {
+    return {};
+  }
+  return {
+    workspace_sidecar_exact_holder: String(availability.exact),
+    workspace_sidecar_different_holder: String(availability.different),
+    workspace_sidecar_legacy_holder: String(availability.legacy),
+    workspace_sidecar_absent_holder: String(availability.absent),
   };
 }
 
@@ -246,6 +269,48 @@ interface RunnerSessionAffinityHolders {
   readonly hasSessionHolder: boolean;
   readonly hasExactGenerationHolder: boolean;
   readonly resource: SessionAffinityResource | null;
+  readonly workspaceSidecarAvailability?: RunnerWorkspaceSidecarAvailability;
+}
+
+const WORKSPACE_SIDECAR_EXACT_BIT = 1;
+const WORKSPACE_SIDECAR_DIFFERENT_BIT = 2;
+const WORKSPACE_SIDECAR_LEGACY_BIT = 4;
+const WORKSPACE_SIDECAR_ABSENT_BIT = 8;
+
+function workspaceSidecarAvailabilityMask(args: {
+  readonly sessionId: string;
+  readonly profile: string;
+  readonly historyGenerationRunId: string | undefined;
+}): SQL<number> {
+  if (!args.historyGenerationRunId) {
+    return sql<number>`0`;
+  }
+  return sql<number>`CASE
+    WHEN ${runnerState.admittableProfiles} @> jsonb_build_array(
+      cast(${args.profile} as text)
+    )
+    THEN coalesce((
+      SELECT bit_or(
+        CASE
+          WHEN jsonb_typeof(workspace_cache.value->'sessionHistorySidecar') IS DISTINCT FROM 'object'
+            THEN cast(${WORKSPACE_SIDECAR_ABSENT_BIT} as integer)
+          WHEN workspace_cache.value->'sessionHistorySidecar'->>'historyGenerationRunId' IS NULL
+            THEN cast(${WORKSPACE_SIDECAR_LEGACY_BIT} as integer)
+          WHEN workspace_cache.value->'sessionHistorySidecar'->>'historyGenerationRunId' = cast(${args.historyGenerationRunId} as text)
+            THEN cast(${WORKSPACE_SIDECAR_EXACT_BIT} as integer)
+          ELSE cast(${WORKSPACE_SIDECAR_DIFFERENT_BIT} as integer)
+        END
+      )
+      FROM jsonb_array_elements(${runnerState.heldSessionStates}) AS session_state(value)
+      CROSS JOIN LATERAL jsonb_array_elements(
+        coalesce(session_state.value->'workspaceCaches', '[]'::jsonb)
+      ) AS workspace_cache(value)
+      WHERE session_state.value->>'sessionId' = cast(${args.sessionId} as text)
+        AND workspace_cache.value->>'profile' = cast(${args.profile} as text)
+        AND workspace_cache.value @> '{"workspaceAffinityVersion": 1}'::jsonb
+    ), 0::integer)
+    ELSE 0::integer
+  END`;
 }
 
 async function runnerSessionAffinityHolders(args: {
@@ -276,12 +341,18 @@ async function runnerSessionAffinityHolders(args: {
         historyGenerationRunId: args.historyGenerationRunId,
       })
     : sql<boolean>`false`;
+  const workspaceSidecarMask = workspaceSidecarAvailabilityMask({
+    sessionId: args.cliAgentSessionId,
+    profile: args.profile,
+    historyGenerationRunId: args.historyGenerationRunId,
+  });
   const [holders] = await args.db
     .select({
       hasReusableHolder: sql<boolean>`coalesce(bool_or(${reusableCondition}), false)`,
       hasWorkspaceHolder: sql<boolean>`coalesce(bool_or(${workspaceCondition}), false)`,
       hasLegacyHolder: sql<boolean>`coalesce(bool_or(${legacyCondition}), false)`,
       hasExactGenerationHolder: sql<boolean>`coalesce(bool_or(${exactGenerationCondition}), false)`,
+      workspaceSidecarMask: sql<number>`coalesce(bit_or((${workspaceSidecarMask})::integer), 0)`,
     })
     .from(runnerState)
     .where(
@@ -295,6 +366,7 @@ async function runnerSessionAffinityHolders(args: {
   const hasReusableHolder = holders?.hasReusableHolder ?? false;
   const hasWorkspaceHolder = holders?.hasWorkspaceHolder ?? false;
   const hasLegacyHolder = holders?.hasLegacyHolder ?? false;
+  const observedWorkspaceSidecarMask = holders?.workspaceSidecarMask ?? 0;
   return {
     hasSessionHolder:
       hasReusableHolder || hasWorkspaceHolder || hasLegacyHolder,
@@ -304,6 +376,25 @@ async function runnerSessionAffinityHolders(args: {
       : hasWorkspaceHolder
         ? "workspaceCache"
         : null,
+    ...(args.historyGenerationRunId
+      ? {
+          workspaceSidecarAvailability: {
+            exact:
+              (observedWorkspaceSidecarMask & WORKSPACE_SIDECAR_EXACT_BIT) !==
+              0,
+            different:
+              (observedWorkspaceSidecarMask &
+                WORKSPACE_SIDECAR_DIFFERENT_BIT) !==
+              0,
+            legacy:
+              (observedWorkspaceSidecarMask & WORKSPACE_SIDECAR_LEGACY_BIT) !==
+              0,
+            absent:
+              (observedWorkspaceSidecarMask & WORKSPACE_SIDECAR_ABSENT_BIT) !==
+              0,
+          },
+        }
+      : {}),
   };
 }
 
@@ -373,6 +464,7 @@ export async function runnerSessionAffinityProtection(args: {
       ? historyGenerationProtectedUntil
       : null,
     historyGenerationStatus,
+    workspaceSidecarAvailability: holders.workspaceSidecarAvailability,
   };
 }
 

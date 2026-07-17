@@ -377,7 +377,14 @@ describe("runner resume session contract", () => {
         historyGenerationRunId,
       },
       workspaceCaches: [
-        { profile: "vm0/default", workspaceAffinityVersion: 1 },
+        {
+          profile: "vm0/default",
+          workspaceAffinityVersion: 1,
+          sessionHistorySidecar: {
+            historyGenerationRunId,
+            rawSizeBucket: "64_256_kib",
+          },
+        },
         { profile: "vm0/large" },
       ],
     });
@@ -385,7 +392,14 @@ describe("runner resume session contract", () => {
       historyGenerationRunId,
     );
     expect(heldSessionState.workspaceCaches).toEqual([
-      { profile: "vm0/default", workspaceAffinityVersion: 1 },
+      {
+        profile: "vm0/default",
+        workspaceAffinityVersion: 1,
+        sessionHistorySidecar: {
+          historyGenerationRunId,
+          rawSizeBucket: "64_256_kib",
+        },
+      },
       { profile: "vm0/large" },
     ]);
   });
@@ -648,6 +662,8 @@ describe("runner claim capability contract", () => {
         sessionAffinityLocalResource: "workspaceCache",
         localAdmissionResource: "fresh",
         sessionHistoryGenerationRelationship: "exact",
+        workspaceSessionHistorySidecarRelationship: "exact",
+        workspaceSessionHistorySidecarRawSizeBucket: "64_256_kib",
       },
     });
 
@@ -678,6 +694,26 @@ describe("runner claim capability contract", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("rejects dynamic workspace sidecar telemetry values", () => {
+    expect(
+      runnersJobClaimContract.claim.body.safeParse({
+        telemetry: {
+          sessionHistoryGenerationRelationship: "fresh",
+          workspaceSessionHistorySidecarRelationship:
+            "exact-for-11111111-1111-4111-8111-111111111111",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      runnersJobClaimContract.claim.body.safeParse({
+        telemetry: {
+          sessionHistoryGenerationRelationship: "fresh",
+          workspaceSessionHistorySidecarRawSizeBucket: "exact_123_bytes",
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts old claim bodies without generation telemetry", () => {
