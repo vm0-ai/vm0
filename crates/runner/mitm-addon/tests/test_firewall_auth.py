@@ -955,6 +955,110 @@ class TestHandleFirewallRequest:
         assert second_cache_key.api_id == "run-1:0"
         assert first_cache_key.auth_identity != second_cache_key.auth_identity
 
+    @pytest.mark.parametrize(
+        "changed_input",
+        [
+            "firewall-name",
+            "firewall-base",
+            "auth-headers",
+            "auth-base",
+            "auth-query",
+            "auth-aws-sigv4",
+            "encrypted-secrets",
+            "secret-connector-map",
+            "secret-connector-metadata-map",
+            "vars",
+            "billable",
+            "sandbox-token",
+        ],
+    )
+    async def test_auth_cache_identity_distinguishes_all_auth_inputs(
+        self, real_flow, mitm_ctx, tmp_path, changed_input
+    ):
+        default_auth = {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}}
+        changed_auth = default_auth
+        first_name = "github"
+        second_name = first_name
+        first_base = "https://api.github.com"
+        second_base = first_base
+        first_vm_info = _vm_info(tmp_path, run_id="run-1")
+        second_vm_info = _vm_info(tmp_path, run_id="run-1")
+
+        if changed_input == "firewall-name":
+            second_name = "github-enterprise"
+        elif changed_input == "firewall-base":
+            second_base = "https://api.github.com/v1"
+        elif changed_input == "auth-headers":
+            changed_auth = {"headers": {"Authorization": "Bearer ${{ secrets.OTHER_TOKEN }}"}}
+        elif changed_input == "auth-base":
+            changed_auth = {
+                **default_auth,
+                "base": "${{ secrets.WEBHOOK_URL }}",
+            }
+        elif changed_input == "auth-query":
+            changed_auth = {
+                **default_auth,
+                "query": {"api_key": "${{ secrets.QUERY_KEY }}"},
+            }
+        elif changed_input == "auth-aws-sigv4":
+            changed_auth = {
+                **default_auth,
+                "awsSigv4": {
+                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                },
+            }
+        elif changed_input == "encrypted-secrets":
+            second_vm_info["encryptedSecrets"] = "encrypted-updated"
+        elif changed_input == "secret-connector-map":
+            second_vm_info["secretConnectorMap"] = {"GITHUB_TOKEN": "github"}
+        elif changed_input == "secret-connector-metadata-map":
+            second_vm_info["secretConnectorMetadataMap"] = {"GITHUB_TOKEN": {"kind": "oauth"}}
+        elif changed_input == "vars":
+            second_vm_info["vars"] = {"TEAM": "vm0"}
+        elif changed_input == "billable":
+            second_vm_info["billableFirewalls"] = [second_name]
+        elif changed_input == "sandbox-token":
+            second_vm_info["sandboxToken"] = "sandbox-token-updated"
+        else:
+            raise AssertionError(f"Unhandled auth identity input: {changed_input}")
+
+        first_api_entry = _api_entry(
+            base=first_base,
+            api_id="run-1:0",
+            auth_config=default_auth,
+        )
+        second_api_entry = _api_entry(
+            base=second_base,
+            api_id="run-1:0",
+            auth_config=changed_auth,
+        )
+        first_flow = _firewall_flow(real_flow, run_id="run-1")
+        second_flow = _firewall_flow(real_flow, run_id="run-1")
+        mock_get_firewall_headers = AsyncMock(return_value=_token_meta())
+
+        with (
+            patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(
+                first_flow,
+                _allow(first_api_entry, name=first_name),
+                first_vm_info,
+            )
+            await auth.handle_firewall_request(
+                second_flow,
+                _allow(second_api_entry, name=second_name),
+                second_vm_info,
+            )
+
+        assert mock_get_firewall_headers.await_count == 2
+        first_cache_key = first_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+        second_cache_key = second_flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]
+        assert first_cache_key.run_id == second_cache_key.run_id == "run-1"
+        assert first_cache_key.api_id == second_cache_key.api_id == "run-1:0"
+        assert first_cache_key.auth_identity != second_cache_key.auth_identity
+
     async def test_standard_auth_filters_unsafe_resolved_headers(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
