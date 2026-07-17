@@ -7,6 +7,7 @@ import type {
   UIEvent as ReactUIEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import type { Computed } from "ccstate";
 import {
   useGet,
   useSet,
@@ -148,10 +149,8 @@ import {
   type RunGroupFold,
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
-import type {
-  PermissionActionBlock,
-  PermissionActionResource,
-} from "../../signals/chat-page/permission-action-block.ts";
+import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
+import type { PermissionCardSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
@@ -4719,12 +4718,16 @@ function BodyContentBlocks({
   hardBreaks,
   escapeMarkdownHtml = false,
   markdownMediaPreview = true,
+  permissionCardSignalsByUrl$,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
   escapeMarkdownHtml?: boolean;
   markdownMediaPreview?: boolean;
+  permissionCardSignalsByUrl$: Computed<
+    ReadonlyMap<string, PermissionCardSignals>
+  >;
 }) {
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
@@ -4757,7 +4760,13 @@ function BodyContentBlocks({
         }
 
         if (block.type === "permission-action") {
-          return <PermissionActionCard key={block.id} block={block} />;
+          return (
+            <PermissionActionCard
+              key={block.id}
+              block={block}
+              permissionCardSignalsByUrl$={permissionCardSignalsByUrl$}
+            />
+          );
         }
 
         if (block.type === "computer-use-authorization") {
@@ -5423,7 +5432,7 @@ function PermissionActionCardForTarget({
   userGrantsLoadable,
 }: {
   block: PermissionActionBlock;
-  resource: PermissionActionResource;
+  resource: PermissionCardSignals;
   hasTarget: boolean;
   targetLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
@@ -5501,7 +5510,7 @@ function AgentPermissionActionCardWithResource({
   resource,
 }: {
   block: PermissionActionBlock;
-  resource: PermissionActionResource;
+  resource: PermissionCardSignals;
 }) {
   const agentLoadable = useLastLoadable(resource.agent$);
   const userGrantsLoadable = useLoadable(resource.grants$);
@@ -5517,15 +5526,24 @@ function AgentPermissionActionCardWithResource({
   );
 }
 
-function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
-  if (!block.resource) {
+function PermissionActionCard({
+  block,
+  permissionCardSignalsByUrl$,
+}: {
+  block: PermissionActionBlock;
+  permissionCardSignalsByUrl$: Computed<
+    ReadonlyMap<string, PermissionCardSignals>
+  >;
+}) {
+  const signalsByUrl = useGet(permissionCardSignalsByUrl$);
+  const signals = signalsByUrl.get(block.href);
+  if (!signals) {
+    // The block's URL was not registered (e.g. an optimistic message that
+    // never reached the persistent-message write path) — nothing to render.
     return null;
   }
   return (
-    <AgentPermissionActionCardWithResource
-      block={block}
-      resource={block.resource}
-    />
+    <AgentPermissionActionCardWithResource block={block} resource={signals} />
   );
 }
 
@@ -6392,10 +6410,14 @@ function GoalUserMessage({
   message,
   bodyBlocks,
   openLightbox,
+  permissionCardSignalsByUrl$,
 }: {
   message: EnrichedChatMessage & { role: "user" };
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
+  permissionCardSignalsByUrl$: Computed<
+    ReadonlyMap<string, PermissionCardSignals>
+  >;
 }) {
   const objectiveBrief = message.goalSnapshot?.objectiveBrief?.trim();
   return (
@@ -6425,6 +6447,7 @@ function GoalUserMessage({
                   hardBreaks
                   escapeMarkdownHtml
                   markdownMediaPreview={false}
+                  permissionCardSignalsByUrl$={permissionCardSignalsByUrl$}
                 />
               </div>
             </div>
@@ -6491,6 +6514,7 @@ function PagedUserMessage({
         message={message}
         bodyBlocks={bodyBlocks}
         openLightbox={openLightbox}
+        permissionCardSignalsByUrl$={thread.permissionCardSignalsByUrl$}
       />
     );
   }
@@ -6516,6 +6540,9 @@ function PagedUserMessage({
                   hardBreaks
                   escapeMarkdownHtml
                   markdownMediaPreview={false}
+                  permissionCardSignalsByUrl$={
+                    thread.permissionCardSignalsByUrl$
+                  }
                 />
               </div>
             </div>
@@ -6574,6 +6601,7 @@ function PagedAssistantGroup({
       <PagedAssistantMessageItem
         key={message.id}
         message={message}
+        thread={thread}
         compactTop={compactTop}
       />
     );
@@ -6623,9 +6651,11 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({
   message,
+  thread,
   compactTop = false,
 }: {
   message: EnrichedChatMessage;
+  thread: ChatThreadSignals;
   compactTop?: boolean;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6678,6 +6708,7 @@ function PagedAssistantMessageItem({
             blocks={blocks}
             openLightbox={openLightbox}
             hardBreaks={false}
+            permissionCardSignalsByUrl$={thread.permissionCardSignalsByUrl$}
           />
         ) : null}
       </div>

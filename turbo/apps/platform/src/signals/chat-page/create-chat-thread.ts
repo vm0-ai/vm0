@@ -107,8 +107,8 @@ import {
 } from "../zero-page/model-first-personal-oauth.ts";
 import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/codex-device-auth.ts";
-import { userPermissionGrantsByAgent } from "../permission-allow/permission-allow-signals.ts";
-import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
+import { createPermissionCardRegistry } from "./permission-card-signals.ts";
+import type { PermissionActionBlock } from "./permission-action-block.ts";
 
 import type {
   ChatThreadSignals,
@@ -1251,10 +1251,12 @@ function setLatestUsageForRun(
 function createRenderedChatGroups(
   semanticMessages$: Computed<SemanticChatMessage[]>,
   mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>,
+  messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ) {
   const transcriptMessages$ = createTranscriptMessagesComputed(
     semanticMessages$,
     mailDraftById$,
+    messageBlocksById$,
   );
 
   const allRenderedChatGroups$ = computed(
@@ -1339,10 +1341,89 @@ function mergeServerMessages(
   return Array.from(byId.values()).sort(compareServerMessageOrder);
 }
 
+function parseMessageBodyBlocks(message: PagedChatMessage): BodyRenderBlock[] {
+  const content = chatMessageBodyContent(message);
+  const { blocks } = parseBodyRenderBlocks(content, {
+    previews: message.role === "assistant",
+  });
+  return enrichBlocksWithTextPreviews(blocks);
+}
+
+/**
+ * Whether the message's blocks must not be cached under its own id. Interrupt
+ * control rows are projected onto a synthetic "Run cancelled" assistant
+ * message that reuses the same id (see createInterruptedAssistantProjection),
+ * so a cache entry parsed from the control row's content would be wrong.
+ * Other control markers are filtered from the transcript entirely, so parsing
+ * them is wasted work; a cache miss falls back to parsing on read.
+ */
+function skipsMessageBlocksCache(message: PagedChatMessage): boolean {
+  return (
+    isInterruptControlMessage(message) ||
+    isRecallControlMessage(message) ||
+    isQueueMarkerMessage(message) ||
+    isGoalMarkerMessage(message)
+  );
+}
+
+interface MessageBlocksRegistrySignals {
+  readonly messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>;
+  readonly registerMessageBlocks$: Command<void, [readonly PagedChatMessage[]]>;
+}
+
+/**
+ * Parses message bodies into render blocks once, at persistent-message write
+ * time, instead of re-parsing the whole transcript on every evaluation of the
+ * transcript computed. Permission action URLs found during parsing are
+ * registered with the thread's permission card registry so cards read stable
+ * signals keyed by URL.
+ */
+function createMessageBlocksRegistry(
+  registerPermissionCardBlocks$: Command<
+    void,
+    [readonly PermissionActionBlock[]]
+  >,
+): MessageBlocksRegistrySignals {
+  const internalBlocksById$ = state<ReadonlyMap<string, BodyRenderBlock[]>>(
+    new Map(),
+  );
+  const messageBlocksById$ = computed((get) => {
+    return get(internalBlocksById$);
+  });
+  const registerMessageBlocks$ = command(
+    ({ get, set }, messages: readonly PagedChatMessage[]) => {
+      if (messages.length === 0) {
+        return;
+      }
+      const current = get(internalBlocksById$);
+      const next = new Map(current);
+      const permissionBlocks: PermissionActionBlock[] = [];
+      for (const message of messages) {
+        if (skipsMessageBlocksCache(message)) {
+          continue;
+        }
+        const blocks = parseMessageBodyBlocks(message);
+        next.set(message.id, blocks);
+        for (const block of blocks) {
+          if (block.type === "permission-action") {
+            permissionBlocks.push(block);
+          }
+        }
+      }
+      set(internalBlocksById$, next);
+      if (permissionBlocks.length > 0) {
+        set(registerPermissionCardBlocks$, permissionBlocks);
+      }
+    },
+  );
+  return { messageBlocksById$, registerMessageBlocks$ };
+}
+
 function createWritePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
   registerMailDraftMessages$: Command<void, [readonly PagedChatMessage[]]>,
+  registerMessageBlocks$: Command<void, [readonly PagedChatMessage[]]>,
 ) {
   return command(
     async (
@@ -1365,6 +1446,7 @@ function createWritePersistentMessages(
         captureTaskCompletedSuccessfully();
       }
       set(registerMailDraftMessages$, msgs);
+      set(registerMessageBlocks$, msgs);
       set(persistentMessages$, (prev) => {
         return mergeServerMessages([prev, msgs]);
       });
@@ -1424,19 +1506,20 @@ function createRawMessagesComputed({
 function createTranscriptMessagesComputed(
   semanticMessages$: Computed<SemanticChatMessage[]>,
   mailDraftById$: Computed<ReadonlyMap<string, MailDraftResource>>,
+  messageBlocksById$: Computed<ReadonlyMap<string, BodyRenderBlock[]>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
   return computed((get): Promise<EnrichedChatMessage[]> => {
     const mailDraftById = get(mailDraftById$);
+    const blocksById = get(messageBlocksById$);
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
         const { message, isQueued, isOptimisticRun } = entry;
-        const content = chatMessageBodyContent(message);
-        const { blocks } = parseBodyRenderBlocks(content, {
-          previews: message.role === "assistant",
-        });
-        const enrichedBlocks = enrichBlocksWithPermissionActionResources(
-          enrichBlocksWithTextPreviews(blocks),
-        );
+        // Persistent messages have their blocks registered at write time.
+        // Optimistic messages and synthetic projections (e.g. the "Run
+        // cancelled" interrupt projection) are not registered — they are few
+        // and short-lived, so parse them on read.
+        const enrichedBlocks =
+          blocksById.get(message.id) ?? parseMessageBodyBlocks(message);
         let mailDraftResource: EnrichedChatMessage["mailDraftResource"] = null;
         if (message.mailDraftId !== undefined) {
           const mailDraft$ = mailDraftById.get(message.mailDraftId);
@@ -1489,26 +1572,6 @@ function chatMessageBodyContent(message: PagedChatMessage): string {
     return "";
   }
   return content.trim();
-}
-
-function enrichBlocksWithPermissionActionResources(
-  blocks: BodyRenderBlock[],
-): BodyRenderBlock[] {
-  return blocks.map((block) => {
-    if (block.type !== "permission-action") {
-      return block;
-    }
-    return {
-      ...block,
-      resource: {
-        agent$: agentById(block.agentId),
-        grants$: userPermissionGrantsByAgent({ agentId: block.agentId }),
-        metadata$: firewallPermissionMetadataByConnector({
-          connectorRef: block.connectorRef,
-        }),
-      },
-    };
-  });
 }
 
 interface SemanticChatMessage {
@@ -2236,6 +2299,10 @@ function createActiveGoalObjectiveComputed(
 
 function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
   const mailDrafts = createMailDraftLoaderSignals();
+  const permissionCards = createPermissionCardRegistry();
+  const messageBlocks = createMessageBlocksRegistry(
+    permissionCards.registerPermissionCardBlocks$,
+  );
   const persistentChatMessages$ = state<PagedChatMessage[]>([]);
   const hasReachedOldestMessage$ = state(false);
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
@@ -2262,17 +2329,20 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
   const renderedMessages = createRenderedChatGroups(
     semanticMessages$,
     mailDrafts.mailDraftById$,
+    messageBlocks.messageBlocksById$,
   );
 
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
     persistentChatMessages$,
     mailDrafts.registerMailDraftMessages$,
+    messageBlocks.registerMessageBlocks$,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
       set(mailDrafts.registerMailDraftMessages$, messages);
+      set(messageBlocks.registerMessageBlocks$, messages);
       set(persistentChatMessages$, (previous) => {
         return mergeServerMessages([messages, previous]);
       });
@@ -2329,6 +2399,7 @@ function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
     latestChatMessageId$,
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
+    permissionCardSignalsByUrl$: permissionCards.permissionCardSignalsByUrl$,
     ...semanticSignals,
     ...renderedMessages,
     rawMessages$,
@@ -4023,6 +4094,7 @@ export function createChatThreadSignals(
     latestChatMessageId$: messages.latestChatMessageId$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
+    permissionCardSignalsByUrl$: messages.permissionCardSignalsByUrl$,
     visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
     messageImageGroups$: messages.messageImageGroups$,

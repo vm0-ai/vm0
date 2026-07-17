@@ -1,10 +1,4 @@
-import type { Computed } from "ccstate";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
   resolvePlatformOriginForTarget,
   rewritePlatformHostname,
@@ -27,20 +21,16 @@ export interface PermissionActionDescriptor {
   originalUrl: string;
 }
 
+/**
+ * Pure data parsed from a permission URL in a message body. The reactive
+ * resources backing the rendered card live in the thread-scoped permission
+ * card registry (see permission-card-signals.ts), keyed by `href`.
+ */
 export type PermissionActionBlock = PermissionActionDescriptor & {
   type: "permission-action";
   id: string;
   href: string;
-  resource?: PermissionActionResource;
 };
-
-export interface PermissionActionResource {
-  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
-  readonly grants$: Computed<Promise<readonly UserPermissionGrantResponse[]>>;
-  readonly metadata$: Computed<
-    Promise<PublicConnectorCatalogPermissionDetail | null>
-  >;
-}
 
 function permissionActionHref(descriptor: PermissionActionDescriptor): string {
   const path = `/agents/${encodeURIComponent(descriptor.agentId)}/permissions`;

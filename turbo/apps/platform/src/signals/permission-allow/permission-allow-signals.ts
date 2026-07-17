@@ -17,6 +17,7 @@ import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 import { agentById, currentAgentId$, reloadAgentById$ } from "../agent.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { retryTransientLoad } from "../utils.ts";
 import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
@@ -98,6 +99,25 @@ export function findPermissionInMetadata(
 // ---------------------------------------------------------------------------
 
 const internalUserPermissionGrantsReload$ = state(0);
+
+export const subscribePermissionUpdate$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const onPermissionUpdated$ = command(({ set }) => {
+      set(internalUserPermissionGrantsReload$, (version) => {
+        return version + 1;
+      });
+      return false;
+    });
+    await set(
+      setAblyLoop$,
+      {
+        topic: "connectorPermissionUpdated",
+        loopCommand$: onPermissionUpdated$,
+      },
+      signal,
+    );
+  },
+);
 
 export function resolveUserPermissionGrantPolicy(
   grants: readonly UserPermissionGrantResponse[],

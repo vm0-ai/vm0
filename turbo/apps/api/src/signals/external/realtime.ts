@@ -158,6 +158,30 @@ export async function publishChatThreadAutomationsChangedSafely(
 }
 
 /**
+ * Notify the user's chat threads that their connector permission grants
+ * changed (allowed or denied from any client: chat permission card,
+ * permission-allow page, or settings dialog). Chat threads subscribe to this
+ * topic and invalidate all rendered permission cards at once — grants are few
+ * and re-fetching them is cheap, so a single user-level signal beats
+ * per-permission topics. Payload is intentionally empty.
+ *
+ * Best-effort: a failed publish must not fail the grant mutation that
+ * triggers it.
+ */
+export async function publishConnectorPermissionUpdatedSafely(
+  userId: string,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "connectorPermissionUpdated"),
+    (error) => {
+      L.warn("Failed to publish connector permission updated signal", {
+        error,
+      });
+    },
+  );
+}
+
+/**
  * Notify a chat thread's UI that its visible workflow set changed. The slash
  * workflow composer subscribes to this topic and refetches the authoritative
  * agent-scoped workflow list.
