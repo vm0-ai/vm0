@@ -1589,7 +1589,7 @@ jobs:
           fi
           stripe listen \
             --api-key "$STRIPE_SECRET_KEY" \
-            --events checkout.session.completed,invoice.paid,customer.subscription.updated,customer.subscription.deleted \
+            --events checkout.session.completed,payment_intent.succeeded,invoice.paid,customer.subscription.updated,customer.subscription.deleted \
             --forward-to "$forward_url" \
             > /tmp/stripe-listen.log 2>&1 &
           stripe_pid="$!"

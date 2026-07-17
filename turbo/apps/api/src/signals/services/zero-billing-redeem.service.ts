@@ -336,6 +336,12 @@ const createOneTimeCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const stripe = getStripeClient();
+    const metadata = {
+      orgId: args.orgId,
+      campaignKey: args.campaignKey,
+      purpose: "one_time_purchase",
+      ...stripePreviewMetadata(),
+    };
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer: customerId,
@@ -343,12 +349,11 @@ const createOneTimeCheckoutSession$ = command(
       discounts: [{ coupon: campaign.couponId }],
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
-      metadata: {
-        orgId: args.orgId,
-        campaignKey: args.campaignKey,
-        purpose: "one_time_purchase",
-        ...stripePreviewMetadata(),
+      payment_intent_data: {
+        setup_future_usage: "off_session",
+        metadata,
       },
+      metadata,
     });
     signal.throwIfAborted();
 
