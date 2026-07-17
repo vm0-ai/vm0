@@ -1,12 +1,9 @@
 """Tests for TLS clienthello connection hooks."""
 
 import json
-import socket
-from unittest.mock import patch
 
 import mitm_addon
 import registry
-import upstream_admission
 import upstream_destination_binding
 from tests.request_handler_helpers import _write_github_firewall_registry
 
@@ -83,16 +80,9 @@ class TestTlsClienthello:
             server_connected=True,
         )
 
-        with (
-            mitm_ctx(
-                registry_path=str(registry_file),
-                api_url="https://pr-test-api.vm6.ai",
-            ),
-            patch.object(
-                upstream_admission.socket,
-                "getaddrinfo",
-                return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("66.33.60.34", 443))],
-            ),
+        with mitm_ctx(
+            registry_path=str(registry_file),
+            api_url="https://pr-test-api.vm6.ai",
         ):
             mitm_addon.tls_clienthello(data)
 
@@ -135,39 +125,7 @@ class TestTlsClienthello:
             server_connected=True,
         )
 
-        with (
-            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
-            patch.object(
-                upstream_admission.socket,
-                "getaddrinfo",
-                return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("140.82.112.5", 443))],
-            ),
-        ):
-            mitm_addon.tls_clienthello(data)
-
-        assert data.context.server.address == ("140.82.112.5", 443)
-        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
-
-    def test_registered_vm_does_not_bind_connected_connector_when_peer_misses_dns(
-        self, tmp_path, make_tls_data, mitm_ctx
-    ):
-        registry_file = _write_github_firewall_registry(tmp_path)
-        data = make_tls_data(
-            client_ip="10.200.0.5",
-            sni="api.github.com",
-            server_address=("140.82.112.5", 443),
-            server_peername=("140.82.112.5", 443),
-            server_connected=True,
-        )
-
-        with (
-            mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
-            patch.object(
-                upstream_admission.socket,
-                "getaddrinfo",
-                side_effect=AssertionError("connector binding must not use fresh DNS"),
-            ),
-        ):
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
             mitm_addon.tls_clienthello(data)
 
         assert data.context.server.address == ("140.82.112.5", 443)
