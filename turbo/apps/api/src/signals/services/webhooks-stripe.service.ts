@@ -925,6 +925,74 @@ function shouldHandleStripePreviewEvent(event: Stripe.Event): boolean {
   });
 }
 
+function stripeObjectId(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value !== "object" || value === null || !("id" in value)) {
+    return null;
+  }
+  return typeof value.id === "string" ? value.id : null;
+}
+
+async function paymentIntentMatchesCurrentStripePreview(
+  stripe: ReturnType<typeof getStripeClient>,
+  paymentIntent: Stripe.PaymentIntent,
+  customerId: string,
+): Promise<boolean> {
+  if (isCurrentStripePreviewMetadata(paymentIntent.metadata)) {
+    return true;
+  }
+
+  const customer = await stripe.customers.retrieve(customerId);
+  if ("deleted" in customer && customer.deleted) {
+    return false;
+  }
+  return isCurrentStripePreviewMetadata(customer.metadata);
+}
+
+async function handlePaymentIntentSucceeded(
+  paymentIntent: Stripe.PaymentIntent,
+): Promise<void> {
+  const customerId = stripeObjectId(paymentIntent.customer);
+  const paymentMethodId = stripeObjectId(paymentIntent.payment_method);
+  if (!customerId || !paymentMethodId) {
+    return;
+  }
+
+  const stripe = getStripeClient();
+  if (
+    !(await paymentIntentMatchesCurrentStripePreview(
+      stripe,
+      paymentIntent,
+      customerId,
+    ))
+  ) {
+    return;
+  }
+
+  const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+  if (
+    paymentMethod.type !== "card" ||
+    stripeObjectId(paymentMethod.customer) !== customerId
+  ) {
+    return;
+  }
+
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+}
+
+function addBillingChangedOrgIds(
+  target: Set<string>,
+  orgIds: Iterable<string>,
+): void {
+  for (const orgId of orgIds) {
+    target.add(orgId);
+  }
+}
+
 async function grantOrgCredits(
   tx: WriteTx,
   orgId: string,
@@ -3596,14 +3664,17 @@ export const handleStripeWebhookEvent$ = command(
     }
 
     switch (event.type) {
+      case "payment_intent.succeeded": {
+        await handlePaymentIntentSucceeded(event.data.object);
+        signal.throwIfAborted();
+        break;
+      }
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
         const result = await handleCheckoutCompleted(db, event.data.object);
         signal.throwIfAborted();
         drainOrgId = result.drainOrgId;
-        for (const orgId of result.orgIds) {
-          billingChangedOrgIds.add(orgId);
-        }
+        addBillingChangedOrgIds(billingChangedOrgIds, result.orgIds);
         break;
       }
       case "invoice.paid": {
@@ -3626,9 +3697,7 @@ export const handleStripeWebhookEvent$ = command(
           event.data.object,
         );
         signal.throwIfAborted();
-        for (const orgId of orgIds) {
-          billingChangedOrgIds.add(orgId);
-        }
+        addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
       case "customer.subscription.updated": {
@@ -3638,17 +3707,13 @@ export const handleStripeWebhookEvent$ = command(
           event.data.previous_attributes,
         );
         signal.throwIfAborted();
-        for (const orgId of orgIds) {
-          billingChangedOrgIds.add(orgId);
-        }
+        addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
       case "customer.subscription.deleted": {
         const orgIds = await handleSubscriptionDeleted(db, event.data.object);
         signal.throwIfAborted();
-        for (const orgId of orgIds) {
-          billingChangedOrgIds.add(orgId);
-        }
+        addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
       case "subscription_schedule.released": {
@@ -3657,9 +3722,7 @@ export const handleStripeWebhookEvent$ = command(
           event.data.object,
         );
         signal.throwIfAborted();
-        for (const orgId of orgIds) {
-          billingChangedOrgIds.add(orgId);
-        }
+        addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
       case "subscription_schedule.canceled":
@@ -3669,9 +3732,7 @@ export const handleStripeWebhookEvent$ = command(
           event.data.object,
         );
         signal.throwIfAborted();
-        for (const orgId of orgIds) {
-          billingChangedOrgIds.add(orgId);
-        }
+        addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;
       }
       default: {

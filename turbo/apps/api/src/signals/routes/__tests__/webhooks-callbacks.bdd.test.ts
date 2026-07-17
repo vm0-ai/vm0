@@ -1831,6 +1831,60 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
 });
 
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
+  it("uses each successful card payment as the customer default", async () => {
+    api.configureStripeBillingEnv();
+    const customerId = `cus_bdd_default_${randomUUID().slice(0, 8)}`;
+    const cardPaymentMethodId = `pm_bdd_card_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.paymentMethods.retrieve.mockResolvedValueOnce({
+      id: cardPaymentMethodId,
+      type: "card",
+      customer: customerId,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "payment_intent.succeeded",
+        object: {
+          id: `pi_bdd_card_${randomUUID().slice(0, 8)}`,
+          customer: customerId,
+          payment_method: cardPaymentMethodId,
+          metadata: {},
+        },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+      customerId,
+      {
+        invoice_settings: {
+          default_payment_method: cardPaymentMethodId,
+        },
+      },
+    );
+
+    context.mocks.stripe.customers.update.mockClear();
+    const bankPaymentMethodId = `pm_bdd_bank_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.paymentMethods.retrieve.mockResolvedValueOnce({
+      id: bankPaymentMethodId,
+      type: "us_bank_account",
+      customer: customerId,
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "payment_intent.succeeded",
+        object: {
+          id: `pi_bdd_bank_${randomUUID().slice(0, 8)}`,
+          customer: customerId,
+          payment_method: bankPaymentMethodId,
+          metadata: {},
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.customers.update).not.toHaveBeenCalled();
+  });
+
   it("grants and renews Atom invoice-backed Team entitlements", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
@@ -4088,6 +4142,25 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       vm0_environment: "preview",
       job_ref: "pr-bdd-456",
     };
+    const paymentMethodId = `pm_bdd_preview_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+      id: granted.customerId,
+      deleted: false,
+      metadata: mismatchedMetadata,
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "payment_intent.succeeded",
+        object: {
+          id: `pi_bdd_preview_skip_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          payment_method: paymentMethodId,
+          metadata: {},
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.customers.update).not.toHaveBeenCalled();
     await api.postStripeEvent(
       stripeEvent({
         type: "invoice.paid",
@@ -4156,6 +4229,35 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
     expect((await billing.readBillingStatus(actor)).credits).toBe(40_000);
+
+    context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+      id: granted.customerId,
+      deleted: false,
+      metadata: { vm0_environment: "preview", job_ref: "pr-bdd-123" },
+    });
+    context.mocks.stripe.paymentMethods.retrieve.mockResolvedValueOnce({
+      id: paymentMethodId,
+      type: "card",
+      customer: granted.customerId,
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "payment_intent.succeeded",
+        object: {
+          id: `pi_bdd_preview_match_${randomUUID().slice(0, 8)}`,
+          customer: granted.customerId,
+          payment_method: paymentMethodId,
+          metadata: {},
+        },
+      }),
+      [200],
+    );
+    expect(context.mocks.stripe.customers.update).toHaveBeenCalledWith(
+      granted.customerId,
+      {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      },
+    );
   });
 });
 

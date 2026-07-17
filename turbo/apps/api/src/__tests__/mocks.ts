@@ -164,6 +164,9 @@ export interface ApiTestMocks {
       readonly create: AsyncMock;
       readonly update: AsyncMock;
     };
+    readonly paymentMethods: {
+      readonly retrieve: AsyncMock;
+    };
     readonly subscriptions: {
       readonly list: AsyncMock;
       readonly retrieve: AsyncMock;
@@ -316,6 +319,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    paymentMethods: {
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     subscriptions: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -719,6 +725,9 @@ vi.mock("stripe", async (importOriginal) => {
           create: apiTestMocks.stripe.customers.create,
           update: apiTestMocks.stripe.customers.update,
         },
+        paymentMethods: {
+          retrieve: apiTestMocks.stripe.paymentMethods.retrieve,
+        },
         subscriptions: {
           list: apiTestMocks.stripe.subscriptions.list,
           retrieve: apiTestMocks.stripe.subscriptions.retrieve,
@@ -963,6 +972,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.customers.retrieve.mockReset();
   apiTestMocks.stripe.customers.create.mockReset();
   apiTestMocks.stripe.customers.update.mockReset();
+  apiTestMocks.stripe.paymentMethods.retrieve.mockReset();
   apiTestMocks.stripe.subscriptions.list.mockReset();
   apiTestMocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();

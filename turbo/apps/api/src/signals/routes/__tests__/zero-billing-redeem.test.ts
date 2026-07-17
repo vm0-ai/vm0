@@ -188,6 +188,14 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
         discounts: [{ coupon: COUPON_ID }],
         success_url: SUCCESS_URL,
         cancel_url: CANCEL_URL,
+        payment_intent_data: {
+          setup_future_usage: "off_session",
+          metadata: {
+            orgId: fixture.orgId,
+            campaignKey: CAMPAIGN,
+            purpose: "one_time_purchase",
+          },
+        },
         metadata: {
           orgId: fixture.orgId,
           campaignKey: CAMPAIGN,
