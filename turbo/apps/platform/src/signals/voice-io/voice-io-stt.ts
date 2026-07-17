@@ -4,6 +4,7 @@ import {
   type AudioInputQuotaResponse,
 } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { fetch$ } from "../fetch.ts";
+import { pageSignal$ } from "../page-signal.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setBillingSubPage$ } from "../zero-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../zero-page/settings/settings-dialog.ts";
@@ -445,13 +446,14 @@ const refreshAudioInputQuota$ = command(({ set }) => {
 });
 
 export const openAudioInputQuotaRecovery$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.throwIfAborted();
     toast.error(AUDIO_INPUT_QUOTA_TOAST, {
       id: AUDIO_INPUT_QUOTA_TOAST_ID,
     });
     set(refreshAudioInputQuota$);
     set(setBillingSubPage$, true);
-    await set(openSettingsDialogAt$, "billing", signal);
+    await set(openSettingsDialogAt$, "billing", get(pageSignal$));
   },
 );
 
