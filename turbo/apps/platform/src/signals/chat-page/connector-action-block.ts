@@ -14,6 +14,10 @@ import { setSelectedConnectorType$ } from "../zero-page/settings/connectors.ts";
 import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connectors-page/directed-authorize-type.ts";
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
+import {
+  getOrCreateCardSignals,
+  registeredCardSignals,
+} from "./card-signal-map.ts";
 
 export interface ConnectorActionDescriptor {
   connectorRef: ConnectorCatalogRef;
@@ -30,6 +34,11 @@ export interface ConnectorSignals extends ConnectorActionDescriptor {
   activate$: Command<Promise<void>, [AbortSignal]>;
 }
 
+export interface ConnectorCardSignalsRegistry {
+  register(descriptor: ConnectorActionDescriptor): ConnectorSignals;
+  resolve(resourceKey: string): ConnectorSignals;
+}
+
 export interface CustomConnectorActionDescriptor {
   displayName: string;
   agentId: string | null;
@@ -37,6 +46,11 @@ export interface CustomConnectorActionDescriptor {
 }
 
 export type CustomConnectorSignals = CustomConnectorActionDescriptor;
+
+export interface CustomConnectorCardSignalsRegistry {
+  register(descriptor: CustomConnectorActionDescriptor): CustomConnectorSignals;
+  resolve(resourceKey: string): CustomConnectorSignals;
+}
 
 const activeChatConnectorActionState$ = state<ConnectorActionDescriptor | null>(
   null,
@@ -192,5 +206,41 @@ export function createConnectorSignals(
     authorized$,
     complete$,
     activate$,
+  };
+}
+
+export function createConnectorCardSignalsRegistry(): ConnectorCardSignalsRegistry {
+  const signalsByResourceKey = new Map<string, ConnectorSignals>();
+  return {
+    register(descriptor) {
+      return getOrCreateCardSignals(
+        signalsByResourceKey,
+        descriptor.originalUrl,
+        () => {
+          return createConnectorSignals(descriptor);
+        },
+      );
+    },
+    resolve(resourceKey) {
+      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    },
+  };
+}
+
+export function createCustomConnectorCardSignalsRegistry(): CustomConnectorCardSignalsRegistry {
+  const signalsByResourceKey = new Map<string, CustomConnectorSignals>();
+  return {
+    register(descriptor) {
+      return getOrCreateCardSignals(
+        signalsByResourceKey,
+        descriptor.originalUrl,
+        () => {
+          return createCustomConnectorSignals(descriptor);
+        },
+      );
+    },
+    resolve(resourceKey) {
+      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    },
   };
 }
