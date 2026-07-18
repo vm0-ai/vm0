@@ -11,6 +11,7 @@ import {
   getAllowedAuthRedirectOriginsForCurrentPage,
   resolveAppAuthUrl,
   resolveAppUrl,
+  resolveClerkSatelliteConfig,
 } from "../../signals/auth.ts";
 import { getVm0ClerkLocalization } from "../auth/clerk-localization.ts";
 import { getClerkAppearance } from "./clerk-appearance.ts";
@@ -29,24 +30,34 @@ export function VM0ClerkProvider({ children }: ClerkProviderProps) {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
   const appUrl = resolveAppUrl();
   const allowedRedirectOrigins = getAllowedAuthRedirectOriginsForCurrentPage();
+  const satelliteConfig = resolveClerkSatelliteConfig();
 
-  return (
-    <BaseClerkProvider
-      Clerk={clerkLoadable.data as unknown as BaseClerkProviderProps["Clerk"]}
-      publishableKey={publishableKey}
-      appearance={getClerkAppearance()}
-      signInUrl={resolveAppAuthUrl("/sign-in")}
-      signUpUrl={resolveAppAuthUrl("/sign-up")}
-      signInFallbackRedirectUrl={appUrl}
-      signUpFallbackRedirectUrl={appUrl}
-      allowedRedirectOrigins={allowedRedirectOrigins}
-      localization={getVm0ClerkLocalization()}
-    >
+  const providerProps = {
+    Clerk: clerkLoadable.data as unknown as BaseClerkProviderProps["Clerk"],
+    allowedRedirectOrigins,
+    appearance: getClerkAppearance(),
+    localization: getVm0ClerkLocalization(),
+    publishableKey,
+    signInFallbackRedirectUrl: appUrl,
+    signInUrl: resolveAppAuthUrl("/sign-in"),
+    signUpFallbackRedirectUrl: appUrl,
+    signUpUrl: resolveAppAuthUrl("/sign-up"),
+  };
+  const providerChildren = (
+    <>
       <GoogleOneTap
         signInForceRedirectUrl={appUrl}
         signUpForceRedirectUrl={appUrl}
       />
       {children}
+    </>
+  );
+
+  return satelliteConfig ? (
+    <BaseClerkProvider {...providerProps} {...satelliteConfig}>
+      {providerChildren}
     </BaseClerkProvider>
+  ) : (
+    <BaseClerkProvider {...providerProps}>{providerChildren}</BaseClerkProvider>
   );
 }

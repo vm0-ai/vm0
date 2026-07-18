@@ -3,7 +3,7 @@ import { createElement, type ReactNode } from "react";
 
 interface ClerkProviderProps {
   children: ReactNode;
-  allowedRedirectOrigins?: readonly string[];
+  allowedRedirectOrigins?: readonly (string | RegExp)[];
   localization?: unknown;
   signInFallbackRedirectUrl?: string;
   signInUrl?: string;

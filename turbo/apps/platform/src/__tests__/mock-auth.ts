@@ -168,6 +168,7 @@ export function clearMockedAuth() {
   });
   mockedClerk.buildUrlWithAuth.mockReset();
   mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
+  mockedClerk.initialize.mockReset();
 }
 
 const clerkListeners: (() => void)[] = [];
@@ -195,8 +196,13 @@ const defaultBuildUrlWithAuthImpl = (to: string) => {
 const defaultLoadImpl = () => {
   return Promise.resolve();
 };
+const initialize =
+  vi.fn<
+    (publishableKey: string, options?: { readonly domain?: string }) => void
+  >();
 
 export const mockedClerk = {
+  initialize,
   get user() {
     return internalMockedUser;
   },

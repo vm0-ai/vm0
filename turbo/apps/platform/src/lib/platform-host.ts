@@ -14,6 +14,8 @@ export interface PlatformRuntimeConfig {
 }
 
 const PRODUCTION_DOMAIN = "vm0.ai";
+const OKOU_PRODUCTION_DOMAIN = "okou.ai";
+export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
 function browserHostname(): string | null {
@@ -23,9 +25,27 @@ function browserHostname(): string | null {
   return location.hostname.toLowerCase();
 }
 
+export function isOkouProductionHostname(hostname: string): boolean {
+  const normalizedHostname = hostname.toLowerCase();
+  return (
+    normalizedHostname === OKOU_PRODUCTION_DOMAIN ||
+    normalizedHostname.endsWith(`.${OKOU_PRODUCTION_DOMAIN}`)
+  );
+}
+
+export function isProductionSatelliteHostname(hostname: string): boolean {
+  const normalizedHostname = hostname.toLowerCase();
+  return (
+    normalizedHostname === PRODUCTION_SATELLITE_HOSTNAME ||
+    normalizedHostname.endsWith(`.${PRODUCTION_SATELLITE_HOSTNAME}`)
+  );
+}
+
 function isProductionHostname(hostname: string): boolean {
   return (
-    hostname === PRODUCTION_DOMAIN || hostname.endsWith(`.${PRODUCTION_DOMAIN}`)
+    hostname === PRODUCTION_DOMAIN ||
+    hostname.endsWith(`.${PRODUCTION_DOMAIN}`) ||
+    isOkouProductionHostname(hostname)
   );
 }
 

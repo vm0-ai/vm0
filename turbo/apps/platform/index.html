@@ -238,7 +238,10 @@
       (function () {
         var hostname = window.location.hostname;
         var isProductionHost =
-          hostname === "vm0.ai" || hostname.endsWith(".vm0.ai");
+          hostname === "vm0.ai" ||
+          hostname.endsWith(".vm0.ai") ||
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
         if (!isProductionHost) return;
 
         var initialized = false;
@@ -314,7 +317,11 @@
       // the FAPI domain per environment.
       (function () {
         var h = location.hostname.toLowerCase();
-        var production = h === "vm0.ai" || h.endsWith(".vm0.ai");
+        var production =
+          h === "vm0.ai" ||
+          h.endsWith(".vm0.ai") ||
+          h === "okou.ai" ||
+          h.endsWith(".okou.ai");
         var k = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";
