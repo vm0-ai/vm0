@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.119](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.118...guest-init-v0.16.119) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock:** replace descendant process-group cleanup with exec cgroups ([#22013](https://github.com/vm0-ai/vm0/issues/22013)) ([302bf21](https://github.com/vm0-ai/vm0/commit/302bf216fac511a8fd6bf9c0c778cf8643f2374b))
+
 ## [0.16.118](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.117...guest-init-v0.16.118) (2026-07-17)
 
 ## [0.16.117](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.116...guest-init-v0.16.117) (2026-07-17)

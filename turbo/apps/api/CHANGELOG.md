@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.283.3](https://github.com/vm0-ai/vm0/compare/api-v1.283.2...api-v1.283.3) (2026-07-17)
+
+
+### Bug Fixes
+
+* **agent:** prefer workspace directory in runtime prompt ([#22009](https://github.com/vm0-ai/vm0/issues/22009)) ([8407c01](https://github.com/vm0-ai/vm0/commit/8407c017b06b5e7203e4723f220cb740058d43e5))
+
+
+### Refactoring
+
+* reduce fallback slop in slack oauth ([#22025](https://github.com/vm0-ai/vm0/issues/22025)) ([e0d6f42](https://github.com/vm0-ai/vm0/commit/e0d6f4271e3826e63c950ef97c23db252671dce8))
+
+
+### Performance Improvements
+
+* **api:** load persisted run environment in one statement ([#22020](https://github.com/vm0-ai/vm0/issues/22020)) ([c6817df](https://github.com/vm0-ai/vm0/commit/c6817df2686b90e893c054192ed341f999c1c596))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.200.4
+    * @vm0/core bumped to 8.440.1
+    * @vm0/db bumped to 1.119.5
+
 ## [1.283.2](https://github.com/vm0-ai/vm0/compare/api-v1.283.1...api-v1.283.2) (2026-07-17)
 
 

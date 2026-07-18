@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.38](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.37...vsock-guest-v0.19.38) (2026-07-17)
+
+
+### Bug Fixes
+
+* **vsock:** replace descendant process-group cleanup with exec cgroups ([#22013](https://github.com/vm0-ai/vm0/issues/22013)) ([302bf21](https://github.com/vm0-ai/vm0/commit/302bf216fac511a8fd6bf9c0c778cf8643f2374b))
+
 ## [0.19.37](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.36...vsock-guest-v0.19.37) (2026-07-17)
 
 

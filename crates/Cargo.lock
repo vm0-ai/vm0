@@ -1256,7 +1256,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.53.8"
+version = "0.53.9"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1292,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.43"
+version = "0.2.44"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "libc",
  "serde",
@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.21.4"
+version = "0.21.5"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.118"
+version = "0.16.119"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1353,7 +1353,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.6.8"
+version = "0.6.9"
 dependencies = [
  "chrono",
  "clap",
@@ -1372,7 +1372,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.29"
+version = "0.1.30"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2569,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.146.8"
+version = "0.146.9"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2790,7 +2790,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.131"
+version = "0.37.132"
 dependencies = [
  "async-trait",
  "base64",
@@ -2821,7 +2821,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.40"
+version = "0.8.41"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3724,7 +3724,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.37"
+version = "0.19.38"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3754,7 +3754,7 @@ version = "0.18.22"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.152"
+version = "0.9.153"
 dependencies = [
  "guest-write-file",
  "libc",
