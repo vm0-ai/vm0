@@ -4,6 +4,7 @@ import {
   type UsageRecordRow,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -20,7 +21,17 @@ function usageRows(): UsageRecordRow[] {
       title: "Quarterly planning chat",
       credits: 980,
       tokens: 2200,
-      breakdown: [],
+      breakdown: [
+        {
+          kind: "connector",
+          credits: 980,
+          providers: [
+            { provider: "firecrawl", credits: 300 },
+            { provider: "perplexity", credits: 300 },
+            { provider: "google-map", credits: 380 },
+          ],
+        },
+      ],
       member: null,
       lastActivityAt: "2026-03-21T10:00:00Z",
     },
@@ -161,6 +172,7 @@ async function openUsageSettings(): Promise<void> {
 
 describe("personal usage settings", () => {
   it("shows personal usage, loads more, and changes the usage range", async () => {
+    const user = userEvent.setup();
     const requestedRanges = mockPersonalUsageStory();
     await openUsageSettings();
 
@@ -172,6 +184,19 @@ describe("personal usage settings", () => {
     expect(screen.queryByText("Extended CLI audit")).not.toBeInTheDocument();
     expect(screen.queryByText("All sources")).not.toBeInTheDocument();
     expect(requestedRanges).toContain("today");
+
+    await user.hover(screen.getByTestId("usage-kind-segment-connector"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Web Fetch").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Web Search").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.getAllByText("Google Map").length).toBeGreaterThanOrEqual(
+        1,
+      );
+      expect(screen.queryByText("google-map")).not.toBeInTheDocument();
+    });
 
     click(screen.getByText("Load more"));
 

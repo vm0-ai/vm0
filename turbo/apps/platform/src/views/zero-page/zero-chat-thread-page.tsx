@@ -101,7 +101,6 @@ import {
   findWorkflowTemplateItem,
   r2ImageTransformUrl,
 } from "@vm0/core";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
 import type {
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
@@ -115,6 +114,7 @@ import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
 } from "../../lib/posthog.ts";
+import { getCreditUsageDisplayName } from "../../lib/credit-usage-display.ts";
 import {
   AttachmentLightbox,
   FileAttachmentChip,
@@ -6655,77 +6655,12 @@ interface RunUsageDisplayRow {
   readonly credits: number;
 }
 
-function titleCaseUsageToken(token: string): string {
-  const upper = token.toUpperCase();
-  if (["AI", "API", "GLM", "GPT", "ID", "SQL", "URL", "VM0"].includes(upper)) {
-    return upper;
-  }
-
-  return token.charAt(0).toUpperCase() + token.slice(1);
-}
-
-function formatUsageIdentifier(value: string): string {
-  const normalized = value.trim();
-  if (!normalized) {
-    return "Usage";
-  }
-
-  return normalized
-    .split(/[/._-]+/)
-    .filter((token) => {
-      return token.length > 0;
-    })
-    .map(titleCaseUsageToken)
-    .join(" ");
-}
-
 function isUsageModelBackedKind(kind: string): boolean {
   return kind === "model" || kind === "image" || kind === "video";
 }
 
 function isUsageCategoryPart(part: string): boolean {
   return part.startsWith("tokens.") || part.startsWith("output_");
-}
-
-function stripUsageProviderPrefix(value: string): string {
-  const normalized = value.trim();
-  if (normalized.startsWith("fal-ai/")) {
-    return normalized.slice("fal-ai/".length);
-  }
-  if (normalized.startsWith("bytedance/")) {
-    return normalized.slice("bytedance/".length);
-  }
-  if (normalized.startsWith("dreamina-")) {
-    return normalized.slice("dreamina-".length);
-  }
-  return normalized;
-}
-
-function getUsageModelDisplayName(model: string): string {
-  const directDisplayName = getModelDisplayName(model);
-  if (directDisplayName !== model) {
-    return directDisplayName;
-  }
-
-  const strippedModel = stripUsageProviderPrefix(model);
-  const strippedDisplayName = getModelDisplayName(strippedModel);
-  if (strippedDisplayName !== strippedModel) {
-    return strippedDisplayName;
-  }
-
-  return formatUsageIdentifier(strippedModel);
-}
-
-function usageDisplayLabel(kind: string, provider: string): string {
-  if (isUsageModelBackedKind(kind) && provider && provider !== "unknown") {
-    return getUsageModelDisplayName(provider);
-  }
-
-  if (provider && provider !== "unknown") {
-    return formatUsageIdentifier(provider);
-  }
-
-  return formatUsageIdentifier(kind);
 }
 
 function parseUsageKind(kind: string): {
@@ -6763,7 +6698,8 @@ function buildRunUsageDisplayRows(
       const credits = Math.max(0, providerBreakdown.credits);
       rows.set(key, {
         key,
-        label: existing?.label ?? usageDisplayLabel(parsed.kind, provider),
+        label:
+          existing?.label ?? getCreditUsageDisplayName(parsed.kind, provider),
         credits: (existing?.credits ?? 0) + credits,
       });
     }

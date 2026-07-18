@@ -2366,7 +2366,11 @@ describe("chat lifecycle", () => {
               {
                 kind: "connector",
                 credits: 108,
-                providers: [{ provider: "x", credits: 108 }],
+                providers: [
+                  { provider: "firecrawl", credits: 36 },
+                  { provider: "perplexity", credits: 36 },
+                  { provider: "google-map", credits: 36 },
+                ],
               },
             ],
           },
@@ -2399,8 +2403,10 @@ describe("chat lifecycle", () => {
     click(connectorCredit);
 
     await waitFor(() => {
-      expect(screen.getAllByText("X").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("108").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Web Fetch")).toBeInTheDocument();
+      expect(screen.getByText("Web Search")).toBeInTheDocument();
+      expect(screen.getByText("Google Map")).toBeInTheDocument();
+      expect(screen.getAllByText("36")).toHaveLength(3);
     });
   });
 
