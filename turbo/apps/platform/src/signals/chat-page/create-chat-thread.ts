@@ -2960,6 +2960,12 @@ interface PreparedSendMessageResult {
   hasTextContent: boolean;
 }
 
+function shouldIncludeDraftAttachments(
+  features: Partial<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  return !(features[FeatureSwitchKey.ComposerInlinePromptItems] ?? false);
+}
+
 function prepareTextOnlyUserMessage(
   prompt: string,
 ): PreparedSendMessageResult | null {
@@ -3195,9 +3201,10 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       request: ValidatedSendMessageRequest,
       signal: AbortSignal,
     ): Promise<boolean> => {
+      const features = get(featureSwitch$);
       const generationTemplate = generationTemplateForFeatureSwitches(
         get(draft.generationTemplate$),
-        get(featureSwitch$),
+        features,
       );
       const result =
         request.options?.includeDraftAttachments === false
@@ -3207,6 +3214,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
               draft,
               request.prompt,
               {
+                includeAttachments: shouldIncludeDraftAttachments(features),
                 excludeVisualAttachments:
                   shouldExcludeVisualAttachmentsForModel(
                     request.modelSelection?.selectedModel,
@@ -3377,9 +3385,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return false;
       }
+      const features = get(featureSwitch$);
       const generationTemplate = generationTemplateForFeatureSwitches(
         get(draft.generationTemplate$),
-        get(featureSwitch$),
+        features,
       );
 
       const modelSelectionResult = await set(modelSelectionForSend$, signal);
@@ -3393,6 +3402,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         draft,
         prompt,
         {
+          includeAttachments: shouldIncludeDraftAttachments(features),
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             modelSelection?.selectedModel,
           ),
@@ -3436,7 +3446,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
         { signal },
       );
 
-      const features = get(featureSwitch$);
       const codexFastModeEnabled =
         features[FeatureSwitchKey.CodexFastMode] ?? false;
       const realAgentInPreviewEnabled =
@@ -4099,11 +4108,25 @@ function publicChatThreadMessageSignals(
   };
 }
 
+function createThreadComposer(
+  draft: DraftSignals,
+  threadId: string,
+  inlinePromptItems: boolean,
+) {
+  const workflowComposer = createWorkflowComposerSignals(
+    draft,
+    threadId,
+    inlinePromptItems,
+  );
+  return { workflowComposer, focusInput$: workflowComposer.focus$ };
+}
+
 export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
   dataSource: ChatThreadRemote = createRemoteChatThreadDataSource(threadId),
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[] = [],
+  inlinePromptItems = false,
 ): ChatThreadSignals {
   const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
     createRemoteThreadDetail(dataSource);
@@ -4176,7 +4199,7 @@ export function createChatThreadSignals(
     appendOptimisticMessage$: messages.appendOptimisticMessage$,
     dataSource,
   });
-  const workflowComposer = createWorkflowComposerSignals(draft, threadId);
+  const composer = createThreadComposer(draft, threadId, inlinePromptItems);
   return {
     threadId,
     remoteThreadDetail$,
@@ -4194,11 +4217,10 @@ export function createChatThreadSignals(
     setContainerRef$,
     awayFromBottom$,
     draft,
-    workflowComposer,
+    ...composer,
     composerFileInput$,
     setComposerFileInput$,
     ...threadOwned,
-    focusInput$: workflowComposer.focus$,
     queueDraftSync$,
     ...publicChatThreadMessageSignals(messages),
     subscribeChatThread$: runTracking.subscribeChatThread$,

@@ -13,10 +13,7 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import type {
-  Job as RunnerJob,
-  SessionHistorySizeBucket,
-} from "@vm0/api-contracts/contracts/runners";
+import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -772,10 +769,10 @@ function expectDirectAblyClaimTimingEvents(args: {
         profile: "vm0/default",
         auth_type: "user",
         discovery_source: "ably",
-        pre_local_admission_outcome: "local_holder",
       }),
     );
     expect(event).not.toHaveProperty("poll_reason");
+    expect(event).not.toHaveProperty("pre_local_admission_outcome");
   }
 
   expect(
@@ -786,7 +783,6 @@ function expectDirectAblyClaimTimingEvents(args: {
   ).toStrictEqual(
     expect.objectContaining({
       duration_ms: 12,
-      pre_local_admission_outcome: "local_holder",
     }),
   );
   expect(
@@ -794,7 +790,6 @@ function expectDirectAblyClaimTimingEvents(args: {
   ).toStrictEqual(
     expect.objectContaining({
       duration_ms: 34,
-      pre_local_admission_outcome: "local_holder",
     }),
   );
   expect(
@@ -802,7 +797,6 @@ function expectDirectAblyClaimTimingEvents(args: {
   ).toStrictEqual(
     expect.objectContaining({
       duration_ms: 45,
-      pre_local_admission_outcome: "local_holder",
     }),
   );
   expect(
@@ -810,7 +804,6 @@ function expectDirectAblyClaimTimingEvents(args: {
   ).toStrictEqual(
     expect.objectContaining({
       duration_ms: 67,
-      pre_local_admission_outcome: "local_holder",
     }),
   );
 
@@ -2297,10 +2290,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       readonly workspaceCaches?: {
         readonly profile: string;
         readonly workspaceAffinityVersion?: 1;
-        readonly sessionHistorySidecar?: {
-          readonly historyGenerationRunId?: string;
-          readonly rawSizeBucket: SessionHistorySizeBucket;
-        };
       }[];
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
@@ -2412,9 +2401,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue when final heartbeat includes extra legacy fields",
     );
     expect(finalHeartbeatHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(
-      sessionAffinityProtectedUntil(finalHeartbeatHolder.job),
-    ).toStrictEqual(expect.any(String));
+    expect(sessionAffinityProtectedUntil(finalHeartbeatHolder.job)).toBeNull();
     expect(
       historyGenerationAffinityProtectedUntil(finalHeartbeatHolder.job),
     ).toBeNull();
@@ -2512,15 +2499,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [{ profile: "vm0/default" }],
     });
-    const observationOnlyWorkspace = await pollFollowUp(
-      "continue with an observation-only workspace holder",
+    const untypedWorkspace = await pollFollowUp(
+      "continue with an untyped workspace holder",
     );
-    expect(
-      sessionAffinityProtectedUntil(observationOnlyWorkspace.job),
-    ).toStrictEqual(expect.any(String));
-    expect(
-      sessionAffinityResource(observationOnlyWorkspace.job),
-    ).toBeUndefined();
+    expect(sessionAffinityProtectedUntil(untypedWorkspace.job)).toBeNull();
+    expect(sessionAffinityResource(untypedWorkspace.job)).toBeUndefined();
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -2562,33 +2545,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "reusableSandbox",
     );
 
-    const sidecarVariantRunners = [
-      {
-        runnerId: randomUUID(),
-        sessionHistorySidecar: {
-          historyGenerationRunId: first.runId,
-          rawSizeBucket: "64_256_kib" as const,
-        },
-      },
-      {
-        runnerId: randomUUID(),
-        sessionHistorySidecar: {
-          historyGenerationRunId: randomUUID(),
-          rawSizeBucket: "256_kib_1_mib" as const,
-        },
-      },
-      {
-        runnerId: randomUUID(),
-        sessionHistorySidecar: {
-          rawSizeBucket: "1_4_mib" as const,
-        },
-      },
-      { runnerId: randomUUID(), sessionHistorySidecar: undefined },
-    ];
-    for (const variant of sidecarVariantRunners) {
-      await api.requestHeartbeatRunner(true, [200], {
-        runnerId: variant.runnerId,
-        group: runnerGroup,
+    const previousSidecarRunnerId = randomUUID();
+    const previousSidecarHeartbeat = await api.requestRawHeartbeatRunner(
+      true,
+      [200],
+      rawHeartbeatBody({
+        runnerId: previousSidecarRunnerId,
         admittableProfiles: ["vm0/default"],
         heldSessionStates: [
           {
@@ -2598,49 +2560,51 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
               {
                 profile: "vm0/default",
                 workspaceAffinityVersion: 1,
-                ...(variant.sessionHistorySidecar
-                  ? {
-                      sessionHistorySidecar: variant.sessionHistorySidecar,
-                    }
-                  : {}),
+                sessionHistorySidecar: {
+                  historyGenerationRunId: first.runId,
+                  rawSizeBucket: "64_256_kib",
+                },
               },
             ],
           },
         ],
-      });
-    }
-    const reusableWithCompetingWorkspaceSidecars = await pollFollowUp(
-      "observe workspace sidecars while reusable sandbox remains preferred",
+      }),
+    );
+    expect(previousSidecarHeartbeat.body).toStrictEqual({ ok: true });
+    const reusableWithPreviousSidecarHeartbeat = await pollFollowUp(
+      "accept a previous heartbeat while preferring reusable affinity",
     );
     expect(
-      sessionAffinityProtectedUntil(reusableWithCompetingWorkspaceSidecars.job),
+      sessionAffinityProtectedUntil(reusableWithPreviousSidecarHeartbeat.job),
     ).toStrictEqual(expect.any(String));
     expect(
       historyGenerationAffinityProtectedUntil(
-        reusableWithCompetingWorkspaceSidecars.job,
+        reusableWithPreviousSidecarHeartbeat.job,
       ),
     ).toStrictEqual(expect.any(String));
     expect(
-      sessionAffinityResource(reusableWithCompetingWorkspaceSidecars.job),
+      sessionAffinityResource(reusableWithPreviousSidecarHeartbeat.job),
     ).toBe("reusableSandbox");
 
     await heartbeatHolder({ admittableProfiles: [], mode: "stopping" });
-    const competingWorkspaceSidecars = await pollFollowUp(
-      "observe competing workspace sidecars without routing by them",
+    const workspaceFromPreviousHeartbeat = await pollFollowUp(
+      "use typed workspace affinity from a previous heartbeat",
     );
-    expect(sessionAffinityResource(competingWorkspaceSidecars.job)).toBe(
+    expect(sessionAffinityResource(workspaceFromPreviousHeartbeat.job)).toBe(
       "workspaceCache",
     );
     expect(
-      historyGenerationAffinityProtectedUntil(competingWorkspaceSidecars.job),
+      historyGenerationAffinityProtectedUntil(
+        workspaceFromPreviousHeartbeat.job,
+      ),
     ).toBeNull();
     for (const { runId, resource } of [
       {
-        runId: reusableWithCompetingWorkspaceSidecars.run.runId,
+        runId: reusableWithPreviousSidecarHeartbeat.run.runId,
         resource: "reusableSandbox",
       },
       {
-        runId: competingWorkspaceSidecars.run.runId,
+        runId: workspaceFromPreviousHeartbeat.run.runId,
         resource: "workspaceCache",
       },
     ]) {
@@ -2653,23 +2617,23 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         expect(events[0]).toStrictEqual(
           expect.objectContaining({
             session_affinity_resource: resource,
-            workspace_sidecar_exact_holder: "true",
-            workspace_sidecar_different_holder: "true",
-            workspace_sidecar_legacy_holder: "true",
-            workspace_sidecar_absent_holder: "true",
           }),
         );
+        expect(events[0]).not.toHaveProperty("workspace_sidecar_exact_holder");
+        expect(events[0]).not.toHaveProperty(
+          "workspace_sidecar_different_holder",
+        );
+        expect(events[0]).not.toHaveProperty("workspace_sidecar_legacy_holder");
+        expect(events[0]).not.toHaveProperty("workspace_sidecar_absent_holder");
       }
     }
-    for (const variant of sidecarVariantRunners) {
-      await api.requestHeartbeatRunner(true, [200], {
-        runnerId: variant.runnerId,
-        group: runnerGroup,
-        admittableProfiles: [],
-        heldSessionStates: [],
-        mode: "stopping",
-      });
-    }
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: previousSidecarRunnerId,
+      group: runnerGroup,
+      admittableProfiles: [],
+      heldSessionStates: [],
+      mode: "stopping",
+    });
 
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
@@ -7879,7 +7843,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       prompt: "attribute terminal generation claims",
       modelProvider: "anthropic-api-key",
     });
-    const accepted = await api.requestClaimRunnerJob(
+    const accepted = await api.requestRawClaimRunnerJob(
       true,
       attributed.runId,
       [200],
@@ -7895,7 +7859,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     );
     expect(accepted.status).toBe(200);
 
-    const lateUser = await api.requestClaimRunnerJobAs(
+    const lateUser = await api.requestRawClaimRunnerJobAs(
       actorBearer,
       attributed.runId,
       [404],
@@ -7916,7 +7880,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       ),
     ).toHaveLength(1);
 
-    const lateOfficial = await api.requestClaimRunnerJob(
+    const lateOfficial = await api.requestRawClaimRunnerJob(
       true,
       attributed.runId,
       [404],
@@ -7939,10 +7903,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: true,
         duration_ms: 0,
         generation_relationship: "different",
-        generation_local_availability:
-          "parked_before_discovery_lt_heartbeat_period",
-        workspace_sidecar_relationship: "different",
-        workspace_sidecar_raw_size_bucket: "256_kib_1_mib",
         claim_outcome: "accepted",
         auth_type: "official-runner",
         runner_group: runnerGroup,
@@ -7952,9 +7912,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: false,
         duration_ms: 0,
         generation_relationship: "exact",
-        generation_local_availability: "parked_after_discovery",
-        workspace_sidecar_relationship: "exact",
-        workspace_sidecar_raw_size_bucket: "64_256_kib",
         claim_outcome: "unavailable",
         auth_type: "official-runner",
       }),
@@ -7965,12 +7922,14 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(event).not.toHaveProperty("history_hash");
       expect(event).not.toHaveProperty("parked_at");
       expect(event).not.toHaveProperty("discovered_at");
+      expect(event).not.toHaveProperty("generation_local_availability");
       expect(event).not.toHaveProperty("generation_local_availability_ms");
       expect(event).not.toHaveProperty("workspace_sidecar_generation_run_id");
       expect(event).not.toHaveProperty("workspace_sidecar_raw_size_bytes");
+      expect(event).not.toHaveProperty("workspace_sidecar_relationship");
+      expect(event).not.toHaveProperty("workspace_sidecar_raw_size_bucket");
       expect(JSON.stringify(event)).not.toContain(actorRunnerKey.token);
     }
-
     const guarded = await api.createRun(actor, {
       agentId,
       prompt: "reject untrusted generation attribution",
@@ -8079,7 +8038,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     context.mocks.s3.send.mockRejectedValueOnce(
       new Error("session history metadata unavailable"),
     );
-    const failedClaim = await api.requestClaimRunnerJob(
+    const failedClaim = await api.requestRawClaimRunnerJob(
       true,
       resumed.runId,
       [500],
@@ -8104,10 +8063,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
         success: false,
         duration_ms: 0,
         generation_relationship: "exact",
-        generation_local_availability:
-          "parked_before_discovery_ge_heartbeat_period",
-        workspace_sidecar_relationship: "legacy",
-        workspace_sidecar_raw_size_bucket: "1_4_mib",
         claim_outcome: "preclaim_error",
         auth_type: "official-runner",
         runner_group: runnerGroup,
@@ -8116,6 +8071,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     ]);
     expect(JSON.stringify(events)).not.toContain(source.runId);
     expect(JSON.stringify(events)).not.toContain(historyHash);
+    expect(events[0]).not.toHaveProperty("generation_local_availability");
+    expect(events[0]).not.toHaveProperty("workspace_sidecar_relationship");
+    expect(events[0]).not.toHaveProperty("workspace_sidecar_raw_size_bucket");
 
     await api.requestCancelRun(actor, resumed.runId, [200]);
   });
@@ -8407,7 +8365,6 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
           directCandidateInboxWaitMs: 34,
           providerDiscoveryToMainLoopMs: 45,
           mainLoopToLocalAdmissionMs: 67,
-          preLocalAdmissionOutcome: "local_holder",
         },
       },
     );

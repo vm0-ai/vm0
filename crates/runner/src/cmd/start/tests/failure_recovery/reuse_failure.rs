@@ -5,15 +5,17 @@ use super::super::support::{
     wait_budget_count, wait_idle_pool_len, wait_status_idle_empty_with_active_run,
 };
 
-use crate::types::SandboxReuseResult;
+use crate::types::{SandboxReuseResult, SessionAffinityResource};
 
 const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
 
 fn reusable_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
-    crate::provider::JobCandidate::new(run_id, "vm0/default".into()).with_affinity_metadata(
-        Some(session_id.to_string()),
-        Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
-    )
+    crate::provider::JobCandidate::new(run_id, "vm0/default".into())
+        .with_affinity_metadata(
+            Some(session_id.to_string()),
+            Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
+        )
+        .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))
 }
 
 /// When the runner takes a sandbox out of the idle pool for reuse and

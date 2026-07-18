@@ -7,7 +7,6 @@ import {
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
   runnerSessionAffinityTelemetryResource,
-  runnerWorkspaceSidecarTelemetryDimensions,
 } from "./runner-session-affinity";
 import { tapError } from "../utils";
 
@@ -75,7 +74,6 @@ export async function notifyRunnerJob(
     session_affinity: affinity.status,
     session_affinity_resource: runnerSessionAffinityTelemetryResource(affinity),
     history_generation_affinity: affinity.historyGenerationStatus,
-    ...runnerWorkspaceSidecarTelemetryDimensions(affinity),
   };
   // Queue-relative actions are cumulative boundaries. Affinity and publish
   // durations are nested children and must not be added to those boundaries.

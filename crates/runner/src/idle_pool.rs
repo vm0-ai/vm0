@@ -935,10 +935,6 @@ impl ReservedIdleSandbox {
         self.entry.cli_agent_session_id()
     }
 
-    pub(crate) fn parked_at(&self) -> Instant {
-        self.entry.parked_at
-    }
-
     pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
         self.entry.metadata.history_generation_run_id
     }

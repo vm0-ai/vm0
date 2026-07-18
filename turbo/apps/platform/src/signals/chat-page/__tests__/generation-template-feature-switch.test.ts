@@ -38,4 +38,17 @@ describe("generationTemplateForFeatureSwitches", () => {
       }),
     ).toBe(template);
   });
+
+  it("drops structured templates when inline prompt items are on", () => {
+    const template: GenerationTemplateRequest = {
+      type: "illustration",
+      selection: { illustrationStyleId: "image-style:ink-studio" },
+    };
+
+    expect(
+      generationTemplateForFeatureSwitches(template, {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+      }),
+    ).toBeUndefined();
+  });
 });

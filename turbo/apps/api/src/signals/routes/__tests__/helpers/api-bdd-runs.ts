@@ -507,6 +507,22 @@ export function createRunsApi(context: TestContext) {
       );
     },
 
+    async requestRawClaimRunnerJobAs(
+      authorization: string | undefined,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      body: unknown,
+    ) {
+      return await accept(
+        runApp(context)(runnersJobClaimContract).claim({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { id: runId },
+          body: body as RunnerJobClaimRequest,
+        }),
+        statuses,
+      );
+    },
+
     async requestRunnerRealtimeTokenAs(
       authorization: string | undefined,
       body: RunnerRealtimeTokenBody,
@@ -1029,6 +1045,22 @@ export function createRunsApi(context: TestContext) {
           headers: runnerHeaders(validAuth),
           params: { id: runId },
           body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRawClaimRunnerJob(
+      validAuth: boolean,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      body: unknown,
+    ) {
+      return await accept(
+        runApp(context)(runnersJobClaimContract).claim({
+          headers: runnerHeaders(validAuth),
+          params: { id: runId },
+          body: body as RunnerJobClaimRequest,
         }),
         statuses,
       );

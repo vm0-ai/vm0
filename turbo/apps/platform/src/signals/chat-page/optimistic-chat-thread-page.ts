@@ -448,6 +448,10 @@ const sendNewThreadMessage$ = command(
       draft,
       prompt,
       {
+        includeAttachments: !(
+          get(featureSwitch$)[FeatureSwitchKey.ComposerInlinePromptItems] ??
+          false
+        ),
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
           resolvedModelSelection.selectedModel,
         ),
