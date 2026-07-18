@@ -244,15 +244,28 @@ async fn hard_shutdown_drains_current_heartbeat_and_discards_pending_work() {
     )
     .await;
 
-    let modes: Vec<String> = env
-        .handle
-        .heartbeats
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .iter()
-        .map(|heartbeat| heartbeat.mode.clone())
-        .collect();
-    assert_eq!(modes, ["running", "stopping"]);
+    {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let modes: Vec<&str> = heartbeats
+            .iter()
+            .map(|heartbeat| heartbeat.mode.as_str())
+            .collect();
+        let sequences: Vec<u64> = heartbeats
+            .iter()
+            .map(|heartbeat| heartbeat.snapshot_sequence)
+            .collect();
+        assert_eq!(modes, ["running", "stopping"]);
+        assert_eq!(sequences, [1, 2]);
+        assert!(
+            heartbeats
+                .iter()
+                .all(|heartbeat| heartbeat.snapshot_generation == 7)
+        );
+    }
     assert_eq!(env.handle.heartbeat_in_flight(), 0);
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 }
@@ -289,15 +302,28 @@ async fn natural_shutdown_flushes_stopping_after_current_heartbeat() {
     )
     .await;
 
-    let modes: Vec<String> = env
-        .handle
-        .heartbeats
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .iter()
-        .map(|heartbeat| heartbeat.mode.clone())
-        .collect();
-    assert_eq!(modes, ["running", "stopping", "stopping"]);
+    {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let modes: Vec<&str> = heartbeats
+            .iter()
+            .map(|heartbeat| heartbeat.mode.as_str())
+            .collect();
+        let sequences: Vec<u64> = heartbeats
+            .iter()
+            .map(|heartbeat| heartbeat.snapshot_sequence)
+            .collect();
+        assert_eq!(modes, ["running", "stopping", "stopping"]);
+        assert_eq!(sequences, [1, 2, 3]);
+        assert!(
+            heartbeats
+                .iter()
+                .all(|heartbeat| heartbeat.snapshot_generation == 7)
+        );
+    }
     assert_eq!(env.handle.heartbeat_in_flight(), 0);
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 }
