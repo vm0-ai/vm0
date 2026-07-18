@@ -198,6 +198,10 @@ async fn heartbeat_triggers_coalesce_into_one_current_mode_follow_up() {
         assert_eq!(heartbeats[0].mode, "running");
         assert_eq!(heartbeats[1].mode, "running");
         assert_eq!(heartbeats[1].running_count, 1);
+        assert_eq!(heartbeats[0].snapshot_generation, 7);
+        assert_eq!(heartbeats[1].snapshot_generation, 7);
+        assert_eq!(heartbeats[0].snapshot_sequence, 1);
+        assert_eq!(heartbeats[1].snapshot_sequence, 2);
     }
     assert_eq!(env.handle.max_heartbeat_in_flight(), 1);
 

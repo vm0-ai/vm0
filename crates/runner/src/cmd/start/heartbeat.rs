@@ -30,6 +30,7 @@ pub(super) struct HeartbeatContext<'a> {
     runner_id: &'a str,
     name: &'a str,
     group: &'a str,
+    snapshot_generation: u64,
     profiles: &'a BTreeMap<String, ProfileConfig>,
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
@@ -43,6 +44,7 @@ pub(super) struct HeartbeatContextInit<'a> {
     pub(super) runner_id: &'a str,
     pub(super) name: &'a str,
     pub(super) group: &'a str,
+    pub(super) snapshot_generation: u64,
     pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
     pub(super) budget: &'a ResourceBudget,
     pub(super) provider: &'a dyn JobProvider,
@@ -58,6 +60,7 @@ impl<'a> HeartbeatContext<'a> {
             runner_id: init.runner_id,
             name: init.name,
             group: init.group,
+            snapshot_generation: init.snapshot_generation,
             profiles: init.profiles,
             budget: init.budget,
             provider: init.provider,
@@ -78,6 +81,7 @@ pub(super) struct HeartbeatController<'a> {
     context: HeartbeatContext<'a>,
     in_flight: Option<BoxFuture<'a, ()>>,
     pending: bool,
+    next_snapshot_sequence: u64,
 }
 
 impl<'a> HeartbeatController<'a> {
@@ -86,15 +90,17 @@ impl<'a> HeartbeatController<'a> {
             context,
             in_flight: None,
             pending: false,
+            next_snapshot_sequence: 1,
         }
     }
 
-    pub(super) fn request(&mut self, mode: RunnerMode) {
+    pub(super) fn request(&mut self, mode: RunnerMode) -> RunnerResult<()> {
         if self.in_flight.is_some() {
             self.pending = true;
         } else {
-            self.start(mode);
+            self.start(mode)?;
         }
+        Ok(())
     }
 
     pub(super) fn is_sending(&self) -> bool {
@@ -111,12 +117,13 @@ impl<'a> HeartbeatController<'a> {
     }
 
     /// Clear a completed send and start one live-state follow-up when dirty.
-    pub(super) fn finish_send(&mut self, live_mode: RunnerMode) {
+    pub(super) fn finish_send(&mut self, live_mode: RunnerMode) -> RunnerResult<()> {
         debug_assert!(self.in_flight.is_some());
         self.in_flight = None;
         if std::mem::take(&mut self.pending) {
-            self.start(live_mode);
+            self.start(live_mode)?;
         }
+        Ok(())
     }
 
     /// Finish current work and emit one lifecycle-critical snapshot.
@@ -124,12 +131,12 @@ impl<'a> HeartbeatController<'a> {
     /// Natural stopping uses this to replace all ordinary pending work with a
     /// single `Stopping` heartbeat before teardown.
     pub(super) async fn flush(&mut self, mode: RunnerMode) -> RunnerResult<()> {
-        self.request(mode);
+        self.request(mode)?;
         loop {
             self.wait_for_send().await?;
             self.in_flight = None;
             if std::mem::take(&mut self.pending) {
-                self.start(mode);
+                self.start(mode)?;
             } else {
                 break;
             }
@@ -149,12 +156,23 @@ impl<'a> HeartbeatController<'a> {
         self.pending = false;
     }
 
-    fn start(&mut self, mode: RunnerMode) {
+    pub(super) fn into_next_snapshot_sequence(self) -> u64 {
         debug_assert!(self.in_flight.is_none());
+        self.next_snapshot_sequence
+    }
+
+    fn start(&mut self, mode: RunnerMode) -> RunnerResult<()> {
+        debug_assert!(self.in_flight.is_none());
+        let snapshot_sequence = self.next_snapshot_sequence;
+        let next_snapshot_sequence = snapshot_sequence.checked_add(1).ok_or_else(|| {
+            RunnerError::Internal("heartbeat snapshot sequence overflow".to_string())
+        })?;
+        self.next_snapshot_sequence = next_snapshot_sequence;
         let context = self.context.clone();
         self.in_flight = Some(Box::pin(async move {
-            send_heartbeat(&context, mode).await;
+            send_heartbeat(&context, mode, snapshot_sequence).await;
         }));
+        Ok(())
     }
 }
 
@@ -255,12 +273,20 @@ impl HeldSessionStateSnapshot {
 
 /// Collect current runner state, refresh the local held-session snapshot, and
 /// send a heartbeat to the server.
-pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
+pub(super) async fn send_heartbeat(
+    hb: &HeartbeatContext<'_>,
+    mode: RunnerMode,
+    snapshot_sequence: u64,
+) {
     let pool = hb.idle_pool.lock().await;
     let mut state = collect_heartbeat_state(
-        hb.runner_id,
-        hb.name,
-        hb.group,
+        HeartbeatSnapshotMetadata {
+            runner_id: hb.runner_id,
+            runner_name: hb.name,
+            group: hb.group,
+            generation: hb.snapshot_generation,
+            sequence: snapshot_sequence,
+        },
         hb.profiles,
         hb.budget,
         &pool,
@@ -475,10 +501,16 @@ fn admittable_profiles_for_heartbeat(
 }
 
 /// Collect current runner state for heartbeat reporting.
+pub(super) struct HeartbeatSnapshotMetadata<'a> {
+    pub(super) runner_id: &'a str,
+    pub(super) runner_name: &'a str,
+    pub(super) group: &'a str,
+    pub(super) generation: u64,
+    pub(super) sequence: u64,
+}
+
 pub(super) fn collect_heartbeat_state(
-    runner_id: &str,
-    name: &str,
-    group: &str,
+    snapshot: HeartbeatSnapshotMetadata<'_>,
     profiles: &BTreeMap<String, ProfileConfig>,
     budget: &ResourceBudget,
     idle_pool: &IdlePool,
@@ -502,9 +534,11 @@ pub(super) fn collect_heartbeat_state(
     let running_count = budget_running.saturating_sub(idle_count);
     let admittable_profiles = admittable_profiles_for_heartbeat(profiles, budget, mode);
     HeartbeatState {
-        runner_id: runner_id.to_string(),
-        runner_name: name.to_string(),
-        group: group.to_string(),
+        runner_id: snapshot.runner_id.to_string(),
+        runner_name: snapshot.runner_name.to_string(),
+        group: snapshot.group.to_string(),
+        snapshot_generation: snapshot.generation,
+        snapshot_sequence: snapshot.sequence,
         total_vcpu: budget.effective_vcpu(),
         total_memory_mb: budget.effective_memory_mb(),
         max_concurrent: budget.max_concurrent(),
@@ -556,6 +590,16 @@ mod tests {
             },
         );
         m
+    }
+
+    fn test_snapshot_metadata() -> HeartbeatSnapshotMetadata<'static> {
+        HeartbeatSnapshotMetadata {
+            runner_id: "r1",
+            runner_name: "runner-1",
+            group: "vm0/test",
+            generation: 7,
+            sequence: 42,
+        }
     }
 
     fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
@@ -664,9 +708,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -697,9 +739,7 @@ mod tests {
         });
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -726,9 +766,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -748,9 +786,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -770,9 +806,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -806,6 +840,7 @@ mod tests {
             runner_id: "runner-1",
             name: "test-runner",
             group: "vm0/test",
+            snapshot_generation: 7,
             profiles: &profiles,
             budget: &budget,
             provider: provider.as_ref(),
@@ -814,7 +849,8 @@ mod tests {
             held_session_snapshot: held_session_snapshot.clone(),
         });
 
-        let ((), events) = capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running)).await;
+        let ((), events) =
+            capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running, 42)).await;
 
         let debug_event = captured_event(&events, "heartbeat held session states");
         assert_eq!(
@@ -1214,9 +1250,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -1248,9 +1282,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
@@ -1274,9 +1306,7 @@ mod tests {
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
+            test_snapshot_metadata(),
             &profiles,
             &budget,
             &pool,
