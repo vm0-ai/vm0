@@ -153,8 +153,10 @@ pub(crate) struct CheckedNetnsPoolConfig {
 
 impl NetnsPoolConfig {
     /// Validate host tools required by [`NetnsPool::create`].
-    pub(crate) fn into_checked(self) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
-        crate::prerequisites::check_network_prerequisites(self.dns_port.is_some())?;
+    pub(crate) async fn into_checked(
+        self,
+    ) -> std::result::Result<CheckedNetnsPoolConfig, SandboxError> {
+        crate::prerequisites::check_network_prerequisites(self.dns_port.is_some()).await?;
         Ok(CheckedNetnsPoolConfig { inner: self })
     }
 }

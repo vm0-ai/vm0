@@ -1182,6 +1182,7 @@ impl NetnsPool {
     pub async fn create(config: NetnsPoolConfig) -> Result<Self> {
         let config = config
             .into_checked()
+            .await
             .map_err(|e| NetworkError::Prerequisite(e.to_string()))?;
         Self::create_checked(config).await
     }

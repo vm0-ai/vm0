@@ -203,6 +203,7 @@ fn build_mock_run_config_with_runtime(
             id: "test-runner".into(),
             name: "test".into(),
             group: "test-group".into(),
+            heartbeat_generation: 7,
             profiles,
         },
         paths: RunPaths {

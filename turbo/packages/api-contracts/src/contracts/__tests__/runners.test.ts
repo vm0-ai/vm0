@@ -424,6 +424,73 @@ describe("runner resume session contract", () => {
     expect(heldSessionState.workspaceCaches).toBeUndefined();
   });
 
+  it("accepts legacy or fully ordered heartbeat snapshots", () => {
+    const heartbeat = {
+      runnerId: "33333333-3333-4333-8333-333333333333",
+      runnerName: "runner-contract-test",
+      group: "vm0/test",
+      totalVcpu: 8,
+      totalMemoryMb: 16_384,
+      maxConcurrent: 4,
+      allocatedVcpu: 0,
+      allocatedMemoryMb: 0,
+      runningCount: 0,
+      admittableProfiles: ["vm0/default"],
+      heldSessionStates: [],
+      mode: "running",
+    } as const;
+
+    expect(heartbeatBodySchema.safeParse(heartbeat).success).toBe(true);
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
+        snapshotGeneration: 7,
+        snapshotSequence: 42,
+      }).success,
+    ).toBe(true);
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
+        snapshotGeneration: Number.MAX_SAFE_INTEGER,
+        snapshotSequence: Number.MAX_SAFE_INTEGER,
+      }).success,
+    ).toBe(true);
+    for (const invalidOrder of [
+      { snapshotGeneration: 0, snapshotSequence: 1 },
+      { snapshotGeneration: -1, snapshotSequence: 1 },
+      { snapshotGeneration: 1.5, snapshotSequence: 1 },
+      { snapshotGeneration: 1, snapshotSequence: 0 },
+      { snapshotGeneration: 1, snapshotSequence: -1 },
+      { snapshotGeneration: 1, snapshotSequence: 1.5 },
+    ]) {
+      expect(
+        heartbeatBodySchema.safeParse({
+          ...heartbeat,
+          ...invalidOrder,
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
+        snapshotGeneration: 7,
+      }).success,
+    ).toBe(false);
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
+        snapshotSequence: 42,
+      }).success,
+    ).toBe(false);
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
+        snapshotGeneration: Number.MAX_SAFE_INTEGER + 1,
+        snapshotSequence: 42,
+      }).success,
+    ).toBe(false);
+  });
+
   it("bounds profile-qualified workspace cache heartbeat state", () => {
     const heartbeat = {
       runnerId: "33333333-3333-4333-8333-333333333333",

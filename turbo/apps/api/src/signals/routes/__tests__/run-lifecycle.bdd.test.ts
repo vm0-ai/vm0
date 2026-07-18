@@ -2876,6 +2876,141 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
   });
 
+  it("keeps runner heartbeat snapshots ordered without breaking legacy senders", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start ordered-heartbeat session",
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-heartbeat-order-${first.runId}`;
+    const history = `bdd heartbeat order history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const runnerId = randomUUID();
+    const baseTime = now();
+    mockNow(baseTime);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    async function heartbeat(args: {
+      readonly generation?: number;
+      readonly sequence?: number;
+      readonly advertisesReusableSandbox: boolean;
+    }): Promise<void> {
+      await api.requestHeartbeatRunner(true, [200], {
+        runnerId,
+        group: runnerGroup,
+        snapshotGeneration: args.generation,
+        snapshotSequence: args.sequence,
+        admittableProfiles: [],
+        heldSessionStates: args.advertisesReusableSandbox
+          ? [
+              {
+                sessionId: cliAgentSessionId,
+                lastCompletedAt: nowDate().toISOString(),
+                reusableSandbox: { profile: "vm0/default" },
+              },
+            ]
+          : [],
+      });
+    }
+
+    async function expectReusableAffinity(expected: boolean): Promise<void> {
+      const followUp = await api.createRun(actor, {
+        agentId,
+        sessionId: first.sessionId,
+        prompt: `check ordered heartbeat affinity ${expected}`,
+        modelProvider: "anthropic-api-key",
+      });
+      const poll = await api.requestPollRunner(
+        true,
+        { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+        [200],
+      );
+      if (poll.status !== 200) {
+        throw new Error("Expected ordered-heartbeat poll to return 200");
+      }
+      expect(poll.body.job?.runId).toBe(followUp.runId);
+      if (expected) {
+        expect(sessionAffinityProtectedUntil(poll.body.job)).not.toBeNull();
+      } else {
+        expect(sessionAffinityProtectedUntil(poll.body.job)).toBeNull();
+      }
+      await api.requestCancelRun(actor, followUp.runId, [200]);
+    }
+
+    await heartbeat({
+      generation: 1,
+      sequence: 2,
+      advertisesReusableSandbox: true,
+    });
+    mockNow(baseTime + 5000);
+    await heartbeat({
+      generation: 1,
+      sequence: 1,
+      advertisesReusableSandbox: false,
+    });
+    await expectReusableAffinity(true);
+
+    mockNow(baseTime + 20_000);
+    await heartbeat({
+      generation: 1,
+      sequence: 1,
+      advertisesReusableSandbox: true,
+    });
+    mockNow(baseTime + 31_000);
+    await expectReusableAffinity(false);
+
+    await heartbeat({
+      generation: 1,
+      sequence: 3,
+      advertisesReusableSandbox: true,
+    });
+    await heartbeat({
+      generation: 1,
+      sequence: 3,
+      advertisesReusableSandbox: false,
+    });
+    await expectReusableAffinity(true);
+
+    await heartbeat({
+      generation: 2,
+      sequence: 1,
+      advertisesReusableSandbox: false,
+    });
+    await heartbeat({
+      generation: 1,
+      sequence: 99,
+      advertisesReusableSandbox: true,
+    });
+    await expectReusableAffinity(false);
+
+    await heartbeat({ advertisesReusableSandbox: true });
+    await expectReusableAffinity(true);
+  });
+
   it("prioritizes exact reusable work only for its runner and protection window", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);

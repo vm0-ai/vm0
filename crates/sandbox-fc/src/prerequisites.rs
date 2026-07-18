@@ -1,7 +1,7 @@
 use std::fs::Metadata;
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use nix::unistd::{AccessFlags, eaccess};
 use sandbox::SandboxError;
@@ -14,30 +14,30 @@ use crate::runtime_dirs::ensure_traversable_runtime_dir;
 ///
 /// Both [`crate::factory::FirecrackerFactory`] and [`crate::snapshot::create_snapshot`]
 /// construct this from their respective config types.
-pub(crate) struct PrerequisiteConfig<'a> {
-    pub binary_path: &'a Path,
-    pub kernel_path: &'a Path,
-    pub rootfs_path: &'a Path,
-    pub mode: PrerequisiteMode<'a>,
+pub(crate) struct PrerequisiteConfig {
+    pub binary_path: PathBuf,
+    pub kernel_path: PathBuf,
+    pub rootfs_path: PathBuf,
+    pub mode: PrerequisiteMode,
 }
 
 /// Operation-specific prerequisite mode.
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum PrerequisiteMode<'a> {
+#[derive(Debug)]
+pub(crate) enum PrerequisiteMode {
     FactoryFresh,
-    FactorySnapshotRestore { snapshot: &'a SnapshotConfig },
+    FactorySnapshotRestore { snapshot: SnapshotConfig },
     SnapshotCreate,
 }
 
-impl<'a> PrerequisiteMode<'a> {
-    fn snapshot(self) -> Option<&'a SnapshotConfig> {
+impl PrerequisiteMode {
+    fn snapshot(&self) -> Option<&SnapshotConfig> {
         match self {
             Self::FactorySnapshotRestore { snapshot } => Some(snapshot),
             Self::FactoryFresh | Self::SnapshotCreate => None,
         }
     }
 
-    fn command_groups(self) -> &'static [&'static [&'static str]] {
+    fn command_groups(&self) -> &'static [&'static [&'static str]] {
         match self {
             Self::FactoryFresh => FACTORY_FRESH_COMMAND_GROUPS,
             Self::FactorySnapshotRestore { .. } => FACTORY_SNAPSHOT_RESTORE_COMMAND_GROUPS,
@@ -72,14 +72,16 @@ const WORKSPACE_IMAGE_CREATE_COMMANDS: &[&str] = &["mkfs.ext4"];
 /// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, runtime directory,
 /// snapshot artifacts when restoring, and host commands required by the mode.
 /// Collects all failures and returns them in a single `BackendUnavailable` error.
-pub(crate) async fn check_prerequisites(
-    config: &PrerequisiteConfig<'_>,
-) -> Result<(), SandboxError> {
+pub(crate) async fn check_prerequisites(config: PrerequisiteConfig) -> Result<(), SandboxError> {
+    run_prerequisite_check(move || check_prerequisites_sync(&config)).await
+}
+
+fn check_prerequisites_sync(config: &PrerequisiteConfig) -> Result<(), SandboxError> {
     let mut errors = Vec::new();
 
     check_artifact_prerequisites(config, &mut errors);
     check_kvm(&mut errors);
-    let commands = required_commands(config.mode);
+    let commands = required_commands(&config.mode);
     check_required_commands(&commands, &mut errors);
     ensure_runtime_namespace(&mut errors);
 
@@ -87,13 +89,29 @@ pub(crate) async fn check_prerequisites(
 }
 
 /// Verify host network tools before creating network namespaces.
-pub(crate) fn check_network_prerequisites(
+pub(crate) async fn check_network_prerequisites(
     require_dns_input_filter: bool,
 ) -> Result<(), SandboxError> {
+    run_prerequisite_check(move || check_network_prerequisites_sync(require_dns_input_filter)).await
+}
+
+fn check_network_prerequisites_sync(require_dns_input_filter: bool) -> Result<(), SandboxError> {
     let mut errors = Vec::new();
     let commands = network_commands(require_dns_input_filter);
     check_required_commands(&commands, &mut errors);
     prerequisite_result(errors)
+}
+
+async fn run_prerequisite_check(
+    check: impl FnOnce() -> Result<(), SandboxError> + Send + 'static,
+) -> Result<(), SandboxError> {
+    match tokio::task::spawn_blocking(check).await {
+        Ok(result) => result,
+        Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
+        Err(error) => Err(SandboxError::Io(io::Error::other(format!(
+            "prerequisite check task was cancelled: {error}"
+        )))),
+    }
 }
 
 fn prerequisite_result(errors: Vec<String>) -> Result<(), SandboxError> {
@@ -106,17 +124,17 @@ fn prerequisite_result(errors: Vec<String>) -> Result<(), SandboxError> {
     }
 }
 
-fn check_artifact_prerequisites(config: &PrerequisiteConfig<'_>, errors: &mut Vec<String>) {
-    let binary_metadata = check_executable_file(config.binary_path, "firecracker binary", errors);
+fn check_artifact_prerequisites(config: &PrerequisiteConfig, errors: &mut Vec<String>) {
+    let binary_metadata = check_executable_file(&config.binary_path, "firecracker binary", errors);
     check_non_empty_file_size(
-        config.binary_path,
+        &config.binary_path,
         "firecracker binary",
         binary_metadata,
         errors,
     );
-    check_non_empty_readable_file(config.kernel_path, "kernel", errors);
-    let rootfs_blocks = check_readable_file(config.rootfs_path, "rootfs", errors)
-        .and_then(|metadata| check_rootfs_size(config.rootfs_path, metadata.len(), errors));
+    check_non_empty_readable_file(&config.kernel_path, "kernel", errors);
+    let rootfs_blocks = check_readable_file(&config.rootfs_path, "rootfs", errors)
+        .and_then(|metadata| check_rootfs_size(&config.rootfs_path, metadata.len(), errors));
 
     if let Some(snapshot) = config.mode.snapshot() {
         check_non_empty_readable_file(&snapshot.snapshot_path, "snapshot state", errors);
@@ -276,7 +294,7 @@ fn check_required_commands(commands: &[&str], errors: &mut Vec<String>) {
     }
 }
 
-fn required_commands(mode: PrerequisiteMode<'_>) -> Vec<&'static str> {
+fn required_commands(mode: &PrerequisiteMode) -> Vec<&'static str> {
     required_commands_for_groups(mode.command_groups())
 }
 
@@ -379,31 +397,31 @@ mod tests {
             nbd_cow::cow::bitmap_path_for(&self.snapshot.cow_path)
         }
 
-        fn fresh_config(&self) -> PrerequisiteConfig<'_> {
+        fn fresh_config(&self) -> PrerequisiteConfig {
             PrerequisiteConfig {
-                binary_path: &self.binary_path,
-                kernel_path: &self.kernel_path,
-                rootfs_path: &self.rootfs_path,
+                binary_path: self.binary_path.clone(),
+                kernel_path: self.kernel_path.clone(),
+                rootfs_path: self.rootfs_path.clone(),
                 mode: PrerequisiteMode::FactoryFresh,
             }
         }
 
-        fn snapshot_create_config(&self) -> PrerequisiteConfig<'_> {
+        fn snapshot_create_config(&self) -> PrerequisiteConfig {
             PrerequisiteConfig {
-                binary_path: &self.binary_path,
-                kernel_path: &self.kernel_path,
-                rootfs_path: &self.rootfs_path,
+                binary_path: self.binary_path.clone(),
+                kernel_path: self.kernel_path.clone(),
+                rootfs_path: self.rootfs_path.clone(),
                 mode: PrerequisiteMode::SnapshotCreate,
             }
         }
 
-        fn restore_config(&self) -> PrerequisiteConfig<'_> {
+        fn restore_config(&self) -> PrerequisiteConfig {
             PrerequisiteConfig {
-                binary_path: &self.binary_path,
-                kernel_path: &self.kernel_path,
-                rootfs_path: &self.rootfs_path,
+                binary_path: self.binary_path.clone(),
+                kernel_path: self.kernel_path.clone(),
+                rootfs_path: self.rootfs_path.clone(),
                 mode: PrerequisiteMode::FactorySnapshotRestore {
-                    snapshot: &self.snapshot,
+                    snapshot: self.snapshot.clone(),
                 },
             }
         }
@@ -429,7 +447,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("chmod dir {}: {e}", path.display()));
     }
 
-    fn artifact_errors(config: PrerequisiteConfig<'_>) -> Vec<String> {
+    fn artifact_errors(config: PrerequisiteConfig) -> Vec<String> {
         let mut errors = Vec::new();
         check_artifact_prerequisites(&config, &mut errors);
         errors
@@ -465,11 +483,63 @@ mod tests {
         }
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn blocking_check_runs_off_current_thread_runtime() {
+        let caller_thread = std::thread::current().id();
+        let (thread_tx, thread_rx) = std::sync::mpsc::channel();
+
+        run_prerequisite_check(move || {
+            thread_tx.send(std::thread::current().id()).unwrap();
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        assert_ne!(thread_rx.recv().unwrap(), caller_thread);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn blocking_check_runs_off_multi_thread_runtime_worker() {
+        let caller_thread = std::thread::current().id();
+        let (thread_tx, thread_rx) = std::sync::mpsc::channel();
+
+        run_prerequisite_check(move || {
+            thread_tx.send(std::thread::current().id()).unwrap();
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        assert_ne!(thread_rx.recv().unwrap(), caller_thread);
+    }
+
+    #[tokio::test]
+    async fn blocking_check_preserves_aggregated_backend_unavailable() {
+        let error = run_prerequisite_check(|| {
+            prerequisite_result(vec!["first failure".into(), "second failure".into()])
+        })
+        .await
+        .unwrap_err();
+
+        match error {
+            SandboxError::BackendUnavailable { message } => {
+                assert_eq!(message, "first failure; second failure");
+            }
+            other => panic!("expected BackendUnavailable, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "prerequisite task panic")]
+    async fn blocking_check_resumes_task_panic() {
+        let _ = run_prerequisite_check(|| panic!("prerequisite task panic")).await;
+    }
+
     #[test]
     fn factory_fresh_commands_include_network_and_workspace_image_create() {
         let mode = PrerequisiteMode::FactoryFresh;
         assert_eq!(
-            required_commands(mode),
+            required_commands(&mode),
             vec!["ip", "iptables", "iptables-save", "sysctl", "mkfs.ext4"]
         );
     }
@@ -477,12 +547,10 @@ mod tests {
     #[test]
     fn snapshot_restore_commands_include_cp_mkfs_and_private_mount_restore() {
         let snapshot = snapshot_config();
-        let mode = PrerequisiteMode::FactorySnapshotRestore {
-            snapshot: &snapshot,
-        };
+        let mode = PrerequisiteMode::FactorySnapshotRestore { snapshot };
 
         assert_eq!(
-            required_commands(mode),
+            required_commands(&mode),
             vec![
                 "ip",
                 "iptables",
@@ -501,7 +569,7 @@ mod tests {
     #[test]
     fn snapshot_create_commands_include_private_mount_create_without_sparse_copy() {
         let mode = PrerequisiteMode::SnapshotCreate;
-        let commands = required_commands(mode);
+        let commands = required_commands(&mode);
 
         assert_eq!(
             commands,
@@ -524,13 +592,13 @@ mod tests {
         let modes = [
             PrerequisiteMode::FactoryFresh,
             PrerequisiteMode::FactorySnapshotRestore {
-                snapshot: &snapshot,
+                snapshot: snapshot.clone(),
             },
             PrerequisiteMode::SnapshotCreate,
         ];
 
         for mode in modes {
-            let commands = required_commands(mode);
+            let commands = required_commands(&mode);
             assert!(!commands.contains(&"pgrep"), "mode: {mode:?}");
         }
     }
@@ -540,14 +608,12 @@ mod tests {
         let snapshot = snapshot_config();
         let modes = [
             PrerequisiteMode::FactoryFresh,
-            PrerequisiteMode::FactorySnapshotRestore {
-                snapshot: &snapshot,
-            },
+            PrerequisiteMode::FactorySnapshotRestore { snapshot },
             PrerequisiteMode::SnapshotCreate,
         ];
 
         for mode in modes {
-            let commands = required_commands(mode);
+            let commands = required_commands(&mode);
             assert!(!commands.contains(&"conntrack"), "mode: {mode:?}");
         }
     }
@@ -607,11 +673,13 @@ mod tests {
         let snapshot = snapshot_config();
         assert!(PrerequisiteMode::FactoryFresh.snapshot().is_none());
         assert!(PrerequisiteMode::SnapshotCreate.snapshot().is_none());
-        let restore_snapshot = PrerequisiteMode::FactorySnapshotRestore {
-            snapshot: &snapshot,
-        }
-        .snapshot();
-        assert!(matches!(restore_snapshot, Some(s) if std::ptr::eq(s, &snapshot)));
+        let restore_mode = PrerequisiteMode::FactorySnapshotRestore {
+            snapshot: snapshot.clone(),
+        };
+        let restore_snapshot = restore_mode.snapshot().unwrap();
+        assert_eq!(restore_snapshot.snapshot_path, snapshot.snapshot_path);
+        assert_eq!(restore_snapshot.memory_path, snapshot.memory_path);
+        assert_eq!(restore_snapshot.cow_path, snapshot.cow_path);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 {
-  "id": "72fa7c5d-6eb8-4397-8a0d-719a34b64312",
-  "prevId": "2383d2bf-f1d9-4b37-8ef9-d7bef9b72b7b",
+  "id": "d39f68b0-fff5-4204-9861-325de48109ec",
+  "prevId": "72fa7c5d-6eb8-4397-8a0d-719a34b64312",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2826,12 +2826,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "mail_draft_id": {
-          "name": "mail_draft_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "recommended_followups": {
           "name": "recommended_followups",
           "type": "jsonb",
@@ -3050,15 +3044,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "chat_messages_mail_draft_id_unique": {
-          "name": "chat_messages_mail_draft_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "mail_draft_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -9039,17 +9025,11 @@
           "primaryKey": true,
           "notNull": true
         },
-        "draft": {
-          "name": "draft",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "connector_id": {
           "name": "connector_id",
@@ -9061,19 +9041,19 @@
           "name": "gmail_draft_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "gmail_thread_id": {
           "name": "gmail_thread_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "gmail_message_id": {
           "name": "gmail_message_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "sent_gmail_message_id": {
           "name": "sent_gmail_message_id",
@@ -9085,7 +9065,7 @@
           "name": "status",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "sender_name": {
           "name": "sender_name",
@@ -9097,13 +9077,13 @@
           "name": "sender_address",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "subject": {
           "name": "subject",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
