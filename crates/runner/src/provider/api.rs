@@ -60,6 +60,7 @@ struct ClaimRequestTelemetry {
     provider_discovery_to_main_loop_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     main_loop_to_local_admission_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     session_affinity_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_affinity_local_resource: Option<&'static str>,
@@ -1826,6 +1827,7 @@ mod tests {
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
         assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
         assert!(body["telemetry"].get("pollReason").is_none());
+        assert!(body["telemetry"].get("sessionAffinityResource").is_none());
         assert!(
             body["telemetry"]
                 .get("directCandidateNotificationToEnqueueMs")
