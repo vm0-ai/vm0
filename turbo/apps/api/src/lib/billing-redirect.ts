@@ -7,6 +7,7 @@ import { env } from "./env";
 //   - the configured app origin (APP_URL) — also covers dev/test localhost,
 //   - the configured onboarding origin (ONBOARDING_URL),
 //   - any first-party *.vm0.ai production domain (app.vm0.ai, www.vm0.ai, ...),
+//   - the exact okou.ai production app origin (not its subdomains),
 //   - *.vm6.ai staging and per-branch preview hosts.
 // User-hosted content lives on a different registrable domain (sites.vm0.io),
 // so the *.vm0.ai wildcard stays first-party. hostname comes from URL parsing,
@@ -25,6 +26,9 @@ export function billingRedirectAllowed(rawUrl: string): boolean {
   }
   const host = url.hostname;
   return (
-    host === "vm0.ai" || host.endsWith(".vm0.ai") || host.endsWith(".vm6.ai")
+    url.origin === "https://okou.ai" ||
+    host === "vm0.ai" ||
+    host.endsWith(".vm0.ai") ||
+    host.endsWith(".vm6.ai")
   );
 }

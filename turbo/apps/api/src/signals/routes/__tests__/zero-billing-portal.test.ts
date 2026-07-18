@@ -120,7 +120,10 @@ describe("POST /api/zero/billing/portal", () => {
     });
   });
 
-  it("returns portal URL on success", async () => {
+  it.each([
+    `${APP_ORIGIN}/settings/billing`,
+    "https://okou.ai/settings/billing",
+  ])("returns portal URL to the allowed origin %s", async (returnUrl) => {
     const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
     const fixture = await track(
       store.set(
@@ -143,7 +146,7 @@ describe("POST /api/zero/billing/portal", () => {
     const client = setupApp({ context })(zeroBillingPortalContract);
     const response = await accept(
       client.create({
-        body: { returnUrl: `${APP_ORIGIN}/settings/billing` },
+        body: { returnUrl },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -156,11 +159,14 @@ describe("POST /api/zero/billing/portal", () => {
       context.mocks.stripe.billingPortal.sessions.create,
     ).toHaveBeenCalledWith({
       customer: fixture.stripeCustomerId,
-      return_url: `${APP_ORIGIN}/settings/billing`,
+      return_url: returnUrl,
     });
   });
 
-  it("returns 400 when returnUrl origin does not match APP_URL", async () => {
+  it.each([
+    "https://evil.example.com/settings/billing",
+    "https://preview.okou.ai/settings/billing",
+  ])("returns 400 for the disallowed origin in %s", async (returnUrl) => {
     mockEnv("APP_URL", APP_ORIGIN);
     mocks.clerk.session(
       `user_${randomUUID()}`,
@@ -171,7 +177,7 @@ describe("POST /api/zero/billing/portal", () => {
     const client = setupApp({ context })(zeroBillingPortalContract);
     const response = await accept(
       client.create({
-        body: { returnUrl: "https://evil.example.com/settings/billing" },
+        body: { returnUrl },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],

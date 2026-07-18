@@ -695,6 +695,32 @@ describe("createApp", () => {
       );
     });
 
+    it("echoes the exact okou.ai production origin", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://okou.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://okou.ai",
+      );
+    });
+
+    it("does not allow okou.ai subdomains", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://preview.okou.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
     it("answers preflight without invoking the route handler", async () => {
       mockEnv("ENV", "production");
       const app = createApp({ signal: context.signal });

@@ -100,8 +100,10 @@ function readCookie(name: string, cookieString: string): string | null {
 }
 
 // First-touch attribution forwarded across the www.vm0.ai -> app.vm0.ai hop in
-// the shared .vm0.ai cookie. Re-collected through the whitelist so only known
-// params are persisted.
+// the shared .vm0.ai cookie. A satellite on another registrable domain cannot
+// read this cookie, so its URL params remain the handoff mechanism and are
+// recorded before any primary-domain auth redirect. Re-collected through the
+// whitelist so only known params are persisted.
 function collectAttributionFromCookie(cookieString: string): string {
   const stored = readCookie(ACQUISITION_ATTRIBUTION_COOKIE, cookieString);
   if (!stored) {

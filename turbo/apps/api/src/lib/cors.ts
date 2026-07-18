@@ -10,7 +10,12 @@ import { env } from "./env";
 // Hono owns CORS for /api/zero/* directly. Responses from registered routes
 // need their own CORS headers because they no longer fall through a Next proxy.
 const STATIC_ALLOWED_ORIGINS = Object.freeze(
-  new Set(["https://www.vm0.ai", "https://vm0.ai", "https://app.vm7.ai:8443"]),
+  new Set([
+    "https://www.vm0.ai",
+    "https://vm0.ai",
+    "https://okou.ai",
+    "https://app.vm7.ai:8443",
+  ]),
 );
 
 function getAllowedOrigin(origin: string | undefined): string | null {

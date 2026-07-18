@@ -2,9 +2,12 @@ import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
+import { mockedClerk } from "../../__tests__/mock-auth.ts";
 import {
   deriveServiceOrigin,
+  getAllowedAuthRedirectOrigins,
   resolveAppAuthUrl,
+  resolveClerkSatelliteConfig,
   resolveWebAuthUrl,
   resolveWebOrigin,
 } from "../auth.ts";
@@ -72,6 +75,38 @@ describe("platform auth URLs", () => {
     setBrowserUrl("https://app.vm0.ai/agents");
 
     expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.vm0.ai/sign-in");
+    expect(resolveClerkSatelliteConfig()).toBeNull();
+    expect(getAllowedAuthRedirectOrigins()).toStrictEqual([
+      "https://app.vm0.ai",
+      "https://www.vm0.ai",
+      "https://api.vm0.ai",
+      "https://okou.ai",
+    ]);
+  });
+
+  it("uses primary app auth for the exact production satellite", () => {
+    setBrowserUrl("https://okou.ai/agents");
+
+    expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.vm0.ai/sign-in");
+    expect(resolveClerkSatelliteConfig()).toStrictEqual({
+      domain: "okou.ai",
+      isSatellite: true,
+    });
+    expect(getAllowedAuthRedirectOrigins()).toStrictEqual([
+      "https://okou.ai",
+      "https://www.vm0.ai",
+      "https://api.vm0.ai",
+      "https://app.vm0.ai",
+    ]);
+  });
+
+  it("does not treat an okou.ai subdomain as the production satellite", () => {
+    setBrowserUrl("https://preview.okou.ai/agents");
+
+    expect(resolveAppAuthUrl("/sign-in")).toBe(
+      "https://preview.okou.ai/sign-in",
+    );
+    expect(resolveClerkSatelliteConfig()).toBeNull();
   });
 });
 
@@ -134,6 +169,43 @@ describe("platform auth redirects", () => {
       expect(url.origin).toBe("https://app.vm0.ai");
       expect(url.pathname).toBe("/sign-in/tasks/choose-organization");
       expect(url.searchParams.has("domain")).toBeFalsy();
+    });
+
+    expect(mockedClerk.initialize).toHaveBeenCalledWith("test_production_key");
+    expect(mockedClerk.load).toHaveBeenCalledWith({
+      afterSignOutUrl: "https://app.vm0.ai/sign-in",
+      signInUrl: "https://app.vm0.ai/sign-in",
+      signUpUrl: "https://app.vm0.ai/sign-up",
+    });
+  });
+
+  it("redirects an unauthenticated satellite user through primary auth", async () => {
+    setBrowserUrl("https://okou.ai/agents?utm_source=okou-launch");
+
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      session: null,
+      user: null,
+    });
+
+    await waitFor(() => {
+      const url = new URL(window.location.href);
+      expect(url.origin).toBe("https://app.vm0.ai");
+      expect(url.pathname).toBe("/sign-in");
+      expect(url.searchParams.get("redirect_url")).toBe(
+        "https://okou.ai/agents?utm_source=okou-launch",
+      );
+    });
+
+    expect(mockedClerk.initialize).toHaveBeenCalledWith("test_production_key", {
+      domain: "okou.ai",
+    });
+    expect(mockedClerk.load).toHaveBeenCalledWith({
+      afterSignOutUrl: "https://app.vm0.ai/sign-in",
+      isSatellite: true,
+      signInUrl: "https://app.vm0.ai/sign-in",
+      signUpUrl: "https://app.vm0.ai/sign-up",
     });
   });
 });

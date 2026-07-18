@@ -20,7 +20,10 @@ import { clearAllDetached } from "../signals/utils.ts";
 
 vi.mock("@clerk/clerk-js", () => {
   return {
-    Clerk: function MockClerk() {
+    Clerk: function MockClerk(
+      ...args: [string, { readonly domain?: string }?]
+    ) {
+      mockedClerk.initialize(...args);
       return mockedClerk;
     },
   };

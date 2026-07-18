@@ -28,6 +28,10 @@ function isTrustedOrigin(origin: string, role: Vm0HostRole): boolean {
     return url.protocol === "http:" || url.protocol === "https:";
   }
 
+  if (role === "www" && url.origin === "https://okou.ai") {
+    return true;
+  }
+
   return url.protocol === "https:" && isVm0Host(url.hostname, role);
 }
 
