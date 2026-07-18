@@ -156,9 +156,7 @@ describe("portable platform runtime environment", () => {
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
     expect(
-      runtime.platformHost.isProductionSatelliteHostname(
-        "okou.ai.evil.example",
-      ),
+      runtime.platformHost.isOkouProductionHostname("okou.ai.evil.example"),
     ).toBeFalsy();
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",

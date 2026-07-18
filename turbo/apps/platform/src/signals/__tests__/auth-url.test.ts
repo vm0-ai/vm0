@@ -101,12 +101,12 @@ describe("platform auth URLs", () => {
     ).toBeFalsy();
   });
 
-  it("uses primary app auth for the exact production satellite", () => {
-    setBrowserUrl("https://okou.ai/agents");
+  it("uses primary app auth for the configured production satellite", () => {
+    setBrowserUrl("https://app.okou.ai/agents");
 
     expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.vm0.ai/sign-in");
     expect(resolveClerkSatelliteConfig()).toStrictEqual({
-      domain: "okou.ai",
+      domain: "app.okou.ai",
       isSatellite: true,
     });
     const allowedOrigins = getAllowedAuthRedirectOrigins();
@@ -115,7 +115,7 @@ describe("platform auth URLs", () => {
         return typeof origin === "string";
       }),
     ).toStrictEqual([
-      "https://okou.ai",
+      "https://app.okou.ai",
       "https://www.vm0.ai",
       "https://api.vm0.ai",
       "https://app.vm0.ai",
@@ -127,14 +127,23 @@ describe("platform auth URLs", () => {
     ).toBeTruthy();
   });
 
-  it("uses the root satellite config on okou.ai subdomains", () => {
-    setBrowserUrl("https://console.okou.ai/agents");
+  it("uses the registered satellite config on its subdomains", () => {
+    setBrowserUrl("https://console.app.okou.ai/agents");
 
     expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.vm0.ai/sign-in");
     expect(resolveClerkSatelliteConfig()).toStrictEqual({
-      domain: "okou.ai",
+      domain: "app.okou.ai",
       isSatellite: true,
     });
+  });
+
+  it("does not enable satellite mode on an unregistered okou.ai sibling", () => {
+    setBrowserUrl("https://console.okou.ai/agents");
+
+    expect(resolveAppAuthUrl("/sign-in")).toBe(
+      "https://console.okou.ai/sign-in",
+    );
+    expect(resolveClerkSatelliteConfig()).toBeNull();
   });
 });
 
@@ -208,7 +217,7 @@ describe("platform auth redirects", () => {
   });
 
   it("redirects an unauthenticated satellite user through primary auth", async () => {
-    setBrowserUrl("https://console.okou.ai/agents?utm_source=okou-launch");
+    setBrowserUrl("https://app.okou.ai/agents?utm_source=okou-launch");
 
     detachedSetupPage({
       context,
@@ -222,12 +231,12 @@ describe("platform auth redirects", () => {
       expect(url.origin).toBe("https://app.vm0.ai");
       expect(url.pathname).toBe("/sign-in");
       expect(url.searchParams.get("redirect_url")).toBe(
-        "https://console.okou.ai/agents?utm_source=okou-launch",
+        "https://app.okou.ai/agents?utm_source=okou-launch",
       );
     });
 
     expect(mockedClerk.initialize).toHaveBeenCalledWith("test_production_key", {
-      domain: "okou.ai",
+      domain: "app.okou.ai",
     });
     expect(mockedClerk.load).toHaveBeenCalledWith({
       afterSignOutUrl: "https://app.vm0.ai/sign-in",
