@@ -200,60 +200,94 @@ async function confirmPermissionAction(
 }
 
 describe("chat message action cards", () => {
-  it("keeps one mail draft consistent across persistent messages", async () => {
+  it("shares a link-backed mail draft between cards and the detail sidebar", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000010";
     const messageId = "c0000000-0000-4000-a000-000000000011";
     const secondMessageId = "c0000000-0000-4000-a000-000000000013";
+    const untrustedMessageId = "c0000000-0000-4000-a000-000000000017";
     const mailDraftId = "c0000000-0000-4000-a000-000000000012";
     const runId = "d0000000-0000-4000-a000-000000000020";
     const createdAt = "2026-07-14T10:00:00.000Z";
     let draftRequests = 0;
     let savedBody: unknown = null;
     let sentBody: unknown = null;
+    const updateStarted = context.mocks.deferred<void>();
+    const releaseUpdate = context.mocks.deferred<void>();
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
 
     context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
       draftRequests += 1;
       return respond(200, {
         mailDraftId,
+        mailDraftUrl,
         mailDraft: {
-          version: 1,
+          version: 2,
           provider: "gmail",
           from: "sender@example.com",
           to: ["recipient@example.com"],
+          cc: ["copy@example.com"],
+          bcc: [],
           subject: "Hello",
           body: "Mail body",
           status: "draft",
+          detailAvailable: true,
+          gmailDraftId: "r-test-draft",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id",
+          references: [],
           createdAt,
           updatedAt: createdAt,
         },
       });
     });
-    context.mocks.api(zeroMailContract.updateDraft, ({ body, respond }) => {
-      savedBody = body;
-      return respond(200, {
-        mailDraftId,
-        mailDraft: {
-          version: 1,
-          provider: "gmail",
-          from: "sender@example.com",
-          ...body,
-          status: "draft",
-          createdAt,
-          updatedAt: "2026-07-14T10:01:00.000Z",
-        },
-      });
-    });
+    context.mocks.api(
+      zeroMailContract.updateDraft,
+      async ({ body, respond }) => {
+        savedBody = body;
+        updateStarted.resolve();
+        await releaseUpdate.promise;
+        return respond(200, {
+          mailDraftId,
+          mailDraftUrl,
+          mailDraft: {
+            version: 2,
+            provider: "gmail",
+            from: "sender@example.com",
+            ...body,
+            cc: body.cc ?? [],
+            bcc: body.bcc ?? [],
+            status: "draft",
+            detailAvailable: true,
+            gmailDraftId: "r-test-draft",
+            gmailThreadId: "gmail-thread-id",
+            gmailMessageId: "gmail-message-id-updated",
+            references: [],
+            createdAt,
+            updatedAt: "2026-07-14T10:01:00.000Z",
+          },
+        });
+      },
+    );
     context.mocks.api(zeroMailContract.sendDraft, ({ body, respond }) => {
       sentBody = body;
       return respond(200, {
         mailDraftId,
+        mailDraftUrl,
         mailDraft: {
-          version: 1,
+          version: 2,
           provider: "gmail",
           from: "sender@example.com",
           ...body,
+          cc: body.cc ?? [],
+          bcc: body.bcc ?? [],
           status: "sent",
+          detailAvailable: true,
+          gmailDraftId: "r-test-draft",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id-updated",
+          sentGmailMessageId: "gmail-sent-message-id",
+          references: [],
           createdAt,
           updatedAt: "2026-07-14T10:02:00.000Z",
           sentAt: "2026-07-14T10:02:00.000Z",
@@ -267,18 +301,23 @@ describe("chat message action cards", () => {
         {
           id: messageId,
           role: "assistant",
-          content: null,
+          content: mailDraftUrl,
           runId,
           createdAt,
-          mailDraftId,
         },
         {
           id: secondMessageId,
           role: "assistant",
-          content: null,
+          content: `[Review email](/mail/drafts/${mailDraftId})`,
           runId,
           createdAt: "2026-07-14T10:00:01.000Z",
-          mailDraftId,
+        },
+        {
+          id: untrustedMessageId,
+          role: "assistant",
+          content: `[Untrusted email](https://evil.test/mail/drafts/${mailDraftId})`,
+          runId,
+          createdAt: "2026-07-14T10:00:02.000Z",
         },
       ],
       activeRunIds: [runId],
@@ -290,69 +329,127 @@ describe("chat message action cards", () => {
       featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
     });
 
+    let cards: HTMLElement[] = [];
     await waitFor(() => {
-      expect(screen.getAllByRole("textbox", { name: "From" })).toHaveLength(2);
+      cards = queryAllByRoleFast("button").filter((button) => {
+        return button.getAttribute("aria-label") === "Open draft email: Hello";
+      });
+      expect(cards).toHaveLength(2);
     });
-    const fromFields = screen.getAllByRole("textbox", { name: "From" });
-    const cards = fromFields.map((from) => {
-      const card = from.closest<HTMLElement>("[data-mail-draft-card]");
-      if (!card) {
-        throw new Error("Mail draft card not found");
-      }
-      return card;
+    const untrustedLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent === "Untrusted email";
     });
-    const [firstCard, secondCard] = cards;
-    if (!firstCard || !secondCard) {
-      throw new Error("Expected two mail draft cards");
-    }
-    expect(fromFields[0]).toHaveValue("sender@example.com");
-    expect(within(firstCard).getByRole("textbox", { name: "To" })).toHaveValue(
-      "recipient@example.com",
+    expect(untrustedLink).toHaveAttribute(
+      "href",
+      `https://evil.test/mail/drafts/${mailDraftId}`,
     );
-    expect(
-      within(firstCard).getByRole("textbox", { name: "Subject" }),
-    ).toHaveValue("Hello");
-    expect(
-      within(firstCard).getByRole("textbox", { name: "Message" }),
-    ).toHaveValue("Mail body");
+    await user.click(cards[0]!);
 
-    const firstSubject = within(firstCard).getByRole("textbox", {
-      name: "Subject",
-    });
-    await fill(firstSubject, "Shared subject");
-    firstSubject.blur();
+    let sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(within(sidebar).getByRole("textbox", { name: "From" })).toHaveValue(
+      "sender@example.com",
+    );
+    expect(within(sidebar).getByRole("textbox", { name: "CC" })).toHaveValue(
+      "copy@example.com",
+    );
+    const subject = within(sidebar).getByRole("textbox", { name: "Subject" });
+    await fill(subject, "Shared subject");
+    subject.blur();
+
+    await updateStarted.promise;
+    sidebar = await screen.findByTestId("mail-draft-sidebar");
+    const pendingSend = buttonByText("Send", sidebar);
+    expect(pendingSend).toBeDisabled();
+    await user.click(pendingSend);
+    expect(sentBody).toBeNull();
+    releaseUpdate.resolve();
 
     await waitFor(() => {
       expect(savedBody).toStrictEqual({
         to: ["recipient@example.com"],
+        cc: ["copy@example.com"],
+        bcc: [],
         subject: "Shared subject",
         body: "Mail body",
       });
-      expect(
-        within(secondCard).getByRole("textbox", { name: "Subject" }),
-      ).toHaveValue("Shared subject");
+      expect(screen.getAllByText("Shared subject")).toHaveLength(3);
     });
 
-    await user.click(buttonByText("Send", secondCard));
+    sidebar = await screen.findByTestId("mail-draft-sidebar");
+    await user.click(await waitForButtonByText("Send", sidebar));
 
     await waitFor(() => {
       expect(sentBody).toStrictEqual({
         to: ["recipient@example.com"],
+        cc: ["copy@example.com"],
+        bcc: [],
         subject: "Shared subject",
         body: "Mail body",
       });
-      expect(within(firstCard).getByText("Sent")).toBeInTheDocument();
-      expect(within(secondCard).getByText("Sent")).toBeInTheDocument();
+      expect(screen.getAllByText("Sent")).toHaveLength(2);
     });
-    expect(queryButtonByText("Send", firstCard)).toBeNull();
-    expect(queryButtonByText("Send", secondCard)).toBeNull();
-    expect(
-      within(firstCard).getByRole("textbox", { name: "From" }),
-    ).toHaveAttribute("readonly");
-    expect(
-      within(secondCard).getByRole("textbox", { name: "From" }),
-    ).toHaveAttribute("readonly");
-    expect(draftRequests).toBe(1);
+    sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(queryButtonByText("Send", sidebar)).toBeNull();
+    expect(draftRequests).toBe(2);
+  });
+
+  it("renders a deleted email card without an interactive sidebar trigger", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "c0000000-0000-4000-a000-000000000014";
+    const mailDraftId = "c0000000-0000-4000-a000-000000000015";
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const createdAt = "2026-07-14T10:00:00.000Z";
+
+    context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
+      return respond(200, {
+        mailDraftId,
+        mailDraftUrl,
+        mailDraft: {
+          version: 2,
+          provider: "gmail",
+          from: "sender@example.com",
+          to: [],
+          cc: [],
+          bcc: [],
+          subject: "Deleted provider draft",
+          body: "",
+          status: "deleted",
+          detailAvailable: false,
+          gmailDraftId: "r-deleted",
+          gmailThreadId: "gmail-thread-id",
+          gmailMessageId: "gmail-message-id",
+          references: [],
+          createdAt,
+          updatedAt: createdAt,
+        },
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Deleted email card",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000016",
+          role: "assistant",
+          content: mailDraftUrl,
+          createdAt,
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroMail]: true },
+    });
+
+    const deletedCard = await screen.findByLabelText(
+      "Deleted email: Deleted provider draft",
+    );
+    expect(deletedCard).toHaveAttribute("aria-disabled", "true");
+    expect(deletedCard).not.toHaveAttribute("role", "button");
+    await user.click(deletedCard);
+    expect(screen.queryByTestId("mail-draft-sidebar")).toBeNull();
   });
 
   it("shares connector state across assistant messages and confirms permissions", async () => {

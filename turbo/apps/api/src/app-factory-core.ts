@@ -9,6 +9,8 @@ import {
   CLIENT_TYPE_APP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
+  ZERO_MAIL_CLIENT_VERSION,
+  ZERO_MAIL_CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { serializeError } from "@vm0/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
@@ -451,10 +453,16 @@ async function webClientCompatibilityMiddleware(
 ): Promise<Response | void> {
   const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
   const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
-  if (
+  const staleZeroMailClient =
     clientType === CLIENT_TYPE_APP &&
-    clientVersion &&
-    !isSupportedWebClientVersion(clientVersion)
+    requestPathname(context).startsWith("/api/zero/mail/") &&
+    requestHeader(context, ZERO_MAIL_CLIENT_VERSION_HEADER) !==
+      ZERO_MAIL_CLIENT_VERSION;
+  if (
+    staleZeroMailClient ||
+    (clientType === CLIENT_TYPE_APP &&
+      clientVersion &&
+      !isSupportedWebClientVersion(clientVersion))
   ) {
     return context.json(
       { error: "Client update required" },

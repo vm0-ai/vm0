@@ -117,20 +117,30 @@ describe("zero mail", () => {
             agentId: AGENT_ID,
             provider: "gmail",
             to: ["recipient@example.com"],
+            cc: ["copy@example.com"],
+            bcc: ["blind@example.com"],
             subject: "Hello",
             body: "Mail body",
           });
           return HttpResponse.json(
             {
               mailDraftId: MAIL_DRAFT_ID,
+              mailDraftUrl: `https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`,
               mailDraft: {
-                version: 1,
+                version: 2,
                 provider: "gmail",
                 from: "sender@example.com",
                 to: ["recipient@example.com"],
+                cc: ["copy@example.com"],
+                bcc: ["blind@example.com"],
                 subject: "Hello",
                 body: "Mail body",
                 status: "draft",
+                detailAvailable: true,
+                gmailDraftId: "r-test-draft",
+                gmailThreadId: "gmail-thread-id",
+                gmailMessageId: "gmail-message-id",
+                references: [],
                 createdAt: "2026-07-14T00:00:00.000Z",
                 updatedAt: "2026-07-14T00:00:00.000Z",
               },
@@ -149,6 +159,10 @@ describe("zero mail", () => {
       "gmail",
       "--to",
       "recipient@example.com",
+      "--cc",
+      "copy@example.com",
+      "--bcc",
+      "blind@example.com",
       "--subject",
       "Hello",
       "--body",
@@ -156,9 +170,10 @@ describe("zero mail", () => {
     ]);
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(output).toContain("Mail draft card created");
+    expect(output).toContain("Gmail draft card created");
     expect(output).toContain("sender@example.com");
     expect(output).toContain(MAIL_DRAFT_ID);
+    expect(output).toContain(`https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`);
     expect(output).toContain("do not repeat the draft");
     expect(output).not.toContain('"mailDraft"');
   });

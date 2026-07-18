@@ -27,5 +27,10 @@ export function parseMessageBodyBlocks(
   const { blocks } = parseBodyBlocks(content, {
     previews: message.role === "assistant",
   });
+  if (blocks.length === 0 && message.mailDraftId) {
+    return parseBodyBlocks(`/mail/drafts/${message.mailDraftId}`, {
+      previews: message.role === "assistant",
+    }).blocks;
+  }
   return blocks;
 }

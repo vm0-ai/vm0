@@ -21,6 +21,7 @@ import { loadRightThread$ } from "./chat-thread-panes.ts";
 import {
   clearArtifactSidebarParams,
   clearChatAutomationSidebarParams,
+  clearMailDraftSidebarParams,
 } from "../zero-page/right-sidebar-search-params.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
@@ -224,6 +225,7 @@ const routeMainChatThread$ = command(
     }
     clearArtifactSidebarParams(next);
     clearChatAutomationSidebarParams(next);
+    clearMailDraftSidebarParams(next);
     set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: args.threadId },
       searchParams: next,

@@ -23,6 +23,11 @@ import type {
 } from "./artifact-card-signals.ts";
 import type { PermissionSignals } from "./permission-card-signals.ts";
 import {
+  parseMailDraftUrl,
+  type MailDraftDescriptor,
+  type MailDraftSignals,
+} from "./mail-draft.ts";
+import {
   resolvePublicArtifactsBaseUrl,
   resolveZeroHostDomain,
 } from "../../lib/platform-host.ts";
@@ -63,6 +68,11 @@ export type BodyRenderBlock =
       type: "computer-use-authorization";
       resourceKey: string;
       signals: ComputerUseAuthorizationSignals;
+    }
+  | {
+      type: "mail-draft";
+      resourceKey: string;
+      signals: MailDraftSignals;
     };
 
 export type ParsedBodyBlock =
@@ -91,6 +101,11 @@ export type ParsedBodyBlock =
       type: "computer-use-authorization";
       resourceKey: string;
       descriptor: ComputerUseAuthorizationDescriptor;
+    }
+  | {
+      type: "mail-draft";
+      resourceKey: string;
+      descriptor: MailDraftDescriptor;
     };
 
 type ChatAttachmentKind = BodyPreviewKind;
@@ -121,7 +136,7 @@ const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
 const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
-const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts)\/)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
+const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts)\/|\/mail\/drafts\/)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
@@ -714,7 +729,8 @@ function createActionBlockFromLine(line: string): Extract<
       | "connector-action"
       | "custom-connector-action"
       | "permission-action"
-      | "computer-use-authorization";
+      | "computer-use-authorization"
+      | "mail-draft";
   }
 > | null {
   const url = extractActionUrlFromLine(line);
@@ -755,6 +771,15 @@ function createActionBlockFromLine(line: string): Extract<
       type: "computer-use-authorization",
       resourceKey: computerUseAuthorization.href,
       descriptor: computerUseAuthorization,
+    };
+  }
+
+  const mailDraft = parseMailDraftUrl(url);
+  if (mailDraft) {
+    return {
+      type: "mail-draft",
+      resourceKey: mailDraft.mailDraftId,
+      descriptor: mailDraft,
     };
   }
 

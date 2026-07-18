@@ -125,6 +125,7 @@ import {
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 import { PresentationHtmlEditor } from "./presentation-html-editor.tsx";
 import { MailDraftCard } from "./mail-draft-card.tsx";
+import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
 import {
   classifyChatAttachment,
   contentTypeForBodyPreviewKind,
@@ -147,9 +148,13 @@ import {
   type RunGroupFold,
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
-import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
-import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
+import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
+import {
+  emptyMailDraftSignalsById$,
+  type MailDraftSignals,
+} from "../../signals/chat-page/mail-draft.ts";
+import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -206,6 +211,7 @@ import {
   setEditingHeaderWorkflowAutomationId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
+import { currentMailDraftId$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import {
   closeChatThreadEmojiMenu$,
   emojiMenuThreadId$,
@@ -218,6 +224,7 @@ import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
 } from "../../signals/zero-page/cron.ts";
+
 import {
   buildGmailLabelAppliedEventConfig,
   buildGmailNewMessageEventConfig,
@@ -2633,6 +2640,26 @@ function ChatThreadArea({
   );
 }
 
+function useSelectedMailDraftSignals(
+  leftThread: ChatThreadSignals | null,
+  rightThread: ChatThreadSignals | null,
+): MailDraftSignals | undefined {
+  const selectedMailDraftId = useGet(currentMailDraftId$);
+  const leftMailDraftSignalsById = useGet(
+    leftThread?.mailDraftCardSignalsById$ ?? emptyMailDraftSignalsById$,
+  );
+  const rightMailDraftSignalsById = useGet(
+    rightThread?.mailDraftCardSignalsById$ ?? emptyMailDraftSignalsById$,
+  );
+  if (!selectedMailDraftId) {
+    return undefined;
+  }
+  return (
+    leftMailDraftSignalsById.get(selectedMailDraftId) ??
+    rightMailDraftSignalsById.get(selectedMailDraftId)
+  );
+}
+
 export function ZeroChatThreadPage() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
@@ -2644,13 +2671,19 @@ export function ZeroChatThreadPage() {
     return thread?.threadId === automationPanelThreadId;
   });
   const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
+  const selectedMailDraftSignals = useSelectedMailDraftSignals(
+    leftThread,
+    rightThread,
+  );
   const closePresentationEditor = useSet(closePresentationEditor$);
   const artifactFullscreen = useGet(artifactFullscreen$);
   const activePresentationEditorUrl = presentationEditorUrl;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
   const automationPanelOpen = automationPanelThread !== undefined;
-  const rightPanelOpen = artifactPanelOpen || automationPanelOpen;
+  const mailDraftPanelOpen = selectedMailDraftSignals !== undefined;
+  const rightPanelOpen =
+    artifactPanelOpen || automationPanelOpen || mailDraftPanelOpen;
   const { style: artifactPanelStyle, transition: artifactTransition } =
     artifactPanelLayout(
       useGet(artifactPanelWidth$),
@@ -2712,7 +2745,9 @@ export function ZeroChatThreadPage() {
           )}
           aria-hidden={!rightPanelOpen}
         >
-          {automationPanelThread ? (
+          {selectedMailDraftSignals ? (
+            <MailDraftSidebar signals={selectedMailDraftSignals} />
+          ) : automationPanelThread ? (
             <HeaderAutomationSidebar thread={automationPanelThread} />
           ) : artifactPanelOpen ? (
             <ChatArtifactInboxSlot
@@ -4751,6 +4786,9 @@ function BodyRenderBlockView({
     case "computer-use-authorization": {
       return <ComputerUseAuthorizationCard signals={block.signals} />;
     }
+    case "mail-draft": {
+      return <MailDraftCard signals={block.signals} />;
+    }
     case "artifact": {
       const { signals } = block;
       if (signals.kind === "image") {
@@ -6637,23 +6675,6 @@ function PagedAssistantMessageItem({
     openImageLightbox(url);
   };
 
-  const { mailDraftCard } = message;
-  if (mailDraftCard) {
-    return (
-      <div
-        className={cn(
-          "zero-chat-bubble-assistant px-0 min-w-0",
-          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
-        )}
-      >
-        <MailDraftCard
-          key={mailDraftCard.resourceKey}
-          signals={mailDraftCard.signals}
-        />
-      </div>
-    );
-  }
-
   if (message.error) {
     return (
       <div
@@ -6667,7 +6688,7 @@ function PagedAssistantMessageItem({
     );
   }
 
-  if (message.content) {
+  if (message.content || message.blocks.length > 0) {
     const { blocks } = message;
     return (
       <div

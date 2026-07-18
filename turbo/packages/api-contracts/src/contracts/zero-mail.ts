@@ -7,14 +7,7 @@ const c = initContract();
 
 export const zeroMailProviderSchema = z.enum(["gmail", "outlook"]);
 
-export const zeroMailDraftStatusSchema = z.enum([
-  "draft",
-  "sending",
-  "sent",
-  "cancelled",
-  "failed",
-  "delivery_unknown",
-]);
+export const zeroMailDraftStatusSchema = z.enum(["draft", "sent", "deleted"]);
 
 const mailSubjectSchema = z
   .string()
@@ -23,28 +16,45 @@ const mailSubjectSchema = z
     return !value.includes("\r") && !value.includes("\n");
   }, "Subject must not contain line breaks");
 
-export const zeroMailDraftSchema = z.object({
-  version: z.literal(1),
-  provider: zeroMailProviderSchema,
-  from: z.email(),
+const mailHeaderValueSchema = z.string().refine((value) => {
+  return !value.includes("\r") && !value.includes("\n");
+}, "Mail header values must not contain line breaks");
+
+const zeroMailDraftFieldsSchema = z.object({
   to: z.array(z.email()).min(1),
+  cc: z.array(z.email()).optional(),
+  bcc: z.array(z.email()).optional(),
   subject: mailSubjectSchema,
   body: z.string().min(1),
+});
+
+export const zeroMailDraftSchema = z.object({
+  version: z.literal(2),
+  provider: z.literal("gmail"),
+  from: z.email(),
+  fromName: z.string().optional(),
+  to: z.array(z.email()),
+  cc: z.array(z.email()),
+  bcc: z.array(z.email()),
+  subject: z.string(),
+  body: z.string(),
+  replyTo: z.string().optional(),
+  inReplyTo: z.string().optional(),
+  references: z.array(z.string()),
   status: zeroMailDraftStatusSchema,
-  error: z.string().optional(),
+  detailAvailable: z.boolean(),
+  gmailDraftId: z.string(),
+  gmailThreadId: z.string(),
+  gmailMessageId: z.string(),
+  sentGmailMessageId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   sentAt: z.string().optional(),
 });
 
-const zeroMailDraftFieldsSchema = z.object({
-  to: z.array(z.email()).min(1),
-  subject: mailSubjectSchema,
-  body: z.string().min(1),
-});
-
 const zeroMailDraftResponseSchema = z.object({
   mailDraftId: z.string().uuid(),
+  mailDraftUrl: z.url(),
   mailDraft: zeroMailDraftSchema,
 });
 
@@ -59,8 +69,12 @@ export const zeroMailContract = c.router({
     headers: authHeadersSchema,
     body: zeroMailDraftFieldsSchema.extend({
       threadId: z.string().uuid(),
-      agentId: z.string().uuid(),
+      agentId: z.string().uuid().optional(),
       provider: zeroMailProviderSchema.optional(),
+      replyTo: mailHeaderValueSchema.optional(),
+      inReplyTo: mailHeaderValueSchema.optional(),
+      references: z.array(mailHeaderValueSchema).optional(),
+      gmailThreadId: mailHeaderValueSchema.optional(),
     }),
     responses: {
       201: zeroMailDraftResponseSchema,
@@ -101,20 +115,20 @@ export const zeroMailContract = c.router({
     },
     summary: "Persist edits to an email draft card",
   },
-  cancelDraft: {
-    method: "POST",
-    path: "/api/zero/mail/drafts/:mailDraftId/cancel",
+  deleteDraft: {
+    method: "DELETE",
+    path: "/api/zero/mail/drafts/:mailDraftId",
     headers: authHeadersSchema,
     pathParams: zeroMailDraftPathParamsSchema,
     body: c.noBody(),
     responses: {
-      200: zeroMailDraftResponseSchema,
+      204: c.noBody(),
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Cancel an email draft card",
+    summary: "Permanently delete a Gmail draft and its vm0 record",
   },
   sendDraft: {
     method: "POST",
@@ -130,7 +144,7 @@ export const zeroMailContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Persist the latest edits and send an email draft exactly once",
+    summary: "Save the latest edits and send a Gmail draft",
   },
 });
 

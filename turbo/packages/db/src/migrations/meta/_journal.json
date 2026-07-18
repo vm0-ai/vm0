@@ -4334,6 +4334,13 @@
       "when": 1784235417148,
       "tag": "0618_protect_chat_event_rows_from_update",
       "breakpoints": true
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1784362482169,
+      "tag": "0619_flaky_fenris",
+      "breakpoints": true
     }
   ]
 }

@@ -47,6 +47,7 @@ Current link-backed card patterns include:
 - `/connectors/custom/proposal?p=...`
 - `/agents/:agentId/permissions?...`
 - `/computer-use/authorize/:requestToken`
+- `/mail/drafts/:vm0DraftId`
 - platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
   site URLs that support an inline preview
 
@@ -250,6 +251,18 @@ Permission changes can arrive from another card or another product surface. A
 user-level realtime event invalidates the shared grants source, so mounted
 permission cards refresh without replacing their signals identities.
 
+### Provider-backed resource: Gmail draft
+
+A vm0 mail link matches `/mail/drafts/:vm0DraftId`. The vm0 UUID is the stable
+resource key; Gmail draft, thread, and message IDs remain provider metadata and
+are not inferred from Gmail Web URLs. The thread-scoped signals read the Gmail
+draft through the Zero Mail API and share edits and send state across repeated
+card occurrences.
+
+The fixed-height card displays the Gmail identity, subject, sender, and
+`Draft`, `Sent`, or `Deleted` status. Draft and Sent cards open the shared right
+sidebar surface. Deleted cards retain their summary but are not interactive.
+
 ## Adding a Card Type
 
 When adding a new link-backed card:
@@ -278,5 +291,6 @@ registry.
 - `turbo/apps/platform/src/signals/chat-page/artifact-card-signals.ts`
 - `turbo/apps/platform/src/signals/chat-page/connector-action-block.ts`
 - `turbo/apps/platform/src/signals/chat-page/permission-card-signals.ts`
+- `turbo/apps/platform/src/signals/chat-page/mail-draft.ts`
 - `turbo/apps/platform/src/signals/chat-page/computer-use-authorization-block.ts`
 - `turbo/apps/platform/src/views/zero-page/zero-chat-thread-page.tsx`
