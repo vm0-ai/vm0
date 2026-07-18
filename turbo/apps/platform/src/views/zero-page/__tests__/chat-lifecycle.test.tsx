@@ -1301,6 +1301,8 @@ describe("chat lifecycle", () => {
 
   it("renders sanitized user html through markdown", async () => {
     const threadId = "thread-user-html-like-text";
+    const iframeScript = "\x3cscript>alert(2)\x3c/script>";
+    const topLevelScript = "\x3cscript>alert(3)\x3c/script>";
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
@@ -1308,8 +1310,8 @@ describe("chat lifecycle", () => {
           role: "user",
           content:
             '<span onclick="alert(1)"> 123 </span>' +
-            '<iframe srcdoc="<script>alert(2)</script>"></iframe>' +
-            "<script>alert(3)</script>" +
+            `<iframe srcdoc="${iframeScript}"></iframe>` +
+            topLevelScript +
             "[unsafe](javascript:alert(4))",
           createdAt: "2026-03-10T00:00:00Z",
         },
