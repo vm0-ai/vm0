@@ -270,9 +270,11 @@ function createMockedSignUpResource(): MockedSignUpResource {
         flow: "sign-up",
         strategy: params?.strategy ?? "email_code",
       });
-      resource.verifications.emailAddress =
-        preparedEmailCodeVerification("sign-up");
-      return Promise.resolve(resource);
+      return Promise.resolve().then(() => {
+        resource.verifications.emailAddress =
+          preparedEmailCodeVerification("sign-up");
+        return resource;
+      });
     },
     verifications: {
       emailAddress: emptyEmailCodeVerification(),
@@ -290,11 +292,13 @@ function createMockedSignInResource(): MockedSignInResource {
         flow: "sign-in",
         strategy: params.strategy,
       });
-      if (params.strategy === "email_code") {
-        resource.firstFactorVerification =
-          preparedEmailCodeVerification("sign-in");
-      }
-      return Promise.resolve(resource);
+      return Promise.resolve().then(() => {
+        if (params.strategy === "email_code") {
+          resource.firstFactorVerification =
+            preparedEmailCodeVerification("sign-in");
+        }
+        return resource;
+      });
     },
   };
   return resource;

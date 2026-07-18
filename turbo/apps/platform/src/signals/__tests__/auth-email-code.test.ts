@@ -71,10 +71,10 @@ describe("clerk email code preparation", () => {
       emailAddressId: "idn_primary",
       strategy: "email_code",
     } as const;
-    await Promise.all([
-      signIn.prepareFirstFactor(params),
-      signIn.prepareFirstFactor(params),
-    ]);
+    const preparation = signIn.prepareFirstFactor(params);
+    const concurrentPreparation = signIn.prepareFirstFactor(params);
+    expect(concurrentPreparation).toBe(preparation);
+    await Promise.all([preparation, concurrentPreparation]);
     await signIn.prepareFirstFactor(params);
     expect(mockedClerk.factorPreparations).toStrictEqual([
       { flow: "sign-in", strategy: "email_code" },
@@ -162,6 +162,23 @@ describe("clerk email code preparation", () => {
     expect(mockedClerk.factorPreparations).toStrictEqual([
       { flow: "sign-in", strategy: "email_code" },
       { flow: "sign-in", strategy: "phone_code" },
+    ]);
+  });
+
+  it("passes through sign-up email-link preparation", async () => {
+    const now = Date.UTC(2026, 6, 18, 10, 30);
+    mockNow(now);
+    mockSignUpEmailVerification(activeEmailCode(now, "active-email-code"));
+
+    await setupAuthSignals("/sign-up");
+
+    await mockedClerk.client.signUp.prepareEmailAddressVerification({
+      redirectUrl: "https://app.vm0.ai/sign-up/verify",
+      strategy: "email_link",
+    });
+
+    expect(mockedClerk.factorPreparations).toStrictEqual([
+      { flow: "sign-up", strategy: "email_link" },
     ]);
   });
 
