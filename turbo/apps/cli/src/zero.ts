@@ -401,7 +401,7 @@ export function buildZeroHelpText(
     "  Send a Slack message?  zero slack message send --help",
     ...(shouldHideCommand("mail", payload)
       ? []
-      : ["  Draft an email?       zero mail send --help"]),
+      : ["  Link Gmail draft?     zero mail link --help"]),
     "  Send Teams?           zero teams message send --help",
     "  Upload Teams?         zero teams upload-file --help",
     "  Download Teams?       zero teams download-file --help",

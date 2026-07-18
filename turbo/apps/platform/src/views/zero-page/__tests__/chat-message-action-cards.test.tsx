@@ -19,7 +19,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
-  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
@@ -210,10 +209,7 @@ describe("chat message action cards", () => {
     const runId = "d0000000-0000-4000-a000-000000000020";
     const createdAt = "2026-07-14T10:00:00.000Z";
     let draftRequests = 0;
-    let savedBody: unknown = null;
-    let sentBody: unknown = null;
-    const updateStarted = context.mocks.deferred<void>();
-    const releaseUpdate = context.mocks.deferred<void>();
+    let sent = false;
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
 
     context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
@@ -222,7 +218,7 @@ describe("chat message action cards", () => {
         mailDraftId,
         mailDraftUrl,
         mailDraft: {
-          version: 2,
+          version: 3,
           provider: "gmail",
           from: "sender@example.com",
           to: ["recipient@example.com"],
@@ -236,61 +232,49 @@ describe("chat message action cards", () => {
           gmailThreadId: "gmail-thread-id",
           gmailMessageId: "gmail-message-id",
           references: [],
+          attachments: [
+            {
+              filename: "report.pdf",
+              contentType: "application/pdf",
+              size: 248192,
+            },
+          ],
           createdAt,
           updatedAt: createdAt,
         },
       });
     });
-    context.mocks.api(
-      zeroMailContract.updateDraft,
-      async ({ body, respond }) => {
-        savedBody = body;
-        updateStarted.resolve();
-        await releaseUpdate.promise;
-        return respond(200, {
-          mailDraftId,
-          mailDraftUrl,
-          mailDraft: {
-            version: 2,
-            provider: "gmail",
-            from: "sender@example.com",
-            ...body,
-            cc: body.cc ?? [],
-            bcc: body.bcc ?? [],
-            status: "draft",
-            detailAvailable: true,
-            gmailDraftId: "r-test-draft",
-            gmailThreadId: "gmail-thread-id",
-            gmailMessageId: "gmail-message-id-updated",
-            references: [],
-            createdAt,
-            updatedAt: "2026-07-14T10:01:00.000Z",
-          },
-        });
-      },
-    );
-    context.mocks.api(zeroMailContract.sendDraft, ({ body, respond }) => {
-      sentBody = body;
+    context.mocks.api(zeroMailContract.sendDraft, ({ respond }) => {
+      sent = true;
       return respond(200, {
         mailDraftId,
         mailDraftUrl,
         mailDraft: {
-          version: 2,
+          version: 3,
           provider: "gmail",
           from: "sender@example.com",
-          ...body,
-          cc: body.cc ?? [],
-          bcc: body.bcc ?? [],
+          to: ["recipient@example.com"],
+          cc: ["copy@example.com"],
+          bcc: [],
+          subject: "Hello",
+          body: "Mail body",
           status: "sent",
           detailAvailable: true,
           gmailDraftId: "r-test-draft",
           gmailThreadId: "gmail-thread-id",
-          gmailMessageId: "gmail-message-id-updated",
+          gmailMessageId: "gmail-message-id",
           sentGmailMessageId: "gmail-sent-message-id",
           references: [],
+          attachments: [
+            {
+              filename: "report.pdf",
+              contentType: "application/pdf",
+              size: 248192,
+            },
+          ],
           createdAt,
-          updatedAt: "2026-07-14T10:02:00.000Z",
-          sentAt: "2026-07-14T10:02:00.000Z",
+          updatedAt: "2026-07-14T10:01:00.000Z",
+          sentAt: "2026-07-14T10:01:00.000Z",
         },
       });
     });
@@ -346,46 +330,15 @@ describe("chat message action cards", () => {
     await user.click(cards[0]!);
 
     let sidebar = await screen.findByTestId("mail-draft-sidebar");
-    expect(within(sidebar).getByRole("textbox", { name: "From" })).toHaveValue(
-      "sender@example.com",
-    );
-    expect(within(sidebar).getByRole("textbox", { name: "CC" })).toHaveValue(
-      "copy@example.com",
-    );
-    const subject = within(sidebar).getByRole("textbox", { name: "Subject" });
-    await fill(subject, "Shared subject");
-    subject.blur();
-
-    await updateStarted.promise;
-    sidebar = await screen.findByTestId("mail-draft-sidebar");
-    const pendingSend = buttonByText("Send", sidebar);
-    expect(pendingSend).toBeDisabled();
-    await user.click(pendingSend);
-    expect(sentBody).toBeNull();
-    releaseUpdate.resolve();
-
-    await waitFor(() => {
-      expect(savedBody).toStrictEqual({
-        to: ["recipient@example.com"],
-        cc: ["copy@example.com"],
-        bcc: [],
-        subject: "Shared subject",
-        body: "Mail body",
-      });
-      expect(screen.getAllByText("Shared subject")).toHaveLength(3);
-    });
-
-    sidebar = await screen.findByTestId("mail-draft-sidebar");
+    expect(within(sidebar).getByText("sender@example.com")).toBeInTheDocument();
+    expect(within(sidebar).getByText("copy@example.com")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Mail body")).toBeInTheDocument();
+    expect(within(sidebar).getByText("report.pdf")).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("textbox")).not.toBeInTheDocument();
     await user.click(await waitForButtonByText("Send", sidebar));
 
     await waitFor(() => {
-      expect(sentBody).toStrictEqual({
-        to: ["recipient@example.com"],
-        cc: ["copy@example.com"],
-        bcc: [],
-        subject: "Shared subject",
-        body: "Mail body",
-      });
+      expect(sent).toBeTruthy();
       expect(screen.getAllByText("Sent")).toHaveLength(2);
     });
     sidebar = await screen.findByTestId("mail-draft-sidebar");
@@ -405,7 +358,7 @@ describe("chat message action cards", () => {
         mailDraftId,
         mailDraftUrl,
         mailDraft: {
-          version: 2,
+          version: 3,
           provider: "gmail",
           from: "sender@example.com",
           to: [],
@@ -419,6 +372,7 @@ describe("chat message action cards", () => {
           gmailThreadId: "gmail-thread-id",
           gmailMessageId: "gmail-message-id",
           references: [],
+          attachments: [],
           createdAt,
           updatedAt: createdAt,
         },

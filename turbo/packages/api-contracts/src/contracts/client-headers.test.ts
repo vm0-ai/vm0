@@ -53,7 +53,7 @@ describe("client header contract", () => {
   });
 
   it("identifies clients that understand link-backed Gmail draft cards", () => {
-    expect(ZERO_MAIL_CLIENT_VERSION).toBe("2");
+    expect(ZERO_MAIL_CLIENT_VERSION).toBe("3");
   });
 
   it("keeps the force upgrade status stable for app clients", () => {

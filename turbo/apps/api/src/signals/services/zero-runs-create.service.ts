@@ -277,7 +277,7 @@ function buildIntegrationToolsPrompt(
         crossIntegrationMessage,
         ...(zeroMailEnabled
           ? [
-              "- Email from web chat: use `zero mail list` to inspect the current agent's authorized Gmail and Outlook accounts, `zero mail connect gmail|outlook` to get a connect or authorization link, and `zero mail send --help` to create a persistent editable mail card. `zero mail send` creates the card but does not send the message; the user sends or cancels it from the card. The card appears automatically, so do not repeat the draft or command output in your response.",
+              "- Email from web chat: use the Gmail skill and `GMAIL_TOKEN` to create the draft directly in Gmail. For attachments, upload a valid RFC822 multipart message through Gmail's draft media-upload endpoint. Never call `messages.send` or `drafts.send`. After Gmail returns the draft ID, run `zero mail link <gmail-draft-id>` and return the link from the command to the user.",
             ]
           : []),
         ...localFileContextLines,

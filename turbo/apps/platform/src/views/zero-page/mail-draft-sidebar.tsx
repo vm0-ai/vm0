@@ -1,46 +1,23 @@
-import type { FocusEvent, FormEvent } from "react";
 import {
   IconExternalLink,
   IconLoader2,
+  IconPaperclip,
   IconSend,
   IconTrash,
   IconX,
 } from "@tabler/icons-react";
 import type { ZeroMailDraft } from "@vm0/api-contracts/contracts/zero-mail";
-import { Button, Input } from "@vm0/ui";
+import { Button } from "@vm0/ui";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 
-import type {
-  MailDraftFields,
-  MailDraftSignals,
-} from "../../signals/chat-page/mail-draft.ts";
+import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { closeMailDraftSidebar$ } from "../../signals/zero-page/mail-draft-sidebar.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 
 interface MailDraftSidebarProps {
   readonly signals: MailDraftSignals;
-}
-
-function parseRecipients(value: string): string[] {
-  return value
-    .split(/[;,\n]/u)
-    .map((recipient) => {
-      return recipient.trim();
-    })
-    .filter(Boolean);
-}
-
-function fieldsFromForm(form: HTMLFormElement): MailDraftFields {
-  const data = new FormData(form);
-  return {
-    to: parseRecipients(String(data.get("to") ?? "")),
-    cc: parseRecipients(String(data.get("cc") ?? "")),
-    bcc: parseRecipients(String(data.get("bcc") ?? "")),
-    subject: String(data.get("subject") ?? ""),
-    body: String(data.get("body") ?? ""),
-  };
 }
 
 function SidebarCloseButton({ close }: { readonly close: () => void }) {
@@ -87,167 +64,76 @@ function DetailField({
   readonly value: string;
 }) {
   return (
-    <div className="grid gap-1">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
+    <div className="grid gap-1.5">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
       <div className="break-words text-sm text-foreground">{value}</div>
     </div>
   );
 }
 
-interface MailDraftFormFieldsProps {
-  readonly draft: ZeroMailDraft;
-  readonly editable: boolean;
-  readonly pending: boolean;
-  readonly saveOnBlur: (
-    event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => void;
-}
-
-function MailDraftFormFields({
-  draft,
-  editable,
-  pending,
-  saveOnBlur,
-}: MailDraftFormFieldsProps) {
+function MailDraftDetails({ draft }: { readonly draft: ZeroMailDraft }) {
   return (
-    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-        From
-        <Input
-          aria-label="From"
-          value={
-            draft.fromName ? `${draft.fromName} <${draft.from}>` : draft.from
-          }
-          readOnly
-          className="bg-muted/40 text-foreground"
-        />
-      </label>
-      {(["to", "cc", "bcc"] as const).map((field) => {
-        const label = field.toUpperCase();
-        return (
-          <label
-            key={field}
-            className="grid gap-1.5 text-xs font-medium text-muted-foreground"
-          >
-            {label}
-            <Input
-              aria-label={label}
-              name={field}
-              type="email"
-              multiple
-              required={field === "to"}
-              defaultValue={draft[field].join(", ")}
-              readOnly={!editable}
-              disabled={pending}
-              onBlur={saveOnBlur}
-              className="text-foreground read-only:bg-muted/30"
-            />
-          </label>
-        );
-      })}
-      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-        Subject
-        <Input
-          aria-label="Subject"
-          name="subject"
-          required
-          defaultValue={draft.subject}
-          readOnly={!editable}
-          disabled={pending}
-          onBlur={saveOnBlur}
-          className="text-foreground read-only:bg-muted/30"
-        />
-      </label>
-      <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-        Message
-        <textarea
-          aria-label="Message"
-          name="body"
-          required
-          defaultValue={draft.body}
-          readOnly={!editable}
-          disabled={pending}
-          onBlur={saveOnBlur}
-          className="min-h-64 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 read-only:bg-muted/30 disabled:opacity-50"
-        />
-      </label>
+    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
+      <DetailField
+        label="From"
+        value={
+          draft.fromName ? `${draft.fromName} <${draft.from}>` : draft.from
+        }
+      />
+      <DetailField label="To" value={draft.to.join(", ") || "—"} />
+      {draft.cc.length > 0 ? (
+        <DetailField label="Cc" value={draft.cc.join(", ")} />
+      ) : null}
+      {draft.bcc.length > 0 ? (
+        <DetailField label="Bcc" value={draft.bcc.join(", ")} />
+      ) : null}
+      <DetailField label="Subject" value={draft.subject || "(No subject)"} />
+      <div className="grid gap-1.5">
+        <div className="text-xs font-medium text-muted-foreground">Message</div>
+        <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+          {draft.body || "(No message)"}
+        </div>
+      </div>
+      {draft.attachments.length > 0 ? (
+        <div className="grid gap-2">
+          <div className="text-xs font-medium text-muted-foreground">
+            Attachments
+          </div>
+          <div className="grid gap-2">
+            {draft.attachments.map((attachment, index) => {
+              return (
+                <div
+                  key={`${attachment.filename}-${index}`}
+                  className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5"
+                >
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
+                    <IconPaperclip size={15} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-foreground">
+                      {attachment.filename}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {attachment.contentType} ·{" "}
+                      {attachment.size.toLocaleString()} bytes
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {draft.replyTo ? (
-        <DetailField label="Reply-To" value={draft.replyTo} />
+        <DetailField label="Reply-to" value={draft.replyTo} />
       ) : null}
       {draft.inReplyTo ? (
-        <DetailField label="In-Reply-To" value={draft.inReplyTo} />
+        <DetailField label="In-reply-to" value={draft.inReplyTo} />
       ) : null}
       {draft.references.length > 0 ? (
         <DetailField label="References" value={draft.references.join(" ")} />
       ) : null}
     </div>
-  );
-}
-
-interface MailDraftFooterProps {
-  readonly editable: boolean;
-  readonly pending: boolean;
-  readonly deleting: boolean;
-  readonly sending: boolean;
-  readonly openInGmail: string | null;
-  readonly onDelete: () => void;
-}
-
-function MailDraftFooter({
-  editable,
-  pending,
-  deleting,
-  sending,
-  openInGmail,
-  onDelete,
-}: MailDraftFooterProps) {
-  return (
-    <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-4 py-3">
-      {editable ? (
-        <Button
-          data-mail-draft-action
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          className="text-destructive hover:text-destructive"
-          onClick={onDelete}
-        >
-          {deleting ? (
-            <IconLoader2 size={15} className="animate-spin" />
-          ) : (
-            <IconTrash size={15} />
-          )}
-          Delete
-        </Button>
-      ) : openInGmail ? (
-        <Button asChild variant="outline" size="sm">
-          <a href={openInGmail} target="_blank" rel="noreferrer">
-            <IconExternalLink size={15} />
-            Open in Gmail
-          </a>
-        </Button>
-      ) : (
-        <span />
-      )}
-      {editable ? (
-        <Button
-          data-mail-draft-action
-          type="submit"
-          size="sm"
-          disabled={pending}
-        >
-          {sending ? (
-            <IconLoader2 size={15} className="animate-spin" />
-          ) : (
-            <IconSend size={15} />
-          )}
-          Send
-        </Button>
-      ) : null}
-    </footer>
   );
 }
 
@@ -261,41 +147,15 @@ function MailDraftDetail({
   readonly close: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [updateLoadable, update] = useLoadableSet(signals.update$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
-  const editable = draft.status === "draft";
-  const pending = [updateLoadable, deleteLoadable, sendLoadable].some(
-    (loadable) => {
-      return loadable.state === "loading";
-    },
-  );
+  const active = draft.status === "draft";
+  const pending =
+    deleteLoadable.state === "loading" || sendLoadable.state === "loading";
+  const openInGmail = draft.gmailThreadId
+    ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(draft.gmailThreadId)}`
+    : null;
 
-  const saveOnBlur = (
-    event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => {
-    const form = event.currentTarget.form;
-    const movingToAction =
-      event.relatedTarget instanceof Element &&
-      event.relatedTarget.closest("[data-mail-draft-action]");
-    if (
-      !form ||
-      !editable ||
-      pending ||
-      !form.checkValidity() ||
-      movingToAction
-    ) {
-      return;
-    }
-    detach(update(fieldsFromForm(form), pageSignal), Reason.DomCallback);
-  };
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    detach(
-      send(fieldsFromForm(event.currentTarget), pageSignal),
-      Reason.DomCallback,
-    );
-  };
   const onDelete = () => {
     const deleteAndClose = async () => {
       await deleteDraft(pageSignal);
@@ -303,9 +163,6 @@ function MailDraftDetail({
     };
     detach(deleteAndClose(), Reason.DomCallback);
   };
-  const openInGmail = draft.gmailThreadId
-    ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(draft.gmailThreadId)}`
-    : null;
 
   return (
     <aside
@@ -319,27 +176,60 @@ function MailDraftDetail({
             {draft.subject || "(No subject)"}
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {editable ? "Gmail draft" : "Sent email"}
+            {active ? "Gmail draft" : "Sent email"}
           </div>
         </div>
         <SidebarCloseButton close={close} />
       </div>
-      <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
-        <MailDraftFormFields
-          draft={draft}
-          editable={editable}
-          pending={pending}
-          saveOnBlur={saveOnBlur}
-        />
-        <MailDraftFooter
-          editable={editable}
-          pending={pending}
-          deleting={deleteLoadable.state === "loading"}
-          sending={sendLoadable.state === "loading"}
-          openInGmail={openInGmail}
-          onDelete={onDelete}
-        />
-      </form>
+      <MailDraftDetails draft={draft} />
+      <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-4 py-3">
+        {active ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={pending}
+            className="text-destructive hover:text-destructive"
+            onClick={onDelete}
+          >
+            {deleteLoadable.state === "loading" ? (
+              <IconLoader2 size={15} className="animate-spin" />
+            ) : (
+              <IconTrash size={15} />
+            )}
+            Delete
+          </Button>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {openInGmail ? (
+            <Button asChild variant="outline" size="sm">
+              <a href={openInGmail} target="_blank" rel="noreferrer">
+                <IconExternalLink size={15} />
+                Open in Gmail
+              </a>
+            </Button>
+          ) : null}
+          {active ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={pending}
+              onClick={() => {
+                detach(send(pageSignal), Reason.DomCallback);
+              }}
+            >
+              {sendLoadable.state === "loading" ? (
+                <IconLoader2 size={15} className="animate-spin" />
+              ) : (
+                <IconSend size={15} />
+              )}
+              Send
+            </Button>
+          ) : null}
+        </div>
+      </footer>
     </aside>
   );
 }

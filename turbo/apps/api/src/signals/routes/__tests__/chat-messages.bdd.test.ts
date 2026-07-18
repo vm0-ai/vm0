@@ -1627,9 +1627,9 @@ describe("CHAT-02: model-first provider policies", () => {
       "You are currently running inside: Web",
     );
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
-    expect(appendSystemPrompt).toContain("zero mail send --help");
+    expect(appendSystemPrompt).toContain("zero mail link <gmail-draft-id>");
     expect(appendSystemPrompt).toContain(
-      "The card appears automatically, so do not repeat the draft",
+      "return the link from the command to the user",
     );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");

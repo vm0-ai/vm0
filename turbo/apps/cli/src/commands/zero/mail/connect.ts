@@ -69,7 +69,11 @@ export const connectCommand = new Command()
         console.log(
           chalk.dim(`  Sender: ${connector.connection?.externalEmail}`),
         );
-        console.log(chalk.dim("  Run: zero mail send --help"));
+        console.log(
+          chalk.dim(
+            "  After creating a Gmail draft: zero mail link <draft-id>",
+          ),
+        );
         return;
       }
       const label =

@@ -323,7 +323,6 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
-  mailDraftId: z.string().uuid().optional(),
   sequenceNumber: z.number().nullable().optional(),
   workflowSnapshot: workflowSnapshotSchema.optional(),
   createdAt: z.string(),

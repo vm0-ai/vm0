@@ -11,11 +11,11 @@ import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
-  createZeroMailDraft$,
   deleteZeroMailDraft$,
   getZeroMailDraft$,
+  linkZeroMailDraft$,
   sendZeroMailDraft$,
-  updateZeroMailDraft$,
+  type ZeroMailDraftLinkMutationResult,
   type ZeroMailDraftMutationResult,
 } from "../services/zero-mail.service";
 
@@ -60,20 +60,40 @@ function mutationResponse(result: ZeroMailDraftMutationResult) {
   }
 }
 
-const createDraftBody$ = bodyResultOf(zeroMailContract.createDraft);
-const createDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+function linkMutationResponse(result: ZeroMailDraftLinkMutationResult) {
+  switch (result.kind) {
+    case "ok": {
+      return {
+        status: 200 as const,
+        body: {
+          mailDraftId: result.mailDraftId,
+          mailDraftUrl: result.mailDraftUrl,
+        },
+      };
+    }
+    case "not_found": {
+      return notFound(result.message);
+    }
+    case "conflict": {
+      return conflict(result.message);
+    }
+  }
+}
+
+const linkDraftBody$ = bodyResultOf(zeroMailContract.linkDraft);
+const linkDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await set(zeroMailEnabled$))) {
     return zeroMailDisabled;
   }
   signal.throwIfAborted();
-  const bodyResult = await get(createDraftBody$);
+  const bodyResult = await get(linkDraftBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
   const result = await set(
-    createZeroMailDraft$,
+    linkZeroMailDraft$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -81,17 +101,7 @@ const createDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
     signal,
   );
-  if (result.kind !== "ok") {
-    return mutationResponse(result);
-  }
-  return {
-    status: 201 as const,
-    body: {
-      mailDraftId: result.mailDraftId,
-      mailDraftUrl: result.mailDraftUrl,
-      mailDraft: result.mailDraft,
-    },
-  };
+  return linkMutationResponse(result);
 });
 
 const getDraftParams$ = pathParamsOf(zeroMailContract.getDraft);
@@ -107,33 +117,6 @@ const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         orgId: auth.orgId,
         userId: auth.userId,
         ...get(getDraftParams$),
-      },
-      signal,
-    ),
-  );
-});
-
-const updateDraftBody$ = bodyResultOf(zeroMailContract.updateDraft);
-const updateDraftParams$ = pathParamsOf(zeroMailContract.updateDraft);
-const updateDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  if (!(await set(zeroMailEnabled$))) {
-    return zeroMailDisabled;
-  }
-  signal.throwIfAborted();
-  const bodyResult = await get(updateDraftBody$);
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-  return mutationResponse(
-    await set(
-      updateZeroMailDraft$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        ...get(updateDraftParams$),
-        ...bodyResult.data,
       },
       signal,
     ),
@@ -161,18 +144,11 @@ const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
-const sendDraftBody$ = bodyResultOf(zeroMailContract.sendDraft);
 const sendDraftParams$ = pathParamsOf(zeroMailContract.sendDraft);
 const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await set(zeroMailEnabled$))) {
     return zeroMailDisabled;
-  }
-  signal.throwIfAborted();
-  const bodyResult = await get(sendDraftBody$);
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
   }
   return mutationResponse(
     await set(
@@ -181,14 +157,13 @@ const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         orgId: auth.orgId,
         userId: auth.userId,
         ...get(sendDraftParams$),
-        ...bodyResult.data,
       },
       signal,
     ),
   );
 });
 
-const mailDraftCreateAuth = Object.freeze({
+const mailDraftLinkAuth = Object.freeze({
   requireOrganization: true,
   missingOrganizationStatus: 401 as const,
   requiredCapability: "connector:read" as const,
@@ -204,16 +179,12 @@ const mailDraftHumanAuth = Object.freeze({
 
 export const zeroMailRoutes: readonly RouteEntry[] = [
   {
-    route: zeroMailContract.createDraft,
-    handler: authRoute(mailDraftCreateAuth, createDraftInner$),
+    route: zeroMailContract.linkDraft,
+    handler: authRoute(mailDraftLinkAuth, linkDraftInner$),
   },
   {
     route: zeroMailContract.getDraft,
     handler: authRoute(mailDraftHumanAuth, getDraftInner$),
-  },
-  {
-    route: zeroMailContract.updateDraft,
-    handler: authRoute(mailDraftHumanAuth, updateDraftInner$),
   },
   {
     route: zeroMailContract.deleteDraft,

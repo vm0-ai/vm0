@@ -4355,6 +4355,13 @@
       "when": 1784372472936,
       "tag": "0621_contract_workflow_automation_callback_identifiers",
       "breakpoints": true
+    },
+    {
+      "idx": 622,
+      "version": "7",
+      "when": 1784389948886,
+      "tag": "0622_sticky_champions",
+      "breakpoints": true
     }
   ]
 }
