@@ -97,7 +97,7 @@ def test_unchanged_cache_reuses_compiled_diagnostic_snapshot(tmp_path, mitm_ctx)
     assert first is second
     assert first.catalog is not None
     assert first.catalog_identity is not None
-    assert first.catalog_identity[2] == "catalog-a"
+    assert first.catalog_identity.catalog_version == "catalog-a"
 
 
 @pytest.mark.parametrize("terminal_hook", ["response", "stream", "error"])
@@ -263,7 +263,7 @@ async def test_repeated_preferred_catalog_does_not_reopen_cache(
     assert len(pinned_snapshots) == 2
     assert pinned_snapshots[0] is pinned_snapshots[1]
     assert pinned_snapshots[0].catalog_identity is not None
-    assert pinned_snapshots[0].catalog_identity[2] == "catalog-a"
+    assert pinned_snapshots[0].catalog_identity.catalog_version == "catalog-a"
 
 
 async def test_registry_classification_from_a_cannot_race_into_diagnostic_b(
@@ -319,9 +319,9 @@ async def test_registry_classification_from_a_cannot_race_into_diagnostic_b(
 
     assert _response_connector(first_flow) == "inactive-a"
     assert current_before_delayed_flow.catalog_identity is not None
-    assert current_before_delayed_flow.catalog_identity[2] == "catalog-b"
+    assert current_before_delayed_flow.catalog_identity.catalog_version == "catalog-b"
     assert current_after_delayed_flow.catalog_identity is not None
-    assert current_after_delayed_flow.catalog_identity[2] == "catalog-b"
+    assert current_after_delayed_flow.catalog_identity.catalog_version == "catalog-b"
     assert _response_connector(second_flow) == "inactive-b"
 
 
@@ -380,9 +380,9 @@ async def test_stream_safe_firewall_request_commit_pins_classification_catalog(
     assert flow.request.headers["Authorization"] == "Bearer active"
     assert len(pinned_snapshots) == 1
     assert pinned_snapshots[0].catalog_identity is not None
-    assert pinned_snapshots[0].catalog_identity[2] == "catalog-a"
+    assert pinned_snapshots[0].catalog_identity.catalog_version == "catalog-a"
     assert current_snapshot.catalog_identity is not None
-    assert current_snapshot.catalog_identity[2] == "catalog-b"
+    assert current_snapshot.catalog_identity.catalog_version == "catalog-b"
 
 
 async def test_unavailable_flow_stays_unavailable_after_cache_recovers(

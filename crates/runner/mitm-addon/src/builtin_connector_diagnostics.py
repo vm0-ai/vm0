@@ -71,7 +71,7 @@ class DiagnosticCatalogSnapshot:
     catalog_identity: builtin_firewall_cache.CatalogIdentity | None
     catalog: _DiagnosticCatalog | None
     cache_path: str | None
-    unavailable_reason: str | None
+    unavailable_reason: builtin_firewall_cache.CatalogUnavailableReason | None
 
 
 @dataclass(frozen=True)

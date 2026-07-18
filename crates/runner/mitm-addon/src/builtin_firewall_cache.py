@@ -6,6 +6,7 @@ import stat
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, NamedTuple
 
 from mitmproxy import ctx
 
@@ -20,8 +21,45 @@ _CACHE_SCHEMA_VERSION = 1
 _SHA256_HEX_LENGTH = 64
 _RESERVED_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 _UNTRUSTED_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
-CatalogFileKey = tuple[str, int, int, int, int]
-CatalogIdentity = tuple[str, str, str, CatalogFileKey]
+
+
+class CatalogFileKey(NamedTuple):
+    """Filesystem identity used to validate catalog cache dependencies.
+
+    Tuple order is `absolute_path`, `st_dev`, `st_ino`, `st_mtime_ns`, then
+    `st_size`. All stat fields in one key come from the same stat result.
+    """
+
+    absolute_path: str
+    st_dev: int
+    st_ino: int
+    st_mtime_ns: int
+    st_size: int
+
+
+class CatalogIdentity(NamedTuple):
+    """Validated catalog source identity used by compiled firewall cache keys.
+
+    Tuple order is `source`, `catalog_digest`, `catalog_version`, then
+    `file_key`. The source is `cache`, and `file_key` identifies the exact file
+    from which the validated catalog was loaded.
+    """
+
+    source: Literal["cache"]
+    catalog_digest: str
+    catalog_version: str
+    file_key: CatalogFileKey
+
+
+CatalogUnavailableReason = Literal[
+    "cache_path_missing",
+    "cache_file_missing",
+    "cache_permission_denied",
+    "cache_not_regular",
+    "cache_untrusted",
+    "cache_unavailable",
+    "cache_invalid",
+]
 
 
 class BuiltinFirewallCatalogCacheError(ValueError):
@@ -29,23 +67,50 @@ class BuiltinFirewallCatalogCacheError(ValueError):
 
 
 class _CatalogCacheOpenError(OSError):
-    def __init__(self, reason: str, message: str) -> None:
+    reason: CatalogUnavailableReason
+
+    def __init__(self, reason: CatalogUnavailableReason, message: str) -> None:
         super().__init__(message)
         self.reason = reason
 
 
 @dataclass(frozen=True)
 class BuiltinFirewallCatalog:
+    """Validated firewall map bound to the catalog cache file that supplied it.
+
+    `identity` records the cache source, declared digest and version, and exact
+    opened file key. `firewalls` is the validated catalog payload used for
+    builtin firewall resolution.
+    """
+
     identity: CatalogIdentity
     firewalls: dict[str, dict]
 
 
 @dataclass(frozen=True)
 class BuiltinFirewallCatalogSnapshot:
+    """Result of loading one catalog cache dependency for a consumer pass.
+
+    Loader-produced states are:
+
+    - Success has `dependency_file_key`, `catalog`, and `cache_path`, with no
+      `unavailable_reason`.
+    - Missing path configuration has no dependency, catalog, or cache path and
+      uses `cache_path_missing`.
+    - Open or trust failure has no dependency or catalog, retains the absolute
+      cache path, and uses the corresponding open-failure reason.
+    - Read, decode, schema, or validation failure has the opened file key and
+      absolute cache path, no catalog, and uses `cache_invalid`.
+
+    `dependency_file_key` comes from the descriptor actually opened for this
+    snapshot, not a preliminary path stat. Registry snapshots compare it with
+    the current path identity to decide whether cached resolution remains valid.
+    """
+
     dependency_file_key: CatalogFileKey | None
     catalog: BuiltinFirewallCatalog | None
     cache_path: str | None = None
-    unavailable_reason: str | None = None
+    unavailable_reason: CatalogUnavailableReason | None = None
 
 
 @dataclass
@@ -53,7 +118,7 @@ class _CatalogCacheState:
     path_key: str | None = None
     loaded_key: CatalogFileKey | None = None
     failed_key: CatalogFileKey | None = None
-    failed_reason: str | None = None
+    failed_reason: CatalogUnavailableReason | None = None
     catalog: BuiltinFirewallCatalog | None = None
 
     def reset(self, path_key: str | None = None) -> None:
@@ -112,7 +177,13 @@ def catalog_file_key(cache_path: str | None) -> CatalogFileKey | None:
         return None
     if not _cache_file_stat_is_trusted(st):
         return None
-    return (_path_key(path), st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+    return CatalogFileKey(
+        absolute_path=_path_key(path),
+        st_dev=st.st_dev,
+        st_ino=st.st_ino,
+        st_mtime_ns=st.st_mtime_ns,
+        st_size=st.st_size,
+    )
 
 
 def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnapshot:
@@ -140,7 +211,13 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
         )
 
     try:
-        key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+        key = CatalogFileKey(
+            absolute_path=path_key,
+            st_dev=st.st_dev,
+            st_ino=st.st_ino,
+            st_mtime_ns=st.st_mtime_ns,
+            st_size=st.st_size,
+        )
         if key == state.loaded_key:
             return BuiltinFirewallCatalogSnapshot(key, state.catalog, cache_path=path_key)
         if key == state.failed_key:
@@ -174,7 +251,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
     return BuiltinFirewallCatalogSnapshot(key, catalog, cache_path=path_key)
 
 
-def _open_error_unavailable_reason(exc: OSError) -> str:
+def _open_error_unavailable_reason(exc: OSError) -> CatalogUnavailableReason:
     if isinstance(exc, _CatalogCacheOpenError):
         return exc.reason
     if isinstance(exc, FileNotFoundError):
@@ -275,7 +352,12 @@ def _read_catalog(
     _validate_firewall_map(firewalls)
 
     return BuiltinFirewallCatalog(
-        identity=("cache", catalog_digest, catalog_version, key),
+        identity=CatalogIdentity(
+            source="cache",
+            catalog_digest=catalog_digest,
+            catalog_version=catalog_version,
+            file_key=key,
+        ),
         firewalls=firewalls,
     )
 
