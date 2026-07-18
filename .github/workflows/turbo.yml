@@ -1336,10 +1336,11 @@ jobs:
             "$canonical_dist" \
             "$pages_dist"
 
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
-          echo "dist=$pages_dist" >> "$GITHUB_OUTPUT"
-          echo "url=https://${branch}.${CF_PAGES_PROJECT_NAME}.pages.dev" \
-            >> "$GITHUB_OUTPUT"
+          {
+            echo "branch=$branch"
+            echo "dist=$pages_dist"
+            echo "url=https://${branch}.${CF_PAGES_PROJECT_NAME}.pages.dev"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Deploy Cloudflare Pages preview
         env:
