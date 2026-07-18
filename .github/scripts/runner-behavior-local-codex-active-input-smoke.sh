@@ -8,10 +8,9 @@ fi
 
 REMOTE="${METAL_USER}@${HOST}"
 {
-  # Keep the CI provider key off SSH/bash argv; the runner CLI still
-  # receives it through --secret-env because that is the behavior
-  # under test.
-  printf 'OPENAI_API_KEY=%q\n' "$OPENAI_API_KEY"
+  # Transfer the provider key through remote shell stdin so runner argv
+  # contains only the environment variable name.
+  printf 'export OPENAI_API_KEY=%q\n' "$OPENAI_API_KEY"
   cat <<'REMOTE_SCRIPT'
 set -euo pipefail
 
@@ -68,12 +67,12 @@ PROMPT='This is a CI smoke test for Codex active input. The initial prompt token
 EXPECTED_RESULT='RESULT=codex-initial-8m6+codex-active-one-2p9+codex-active-two-6v1'
 
 echo "--- Submitting Codex active-input smoke job ---"
-if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
+if ! SUBMIT_OUTPUT=$(sudo --preserve-env=OPENAI_API_KEY "$BIN_DIR/runner" local submit \
   --group "$GROUP" \
   --timeout 240 \
   --cli-agent-type codex \
   --env OPENAI_MODEL=gpt-5.4-mini \
-  --secret-env OPENAI_API_KEY="$OPENAI_API_KEY" \
+  --secret-env OPENAI_API_KEY \
   --prompt "$PROMPT" \
   --active-input 'after=100ms,text=codex-active-one-2p9' \
   --active-input 'after=300ms,text=codex-active-two-6v1' 2>&1); then

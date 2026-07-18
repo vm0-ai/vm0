@@ -8,10 +8,9 @@ fi
 
 REMOTE="${METAL_USER}@${HOST}"
 {
-  # Keep the CI provider key off SSH/bash argv; the runner CLI still
-  # receives it through --secret-env because that is the behavior
-  # under test.
-  printf 'ANTHROPIC_API_KEY=%q\n' "$ANTHROPIC_API_KEY"
+  # Transfer the provider key through remote shell stdin so runner argv
+  # contains only the environment variable name.
+  printf 'export ANTHROPIC_API_KEY=%q\n' "$ANTHROPIC_API_KEY"
   cat <<'REMOTE_SCRIPT'
 set -euo pipefail
 
@@ -68,12 +67,12 @@ PROMPT='This is a CI smoke test for Claude Code active input. The initial prompt
 EXPECTED_RESULT='RESULT=ci-initial-5k2+ci-active-one-7f3+ci-active-two-9q4'
 
 echo "--- Submitting active-input smoke job ---"
-if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
+if ! SUBMIT_OUTPUT=$(sudo --preserve-env=ANTHROPIC_API_KEY "$BIN_DIR/runner" local submit \
   --group "$GROUP" \
   --timeout 180 \
   --cli-agent-type claude-code \
   --env ANTHROPIC_MODEL=claude-haiku-4-5 \
-  --secret-env ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  --secret-env ANTHROPIC_API_KEY \
   --prompt "$PROMPT" \
   --active-input 'after=100ms,text=ci-active-one-7f3' \
   --active-input 'after=300ms,text=ci-active-two-9q4' 2>&1); then

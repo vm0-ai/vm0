@@ -4,6 +4,7 @@ mod completed_cleanup;
 mod queue_publication;
 mod request;
 mod result_markers;
+mod secret_env;
 mod support;
 mod timezone;
 mod validation;

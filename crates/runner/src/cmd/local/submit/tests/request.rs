@@ -118,7 +118,7 @@ async fn submit_serializes_feature_flags() {
 }
 
 #[tokio::test]
-async fn submit_serializes_env_and_secret_env() {
+async fn submit_serializes_env() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().to_path_buf());
     let group = "test/group";
@@ -138,15 +138,10 @@ async fn submit_serializes_env_and_secret_env() {
         "MULTILINE=line1\nline2".into(),
         "VM0_STUCK_TOOL_TIMEOUT_SECS=3".into(),
     ];
-    args.secret_env = vec![
-        "ANTHROPIC_API_KEY=sk-ant-local-secret".into(),
-        "PRIVATE_KEY=-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----".into(),
-    ];
 
     let code = run_submit_with_home(args, home).await.unwrap();
     let request = watcher.await.unwrap();
     let environment = request.environment.as_ref().unwrap();
-    let secret_environment = request.secret_environment.as_ref().unwrap();
 
     assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(environment.get("FOO").map(String::as_str), Some("bar"));
@@ -165,81 +160,41 @@ async fn submit_serializes_env_and_secret_env() {
             .map(String::as_str),
         Some("3")
     );
-    assert_eq!(
-        secret_environment
-            .get("ANTHROPIC_API_KEY")
-            .map(String::as_str),
-        Some("sk-ant-local-secret")
-    );
-    assert_eq!(
-        secret_environment.get("PRIVATE_KEY").map(String::as_str),
-        Some("-----BEGIN KEY-----\r\nsecret\r\n-----END KEY-----")
-    );
+    assert!(request.secret_environment.is_none());
 }
 
 #[tokio::test]
 async fn rejects_invalid_env_entries_before_submit() {
     let cases = vec![
-        (vec!["FOO".to_string()], Vec::new(), "expected KEY=VALUE"),
-        (vec!["=VALUE".to_string()], Vec::new(), "expected KEY=VALUE"),
+        (vec!["FOO".to_string()], "expected KEY=VALUE"),
+        (vec!["=VALUE".to_string()], "expected KEY=VALUE"),
         (
             vec!["BAD-KEY=value".to_string()],
-            Vec::new(),
             "expected [_A-Za-z][_A-Za-z0-9]*",
         ),
         (
             vec!["1KEY=value".to_string()],
-            Vec::new(),
             "expected [_A-Za-z][_A-Za-z0-9]*",
         ),
         (
             vec!["KEY SPACE=value".to_string()],
-            Vec::new(),
             "expected [_A-Za-z][_A-Za-z0-9]*",
-        ),
-        (
-            Vec::new(),
-            vec!["ÅKEY=value".to_string()],
-            "expected [_A-Za-z][_A-Za-z0-9]*",
-        ),
-        (
-            Vec::new(),
-            vec!["KEY=with\0nul".to_string()],
-            "NUL characters",
         ),
         (
             vec!["VM0_PROMPT=value".to_string()],
-            Vec::new(),
             "runner-owned environment variables",
-        ),
-        (
-            Vec::new(),
-            vec!["CLI_AGENT_TYPE=codex".to_string()],
-            "runner-owned environment variables",
-        ),
-        (
-            Vec::new(),
-            vec!["VM0_STUCK_TOOL_TIMEOUT_SECS=3".to_string()],
-            "must be passed with --env",
         ),
         (
             vec!["FOO=1".to_string(), "FOO=2".to_string()],
-            Vec::new(),
             "duplicate --env key 'FOO'",
-        ),
-        (
-            vec!["FOO=1".to_string()],
-            vec!["FOO=2".to_string()],
-            "across --env and --secret-env",
         ),
     ];
 
-    for (env, secret_env, expected) in cases {
+    for (env, expected) in cases {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
         let mut args = submit_args_for_test();
         args.env = env;
-        args.secret_env = secret_env;
 
         let err = run_submit_with_home(args, home).await.unwrap_err();
 

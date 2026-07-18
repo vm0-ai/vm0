@@ -54,7 +54,7 @@ pub struct SubmitArgs {
     /// Ordinary environment variables to pass to the local job (KEY=VALUE)
     #[arg(long = "env")]
     env: Vec<String>,
-    /// Local-only secret environment variables to pass and register for masking (KEY=VALUE)
+    /// Names of inherited environment variables to pass to the local job and register for masking
     #[arg(long = "secret-env")]
     secret_env: Vec<String>,
     /// Timeout in seconds waiting for a runner to complete the job (max: 24 hours)
@@ -371,8 +371,8 @@ impl SubmitPlan {
         };
 
         let feature_flags = Self::parse_feature_flags(&feature_flags)?;
-        let environment = Self::parse_env_entries("--env", &env, true)?;
-        let secret_environment = Self::parse_env_entries("--secret-env", &secret_env, false)?;
+        let environment = Self::parse_env_entries("--env", &env)?;
+        let secret_environment = Self::resolve_secret_env(&secret_env)?;
         Self::validate_disjoint_env_keys(&environment, &secret_environment)?;
         let timeout = Self::validate_timeout(timeout)?;
         let group_dir = home.groups_dir().join(&group);
@@ -549,7 +549,6 @@ impl SubmitPlan {
     fn parse_env_entries(
         flag: &str,
         entries: &[String],
-        allow_guest_agent_tuning_keys: bool,
     ) -> RunnerResult<Option<HashMap<String, String>>> {
         if entries.is_empty() {
             return Ok(None);
@@ -575,29 +574,70 @@ impl SubmitPlan {
 
             let key = &entry[..eq_pos];
             let value = &entry[eq_pos + 1..];
-            if !guest_contracts::env::is_shell_identifier_env_key(key) {
-                return Err(RunnerError::Config(format!(
-                    "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
-                )));
-            }
-            let is_guest_agent_tuning_key =
-                guest_contracts::env::is_guest_agent_tuning_env_key(key);
-            if is_guest_agent_tuning_key && !allow_guest_agent_tuning_keys {
-                return Err(RunnerError::Config(format!(
-                    "invalid {flag} key '{key}': guest-agent tuning environment variables must be passed with --env"
-                )));
-            }
-            if guest_contracts::env::is_runner_owned_env_key(key) && !is_guest_agent_tuning_key {
-                return Err(RunnerError::Config(format!(
-                    "invalid {flag} key '{key}': runner-owned environment variables are not allowed"
-                )));
-            }
+            Self::validate_env_key(flag, key, true)?;
             if map.insert(key.to_owned(), value.to_owned()).is_some() {
                 return Err(RunnerError::Config(format!("duplicate {flag} key '{key}'")));
             }
         }
 
         Ok(Some(map))
+    }
+
+    fn resolve_secret_env(keys: &[String]) -> RunnerResult<Option<HashMap<String, String>>> {
+        if keys.is_empty() {
+            return Ok(None);
+        }
+
+        let mut unique_keys = HashSet::with_capacity(keys.len());
+        for key in keys {
+            if key.contains(['\0', '=']) {
+                return Err(RunnerError::Config(
+                    "invalid --secret-env value: expected an environment variable name without a value"
+                        .to_string(),
+                ));
+            }
+            Self::validate_env_key("--secret-env", key, false)?;
+            if !unique_keys.insert(key.as_str()) {
+                return Err(RunnerError::Config(format!(
+                    "duplicate --secret-env key '{key}'"
+                )));
+            }
+        }
+
+        let mut map = HashMap::with_capacity(keys.len());
+        for key in keys {
+            let value = std::env::var(key).map_err(|_| {
+                RunnerError::Config(format!(
+                    "secret environment variable '{key}' is not set or is not valid Unicode"
+                ))
+            })?;
+            map.insert(key.clone(), value);
+        }
+        Ok(Some(map))
+    }
+
+    fn validate_env_key(
+        flag: &str,
+        key: &str,
+        allow_guest_agent_tuning_keys: bool,
+    ) -> RunnerResult<()> {
+        if !guest_contracts::env::is_shell_identifier_env_key(key) {
+            return Err(RunnerError::Config(format!(
+                "invalid {flag} key: expected [_A-Za-z][_A-Za-z0-9]*"
+            )));
+        }
+        let is_guest_agent_tuning_key = guest_contracts::env::is_guest_agent_tuning_env_key(key);
+        if is_guest_agent_tuning_key && !allow_guest_agent_tuning_keys {
+            return Err(RunnerError::Config(format!(
+                "invalid {flag} key '{key}': guest-agent tuning environment variables must be passed with --env"
+            )));
+        }
+        if guest_contracts::env::is_runner_owned_env_key(key) && !is_guest_agent_tuning_key {
+            return Err(RunnerError::Config(format!(
+                "invalid {flag} key '{key}': runner-owned environment variables are not allowed"
+            )));
+        }
+        Ok(())
     }
 
     fn validate_disjoint_env_keys(
