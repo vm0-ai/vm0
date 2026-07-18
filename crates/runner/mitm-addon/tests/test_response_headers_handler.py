@@ -1,5 +1,7 @@
 """Tests for the mitm addon responseheaders hook."""
 
+from types import SimpleNamespace
+
 import pytest
 from mitmproxy import http
 from mitmproxy.test import tutils
@@ -11,6 +13,14 @@ from tests.flow_helpers import header_map, response_stream
 from tests.model_provider_flow_helpers import RealFlowFactory, signed_usage_pricing_headers
 
 _FIXED_TIME = 1_750_000_000
+
+
+def _fix_pricing_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        model_usage_pricing,
+        "time",
+        SimpleNamespace(time=lambda: _FIXED_TIME),
+    )
 
 
 def _signed_pricing_flow(
@@ -80,7 +90,7 @@ class TestResponseHeadersHandler:
         monkeypatch: pytest.MonkeyPatch,
         issued_at: int,
     ) -> None:
-        monkeypatch.setattr(model_usage_pricing.time, "time", lambda: _FIXED_TIME)
+        _fix_pricing_clock(monkeypatch)
         flow = _signed_pricing_flow(real_flow, issued_at)
 
         mitm_addon.responseheaders(flow)
@@ -109,7 +119,7 @@ class TestResponseHeadersHandler:
         monkeypatch: pytest.MonkeyPatch,
         issued_at: int,
     ) -> None:
-        monkeypatch.setattr(model_usage_pricing.time, "time", lambda: _FIXED_TIME)
+        _fix_pricing_clock(monkeypatch)
         flow = _signed_pricing_flow(real_flow, issued_at)
 
         mitm_addon.responseheaders(flow)
@@ -130,7 +140,7 @@ class TestResponseHeadersHandler:
         monkeypatch: pytest.MonkeyPatch,
         issued_at: object,
     ) -> None:
-        monkeypatch.setattr(model_usage_pricing.time, "time", lambda: _FIXED_TIME)
+        _fix_pricing_clock(monkeypatch)
         flow = _signed_pricing_flow(real_flow, issued_at)
 
         mitm_addon.responseheaders(flow)
