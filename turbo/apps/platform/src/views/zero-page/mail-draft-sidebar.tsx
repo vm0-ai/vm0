@@ -261,13 +261,15 @@ function MailDraftDetail({
   readonly close: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [, update] = useLoadableSet(signals.update$);
+  const [updateLoadable, update] = useLoadableSet(signals.update$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
   const editable = draft.resourceStatus === "draft";
-  const pending = [deleteLoadable, sendLoadable].some((loadable) => {
-    return loadable.state === "loading";
-  });
+  const pending = [updateLoadable, deleteLoadable, sendLoadable].some(
+    (loadable) => {
+      return loadable.state === "loading";
+    },
+  );
 
   const saveOnBlur = (
     event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>,

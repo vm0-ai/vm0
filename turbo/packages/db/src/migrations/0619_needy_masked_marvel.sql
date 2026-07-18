@@ -26,6 +26,24 @@ WHERE "mail_draft_id" IS NOT NULL
 CREATE TRIGGER "chat_messages_reject_update"
 BEFORE UPDATE ON "chat_messages"
 FOR EACH ROW EXECUTE FUNCTION "reject_chat_event_source_update"();--> statement-breakpoint
+CREATE FUNCTION "mail_drafts_fill_chat_thread_id_for_legacy_insert"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  SELECT "chat_thread_id"
+  INTO NEW."chat_thread_id"
+  FROM "chat_messages"
+  WHERE "mail_draft_id" = NEW."id";
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+COMMENT ON FUNCTION "mail_drafts_fill_chat_thread_id_for_legacy_insert"() IS 'Rollout compatibility for API versions predating migration 0619; remove after those versions no longer serve traffic.';--> statement-breakpoint
+CREATE TRIGGER "mail_drafts_fill_chat_thread_id_for_legacy_insert"
+BEFORE INSERT ON "mail_drafts"
+FOR EACH ROW
+WHEN (NEW."chat_thread_id" IS NULL)
+EXECUTE FUNCTION "mail_drafts_fill_chat_thread_id_for_legacy_insert"();--> statement-breakpoint
 ALTER TABLE "mail_drafts" ALTER COLUMN "chat_thread_id" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "mail_drafts" ADD CONSTRAINT "mail_drafts_chat_thread_id_chat_threads_id_fk" FOREIGN KEY ("chat_thread_id") REFERENCES "public"."chat_threads"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_drafts" ADD CONSTRAINT "mail_drafts_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint

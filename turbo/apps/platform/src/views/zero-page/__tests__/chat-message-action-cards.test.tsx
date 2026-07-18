@@ -212,6 +212,8 @@ describe("chat message action cards", () => {
     let draftRequests = 0;
     let savedBody: unknown = null;
     let sentBody: unknown = null;
+    const updateStarted = context.mocks.deferred<void>();
+    const releaseUpdate = context.mocks.deferred<void>();
     const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
 
     context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
@@ -240,30 +242,35 @@ describe("chat message action cards", () => {
         },
       });
     });
-    context.mocks.api(zeroMailContract.updateDraft, ({ body, respond }) => {
-      savedBody = body;
-      return respond(200, {
-        mailDraftId,
-        mailDraftUrl,
-        mailDraft: {
-          version: 2,
-          provider: "gmail",
-          from: "sender@example.com",
-          ...body,
-          cc: body.cc ?? [],
-          bcc: body.bcc ?? [],
-          status: "draft",
-          resourceStatus: "draft",
-          detailAvailable: true,
-          gmailDraftId: "r-test-draft",
-          gmailThreadId: "gmail-thread-id",
-          gmailMessageId: "gmail-message-id-updated",
-          references: [],
-          createdAt,
-          updatedAt: "2026-07-14T10:01:00.000Z",
-        },
-      });
-    });
+    context.mocks.api(
+      zeroMailContract.updateDraft,
+      async ({ body, respond }) => {
+        savedBody = body;
+        updateStarted.resolve();
+        await releaseUpdate.promise;
+        return respond(200, {
+          mailDraftId,
+          mailDraftUrl,
+          mailDraft: {
+            version: 2,
+            provider: "gmail",
+            from: "sender@example.com",
+            ...body,
+            cc: body.cc ?? [],
+            bcc: body.bcc ?? [],
+            status: "draft",
+            resourceStatus: "draft",
+            detailAvailable: true,
+            gmailDraftId: "r-test-draft",
+            gmailThreadId: "gmail-thread-id",
+            gmailMessageId: "gmail-message-id-updated",
+            references: [],
+            createdAt,
+            updatedAt: "2026-07-14T10:01:00.000Z",
+          },
+        });
+      },
+    );
     context.mocks.api(zeroMailContract.sendDraft, ({ body, respond }) => {
       sentBody = body;
       return respond(200, {
@@ -351,6 +358,14 @@ describe("chat message action cards", () => {
     const subject = within(sidebar).getByRole("textbox", { name: "Subject" });
     await fill(subject, "Shared subject");
     subject.blur();
+
+    await updateStarted.promise;
+    sidebar = await screen.findByTestId("mail-draft-sidebar");
+    const pendingSend = buttonByText("Send", sidebar);
+    expect(pendingSend).toBeDisabled();
+    await user.click(pendingSend);
+    expect(sentBody).toBeNull();
+    releaseUpdate.resolve();
 
     await waitFor(() => {
       expect(savedBody).toStrictEqual({
