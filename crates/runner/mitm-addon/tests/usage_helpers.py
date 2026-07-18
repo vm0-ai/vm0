@@ -88,7 +88,7 @@ def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
                 usage.flush_usage_events(trigger="shutdown")
             finally:
                 executor.shutdown(wait=True)
-            usage.drain_usage_events_after_executor_shutdown()
+                usage.drain_usage_events_after_executor_shutdown()
         finally:
             usage.webhook.usage_executor = original
 
@@ -98,6 +98,7 @@ class WebhookResponse:
     status: int = 204
     headers: tuple[tuple[str, str], ...] = ()
     body: bytes = b""
+    release_event: threading.Event | None = None
 
 
 @dataclass(frozen=True)
@@ -119,8 +120,10 @@ class CapturedWebhookRequest:
 class UsageWebhookServer:
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._request_condition = threading.Condition()
         self._requests: list[CapturedWebhookRequest] = []
         self._responses: deque[WebhookResponse] = deque()
+        self._release_events: list[threading.Event] = []
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -151,10 +154,27 @@ class UsageWebhookServer:
         *,
         headers: Sequence[tuple[str, str]] = (),
         body: bytes = b"",
+        release_event: threading.Event | None = None,
     ) -> None:
+        """Queue a response, optionally blocking it until an event is set."""
         with self._lock:
+            if release_event is not None:
+                self._release_events.append(release_event)
             self._responses.append(
-                WebhookResponse(status=status, headers=tuple(headers), body=body)
+                WebhookResponse(
+                    status=status,
+                    headers=tuple(headers),
+                    body=body,
+                    release_event=release_event,
+                )
+            )
+
+    def wait_for_request_count(self, count: int, *, timeout: float = 2.0) -> bool:
+        """Wait until at least ``count`` requests have been recorded."""
+        with self._request_condition:
+            return self._request_condition.wait_for(
+                lambda: self.request_count >= count,
+                timeout,
             )
 
     def json_bodies(self) -> list[dict[str, Any]]:
@@ -204,6 +224,11 @@ class UsageWebhookServer:
         try:
             yield self
         finally:
+            with self._lock:
+                release_events = tuple(self._release_events)
+                self._release_events.clear()
+            for release_event in release_events:
+                release_event.set()
             self._server.shutdown()
             self._thread.join(timeout=2.0)
             self._server.server_close()
@@ -215,9 +240,10 @@ class UsageWebhookServer:
     ) -> WebhookResponse:
         with self._lock:
             self._requests.append(request)
-            if self._responses:
-                return self._responses.popleft()
-            return WebhookResponse()
+            response = self._responses.popleft() if self._responses else WebhookResponse()
+        with self._request_condition:
+            self._request_condition.notify_all()
+        return response
 
     def _handle_request(self, handler: BaseHTTPRequestHandler) -> None:
         content_length = int(handler.headers.get("content-length", "0"))
@@ -230,6 +256,8 @@ class UsageWebhookServer:
                 body=body,
             )
         )
+        if response.release_event is not None:
+            response.release_event.wait()
 
         handler.send_response(response.status)
         for name, value in response.headers:

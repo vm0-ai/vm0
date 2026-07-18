@@ -68,7 +68,7 @@ def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure(tmp_pa
         use_fresh_executor()
 
     flush.assert_called_once_with(trigger="shutdown")
-    enqueue.assert_called_once()
+    assert enqueue.call_count == 2
     assert usage.webhook.usage_executor is original
     with pytest.raises(RuntimeError, match="shutdown"):
         executors[0].submit(lambda: None)

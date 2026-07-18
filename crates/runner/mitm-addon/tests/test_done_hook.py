@@ -12,7 +12,7 @@ import usage
 from tests.pending_helpers import assert_current_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
 from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
-from tests.usage_helpers import install_recording_usage_timer
+from tests.usage_helpers import UsageWebhookServer, install_recording_usage_timer
 
 
 class TestDoneHook:
@@ -241,41 +241,35 @@ class TestDoneHook:
         self,
         tmp_path,
         fresh_usage_executor,
+        mitm_ctx,
     ):
         pending_path = tmp_path / "usage-pending"
         proxy_log_path = tmp_path / "proxy.jsonl"
         usage.set_pending_path(str(pending_path))
         timers = install_recording_usage_timer()
-        post_payloads: list[bytes] = []
-        post_threads: list[threading.Thread] = []
-
-        def post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
-            del url, sandbox_token
-            post_payloads.append(data)
-            post_threads.append(threading.current_thread())
-            if len(post_payloads) <= 2:
-                raise OSError("retry after executor shutdown")
-
-        usage.buffer_usage_events(
-            "https://api.test/api/webhooks/agent/usage-event",
-            "token-a",
-            "run-1",
-            [event(source_key="source-1")],
-            str(proxy_log_path),
-        )
+        server = UsageWebhookServer()
+        server.queue_response(500)
+        server.queue_response(500)
+        server.queue_response(204)
 
         with (
-            patch.object(usage.webhook, "_post_webhook", side_effect=post_webhook),
+            server.run(),
+            mitm_ctx(),
             patch.object(usage.webhook.time, "sleep"),
             patch.object(mitm_addon.auth_base_forwarder, "shutdown_forward_request_workers"),
             patch.object(mitm_addon, "shutdown_log_writer"),
         ):
+            usage.buffer_usage_events(
+                server.url(),
+                "token-a",
+                "run-1",
+                [event(source_key="source-1")],
+                str(proxy_log_path),
+            )
             mitm_addon.done()
 
-        assert len(post_payloads) == 3
-        assert post_payloads == [post_payloads[0]] * 3
-        assert post_threads[:2] == [post_threads[0]] * 2
-        assert post_threads[2] is threading.current_thread()
+        assert server.request_count == 3
+        assert server.json_bodies() == [server.json_bodies()[0]] * 3
         assert len(timers) == 1
         assert timers[0].cancelled is True
         assert_current_pending(
@@ -290,27 +284,18 @@ class TestDoneHook:
         self,
         tmp_path,
         fresh_usage_executor,
+        mitm_ctx,
     ):
         pending_path = tmp_path / "usage-pending"
         proxy_log_path = tmp_path / "proxy.jsonl"
         usage.set_pending_path(str(pending_path))
         timers = install_recording_usage_timer()
-        first_post_started = threading.Event()
         release_first_post = threading.Event()
         executor_shutdown_started = threading.Event()
-        post_payloads: list[bytes] = []
-        post_threads: list[threading.Thread] = []
-
-        def post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
-            del url, sandbox_token
-            post_payloads.append(data)
-            post_threads.append(threading.current_thread())
-            if len(post_payloads) == 1:
-                first_post_started.set()
-                if not release_first_post.wait(timeout=1):
-                    raise AssertionError("test did not release the first delivery")
-            if len(post_payloads) <= 2:
-                raise OSError("retry after executor shutdown")
+        server = UsageWebhookServer()
+        server.queue_response(500, release_event=release_first_post)
+        server.queue_response(500)
+        server.queue_response(204)
 
         original_shutdown = fresh_usage_executor.shutdown
 
@@ -319,7 +304,8 @@ class TestDoneHook:
             original_shutdown(wait=wait)
 
         with (
-            patch.object(usage.webhook, "_post_webhook", side_effect=post_webhook),
+            server.run(),
+            mitm_ctx(),
             patch.object(usage.webhook.time, "sleep"),
             patch.object(
                 fresh_usage_executor,
@@ -330,14 +316,14 @@ class TestDoneHook:
             patch.object(mitm_addon, "shutdown_log_writer"),
         ):
             usage.buffer_usage_events(
-                "https://api.test/api/webhooks/agent/usage-event",
+                server.url(),
                 "token-a",
                 "run-1",
                 [event(source_key="source-1")],
                 str(proxy_log_path),
             )
             assert usage.flush_usage_events(trigger="runner") == 1
-            assert first_post_started.wait(timeout=1)
+            assert server.wait_for_request_count(1)
 
             done_thread = ThreadUnderTest(target=mitm_addon.done)
             try:
@@ -355,10 +341,8 @@ class TestDoneHook:
                 release_first_post.set()
                 done_thread.join(timeout=1)
 
-        assert len(post_payloads) == 3
-        assert post_payloads == [post_payloads[0]] * 3
-        assert post_threads[:2] == [post_threads[0]] * 2
-        assert post_threads[2] is not post_threads[0]
+        assert server.request_count == 3
+        assert server.json_bodies() == [server.json_bodies()[0]] * 3
         assert len(timers) == 2
         assert all(timer.cancelled for timer in timers)
         assert_current_pending(
