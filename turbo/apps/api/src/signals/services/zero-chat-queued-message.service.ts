@@ -101,14 +101,18 @@ export async function enqueueUserMessageQueueItem(
 
 export async function deleteUserMessageQueueItem(
   db: Db,
-  chatMessageId: string,
+  args: {
+    readonly threadId: string;
+    readonly messageId: string;
+  },
 ): Promise<boolean> {
   const deleted = await db
     .delete(chatMessageQueue)
     .where(
       and(
         eq(chatMessageQueue.itemType, "user_message"),
-        eq(chatMessageQueue.chatMessageId, chatMessageId),
+        eq(chatMessageQueue.chatThreadId, args.threadId),
+        eq(chatMessageQueue.chatMessageId, args.messageId),
       ),
     )
     .returning({ id: chatMessageQueue.id });
@@ -173,7 +177,14 @@ export async function appendClaimedUserMessage(
   if (!claimed) {
     return null;
   }
-  await deleteUserMessageQueueItem(db, args.messageId);
+  if (
+    !(await deleteUserMessageQueueItem(db, {
+      threadId: args.threadId,
+      messageId: args.messageId,
+    }))
+  ) {
+    throw new Error("Claimed user message queue item disappeared");
+  }
   return claimed;
 }
 
@@ -216,11 +227,20 @@ export async function discardUnclaimedUserMessage(
   },
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await deleteUserMessageQueueItem(tx, args.messageId);
-    await deleteChatMessage(tx, args.messageId, {
+    const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
+      threadId: args.threadId,
+      messageId: args.messageId,
+    });
+    if (!queueItemDeleted) {
+      return;
+    }
+    const tombstone = await deleteChatMessage(tx, args.messageId, {
       chatThreadId: args.threadId,
       role: "user",
       runId: null,
     });
+    if (!tombstone) {
+      throw new Error("Failed to append discarded user message tombstone");
+    }
   });
 }

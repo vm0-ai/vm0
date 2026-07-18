@@ -1131,6 +1131,65 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, first.runId);
     expect((await api.readRun(actor, first.runId)).status).toBe("cancelled");
   }, 90_000);
+
+  it("keeps a queued message when recall targets another owned thread", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "cross-thread recall anchor",
+    });
+    const queuedMessageId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "must remain queued in the original thread",
+        clientMessageId: queuedMessageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    const otherThread = await chat.createThread(actor, {
+      agentId,
+      title: "Cross-thread recall target",
+    });
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: otherThread.id,
+        revokesMessageId: queuedMessageId,
+        clientMessageId: randomUUID(),
+      },
+      [201, 400],
+    );
+
+    await cancelChatRun(actor, anchor.runId);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === queuedMessageId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.revokesMessageId === queuedMessageId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the original queued message to create a run");
+    }
+    expect(promoted.content).toBe("must remain queued in the original thread");
+    await cancelChatRun(actor, promoted.runId);
+  }, 90_000);
 });
 
 describe("CHAT-02: org queue markers", () => {

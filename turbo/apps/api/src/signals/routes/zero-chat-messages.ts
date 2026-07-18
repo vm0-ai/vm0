@@ -1732,7 +1732,10 @@ function appendRecallUserMessage(params: {
     // Deleting the queue item atomically wins the queued message. If a
     // concurrent claim wins first, its replacement remains linked and the
     // revoker check below rejects recall.
-    await deleteUserMessageQueueItem(tx, params.revokesMessageId);
+    const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
+      threadId: params.threadId,
+      messageId: params.revokesMessageId,
+    });
 
     const [existingRevoker] = await tx
       .select({
@@ -1783,6 +1786,9 @@ function appendRecallUserMessage(params: {
       (target.revokesMessageId !== null &&
         target.error !== INSUFFICIENT_CREDITS_MARKER)
     ) {
+      if (queueItemDeleted) {
+        throw new Error("Queued message is not recallable");
+      }
       const [exists] = await tx
         .select({ id: chatMessages.id })
         .from(chatMessages)
@@ -1826,6 +1832,9 @@ function appendRecallUserMessage(params: {
       )
       .limit(1);
     if (!resolved) {
+      if (queueItemDeleted) {
+        throw new Error("Failed to append recall user message");
+      }
       return { ok: false, message: "Failed to insert recall user message" };
     }
     return { ok: true, createdAt: resolved.createdAt };
@@ -2677,7 +2686,10 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
       throw new Error("Queue-first message is no longer available");
     }
 
-    await deleteUserMessageQueueItem(tx, params.messageId);
+    const queueItemDeleted = await deleteUserMessageQueueItem(tx, {
+      threadId: params.prepared.thread.threadId,
+      messageId: params.messageId,
+    });
     const replacement = await updateChatMessage(tx, params.messageId, {
       chatThreadId: params.prepared.thread.threadId,
       role: "user",
@@ -2704,6 +2716,8 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
         createdAt: assistantCreatedAt,
         runId: null,
       });
+    } else if (queueItemDeleted) {
+      throw new Error("Failed to append insufficient-credits replacement");
     }
     return queuedMessage.createdAt;
   });

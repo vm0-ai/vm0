@@ -8,16 +8,16 @@ type ChatMessageWriteDb = Pick<Db, "insert">;
 
 export type NewChatMessage = Omit<ChatMessageInsert, "revokesMessageId">;
 
-export interface ChatMessageCommandResult {
+interface ChatMessageCommandResult {
   readonly id: string;
   readonly createdAt: Date;
 }
 
-export type InsertChatMessageConflict = "none" | "any" | "id" | "run-lifecycle";
+type InsertChatMessageConflict = "none" | "any" | "id" | "run-lifecycle";
 
-export type InsertChatMessagesConflict = "any" | "run-sequence";
+type InsertChatMessagesConflict = "any" | "run-sequence";
 
-export interface DeleteChatMessageInput {
+interface DeleteChatMessageInput {
   readonly id?: string;
   readonly chatThreadId: string;
   readonly role: ChatMessageInsert["role"];
