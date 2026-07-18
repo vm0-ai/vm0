@@ -197,10 +197,14 @@ async function replaceFeedbackNote(
   await fastUser.keyboard(value);
 }
 
-function dispatchDocumentShortcut(key: string): KeyboardEvent {
+function dispatchDocumentShortcut(
+  key: string,
+  init?: Omit<KeyboardEventInit, "key">,
+): KeyboardEvent {
   const event = new KeyboardEvent("keydown", {
     bubbles: true,
     cancelable: true,
+    ...init,
     key,
   });
   document.dispatchEvent(event);
@@ -780,6 +784,48 @@ describe("chat inline feedback", () => {
     await waitForDeferredSelectionCapture();
 
     expect(composerEditor).toHaveFocus();
+  });
+
+  it("dismisses the inline feedback toolbar after the system copy shortcut", async () => {
+    const assistantReply = "Copy this passage with the system shortcut.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-copy-shortcut-user",
+          role: "user",
+          content: "Review this passage",
+          runId: "run-feedback-copy-shortcut",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-copy-shortcut-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-copy-shortcut",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    const event = dispatchDocumentShortcut("c", { ctrlKey: true });
+    expect(event.defaultPrevented).toBeFalsy();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    });
   });
 
   it("focuses the inline feedback composer when started from the keyboard shortcut", async () => {

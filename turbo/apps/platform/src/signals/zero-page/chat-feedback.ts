@@ -444,7 +444,18 @@ function createSelectionToolbarRef({
       el.ownerDocument.addEventListener(
         "keydown",
         onDomEventFn(async (event: KeyboardEvent) => {
-          if (event.defaultPrevented || toolbarSignal.aborted) {
+          if (toolbarSignal.aborted) {
+            return;
+          }
+          if (matchShortcut("mod+c", event)) {
+            // Let the browser copy the native selection before clearing it.
+            // Closing synchronously here would leave the default copy action
+            // with no selected text to put on the clipboard.
+            await delay(0, { signal: toolbarSignal });
+            set(closeSelectionToolbar$);
+            return;
+          }
+          if (event.defaultPrevented) {
             return;
           }
           if (matchShortcut("escape", event)) {
