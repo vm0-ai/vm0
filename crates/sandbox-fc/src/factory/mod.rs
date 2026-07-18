@@ -81,13 +81,15 @@ impl FirecrackerFactory {
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
         let mode = match config.snapshot.as_ref() {
-            Some(snapshot) => prerequisites::PrerequisiteMode::FactorySnapshotRestore { snapshot },
+            Some(snapshot) => prerequisites::PrerequisiteMode::FactorySnapshotRestore {
+                snapshot: snapshot.clone(),
+            },
             None => prerequisites::PrerequisiteMode::FactoryFresh,
         };
-        prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
-            binary_path: &config.binary_path,
-            kernel_path: &config.kernel_path,
-            rootfs_path: &config.rootfs_path,
+        prerequisites::check_prerequisites(prerequisites::PrerequisiteConfig {
+            binary_path: config.binary_path.clone(),
+            kernel_path: config.kernel_path.clone(),
+            rootfs_path: config.rootfs_path.clone(),
             mode,
         })
         .await?;
@@ -106,7 +108,8 @@ impl FirecrackerFactory {
                     proxy_port: config.proxy_port,
                     dns_port: config.dns_port,
                 }
-                .into_checked()?;
+                .into_checked()
+                .await?;
                 let netns_pool = NetnsPoolHandle::create_checked(netns_config)
                     .await
                     .map_err(|e| SandboxError::Initialization {
