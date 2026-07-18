@@ -16,6 +16,7 @@ import {
   type GenerationTemplateRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -37,6 +38,10 @@ import {
 } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import {
+  createConnectorBddApi,
+  mockGmailConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
@@ -75,6 +80,7 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const connectors = createConnectorBddApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
@@ -1580,6 +1586,121 @@ describe("CHAT-02: admission without spendable credits", () => {
   }, 60_000);
 });
 
+describe("CHAT-02: Zero Mail link delivery", () => {
+  it("delivers a linked Gmail draft exactly once through the agent reply", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ZeroMail]: true },
+    );
+    mockGmailConnectorOAuth({
+      accessToken: "gmail-agent-reply-token",
+      email: "sender@example.com",
+    });
+    const oauth = await connectors.startOauth(actor, "gmail", "oauth");
+    const oauthState = new URL(oauth.authorizationUrl).searchParams.get(
+      "state",
+    );
+    if (!oauthState) {
+      throw new Error("Expected Gmail OAuth state");
+    }
+    await connectors.completeOauthCallback("gmail", {
+      code: "gmail-agent-reply-code",
+      state: oauthState,
+    });
+    await api.enableAgentConnectors(actor, agentId, ["gmail"]);
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Create a Gmail draft and let me review it",
+    });
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    const gmailDraftId = "r-agent-reply-draft";
+    server.use(
+      http.get(
+        "https://gmail.googleapis.com/gmail/v1/users/me/drafts/:draftId",
+        ({ params, request }) => {
+          expect(params.draftId).toBe(gmailDraftId);
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer gmail-agent-reply-token",
+          );
+          expect(new URL(request.url).searchParams.get("format")).toBe("full");
+          return HttpResponse.json({
+            id: gmailDraftId,
+            message: {
+              id: "gmail-agent-reply-message",
+              threadId: "gmail-agent-reply-thread",
+              payload: {
+                mimeType: "text/plain",
+                filename: "",
+                headers: [
+                  { name: "From", value: "Sender <sender@example.com>" },
+                  { name: "To", value: "recipient@example.com" },
+                  { name: "Subject", value: "Review this draft" },
+                ],
+                body: { size: 9, data: "TWFpbCBib2R5" },
+              },
+            },
+          });
+        },
+      ),
+    );
+
+    const linked = await accept(
+      setupApp({ context })(zeroMailContract).linkDraft({
+        headers: {
+          authorization: `Bearer ${zeroTokenFromClaim(claim)}`,
+        },
+        body: {
+          threadId: run.threadId,
+          agentId,
+          gmailDraftId,
+        },
+      }),
+      [200],
+    );
+    const beforeReply = await chat.listThreadMessages(actor, run.threadId);
+    expect(
+      assistantMessages(beforeReply.messages).filter((message) => {
+        return message.content?.includes(linked.body.mailDraftUrl);
+      }),
+    ).toHaveLength(0);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, linked.body.mailDraftUrl),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    const completed = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (messages) => {
+        return assistantMessages(messages).some((message) => {
+          return message.content === linked.body.mailDraftUrl;
+        });
+      },
+    );
+    expect(
+      assistantMessages(completed.messages).filter((message) => {
+        return message.content?.includes(linked.body.mailDraftUrl);
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        content: linked.body.mailDraftUrl,
+        runId: run.runId,
+      }),
+    ]);
+  });
+});
+
 describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -1627,9 +1748,9 @@ describe("CHAT-02: model-first provider policies", () => {
       "You are currently running inside: Web",
     );
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
-    expect(appendSystemPrompt).toContain("zero mail send --help");
+    expect(appendSystemPrompt).toContain("zero mail link <gmail-draft-id>");
     expect(appendSystemPrompt).toContain(
-      "include the returned Card URL exactly once in your assistant response",
+      "return the link from the command to the user",
     );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");

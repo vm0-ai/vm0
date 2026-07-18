@@ -67,6 +67,14 @@ interface ClientHeaderLogFields {
   readonly x_client_request_id?: string;
 }
 
+function isSupportedZeroMailClientVersion(
+  clientVersion: string | undefined,
+): boolean {
+  // Keep already-open v2 browser tabs working while the v3 mail UI rolls out.
+  // Remove v2 only after the v3 frontend rollout window has fully drained.
+  return clientVersion === "2" || clientVersion === ZERO_MAIL_CLIENT_VERSION;
+}
+
 interface AxiomRequestLogEvent
   extends ClientHeaderLogFields, Record<string, unknown> {
   readonly _time: string;
@@ -453,11 +461,14 @@ async function webClientCompatibilityMiddleware(
 ): Promise<Response | void> {
   const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
   const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
+  const zeroMailClientVersion = requestHeader(
+    context,
+    ZERO_MAIL_CLIENT_VERSION_HEADER,
+  );
   const staleZeroMailClient =
     clientType === CLIENT_TYPE_APP &&
     requestPathname(context).startsWith("/api/zero/mail/") &&
-    requestHeader(context, ZERO_MAIL_CLIENT_VERSION_HEADER) !==
-      ZERO_MAIL_CLIENT_VERSION;
+    !isSupportedZeroMailClientVersion(zeroMailClientVersion);
   if (
     staleZeroMailClient ||
     (clientType === CLIENT_TYPE_APP &&

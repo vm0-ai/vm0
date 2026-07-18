@@ -22,26 +22,11 @@ export interface MailDraftDescriptor {
   readonly href: string;
 }
 
-export interface MailDraftFields {
-  readonly to: readonly string[];
-  readonly cc: readonly string[];
-  readonly bcc: readonly string[];
-  readonly subject: string;
-  readonly body: string;
-}
-
 export interface MailDraftSignals extends MailDraftDescriptor {
   readonly draft$: Computed<Promise<ZeroMailDraft | null>>;
   readonly reload$: Command<void, []>;
-  readonly update$: Command<
-    Promise<ZeroMailDraft>,
-    [MailDraftFields, AbortSignal]
-  >;
   readonly delete$: Command<Promise<void>, [AbortSignal]>;
-  readonly send$: Command<
-    Promise<ZeroMailDraft>,
-    [MailDraftFields, AbortSignal]
-  >;
+  readonly send$: Command<Promise<ZeroMailDraft>, [AbortSignal]>;
 }
 
 export interface MailDraftCardSignalsRegistry {
@@ -170,27 +155,6 @@ function createMailDraftSignals(
       return version + 1;
     });
   });
-  const update$ = command(
-    async ({ get, set }, fields: MailDraftFields, signal: AbortSignal) => {
-      const response = await accept(
-        get(zeroClient$)(zeroMailContract).updateDraft({
-          params: { mailDraftId: descriptor.mailDraftId },
-          body: {
-            to: [...fields.to],
-            cc: [...fields.cc],
-            bcc: [...fields.bcc],
-            subject: fields.subject,
-            body: fields.body,
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      set(mutationDraft$, response.body.mailDraft);
-      return response.body.mailDraft;
-    },
-  );
   const delete$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       await accept(
@@ -204,28 +168,19 @@ function createMailDraftSignals(
       set(mutationDraft$, null);
     },
   );
-  const send$ = command(
-    async ({ get, set }, fields: MailDraftFields, signal: AbortSignal) => {
-      const response = await accept(
-        get(zeroClient$)(zeroMailContract).sendDraft({
-          params: { mailDraftId: descriptor.mailDraftId },
-          body: {
-            to: [...fields.to],
-            cc: [...fields.cc],
-            bcc: [...fields.bcc],
-            subject: fields.subject,
-            body: fields.body,
-          },
-          fetchOptions: { signal },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-      set(mutationDraft$, response.body.mailDraft);
-      return response.body.mailDraft;
-    },
-  );
-  return { ...descriptor, draft$, reload$, update$, delete$, send$ };
+  const send$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const response = await accept(
+      get(zeroClient$)(zeroMailContract).sendDraft({
+        params: { mailDraftId: descriptor.mailDraftId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(mutationDraft$, response.body.mailDraft);
+    return response.body.mailDraft;
+  });
+  return { ...descriptor, draft$, reload$, delete$, send$ };
 }
 
 export function createMailDraftCardSignalsRegistry(): MailDraftCardSignalsRegistry {
