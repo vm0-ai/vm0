@@ -3,12 +3,12 @@
 import builtin_connector_diagnostics
 import builtin_firewall_cache
 
-_TEST_FILE_KEY: builtin_firewall_cache.CatalogFileKey = (
-    "/test/catalog.json",
-    1,
-    1,
-    1,
-    1,
+_TEST_FILE_KEY = builtin_firewall_cache.CatalogFileKey(
+    absolute_path="/test/catalog.json",
+    st_dev=1,
+    st_ino=1,
+    st_mtime_ns=1,
+    st_size=1,
 )
 
 
@@ -47,10 +47,15 @@ def _diagnostic_snapshot(
     raw_snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
         dependency_file_key=_TEST_FILE_KEY,
         catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
-            identity=("cache", "sha256:" + "0" * 64, "test", _TEST_FILE_KEY),
+            identity=builtin_firewall_cache.CatalogIdentity(
+                source="cache",
+                catalog_digest="sha256:" + "0" * 64,
+                catalog_version="test",
+                file_key=_TEST_FILE_KEY,
+            ),
             firewalls={firewall["name"]: firewall for firewall in firewalls},
         ),
-        cache_path=_TEST_FILE_KEY[0],
+        cache_path=_TEST_FILE_KEY.absolute_path,
     )
     return builtin_connector_diagnostics._compile_diagnostic_snapshot(raw_snapshot)
 
