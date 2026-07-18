@@ -5,10 +5,8 @@ import { command } from "ccstate";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   zeroMailDraftSchema,
-  zeroMailLegacyDraftSchema,
   type ZeroMailDraft,
-  type ZeroMailDraftResourceStatus,
-  type ZeroMailLegacyDraft,
+  type ZeroMailDraftStatus,
   type ZeroMailProvider,
 } from "@vm0/api-contracts/contracts/zero-mail";
 import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
@@ -84,16 +82,15 @@ export type ZeroMailDraftMutationResult =
   | MailDraftErrorResult;
 
 interface NewMailDraftRow {
-  readonly kind: "gmail";
   readonly id: string;
   readonly agentId: string;
   readonly chatThreadId: string;
   readonly connectorId: string | null;
-  readonly gmailDraftId: string | null;
-  readonly gmailThreadId: string | null;
-  readonly gmailMessageId: string | null;
+  readonly gmailDraftId: string;
+  readonly gmailThreadId: string;
+  readonly gmailMessageId: string;
   readonly sentGmailMessageId: string | null;
-  readonly status: ZeroMailDraftResourceStatus;
+  readonly status: ZeroMailDraftStatus;
   readonly senderName: string | null;
   readonly senderAddress: string;
   readonly subject: string;
@@ -101,16 +98,6 @@ interface NewMailDraftRow {
   readonly updatedAt: Date;
   readonly sentAt: Date | null;
 }
-
-interface LegacyMailDraftRow {
-  readonly kind: "legacy";
-  readonly id: string;
-  readonly agentId: string;
-  readonly chatThreadId: string;
-  readonly draft: ZeroMailLegacyDraft;
-}
-
-type StoredMailDraftRow = NewMailDraftRow | LegacyMailDraftRow;
 
 interface MailAccessTokenSuccess {
   readonly kind: "ok";
@@ -279,52 +266,10 @@ async function loadOwnedNewMailDraft(args: {
       ),
     )
     .limit(1);
-  if (!row?.status || !row.senderAddress || row.subject === null) {
+  if (!row) {
     return null;
   }
-  return {
-    kind: "gmail",
-    ...row,
-    status: row.status,
-    senderAddress: row.senderAddress,
-    subject: row.subject,
-  };
-}
-
-async function loadOwnedLegacyMailDraft(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly mailDraftId: string;
-}): Promise<LegacyMailDraftRow | null> {
-  const [row] = await args.db
-    .select({
-      id: mailDrafts.id,
-      agentId: chatThreads.agentComposeId,
-      chatThreadId: chatThreads.id,
-      draft: mailDrafts.draft,
-    })
-    .from(mailDrafts)
-    .innerJoin(chatThreads, eq(chatThreads.id, mailDrafts.chatThreadId))
-    .innerJoin(agentComposes, eq(agentComposes.id, chatThreads.agentComposeId))
-    .where(
-      and(
-        eq(mailDrafts.id, args.mailDraftId),
-        eq(chatThreads.userId, args.userId),
-        eq(agentComposes.orgId, args.orgId),
-      ),
-    )
-    .limit(1);
-  if (!row?.draft) {
-    return null;
-  }
-  return {
-    kind: "legacy",
-    id: row.id,
-    agentId: row.agentId,
-    chatThreadId: row.chatThreadId,
-    draft: zeroMailLegacyDraftSchema.parse(row.draft),
-  };
+  return row;
 }
 
 async function loadOwnedMailDraft(args: {
@@ -332,11 +277,8 @@ async function loadOwnedMailDraft(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly mailDraftId: string;
-}): Promise<StoredMailDraftRow | null> {
-  return (
-    (await loadOwnedNewMailDraft(args)) ??
-    (await loadOwnedLegacyMailDraft(args))
-  );
+}): Promise<NewMailDraftRow | null> {
+  return await loadOwnedNewMailDraft(args);
 }
 
 async function upsertConnectorSecret(args: {
@@ -799,18 +741,6 @@ async function gmailDeleteDraft(args: {
   }
 }
 
-function detailsFromLegacy(draft: ZeroMailLegacyDraft): MailDetails {
-  return {
-    from: draft.from,
-    to: draft.to,
-    cc: [],
-    bcc: [],
-    subject: draft.subject,
-    body: draft.body,
-    references: [],
-  };
-}
-
 function responseDetails(
   row: NewMailDraftRow,
   details: MailDetails | null,
@@ -828,26 +758,6 @@ function responseDetails(
     body: "",
     references: [],
   };
-}
-
-function legacyStatusForResourceStatus(
-  status: ZeroMailDraftResourceStatus,
-): ZeroMailLegacyDraft["status"] {
-  switch (status) {
-    case "draft": {
-      return "draft";
-    }
-    case "sent": {
-      return "sent";
-    }
-    case "deleted": {
-      return "cancelled";
-    }
-  }
-}
-
-function optionalString(value: string | null): string | undefined {
-  return value ?? undefined;
 }
 
 function optionalTimestamp(value: Date | null): string | undefined {
@@ -874,42 +784,15 @@ function responseDraft(args: {
     replyTo: response.replyTo,
     inReplyTo: response.inReplyTo,
     references: response.references,
-    status: legacyStatusForResourceStatus(row.status),
-    resourceStatus: row.status,
+    status: row.status,
     detailAvailable: args.detailAvailable,
-    gmailDraftId: optionalString(row.gmailDraftId),
-    gmailThreadId: optionalString(row.gmailThreadId),
-    gmailMessageId: optionalString(row.gmailMessageId),
-    sentGmailMessageId: optionalString(row.sentGmailMessageId),
+    gmailDraftId: row.gmailDraftId,
+    gmailThreadId: row.gmailThreadId,
+    gmailMessageId: row.gmailMessageId,
+    sentGmailMessageId: row.sentGmailMessageId ?? undefined,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     sentAt: optionalTimestamp(row.sentAt),
-  });
-}
-
-function responseDraftFromLegacy(row: LegacyMailDraftRow): ZeroMailDraft {
-  const resourceStatus: ZeroMailDraftResourceStatus =
-    row.draft.status === "sent"
-      ? "sent"
-      : row.draft.status === "cancelled"
-        ? "deleted"
-        : "draft";
-  return zeroMailDraftSchema.parse({
-    version: 2,
-    provider: "gmail",
-    from: row.draft.from,
-    to: row.draft.to,
-    cc: [],
-    bcc: [],
-    subject: row.draft.subject,
-    body: row.draft.body,
-    references: [],
-    status: row.draft.status,
-    resourceStatus,
-    detailAvailable: resourceStatus !== "deleted",
-    createdAt: row.draft.createdAt,
-    updatedAt: row.draft.updatedAt,
-    sentAt: row.draft.sentAt,
   });
 }
 
@@ -917,7 +800,7 @@ async function connectionForRow(args: {
   readonly db: ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
-  readonly row: StoredMailDraftRow;
+  readonly row: NewMailDraftRow;
 }): Promise<MailConnection | null> {
   const connections = await loadMailConnections({
     db: args.db,
@@ -925,18 +808,10 @@ async function connectionForRow(args: {
     userId: args.userId,
     agentId: args.row.agentId,
   });
-  if (args.row.kind === "gmail") {
-    const connectorId = args.row.connectorId;
-    return (
-      connections.find((connection) => {
-        return connection.connectorId === connectorId;
-      }) ?? null
-    );
-  }
-  const senderAddress = args.row.draft.from;
+  const connectorId = args.row.connectorId;
   return (
     connections.find((connection) => {
-      return connection.externalEmail === senderAddress;
+      return connection.connectorId === connectorId;
     }) ?? null
   );
 }
@@ -946,7 +821,7 @@ async function accessForRow(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly row: StoredMailDraftRow;
+  readonly row: NewMailDraftRow;
   readonly signal: AbortSignal;
 }): Promise<
   { readonly kind: "ok"; readonly accessToken: string } | MailDraftErrorResult
@@ -989,7 +864,6 @@ async function persistCreatedDraft(args: {
     }
     await tx.insert(mailDrafts).values({
       id: args.mailDraftId,
-      draft: null,
       chatThreadId: args.threadId,
       connectorId: args.connection.connectorId,
       gmailDraftId: args.gmail.draftId,
@@ -1100,9 +974,6 @@ async function getNewDraft(args: {
       }),
     );
   }
-  if (!args.row.gmailDraftId) {
-    throw new Error("Gmail draft row is missing gmailDraftId");
-  }
   const gmail = await gmailGetDraft({
     accessToken: access.accessToken,
     gmailDraftId: args.row.gmailDraftId,
@@ -1128,18 +999,6 @@ async function getNewDraft(args: {
       detailAvailable: true,
     }),
   );
-}
-
-async function replaceLegacyDraft(args: {
-  readonly db: Db;
-  readonly row: LegacyMailDraftRow;
-  readonly draft: ZeroMailLegacyDraft;
-}): Promise<LegacyMailDraftRow> {
-  await args.db
-    .update(mailDrafts)
-    .set({ draft: args.draft, updatedAt: nowDate() })
-    .where(eq(mailDrafts.id, args.row.id));
-  return { ...args.row, draft: args.draft };
 }
 
 export const createZeroMailDraft$ = command(
@@ -1271,9 +1130,6 @@ export const getZeroMailDraft$ = command(
     if (!row) {
       return { kind: "not_found", message: "Mail draft not found" };
     }
-    if (row.kind === "legacy") {
-      return okResult(row.id, responseDraftFromLegacy(row));
-    }
     return await getNewDraft({
       db,
       writeDb: set(writeDb$),
@@ -1306,30 +1162,7 @@ export const updateZeroMailDraft$ = command(
     if (!row) {
       return { kind: "not_found", message: "Mail draft not found" };
     }
-    if (row.kind === "legacy") {
-      if (row.draft.status !== "draft" && row.draft.status !== "failed") {
-        return {
-          kind: "conflict",
-          message: "This mail draft cannot be edited",
-        };
-      }
-      const updated = await replaceLegacyDraft({
-        db: set(writeDb$),
-        row,
-        draft: {
-          ...row.draft,
-          to: [...args.to],
-          subject: args.subject,
-          body: args.body,
-          status: "draft",
-          updatedAt: nowDate().toISOString(),
-          error: undefined,
-        },
-      });
-      signal.throwIfAborted();
-      return okResult(updated.id, responseDraftFromLegacy(updated));
-    }
-    if (row.status !== "draft" || !row.gmailDraftId) {
+    if (row.status !== "draft") {
       return { kind: "conflict", message: "This mail draft cannot be edited" };
     }
     const access = await accessForRow({
@@ -1408,64 +1241,68 @@ export const deleteZeroMailDraft$ = command(
     if (!row) {
       return { kind: "not_found", message: "Mail draft not found" };
     }
-    if (row.kind === "gmail") {
-      if (row.status !== "draft" || !row.gmailDraftId) {
-        return {
-          kind: "conflict",
-          message: "Only an active draft can be deleted",
-        };
-      }
-      const access = await accessForRow({
-        db,
-        writeDb: set(writeDb$),
-        orgId: args.orgId,
-        userId: args.userId,
-        row,
-        signal,
-      });
-      if (access.kind !== "ok") {
-        return access;
-      }
-      await gmailDeleteDraft({
-        accessToken: access.accessToken,
-        gmailDraftId: row.gmailDraftId,
-        signal,
-      });
-      signal.throwIfAborted();
+    if (row.status !== "draft") {
+      return {
+        kind: "conflict",
+        message: "Only an active draft can be deleted",
+      };
     }
-    const deletedDraft =
-      row.kind === "gmail"
-        ? responseDraft({
-            row: { ...row, status: "deleted" },
-            details: null,
-            detailAvailable: false,
-          })
-        : responseDraftFromLegacy({
-            ...row,
-            draft: {
-              ...row.draft,
-              status: "cancelled",
-              updatedAt: nowDate().toISOString(),
-            },
-          });
+    const access = await accessForRow({
+      db,
+      writeDb: set(writeDb$),
+      orgId: args.orgId,
+      userId: args.userId,
+      row,
+      signal,
+    });
+    if (access.kind !== "ok") {
+      return access;
+    }
+    await gmailDeleteDraft({
+      accessToken: access.accessToken,
+      gmailDraftId: row.gmailDraftId,
+      signal,
+    });
+    signal.throwIfAborted();
+    const deletedDraft = responseDraft({
+      row: { ...row, status: "deleted" },
+      details: null,
+      detailAvailable: false,
+    });
     await set(writeDb$).delete(mailDrafts).where(eq(mailDrafts.id, row.id));
     signal.throwIfAborted();
     return okResult(row.id, deletedDraft);
   },
 );
 
-export const deleteZeroMailDraftsForThread$ = command(
+export const loadZeroMailDraftCleanupForThread$ = command(
   async (
-    { get, set },
+    { get },
     args: {
       readonly orgId: string;
       readonly userId: string;
       readonly threadId: string;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<readonly NewMailDraftRow[]> => {
     const rows = await get(db$)
-      .select({ id: mailDrafts.id })
+      .select({
+        id: mailDrafts.id,
+        agentId: chatThreads.agentComposeId,
+        chatThreadId: chatThreads.id,
+        connectorId: mailDrafts.connectorId,
+        gmailDraftId: mailDrafts.gmailDraftId,
+        gmailThreadId: mailDrafts.gmailThreadId,
+        gmailMessageId: mailDrafts.gmailMessageId,
+        sentGmailMessageId: mailDrafts.sentGmailMessageId,
+        status: mailDrafts.status,
+        senderName: mailDrafts.senderName,
+        senderAddress: mailDrafts.senderAddress,
+        subject: mailDrafts.subject,
+        createdAt: mailDrafts.createdAt,
+        updatedAt: mailDrafts.updatedAt,
+        sentAt: mailDrafts.sentAt,
+      })
       .from(mailDrafts)
       .innerJoin(chatThreads, eq(chatThreads.id, mailDrafts.chatThreadId))
       .innerJoin(
@@ -1481,15 +1318,51 @@ export const deleteZeroMailDraftsForThread$ = command(
         ),
       );
     signal.throwIfAborted();
-    for (const row of rows) {
-      const result = await set(
-        deleteZeroMailDraft$,
-        { ...args, mailDraftId: row.id },
-        signal,
+    return rows;
+  },
+);
+
+export const deleteZeroMailDraftsForThread$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly drafts: readonly NewMailDraftRow[];
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = get(db$);
+    const writeDb = set(writeDb$);
+    for (const row of args.drafts) {
+      await tapError(
+        (async () => {
+          const access = await accessForRow({
+            db,
+            writeDb,
+            orgId: args.orgId,
+            userId: args.userId,
+            row,
+            signal,
+          });
+          if (access.kind !== "ok") {
+            throw new Error(access.message);
+          }
+          await gmailDeleteDraft({
+            accessToken: access.accessToken,
+            gmailDraftId: row.gmailDraftId,
+            signal,
+          });
+        })(),
+        (error) => {
+          L.warn("Gmail draft cleanup failed after chat thread deletion", {
+            threadId: row.chatThreadId,
+            mailDraftId: row.id,
+            gmailDraftId: row.gmailDraftId,
+            error,
+          });
+        },
       );
-      if (result.kind !== "ok") {
-        throw new Error(result.message);
-      }
       signal.throwIfAborted();
     }
   },
@@ -1503,64 +1376,6 @@ interface SendDraftFields {
   readonly body: string;
 }
 
-async function sendLegacyZeroMailDraft(args: {
-  readonly db: ReadonlyDb;
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly row: LegacyMailDraftRow;
-  readonly fields: SendDraftFields;
-  readonly signal: AbortSignal;
-}): Promise<ZeroMailDraftMutationResult> {
-  if (
-    args.row.draft.status === "sent" ||
-    args.row.draft.status === "cancelled"
-  ) {
-    return {
-      kind: "conflict",
-      message: "This mail draft can no longer be sent",
-    };
-  }
-  const access = await accessForRow(args);
-  if (access.kind !== "ok") {
-    return access;
-  }
-  const details: MailDetails = {
-    ...detailsFromLegacy(args.row.draft),
-    to: args.fields.to,
-    subject: args.fields.subject,
-    body: args.fields.body,
-  };
-  const response = await fetch(`${GMAIL_API_BASE}/messages/send`, {
-    method: "POST",
-    signal: args.signal,
-    headers: {
-      Authorization: `Bearer ${access.accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ raw: gmailRawMessage(details) }),
-  });
-  if (!response.ok) {
-    throw new Error(`Gmail rejected the message (HTTP ${response.status})`);
-  }
-  const timestamp = nowDate().toISOString();
-  const updated = await replaceLegacyDraft({
-    db: args.writeDb,
-    row: args.row,
-    draft: {
-      ...args.row.draft,
-      to: [...args.fields.to],
-      subject: args.fields.subject,
-      body: args.fields.body,
-      status: "sent",
-      updatedAt: timestamp,
-      sentAt: timestamp,
-      error: undefined,
-    },
-  });
-  return okResult(updated.id, responseDraftFromLegacy(updated));
-}
-
 async function sendNewZeroMailDraft(args: {
   readonly db: ReadonlyDb;
   readonly writeDb: Db;
@@ -1570,7 +1385,7 @@ async function sendNewZeroMailDraft(args: {
   readonly fields: SendDraftFields;
   readonly signal: AbortSignal;
 }): Promise<ZeroMailDraftMutationResult> {
-  if (args.row.status !== "draft" || !args.row.gmailDraftId) {
+  if (args.row.status !== "draft") {
     return {
       kind: "conflict",
       message: "This mail draft can no longer be sent",
@@ -1666,16 +1481,14 @@ export const sendZeroMailDraft$ = command(
     if (!row) {
       return { kind: "not_found", message: "Mail draft not found" };
     }
-    const shared = {
+    return await sendNewZeroMailDraft({
       db,
       writeDb: set(writeDb$),
       orgId: args.orgId,
       userId: args.userId,
       fields: args,
       signal,
-    };
-    return row.kind === "legacy"
-      ? await sendLegacyZeroMailDraft({ ...shared, row })
-      : await sendNewZeroMailDraft({ ...shared, row });
+      row,
+    });
   },
 );

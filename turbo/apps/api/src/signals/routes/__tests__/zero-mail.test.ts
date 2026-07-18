@@ -7,6 +7,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { server } from "../../../mocks/server";
 import { testMailDraftStateRoutes } from "../test-mail-draft-state";
 import { createBddApi } from "./helpers/api-bdd";
@@ -203,7 +204,6 @@ describe("POST /api/zero/mail/drafts", () => {
       provider: "gmail",
       from: "sender@example.com",
       status: "draft",
-      resourceStatus: "draft",
       gmailDraftId: GMAIL_DRAFT_ID,
       gmailThreadId: GMAIL_THREAD_ID,
       cc: ["copy@example.com"],
@@ -259,7 +259,6 @@ describe("POST /api/zero/mail/drafts", () => {
       [200],
     );
     expect(sent.body.mailDraft.status).toBe("sent");
-    expect(sent.body.mailDraft.resourceStatus).toBe("sent");
     expect(sent.body.mailDraft.sentGmailMessageId).toBe(GMAIL_SENT_MESSAGE_ID);
     expect(sent.body.mailDraft.sentAt).toBeDefined();
     expect(gmail.sendCount).toBe(1);
@@ -312,7 +311,6 @@ describe("POST /api/zero/mail/drafts", () => {
       subject: "Updated subject",
       body: "Updated body",
       status: "sent",
-      resourceStatus: "sent",
     });
   });
 
@@ -343,8 +341,7 @@ describe("POST /api/zero/mail/drafts", () => {
     );
     expect(loaded.body.mailDraft).toMatchObject({
       subject: "Missing provider draft",
-      status: "cancelled",
-      resourceStatus: "deleted",
+      status: "deleted",
       detailAvailable: false,
     });
   });
@@ -392,7 +389,7 @@ describe("POST /api/zero/mail/drafts", () => {
     expect(deleted.body.exists).toBeFalsy();
   });
 
-  it("deletes active Gmail drafts before deleting their chat thread", async () => {
+  it("cleans up active Gmail drafts after deleting their chat thread", async () => {
     const fixture = await seedGmailMailCardFixture();
     const gmail = mockGmailDraftApi();
     const created = await accept(
@@ -410,7 +407,48 @@ describe("POST /api/zero/mail/drafts", () => {
     );
 
     await chat.deleteThread(fixture.actor, fixture.thread.id);
+    await flushWaitUntilForTest();
     expect(gmail.deleteCount).toBe(1);
+
+    const deleted = await accept(
+      stateClient().get({
+        params: { mailDraftId: created.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(deleted.body.exists).toBeFalsy();
+  });
+
+  it("deletes the chat thread when Gmail draft cleanup fails", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    mockGmailDraftApi();
+    let cleanupAttempts = 0;
+    const created = await accept(
+      client().createDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          to: ["recipient@example.com"],
+          subject: "Provider cleanup failure",
+          body: "Thread deletion must still succeed",
+        },
+      }),
+      [201],
+    );
+    server.use(
+      http.delete(`${GMAIL_API_BASE}/drafts/:draftId`, () => {
+        cleanupAttempts += 1;
+        return HttpResponse.json(
+          { error: { message: "Temporary Gmail failure" } },
+          { status: 503 },
+        );
+      }),
+    );
+
+    await chat.deleteThread(fixture.actor, fixture.thread.id);
+    await flushWaitUntilForTest();
+    expect(cleanupAttempts).toBe(1);
 
     const deleted = await accept(
       stateClient().get({

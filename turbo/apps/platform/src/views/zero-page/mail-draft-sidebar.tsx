@@ -264,7 +264,7 @@ function MailDraftDetail({
   const [updateLoadable, update] = useLoadableSet(signals.update$);
   const [deleteLoadable, deleteDraft] = useLoadableSet(signals.delete$);
   const [sendLoadable, send] = useLoadableSet(signals.send$);
-  const editable = draft.resourceStatus === "draft";
+  const editable = draft.status === "draft";
   const pending = [updateLoadable, deleteLoadable, sendLoadable].some(
     (loadable) => {
       return loadable.state === "loading";
@@ -365,7 +365,7 @@ export function MailDraftSidebar({ signals }: MailDraftSidebarProps) {
       />
     );
   }
-  if (draftLoadable.data.resourceStatus === "deleted") {
+  if (draftLoadable.data.status === "deleted") {
     return (
       <UnavailableMailDraftSidebar
         close={close}

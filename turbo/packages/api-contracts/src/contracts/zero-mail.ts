@@ -7,24 +7,7 @@ const c = initContract();
 
 export const zeroMailProviderSchema = z.enum(["gmail", "outlook"]);
 
-/**
- * Kept on the wire while browser clients from the previous release remain
- * active. New clients use resourceStatus; deleted maps to legacy cancelled.
- */
-export const zeroMailDraftStatusSchema = z.enum([
-  "draft",
-  "sending",
-  "sent",
-  "cancelled",
-  "failed",
-  "delivery_unknown",
-]);
-
-export const zeroMailDraftResourceStatusSchema = z.enum([
-  "draft",
-  "sent",
-  "deleted",
-]);
+export const zeroMailDraftStatusSchema = z.enum(["draft", "sent", "deleted"]);
 
 const mailSubjectSchema = z
   .string()
@@ -36,20 +19,6 @@ const mailSubjectSchema = z
 const mailHeaderValueSchema = z.string().refine((value) => {
   return !value.includes("\r") && !value.includes("\n");
 }, "Mail header values must not contain line breaks");
-
-export const zeroMailLegacyDraftSchema = z.object({
-  version: z.literal(1),
-  provider: zeroMailProviderSchema,
-  from: z.email(),
-  to: z.array(z.email()).min(1),
-  subject: mailSubjectSchema,
-  body: z.string().min(1),
-  status: zeroMailDraftStatusSchema,
-  error: z.string().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  sentAt: z.string().optional(),
-});
 
 const zeroMailDraftFieldsSchema = z.object({
   to: z.array(z.email()).min(1),
@@ -73,11 +42,10 @@ export const zeroMailDraftSchema = z.object({
   inReplyTo: z.string().optional(),
   references: z.array(z.string()),
   status: zeroMailDraftStatusSchema,
-  resourceStatus: zeroMailDraftResourceStatusSchema,
   detailAvailable: z.boolean(),
-  gmailDraftId: z.string().optional(),
-  gmailThreadId: z.string().optional(),
-  gmailMessageId: z.string().optional(),
+  gmailDraftId: z.string(),
+  gmailThreadId: z.string(),
+  gmailMessageId: z.string(),
   sentGmailMessageId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -162,21 +130,6 @@ export const zeroMailContract = c.router({
     },
     summary: "Permanently delete a Gmail draft and its vm0 record",
   },
-  cancelDraft: {
-    method: "POST",
-    path: "/api/zero/mail/drafts/:mailDraftId/cancel",
-    headers: authHeadersSchema,
-    pathParams: zeroMailDraftPathParamsSchema,
-    body: c.noBody(),
-    responses: {
-      200: zeroMailDraftResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Compatibility alias for deleting an email draft",
-  },
   sendDraft: {
     method: "POST",
     path: "/api/zero/mail/drafts/:mailDraftId/send",
@@ -197,9 +150,5 @@ export const zeroMailContract = c.router({
 
 export type ZeroMailProvider = z.infer<typeof zeroMailProviderSchema>;
 export type ZeroMailDraftStatus = z.infer<typeof zeroMailDraftStatusSchema>;
-export type ZeroMailDraftResourceStatus = z.infer<
-  typeof zeroMailDraftResourceStatusSchema
->;
-export type ZeroMailLegacyDraft = z.infer<typeof zeroMailLegacyDraftSchema>;
 export type ZeroMailDraft = z.infer<typeof zeroMailDraftSchema>;
 export type ZeroMailContract = typeof zeroMailContract;

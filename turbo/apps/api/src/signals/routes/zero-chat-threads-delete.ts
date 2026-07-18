@@ -10,7 +10,10 @@ import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { deleteChatThread$ } from "../services/zero-chat-thread.service";
 import { dispatchCancelSideEffects$ } from "../services/zero-run-cancel.service";
-import { deleteZeroMailDraftsForThread$ } from "../services/zero-mail.service";
+import {
+  deleteZeroMailDraftsForThread$,
+  loadZeroMailDraftCleanupForThread$,
+} from "../services/zero-mail.service";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
 
@@ -25,18 +28,18 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const params = get(pathParamsOf(chatThreadByIdContract.delete));
   const query = get(queryOf(chatThreadByIdContract.delete));
 
-  if (auth.orgId) {
-    await set(
-      deleteZeroMailDraftsForThread$,
-      {
-        threadId: params.id,
-        userId: auth.userId,
-        orgId: auth.orgId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-  }
+  const mailDraftCleanup = auth.orgId
+    ? await set(
+        loadZeroMailDraftCleanupForThread$,
+        {
+          threadId: params.id,
+          userId: auth.userId,
+          orgId: auth.orgId,
+        },
+        signal,
+      )
+    : [];
+  signal.throwIfAborted();
 
   const result = await set(
     deleteChatThread$,
@@ -52,6 +55,29 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if (!result.deleted) {
     return chatThreadNotFound();
+  }
+
+  if (auth.orgId && mailDraftCleanup.length > 0) {
+    const backgroundSignal = new AbortController().signal;
+    waitUntil(
+      tapError(
+        set(
+          deleteZeroMailDraftsForThread$,
+          {
+            drafts: mailDraftCleanup,
+            userId: auth.userId,
+            orgId: auth.orgId,
+          },
+          backgroundSignal,
+        ),
+        (error) => {
+          L.error("Gmail draft cleanup failed after chat thread deletion", {
+            threadId: params.id,
+            error,
+          });
+        },
+      ),
+    );
   }
 
   // Dispatch post-cancel side effects (runner halt, queue drain, credit

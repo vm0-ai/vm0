@@ -1,7 +1,7 @@
 import { IconChevronRight, IconLoader2 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
-import type { ZeroMailDraftResourceStatus } from "@vm0/api-contracts/contracts/zero-mail";
+import type { ZeroMailDraftStatus } from "@vm0/api-contracts/contracts/zero-mail";
 import { cn } from "@vm0/ui";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 
@@ -19,7 +19,7 @@ interface MailDraftCardProps {
 
 const GMAIL_ICON = getStaticConnectorIconMetadata("gmail");
 
-function statusLabel(status: ZeroMailDraftResourceStatus): string {
+function statusLabel(status: ZeroMailDraftStatus): string {
   switch (status) {
     case "draft": {
       return "Draft";
@@ -61,7 +61,7 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   }
 
   const draft = draftLoadable.data;
-  const deleted = draft.resourceStatus === "deleted";
+  const deleted = draft.status === "deleted";
   const selected = selectedMailDraftId === signals.mailDraftId;
   const content = (
     <>
@@ -80,14 +80,14 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
         <span
           className={cn(
             "rounded-full px-2 py-1 text-[11px] font-medium",
-            draft.resourceStatus === "sent" &&
+            draft.status === "sent" &&
               "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-            draft.resourceStatus === "draft" &&
+            draft.status === "draft" &&
               "bg-amber-500/10 text-amber-700 dark:text-amber-300",
             deleted && "bg-muted text-muted-foreground",
           )}
         >
-          {statusLabel(draft.resourceStatus)}
+          {statusLabel(draft.status)}
         </span>
         {!deleted ? (
           <IconChevronRight size={16} className="text-muted-foreground" />
@@ -113,9 +113,9 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   return (
     <button
       type="button"
-      aria-label={`Open ${draft.resourceStatus} email: ${draft.subject || "No subject"}`}
+      aria-label={`Open ${draft.status} email: ${draft.subject || "No subject"}`}
       data-mail-draft-card
-      data-mail-draft-status={draft.resourceStatus}
+      data-mail-draft-status={draft.status}
       onClick={() => {
         reload();
         openSidebar(signals.mailDraftId);

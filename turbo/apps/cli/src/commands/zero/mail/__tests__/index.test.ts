@@ -136,7 +136,6 @@ describe("zero mail", () => {
                 subject: "Hello",
                 body: "Mail body",
                 status: "draft",
-                resourceStatus: "draft",
                 detailAvailable: true,
                 gmailDraftId: "r-test-draft",
                 gmailThreadId: "gmail-thread-id",
