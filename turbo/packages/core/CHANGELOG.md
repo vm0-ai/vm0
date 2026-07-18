@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.441.0](https://github.com/vm0-ai/vm0/compare/core-v8.440.1...core-v8.441.0) (2026-07-18)
+
+
+### Features
+
+* resume chats after connector access actions ([#22043](https://github.com/vm0-ai/vm0/issues/22043)) ([81d91ce](https://github.com/vm0-ai/vm0/commit/81d91cefce67110bec98e230313887e47179fb53))
+* serialize composer context as inline prompt items ([#22040](https://github.com/vm0-ai/vm0/issues/22040)) ([199b9eb](https://github.com/vm0-ai/vm0/commit/199b9eb08823cac72ab78ea022cb09eb70334de2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.201.0
+    * @vm0/connectors bumped to 1.170.0
+
 ## [8.440.1](https://github.com/vm0-ai/vm0/compare/core-v8.440.0...core-v8.440.1) (2026-07-17)
 
 

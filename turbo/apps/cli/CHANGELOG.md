@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.242.0](https://github.com/vm0-ai/vm0/compare/cli-v9.241.12...cli-v9.242.0) (2026-07-18)
+
+
+### Features
+
+* **mail:** back chat draft cards with gmail drafts ([#22044](https://github.com/vm0-ai/vm0/issues/22044)) ([60cbc99](https://github.com/vm0-ai/vm0/commit/60cbc992fe47ac48716790110b5ff58b37fcdd6c))
+* resume chats after connector access actions ([#22043](https://github.com/vm0-ai/vm0/issues/22043)) ([81d91ce](https://github.com/vm0-ai/vm0/commit/81d91cefce67110bec98e230313887e47179fb53))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.201.0
+    * @vm0/connectors bumped to 1.170.0
+    * @vm0/core bumped to 8.441.0
+
 ## [9.241.12](https://github.com/vm0-ai/vm0/compare/cli-v9.241.11...cli-v9.241.12) (2026-07-17)
 
 
