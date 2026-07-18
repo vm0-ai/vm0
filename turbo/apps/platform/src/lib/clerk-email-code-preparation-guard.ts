@@ -45,12 +45,12 @@ function activeEmailCodeFingerprint(
 }
 
 function createPreparationGuard<Resource, Params>(options: {
+  activePreparations: Map<string, ActivePreparation>;
   getVerification: (resource: Resource) => EmailCodeVerification;
   key: (params: Params) => string;
   prepare: (params: Params) => Promise<Resource>;
   resource: Resource;
 }): (params: Params) => Promise<Resource> {
-  const activePreparations = new Map<string, ActivePreparation>();
   const pendingPreparations = new Map<string, Promise<Resource>>();
 
   return (params: Params): Promise<Resource> => {
@@ -60,14 +60,21 @@ function createPreparationGuard<Resource, Params>(options: {
       options.getVerification(options.resource),
       currentTime,
     );
-    const activePreparation = activePreparations.get(key);
+    const activePreparation = options.activePreparations.get(key);
 
     if (fingerprint && activePreparation?.fingerprint !== fingerprint) {
-      activePreparations.set(key, {
-        fingerprint,
-        suppressUntil: currentTime + AUTOMATIC_PREPARATION_WINDOW_MS,
+      const knownForAnotherFactor = Array.from(
+        options.activePreparations.values(),
+      ).some((preparation) => {
+        return preparation.fingerprint === fingerprint;
       });
-      return Promise.resolve(options.resource);
+      if (!knownForAnotherFactor) {
+        options.activePreparations.set(key, {
+          fingerprint,
+          suppressUntil: currentTime + AUTOMATIC_PREPARATION_WINDOW_MS,
+        });
+        return Promise.resolve(options.resource);
+      }
     }
 
     if (
@@ -93,7 +100,7 @@ function createPreparationGuard<Resource, Params>(options: {
         preparedAt,
       );
       if (preparedFingerprint) {
-        activePreparations.set(key, {
+        options.activePreparations.set(key, {
           fingerprint: preparedFingerprint,
           suppressUntil: preparedAt + AUTOMATIC_PREPARATION_WINDOW_MS,
         });
@@ -109,6 +116,7 @@ function createPreparationGuard<Resource, Params>(options: {
 function guardSignUpResource(
   signUp: SignUpResource,
   guardedResources: WeakSet<SignUpResource>,
+  activePreparations: Map<string, ActivePreparation>,
 ): void {
   if (guardedResources.has(signUp)) {
     return;
@@ -120,6 +128,7 @@ function guardSignUpResource(
     SignUpResource,
     SignUpPrepareParams
   >({
+    activePreparations,
     getVerification: (resource) => {
       return resource.verifications.emailAddress;
     },
@@ -143,6 +152,7 @@ function guardSignUpResource(
 function guardSignInResource(
   signIn: SignInResource,
   guardedResources: WeakSet<SignInResource>,
+  activePreparations: Map<string, ActivePreparation>,
 ): void {
   if (guardedResources.has(signIn)) {
     return;
@@ -154,6 +164,7 @@ function guardSignInResource(
     SignInResource,
     SignInPrepareParams
   >({
+    activePreparations,
     getVerification: (resource) => {
       return resource.firstFactorVerification;
     },
@@ -185,14 +196,24 @@ function guardSignInResource(
  * https://github.com/clerk/javascript/issues/4324
  */
 export function installClerkEmailCodePreparationGuard(clerk: Clerk): void {
+  const signInActivePreparations = new Map<string, ActivePreparation>();
+  const signUpActivePreparations = new Map<string, ActivePreparation>();
   const guardedSignInResources = new WeakSet<SignInResource>();
   const guardedSignUpResources = new WeakSet<SignUpResource>();
   const guardCurrentResources = (): void => {
     if (!clerk.client) {
       return;
     }
-    guardSignUpResource(clerk.client.signUp, guardedSignUpResources);
-    guardSignInResource(clerk.client.signIn, guardedSignInResources);
+    guardSignUpResource(
+      clerk.client.signUp,
+      guardedSignUpResources,
+      signUpActivePreparations,
+    );
+    guardSignInResource(
+      clerk.client.signIn,
+      guardedSignInResources,
+      signInActivePreparations,
+    );
   };
 
   guardCurrentResources();

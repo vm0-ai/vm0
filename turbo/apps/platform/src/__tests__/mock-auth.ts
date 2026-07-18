@@ -324,8 +324,17 @@ export function mockSignInFirstFactorVerification(
   };
 }
 
-export function replaceMockedClerkAuthResources(): void {
+export function replaceMockedClerkAuthResources(options?: {
+  signInVerification?: MockedEmailCodeVerification;
+  signUpVerification?: MockedEmailCodeVerification;
+}): void {
   resetMockedClerkAuthResources();
+  if (options?.signInVerification) {
+    mockSignInFirstFactorVerification(options.signInVerification);
+  }
+  if (options?.signUpVerification) {
+    mockSignUpEmailVerification(options.signUpVerification);
+  }
   for (const listener of clerkListeners) {
     listener();
   }

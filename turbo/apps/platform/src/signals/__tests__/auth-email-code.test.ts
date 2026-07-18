@@ -89,6 +89,54 @@ describe("clerk email code preparation", () => {
     ]);
   });
 
+  it("preserves sign-in resend state across replacement resources", async () => {
+    let now = Date.UTC(2026, 6, 18, 9, 30);
+    mockNow(now);
+
+    await setupAuthSignals("/sign-in");
+
+    const params = {
+      emailAddressId: "idn_primary",
+      strategy: "email_code",
+    } as const;
+    const initialSignIn = mockedClerk.client.signIn;
+    await initialSignIn.prepareFirstFactor(params);
+    replaceMockedClerkAuthResources({
+      signInVerification: initialSignIn.firstFactorVerification,
+    });
+
+    now += 60_000;
+    mockNow(now);
+    await mockedClerk.client.signIn.prepareFirstFactor(params);
+
+    expect(mockedClerk.factorPreparations).toStrictEqual([
+      { flow: "sign-in", strategy: "email_code" },
+      { flow: "sign-in", strategy: "email_code" },
+    ]);
+  });
+
+  it("prepares a code for a different sign-in email factor", async () => {
+    const now = Date.UTC(2026, 6, 18, 9, 45);
+    mockNow(now);
+
+    await setupAuthSignals("/sign-in");
+
+    const signIn = mockedClerk.client.signIn;
+    await signIn.prepareFirstFactor({
+      emailAddressId: "idn_primary",
+      strategy: "email_code",
+    });
+    await signIn.prepareFirstFactor({
+      emailAddressId: "idn_secondary",
+      strategy: "email_code",
+    });
+
+    expect(mockedClerk.factorPreparations).toStrictEqual([
+      { flow: "sign-in", strategy: "email_code" },
+      { flow: "sign-in", strategy: "email_code" },
+    ]);
+  });
+
   it("prepares expired and non-email sign-in factors", async () => {
     const now = Date.UTC(2026, 6, 18, 10);
     mockNow(now);
@@ -123,8 +171,9 @@ describe("clerk email code preparation", () => {
 
     await setupAuthSignals("/sign-up");
 
-    replaceMockedClerkAuthResources();
-    mockSignUpEmailVerification(activeEmailCode(now, "replacement-code"));
+    replaceMockedClerkAuthResources({
+      signUpVerification: activeEmailCode(now, "replacement-code"),
+    });
     await mockedClerk.client.signUp.prepareEmailAddressVerification({
       strategy: "email_code",
     });
