@@ -120,6 +120,7 @@ function inferUploadContentType(file: File): string {
 }
 
 export interface ZeroChatAttachment {
+  readonly clientId: string;
   filename: string;
   contentType: string;
   size: number;
@@ -137,6 +138,7 @@ export interface StartedAttachmentUpload {
 }
 
 function createChatAttachment(file: File): ZeroChatAttachment {
+  const clientId = crypto.randomUUID();
   const contentType = inferUploadContentType(file);
   const resetSignal$ = resetSignal();
   const internalPromise$ = state<Promise<FileInfo> | null>(null);
@@ -198,6 +200,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
   });
 
   return {
+    clientId,
     filename: file.name,
     contentType,
     size: file.size,
@@ -233,6 +236,7 @@ export interface DraftSignals {
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
+  removeAttachmentByClientId$: Command<void, [string]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
   /** Reset all draft state (input, template, attachments). Called after send. */
@@ -252,6 +256,7 @@ export interface DraftInputSyncTarget {
 export function createRestoredAttachment(
   persisted: PersistedAttachment,
 ): ZeroChatAttachment {
+  const clientId = crypto.randomUUID();
   const fileInfo$ = computed(
     (): Promise<{ id: string; url: string } | null> => {
       return Promise.resolve({ id: persisted.id, url: persisted.url });
@@ -269,6 +274,7 @@ export function createRestoredAttachment(
   });
 
   return {
+    clientId,
     filename: persisted.filename,
     contentType: persisted.contentType,
     size: persisted.size,
@@ -403,6 +409,16 @@ function createDraftAttachmentSignals(
       });
     },
   );
+  const removeAttachmentByClientId$ = command(
+    ({ get, set }, clientId: string) => {
+      const attachment = get(internalAttachments$).find((candidate) => {
+        return candidate.clientId === clientId;
+      });
+      if (attachment) {
+        set(removeAttachment$, attachment);
+      }
+    },
+  );
   return {
     attachments$,
     attachmentUploadsReady$,
@@ -411,6 +427,7 @@ function createDraftAttachmentSignals(
     uploadAttachment$,
     restoreAttachments$,
     removeAttachment$,
+    removeAttachmentByClientId$,
   };
 }
 

@@ -4666,13 +4666,13 @@ function BodyContentBlocks({
   blocks,
   openLightbox,
   hardBreaks,
-  escapeMarkdownHtml = false,
+  sanitizeMarkdownHtml = false,
   markdownMediaPreview = true,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
-  escapeMarkdownHtml?: boolean;
+  sanitizeMarkdownHtml?: boolean;
   markdownMediaPreview?: boolean;
 }) {
   const cardOccurrences = new Map<string, number>();
@@ -4687,7 +4687,7 @@ function BodyContentBlocks({
             openLightbox={openLightbox}
             openVideoLightbox={openVideoLightbox}
             hardBreaks={hardBreaks}
-            escapeMarkdownHtml={escapeMarkdownHtml}
+            sanitizeMarkdownHtml={sanitizeMarkdownHtml}
             markdownMediaPreview={markdownMediaPreview}
           />
         );
@@ -4714,14 +4714,14 @@ function BodyRenderBlockView({
   openLightbox,
   openVideoLightbox,
   hardBreaks,
-  escapeMarkdownHtml,
+  sanitizeMarkdownHtml,
   markdownMediaPreview,
 }: {
   block: BodyRenderBlock;
   openLightbox: (url: string) => void;
   openVideoLightbox: (value: { url: string; filename: string }) => void;
   hardBreaks: boolean;
-  escapeMarkdownHtml: boolean;
+  sanitizeMarkdownHtml: boolean;
   markdownMediaPreview: boolean;
 }) {
   switch (block.type) {
@@ -4733,7 +4733,7 @@ function BodyRenderBlockView({
           }
           mediaPreview={markdownMediaPreview}
           mathEnabled
-          escapeHtml={escapeMarkdownHtml}
+          sanitizeHtml={sanitizeMarkdownHtml}
           style={{ fontSize: "inherit", lineHeight: "inherit" }}
         />
       );
@@ -6382,6 +6382,7 @@ function GoalUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
+                  sanitizeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>
@@ -6475,6 +6476,7 @@ function PagedUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
+                  sanitizeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>

@@ -3822,6 +3822,68 @@ describe("chat composer templates", () => {
     expect(submitted?.prompt).toContain("Summarize this file");
   });
 
+  it("cancels a pending inline file when its atom is removed", async () => {
+    const user = userEvent.setup({ delay: null });
+    let submittedPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedPrompt = body.prompt;
+      },
+    });
+    context.mocks.upload.pending({
+      id: "upload-inline-pending",
+      filename: "pending-notes.txt",
+      contentType: "text/plain",
+      size: 13,
+      url: "https://cdn.vm0.io/artifacts/user_1/upload_1/pending-notes.txt",
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    const fileInput = Array.from(
+      document.querySelectorAll<HTMLInputElement>('input[type="file"]'),
+    ).find((candidate) => {
+      return candidate.parentElement?.contains(editor) ?? false;
+    });
+    if (!fileInput) {
+      throw new Error("file input not found");
+    }
+    await user.upload(
+      fileInput,
+      new File(["pending notes"], "pending-notes.txt", {
+        type: "text/plain",
+      }),
+    );
+
+    await user.click(
+      await screen.findByLabelText("Remove file pending-notes.txt"),
+    );
+    await waitFor(() => {
+      expect(
+        editor.querySelector("[data-composer-inline-file]"),
+      ).not.toBeInTheDocument();
+    });
+
+    await user.click(editor);
+    await user.keyboard("Continue without the file");
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeEnabled();
+    });
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(submittedPrompt).toBe("Continue without the file");
+    });
+  });
+
   it("keeps a selected template attached when replacing all prompt text", async () => {
     const user = userEvent.setup({ delay: null });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;

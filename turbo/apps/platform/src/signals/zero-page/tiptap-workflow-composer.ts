@@ -1242,6 +1242,17 @@ function locateInlineFile(
   return located;
 }
 
+function inlineFileClientIds(document: ProseMirrorNode): ReadonlySet<string> {
+  const clientIds = new Set<string>();
+  document.descendants((node) => {
+    if (node.type.name === INLINE_FILE_NODE_NAME) {
+      clientIds.add(inlineFileNodeAttributes(node).clientId);
+    }
+    return true;
+  });
+  return clientIds;
+}
+
 function resolveInlineFile(
   editor: Editor,
   clientId: string,
@@ -1513,6 +1524,7 @@ interface WorkflowComposerRuntime {
   removeFeedback(id: number): void;
   keyDown(event: KeyboardEvent): boolean;
   paste(event: ClipboardEvent, currentTarget: HTMLElement): boolean;
+  inlineFileClientIds: ReadonlySet<string>;
 }
 
 function createTemplateAttachmentNode(
@@ -1823,6 +1835,43 @@ function workflowComposerDocumentForValue(
   return editor.schema.node("doc", undefined, content);
 }
 
+function syncInlineFileAttachments(
+  runtime: WorkflowComposerRuntime,
+  document: ProseMirrorNode,
+  removeAttachment: (clientId: string) => void,
+) {
+  const nextInlineFileClientIds = inlineFileClientIds(document);
+  for (const clientId of runtime.inlineFileClientIds) {
+    if (!nextInlineFileClientIds.has(clientId)) {
+      removeAttachment(clientId);
+    }
+  }
+  runtime.inlineFileClientIds = nextInlineFileClientIds;
+}
+
+function setWorkflowComposerEditorOptions(
+  editor: Editor,
+  runtime: WorkflowComposerRuntime,
+  singleLineOnMobile: boolean,
+) {
+  editor.setOptions({
+    editorProps: {
+      attributes: {
+        "aria-label": "Message",
+        placeholder: COMPOSER_PLACEHOLDER,
+        tabindex: "0",
+        class: editorContentClass(singleLineOnMobile),
+      },
+      handlePaste: (view, event) => {
+        return runtime.paste(event, view.dom);
+      },
+      handleKeyDown: (_view, event) => {
+        return runtime.keyDown(event);
+      },
+    },
+  });
+}
+
 function createMountEditorCommand({
   editor,
   draft,
@@ -1849,6 +1898,13 @@ function createMountEditorCommand({
   return onRef(
     command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
       runtime.update = (updatedEditor) => {
+        syncInlineFileAttachments(
+          runtime,
+          updatedEditor.state.doc,
+          (clientId) => {
+            set(draft.removeAttachmentByClientId$, clientId);
+          },
+        );
         runtime.replaceFeedbackItems(
           feedbackItemsFromWorkflowComposer(updatedEditor),
         );
@@ -1874,22 +1930,7 @@ function createMountEditorCommand({
       runtime.removeFeedback = (id) => {
         set(feedback.removeFeedback$, id);
       };
-      editor.setOptions({
-        editorProps: {
-          attributes: {
-            "aria-label": "Message",
-            placeholder: COMPOSER_PLACEHOLDER,
-            tabindex: "0",
-            class: editorContentClass(singleLineOnMobile),
-          },
-          handlePaste: (_view, event) => {
-            return runtime.paste(event, _view.dom);
-          },
-          handleKeyDown: (_view, event) => {
-            return runtime.keyDown(event);
-          },
-        },
-      });
+      setWorkflowComposerEditorOptions(editor, runtime, singleLineOnMobile);
       const input = get(draft.input$);
       if (feedbackItemsFromWorkflowComposer(editor).length === 0) {
         setWorkflowComposerDocument(
@@ -2055,6 +2096,7 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     paste: (_event: ClipboardEvent, _currentTarget: HTMLElement) => {
       return false;
     },
+    inlineFileClientIds: new Set(),
   };
 }
 

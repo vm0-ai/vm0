@@ -1299,14 +1299,18 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("renders user html through markdown", async () => {
+  it("renders sanitized user html through markdown", async () => {
     const threadId = "thread-user-html-like-text";
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
           role: "user",
-          content: "<span> 123 </span>",
+          content:
+            '<span onclick="alert(1)"> 123 </span>' +
+            '<iframe srcdoc="<script>alert(2)</script>"></iframe>' +
+            "<script>alert(3)</script>" +
+            "[unsafe](javascript:alert(4))",
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
@@ -1325,6 +1329,12 @@ describe("chat lifecycle", () => {
 
     const renderedSpan = userBubble.querySelector(".wmde-markdown span");
     expect(renderedSpan).toBeInstanceOf(HTMLSpanElement);
+    expect(renderedSpan).not.toHaveAttribute("onclick");
+    expect(userBubble.querySelector("iframe")).toBeNull();
+    expect(userBubble.querySelector("script")).toBeNull();
+    expect(userBubble).not.toHaveTextContent("alert(2)");
+    expect(userBubble).toHaveTextContent("<script>alert(3)</script>");
+    expect(screen.getByText("unsafe").closest("a")).not.toHaveAttribute("href");
   });
 
   it("ignores usage-only pages for rendering and thinking state", async () => {

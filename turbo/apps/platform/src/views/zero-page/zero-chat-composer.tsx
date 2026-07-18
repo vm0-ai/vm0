@@ -6599,8 +6599,8 @@ export function useZeroChatComposer({
   const uploadsReady = attachmentUploadsState === "hasData";
 
   const uploadInlineFile = (file: File) => {
-    const clientId = crypto.randomUUID();
     const started = startAttachmentUpload(file, rootSignal);
+    const { clientId } = started.attachment;
     insertFile({
       clientId,
       filename: started.attachment.filename,
