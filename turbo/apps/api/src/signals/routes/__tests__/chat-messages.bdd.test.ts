@@ -2311,6 +2311,89 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
+  it("resumes the CLI session when switching between GPT and Auto", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const keySuffix = randomUUID();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "bdd-vm0-model-proxy-token");
+    mockOptionalEnv("VM0_MODEL_PROXY_HOST", "https://www.vm0.test");
+    onTestFinished(async () => {
+      await deleteBddVm0ApiKeys({ vendor: "openai", model: "vm0-model" });
+    });
+    await replaceBddVm0ApiKeys({
+      vendor: "openai",
+      model: "vm0-model",
+      keys: [
+        {
+          apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
+          label: "dev-seed",
+        },
+      ],
+    });
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.4",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+      {
+        model: "vm0-model",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "start on GPT before switching to Auto",
+      model: "gpt-5.4",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue with Auto in the same session",
+      model: "vm0-model",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    expect(claimEnvironment(secondClaim.claim).OPENAI_MODEL).toBe("vm0-model");
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
+
+    const third = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "return to the stored GPT model",
+    });
+    const thirdClaim = await claimChatRun(runnerGroup, third.runId);
+    expect(thirdClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${second.runId}`,
+    );
+    expect(claimEnvironment(thirdClaim.claim).OPENAI_MODEL).toBe("gpt-5.4");
+    await cancelChatRun(actor, third.runId);
+  }, 90_000);
+
   it("uses the stored provider pin on follow-up sends", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
