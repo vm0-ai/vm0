@@ -22,7 +22,8 @@ mod snapshot;
 
 use guest::{GuestBinaries, guest_definitions};
 use hashes::{
-    compute_ca_cert_fingerprint, compute_rootfs_hash, compute_snapshot_hash, compute_template_hash,
+    compute_ca_cert_fingerprint, compute_rootfs_build_hashes, compute_snapshot_hash,
+    compute_template_hash,
 };
 use local_publish::LocalFilePublish;
 use scripts::{RootfsScripts, rootfs_script_command, run_rootfs_script};
@@ -357,10 +358,9 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
         BuildMode::WarmRootfsCache => None,
     };
 
-    let template_hash = compute_template_hash(def.rootfs_disk_mb);
     let hashes = match mode {
         BuildMode::WarmRootfsCache => BuildHashes {
-            template_hash,
+            template_hash: compute_template_hash(def.rootfs_disk_mb),
             rootfs_hash: None,
             snapshot_hash: None,
         },
@@ -374,15 +374,14 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
             ca::ensure(&paths).await?;
             let ca_fingerprint = compute_ca_cert_fingerprint(&paths).await?;
             let guest_hash_inputs = guests.hash_inputs();
-            let rootfs_hash = compute_rootfs_hash(
-                &template_hash,
+            let rootfs_hashes = compute_rootfs_build_hashes(
                 &guest_hash_inputs,
                 &ca_fingerprint,
                 def.rootfs_disk_mb,
             )
             .await?;
             let snapshot_hash = compute_snapshot_hash(
-                &rootfs_hash,
+                &rootfs_hashes.rootfs_hash,
                 def.vcpu,
                 def.memory_mb,
                 def.workspace_disk_mb,
@@ -391,8 +390,8 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 &provider.config_hash(),
             );
             BuildHashes {
-                template_hash,
-                rootfs_hash: Some(rootfs_hash),
+                template_hash: rootfs_hashes.template_hash,
+                rootfs_hash: Some(rootfs_hashes.rootfs_hash),
                 snapshot_hash: Some(snapshot_hash),
             }
         }
