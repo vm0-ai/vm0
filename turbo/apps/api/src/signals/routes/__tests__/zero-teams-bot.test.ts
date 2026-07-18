@@ -762,6 +762,37 @@ describe("POST /api/zero/teams/bot", () => {
     });
   });
 
+  it("rejects a Teams activity without a stable identifier", async () => {
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), {
+        id: undefined,
+        timestamp: undefined,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Missing Teams activity id or timestamp",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("rejects a Teams message without an activity id", async () => {
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(botFixture(), { id: undefined }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Missing Teams message activity id",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
   it("rejects a Teams token for another bot app", async () => {
     botFrameworkHandlers();
 
