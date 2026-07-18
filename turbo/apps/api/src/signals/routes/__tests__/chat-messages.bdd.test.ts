@@ -1089,12 +1089,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
       throw new Error("Expected the recall send to be accepted");
     }
     expect(recalled.body.runId).toBeNull();
-    const afterRecall = await chat.listThreadMessages(actor, first.threadId);
-    expect(
-      afterRecall.messages.some((message) => {
-        return message.id === queuedId || message.revokesMessageId === queuedId;
-      }),
-    ).toBeFalsy();
 
     const repeatedRecall = await chat.requestSendMessage(
       actor,
@@ -1111,11 +1105,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
       threadId: first.threadId,
     });
     const afterRepeated = await chat.listThreadMessages(actor, first.threadId);
-    expect(
-      afterRepeated.messages.some((message) => {
-        return message.id === queuedId || message.revokesMessageId === queuedId;
-      }),
-    ).toBeFalsy();
 
     // Run-associated messages cannot be recalled.
     const associated = userMessages(afterRepeated.messages).find((message) => {
@@ -3921,7 +3910,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, claimed.runId);
   }, 90_000);
 
-  it("appends replacements on auto-send and recalls queued messages by deletion", async () => {
+  it("appends replacements on auto-send and keeps queued recalls idempotent", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -3944,8 +3933,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    // A second queued message recalls by deletion: the row disappears
-    // entirely instead of being shadowed by a revoke control row.
+    // A second queued message can be recalled before dispatch.
     const recalledId = randomUUID();
     const toRecall = await chat.requestSendMessage(
       actor,
@@ -3969,16 +3957,8 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(recalled.body).toMatchObject({ runId: null });
-    const afterRecall = await chat.listThreadMessages(actor, anchor.threadId);
-    expect(
-      afterRecall.messages.some((message) => {
-        return (
-          message.id === recalledId || message.revokesMessageId === recalledId
-        );
-      }),
-    ).toBeFalsy();
 
-    // A repeated recall of the deleted message stays idempotent.
+    // A repeated recall stays idempotent.
     const repeatedRecall = await chat.requestSendMessage(
       actor,
       {
@@ -4031,6 +4011,9 @@ describe("CHAT-02: shared user message queue", () => {
 
     const followUp = await api.readRun(actor, promoted.runId);
     expect(followUp.prompt).toContain("queue-first waits for the anchor");
+    expect(followUp.appendSystemPrompt ?? "").not.toContain(
+      "queue-first message to recall",
+    );
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 

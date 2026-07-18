@@ -9,6 +9,10 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 
 import type { Db } from "../external/db";
+import {
+  deleteChatMessage,
+  updateChatMessage,
+} from "./zero-chat-message.service";
 
 export interface QueuedUserMessage {
   readonly id: string;
@@ -155,22 +159,17 @@ export async function appendClaimedUserMessage(
     return null;
   }
 
-  const [claimed] = await db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: args.threadId,
-      role: "user",
-      content: queued.content,
-      runId: args.runId,
-      revokesMessageId: args.messageId,
-      attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
-      attachFileMetadata: queued.attachFileMetadata
-        ? [...queued.attachFileMetadata]
-        : null,
-      generationTemplate: queued.generationTemplate,
-    })
-    .onConflictDoNothing({ target: chatMessages.revokesMessageId })
-    .returning({ createdAt: chatMessages.createdAt });
+  const claimed = await updateChatMessage(db, args.messageId, {
+    chatThreadId: args.threadId,
+    role: "user",
+    content: queued.content,
+    runId: args.runId,
+    attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
+    attachFileMetadata: queued.attachFileMetadata
+      ? [...queued.attachFileMetadata]
+      : null,
+    generationTemplate: queued.generationTemplate,
+  });
   if (!claimed) {
     return null;
   }
@@ -206,8 +205,8 @@ export async function claimQueuedUserMessage(
 
 /**
  * Discard a queue-first user message that never dispatched (run creation
- * failed): remove both the queue item and the unclaimed message row so the
- * thread history matches the legacy direct-send failure behavior.
+ * failed): consume the queue item and append a tombstone so the failed send is
+ * absent from the visible thread while the message stream stays append-only.
  */
 export async function discardUnclaimedUserMessage(
   db: Db,
@@ -218,15 +217,10 @@ export async function discardUnclaimedUserMessage(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await deleteUserMessageQueueItem(tx, args.messageId);
-    await tx
-      .delete(chatMessages)
-      .where(
-        and(
-          eq(chatMessages.id, args.messageId),
-          eq(chatMessages.chatThreadId, args.threadId),
-          eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
-        ),
-      );
+    await deleteChatMessage(tx, args.messageId, {
+      chatThreadId: args.threadId,
+      role: "user",
+      runId: null,
+    });
   });
 }

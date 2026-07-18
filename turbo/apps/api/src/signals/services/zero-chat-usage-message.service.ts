@@ -15,6 +15,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
+import { insertChatMessage } from "./zero-chat-message.service";
 
 const L = logger("ChatUsageMessage");
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -184,18 +185,15 @@ export const maybeEmitRunUsageMessage$ = command(
         breakdown: buildUsageBreakdown(breakdownRows),
       };
 
-      const [inserted] = await tx
-        .insert(chatMessages)
-        .values({
-          chatThreadId: context.chatThreadId,
-          role: "assistant",
-          content: null,
-          runId,
-          runGroupId: context.runGroupId,
-          usagePayload: payload,
-          createdAt: new Date(payload.settledAt),
-        })
-        .returning({ id: chatMessages.id });
+      const inserted = await insertChatMessage(tx, {
+        chatThreadId: context.chatThreadId,
+        role: "assistant",
+        content: null,
+        runId,
+        runGroupId: context.runGroupId,
+        usagePayload: payload,
+        createdAt: new Date(payload.settledAt),
+      });
       signal.throwIfAborted();
 
       if (!inserted) {
