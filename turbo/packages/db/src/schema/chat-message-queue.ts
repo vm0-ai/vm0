@@ -32,10 +32,10 @@ export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
  *   (`trigger_id` / `trigger_source` / `trigger_brief` / `encrypted_params`)
  *   and materializes into a chat message at claim time.
  *
- * Replaces `zero_workflow_queue_events` (FIFO key was org + user + workflow;
- * the workflow-user maps 1:1 to a chat thread, so keying by thread is
- * equivalent) and, in a later phase, the `chat_messages.run_id IS NULL`
- * queued-user-message convention.
+ * Replaces the dropped `zero_workflow_queue_events` table (FIFO key was
+ * org + user + workflow; the workflow-user maps 1:1 to a chat thread, so
+ * keying by thread is equivalent) and, in a later phase, the
+ * `chat_messages.run_id IS NULL` queued-user-message convention.
  */
 export const chatMessageQueue = pgTable(
   "chat_message_queue",
