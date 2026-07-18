@@ -18,7 +18,7 @@ export function chatActionCallbackFromUrl(url: URL): ChatActionCallback {
   };
 }
 
-export const chatActionCallbackEnabled$ = computed((get): boolean => {
+const chatActionCallbackEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ConnectorActionCallback] ?? false;
 });
 

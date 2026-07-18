@@ -3,12 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   detachedSetupPage,
   queryAllByRoleFast,
@@ -62,14 +62,19 @@ function selectTextForInlineFeedback(element: HTMLElement): void {
   document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
 
-function waitForDeferredSelectionCapture(): Promise<void> {
-  const deferred = createDeferredPromise<void>(context.signal);
-  window.setTimeout(() => {
-    if (!deferred.settled()) {
-      deferred.resolve(undefined);
+// The selection toolbar reads the selection in a deferred macrotask
+// (delay(0)) after mouseup, and the composer applies its own deferred
+// DOM/selection sync after paste. vi.waitFor drives its retries from
+// macrotask timers, so requiring one failed check lets those earlier-queued
+// product tasks settle without the test owning a timer of its own.
+async function waitForDeferredSelectionCapture(): Promise<void> {
+  let elapsedMacrotask = false;
+  await vi.waitFor(() => {
+    if (!elapsedMacrotask) {
+      elapsedMacrotask = true;
+      throw new Error("deferred selection tasks have not run yet");
     }
   });
-  return deferred.promise;
 }
 
 function selectTextAcrossElementsForInlineFeedback(
@@ -203,6 +208,63 @@ function dispatchDocumentShortcut(key: string): KeyboardEvent {
 }
 
 describe("chat inline feedback", () => {
+  it("inserts feedback as an atomic inline prompt item", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-inline-feedback-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-inline-feedback",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-inline-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-inline-feedback",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentPrompt = body.prompt;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+      },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await user.click(await screen.findByText("Provide feedback"));
+
+    const composerEditor = await findComposerEditor();
+    await waitFor(() => {
+      expect(
+        composerEditor.querySelector("[data-composer-inline-feedback]"),
+      ).toHaveTextContent(assistantReply);
+      expect(feedbackNotes()).toHaveLength(0);
+    });
+
+    await user.keyboard("Make the dates explicit.{Enter}");
+
+    await waitFor(() => {
+      expect(sentPrompt).toBeDefined();
+    });
+    expect(sentPrompt).toContain("Feedback on this part of your reply:");
+    expect(sentPrompt).toContain(`> ${assistantReply}`);
+    expect(sentPrompt).toContain("Make the dates explicit.");
+  });
+
   it("keeps ordinary text and inline feedback in one composer document", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
@@ -239,6 +301,7 @@ describe("chat inline feedback", () => {
     detachedSetupPage({
       context,
       path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {},
     });
 
     const composerEditor = await findComposerEditor();
@@ -247,6 +310,10 @@ describe("chat inline feedback", () => {
       composerEditor,
       "Mention the dates before the risk summary.",
     );
+    // The composer restores its own selection in a deferred task after paste;
+    // selecting the assistant reply before that settles races the toolbar's
+    // deferred selection capture against the composer's selection restore.
+    await waitForDeferredSelectionCapture();
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
 
