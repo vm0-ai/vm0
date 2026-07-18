@@ -107,8 +107,9 @@ export const chatMessages = pgTable(
     generationTemplate: jsonb(
       "generation_template",
     ).$type<ChatMessageGenerationTemplate>(),
-    // Compatibility-only marker for messages created before mail draft cards
-    // became link-backed. New messages leave this null.
+    // Database-only rollout marker for API versions that still read legacy
+    // mail cards. Drop this column after the link-only reader has fully
+    // deployed; migrations run before API traffic promotion.
     mailDraftId: uuid("mail_draft_id").unique(
       "chat_messages_mail_draft_id_unique",
     ),

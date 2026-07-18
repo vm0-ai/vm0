@@ -80,9 +80,11 @@ Notes:
       console.log(chalk.dim(`  Sender: ${result.mailDraft.from}`));
       console.log(chalk.dim(`  Draft: ${result.mailDraftId}`));
       console.log(chalk.dim(`  Card: ${result.mailDraftUrl}`));
+      console.log();
+      console.log("Next step:");
       console.log(
         chalk.dim(
-          "  The card is already visible in chat; do not repeat the draft in your response",
+          "  Include the Card URL in your response so the user can review and send the draft",
         ),
       );
     }),

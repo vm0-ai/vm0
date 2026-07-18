@@ -3231,9 +3231,7 @@ function attachUsageToCompletedWorkGroups(
 function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   return (
     message.role === "assistant" &&
-    (Boolean(message.content) ||
-      Boolean(message.error) ||
-      Boolean(message.mailDraftId))
+    (Boolean(message.content) || Boolean(message.error))
   );
 }
 

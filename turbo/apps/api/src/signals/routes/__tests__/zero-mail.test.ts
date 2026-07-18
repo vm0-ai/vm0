@@ -213,6 +213,11 @@ describe("POST /api/zero/mail/drafts", () => {
     expect(created.body.mailDraftUrl).toBe(
       `http://localhost:3002/mail/drafts/${created.body.mailDraftId}`,
     );
+    const threadAfterCreate = await chat.listThreadMessages(
+      fixture.actor,
+      fixture.thread.id,
+    );
+    expect(threadAfterCreate.messages).toHaveLength(0);
     expect(Buffer.from(gmail.raw, "base64url").toString("utf8")).toContain(
       "References: <first@example.com> <original@example.com>",
     );
@@ -287,17 +292,6 @@ describe("POST /api/zero/mail/drafts", () => {
     );
     expect(duplicate.body.error.message).toContain("can no longer be sent");
     expect(gmail.sendCount).toBe(1);
-
-    const page = await chat.listThreadMessages(
-      fixture.actor,
-      fixture.thread.id,
-    );
-    const persisted = page.messages.find((message) => {
-      return message.content === created.body.mailDraftUrl;
-    });
-    expect(persisted).toMatchObject({
-      content: created.body.mailDraftUrl,
-    });
 
     await connectors.deleteConnectorByType(fixture.actor, "gmail");
 
