@@ -8,8 +8,7 @@ use crate::support::{Harness, exec_exit_code, run_exec};
 async fn test_shutdown() {
     let h = Harness::new().await;
 
-    let acked = h.host().shutdown(Duration::from_secs(5)).await;
-    assert!(acked);
+    h.host().shutdown(Duration::from_secs(5)).await.unwrap();
 
     h.finish_ignore_guest();
 }
@@ -24,8 +23,7 @@ async fn test_shutdown_after_exec() {
         .expect("exec failed");
     assert_eq!(exec_exit_code(&result), Some(0));
 
-    let acked = h.host().shutdown(Duration::from_secs(5)).await;
-    assert!(acked);
+    h.host().shutdown(Duration::from_secs(5)).await.unwrap();
 
     h.finish_ignore_guest();
 }
