@@ -4341,6 +4341,13 @@
       "when": 1784362482169,
       "tag": "0619_flaky_fenris",
       "breakpoints": true
+    },
+    {
+      "idx": 620,
+      "version": "7",
+      "when": 1784371013888,
+      "tag": "0620_drop_legacy_workflow_queue_storage",
+      "breakpoints": true
     }
   ]
 }
