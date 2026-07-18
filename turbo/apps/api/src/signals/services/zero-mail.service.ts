@@ -31,6 +31,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
+import { insertChatMessage } from "./zero-chat-message.service";
 
 const L = logger("api:zero-mail");
 
@@ -231,15 +232,12 @@ async function persistMailDraft(args: {
 }): Promise<ZeroMailDraftMutationResult> {
   const created = await args.db.transaction(async (tx) => {
     const mailDraftId = randomUUID();
-    const [message] = await tx
-      .insert(chatMessages)
-      .values({
-        chatThreadId: args.threadId,
-        role: "assistant",
-        content: null,
-        mailDraftId,
-      })
-      .returning({ id: chatMessages.id });
+    const message = await insertChatMessage(tx, {
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: null,
+      mailDraftId,
+    });
     if (!message) {
       throw new Error("Mail draft message insert did not return an id");
     }
