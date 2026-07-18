@@ -15,6 +15,7 @@ import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { WorkflowQueueSignals } from "./workflow-queue.ts";
+import type { MailDraftSignals } from "./mail-draft.ts";
 
 type RecommendedFollowup = NonNullable<
   Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
@@ -134,6 +135,7 @@ export interface ChatThreadSignals {
   visibleRenderedChatGroups$: Computed<Promise<GroupedChatMessageGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   messageImageGroups$: Computed<Promise<MessageImageGroupProjection[]>>;
+  mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   hasMessages$: Computed<Promise<boolean>>;
   hasQueuedMessages$: Computed<Promise<boolean>>;
   queuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;

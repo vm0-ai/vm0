@@ -25,7 +25,6 @@ function userMessage(params: {
     blocks: [],
     isQueued: false,
     isOptimisticRun: false,
-    mailDraftCard: null,
   };
 }
 
@@ -45,7 +44,6 @@ function assistantMessage(params: {
     blocks: [],
     isQueued: false,
     isOptimisticRun: false,
-    mailDraftCard: null,
   };
 }
 

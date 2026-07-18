@@ -10,6 +10,7 @@ import { ROUTES } from "../route-paths.ts";
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
+import { closeMailDraftSidebar$ } from "../zero-page/mail-draft-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createOptimisticChatMessagesForThread } from "./optimistic-chat-messages.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
@@ -203,6 +204,7 @@ export const loadLeftThread$ = command(
     // and automation panels are anchored to the previous thread's messages.
     set(clearArtifactPreview$);
     set(closeHeaderAutomationSidebar$);
+    set(closeMailDraftSidebar$);
 
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) === threadId) {
@@ -233,6 +235,7 @@ export const loadRightThread$ = command(
 
     set(clearArtifactPreview$);
     set(closeHeaderAutomationSidebar$);
+    set(closeMailDraftSidebar$);
 
     const next = new URLSearchParams(get(searchParams$));
     next.set(SIDEBAR_PARAM, threadId);

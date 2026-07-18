@@ -13,6 +13,7 @@ import { loadUserFeatureSwitchContext } from "../services/feature-switches.servi
 import {
   cancelZeroMailDraft$,
   createZeroMailDraft$,
+  deleteZeroMailDraft$,
   getZeroMailDraft$,
   sendZeroMailDraft$,
   updateZeroMailDraft$,
@@ -46,6 +47,7 @@ function mutationResponse(result: ZeroMailDraftMutationResult) {
         status: 200 as const,
         body: {
           mailDraftId: result.mailDraftId,
+          mailDraftUrl: result.mailDraftUrl,
           mailDraft: result.mailDraft,
         },
       };
@@ -87,23 +89,28 @@ const createDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     status: 201 as const,
     body: {
       mailDraftId: result.mailDraftId,
+      mailDraftUrl: result.mailDraftUrl,
       mailDraft: result.mailDraft,
     },
   };
 });
 
 const getDraftParams$ = pathParamsOf(zeroMailContract.getDraft);
-const getDraftInner$ = command(async ({ get, set }) => {
+const getDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await set(zeroMailEnabled$))) {
     return zeroMailDisabled;
   }
   return mutationResponse(
-    await set(getZeroMailDraft$, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      ...get(getDraftParams$),
-    }),
+    await set(
+      getZeroMailDraft$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        ...get(getDraftParams$),
+      },
+      signal,
+    ),
   );
 });
 
@@ -121,27 +128,56 @@ const updateDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   return mutationResponse(
-    await set(updateZeroMailDraft$, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      ...get(updateDraftParams$),
-      ...bodyResult.data,
-    }),
+    await set(
+      updateZeroMailDraft$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        ...get(updateDraftParams$),
+        ...bodyResult.data,
+      },
+      signal,
+    ),
   );
 });
 
+const deleteDraftParams$ = pathParamsOf(zeroMailContract.deleteDraft);
+const deleteDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  if (!(await set(zeroMailEnabled$))) {
+    return zeroMailDisabled;
+  }
+  const result = await set(
+    deleteZeroMailDraft$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      ...get(deleteDraftParams$),
+    },
+    signal,
+  );
+  if (result.kind !== "ok") {
+    return mutationResponse(result);
+  }
+  return { status: 204 as const, body: undefined };
+});
+
 const cancelDraftParams$ = pathParamsOf(zeroMailContract.cancelDraft);
-const cancelDraftInner$ = command(async ({ get, set }) => {
+const cancelDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (!(await set(zeroMailEnabled$))) {
     return zeroMailDisabled;
   }
   return mutationResponse(
-    await set(cancelZeroMailDraft$, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      ...get(cancelDraftParams$),
-    }),
+    await set(
+      cancelZeroMailDraft$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        ...get(cancelDraftParams$),
+      },
+      signal,
+    ),
   );
 });
 
@@ -159,12 +195,16 @@ const sendDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   return mutationResponse(
-    await set(sendZeroMailDraft$, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      ...get(sendDraftParams$),
-      ...bodyResult.data,
-    }),
+    await set(
+      sendZeroMailDraft$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        ...get(sendDraftParams$),
+        ...bodyResult.data,
+      },
+      signal,
+    ),
   );
 });
 
@@ -194,6 +234,10 @@ export const zeroMailRoutes: readonly RouteEntry[] = [
   {
     route: zeroMailContract.updateDraft,
     handler: authRoute(mailDraftHumanAuth, updateDraftInner$),
+  },
+  {
+    route: zeroMailContract.deleteDraft,
+    handler: authRoute(mailDraftHumanAuth, deleteDraftInner$),
   },
   {
     route: zeroMailContract.cancelDraft,

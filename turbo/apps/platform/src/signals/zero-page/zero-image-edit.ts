@@ -31,6 +31,7 @@ import {
   ARTIFACT_INBOX_QUERY_PARAM,
   ARTIFACT_QUERY_PARAM,
   clearChatAutomationSidebarParams,
+  clearMailDraftSidebarParams,
 } from "./right-sidebar-search-params.ts";
 import {
   addEditableImageCanvasItem$,
@@ -186,6 +187,7 @@ export const openArtifactImageEdit$ = command(
       params.delete(ARTIFACT_FULLSCREEN_PARAM);
     }
     clearChatAutomationSidebarParams(params);
+    clearMailDraftSidebarParams(params);
     set(
       hydrateEditableImageCanvas$,
       editableImageArtifactCanvasKey(args.url),

@@ -1,15 +1,57 @@
-import { jsonb, pgTable, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import type { ZeroMailDraftResourceStatus } from "@vm0/api-contracts/contracts/zero-mail";
 import type { MailDraftData } from "@vm0/db/jsonb-contracts/mail-draft";
-import { chatMessages } from "./chat-message";
+import { chatThreads } from "./chat-thread";
+import { connectors } from "./connector";
 
-export const mailDrafts = pgTable("mail_drafts", {
-  id: uuid("id")
-    .primaryKey()
-    .references(
+export const mailDrafts = pgTable(
+  "mail_drafts",
+  {
+    id: uuid("id").primaryKey(),
+    // Nullable after the Gmail-backed rollout. Existing version-1 rows keep
+    // their JSON payload until the compatibility cleanup release.
+    draft: jsonb("draft").$type<MailDraftData>(),
+    chatThreadId: uuid("chat_thread_id")
+      .notNull()
+      .references(
+        () => {
+          return chatThreads.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    connectorId: uuid("connector_id").references(
       () => {
-        return chatMessages.mailDraftId;
+        return connectors.id;
       },
-      { onDelete: "cascade" },
+      { onDelete: "set null" },
     ),
-  draft: jsonb("draft").$type<MailDraftData>().notNull(),
-});
+    gmailDraftId: text("gmail_draft_id"),
+    gmailThreadId: text("gmail_thread_id"),
+    gmailMessageId: text("gmail_message_id"),
+    sentGmailMessageId: text("sent_gmail_message_id"),
+    status: text("status").$type<ZeroMailDraftResourceStatus>(),
+    senderName: text("sender_name"),
+    senderAddress: text("sender_address"),
+    subject: text("subject"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    sentAt: timestamp("sent_at"),
+  },
+  (table) => {
+    return [
+      index("idx_mail_drafts_chat_thread").on(table.chatThreadId),
+      uniqueIndex("mail_drafts_connector_gmail_draft_unique").on(
+        table.connectorId,
+        table.gmailDraftId,
+      ),
+    ];
+  },
+);

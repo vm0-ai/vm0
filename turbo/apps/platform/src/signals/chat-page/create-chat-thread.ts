@@ -133,10 +133,7 @@ import type {
   ThinkingIndicatorMode,
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
-import {
-  createMailDraftCardRegistry,
-  type MailDraftSignals,
-} from "./mail-draft.ts";
+import { createMailDraftCardSignalsRegistry } from "./mail-draft.ts";
 
 type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
@@ -1263,12 +1260,9 @@ function setLatestUsageForRun(
 
 function createRenderedChatGroups(
   semanticMessages$: Computed<SemanticChatMessage[]>,
-  mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
 ) {
-  const transcriptMessages$ = createTranscriptMessagesComputed(
-    semanticMessages$,
-    mailDraftCardSignals$,
-  );
+  const transcriptMessages$ =
+    createTranscriptMessagesComputed(semanticMessages$);
 
   const allRenderedChatGroups$ = computed(
     async (get): Promise<GroupedChatMessageGroup[]> => {
@@ -1385,7 +1379,6 @@ function registerChatMessage(
 function createWritePersistentMessages(
   threadId: string,
   persistentMessages$: PersistentChatMessages$,
-  registerMailDraftMessages$: Command<void, [readonly PagedChatMessage[]]>,
   registerBodyBlocks: BodyBlocksRenderer,
 ) {
   return command(
@@ -1412,7 +1405,6 @@ function createWritePersistentMessages(
       for (const _ of newlyCompletedRunIds) {
         captureTaskCompletedSuccessfully();
       }
-      set(registerMailDraftMessages$, msgs);
       const registeredMessages = msgs.map((message) => {
         return registerChatMessage(message, registerBodyBlocks);
       });
@@ -1486,27 +1478,11 @@ function createRawMessagesComputed({
 
 function createTranscriptMessagesComputed(
   semanticMessages$: Computed<SemanticChatMessage[]>,
-  mailDraftCardSignals$: Computed<ReadonlyMap<string, MailDraftSignals>>,
 ): Computed<Promise<EnrichedChatMessage[]>> {
   return computed((get): Promise<EnrichedChatMessage[]> => {
-    const mailDraftCardSignals = get(mailDraftCardSignals$);
     return Promise.resolve(
       get(semanticMessages$).map((entry) => {
         const { message, isQueued, isOptimisticRun } = entry;
-        let mailDraftCard: EnrichedChatMessage["mailDraftCard"] = null;
-        if (message.mailDraftId !== undefined) {
-          const signals = mailDraftCardSignals.get(message.mailDraftId);
-          if (signals === undefined) {
-            throw new Error(
-              `Mail draft signals were not registered: ${message.mailDraftId}`,
-            );
-          }
-          mailDraftCard = {
-            type: "mail-draft",
-            resourceKey: message.mailDraftId,
-            signals,
-          };
-        }
         if (message.role !== "assistant") {
           return {
             ...message,
@@ -1514,7 +1490,6 @@ function createTranscriptMessagesComputed(
             blocks: entry.blocks,
             isQueued,
             isOptimisticRun,
-            mailDraftCard,
           };
         }
         return {
@@ -1523,7 +1498,6 @@ function createTranscriptMessagesComputed(
           blocks: entry.blocks,
           isQueued,
           isOptimisticRun: false,
-          mailDraftCard,
         };
       }),
     );
@@ -2255,13 +2229,27 @@ function createActiveGoalObjectiveComputed(
   });
 }
 
-function createBodyBlocksRenderer(
-  artifactCardSignals: ArtifactCardSignalsRegistry,
-  connectorCardSignals: ConnectorCardSignalsRegistry,
-  customConnectorCardSignals: CustomConnectorCardSignalsRegistry,
-  permissionCardSignals: PermissionCardSignalsRegistry,
-  computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry,
-): (resolution: "register" | "resolve") => BodyBlocksRenderer {
+interface BodyBlockRegistries {
+  readonly artifactCardSignals: ArtifactCardSignalsRegistry;
+  readonly connectorCardSignals: ConnectorCardSignalsRegistry;
+  readonly customConnectorCardSignals: CustomConnectorCardSignalsRegistry;
+  readonly permissionCardSignals: PermissionCardSignalsRegistry;
+  readonly computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry;
+  readonly mailDraftCardSignals: ReturnType<
+    typeof createMailDraftCardSignalsRegistry
+  >;
+}
+
+function createBodyBlocksRenderer({
+  artifactCardSignals,
+  connectorCardSignals,
+  customConnectorCardSignals,
+  permissionCardSignals,
+  computerUseAuthorizationCardSignals,
+  mailDraftCardSignals,
+}: BodyBlockRegistries): (
+  resolution: "register" | "resolve",
+) => BodyBlocksRenderer {
   return (resolution) => {
     return (blocks) => {
       return blocks.map((block): BodyRenderBlock => {
@@ -2323,6 +2311,16 @@ function createBodyBlocksRenderer(
                     ),
             };
           }
+          case "mail-draft": {
+            return {
+              type: block.type,
+              resourceKey: block.resourceKey,
+              signals:
+                resolution === "register"
+                  ? mailDraftCardSignals.register(block.descriptor)
+                  : mailDraftCardSignals.resolve(block.resourceKey),
+            };
+          }
         }
         const exhaustive: never = block;
         return exhaustive;
@@ -2336,20 +2334,21 @@ function createPagedMessages(
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatMessageEntry[],
 ) {
-  const mailDraftCards = createMailDraftCardRegistry();
+  const mailDraftCardSignals = createMailDraftCardSignalsRegistry();
   const artifactCardSignals = createArtifactCardSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
   const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
   const permissionCardSignals = createPermissionCardSignalsRegistry();
   const computerUseAuthorizationCardSignals =
     createComputerUseAuthorizationCardSignalsRegistry();
-  const bodyBlocksRenderer = createBodyBlocksRenderer(
+  const bodyBlocksRenderer = createBodyBlocksRenderer({
     artifactCardSignals,
     connectorCardSignals,
     customConnectorCardSignals,
     permissionCardSignals,
     computerUseAuthorizationCardSignals,
-  );
+    mailDraftCardSignals,
+  });
   const registerBodyBlocks = bodyBlocksRenderer("register");
   const resolveBodyBlocks = bodyBlocksRenderer("resolve");
 
@@ -2387,21 +2386,21 @@ function createPagedMessages(
   // because goal markers are control rows, not transcript rows.
   const activeGoalObjective$ = createActiveGoalObjectiveComputed(rawMessages$);
 
-  const renderedMessages = createRenderedChatGroups(
-    semanticMessages$,
-    mailDraftCards.mailDraftCardSignals$,
-  );
+  const renderedMessages = createRenderedChatGroups(semanticMessages$);
+
+  const mailDraftCardSignalsById$ = computed((get) => {
+    get(rawMessages$);
+    return mailDraftCardSignals.entries();
+  });
 
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
     persistentChatMessages$,
-    mailDraftCards.registerMailDraftMessages$,
     registerBodyBlocks,
   );
 
   const mergeIndexedDbMessages$ = command(
     ({ set }, messages: PagedChatMessage[]): void => {
-      set(mailDraftCards.registerMailDraftMessages$, messages);
       const registeredMessages = messages.map((message) => {
         return registerChatMessage(message, registerBodyBlocks);
       });
@@ -2467,6 +2466,7 @@ function createPagedMessages(
     rawMessages$,
     messageRunIndicatorState$,
     activeGoalObjective$,
+    mailDraftCardSignalsById$,
     syncRemoteMessages$,
     fetchUpdatedMessage$,
   };
@@ -4072,6 +4072,33 @@ function createThinkingIndicatorSignals(
 // Factory: createChatThreadSignals
 // ---------------------------------------------------------------------------
 
+function publicChatThreadMessageSignals(
+  messages: ReturnType<typeof createChatThreadMessagePipeline>,
+) {
+  return {
+    latestChatMessageId$: messages.latestChatMessageId$,
+    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
+    latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
+    visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
+    visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
+    messageImageGroups$: messages.messageImageGroups$,
+    mailDraftCardSignalsById$: messages.mailDraftCardSignalsById$,
+    hasMessages$: messages.hasMessages$,
+    hasQueuedMessages$: messages.hasQueuedMessages$,
+    queuedMessageItems$: messages.queuedMessageItems$,
+    emptyQueuedMessageItems$: messages.emptyQueuedMessageItems$,
+    thinkingIndicatorMode$: messages.thinkingIndicatorMode$,
+    thinkingMessageId$: messages.thinkingMessageId$,
+    thinkingText$: messages.thinkingText$,
+    recommendedFollowupSource$: messages.recommendedFollowupSource$,
+    activeGoalObjective$: messages.activeGoalObjective$,
+    donePhrase$: messages.donePhrase$,
+    loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
+    resetRenderedChatGroupsIfAtBottom$:
+      messages.resetRenderedChatGroupsIfAtBottom$,
+  };
+}
+
 export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
@@ -4173,25 +4200,7 @@ export function createChatThreadSignals(
     ...threadOwned,
     focusInput$: workflowComposer.focus$,
     queueDraftSync$,
-    latestChatMessageId$: messages.latestChatMessageId$,
-    latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
-    latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
-    visibleRenderedChatGroups$: messages.visibleRenderedChatGroups$,
-    visibleRenderedChatGroupsReady$: messages.visibleRenderedChatGroupsReady$,
-    messageImageGroups$: messages.messageImageGroups$,
-    hasMessages$: messages.hasMessages$,
-    hasQueuedMessages$: messages.hasQueuedMessages$,
-    queuedMessageItems$: messages.queuedMessageItems$,
-    emptyQueuedMessageItems$: messages.emptyQueuedMessageItems$,
-    thinkingIndicatorMode$: messages.thinkingIndicatorMode$,
-    thinkingMessageId$: messages.thinkingMessageId$,
-    thinkingText$: messages.thinkingText$,
-    recommendedFollowupSource$: messages.recommendedFollowupSource$,
-    activeGoalObjective$: messages.activeGoalObjective$,
-    donePhrase$: messages.donePhrase$,
-    loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
-    resetRenderedChatGroupsIfAtBottom$:
-      messages.resetRenderedChatGroupsIfAtBottom$,
+    ...publicChatThreadMessageSignals(messages),
     subscribeChatThread$: runTracking.subscribeChatThread$,
     ...createThinkingIndicatorSignals(
       messages.thinkingText$,
