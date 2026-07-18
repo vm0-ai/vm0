@@ -412,7 +412,7 @@ export type NotionWorkflowEventConfig =
 
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
- * time-trigger model:
+ * time-based Automation schedule model:
  * - `cron`: recurring at wall-clock times.
  * - `loop`: re-scheduled `intervalSeconds` after each completion.
  * - `once`: fires once at `atTime`, then auto-disables.

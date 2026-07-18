@@ -4348,6 +4348,13 @@
       "when": 1784371013888,
       "tag": "0620_drop_legacy_workflow_queue_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 621,
+      "version": "7",
+      "when": 1784372472936,
+      "tag": "0621_contract_workflow_automation_callback_identifiers",
+      "breakpoints": true
     }
   ]
 }

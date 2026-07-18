@@ -13,7 +13,7 @@ The cutover SQL migration (PR-2) creates, per `automations` row:
 
 - a private `zero_workflows` row **reusing the automation's id**,
 - a `zero_workflow_triggers` schedule row carrying the legacy schedule/state,
-- a `workflow_user_trigger_threads` row reusing the legacy chat thread,
+- a `workflow_user_automation_threads` row reusing the legacy chat thread,
 
 and freezes the legacy rows (trigger `enabled = false`, `nextRunAt` kept).
 

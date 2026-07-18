@@ -5511,7 +5511,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
             name: "daily-workflow",
             displayName: "Daily workflow",
             description: "Daily workflow summary",
-            triggerId: "f0000001-0000-4000-a000-000000000832",
+            automationId: "f0000001-0000-4000-a000-000000000832",
             triggerBrief: "Gmail label applied",
           },
           createdAt: "2026-06-09T10:00:00Z",

@@ -27,12 +27,6 @@ interface ReadAgentRunCallbacksOptions {
   readonly prompt: string;
 }
 
-interface UpdateAgentRunCallbackOptions {
-  readonly callbackId: string;
-  readonly internalKind: string;
-  readonly payload: Record<string, unknown>;
-}
-
 function requestTelegramState(
   signal: AbortSignal,
   path: string,
@@ -155,31 +149,5 @@ export const readAgentRunCallbacks$ = command(
       const callback = agentRunCallbackSnapshot(value);
       return callback ? [callback] : [];
     });
-  },
-);
-
-export const updateAgentRunCallback$ = command(
-  async (
-    _,
-    options: UpdateAgentRunCallbackOptions,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const response = await requestTelegramState(
-      signal,
-      TELEGRAM_STATE_ACTION_ROUTE,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "update-run-callback",
-          callback_id: options.callbackId,
-          url: null,
-          internal_kind: options.internalKind,
-          payload: options.payload,
-        }),
-      },
-    );
-    signal.throwIfAborted();
-    expectOk(response, "updateAgentRunCallback$");
   },
 );
