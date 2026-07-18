@@ -1,5 +1,11 @@
 import { Buffer } from "node:buffer";
 
+import {
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+  ZERO_MAIL_CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { testMailDraftStateContract } from "@vm0/api-contracts/contracts/test-mail-draft-state";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -241,6 +247,15 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
+function legacyAppHeaders() {
+  return {
+    ...authHeaders(),
+    [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+    [CLIENT_VERSION_HEADER]: "0.606.1",
+    [ZERO_MAIL_CLIENT_VERSION_HEADER]: "2",
+  };
+}
+
 async function linkDraft(
   fixture: Awaited<ReturnType<typeof seedGmailMailCardFixture>>,
 ) {
@@ -410,7 +425,7 @@ describe("legacy v2 mail contract compatibility", () => {
 
     const created = await accept(
       client().createDraft({
-        headers: authHeaders(),
+        headers: legacyAppHeaders(),
         body: {
           threadId: fixture.thread.id,
           agentId: fixture.agent.agentId,
@@ -429,7 +444,7 @@ describe("legacy v2 mail contract compatibility", () => {
 
     const updated = await accept(
       client().updateDraft({
-        headers: authHeaders(),
+        headers: legacyAppHeaders(),
         params: { mailDraftId: created.body.mailDraftId },
         body: {
           to: ["updated@example.com"],
@@ -447,7 +462,7 @@ describe("legacy v2 mail contract compatibility", () => {
 
     const sent = await accept(
       client().sendDraft({
-        headers: authHeaders(),
+        headers: legacyAppHeaders(),
         params: { mailDraftId: created.body.mailDraftId },
         body: {
           to: ["updated@example.com"],

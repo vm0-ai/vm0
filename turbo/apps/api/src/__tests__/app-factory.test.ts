@@ -860,7 +860,7 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
     });
 
-    it("forces pre-v2 mail clients to reload before mail route handlers run", async () => {
+    it("allows rollout-compatible mail clients and rejects unsupported versions", async () => {
       const app = createApp({ signal: context.signal });
       const path = "/api/zero/mail/drafts/c0000000-0000-4000-a000-000000000001";
       const stale = await app.request(path, {
@@ -875,6 +875,16 @@ describe("createApp", () => {
       await expect(stale.json()).resolves.toStrictEqual({
         error: "Client update required",
       });
+
+      const previous = await app.request(path, {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.606.1",
+          [ZERO_MAIL_CLIENT_VERSION_HEADER]: "2",
+        },
+      });
+      expect(previous.status).toBe(401);
 
       const current = await app.request(path, {
         method: "GET",
