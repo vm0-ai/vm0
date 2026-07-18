@@ -14,6 +14,8 @@ _ADDON_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURE_ROOT = _ADDON_ROOT / "tests" / "fixtures" / "flow_metadata_key_linter"
 _CHECK_SCRIPT = _ADDON_ROOT / "scripts" / "check-flow-metadata-keys.py"
 _CLI_TIMEOUT_SECONDS = 30
+_COMPLEX_STAR_ARGS_TIMEOUT_SECONDS = 2
+_COMPLEX_STAR_ARGS_BRANCH_COUNT = 24
 _SUPPORTS_EXCEPT_STAR_SYNTAX = sys.version_info >= (3, 11)
 _SUPPORTS_PEP695_SYNTAX = sys.version_info >= (3, 12)
 
@@ -43,7 +45,10 @@ def _violations_expected_fixture_name() -> str:
 
 
 def _run_check_script(
-    check_script: Path, addon_root: Path, executable_dir: Path
+    check_script: Path,
+    addon_root: Path,
+    executable_dir: Path,
+    timeout_seconds: int = _CLI_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
     python3 = executable_dir / "python3"
     python3.symlink_to(Path(sys.executable).resolve())
@@ -63,8 +68,25 @@ def _run_check_script(
         text=True,
         capture_output=True,
         check=False,
-        timeout=_CLI_TIMEOUT_SECONDS,
+        timeout=timeout_seconds,
     )
+
+
+def _copy_linter_scripts(addon_root: Path) -> Path:
+    scripts_root = addon_root / "scripts"
+    scripts_root.mkdir(parents=True)
+    check_script = scripts_root / _CHECK_SCRIPT.name
+    shutil.copy2(_CHECK_SCRIPT, check_script)
+    shutil.copy2(
+        _ADDON_ROOT / "scripts" / "flow_metadata_key_linter.py",
+        scripts_root / "flow_metadata_key_linter.py",
+    )
+    shutil.copytree(
+        _ADDON_ROOT / "scripts" / "flow_metadata_linter",
+        scripts_root / "flow_metadata_linter",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    return check_script
 
 
 def test_registered_flow_metadata_keys_are_unique():
@@ -85,21 +107,9 @@ def test_check_flow_metadata_keys_cli_passes_current_repository(tmp_path):
 
 def test_check_flow_metadata_keys_cli_reports_configured_registry_path(tmp_path):
     addon_root = tmp_path / "mitm-addon"
-    scripts_root = addon_root / "scripts"
-    scripts_root.mkdir(parents=True)
-    check_script = scripts_root / _CHECK_SCRIPT.name
-    shutil.copy2(_CHECK_SCRIPT, check_script)
-    shutil.copy2(
-        _ADDON_ROOT / "scripts" / "flow_metadata_key_linter.py",
-        scripts_root / "flow_metadata_key_linter.py",
-    )
-    shutil.copytree(
-        _ADDON_ROOT / "scripts" / "flow_metadata_linter",
-        scripts_root / "flow_metadata_linter",
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
+    check_script = _copy_linter_scripts(addon_root)
 
-    paths_file = scripts_root / "flow_metadata_linter" / "paths.py"
+    paths_file = addon_root / "scripts" / "flow_metadata_linter" / "paths.py"
     paths_file.write_text(
         paths_file.read_text(encoding="utf-8").replace(
             '"flow_metadata_keys.py"', '"renamed_flow_metadata_keys.py"'
@@ -117,6 +127,50 @@ def test_check_flow_metadata_keys_cli_reports_configured_registry_path(tmp_path)
     assert result.returncode == 1
     assert result.stdout == (
         "src/renamed_flow_metadata_keys.py: duplicate metadata key 'duplicate': FIRST, SECOND\n"
+    )
+    assert result.stderr == ""
+
+
+def test_check_flow_metadata_keys_cli_bounds_conditional_starred_arguments(tmp_path):
+    addon_root = tmp_path / "mitm-addon"
+    check_script = _copy_linter_scripts(addon_root)
+    src_root = addon_root / "src"
+    src_root.mkdir()
+    (src_root / "flow_metadata_keys.py").write_text(
+        'VM_RUN_ID = "vm_run_id"\n'
+        'FIREWALL_NAME = "firewall_name"\n'
+        'FIREWALL_ACTION = "firewall_action"\n',
+        encoding="utf-8",
+    )
+    tests_root = addon_root / "tests"
+    tests_root.mkdir()
+    starred_elements = [
+        '    *([] if c0 else ["vm_run_id"]),',
+        '    *(["firewall_name"] if c1 else ["firewall_action"]),',
+        *[
+            f'    *(["external-{index}-left"] if c{index} else ["external-{index}-right"]),'
+            for index in range(2, _COMPLEX_STAR_ARGS_BRANCH_COUNT)
+        ],
+    ]
+    (tests_root / "complex_star_args.py").write_text(
+        "flow.metadata.get(*[\n" + "\n".join(starred_elements) + "\n])\n",
+        encoding="utf-8",
+    )
+
+    result = _run_check_script(
+        check_script,
+        addon_root,
+        tmp_path,
+        timeout_seconds=_COMPLEX_STAR_ARGS_TIMEOUT_SECONDS,
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == (
+        "tests/complex_star_args.py:3: use metadata_keys.FIREWALL_NAME "
+        "for flow.metadata access\n"
+        "tests/complex_star_args.py:3: use metadata_keys.FIREWALL_ACTION "
+        "for flow.metadata access\n"
+        "tests/complex_star_args.py:2: use metadata_keys.VM_RUN_ID for flow.metadata access\n"
     )
     assert result.stderr == ""
 

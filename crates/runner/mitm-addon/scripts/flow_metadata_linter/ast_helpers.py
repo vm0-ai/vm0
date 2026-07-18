@@ -41,75 +41,90 @@ def _argument_annotations(args: ast.arguments) -> list[ast.expr]:
     return annotations
 
 
-def _static_call_argument_nodes(args: list[ast.expr], index: int) -> list[ast.AST]:
+def _static_first_call_argument_nodes(args: list[ast.expr]) -> list[ast.AST]:
+    """Return static nodes that can occupy a call's first positional argument."""
     result: list[ast.AST] = []
-    consumed_counts = [0]
     for argument in args:
-        next_consumed_counts: list[int] = []
         if isinstance(argument, ast.Starred):
-            expansions, has_unknown_expansion = _static_starred_argument_expansions(argument.value)
-            for consumed in consumed_counts:
-                for expansion in expansions:
-                    for offset, expanded_argument in enumerate(expansion):
-                        if consumed + offset == index:
-                            result.append(expanded_argument)
-                    next_consumed_counts.append(consumed + len(expansion))
-            if has_unknown_expansion:
-                next_consumed_counts.extend(
-                    consumed for consumed in consumed_counts if consumed <= index
-                )
-        else:
-            for consumed in consumed_counts:
-                if consumed == index:
-                    result.append(argument)
-                next_consumed_counts.append(consumed + 1)
-        consumed_counts = next_consumed_counts
+            outcomes, has_unknown_expansion = _static_iterable_first_outcomes(argument.value)
+            result.extend(outcome for outcome in outcomes if outcome is not None)
+            if has_unknown_expansion or any(outcome is None for outcome in outcomes):
+                continue
+            break
+        result.append(argument)
+        break
     return result
 
 
-def _static_starred_argument_expansions(node: ast.AST) -> tuple[list[list[ast.AST]], bool]:
+def _deduplicate_static_argument_outcomes(
+    outcomes: list[ast.AST | None],
+) -> list[ast.AST | None]:
+    result: list[ast.AST | None] = []
+    seen_node_ids: set[int] = set()
+    has_empty_outcome = False
+    for outcome in outcomes:
+        if outcome is None:
+            if has_empty_outcome:
+                continue
+            has_empty_outcome = True
+        else:
+            node_id = id(outcome)
+            if node_id in seen_node_ids:
+                continue
+            seen_node_ids.add(node_id)
+        result.append(outcome)
+    return result
+
+
+def _static_iterable_first_outcomes(node: ast.AST) -> tuple[list[ast.AST | None], bool]:
+    """Return ordered first-node/empty outcomes and whether any expansion is unknown.
+
+    ``None`` represents a statically empty expansion. The unknown flag remains separate because
+    the linter conservatively treats any dynamic nested expansion as a possible empty call prefix.
+    """
     if isinstance(node, ast.NamedExpr):
-        return _static_starred_argument_expansions(node.value)
+        return _static_iterable_first_outcomes(node.value)
     if isinstance(node, ast.IfExp):
-        body_expansions, body_has_unknown_expansion = _static_starred_argument_expansions(node.body)
-        orelse_expansions, orelse_has_unknown_expansion = _static_starred_argument_expansions(
-            node.orelse
-        )
-        return [
-            *body_expansions,
-            *orelse_expansions,
-        ], body_has_unknown_expansion or orelse_has_unknown_expansion
+        body_outcomes, body_has_unknown_expansion = _static_iterable_first_outcomes(node.body)
+        orelse_outcomes, orelse_has_unknown_expansion = _static_iterable_first_outcomes(node.orelse)
+        return _deduplicate_static_argument_outcomes(
+            [*body_outcomes, *orelse_outcomes]
+        ), body_has_unknown_expansion or orelse_has_unknown_expansion
     if isinstance(node, ast.BoolOp):
-        expansions: list[list[ast.AST]] = []
+        alternative_outcomes: list[ast.AST | None] = []
         has_unknown_expansion = False
         for value in node.values:
-            value_expansions, value_has_unknown_expansion = _static_starred_argument_expansions(
-                value
-            )
-            expansions.extend(value_expansions)
+            value_outcomes, value_has_unknown_expansion = _static_iterable_first_outcomes(value)
+            alternative_outcomes.extend(value_outcomes)
             has_unknown_expansion = has_unknown_expansion or value_has_unknown_expansion
-        return expansions, has_unknown_expansion
+        return (
+            _deduplicate_static_argument_outcomes(alternative_outcomes),
+            has_unknown_expansion,
+        )
     if not isinstance(node, ast.List | ast.Tuple):
         return [], True
-    expansions = [[]]
+    outcomes: list[ast.AST | None] = [None]
     has_unknown_expansion = False
     for element in node.elts:
         if isinstance(element, ast.Starred):
-            nested_expansions, nested_has_unknown_expansion = _static_starred_argument_expansions(
+            element_outcomes, element_has_unknown_expansion = _static_iterable_first_outcomes(
                 element.value
             )
-            next_expansions: list[list[ast.AST]] = []
-            if nested_expansions:
-                next_expansions.extend(
-                    [*prefix, *nested] for prefix in expansions for nested in nested_expansions
-                )
-            if nested_has_unknown_expansion:
-                next_expansions.extend(expansions)
-            expansions = next_expansions
-            has_unknown_expansion = has_unknown_expansion or nested_has_unknown_expansion
         else:
-            expansions = [[*prefix, element] for prefix in expansions]
-    return expansions, has_unknown_expansion
+            element_outcomes = [element]
+            element_has_unknown_expansion = False
+        if any(outcome is None for outcome in outcomes):
+            next_outcomes: list[ast.AST | None] = []
+            for outcome in outcomes:
+                if outcome is None:
+                    next_outcomes.extend(element_outcomes)
+                else:
+                    next_outcomes.append(outcome)
+            if element_has_unknown_expansion:
+                next_outcomes.extend(outcomes)
+            outcomes = _deduplicate_static_argument_outcomes(next_outcomes)
+        has_unknown_expansion = has_unknown_expansion or element_has_unknown_expansion
+    return outcomes, has_unknown_expansion
 
 
 def _type_params(node: ast.AST) -> list[ast.AST]:
