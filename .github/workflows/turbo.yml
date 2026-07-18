@@ -1502,7 +1502,7 @@ jobs:
           submodules: recursive
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
       - name: Install E2E dependencies
         run: npm install -g agent-browser@0.32.1
       - name: Run browser E2E tests

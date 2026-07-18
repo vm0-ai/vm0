@@ -60,6 +60,56 @@ describe("clerk email code preparation", () => {
     ]);
   });
 
+  it("reuses the code sent by sign-up creation without verification metadata", async () => {
+    let now = Date.UTC(2026, 6, 18, 8, 30);
+    mockNow(now);
+
+    await setupAuthSignals("/sign-up");
+
+    const signUp = mockedClerk.client.signUp;
+    await signUp.create({
+      emailAddress: "person@example.com",
+      legalAccepted: true,
+      password: "test-password",
+    });
+    expect(signUp.verifications.emailAddress).toStrictEqual({
+      expireAt: null,
+      nonce: null,
+      status: null,
+      strategy: null,
+    });
+
+    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+    expect(mockedClerk.factorPreparations).toStrictEqual([]);
+
+    now += 60_000;
+    mockNow(now);
+    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+    expect(mockedClerk.factorPreparations).toStrictEqual([
+      { flow: "sign-up", strategy: "email_code" },
+    ]);
+  });
+
+  it("prepares email code after an external sign-up creation", async () => {
+    const now = Date.UTC(2026, 6, 18, 8, 45);
+    mockNow(now);
+
+    await setupAuthSignals("/sign-up");
+
+    const signUp = mockedClerk.client.signUp;
+    await signUp.create({
+      emailAddress: "person@example.com",
+      strategy: "oauth_google",
+    });
+    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+
+    expect(mockedClerk.factorPreparations).toStrictEqual([
+      { flow: "sign-up", strategy: "email_code" },
+    ]);
+  });
+
   it("coalesces sign-in preparation and preserves resend", async () => {
     let now = Date.UTC(2026, 6, 18, 9);
     mockNow(now);

@@ -11,9 +11,12 @@ type ClerkClient = NonNullable<Clerk["client"]>;
 type SignInResource = ClerkClient["signIn"];
 type SignUpResource = ClerkClient["signUp"];
 type SignInPrepareParams = Parameters<SignInResource["prepareFirstFactor"]>[0];
+type SignUpCreateParams = Parameters<SignUpResource["create"]>[0];
 type SignUpPrepareParams = Parameters<
   SignUpResource["prepareEmailAddressVerification"]
 >[0];
+
+const SIGN_UP_EMAIL_CODE_KEY = "email_code";
 
 interface EmailCodeVerification {
   readonly expireAt: Date | null;
@@ -23,7 +26,7 @@ interface EmailCodeVerification {
 }
 
 interface ActivePreparation {
-  readonly fingerprint: string;
+  readonly fingerprint: string | null;
   readonly suppressUntil: number;
 }
 
@@ -44,6 +47,15 @@ function activeEmailCodeFingerprint(
   return `${verification.nonce ?? "no-nonce"}:${expiresAt}`;
 }
 
+function signUpCreateSendsEmailCode(params: SignUpCreateParams): boolean {
+  return (
+    typeof params.emailAddress === "string" &&
+    params.emailAddress.length > 0 &&
+    params.strategy === undefined &&
+    params.externalAccountStrategy === undefined
+  );
+}
+
 function createPreparationGuard<Resource, Params>(options: {
   activePreparations: Map<string, ActivePreparation>;
   getVerification: (resource: Resource) => EmailCodeVerification;
@@ -60,13 +72,26 @@ function createPreparationGuard<Resource, Params>(options: {
       options.getVerification(options.resource),
       currentTime,
     );
-    const activePreparation = options.activePreparations.get(key);
+    let activePreparation = options.activePreparations.get(key);
+
+    if (fingerprint && activePreparation?.fingerprint === null) {
+      activePreparation = { ...activePreparation, fingerprint };
+      options.activePreparations.set(key, activePreparation);
+    }
+
+    if (
+      activePreparation &&
+      activePreparation.suppressUntil > currentTime &&
+      (fingerprint === null || activePreparation.fingerprint === fingerprint)
+    ) {
+      return Promise.resolve(options.resource);
+    }
 
     if (fingerprint && activePreparation?.fingerprint !== fingerprint) {
       const knownForAnotherFactor = Array.from(
-        options.activePreparations.values(),
-      ).some((preparation) => {
-        return preparation.fingerprint === fingerprint;
+        options.activePreparations.entries(),
+      ).some(([activeKey, preparation]) => {
+        return activeKey !== key && preparation.fingerprint === fingerprint;
       });
       if (!knownForAnotherFactor) {
         options.activePreparations.set(key, {
@@ -75,14 +100,6 @@ function createPreparationGuard<Resource, Params>(options: {
         });
         return Promise.resolve(options.resource);
       }
-    }
-
-    if (
-      fingerprint &&
-      activePreparation?.fingerprint === fingerprint &&
-      activePreparation.suppressUntil > currentTime
-    ) {
-      return Promise.resolve(options.resource);
     }
 
     const pendingPreparation = pendingPreparations.get(key);
@@ -99,12 +116,10 @@ function createPreparationGuard<Resource, Params>(options: {
         options.getVerification(resource),
         preparedAt,
       );
-      if (preparedFingerprint) {
-        options.activePreparations.set(key, {
-          fingerprint: preparedFingerprint,
-          suppressUntil: preparedAt + AUTOMATIC_PREPARATION_WINDOW_MS,
-        });
-      }
+      options.activePreparations.set(key, {
+        fingerprint: preparedFingerprint,
+        suppressUntil: preparedAt + AUTOMATIC_PREPARATION_WINDOW_MS,
+      });
       return resource;
     })();
 
@@ -123,6 +138,7 @@ function guardSignUpResource(
   }
   guardedResources.add(signUp);
 
+  const originalCreate = signUp.create.bind(signUp);
   const originalPrepare = signUp.prepareEmailAddressVerification.bind(signUp);
   const guardedPrepare = createPreparationGuard<
     SignUpResource,
@@ -133,11 +149,31 @@ function guardSignUpResource(
       return resource.verifications.emailAddress;
     },
     key: () => {
-      return "email_code";
+      return SIGN_UP_EMAIL_CODE_KEY;
     },
     prepare: originalPrepare,
     resource: signUp,
   });
+
+  signUp.create = async (
+    params: SignUpCreateParams,
+  ): Promise<SignUpResource> => {
+    const resource = await originalCreate(params);
+    if (!signUpCreateSendsEmailCode(params)) {
+      activePreparations.delete(SIGN_UP_EMAIL_CODE_KEY);
+      return resource;
+    }
+
+    const preparedAt = now();
+    activePreparations.set(SIGN_UP_EMAIL_CODE_KEY, {
+      fingerprint: activeEmailCodeFingerprint(
+        resource.verifications.emailAddress,
+        preparedAt,
+      ),
+      suppressUntil: preparedAt + AUTOMATIC_PREPARATION_WINDOW_MS,
+    });
+    return resource;
+  };
 
   signUp.prepareEmailAddressVerification = (
     params?: SignUpPrepareParams,

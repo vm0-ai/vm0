@@ -207,6 +207,14 @@ interface MockedSignUpPrepareParams {
   strategy: "email_code" | "email_link";
 }
 
+interface MockedSignUpCreateParams {
+  emailAddress?: string;
+  externalAccountStrategy?: string;
+  legalAccepted?: boolean;
+  password?: string;
+  strategy?: string;
+}
+
 interface MockedSignInPrepareParams {
   emailAddressId?: string;
   phoneNumberId?: string;
@@ -215,6 +223,10 @@ interface MockedSignInPrepareParams {
 
 type MockedSignUpPrepare = (
   params?: MockedSignUpPrepareParams,
+) => Promise<MockedSignUpResource>;
+
+type MockedSignUpCreate = (
+  params: MockedSignUpCreateParams,
 ) => Promise<MockedSignUpResource>;
 
 type MockedSignInPrepare = (
@@ -227,6 +239,7 @@ interface MockedFactorPreparation {
 }
 
 interface MockedSignUpResource {
+  create: MockedSignUpCreate;
   prepareEmailAddressVerification: MockedSignUpPrepare;
   verifications: {
     emailAddress: MockedEmailCodeVerification;
@@ -265,6 +278,9 @@ function preparedEmailCodeVerification(
 
 function createMockedSignUpResource(): MockedSignUpResource {
   const resource: MockedSignUpResource = {
+    create: () => {
+      return Promise.resolve(resource);
+    },
     prepareEmailAddressVerification: (params) => {
       internalMockedFactorPreparations.push({
         flow: "sign-up",
