@@ -561,15 +561,26 @@ class TestRegistryBuiltinCache:
                 )
             },
         )
+        assert snapshot.catalog is not None
+        rewritten_key = builtin_firewall_cache.CatalogFileKey(
+            absolute_path="catalog-cache/catalog-a.json",
+            st_dev=1,
+            st_ino=2,
+            st_mtime_ns=3,
+            st_size=4,
+        )
         rewritten_snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
-            dependency_file_key=builtin_firewall_cache.CatalogFileKey(
-                absolute_path="catalog-cache/catalog-a.json",
-                st_dev=1,
-                st_ino=2,
-                st_mtime_ns=3,
-                st_size=4,
+            dependency_file_key=rewritten_key,
+            catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
+                identity=builtin_firewall_cache.CatalogIdentity(
+                    source=snapshot.catalog.identity.source,
+                    catalog_digest=snapshot.catalog.identity.catalog_digest,
+                    catalog_version=snapshot.catalog.identity.catalog_version,
+                    file_key=rewritten_key,
+                ),
+                firewalls=snapshot.catalog.firewalls,
             ),
-            catalog=snapshot.catalog,
+            cache_path=rewritten_key.absolute_path,
         )
         expected_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
