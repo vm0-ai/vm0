@@ -854,7 +854,7 @@ async fn lifecycle_request_writes_while_file_frame_builder_waits() {
     guest
         .send_empty_response(MSG_SHUTDOWN_ACK, shutdown.seq)
         .await;
-    assert!(shutdown_task.await.unwrap());
+    shutdown_task.await.unwrap().unwrap();
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
 
     drop(frame_builder_guard);
@@ -897,7 +897,7 @@ async fn file_write_gate_holds_through_result_and_lifecycle_bypasses_it() {
     guest
         .send_empty_response(MSG_SHUTDOWN_ACK, shutdown.seq)
         .await;
-    assert!(shutdown_task.await.unwrap());
+    shutdown_task.await.unwrap().unwrap();
     assert!(host.shared.file_write_gate.try_lock().is_err());
 
     send_write_file_success(guest.stream_mut(), first.seq()).await;

@@ -1708,11 +1708,23 @@ impl Sandbox for FirecrackerSandbox {
         // with no user workload.
         let was_parked = self.is_parked;
         let guest = self.guest.lock().await.take();
-        if !was_parked
-            && let Some(guest) = guest
-            && !guest.shutdown(SHUTDOWN_TIMEOUT).await
-        {
-            warn!(id = %self.id, "graceful shutdown timed out");
+        if !was_parked && let Some(guest) = guest {
+            let started_at = tokio::time::Instant::now();
+            if let Err(error) = guest.shutdown(SHUTDOWN_TIMEOUT).await {
+                let failure_kind = match error.kind() {
+                    io::ErrorKind::TimedOut => "timeout",
+                    io::ErrorKind::InvalidData => "unexpected_response",
+                    _ => "request_failure",
+                };
+                warn!(
+                    sandbox_id = %self.id,
+                    timeout_ms = duration_ms(SHUTDOWN_TIMEOUT),
+                    elapsed_ms = duration_ms(started_at.elapsed()),
+                    failure_kind,
+                    error = %error,
+                    "graceful shutdown failed"
+                );
+            }
         }
         release_park_state_for_termination(
             &mut self.is_parked,
