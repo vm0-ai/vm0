@@ -15,8 +15,7 @@ from tests.stream_buffer_helpers import set_response_stream_buffer
 from tests.x_connector_usage.helpers import assert_lost_visibility_error
 
 
-def test_logs_x_stream_with_ndjson_state(x_usage, tmp_path, real_flow):
-    """Stream with pre-populated x_ndjson_state -> two billing payloads."""
+def test_x_stream_mixed_rows_bills_valid_counts_and_logs_risk(x_usage, tmp_path, real_flow):
     flow = x_usage.make_flow(
         real_flow,
         tmp_path,
@@ -24,6 +23,7 @@ def test_logs_x_stream_with_ndjson_state(x_usage, tmp_path, real_flow):
         body=b"",
         rule="GET /2/tweets/search/stream",
     )
+    proxy_log = tmp_path / "proxy.jsonl"
     flow.metadata[metadata_keys.X_NDJSON_STATE] = {
         "data_count": 50,
         "includes": {"users": 47, "tweets": 12},
@@ -36,6 +36,55 @@ def test_logs_x_stream_with_ndjson_state(x_usage, tmp_path, real_flow):
     assert by_cat["posts.read"] == 62
     assert by_cat["user.read"] == 47
 
+    [entry] = [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log)
+        if entry.get("reason") == "unparseable_ndjson_rows"
+    ]
+    assert entry["type"] == "usage_underbilling"
+    assert entry["reason"] == "unparseable_ndjson_rows"
+    assert entry["underbilling_class"] == "risk"
+    assert entry["component"] == "mitm_addon"
+    assert entry["run_id"] == "run-abc-123"
+    assert entry["firewall_name"] == "x"
+    assert entry["permission"] == "tweet.read"
+    assert entry["method"] == "GET"
+    assert entry["url"] == "https://api.x.com/2/tweets/search/stream"
+    assert entry["ndjson_lines_failed"] == 1
+    assert entry["ndjson_lines_parsed"] == 50
+    assert entry["response_data_count"] == 50
+
+
+def test_x_stream_all_failed_rows_logs_risk_without_billing(x_usage, tmp_path, real_flow):
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets/search/stream",
+        body=b"",
+        rule="GET /2/tweets/search/stream",
+    )
+    proxy_log = tmp_path / "proxy.jsonl"
+    flow.metadata[metadata_keys.X_NDJSON_STATE] = {
+        "data_count": 0,
+        "includes": {},
+        "lines_parsed": 0,
+        "lines_failed": 2,
+    }
+
+    assert x_usage.call_and_get_billing(flow) == []
+
+    [entry] = [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log)
+        if entry.get("reason") == "unparseable_ndjson_rows"
+    ]
+    assert entry["type"] == "usage_underbilling"
+    assert entry["reason"] == "unparseable_ndjson_rows"
+    assert entry["underbilling_class"] == "risk"
+    assert entry["ndjson_lines_failed"] == 2
+    assert entry["ndjson_lines_parsed"] == 0
+    assert entry["response_data_count"] == 0
+
 
 def test_x_stream_empty_emits_no_billing(x_usage, tmp_path, real_flow):
     """Stream that delivered 0 tweets emits no usage_event row, and
@@ -47,6 +96,7 @@ def test_x_stream_empty_emits_no_billing(x_usage, tmp_path, real_flow):
         body=b"",
         rule="GET /2/tweets/search/stream",
     )
+    proxy_log = tmp_path / "proxy.jsonl"
     flow.metadata[metadata_keys.X_NDJSON_STATE] = {
         "data_count": 0,
         "includes": {},
@@ -55,6 +105,7 @@ def test_x_stream_empty_emits_no_billing(x_usage, tmp_path, real_flow):
     }
     payloads = x_usage.call_and_get_billing(flow)
     assert payloads == []
+    assert not jsonl_exists_after_flush(proxy_log)
 
 
 def test_legacy_x_json_fallback_extracts_selective_field_counts(x_usage, tmp_path, real_flow):
