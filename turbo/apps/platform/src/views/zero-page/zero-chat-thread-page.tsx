@@ -6382,7 +6382,6 @@ function GoalUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
-                  escapeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>
@@ -6407,12 +6406,15 @@ function PagedUserMessage({
   // over from messages sent before #10243 split the flows. Use the structured
   // source when it's present and fall back to inline parsing otherwise.
   const { cleanContent, parsed } = parseInlineAttachments(content);
+  const hasStructuredAttachments =
+    message.attachFiles !== undefined && message.attachFiles.length > 0;
   const copyText =
-    message.attachFiles &&
-    message.attachFiles.length > 0 &&
-    cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
-      ? ""
-      : cleanContent;
+    !hasStructuredAttachments && parsed.length === 0
+      ? content
+      : hasStructuredAttachments &&
+          cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
+        ? ""
+        : cleanContent;
   const bodyBlocks = message.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
@@ -6473,7 +6475,6 @@ function PagedUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
-                  escapeMarkdownHtml
                   markdownMediaPreview={false}
                 />
               </div>

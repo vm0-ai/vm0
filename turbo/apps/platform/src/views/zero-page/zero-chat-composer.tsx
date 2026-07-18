@@ -6224,6 +6224,8 @@ function useResolvedComposerSignals(
     draft.attachmentUploadsReady$,
   );
   const readInput = useSet(draft.readInput$);
+  const startAttachmentUpload = useSet(draft.startAttachmentUpload$);
+  const readAttachmentFileInfo = useSet(draft.readAttachmentFileInfo$);
   const uploadAttachment = useSet(draft.uploadAttachment$);
   const restoreAttachments = useSet(draft.restoreAttachments$);
   const removeAttachment = useSet(draft.removeAttachment$);
@@ -6238,6 +6240,8 @@ function useResolvedComposerSignals(
 
   return {
     readInput,
+    startAttachmentUpload,
+    readAttachmentFileInfo,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -6559,6 +6563,8 @@ export function useZeroChatComposer({
   );
   const {
     readInput,
+    startAttachmentUpload,
+    readAttachmentFileInfo,
     attachments,
     attachmentUploadsState,
     uploadAttachment,
@@ -6569,7 +6575,11 @@ export function useZeroChatComposer({
     dragOver,
     setDragOver,
   } = resolved;
-  const insertComposerText = useSet(composer.insertText$);
+  const insertPromptMarkdown = useSet(composer.insertPromptMarkdown$);
+  const insertTemplate = useSet(composer.insertTemplate$);
+  const insertFile = useSet(composer.insertFile$);
+  const resolveFile = useSet(composer.resolveFile$);
+  const removeFile = useSet(composer.removeFile$);
   const appendComposerText = useSet(composer.appendText$);
   const [inputForSubmissionLoadable, readInputForSubmission] = useLoadableSet(
     composer.readInputForSubmission$,
@@ -6577,6 +6587,9 @@ export function useZeroChatComposer({
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
+  const features = useGet(featureSwitch$);
+  const inlinePromptItems =
+    features[FeatureSwitchKey.ComposerInlinePromptItems] ?? false;
   const visualAttachmentUnsupported =
     getVisualAttachmentUnsupportedState(modelPicker);
   const visibleAttachments = resolveVisibleAttachments(
@@ -6585,41 +6598,104 @@ export function useZeroChatComposer({
   );
   const uploadsReady = attachmentUploadsState === "hasData";
 
-  // File upload handlers (paste / drag-drop)
-  const handlePaste = (e: ComposerPasteEvent) => {
-    if (!e.clipboardData) {
-      return;
-    }
-    const chatPayload = readChatMessageFromClipboard(e.clipboardData);
-    if (chatPayload && chatPayload.attachments.length > 0) {
-      const persistedAttachments = toPersistedAttachments(
-        chatPayload.attachments,
+  const uploadInlineFile = (file: File) => {
+    const clientId = crypto.randomUUID();
+    const started = startAttachmentUpload(file, rootSignal);
+    insertFile({
+      clientId,
+      filename: started.attachment.filename,
+      contentType: started.attachment.contentType,
+      size: started.attachment.size,
+    });
+    const settleUpload = async () => {
+      const info = await tapError(
+        (async () => {
+          await started.result;
+          return await readAttachmentFileInfo(started.attachment, rootSignal);
+        })(),
+        () => {
+          removeFile(clientId);
+        },
       );
-      if (persistedAttachments.length > 0) {
-        const allowedAttachments = visualAttachmentUnsupported
-          ? persistedAttachments.filter((attachment) => {
-              return !isVisualAttachment({
-                contentType: attachment.contentType,
-                filename: attachment.filename,
-              });
-            })
-          : persistedAttachments;
-        if (allowedAttachments.length < persistedAttachments.length) {
-          showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
-        }
-        e.preventDefault();
-        if (chatPayload.text) {
-          insertComposerText(chatPayload.text);
-        }
-        if (allowedAttachments.length > 0) {
-          restoreAttachments(allowedAttachments);
-        }
-        onDraftChange?.();
+      if (!info) {
+        removeFile(clientId);
         return;
       }
-    }
+      resolveFile(clientId, info.id, info.url);
+      removeAttachment(started.attachment);
+    };
+    detach(settleUpload(), Reason.DomCallback);
+  };
 
-    const items = e.clipboardData?.items;
+  const uploadComposerFile = (file: File) => {
+    if (inlinePromptItems) {
+      uploadInlineFile(file);
+      return;
+    }
+    detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+  };
+
+  const insertClipboardAttachments = (
+    clipboardAttachments: PersistedAttachment[],
+  ) => {
+    if (!inlinePromptItems) {
+      restoreAttachments(clipboardAttachments);
+      return;
+    }
+    for (const attachment of clipboardAttachments) {
+      insertFile({
+        clientId: crypto.randomUUID(),
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        size: attachment.size,
+        fileId: attachment.id,
+        url: attachment.url,
+      });
+    }
+  };
+
+  const pasteChatClipboard = (e: ComposerPasteEvent): boolean => {
+    const chatPayload = e.clipboardData
+      ? readChatMessageFromClipboard(e.clipboardData)
+      : null;
+    if (!chatPayload || chatPayload.attachments.length === 0) {
+      return false;
+    }
+    const persistedAttachments = toPersistedAttachments(
+      chatPayload.attachments,
+    );
+    if (persistedAttachments.length === 0) {
+      return false;
+    }
+    const allowedAttachments = visualAttachmentUnsupported
+      ? persistedAttachments.filter((attachment) => {
+          return !isVisualAttachment({
+            contentType: attachment.contentType,
+            filename: attachment.filename,
+          });
+        })
+      : persistedAttachments;
+    if (
+      visualAttachmentUnsupported &&
+      allowedAttachments.length < persistedAttachments.length
+    ) {
+      showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+    }
+    e.preventDefault();
+    if (chatPayload.text) {
+      insertPromptMarkdown(chatPayload.text);
+    }
+    insertClipboardAttachments(allowedAttachments);
+    onDraftChange?.();
+    return true;
+  };
+
+  // File upload handlers (paste / drag-drop)
+  const handlePaste = (e: ComposerPasteEvent) => {
+    if (!e.clipboardData || pasteChatClipboard(e)) {
+      return;
+    }
+    const items = e.clipboardData.items;
     if (!items) {
       return;
     }
@@ -6629,7 +6705,7 @@ export function useZeroChatComposer({
       if (pastedPlainText || !plainText) {
         return;
       }
-      insertComposerText(plainText);
+      insertPromptMarkdown(plainText);
       pastedPlainText = true;
     };
     for (const item of items) {
@@ -6653,7 +6729,7 @@ export function useZeroChatComposer({
       }
       e.preventDefault();
       applyPlainText();
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      uploadComposerFile(file);
       onDraftChange?.();
     }
   };
@@ -6676,7 +6752,7 @@ export function useZeroChatComposer({
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      uploadComposerFile(file);
       uploaded = true;
     }
     if (uploaded) {
@@ -6816,9 +6892,12 @@ export function useZeroChatComposer({
         return;
       }
       if (sendAction === "send") {
-        onSend(prompt, templatePicker?.value);
+        onSend(prompt, inlinePromptItems ? undefined : templatePicker?.value);
       } else {
-        onQueue?.(prompt, templatePicker?.value);
+        onQueue?.(
+          prompt,
+          inlinePromptItems ? undefined : templatePicker?.value,
+        );
       }
     };
     detach(submitCurrentInput(), Reason.DomCallback);
@@ -6877,7 +6956,7 @@ export function useZeroChatComposer({
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
-      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      uploadComposerFile(file);
       uploaded = true;
     }
     if (uploaded) {
@@ -6903,6 +6982,25 @@ export function useZeroChatComposer({
     }
     modelPicker?.onChange(selection);
   };
+
+  const composerTemplatePicker: ComposerTemplatePicker | undefined =
+    templatePicker && inlinePromptItems
+      ? {
+          value: undefined,
+          onChange: (value) => {
+            if (!value) {
+              return;
+            }
+            const attachment = selectedComposerTemplateAttachment(
+              value,
+              features[FeatureSwitchKey.WebsiteTemplates] ?? false,
+            );
+            if (attachment) {
+              insertTemplate(value, attachment);
+            }
+          },
+        }
+      : templatePicker;
 
   return (
     <>
@@ -6941,11 +7039,11 @@ export function useZeroChatComposer({
             <div className="flex flex-col">
               <ComposerTemplateAttachmentSync
                 composer={composer}
-                picker={templatePicker}
+                picker={composerTemplatePicker}
                 onDraftChange={onDraftChange}
                 runtime={composer.templatePreview}
               />
-              {visibleAttachments.length > 0 && (
+              {!inlinePromptItems && visibleAttachments.length > 0 && (
                 <AttachmentChips
                   attachments={visibleAttachments}
                   onRemove={(attachment) => {
@@ -6972,7 +7070,7 @@ export function useZeroChatComposer({
                   />
                   <ComposerTemplatePickerSlot
                     composer={composer}
-                    picker={templatePicker}
+                    picker={composerTemplatePicker}
                   />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}

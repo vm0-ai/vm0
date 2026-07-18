@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
@@ -203,6 +204,63 @@ function dispatchDocumentShortcut(key: string): KeyboardEvent {
 }
 
 describe("chat inline feedback", () => {
+  it("inserts feedback as an atomic inline prompt item", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    let sentPrompt: string | undefined;
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-inline-feedback-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-inline-feedback",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-inline-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-inline-feedback",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentPrompt = body.prompt;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ComposerInlinePromptItems]: true,
+      },
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+    await user.click(await screen.findByText("Provide feedback"));
+
+    const composerEditor = await findComposerEditor();
+    await waitFor(() => {
+      expect(
+        composerEditor.querySelector("[data-composer-inline-feedback]"),
+      ).toHaveTextContent(assistantReply);
+      expect(feedbackNotes()).toHaveLength(0);
+    });
+
+    await user.keyboard("Make the dates explicit.{Enter}");
+
+    await waitFor(() => {
+      expect(sentPrompt).toBeDefined();
+    });
+    expect(sentPrompt).toContain("Feedback on this part of your reply:");
+    expect(sentPrompt).toContain(`> ${assistantReply}`);
+    expect(sentPrompt).toContain("Make the dates explicit.");
+  });
+
   it("keeps ordinary text and inline feedback in one composer document", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";

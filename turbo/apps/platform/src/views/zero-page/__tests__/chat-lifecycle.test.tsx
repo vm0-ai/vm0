@@ -4601,6 +4601,48 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("renders template comments invisibly and copies the canonical user prompt", async () => {
+    const clipboard = context.mocks.browser.clipboardWriteText();
+    const threadId = "b0000000-0000-4000-a000-000000000799";
+    const template = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const content =
+      `Draw in ${template.title}` +
+      `<!-- zero-template:v1 type="illustration" id="${template.illustrationStyleId}"; use this style -->` +
+      " style";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Inline template copy",
+      chatMessages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000799",
+          role: "user",
+          content,
+          runId: "d0000000-0000-4000-a000-000000000799",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const visibleMessage = await screen.findByText(template.title, {
+      exact: false,
+    });
+    const userGroup = visibleMessage.closest('[data-role="user"]');
+    if (!(userGroup instanceof HTMLElement)) {
+      throw new Error("user message group not found");
+    }
+    expect(userGroup).toHaveTextContent(`Draw in ${template.title} style`);
+    expect(userGroup).not.toHaveTextContent("zero-template:v1");
+
+    click(within(userGroup).getByLabelText("Copy message"));
+
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([content]);
+    });
+  });
+
   it("starts a workflow prompt from the composer when the composer is empty", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "assistant-message-create-workflow-empty";

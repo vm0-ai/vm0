@@ -324,6 +324,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.ComposerInlinePromptItems]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Render composer context as movable inline items and serialize it into the user prompt instead of message attachment fields.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:

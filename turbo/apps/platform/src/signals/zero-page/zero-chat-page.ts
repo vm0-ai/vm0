@@ -36,7 +36,11 @@ export const setChatPageInput$ = command(({ get, set }, value: string) => {
 });
 
 export const chatPageWorkflowComposer$ = computed((get) => {
-  return createWorkflowComposerSignals(get(talkDraft$));
+  return createWorkflowComposerSignals(
+    get(talkDraft$),
+    undefined,
+    get(featureSwitch$)[FeatureSwitchKey.ComposerInlinePromptItems] ?? false,
+  );
 });
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));

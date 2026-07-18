@@ -17,6 +17,8 @@ import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 export const SIDEBAR_PARAM = "sidebar";
 
@@ -140,6 +142,7 @@ const setupPaneThread$ = command(
       draft,
       dataSource,
       initialOptimisticEntries,
+      get(featureSwitch$)[FeatureSwitchKey.ComposerInlinePromptItems] ?? false,
     );
     set(spec.setPaneThread$, thread);
 
