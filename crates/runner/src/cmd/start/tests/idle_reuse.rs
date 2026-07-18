@@ -11,7 +11,7 @@ use super::support::{
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
-use crate::types::SandboxReuseResult;
+use crate::types::{SandboxReuseResult, SessionAffinityResource};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
 const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
@@ -21,10 +21,12 @@ fn reusable_candidate(
     profile_name: &str,
     session_id: &str,
 ) -> crate::provider::JobCandidate {
-    crate::provider::JobCandidate::new(run_id, profile_name.to_string()).with_affinity_metadata(
-        Some(session_id.to_string()),
-        Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
-    )
+    crate::provider::JobCandidate::new(run_id, profile_name.to_string())
+        .with_affinity_metadata(
+            Some(session_id.to_string()),
+            Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
+        )
+        .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))
 }
 
 // -----------------------------------------------------------------------

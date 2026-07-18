@@ -25,8 +25,7 @@ use super::builtin_firewall_catalog::{
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    LocalAdmissionResourceKind, PreLocalAdmissionOutcome, SessionAffinityLocalResource,
-    SessionHistoryGenerationLocalAvailability, SessionHistoryGenerationRelationship,
+    LocalAdmissionResourceKind, SessionAffinityLocalResource, SessionHistoryGenerationRelationship,
 };
 use crate::duration::duration_ms;
 use crate::error::{ApiStatusError, RunnerError, RunnerResult};
@@ -62,8 +61,6 @@ struct ClaimRequestTelemetry {
     #[serde(skip_serializing_if = "Option::is_none")]
     main_loop_to_local_admission_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pre_local_admission_outcome: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     session_affinity_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_affinity_local_resource: Option<&'static str>,
@@ -71,12 +68,6 @@ struct ClaimRequestTelemetry {
     local_admission_resource: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_history_generation_relationship: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_history_generation_local_availability: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    workspace_session_history_sidecar_relationship: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    workspace_session_history_sidecar_raw_size_bucket: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_due_to_job_discovered_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -823,7 +814,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
         direct_candidate_inbox_wait_ms,
         provider_discovery_to_main_loop_ms,
         main_loop_to_local_admission_ms,
-        pre_local_admission_outcome,
     ) = if is_ably_candidate {
         (
             candidate
@@ -838,12 +828,9 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             candidate
                 .main_loop_to_local_admission_elapsed()
                 .map(claim_telemetry_duration_ms),
-            candidate
-                .pre_local_admission_outcome()
-                .map(PreLocalAdmissionOutcome::as_str),
         )
     } else {
-        (None, None, None, None, None)
+        (None, None, None, None)
     };
 
     ClaimRequestBody {
@@ -859,7 +846,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             direct_candidate_inbox_wait_ms,
             provider_discovery_to_main_loop_ms,
             main_loop_to_local_admission_ms,
-            pre_local_admission_outcome,
             session_affinity_resource: candidate
                 .session_affinity_resource()
                 .map(crate::types::SessionAffinityResource::as_str),
@@ -872,15 +858,6 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             session_history_generation_relationship: candidate
                 .session_history_generation_relationship()
                 .map(SessionHistoryGenerationRelationship::as_str),
-            session_history_generation_local_availability: candidate
-                .session_history_generation_local_availability()
-                .map(SessionHistoryGenerationLocalAvailability::as_str),
-            workspace_session_history_sidecar_relationship: candidate
-                .workspace_session_history_sidecar_relationship()
-                .map(crate::provider::WorkspaceSessionHistorySidecarRelationship::as_str),
-            workspace_session_history_sidecar_raw_size_bucket: candidate
-                .workspace_session_history_sidecar_raw_size_bucket()
-                .map(crate::types::SessionHistorySizeBucket::as_str),
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -1684,13 +1661,6 @@ mod tests {
         candidate.set_session_history_generation_relationship(
             SessionHistoryGenerationRelationship::Exact,
         );
-        candidate.set_session_history_generation_local_availability(
-            SessionHistoryGenerationLocalAvailability::BeforeDiscoveryGeHeartbeatPeriod,
-        );
-        candidate.set_workspace_session_history_sidecar_observation(
-            crate::provider::WorkspaceSessionHistorySidecarRelationship::Different,
-            Some(crate::types::SessionHistorySizeBucket::From256KibTo1Mib),
-        );
         candidate
             .set_session_affinity_local_resource(SessionAffinityLocalResource::ReusableSandbox);
         candidate.set_local_admission_resource(LocalAdmissionResourceKind::ReusableSandbox);
@@ -1727,18 +1697,6 @@ mod tests {
             body["telemetry"]["sessionHistoryGenerationRelationship"],
             "exact"
         );
-        assert_eq!(
-            body["telemetry"]["sessionHistoryGenerationLocalAvailability"],
-            "parked_before_discovery_ge_heartbeat_period"
-        );
-        assert_eq!(
-            body["telemetry"]["workspaceSessionHistorySidecarRelationship"],
-            "different"
-        );
-        assert_eq!(
-            body["telemetry"]["workspaceSessionHistorySidecarRawSizeBucket"],
-            "256_kib_1_mib"
-        );
         assert!(
             !body
                 .to_string()
@@ -1753,15 +1711,14 @@ mod tests {
     }
 
     #[test]
-    fn claim_request_body_serializes_pre_claim_timing_splits() {
+    fn claim_request_body_serializes_ably_timing_splits() {
         let mut candidate =
             JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
                 .with_discovery_source(JobDiscoverySource::Ably)
                 .with_direct_candidate_timing(
                     Some(Duration::from_millis(3)),
                     Some(Duration::from_millis(5)),
-                )
-                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+                );
         candidate.mark_provider_discovery_returned();
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
@@ -1784,15 +1741,6 @@ mod tests {
                 .as_u64()
                 .is_some()
         );
-        assert_eq!(
-            body["telemetry"]["preLocalAdmissionOutcome"],
-            "local_holder"
-        );
-        assert!(
-            body["telemetry"]
-                .get("sessionHistoryGenerationLocalAvailability")
-                .is_none()
-        );
     }
 
     #[test]
@@ -1803,8 +1751,7 @@ mod tests {
                 .with_direct_candidate_timing(
                     Some(Duration::from_millis(3)),
                     Some(Duration::from_millis(5)),
-                )
-                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected);
+                );
         candidate.mark_provider_discovery_returned();
         candidate.mark_main_loop_handling_started();
         candidate.mark_local_admission_started();
@@ -1832,7 +1779,6 @@ mod tests {
                 .get("mainLoopToLocalAdmissionMs")
                 .is_none()
         );
-        assert!(body["telemetry"].get("preLocalAdmissionOutcome").is_none());
     }
 
     #[test]
@@ -1881,6 +1827,7 @@ mod tests {
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
         assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
         assert!(body["telemetry"].get("pollReason").is_none());
+        assert!(body["telemetry"].get("sessionAffinityResource").is_none());
         assert!(
             body["telemetry"]
                 .get("directCandidateNotificationToEnqueueMs")
@@ -1901,7 +1848,6 @@ mod tests {
                 .get("mainLoopToLocalAdmissionMs")
                 .is_none()
         );
-        assert!(body["telemetry"].get("preLocalAdmissionOutcome").is_none());
     }
 
     #[test]
