@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.607.0](https://github.com/vm0-ai/vm0/compare/app-v0.606.1...app-v0.607.0) (2026-07-18)
+
+
+### Features
+
+* **mail:** back chat draft cards with gmail drafts ([#22044](https://github.com/vm0-ai/vm0/issues/22044)) ([60cbc99](https://github.com/vm0-ai/vm0/commit/60cbc992fe47ac48716790110b5ff58b37fcdd6c))
+* resume chats after connector access actions ([#22043](https://github.com/vm0-ai/vm0/issues/22043)) ([81d91ce](https://github.com/vm0-ai/vm0/commit/81d91cefce67110bec98e230313887e47179fb53))
+* serialize composer context as inline prompt items ([#22040](https://github.com/vm0-ai/vm0/issues/22040)) ([199b9eb](https://github.com/vm0-ai/vm0/commit/199b9eb08823cac72ab78ea022cb09eb70334de2))
+
+
+### Bug Fixes
+
+* **platform:** show auto for vm0 model credit usage ([#22045](https://github.com/vm0-ai/vm0/issues/22045)) ([aa76c89](https://github.com/vm0-ai/vm0/commit/aa76c89dbb1884419d7140c06a824f4408bb18b8))
+* show web fetch and web search in credit usage details ([#22034](https://github.com/vm0-ai/vm0/issues/22034)) ([77e41d2](https://github.com/vm0-ai/vm0/commit/77e41d2d683d435167c7f4640359f88bac79490a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.201.0
+    * @vm0/connectors bumped to 1.170.0
+    * @vm0/core bumped to 8.441.0
+
 ## [0.606.1](https://github.com/vm0-ai/vm0/compare/app-v0.606.0...app-v0.606.1) (2026-07-17)
 
 

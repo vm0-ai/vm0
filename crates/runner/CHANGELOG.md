@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.9...runner-rs-v0.146.10) (2026-07-18)
+
+
+### Refactoring
+
+* **runner:** remove affinity rollout compatibility ([#22021](https://github.com/vm0-ai/vm0/issues/22021)) ([8cc7c76](https://github.com/vm0-ai/vm0/commit/8cc7c76552a1f0bbf9361b0b26721fc36867dc12))
+
 ## [0.146.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.8...runner-rs-v0.146.9) (2026-07-17)
 
 

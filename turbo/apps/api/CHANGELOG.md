@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.284.0](https://github.com/vm0-ai/vm0/compare/api-v1.283.3...api-v1.284.0) (2026-07-18)
+
+
+### Features
+
+* **mail:** back chat draft cards with gmail drafts ([#22044](https://github.com/vm0-ai/vm0/issues/22044)) ([60cbc99](https://github.com/vm0-ai/vm0/commit/60cbc992fe47ac48716790110b5ff58b37fcdd6c))
+* resume chats after connector access actions ([#22043](https://github.com/vm0-ai/vm0/issues/22043)) ([81d91ce](https://github.com/vm0-ai/vm0/commit/81d91cefce67110bec98e230313887e47179fb53))
+
+
+### Bug Fixes
+
+* **chat:** preserve sessions between gpt and auto ([#22046](https://github.com/vm0-ai/vm0/issues/22046)) ([ffd6e0b](https://github.com/vm0-ai/vm0/commit/ffd6e0b8dbd8381a329402c3107bfa18666bdcb1))
+
+
+### Refactoring
+
+* **chat:** centralize append-only message mutations ([#22033](https://github.com/vm0-ai/vm0/issues/22033)) ([74cccc1](https://github.com/vm0-ai/vm0/commit/74cccc1e1775c24c08cfebfcdbed446bc9a58649))
+* **runner:** remove affinity rollout compatibility ([#22021](https://github.com/vm0-ai/vm0/issues/22021)) ([8cc7c76](https://github.com/vm0-ai/vm0/commit/8cc7c76552a1f0bbf9361b0b26721fc36867dc12))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.201.0
+    * @vm0/connectors bumped to 1.170.0
+    * @vm0/core bumped to 8.441.0
+    * @vm0/db bumped to 1.120.0
+
 ## [1.283.3](https://github.com/vm0-ai/vm0/compare/api-v1.283.2...api-v1.283.3) (2026-07-17)
 
 
