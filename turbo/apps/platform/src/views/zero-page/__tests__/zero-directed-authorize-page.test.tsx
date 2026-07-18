@@ -4,6 +4,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -11,6 +12,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -166,10 +168,25 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
 describe("directed connector authorize page", () => {
   it("authorizes a connected connector and recognizes existing authorization", async () => {
     mockConnectedConnector("gmail");
+    const threadId = "00000000-0000-4000-a000-000000000101";
+    const callbackPrompt = "Re-check Gmail, then continue";
+    let continuationPrompt: string | null = null;
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      if ("prompt" in body) {
+        continuationPrompt = body.prompt ?? null;
+      }
+      return respond(201, {
+        runId: "00000000-0000-4000-a000-000000000201",
+        threadId,
+      });
+    });
 
     detachedSetupPage({
       context,
-      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorActionCallback]: true,
+      },
     });
 
     await waitFor(() => {
@@ -181,6 +198,7 @@ describe("directed connector authorize page", () => {
     await waitFor(() => {
       expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
+      expect(continuationPrompt).toBe(callbackPrompt);
     });
   });
 

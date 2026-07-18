@@ -241,6 +241,8 @@ describe("zero connector check command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
     vi.stubEnv("ZERO_TOKEN", buildZeroToken());
     vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "");
     vi.stubEnv("GH_TOKEN", "");
     vi.stubEnv("GITHUB_TOKEN", "");
   });
@@ -368,8 +370,35 @@ describe("zero connector check command", () => {
         'Result: "contents:write" is in the deny list — denied.',
       );
       expect(getOutput()).toContain(
-        "zero connector permission-request github --permission contents:write --duration 1h",
+        "zero connector permission-request github --permission contents:write",
       );
+      expect(getOutput()).not.toContain("--callback-prompt");
+    });
+
+    it("prints a callback permission command example in the current web chat", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+      vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+      vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
+      stubDiagnostic(
+        resolvedEnvironment({
+          permission: { outcome: "ask", basis: "ask-list" },
+        }),
+      );
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+        "--check-permission",
+        "contents:write",
+      ]);
+
+      expect(getOutput()).toContain(
+        'zero connector permission-request github --permission contents:write --callback-prompt "SOMETHING_AGENT_WANT_TO_BE_CALLBACK"',
+      );
+      expect(getOutput()).toContain("automatically start the next round");
     });
 
     it.each([
@@ -823,7 +852,7 @@ describe("zero connector check command", () => {
         expect(getOutput()).not.toContain("deny list:  [");
         expect(getOutput()).not.toContain("ask list:   [");
         const requestCommand =
-          "zero connector permission-request github --permission contents:read --duration 1h";
+          "zero connector permission-request github --permission contents:read";
         if (policy.outcome === "deny" || policy.outcome === "ask") {
           expect(getOutput()).toContain(requestCommand);
         } else {
@@ -864,11 +893,9 @@ describe("zero connector check command", () => {
       );
       expect(getOutput()).toContain('"contents:read" is in the allow list');
       expect(getOutput()).toContain('"metadata:read" is in the ask list');
-      expect(getOutput()).not.toContain(
-        "--permission contents:read --duration 1h",
-      );
+      expect(getOutput()).not.toContain("--permission contents:read");
       expect(getOutput()).toContain(
-        "zero connector permission-request github --permission metadata:read --duration 1h",
+        "zero connector permission-request github --permission metadata:read",
       );
     });
 
@@ -933,7 +960,7 @@ describe("zero connector check command", () => {
         expect(getOutput()).toContain(expected);
         if (expectsGuidance) {
           expect(getOutput()).toContain(
-            "zero connector permission-request github --permission __unknown__ --duration 1h",
+            "zero connector permission-request github --permission __unknown__",
           );
         } else {
           expect(getOutput()).not.toContain("--permission __unknown__");

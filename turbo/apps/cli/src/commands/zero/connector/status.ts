@@ -9,6 +9,10 @@ import {
   findConnectorStatusItem,
   type PublicConnectorStatus,
 } from "./public-catalog";
+import {
+  connectorActionUrl,
+  printCallbackActionUrlExample,
+} from "./action-url";
 
 const LABEL_WIDTH = 16;
 
@@ -73,38 +77,58 @@ async function printAgentAction(
   console.log();
   if (needsReconnect) {
     const origin = await getPlatformOrigin();
-    const url = `${origin}/connectors`;
+    const url = connectorActionUrl({
+      origin,
+      path: `/connectors/${connectorRef}/connect`,
+      agentId: agentCtx.agentId,
+    });
     console.log(
       `The ${connectorRef} connector is connected but needs to be reconnected before agent ${agentLabel} can use it.`,
     );
     console.log(`Reconnect it at: [Reconnect ${connectorRef}](${url})`);
+    printCallbackActionUrlExample(url, agentCtx.agentId);
   } else if (authorized && !isConnected) {
     const origin = await getPlatformOrigin();
-    const url = `${origin}/connectors/${connectorRef}/connect?agentId=${agentCtx.agentId}`;
+    const url = connectorActionUrl({
+      origin,
+      path: `/connectors/${connectorRef}/connect`,
+      agentId: agentCtx.agentId,
+    });
     console.log(
       `The ${connectorRef} connector is authorized for agent ${agentLabel}, but it is not connected.`,
     );
     console.log(`Connect it at: [Connect ${connectorRef}](${url})`);
+    printCallbackActionUrlExample(url, agentCtx.agentId);
   } else if (authorized) {
     console.log(
       `The ${connectorRef} connector is authorized for agent ${agentLabel}.`,
     );
   } else if (!isConnected) {
     const origin = await getPlatformOrigin();
-    const url = `${origin}/connectors/${connectorRef}/connect?agentId=${agentCtx.agentId}`;
+    const url = connectorActionUrl({
+      origin,
+      path: `/connectors/${connectorRef}/connect`,
+      agentId: agentCtx.agentId,
+    });
     console.log(
       `The ${connectorRef} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
     );
     console.log(
       `Connect and authorize it at: [Connect ${connectorRef}](${url})`,
     );
+    printCallbackActionUrlExample(url, agentCtx.agentId);
   } else {
     const origin = await getPlatformOrigin();
-    const url = `${origin}/connectors/${connectorRef}/authorize?agentId=${agentCtx.agentId}`;
+    const url = connectorActionUrl({
+      origin,
+      path: `/connectors/${connectorRef}/authorize`,
+      agentId: agentCtx.agentId,
+    });
     console.log(
       `The ${connectorRef} connector is not authorized for agent ${agentLabel}.`,
     );
     console.log(`Authorize it at: [Authorize ${connectorRef}](${url})`);
+    printCallbackActionUrlExample(url, agentCtx.agentId);
   }
 }
 

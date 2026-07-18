@@ -42,6 +42,10 @@ import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  deleteVm0ManagedDefaultModelKey,
+  seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+} from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
@@ -216,6 +220,13 @@ async function entitledChatActor(): Promise<EntitledChatActor> {
     visibility: "private",
   });
   return { actor, agentId: agent.agentId, runnerGroup, providerId };
+}
+
+async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
+  onTestFinished(async () => {
+    await deleteVm0ManagedDefaultModelKey(context);
+  });
+  return await seedVm0ManagedModelKeyState(context, selectedModel);
 }
 
 async function sendChatRun(
@@ -512,14 +523,17 @@ async function readThreadTitleFromEvents(
 async function completeChatRunOk(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
-  options: { readonly lastEventSequence?: number } = {},
+  options: {
+    readonly cliAgentType?: "claude-code" | "codex";
+    readonly lastEventSequence?: number;
+  } = {},
 ): Promise<void> {
   const history = `bdd chat session history ${runId}`;
   const historyHash = createHash("sha256").update(history).digest("hex");
   await webhooks.requestAgentCheckpoint(
     {
       runId,
-      cliAgentType: "claude-code",
+      cliAgentType: options.cliAgentType ?? "claude-code",
       cliAgentSessionId: `bdd-cli-${runId}`,
       cliAgentSessionHistoryHash: historyHash,
     },
@@ -1089,12 +1103,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
       throw new Error("Expected the recall send to be accepted");
     }
     expect(recalled.body.runId).toBeNull();
-    const afterRecall = await chat.listThreadMessages(actor, first.threadId);
-    expect(
-      afterRecall.messages.some((message) => {
-        return message.id === queuedId || message.revokesMessageId === queuedId;
-      }),
-    ).toBeFalsy();
 
     const repeatedRecall = await chat.requestSendMessage(
       actor,
@@ -1111,11 +1119,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
       threadId: first.threadId,
     });
     const afterRepeated = await chat.listThreadMessages(actor, first.threadId);
-    expect(
-      afterRepeated.messages.some((message) => {
-        return message.id === queuedId || message.revokesMessageId === queuedId;
-      }),
-    ).toBeFalsy();
 
     // Run-associated messages cannot be recalled.
     const associated = userMessages(afterRepeated.messages).find((message) => {
@@ -1141,6 +1144,65 @@ describe("CHAT-02: queueing and recalling messages", () => {
 
     await cancelChatRun(actor, first.runId);
     expect((await api.readRun(actor, first.runId)).status).toBe("cancelled");
+  }, 90_000);
+
+  it("keeps a queued message when recall targets another owned thread", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "cross-thread recall anchor",
+    });
+    const queuedMessageId = randomUUID();
+    const queued = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "must remain queued in the original thread",
+        clientMessageId: queuedMessageId,
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+
+    const otherThread = await chat.createThread(actor, {
+      agentId,
+      title: "Cross-thread recall target",
+    });
+    await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: otherThread.id,
+        revokesMessageId: queuedMessageId,
+        clientMessageId: randomUUID(),
+      },
+      [201, 400],
+    );
+
+    await cancelChatRun(actor, anchor.runId);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesMessageId === queuedMessageId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.messages).find((message) => {
+      return message.revokesMessageId === queuedMessageId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the original queued message to create a run");
+    }
+    expect(promoted.content).toBe("must remain queued in the original thread");
+    await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 });
 
@@ -2308,6 +2370,57 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("resumes the CLI session when switching between GPT and Auto", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
+    mockOptionalEnv("VM0_MODEL_PROXY_HOST", "https://www.vm0.test");
+    await seedVm0ManagedModelKey("gpt-5.5");
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+      {
+        model: "vm0-model",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "start on GPT before switching to Auto",
+      model: "gpt-5.5",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      cliAgentType: "codex",
+    });
+    await flushWaitUntilForTest();
+
+    await seedVm0ManagedModelKey("vm0-model");
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue on Auto in the same session",
+      model: "vm0-model",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    expect(claimEnvironment(secondClaim.claim).OPENAI_MODEL).toBe("vm0-model");
+
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
@@ -3921,7 +4034,7 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, claimed.runId);
   }, 90_000);
 
-  it("appends replacements on auto-send and recalls queued messages by deletion", async () => {
+  it("appends replacements on auto-send and keeps queued recalls idempotent", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -3944,8 +4057,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    // A second queued message recalls by deletion: the row disappears
-    // entirely instead of being shadowed by a revoke control row.
+    // A second queued message can be recalled before dispatch.
     const recalledId = randomUUID();
     const toRecall = await chat.requestSendMessage(
       actor,
@@ -3969,16 +4081,8 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(recalled.body).toMatchObject({ runId: null });
-    const afterRecall = await chat.listThreadMessages(actor, anchor.threadId);
-    expect(
-      afterRecall.messages.some((message) => {
-        return (
-          message.id === recalledId || message.revokesMessageId === recalledId
-        );
-      }),
-    ).toBeFalsy();
 
-    // A repeated recall of the deleted message stays idempotent.
+    // A repeated recall stays idempotent.
     const repeatedRecall = await chat.requestSendMessage(
       actor,
       {
@@ -4031,6 +4135,9 @@ describe("CHAT-02: shared user message queue", () => {
 
     const followUp = await api.readRun(actor, promoted.runId);
     expect(followUp.prompt).toContain("queue-first waits for the anchor");
+    expect(followUp.appendSystemPrompt ?? "").not.toContain(
+      "queue-first message to recall",
+    );
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 

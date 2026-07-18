@@ -7507,6 +7507,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ZeroScrape]: true,
       [FeatureSwitchKey.ZeroWebSearch]: true,
+      [FeatureSwitchKey.ConnectorActionCallback]: true,
     });
     const agent = await bdd.createAgent(actor, {
       displayName: "Research Bot",
@@ -7555,10 +7556,15 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]",
       "Only request access when the check reports a deny or ask outcome",
       "Request missing permissions",
-      "zero connector permission-request <connector-ref> --permission <name> --duration <duration>",
+      "zero connector permission-request <connector-ref> --permission <name>",
       "one command per permission",
       "all generated links in one response, one link per line",
-      "Choose permission duration",
+      "The user chooses the grant duration",
+      "Continue after a single access action",
+      "--callback-prompt <prompt>",
+      "show a callback URL or permission-command example",
+      "After sharing it, end the current turn",
+      "Multiple access actions",
       "zero workflow --help",
       "Workflow and automation requests use the `workflow-setup` skill first",
       "Local changes or newly-created workflow folders",
@@ -7611,6 +7617,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
+    expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
     const zeroToken = claim.environment?.ZERO_TOKEN;
     expect(zeroToken).toMatch(/^vm0_sandbox_/);
     if (!zeroToken) {
@@ -7669,6 +7676,10 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(claim.appendSystemPrompt ?? "").not.toContain(
       "zero web-search --help",
     );
+    expect(claim.appendSystemPrompt ?? "").not.toContain("--callback-prompt");
+    expect(
+      claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED,
+    ).toBeUndefined();
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

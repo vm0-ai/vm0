@@ -490,6 +490,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
   },
+  [FeatureSwitchKey.ConnectorActionCallback]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Resume a web chat with a callback prompt after a connector or permission action succeeds.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZeroMail]: {
     maintainer: "yuma@vm0.ai",
     description:

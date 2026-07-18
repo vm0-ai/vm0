@@ -657,6 +657,166 @@ describe("chat message action cards", () => {
     ]);
   });
 
+  it("runs a permission callback prompt after the grant is confirmed", async () => {
+    mockNow();
+    const user = userEvent.setup({ delay: null });
+    const threadId = `${THREAD_ID}-single-permission`;
+    const callbackPrompt = "Re-check Slack access, then continue";
+    const permissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=channels.read&action=allow&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const sentPrompts: { prompt: string; threadId?: string }[] = [];
+
+    context.mocks.api(
+      zeroConnectorCatalogContract.permissions,
+      ({ respond }) => {
+        return respond(200, {
+          permissions: catalogPermissionDetail({
+            connectorRef: "slack",
+            label: "Slack",
+            permissions: [
+              {
+                name: "channels.read",
+                description: "Read channels",
+              },
+            ],
+          }),
+        });
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
+        return respond(200, [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: isoFromNowMs(60 * 60 * 1000),
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ]);
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Permission callback",
+      chatMessages: [
+        {
+          id: "msg-user-single-permission",
+          role: "user",
+          content: "Read Slack channels",
+          runId: "run-single-permission",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-single-permission",
+          role: "assistant",
+          content: permissionUrl,
+          runId: "run-single-permission",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onSendRequest: ({ prompt, threadId: sentThreadId }) => {
+        sentPrompts.push({ prompt, threadId: sentThreadId });
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorActionCallback]: true,
+      },
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await confirmPermissionAction(user, permissionCard);
+
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual([
+        {
+          prompt: callbackPrompt,
+          threadId,
+        },
+      ]);
+    });
+  });
+
+  it("runs a connector callback prompt after authorization", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = `${THREAD_ID}-single-connector`;
+    const callbackPrompt = "Re-check GitHub access, then continue";
+    const connectorUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const sentPrompts: string[] = [];
+
+    context.mocks.data.connectors([
+      connectedConnector({
+        type: "github",
+        authMethod: "oauth",
+        externalUsername: "octocat",
+      }),
+    ]);
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "github",
+        label: "GitHub",
+        connected: true,
+        connectionStatus: "connected",
+        connection: {
+          authMethod: "oauth",
+          externalUsername: "octocat",
+          externalEmail: null,
+          reconnectReason: null,
+        },
+      }),
+    ]);
+    mockAgentConnectorAuthorizations([]);
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Connector callback",
+      chatMessages: [
+        {
+          id: "msg-user-single-connector",
+          role: "user",
+          content: "Use GitHub",
+          runId: "run-single-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-single-connector",
+          role: "assistant",
+          content: connectorUrl,
+          runId: "run-single-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onSendRequest: ({ prompt }) => {
+        sentPrompts.push(prompt);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorActionCallback]: true,
+      },
+    });
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Connect", connectorCard));
+
+    await waitFor(() => {
+      expect(sentPrompts).toStrictEqual([callbackPrompt]);
+      expect(within(connectorCard).getByText("Connected")).toBeInTheDocument();
+    });
+  });
+
   it("omits connector action cards when catalog metadata is hidden", async () => {
     const hiddenConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_ID}`;
     const visibleConnectorAuthorizeUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;

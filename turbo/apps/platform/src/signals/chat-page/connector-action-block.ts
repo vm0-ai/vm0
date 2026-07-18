@@ -15,6 +15,11 @@ import { authorizeConnector$ as authorizeDirectedConnector$ } from "../connector
 import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authorizations.ts";
 import { jsonParseBase64UrlOr } from "../utils.ts";
 import {
+  chatActionCallbackFromUrl,
+  runChatActionCallback$,
+  type ChatActionCallback,
+} from "./action-callback.ts";
+import {
   getOrCreateCardSignals,
   registeredCardSignals,
 } from "./card-signal-map.ts";
@@ -23,6 +28,8 @@ export interface ConnectorActionDescriptor {
   connectorRef: ConnectorCatalogRef;
   agentId: string;
   originalUrl: string;
+  callbackPrompt: ChatActionCallback["callbackPrompt"];
+  threadId: ChatActionCallback["threadId"];
 }
 
 export interface ConnectorSignals extends ConnectorActionDescriptor {
@@ -92,6 +99,7 @@ export function parseConnectorAuthorizeUrl(
     connectorRef: parsedConnectorRef.data,
     agentId,
     originalUrl: value,
+    ...chatActionCallbackFromUrl(url),
   };
 }
 
@@ -186,15 +194,23 @@ export function createConnectorSignals(
         descriptor.agentId,
         signal,
       );
-      signal.throwIfAborted();
+      if (descriptor.callbackPrompt && descriptor.threadId) {
+        await set(
+          runChatActionCallback$,
+          {
+            threadId: descriptor.threadId,
+            agentId: descriptor.agentId,
+            callbackPrompt: descriptor.callbackPrompt,
+          },
+          signal,
+        );
+      }
       return;
     }
 
     await get(connectors$);
     signal.throwIfAborted();
-    set(activeChatConnectorActionState$, {
-      ...descriptor,
-    });
+    set(activeChatConnectorActionState$, descriptor);
     set(setSelectedConnectorType$, descriptor.connectorRef);
   });
 

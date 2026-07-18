@@ -22,6 +22,7 @@ import {
 import { listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
 import { assistantMessageIdForRunEvent } from "./assistant-message-id";
+import { insertChatMessages } from "./zero-chat-message.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
@@ -208,48 +209,42 @@ export async function insertAssistantEventMessages(
   const deterministicRows =
     itemsWithRunEventId.length === 0
       ? []
-      : await writeDb
-          .insert(chatMessages)
-          .values(
-            itemsWithRunEventId.map((item) => {
-              return {
-                id: assistantMessageIdForRunEvent(args.runId, item.runEventId),
-                chatThreadId: args.threadId,
-                runId: args.runId,
-                runGroupId,
-                role: "assistant",
-                content: item.content,
-                sequenceNumber: item.sequenceNumber,
-                runEventId: item.runEventId,
-              };
-            }),
-          )
-          .onConflictDoNothing()
-          .returning({ id: chatMessages.id });
+      : await insertChatMessages(
+          writeDb,
+          itemsWithRunEventId.map((item) => {
+            return {
+              id: assistantMessageIdForRunEvent(args.runId, item.runEventId),
+              chatThreadId: args.threadId,
+              runId: args.runId,
+              runGroupId,
+              role: "assistant",
+              content: item.content,
+              sequenceNumber: item.sequenceNumber,
+              runEventId: item.runEventId,
+            };
+          }),
+          "any",
+        );
   signal.throwIfAborted();
 
   const legacyRows =
     legacyItems.length === 0
       ? []
-      : await writeDb
-          .insert(chatMessages)
-          .values(
-            legacyItems.map((item) => {
-              return {
-                chatThreadId: args.threadId,
-                runId: args.runId,
-                runGroupId,
-                role: "assistant",
-                content: item.content,
-                sequenceNumber: item.sequenceNumber,
-                runEventId: null,
-              };
-            }),
-          )
-          .onConflictDoNothing({
-            target: [chatMessages.runId, chatMessages.sequenceNumber],
-          })
-          .returning({ id: chatMessages.id });
+      : await insertChatMessages(
+          writeDb,
+          legacyItems.map((item) => {
+            return {
+              chatThreadId: args.threadId,
+              runId: args.runId,
+              runGroupId,
+              role: "assistant",
+              content: item.content,
+              sequenceNumber: item.sequenceNumber,
+              runEventId: null,
+            };
+          }),
+          "run-sequence",
+        );
   signal.throwIfAborted();
 
   const insertedRowCount = deterministicRows.length + legacyRows.length;
