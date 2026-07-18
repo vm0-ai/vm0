@@ -1248,6 +1248,13 @@ impl NetnsPool {
     }
 
     #[cfg(test)]
+    pub(crate) fn active_for_test() -> Self {
+        let mut state = NetnsPoolState::inactive_for_test();
+        state.active = true;
+        Self::from_state_for_test(state)
+    }
+
+    #[cfg(test)]
     pub(crate) fn inactive_for_test() -> Self {
         Self::from_state_for_test(NetnsPoolState::inactive_for_test())
     }
@@ -1284,6 +1291,11 @@ impl NetnsPoolHandle {
     #[cfg(test)]
     pub(crate) fn new_for_test(pool: NetnsPool) -> Self {
         Self::new(pool)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn is_active_for_test(&self) -> bool {
+        self.inner.state.lock().await.active
     }
 
     #[cfg(test)]
