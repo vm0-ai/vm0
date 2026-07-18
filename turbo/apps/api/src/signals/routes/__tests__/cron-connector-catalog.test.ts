@@ -2193,6 +2193,8 @@ describe("connector catalog valid lifecycle", () => {
   });
 
   it("rejects new auth-code actions for an authored-hidden external method", async () => {
+    mockOptionalEnv("SLACK_OAUTH_CLIENT_ID", undefined);
+    mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", undefined);
     configureSource();
     const hidden = publicAuthMethod({
       id: "oauth",
