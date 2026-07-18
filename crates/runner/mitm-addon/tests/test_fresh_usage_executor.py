@@ -9,7 +9,12 @@ import pytest
 
 import usage
 import usage.buffer as usage_buffer
-from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
+from tests.pending_helpers import assert_current_pending
+from tests.usage_helpers import (
+    UsageWebhookServer,
+    fresh_usage_executor_context,
+    install_recording_usage_timer,
+)
 
 
 def _event(source_key: str = "source-1") -> usage_buffer.UsageEvent:
@@ -97,3 +102,39 @@ def test_fresh_usage_executor_uses_owned_executor_when_global_changes(tmp_path, 
     assert usage.webhook.usage_executor is original
     with pytest.raises(RuntimeError, match="shutdown"):
         executors[0].submit(lambda: None)
+
+
+def test_fresh_usage_executor_drains_retryable_delivery_after_join(tmp_path, mitm_ctx):
+    pending_path = tmp_path / "usage-pending"
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.set_pending_path(str(pending_path))
+    timers = install_recording_usage_timer()
+    server = UsageWebhookServer()
+    server.queue_response(500)
+    server.queue_response(500)
+
+    with (
+        server.run(),
+        mitm_ctx(),
+        patch.object(usage.webhook.time, "sleep"),
+        fresh_usage_executor_context(),
+    ):
+        usage.buffer_usage_events(
+            server.url(),
+            "token-a",
+            "run-1",
+            [_event()],
+            str(proxy_log_path),
+        )
+
+    assert server.request_count == 3
+    assert server.json_bodies() == [server.json_bodies()[0]] * 3
+    assert len(timers) == 1
+    assert timers[0].cancelled is True
+    assert_current_pending(
+        pending_path,
+        flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="fixture-drained",
+    )

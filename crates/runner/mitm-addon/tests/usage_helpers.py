@@ -88,6 +88,7 @@ def fresh_usage_executor_context() -> Iterator[ThreadPoolExecutor]:
                 usage.flush_usage_events(trigger="shutdown")
             finally:
                 executor.shutdown(wait=True)
+            usage.drain_usage_events_after_executor_shutdown()
         finally:
             usage.webhook.usage_executor = original
 

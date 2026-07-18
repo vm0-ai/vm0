@@ -1421,23 +1421,25 @@ def done():
 
     The runner flush lifecycle waits for any active SIGUSR1 worker, drains
     accepted requests, and closes admission before this hook shuts down the
-    usage executor and JSONL writer. Auth.base forwarding does not need to
-    finish running work during shutdown, so its worker shutdown stops new
-    forwards and best-effort closes active upstream sockets without waiting for
-    slow upstream responses. JSONL writer shutdown is also bounded and
-    best-effort; if it times out, process shutdown continues with accepted log
-    entries possibly still pending.
+    usage executor. Any retryable outcome retained by those completed workers
+    is then delivered synchronously before the remaining workers and JSONL
+    writer stop. Auth.base forwarding does not need to finish running work
+    during shutdown, so its worker shutdown stops new forwards and best-effort
+    closes active upstream sockets without waiting for slow upstream responses.
+    JSONL writer shutdown is also bounded and best-effort; if it times out,
+    process shutdown continues with accepted log entries possibly still pending.
     """
     try:
         runner_flush_lifecycle.drain_and_close()
     finally:
         try:
-            usage.webhook.usage_executor.shutdown(wait=True)
-        finally:
             try:
-                auth_base_forwarder.shutdown_forward_request_workers(wait=False)
+                usage.webhook.usage_executor.shutdown(wait=True)
+                usage.drain_usage_events_after_executor_shutdown()
             finally:
-                shutdown_log_writer()
+                auth_base_forwarder.shutdown_forward_request_workers(wait=False)
+        finally:
+            shutdown_log_writer()
 
 
 # ============================================================================
