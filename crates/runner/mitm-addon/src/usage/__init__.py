@@ -34,6 +34,7 @@ from .buffer import (
     buffer_source_usage_events,
     buffer_usage_events,
     configure_usage_buffer,
+    drain_usage_events_after_executor_shutdown,
     flush_usage_events,
     reset_usage_buffer_for_tests,
 )
@@ -81,6 +82,7 @@ __all__ = [
     "create_openai_responses_sse_usage_extractor",
     "current_usage_state_id",
     "decrement_in_flight_flows",
+    "drain_usage_events_after_executor_shutdown",
     "extract_anthropic_messages_usage_from_json",
     "extract_anthropic_messages_usage_with_error_from_json",
     "extract_openai_responses_usage_from_event_json",
