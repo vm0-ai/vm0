@@ -6,6 +6,7 @@ import {
   type Computed,
   type State,
 } from "ccstate";
+import { delay } from "signal-timers";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { writeToClipboard } from "./clipboard.ts";
@@ -286,13 +287,6 @@ function shouldDismissSelectionForInteractionTarget(
   );
 }
 
-function clearWindowTimer(timerId: number | null): null {
-  if (timerId !== null) {
-    window.clearTimeout(timerId);
-  }
-  return null;
-}
-
 function createFeedbackSelectionState(threadId: string) {
   const selectionState$ = state<FeedbackSelection | null>(null);
   const resetSelectionToolbarSignal$ = resetSignal();
@@ -478,11 +472,9 @@ function createSelectionToolbarRef({
 }
 
 interface SelectionListenerRuntime {
-  captureTimerId: number | null;
   pendingDismissWhenEmpty: boolean;
   mouseIsDown: boolean;
   suppressSelectionCapture: boolean;
-  suppressSelectionClearTimerId: number | null;
 }
 
 function createPointerSelectionListeners({
@@ -492,6 +484,7 @@ function createPointerSelectionListeners({
   selectionState$: State<FeedbackSelection | null>;
   hideSelectionToolbar$: Command<void, []>;
 }) {
+  const clearSuppressedCaptureSignal$ = resetSignal();
   return command(
     (
       { get, set },
@@ -499,15 +492,13 @@ function createPointerSelectionListeners({
       runtime: SelectionListenerRuntime,
       signal: AbortSignal,
     ) => {
-      const clearSuppressedSelectionCaptureSoon = () => {
-        runtime.suppressSelectionClearTimerId = clearWindowTimer(
-          runtime.suppressSelectionClearTimerId,
-        );
-        runtime.suppressSelectionClearTimerId = window.setTimeout(() => {
-          runtime.suppressSelectionCapture = false;
-          runtime.suppressSelectionClearTimerId = null;
-        }, 0);
-      };
+      // Touch/pen selections settle one macrotask after pointerup; keep the
+      // capture suppressed until then. Rescheduling aborts the previous
+      // pending clear.
+      const clearSuppressedSelectionCaptureSoon = onDomEventFn(async () => {
+        await delay(0, { signal: set(clearSuppressedCaptureSignal$, signal) });
+        runtime.suppressSelectionCapture = false;
+      });
       doc.addEventListener(
         "pointerdown",
         (event) => {
@@ -525,7 +516,7 @@ function createPointerSelectionListeners({
         "pointerup",
         (event) => {
           if ((event as PointerEvent).pointerType !== "mouse") {
-            clearSuppressedSelectionCaptureSoon();
+            clearSuppressedSelectionCaptureSoon(event);
           }
         },
         { signal },
@@ -557,6 +548,7 @@ function createDocumentSelectionListeners({
   captureSelectionIfPresent$: Command<void, []>;
   dismissSelectionOnScroll$: Command<void, []>;
 }) {
+  const deferredCaptureSignal$ = resetSignal();
   return command(
     (
       { set },
@@ -570,47 +562,47 @@ function createDocumentSelectionListeners({
       const captureIfPresent = () => {
         set(captureSelectionIfPresent$);
       };
-      const captureDeferred = (dismissWhenEmpty: boolean) => {
+      // The browser finalizes the selection after the triggering event, so
+      // read it one macrotask later. Rescheduling aborts the previous pending
+      // read, coalescing event bursts into a single capture.
+      const captureDeferred = async (dismissWhenEmpty: boolean) => {
         runtime.pendingDismissWhenEmpty ||= dismissWhenEmpty;
-        runtime.captureTimerId = clearWindowTimer(runtime.captureTimerId);
-        runtime.captureTimerId = window.setTimeout(() => {
-          const shouldDismissWhenEmpty = runtime.pendingDismissWhenEmpty;
-          runtime.captureTimerId = null;
-          runtime.pendingDismissWhenEmpty = false;
-          if (shouldDismissWhenEmpty) {
-            capture();
-          } else {
-            captureIfPresent();
-          }
-        }, 0);
+        await delay(0, { signal: set(deferredCaptureSignal$, signal) });
+        const shouldDismissWhenEmpty = runtime.pendingDismissWhenEmpty;
+        runtime.pendingDismissWhenEmpty = false;
+        if (shouldDismissWhenEmpty) {
+          capture();
+        } else {
+          captureIfPresent();
+        }
       };
       doc.addEventListener(
         "mouseup",
-        () => {
+        onDomEventFn(async () => {
           runtime.mouseIsDown = false;
           if (runtime.suppressSelectionCapture) {
             runtime.suppressSelectionCapture = false;
             return;
           }
-          captureDeferred(true);
-        },
+          await captureDeferred(true);
+        }),
         { signal },
       );
       doc.addEventListener(
         "dblclick",
-        () => {
+        onDomEventFn(async () => {
           runtime.mouseIsDown = false;
-          captureDeferred(false);
-        },
+          await captureDeferred(false);
+        }),
         { signal },
       );
       doc.addEventListener(
         "selectionchange",
-        () => {
+        onDomEventFn(async () => {
           if (!runtime.mouseIsDown && !runtime.suppressSelectionCapture) {
-            captureDeferred(false);
+            await captureDeferred(false);
           }
-        },
+        }),
         { signal },
       );
       doc.addEventListener("keyup", capture, { signal });
@@ -624,10 +616,6 @@ function createDocumentSelectionListeners({
       signal.addEventListener(
         "abort",
         () => {
-          runtime.captureTimerId = clearWindowTimer(runtime.captureTimerId);
-          runtime.suppressSelectionClearTimerId = clearWindowTimer(
-            runtime.suppressSelectionClearTimerId,
-          );
           set(setFeedbackHighlight$, threadId, new Map());
         },
         { once: true },
@@ -646,11 +634,9 @@ function createSelectionListenersRef({
   return onRef(
     command(({ set }, el: HTMLElement, signal: AbortSignal) => {
       const runtime: SelectionListenerRuntime = {
-        captureTimerId: null,
         pendingDismissWhenEmpty: false,
         mouseIsDown: false,
         suppressSelectionCapture: false,
-        suppressSelectionClearTimerId: null,
       };
       set(pointerListeners$, el.ownerDocument, runtime, signal);
       set(documentListeners$, el.ownerDocument, runtime, signal);
