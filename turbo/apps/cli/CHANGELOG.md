@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.243.0](https://github.com/vm0-ai/vm0/compare/cli-v9.242.0...cli-v9.243.0) (2026-07-18)
+
+
+### Features
+
+* **mail:** link gmail drafts for read-only review ([#22074](https://github.com/vm0-ai/vm0/issues/22074)) ([a56d364](https://github.com/vm0-ai/vm0/commit/a56d364854f85d81e6315e1755e6b9974d1ba13a))
+
+
+### Refactoring
+
+* **mail:** publish draft cards through assistant links ([#22069](https://github.com/vm0-ai/vm0/issues/22069)) ([14a7584](https://github.com/vm0-ai/vm0/commit/14a758448046133eb93f797beab2c8b41b376ad5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.202.0
+    * @vm0/connectors bumped to 1.171.0
+    * @vm0/core bumped to 8.441.1
+
 ## [9.242.0](https://github.com/vm0-ai/vm0/compare/cli-v9.241.12...cli-v9.242.0) (2026-07-18)
 
 

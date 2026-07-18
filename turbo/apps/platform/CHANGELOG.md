@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.608.0](https://github.com/vm0-ai/vm0/compare/app-v0.607.0...app-v0.608.0) (2026-07-18)
+
+
+### Features
+
+* **mail:** link gmail drafts for read-only review ([#22074](https://github.com/vm0-ai/vm0/issues/22074)) ([a56d364](https://github.com/vm0-ai/vm0/commit/a56d364854f85d81e6315e1755e6b9974d1ba13a))
+* **platform:** recognize okou.ai as a production clerk satellite ([#22063](https://github.com/vm0-ai/vm0/issues/22063)) ([4c18b84](https://github.com/vm0-ai/vm0/commit/4c18b846ebe689323fcd214f956f8a326c580060))
+
+
+### Bug Fixes
+
+* dismiss feedback pill after system copy ([#22072](https://github.com/vm0-ai/vm0/issues/22072)) ([e0355d3](https://github.com/vm0-ai/vm0/commit/e0355d3488e6c2cc09c5624ae3850b7f34995922))
+* **platform:** keep composer feedback as a block ([#22062](https://github.com/vm0-ai/vm0/issues/22062)) ([6a48f40](https://github.com/vm0-ai/vm0/commit/6a48f4057391a7692402d9fe0633c6692479046e))
+* require canonical automation id for workflow callbacks ([#22060](https://github.com/vm0-ai/vm0/issues/22060)) ([0f41a1d](https://github.com/vm0-ai/vm0/commit/0f41a1dbf224715d4b187a4383d3681fb0b9a0c2))
+
+
+### Refactoring
+
+* **mail:** publish draft cards through assistant links ([#22069](https://github.com/vm0-ai/vm0/issues/22069)) ([14a7584](https://github.com/vm0-ai/vm0/commit/14a758448046133eb93f797beab2c8b41b376ad5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.0
+    * @vm0/connectors bumped to 1.171.0
+    * @vm0/core bumped to 8.441.1
+
 ## [0.607.0](https://github.com/vm0-ai/vm0/compare/app-v0.606.1...app-v0.607.0) (2026-07-18)
 
 
