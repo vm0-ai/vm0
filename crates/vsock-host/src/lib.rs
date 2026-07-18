@@ -1184,6 +1184,12 @@ impl VsockHost {
     ///
     /// The timeout covers waiting for the shared writer, writing the request,
     /// and waiting for the acknowledgement.
+    ///
+    /// # Errors
+    ///
+    /// Returns the request error if the guest cannot be reached or does not
+    /// acknowledge before the deadline. An unexpected response type or a
+    /// non-empty acknowledgement returns [`io::ErrorKind::InvalidData`].
     pub async fn shutdown(&self, timeout: Duration) -> io::Result<()> {
         self.lifecycle_request(
             MSG_SHUTDOWN,

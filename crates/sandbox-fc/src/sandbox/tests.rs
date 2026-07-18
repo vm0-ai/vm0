@@ -3617,7 +3617,6 @@ async fn stop_logs_shutdown_timeout_and_reaches_stopped() {
     let mut sandbox = test_sandbox_with_state(SandboxState::Running);
     let sandbox_id = sandbox.id.clone();
     let mut guest = attach_mock_shutdown_guest(&sandbox).await;
-    tokio::time::pause();
     let (shutdown_seen_tx, shutdown_seen_rx) = tokio::sync::oneshot::channel();
     let (release_guest_tx, release_guest_rx) = tokio::sync::oneshot::channel();
     let guest_task = tokio::spawn(async move {
@@ -3634,6 +3633,7 @@ async fn stop_logs_shutdown_timeout_and_reaches_stopped() {
             result = &mut stop => panic!("stop completed before timeout: {result:?}"),
             seen = shutdown_seen_rx => seen.unwrap(),
         }
+        tokio::time::pause();
         tokio::time::advance(SHUTDOWN_TIMEOUT).await;
         stop.await
     })
