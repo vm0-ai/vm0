@@ -6,6 +6,12 @@ import { now } from "./time.ts";
 // window covers automatic rerenders and route remounts without blocking a
 // user-visible resend.
 const AUTOMATIC_PREPARATION_WINDOW_MS = 5000;
+// Sign-up creation performs a full-page route transition. Preserve its marker
+// for Clerk's complete disabled-resend interval so a slow reload cannot send a
+// replacement code.
+const SIGN_UP_CREATION_PREPARATION_WINDOW_MS = 30_000;
+const SIGN_UP_PREPARATION_STORAGE_KEY =
+  "vm0:clerk-sign-up-email-code-preparation";
 
 type ClerkClient = NonNullable<Clerk["client"]>;
 type SignInResource = ClerkClient["signIn"];
@@ -28,6 +34,56 @@ interface EmailCodeVerification {
 interface ActivePreparation {
   readonly fingerprint: string | null;
   readonly suppressUntil: number;
+}
+
+interface ActivePreparations {
+  readonly delete: (key: string) => void;
+  readonly entries: () => IterableIterator<[string, ActivePreparation]>;
+  readonly get: (key: string) => ActivePreparation | undefined;
+  readonly set: (key: string, preparation: ActivePreparation) => void;
+}
+
+function readStoredSignUpPreparation(): ActivePreparation | null {
+  const value = sessionStorage.getItem(SIGN_UP_PREPARATION_STORAGE_KEY);
+  if (!value) {
+    return null;
+  }
+
+  const suppressUntil = Number(value);
+  if (!Number.isFinite(suppressUntil) || suppressUntil <= now()) {
+    sessionStorage.removeItem(SIGN_UP_PREPARATION_STORAGE_KEY);
+    return null;
+  }
+
+  return { fingerprint: null, suppressUntil };
+}
+
+function createSignUpActivePreparations(): ActivePreparations {
+  const preparations = new Map<string, ActivePreparation>();
+  const storedPreparation = readStoredSignUpPreparation();
+  if (storedPreparation) {
+    preparations.set(SIGN_UP_EMAIL_CODE_KEY, storedPreparation);
+  }
+
+  return {
+    delete: (key) => {
+      preparations.delete(key);
+      sessionStorage.removeItem(SIGN_UP_PREPARATION_STORAGE_KEY);
+    },
+    entries: () => {
+      return preparations.entries();
+    },
+    get: (key) => {
+      return preparations.get(key);
+    },
+    set: (key, preparation) => {
+      preparations.set(key, preparation);
+      sessionStorage.setItem(
+        SIGN_UP_PREPARATION_STORAGE_KEY,
+        String(preparation.suppressUntil),
+      );
+    },
+  };
 }
 
 function activeEmailCodeFingerprint(
@@ -57,7 +113,7 @@ function signUpCreateSendsEmailCode(params: SignUpCreateParams): boolean {
 }
 
 function createPreparationGuard<Resource, Params>(options: {
-  activePreparations: Map<string, ActivePreparation>;
+  activePreparations: ActivePreparations;
   getVerification: (resource: Resource) => EmailCodeVerification;
   key: (params: Params) => string;
   prepare: (params: Params) => Promise<Resource>;
@@ -131,7 +187,7 @@ function createPreparationGuard<Resource, Params>(options: {
 function guardSignUpResource(
   signUp: SignUpResource,
   guardedResources: WeakSet<SignUpResource>,
-  activePreparations: Map<string, ActivePreparation>,
+  activePreparations: ActivePreparations,
 ): void {
   if (guardedResources.has(signUp)) {
     return;
@@ -170,7 +226,7 @@ function guardSignUpResource(
         resource.verifications.emailAddress,
         preparedAt,
       ),
-      suppressUntil: preparedAt + AUTOMATIC_PREPARATION_WINDOW_MS,
+      suppressUntil: preparedAt + SIGN_UP_CREATION_PREPARATION_WINDOW_MS,
     });
     return resource;
   };
@@ -188,7 +244,7 @@ function guardSignUpResource(
 function guardSignInResource(
   signIn: SignInResource,
   guardedResources: WeakSet<SignInResource>,
-  activePreparations: Map<string, ActivePreparation>,
+  activePreparations: ActivePreparations,
 ): void {
   if (guardedResources.has(signIn)) {
     return;
@@ -233,7 +289,7 @@ function guardSignInResource(
  */
 export function installClerkEmailCodePreparationGuard(clerk: Clerk): void {
   const signInActivePreparations = new Map<string, ActivePreparation>();
-  const signUpActivePreparations = new Map<string, ActivePreparation>();
+  const signUpActivePreparations = createSignUpActivePreparations();
   const guardedSignInResources = new WeakSet<SignInResource>();
   const guardedSignUpResources = new WeakSet<SignUpResource>();
   const guardCurrentResources = (): void => {

@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { setupPage } from "../../__tests__/page-helper.ts";
 import {
+  clearMockedAuth,
   mockedClerk,
   mockSignInFirstFactorVerification,
   mockSignUpEmailVerification,
   replaceMockedClerkAuthResources,
 } from "../../__tests__/mock-auth.ts";
 import { mockNow } from "../../__tests__/time.ts";
-import { testContext } from "./test-helpers.ts";
+import { testContext, type TestContext } from "./test-helpers.ts";
 
 const context = testContext();
+const reloadContext = testContext();
 
 function activeEmailCode(now: number, nonce: string) {
   return {
@@ -21,9 +23,12 @@ function activeEmailCode(now: number, nonce: string) {
   };
 }
 
-async function setupAuthSignals(path: "/sign-in" | "/sign-up"): Promise<void> {
+async function setupAuthSignals(
+  path: "/sign-in" | "/sign-up" | "/sign-up/verify-email-address",
+  targetContext: TestContext = context,
+): Promise<void> {
   await setupPage({
-    context,
+    context: targetContext,
     path,
     withoutRender: true,
     user: null,
@@ -79,14 +84,26 @@ describe("clerk email code preparation", () => {
       strategy: null,
     });
 
-    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+    clearMockedAuth();
+    await setupAuthSignals("/sign-up/verify-email-address", reloadContext);
+
+    const reloadedSignUp = mockedClerk.client.signUp;
+    await reloadedSignUp.prepareEmailAddressVerification({
+      strategy: "email_code",
+    });
+    await reloadedSignUp.prepareEmailAddressVerification({
+      strategy: "email_code",
+    });
     expect(mockedClerk.factorPreparations).toStrictEqual([]);
 
     now += 60_000;
     mockNow(now);
-    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-    await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
+    await reloadedSignUp.prepareEmailAddressVerification({
+      strategy: "email_code",
+    });
+    await reloadedSignUp.prepareEmailAddressVerification({
+      strategy: "email_code",
+    });
     expect(mockedClerk.factorPreparations).toStrictEqual([
       { flow: "sign-up", strategy: "email_code" },
     ]);
