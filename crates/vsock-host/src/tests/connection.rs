@@ -78,7 +78,62 @@ async fn wait_for_connection_removes_listener_socket_on_abort() {
 }
 
 #[tokio::test]
-async fn test_shutdown() {
+async fn shutdown_accepts_empty_ack() {
+    let (host_stream, guest) = make_pair();
+
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
+
+        let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
+        assert!(shutdown.payload.is_empty());
+        guest
+            .send_empty_response(MSG_SHUTDOWN_ACK, shutdown.seq)
+            .await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.shutdown(Duration::from_secs(2)).await.unwrap();
+    await_mock_guest(guest_task).await;
+}
+
+#[tokio::test]
+async fn shutdown_times_out_without_ack() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let shutdown_task = tokio::spawn(async move { host.shutdown(Duration::from_millis(50)).await });
+
+    let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
+    assert!(shutdown.payload.is_empty());
+
+    let error = tokio::time::timeout(Duration::from_secs(2), shutdown_task)
+        .await
+        .expect("shutdown should respect its timeout")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(error.to_string(), "request timeout");
+}
+
+#[tokio::test]
+async fn shutdown_preserves_connection_failure() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let shutdown_task = tokio::spawn(async move { host.shutdown(Duration::from_secs(2)).await });
+
+    let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
+    assert!(shutdown.payload.is_empty());
+    drop(guest);
+
+    let error = tokio::time::timeout(Duration::from_secs(2), shutdown_task)
+        .await
+        .expect("shutdown should observe the closed connection")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(error.to_string(), "connection closed");
+}
+
+#[tokio::test]
+async fn shutdown_surfaces_guest_error() {
     let (host_stream, guest) = make_pair();
 
     let guest_task = tokio::spawn(async move {
@@ -87,12 +142,64 @@ async fn test_shutdown() {
 
         let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
         guest
-            .send_empty_response(MSG_SHUTDOWN_ACK, shutdown.seq)
+            .send_error_response(shutdown.seq, "guest refused shutdown")
             .await;
     });
 
     let host = host_from_stream(host_stream).await.unwrap();
-    assert!(host.shutdown(Duration::from_secs(2)).await);
+    let error = host.shutdown(Duration::from_secs(2)).await.unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::Other);
+    assert_eq!(error.to_string(), "guest refused shutdown");
+    await_mock_guest(guest_task).await;
+}
+
+#[tokio::test]
+async fn shutdown_rejects_wrong_ack_type() {
+    let (host_stream, guest) = make_pair();
+
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
+
+        let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
+        guest
+            .send_empty_response(MSG_OPERATIONS_RESUMED, shutdown.seq)
+            .await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let error = host.shutdown(Duration::from_secs(2)).await.unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        error
+            .to_string()
+            .contains("unexpected lifecycle response type")
+    );
+    await_mock_guest(guest_task).await;
+}
+
+#[tokio::test]
+async fn shutdown_rejects_non_empty_ack_payload() {
+    let (host_stream, guest) = make_pair();
+
+    let guest_task = tokio::spawn(async move {
+        let mut guest = MockGuest::new(guest);
+        guest.complete_handshake().await;
+
+        let shutdown = guest.expect_message(MSG_SHUTDOWN).await;
+        guest
+            .send_response(MSG_SHUTDOWN_ACK, shutdown.seq, b"x")
+            .await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let error = host.shutdown(Duration::from_secs(2)).await.unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        error
+            .to_string()
+            .contains("shutdown_ack payload must be empty")
+    );
     await_mock_guest(guest_task).await;
 }
 

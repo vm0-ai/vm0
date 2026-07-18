@@ -95,6 +95,23 @@ describe("app auth pages", () => {
     );
   });
 
+  it("allows sign-in redirects to okou.ai subdomains", async () => {
+    const redirectUrl = "https://console.okou.ai/_/skeleton";
+    const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-force-redirect-url",
+      redirectUrl,
+    );
+  });
+
   it("renders the app-hosted sign-in route when URL.canParse is unavailable", async () => {
     const originalCanParse = URL.canParse;
     Object.defineProperty(URL, "canParse", {

@@ -695,6 +695,46 @@ describe("createApp", () => {
       );
     });
 
+    it("echoes the exact okou.ai production origin", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://okou.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://okou.ai",
+      );
+    });
+
+    it("allows https origins on okou.ai subdomains", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://console.okou.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://console.okou.ai",
+      );
+    });
+
+    it("does not allow lookalike okou.ai origins", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://okou.ai.evil.example" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
     it("answers preflight without invoking the route handler", async () => {
       mockEnv("ENV", "production");
       const app = createApp({ signal: context.signal });

@@ -1,6 +1,7 @@
 """Tests for mitm addon shutdown hooks."""
 
 import threading
+from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,7 +9,10 @@ import pytest
 import mitm_addon
 import runner_flush_lifecycle
 import usage
+from tests.pending_helpers import assert_current_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
+from tests.usage_buffer_helpers import RecordingEnqueue, event, flush_log_entries
+from tests.usage_helpers import UsageWebhookServer, install_recording_usage_timer
 
 
 class TestDoneHook:
@@ -232,3 +236,182 @@ class TestDoneHook:
         with patch.object(runner_flush_lifecycle, "_start_usage_flush_worker") as start_worker:
             runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
         start_worker.assert_not_called()
+
+    def test_done_retries_shutdown_delivery_after_executor_join(
+        self,
+        tmp_path,
+        fresh_usage_executor,
+        mitm_ctx,
+    ):
+        pending_path = tmp_path / "usage-pending"
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        usage.set_pending_path(str(pending_path))
+        timers = install_recording_usage_timer()
+        server = UsageWebhookServer()
+        server.queue_response(500)
+        server.queue_response(500)
+        server.queue_response(204)
+
+        with (
+            server.run(),
+            mitm_ctx(),
+            patch.object(usage.webhook.time, "sleep"),
+            patch.object(mitm_addon.auth_base_forwarder, "shutdown_forward_request_workers"),
+            patch.object(mitm_addon, "shutdown_log_writer"),
+        ):
+            usage.buffer_usage_events(
+                server.url(),
+                "token-a",
+                "run-1",
+                [event(source_key="source-1")],
+                str(proxy_log_path),
+            )
+            mitm_addon.done()
+
+        assert server.request_count == 3
+        assert server.json_bodies() == [server.json_bodies()[0]] * 3
+        assert len(timers) == 1
+        assert timers[0].cancelled is True
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="done-drained",
+        )
+
+    def test_done_waits_for_preexisting_delivery_before_final_retry(
+        self,
+        tmp_path,
+        fresh_usage_executor,
+        mitm_ctx,
+    ):
+        pending_path = tmp_path / "usage-pending"
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        usage.set_pending_path(str(pending_path))
+        timers = install_recording_usage_timer()
+        release_first_post = threading.Event()
+        executor_shutdown_started = threading.Event()
+        server = UsageWebhookServer()
+        server.queue_response(500, release_event=release_first_post)
+        server.queue_response(500)
+        server.queue_response(204)
+
+        original_shutdown = fresh_usage_executor.shutdown
+
+        def shutdown_executor(*, wait: bool) -> None:
+            executor_shutdown_started.set()
+            original_shutdown(wait=wait)
+
+        with (
+            server.run(),
+            mitm_ctx(),
+            patch.object(usage.webhook.time, "sleep"),
+            patch.object(
+                fresh_usage_executor,
+                "shutdown",
+                side_effect=shutdown_executor,
+            ),
+            patch.object(mitm_addon.auth_base_forwarder, "shutdown_forward_request_workers"),
+            patch.object(mitm_addon, "shutdown_log_writer"),
+        ):
+            usage.buffer_usage_events(
+                server.url(),
+                "token-a",
+                "run-1",
+                [event(source_key="source-1")],
+                str(proxy_log_path),
+            )
+            assert usage.flush_usage_events(trigger="runner") == 1
+            assert server.wait_for_request_count(1)
+
+            done_thread = ThreadUnderTest(target=mitm_addon.done)
+            try:
+                done_thread.start()
+                wait_for_event(
+                    executor_shutdown_started,
+                    timeout=1,
+                    threads=(done_thread,),
+                    message="done did not begin executor shutdown",
+                )
+                assert done_thread.is_alive()
+                release_first_post.set()
+                done_thread.join_and_raise(timeout=1)
+            finally:
+                release_first_post.set()
+                done_thread.join(timeout=1)
+
+        assert server.request_count == 3
+        assert server.json_bodies() == [server.json_bodies()[0]] * 3
+        assert len(timers) == 2
+        assert all(timer.cancelled for timer in timers)
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="preexisting-delivery-drained",
+        )
+
+    def test_done_drops_repeatedly_retained_delivery_at_existing_retry_budget(
+        self,
+        tmp_path,
+    ):
+        pending_path = tmp_path / "usage-pending"
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        usage.set_pending_path(str(pending_path))
+        lifecycle_calls: list[str] = []
+
+        def reject_delivery(
+            url: str,
+            sandbox_token: str,
+            payload: dict,
+            path: str,
+            log_type: str,
+            delivery_outcome_callback: Callable[[usage.webhook.WebhookDeliveryOutcome], None],
+        ) -> bool:
+            del url, sandbox_token, payload, path, log_type, delivery_outcome_callback
+            lifecycle_calls.append("enqueue")
+            return False
+
+        enqueue = RecordingEnqueue(side_effect=reject_delivery)
+        timers = install_recording_usage_timer(
+            enqueue_webhook=enqueue,
+            max_retained_batch_retries=1,
+        )
+        mock_executor = MagicMock()
+        mock_executor.shutdown.side_effect = lambda *, wait: lifecycle_calls.append(
+            f"shutdown:{wait}"
+        )
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "secret-token",
+            "run-1",
+            [event(source_key="source-1")],
+            str(proxy_log_path),
+        )
+
+        with (
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(mitm_addon.auth_base_forwarder, "shutdown_forward_request_workers"),
+            patch.object(mitm_addon, "shutdown_log_writer"),
+        ):
+            mitm_addon.done()
+
+        assert lifecycle_calls == ["enqueue", "shutdown:True", "enqueue"]
+        assert enqueue.payloads == [enqueue.payloads[0]] * 2
+        assert len(timers) == 1
+        assert timers[0].cancelled is True
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="retry-budget-drained",
+        )
+        dropped_entries = [
+            entry for entry in flush_log_entries(proxy_log_path) if entry["phase"] == "dropped"
+        ]
+        assert len(dropped_entries) == 1
+        assert dropped_entries[0]["reason"] == "retry_budget_exhausted"
+        assert dropped_entries[0]["underbilling_class"] == "confirmed"

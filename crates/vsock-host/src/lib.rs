@@ -1183,12 +1183,21 @@ impl VsockHost {
     /// Request graceful shutdown from guest.
     ///
     /// The timeout covers waiting for the shared writer, writing the request,
-    /// and waiting for the acknowledgement. Returns `true` if the guest
-    /// acknowledges, and `false` on timeout, request failure, or an unexpected
-    /// response.
-    pub async fn shutdown(&self, timeout: Duration) -> bool {
-        let result = self.request(MSG_SHUTDOWN, &[], timeout).await;
-        matches!(result, Ok(ref m) if m.msg_type == MSG_SHUTDOWN_ACK)
+    /// and waiting for the acknowledgement.
+    ///
+    /// # Errors
+    ///
+    /// Returns the request error if the guest cannot be reached or does not
+    /// acknowledge before the deadline. An unexpected response type or a
+    /// non-empty acknowledgement returns [`io::ErrorKind::InvalidData`].
+    pub async fn shutdown(&self, timeout: Duration) -> io::Result<()> {
+        self.lifecycle_request(
+            MSG_SHUTDOWN,
+            MSG_SHUTDOWN_ACK,
+            "shutdown_ack payload must be empty",
+            timeout,
+        )
+        .await
     }
 }
 

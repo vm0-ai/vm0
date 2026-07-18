@@ -9,7 +9,8 @@ use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 use vsock_proto::{
     Decoder, ExecControlStatus, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_EXEC_CONTROL,
-    MSG_EXEC_CONTROL_RESULT, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+    MSG_EXEC_CONTROL_RESULT, MSG_PING, MSG_PONG, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    RawMessage,
 };
 
 struct TestNormalOperationFence;
@@ -158,6 +159,26 @@ async fn mock_vsock_handshake(stream: &mut UnixStream, decoder: &mut Decoder) {
 
     let pong = vsock_proto::encode(MSG_PONG, msgs[0].seq, &[]).unwrap();
     stream.write_all(&pong).await.unwrap();
+}
+
+async fn attach_mock_shutdown_guest(sandbox: &FirecrackerSandbox) -> UnixStream {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let vsock_path = temp_dir
+        .path()
+        .join("shutdown")
+        .to_string_lossy()
+        .into_owned();
+    let wait_vsock_path = vsock_path.clone();
+    let host_task = tokio::spawn(async move {
+        VsockHost::wait_for_connection(&wait_vsock_path, Duration::from_secs(5))
+            .await
+            .unwrap()
+    });
+    let mut guest = connect_mock_guest(&vsock_path).await;
+    let mut decoder = Decoder::new();
+    mock_vsock_handshake(&mut guest, &mut decoder).await;
+    *sandbox.guest.lock().await = Some(Arc::new(host_task.await.unwrap()));
+    guest
 }
 
 async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
@@ -3508,11 +3529,15 @@ fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a Capture
         .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
 }
 
-fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
-    let actual = event
+fn captured_event_field<'a>(event: &'a CapturedEvent, field: &str) -> &'a str {
+    event
         .fields
         .get(field)
-        .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"))
+}
+
+fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+    let actual = captured_event_field(event, field);
     assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
 }
 
@@ -3550,6 +3575,146 @@ fn has_captured_event(events: &[CapturedEvent], message: &str) -> bool {
             .get("message")
             .is_some_and(|actual| actual == message)
     })
+}
+
+fn assert_shutdown_failure_event<'a>(
+    events: &'a [CapturedEvent],
+    sandbox_id: &str,
+    failure_kind: &str,
+) -> &'a CapturedEvent {
+    let event = captured_event(events, "graceful shutdown failed");
+    assert_event_field(event, "sandbox_id", sandbox_id);
+    assert_event_field(event, "timeout_ms", "5000");
+    assert_event_field(event, "failure_kind", failure_kind);
+    captured_event_field(event, "elapsed_ms")
+        .parse::<u64>()
+        .unwrap_or_else(|error| panic!("invalid elapsed_ms; error={error}; event={event:#?}"));
+    event
+}
+
+#[tokio::test]
+async fn stop_with_shutdown_ack_is_quiet() {
+    let mut sandbox = test_sandbox_with_state(SandboxState::Running);
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let guest_task = tokio::spawn(async move {
+        let shutdown = read_vsock_message(&mut guest).await;
+        assert_eq!(shutdown.msg_type, MSG_SHUTDOWN);
+        assert!(shutdown.payload.is_empty());
+        let response = vsock_proto::encode(MSG_SHUTDOWN_ACK, shutdown.seq, &[]).unwrap();
+        guest.write_all(&response).await.unwrap();
+    });
+
+    let (result, events) = capture_async_log_events(sandbox.stop()).await;
+
+    result.unwrap();
+    guest_task.await.unwrap();
+    assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+    assert!(!has_captured_event(&events, "graceful shutdown failed"));
+}
+
+#[tokio::test]
+async fn stop_logs_shutdown_timeout_and_reaches_stopped() {
+    let mut sandbox = test_sandbox_with_state(SandboxState::Running);
+    let sandbox_id = sandbox.id.clone();
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let (shutdown_seen_tx, shutdown_seen_rx) = tokio::sync::oneshot::channel();
+    let (release_guest_tx, release_guest_rx) = tokio::sync::oneshot::channel();
+    let guest_task = tokio::spawn(async move {
+        let shutdown = read_vsock_message(&mut guest).await;
+        assert_eq!(shutdown.msg_type, MSG_SHUTDOWN);
+        shutdown_seen_tx.send(()).unwrap();
+        let _ = release_guest_rx.await;
+    });
+
+    let (result, events) = capture_async_log_events(async {
+        let stop = sandbox.stop();
+        tokio::pin!(stop);
+        tokio::select! {
+            result = &mut stop => panic!("stop completed before timeout: {result:?}"),
+            seen = shutdown_seen_rx => seen.unwrap(),
+        }
+        tokio::time::pause();
+        tokio::time::advance(SHUTDOWN_TIMEOUT).await;
+        stop.await
+    })
+    .await;
+
+    result.unwrap();
+    let _ = release_guest_tx.send(());
+    guest_task.await.unwrap();
+    assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+    let event = assert_shutdown_failure_event(&events, &sandbox_id, "timeout");
+    let elapsed_ms = captured_event_field(event, "elapsed_ms")
+        .parse::<u64>()
+        .unwrap();
+    assert!(
+        elapsed_ms >= duration_ms(SHUTDOWN_TIMEOUT),
+        "shutdown timeout elapsed too early; event={event:#?}"
+    );
+    assert_event_field(event, "error", "request timeout");
+}
+
+#[tokio::test]
+async fn stop_logs_shutdown_request_failure_and_reaches_stopped() {
+    let mut sandbox = test_sandbox_with_state(SandboxState::Running);
+    let sandbox_id = sandbox.id.clone();
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let guest_task = tokio::spawn(async move {
+        let shutdown = read_vsock_message(&mut guest).await;
+        assert_eq!(shutdown.msg_type, MSG_SHUTDOWN);
+        drop(guest);
+    });
+
+    let (result, events) = capture_async_log_events(sandbox.stop()).await;
+
+    result.unwrap();
+    guest_task.await.unwrap();
+    assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+    let event = assert_shutdown_failure_event(&events, &sandbox_id, "request_failure");
+    assert_event_field(event, "error", "connection closed");
+}
+
+#[tokio::test]
+async fn stop_logs_unexpected_shutdown_response_and_kills_process() {
+    let mut sandbox = test_sandbox_with_state(SandboxState::Running);
+    let sandbox_id = sandbox.id.clone();
+    let mut guest = attach_mock_shutdown_guest(&sandbox).await;
+    let child = tokio::process::Command::new("cat")
+        .process_group(0)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let child_pid = child.id().unwrap();
+    let process = monitor_process(
+        &sandbox.id,
+        child,
+        Arc::clone(&sandbox.state),
+        Arc::clone(&sandbox.state_publish_lock),
+        sandbox.state_tx.clone(),
+        Arc::clone(&sandbox.guest),
+        CancellationToken::new(),
+    );
+    sandbox.runtime.set_process(process);
+    let guest_task = tokio::spawn(async move {
+        let shutdown = read_vsock_message(&mut guest).await;
+        assert_eq!(shutdown.msg_type, MSG_SHUTDOWN);
+        let response = vsock_proto::encode(MSG_PONG, shutdown.seq, &[]).unwrap();
+        guest.write_all(&response).await.unwrap();
+    });
+
+    let (result, events) = capture_async_log_events(sandbox.stop()).await;
+
+    result.unwrap();
+    guest_task.await.unwrap();
+    assert_eq!(sandbox.current_state(), SandboxState::Stopped);
+    assert!(!pid_is_running(child_pid), "fallback must kill the process");
+    let event = assert_shutdown_failure_event(&events, &sandbox_id, "unexpected_response");
+    assert!(
+        captured_event_field(event, "error").contains("unexpected lifecycle response type"),
+        "unexpected shutdown error; event={event:#?}"
+    );
 }
 
 fn mib(value: i64) -> i64 {

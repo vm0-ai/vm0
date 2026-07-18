@@ -149,6 +149,23 @@ afterAll(() => {
 });
 
 describe("portable platform runtime environment", () => {
+  it("selects production services and public config on an okou.ai subdomain", async () => {
+    setBrowserUrl("https://console.okou.ai/agents");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
+    expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
+    expect(
+      runtime.platformHost.isOkouProductionHostname("okou.ai.evil.example"),
+    ).toBeFalsy();
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      environment: "production",
+      clerkPublishableKey: PRODUCTION_CLERK_KEY,
+      sentryDsn: SENTRY_DSN,
+      vapidPublicKey: PRODUCTION_VAPID_KEY,
+    });
+  });
+
   it("selects canonical services and production telemetry on an alternate production host", async () => {
     setBrowserUrl("https://cf-app.vm0.ai/agents");
     const runtime = await loadRuntimeSurfaces();

@@ -3,7 +3,10 @@ import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
 import {
   derivePlatformServiceOrigin,
+  isProductionSatelliteHostname,
+  PRODUCTION_SATELLITE_HOSTNAME,
   type PlatformService,
+  resolvePlatformEnvironment,
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
@@ -15,6 +18,16 @@ const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
 const VM0_ONBOARDING_PATH = "/onboarding/491858";
 const VM0_ONBOARDING_EXPERIMENT = "491858";
+const CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
+const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
+  /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*okou\.ai(?::\d+)?$/i;
+
+type AllowedAuthRedirectOrigin = string | RegExp;
+
+export interface ClerkSatelliteConfig {
+  readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
+  readonly isSatellite: true;
+}
 
 const AD_ATTRIBUTION_PARAMS = [
   "gclid",
@@ -69,6 +82,26 @@ export function resolveAppOrigin(): string {
   return !origin || origin === "null" ? "" : origin;
 }
 
+export function resolveClerkSatelliteConfig(): ClerkSatelliteConfig | null {
+  if (
+    typeof location === "undefined" ||
+    !isProductionSatelliteHostname(location.hostname)
+  ) {
+    return null;
+  }
+
+  return {
+    domain: PRODUCTION_SATELLITE_HOSTNAME,
+    isSatellite: true,
+  };
+}
+
+function resolveAuthOrigin(): string {
+  return resolveClerkSatelliteConfig()
+    ? CLERK_PRIMARY_APP_ORIGIN
+    : resolveAppOrigin();
+}
+
 function parseUrl(value: string): URL | null {
   const trimmed = value.trim();
   if (!HTTP_URL_PREFIX_REGEX.test(trimmed)) {
@@ -117,7 +150,7 @@ export function resolveAppAuthUrl(
   path: `/sign-${string}`,
   options: { redirectUrl?: string } = {},
 ): string {
-  const appOrigin = resolveAppOrigin();
+  const appOrigin = resolveAuthOrigin();
   if (!appOrigin) {
     return path;
   }
@@ -129,22 +162,28 @@ export function resolveAppAuthUrl(
 }
 
 // Clerk allowedRedirectOrigins for the current host: this app plus its www
-// and api siblings.
-export function getAllowedAuthRedirectOrigins(): string[] {
+// and api siblings. Production also includes the satellite domain family and
+// primary app so Clerk can safely return between app.vm0.ai and *.okou.ai.
+export function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
   const self = resolveAppOrigin();
   if (!self) {
     return [];
   }
+  const productionOrigins =
+    resolvePlatformEnvironment() === "production"
+      ? [CLERK_PRIMARY_APP_ORIGIN, CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN]
+      : [];
   return [
     ...new Set([
       self,
       deriveServiceOrigin(self, "www"),
       deriveServiceOrigin(self, "api"),
+      ...productionOrigins,
     ]),
   ];
 }
 
-export function getAllowedAuthRedirectOriginsForCurrentPage(): string[] {
+export function getAllowedAuthRedirectOriginsForCurrentPage(): AllowedAuthRedirectOrigin[] {
   return getAllowedAuthRedirectOrigins();
 }
 
@@ -192,9 +231,12 @@ function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
 
 function isAllowedRedirectOrigin(
   redirectUrl: URL,
-  allowedRedirectOrigins: readonly string[],
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[],
 ): boolean {
   return allowedRedirectOrigins.some((allowedOrigin) => {
+    if (allowedOrigin instanceof RegExp) {
+      return allowedOrigin.test(redirectUrl.origin);
+    }
     const url = parseUrl(allowedOrigin);
     if (!url) {
       return false;
@@ -205,7 +247,7 @@ function isAllowedRedirectOrigin(
 
 function readAllowedRedirectUrl(
   params: URLSearchParams,
-  allowedRedirectOrigins: readonly string[],
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[],
 ): string | null {
   const rawRedirectUrl = params.get("redirect_url");
   if (!rawRedirectUrl) {
@@ -223,7 +265,7 @@ function readAllowedRedirectUrl(
 
 export function buildSignupRedirectUrl(
   signUpSearch: string,
-  allowedRedirectOrigins: readonly string[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
 ): string {
   const appUrl = resolveAppUrl();
   const params = new URLSearchParams(signUpSearch);
@@ -243,7 +285,7 @@ export function buildSignupRedirectUrl(
 
 export function buildSignInRedirectUrl(
   signInSearch: string,
-  allowedRedirectOrigins: readonly string[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
 ): string {
   const params = new URLSearchParams(signInSearch);
   const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
@@ -258,14 +300,18 @@ export function buildSignInRedirectUrl(
  */
 export const clerk$ = computed(async () => {
   const publishableKey = resolvePlatformRuntimeConfig().clerkPublishableKey;
+  const satelliteConfig = resolveClerkSatelliteConfig();
 
   // Dynamic import: @clerk/clerk-js is a 2.8MB webpack monolith (53%
   // Web3/Solana/Coinbase code we don't use) that cannot be tree-shaken.
   // Moving it to a separate async chunk avoids blocking initial JS parsing.
   const { Clerk } = await import("@clerk/clerk-js");
 
-  const clerkInstance = new Clerk(publishableKey);
+  const clerkInstance = satelliteConfig
+    ? new Clerk(publishableKey, { domain: satelliteConfig.domain })
+    : new Clerk(publishableKey);
   await clerkInstance.load({
+    ...(satelliteConfig ? { isSatellite: true } : {}),
     signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpUrl: resolveAppAuthUrl("/sign-up"),
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
