@@ -431,6 +431,16 @@ function creditPurchaseAmount(session: CheckoutSessionInput): number {
   return Number(metadata.creditsAmount);
 }
 
+function creditPurchaseInvoiceAmount(
+  invoice: Pick<InvoiceInput, "metadata" | "subtotal">,
+): number {
+  if (invoice.metadata?.creditsAmountMode === "metadata") {
+    return Number(invoice.metadata.creditsAmount);
+  }
+
+  return creditsFromAmountCents(invoice.subtotal);
+}
+
 function checkoutSessionInvoiceId(
   session: CheckoutSessionInput,
 ): string | null {
@@ -1210,9 +1220,9 @@ async function handleCreditPurchaseInvoicePaid(
   }
 
   const orgId = metadata.orgId;
-  const creditsAmount = creditsFromAmountCents(invoice.subtotal);
+  const creditsAmount = creditPurchaseInvoiceAmount(invoice);
   if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
-    L.warn("credit_purchase invoice has invalid metadata or subtotal", {
+    L.warn("credit_purchase invoice has invalid metadata or amount", {
       invoiceId: invoice.id,
       hasOrgId: Boolean(orgId),
       subtotal: invoice.subtotal ?? null,

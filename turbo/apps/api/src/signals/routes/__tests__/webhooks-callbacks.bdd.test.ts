@@ -3801,6 +3801,41 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         }),
       ]),
     );
+
+    // Manual grants use a zero-price invoice and declare the credit amount in
+    // trusted invoice metadata instead of encoding it in the subtotal.
+    const metadataCreditInvoiceId = `in_bdd_metadata_credit_${suffix}`;
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: metadataCreditInvoiceId,
+          customer: null,
+          subtotal: 0,
+          metadata: {
+            type: "credit_purchase",
+            purpose: "credit_purchase",
+            orgId,
+            creditsAmountMode: "metadata",
+            creditsAmount: "2500",
+            creditsExpiresAt: String(invoiceCreditExpiresAt),
+          },
+          parent: null,
+        },
+      }),
+      [200],
+    );
+    const afterMetadataCredit = await billing.readBillingStatus(actor);
+    expect(afterMetadataCredit.credits).toBe(baselineCredits + 302_500);
+    expect(afterMetadataCredit.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "credit_purchase",
+          amount: 2500,
+          expiresAt: new Date(invoiceCreditExpiresAt * 1000).toISOString(),
+        }),
+      ]),
+    );
   });
 
   it("restores and schedules cancellations through setup checkouts and schedule webhooks", async () => {
