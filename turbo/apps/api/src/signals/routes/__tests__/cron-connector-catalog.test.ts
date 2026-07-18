@@ -1550,6 +1550,72 @@ describe("connector catalog valid lifecycle", () => {
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
 
+  it("seeds an external token credential through the CLI test endpoint", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "2026-07-15.external-cli-seed",
+      connectorRef: "test-oauth-device",
+      label: "Catalog Device OAuth",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          publicAuthMethod({ id: "oauth", grantKind: "device-auth" }),
+        ]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [
+          devicePrivateAuthMethod({
+            accessTokenName: "CATALOG_CLI_DEVICE_ACCESS_TOKEN",
+          }),
+        ]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const actor = bdd.user();
+    const firewall = createFirewallApi(context);
+    onTestFinished(async () => {
+      await connectorsApi.deleteConnectorByType(
+        actor,
+        "test-oauth-device",
+        [204, 404],
+      );
+    });
+    await firewall.provisionRunReadyOrg(actor);
+    const callsBeforeSeed = context.mocks.s3.send.mock.calls.length;
+    await firewall.seedTestConnector(actor, {
+      connectorName: "test-oauth-device",
+      authMethod: "oauth",
+      accessToken: "catalog-cli-access-token",
+    });
+
+    await expect(
+      connectorsApi.readConnectorByType(actor, "test-oauth-device"),
+    ).resolves.toMatchObject({
+      type: "test-oauth-device",
+      authMethod: "oauth",
+      connectionStatus: "connected",
+    });
+    zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const secrets = await accept(
+      setupApp({ context })(zeroSecretsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(secrets.body.secrets).toContainEqual(
+      expect.objectContaining({
+        name: "CATALOG_CLI_DEVICE_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    );
+    expect(JSON.stringify(secrets.body)).not.toContain(
+      "catalog-cli-access-token",
+    );
+    expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeSeed);
+  });
+
   it("replaces and deletes connections with compatibility-filtered auth methods", async () => {
     configureSource();
     const legacyMethod = publicAuthMethod({
