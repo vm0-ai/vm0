@@ -21,7 +21,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { command } from "ccstate";
+import { command, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
@@ -211,7 +211,7 @@ const createTestToken$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 async function testOrgForUser(
-  get: <T>(value: import("ccstate").Computed<T>) => T,
+  get: <T>(value: Computed<T>) => T,
   userId: string,
 ): Promise<string | null> {
   return await get(testUserOrgId(userId));
