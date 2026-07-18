@@ -43,6 +43,7 @@ import {
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { closeSettingsModal$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { nowDate } from "../../../../lib/time.ts";
+import { getCreditUsageDisplayName } from "../../../../lib/credit-usage-display.ts";
 import { Link } from "../../../router/link.tsx";
 import { MemberUsageTable } from "../org-manage/org-usage-tab.tsx";
 
@@ -247,7 +248,12 @@ function UsageBreakdownBar({ row, max }: { row: UsageRecordRow; max: number }) {
                         key={provider.provider}
                         className="flex min-w-0 justify-between gap-3 text-xs text-muted-foreground"
                       >
-                        <span className="truncate">{provider.provider}</span>
+                        <span className="truncate">
+                          {getCreditUsageDisplayName(
+                            segment.kind,
+                            provider.provider,
+                          )}
+                        </span>
                         <span className="shrink-0 tabular-nums">
                           {provider.credits.toLocaleString()}
                         </span>

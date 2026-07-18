@@ -12,6 +12,7 @@ import {
   runGroupIdForRun,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { insertChatMessage } from "./zero-chat-message.service";
 
 const log = logger("api:zero:chat-initial-thinking");
 
@@ -207,9 +208,9 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return false;
   }
 
-  const [inserted] = await args.db
-    .insert(chatMessages)
-    .values({
+  const inserted = await insertChatMessage(
+    args.db,
+    {
       id: assistantMessageIdForRunEvent(
         args.runId,
         INITIAL_THINKING_RUN_EVENT_ID,
@@ -221,9 +222,9 @@ export async function generateAndPersistInitialThinkingMessage(args: {
       content: null,
       thinking,
       runEventId: INITIAL_THINKING_RUN_EVENT_ID,
-    })
-    .onConflictDoNothing()
-    .returning({ id: chatMessages.id });
+    },
+    "any",
+  );
 
   if (!inserted) {
     return false;

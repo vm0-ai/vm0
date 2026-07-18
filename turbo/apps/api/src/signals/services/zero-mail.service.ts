@@ -14,7 +14,6 @@ import {
 import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
 import { hasRequiredConnectorAuthMethodScopes } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { mailDrafts } from "@vm0/db/schema/mail-draft";
@@ -33,6 +32,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
+import { insertChatMessage } from "./zero-chat-message.service";
 
 const L = logger("api:zero-mail");
 
@@ -979,14 +979,11 @@ async function persistCreatedDraft(args: {
   const createdAt = nowDate();
   const link = mailDraftUrl(args.mailDraftId);
   const created = await args.db.transaction(async (tx) => {
-    const [message] = await tx
-      .insert(chatMessages)
-      .values({
-        chatThreadId: args.threadId,
-        role: "assistant",
-        content: link,
-      })
-      .returning({ id: chatMessages.id });
+    const message = await insertChatMessage(tx, {
+      chatThreadId: args.threadId,
+      role: "assistant",
+      content: link,
+    });
     if (!message) {
       throw new Error("Mail draft message insert did not return an id");
     }

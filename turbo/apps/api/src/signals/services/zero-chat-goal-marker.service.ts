@@ -5,6 +5,7 @@ import {
 import { sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
+import { insertChatMessage } from "./zero-chat-message.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 
 /**
@@ -21,7 +22,7 @@ export async function appendGoalEventMarker(
     readonly event: ChatMessageGoalEvent;
   },
 ): Promise<void> {
-  await tx.insert(chatMessages).values({
+  await insertChatMessage(tx, {
     chatThreadId: args.chatThreadId,
     role: "assistant",
     content: null,

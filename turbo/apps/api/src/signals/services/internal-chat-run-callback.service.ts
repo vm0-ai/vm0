@@ -61,6 +61,7 @@ import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { insertChatMessage } from "./zero-chat-message.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
@@ -808,9 +809,9 @@ async function insertAssistantErrorMessage(args: {
   const displayErrorMessage = await args.getFormattedError();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    const message = await tx
-      .insert(chatMessages)
-      .values({
+    const message = await insertChatMessage(
+      tx,
+      {
         chatThreadId: args.threadId,
         role: "assistant",
         content: displayErrorMessage,
@@ -818,20 +819,13 @@ async function insertAssistantErrorMessage(args: {
         runGroupId,
         error: displayErrorMessage,
         runLifecycleEvent: args.lifecycleEvent,
-      })
-      .onConflictDoNothing({
-        target: chatMessages.runId,
-        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
-      })
-      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
-    if (message.length === 0) {
+      },
+      "run-lifecycle",
+    );
+    if (!message) {
       return false;
     }
-    await touchChatThreadLastMessageAt(
-      tx,
-      args.threadId,
-      message[0]!.createdAt,
-    );
+    await touchChatThreadLastMessageAt(tx, args.threadId, message.createdAt);
     return true;
   });
   if (!inserted) {
@@ -856,9 +850,9 @@ async function insertRunLifecycleMarker(args: {
   const markerCreatedAt = nowDate();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    const marker = await tx
-      .insert(chatMessages)
-      .values({
+    const marker = await insertChatMessage(
+      tx,
+      {
         chatThreadId: args.threadId,
         role: "assistant",
         content: null,
@@ -866,13 +860,10 @@ async function insertRunLifecycleMarker(args: {
         runGroupId,
         runLifecycleEvent: args.event,
         createdAt: markerCreatedAt,
-      })
-      .onConflictDoNothing({
-        target: chatMessages.runId,
-        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
-      })
-      .returning({ id: chatMessages.id });
-    if (marker.length === 0) {
+      },
+      "run-lifecycle",
+    );
+    if (!marker) {
       return false;
     }
     await touchChatThreadLastMessageAt(tx, args.threadId, markerCreatedAt);
@@ -897,9 +888,9 @@ async function insertRecommendedFollowupsMessage(args: {
   readonly recommendedFollowups: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
-  const inserted = await args.db
-    .insert(chatMessages)
-    .values({
+  const inserted = await insertChatMessage(
+    args.db,
+    {
       id: recommendedFollowupsMessageIdForRun(args.runId),
       chatThreadId: args.threadId,
       role: "assistant",
@@ -907,11 +898,11 @@ async function insertRecommendedFollowupsMessage(args: {
       runId: args.runId,
       runGroupId,
       recommendedFollowups: args.recommendedFollowups,
-    })
-    .onConflictDoNothing({ target: chatMessages.id })
-    .returning({ id: chatMessages.id });
+    },
+    "id",
+  );
 
-  if (inserted.length === 0) {
+  if (!inserted) {
     return false;
   }
 
