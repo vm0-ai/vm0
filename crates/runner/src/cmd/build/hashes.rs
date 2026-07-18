@@ -23,6 +23,12 @@ const ROOTFS_CACHE_VERSION: u32 = 1;
 /// Bump to invalidate all cached snapshots (local only; R2 stores only the template).
 const SNAPSHOT_CACHE_VERSION: u32 = 3;
 
+/// Shared template and local rootfs identities for a full image build.
+pub(super) struct RootfsBuildHashes {
+    pub(super) template_hash: String,
+    pub(super) rootfs_hash: String,
+}
+
 /// Compute a template hash for shared R2 image caching.
 ///
 /// Inputs:
@@ -85,6 +91,22 @@ pub(super) async fn compute_rootfs_hash(
     }
 
     Ok(hex::encode(hasher.finalize()))
+}
+
+/// Compute the two-layer rootfs identity used by a full image build.
+pub(super) async fn compute_rootfs_build_hashes(
+    guest_bins: &[(&Path, &str)],
+    ca_fingerprint: &str,
+    rootfs_disk_mb: u32,
+) -> RunnerResult<RootfsBuildHashes> {
+    let template_hash = compute_template_hash(rootfs_disk_mb);
+    let rootfs_hash =
+        compute_rootfs_hash(&template_hash, guest_bins, ca_fingerprint, rootfs_disk_mb).await?;
+
+    Ok(RootfsBuildHashes {
+        template_hash,
+        rootfs_hash,
+    })
 }
 
 pub(super) async fn compute_ca_cert_fingerprint(paths: &HomePaths) -> RunnerResult<String> {
@@ -173,18 +195,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn template_hash_ignores_guest_binaries() {
+    async fn rootfs_build_hashes_keep_template_shared_across_guest_content() {
         let dir = tempfile::tempdir().unwrap();
         let bin_a = dir.path().join("agent-a");
         let bin_b = dir.path().join("agent-b");
         tokio::fs::write(&bin_a, b"content-a").await.unwrap();
         tokio::fs::write(&bin_b, b"content-b").await.unwrap();
 
-        let template_a = compute_template_hash(16384);
-        let template_b = compute_template_hash(16384);
+        let hashes_a = compute_rootfs_build_hashes(
+            &[(&bin_a, "/usr/local/bin/guest-agent")],
+            "ca-fingerprint",
+            16384,
+        )
+        .await
+        .unwrap();
+        let hashes_b = compute_rootfs_build_hashes(
+            &[(&bin_b, "/usr/local/bin/guest-agent")],
+            "ca-fingerprint",
+            16384,
+        )
+        .await
+        .unwrap();
+
         assert_eq!(
-            template_a, template_b,
+            hashes_a.template_hash, hashes_b.template_hash,
             "template hash must not depend on guest binary content"
+        );
+        assert_ne!(
+            hashes_a.rootfs_hash, hashes_b.rootfs_hash,
+            "rootfs hash must depend on guest binary content"
         );
     }
 
