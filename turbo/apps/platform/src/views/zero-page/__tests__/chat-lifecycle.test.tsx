@@ -2102,7 +2102,7 @@ describe("chat lifecycle", () => {
           runId: "run-usage-chip",
           usage: {
             version: 1,
-            totalCredits: 24_234,
+            totalCredits: 24_734,
             settledAt: "2026-06-09T10:00:02Z",
             breakdown: [
               {
@@ -2114,6 +2114,11 @@ describe("chat lifecycle", () => {
                 kind: "model/kimi-k2.5/tokens.output",
                 credits: 1000,
                 providers: [{ provider: "moonshot", credits: 1000 }],
+              },
+              {
+                kind: "model/vm0-model/tokens.output",
+                credits: 500,
+                providers: [{ provider: "vm0-model", credits: 500 }],
               },
               {
                 kind: "image",
@@ -2133,7 +2138,7 @@ describe("chat lifecycle", () => {
     });
 
     const credit = await waitFor(() => {
-      return buttonByLabel("Credit usage 24,234");
+      return buttonByLabel("Credit usage 24,734");
     });
     const actions = credit.closest('[data-testid="chat-message-actions"]');
     expect(actions).not.toBeNull();
@@ -2148,9 +2153,10 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
         1,
       );
-      expect(screen.getAllByText("24,234").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("24,734").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Auto").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
         1,
       );

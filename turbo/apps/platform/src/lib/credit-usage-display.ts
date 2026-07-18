@@ -5,6 +5,10 @@ const CONNECTOR_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   perplexity: "Web Search",
 };
 
+const MODEL_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  "vm0-model": "Auto",
+};
+
 function titleCaseUsageToken(token: string): string {
   const upper = token.toUpperCase();
   if (["AI", "API", "GLM", "GPT", "ID", "SQL", "URL", "VM0"].includes(upper)) {
@@ -44,6 +48,11 @@ function stripUsageProviderPrefix(value: string): string {
 }
 
 function usageModelDisplayName(model: string): string {
+  const usageDisplayName = MODEL_DISPLAY_NAMES[model];
+  if (usageDisplayName) {
+    return usageDisplayName;
+  }
+
   const directDisplayName = getModelDisplayName(model);
   if (directDisplayName !== model) {
     return directDisplayName;
