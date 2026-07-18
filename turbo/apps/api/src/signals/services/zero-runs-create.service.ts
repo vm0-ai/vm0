@@ -327,6 +327,7 @@ function buildAgentToolsPrompt(args: {
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
+  readonly connectorActionCallbackEnabled: boolean;
 }): string {
   return [
     "# Agent Tools",
@@ -361,8 +362,13 @@ function buildAgentToolsPrompt(args: {
     "- Plan permission requests: identify all concrete connector operations required for the current task before asking for access. Do not include hypothetical future operations.",
     "- Check permission state: run `zero whoami --permissions` and skip permissions already allowed.",
     "- Diagnose failed connector requests before attributing them to Zero permission policy: run `zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]`. Use the `url` field from a firewall denial response when present; omit query strings or fragments when they may contain secrets. Only request access when the check reports a deny or ask outcome.",
-    "- Request missing permissions: for each one, run `zero connector permission-request <connector-ref> --permission <name> --duration <duration>`. Run one command per permission, then return all generated links in one response, one link per line, so the user can confirm each permission independently.",
-    "- Choose permission duration: use `1h` by default, `24h` or `7d` for longer user-approved work, and `always` only when explicitly requested.",
+    "- Request missing permissions: for each one, run `zero connector permission-request <connector-ref> --permission <name>`. Run one command per permission. The user chooses the grant duration in the confirmation UI.",
+    ...(args.connectorActionCallbackEnabled
+      ? [
+          "- Continue after a single access action: when the current web chat turn needs exactly one permission approval, add `--callback-prompt <prompt>` to `zero connector permission-request`; keep the prompt concise and do not include secrets. `zero connector check` and `zero connector status` show a callback URL or permission-command example when the current environment has `ZERO_CHAT_THREAD_ID`. Use a callback command or URL only when this is the turn's only connector or permission action. After sharing it, end the current turn; when the user completes the action, Zero starts the next round with the callback prompt.",
+          "- Multiple access actions: do not use callback commands or URLs when the turn needs multiple connector or permission actions. Return all generated links in one response, one link per line, using only ordinary non-callback links, and wait for the user to finish all of them.",
+        ]
+      : []),
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `zero agent edit --help`.",
     "- Manage workflows with `zero workflow --help`. Create or update a durable workflow with `zero workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`; its `SKILL.md` is synthesized from the name, description, and instruction. `--dir <path>` uploads supplementary files only and must not contain a `SKILL.md` (it is rejected). Local changes or newly-created workflow folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs.",
@@ -419,6 +425,7 @@ function buildAppendSystemPrompt(args: {
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
+  readonly connectorActionCallbackEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
   return [
@@ -428,6 +435,7 @@ function buildAppendSystemPrompt(args: {
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
       zeroMailEnabled: args.zeroMailEnabled,
+      connectorActionCallbackEnabled: args.connectorActionCallbackEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
   ]
@@ -509,6 +517,7 @@ function buildZeroRunExtraEnvironment(args: {
   readonly agentId: string;
   readonly chatThreadId: string | undefined;
   readonly codexServiceTier: "fast" | undefined;
+  readonly connectorActionCallbackEnabled: boolean;
 }): Record<string, string> {
   return {
     ZERO_AGENT_ID: args.agentId,
@@ -516,6 +525,9 @@ function buildZeroRunExtraEnvironment(args: {
     // in-sandbox CLI can bind a newly created automation to it (the create
     // flow reads $ZERO_CHAT_THREAD_ID when no thread is given).
     ...(args.chatThreadId ? { ZERO_CHAT_THREAD_ID: args.chatThreadId } : {}),
+    ...(args.connectorActionCallbackEnabled
+      ? { ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED: "1" }
+      : {}),
     ...(args.codexServiceTier
       ? { VM0_CODEX_SERVICE_TIER: args.codexServiceTier }
       : {}),
@@ -726,6 +738,7 @@ function createRunBody(args: {
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
+  readonly connectorActionCallbackEnabled: boolean;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly triggerSource: TriggerSource | undefined;
@@ -741,6 +754,7 @@ function createRunBody(args: {
     zeroScrapeEnabled: args.zeroScrapeEnabled,
     zeroWebSearchEnabled: args.zeroWebSearchEnabled,
     zeroMailEnabled: args.zeroMailEnabled,
+    connectorActionCallbackEnabled: args.connectorActionCallbackEnabled,
   });
   return {
     prompt: args.body.prompt,
@@ -774,6 +788,7 @@ function createIntegrationRunBody(args: {
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
+  readonly connectorActionCallbackEnabled: boolean;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource;
   readonly appendSystemPrompt: string | undefined;
@@ -792,6 +807,7 @@ function createIntegrationRunBody(args: {
         zeroScrapeEnabled: args.zeroScrapeEnabled,
         zeroWebSearchEnabled: args.zeroWebSearchEnabled,
         zeroMailEnabled: args.zeroMailEnabled,
+        connectorActionCallbackEnabled: args.connectorActionCallbackEnabled,
       }),
       args.appendSystemPrompt,
     ),
@@ -887,6 +903,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly command: CreateZeroRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
@@ -898,6 +915,10 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
   const command = args.command;
+  const connectorActionCallbackEnabled = isFeatureEnabled(
+    FeatureSwitchKey.ConnectorActionCallback,
+    args.featureSwitchContext,
+  );
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
   const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
   return {
@@ -910,6 +931,7 @@ function buildZeroCreateAgentRunArgs(args: {
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
       zeroMailEnabled: args.zeroMailEnabled,
+      connectorActionCallbackEnabled,
       permissionPolicies: args.runPermissionPolicies,
       triggerAgentId: args.triggerAgentId,
       triggerSource: command.triggerSource,
@@ -925,6 +947,7 @@ function buildZeroCreateAgentRunArgs(args: {
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
       codexServiceTier: command.codexServiceTier,
+      connectorActionCallbackEnabled,
     }),
     callbacks: [
       ...(callbacksForAutomationAgent(args.triggerAgentId) ?? []),
@@ -961,6 +984,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly command: CreateZeroIntegrationRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly zeroScrapeEnabled: boolean;
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
@@ -971,6 +995,10 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
   const command = args.command;
+  const connectorActionCallbackEnabled = isFeatureEnabled(
+    FeatureSwitchKey.ConnectorActionCallback,
+    args.featureSwitchContext,
+  );
   return {
     userId: command.userId,
     orgId: command.orgId,
@@ -982,6 +1010,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
       zeroScrapeEnabled: args.zeroScrapeEnabled,
       zeroWebSearchEnabled: args.zeroWebSearchEnabled,
       zeroMailEnabled: args.zeroMailEnabled,
+      connectorActionCallbackEnabled,
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
       appendSystemPrompt: command.appendSystemPrompt,
@@ -989,7 +1018,12 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
     apiStartTime: command.apiStartTime,
     modelProviderId: optionalAgentSetting(args.agent.modelProviderId),
     selectedModelOverride: optionalAgentSetting(args.agent.selectedModel),
-    extraEnvironment: { ZERO_AGENT_ID: args.agent.id },
+    extraEnvironment: buildZeroRunExtraEnvironment({
+      agentId: args.agent.id,
+      chatThreadId: undefined,
+      codexServiceTier: undefined,
+      connectorActionCallbackEnabled,
+    }),
     callbacks: command.callbacks,
     includeZeroTokenSecret: true,
     enforceVm0Credits: true,

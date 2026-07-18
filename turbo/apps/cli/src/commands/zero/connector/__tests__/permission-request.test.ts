@@ -50,6 +50,8 @@ describe("zero connector permission-request command", () => {
   beforeEach(() => {
     vi.stubEnv("VM0_TOKEN", "test-token");
     vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "");
     server.use(
       stubConnectorCatalogPermissions(permissionDetails, "https://app.vm0.ai"),
       stubConnectorCatalogPermissions(permissionDetails, "https://www.vm0.ai"),
@@ -65,7 +67,13 @@ describe("zero connector permission-request command", () => {
     mockConsoleError.mockClear();
   });
 
-  it("outputs an allow grant link with the default duration", async () => {
+  it("hides callback guidance when the feature is disabled", () => {
+    expect(permissionRequestCommand.helpInformation()).not.toContain(
+      "--callback-prompt",
+    );
+  });
+
+  it("outputs an allow grant link without choosing the user's duration", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
@@ -88,8 +96,8 @@ describe("zero connector permission-request command", () => {
       `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
     );
     expect(logCalls).toContain("action=allow");
-    expect(logCalls).toContain("expiresIn=1h");
-    expect(logCalls).toContain("Requested duration: 1h");
+    expect(logCalls).not.toContain("expiresIn=");
+    expect(logCalls).not.toContain("Requested duration:");
     expect(logCalls).not.toContain("admin approval");
   });
 
@@ -114,13 +122,15 @@ describe("zero connector permission-request command", () => {
       `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
     );
     expect(logCalls).toContain("action=allow");
-    expect(logCalls).toContain("expiresIn=1h");
-    expect(logCalls).toContain("Requested duration: 1h");
+    expect(logCalls).not.toContain("expiresIn=");
+    expect(logCalls).not.toContain("Requested duration:");
   });
 
-  it("outputs an allow grant link with an explicit duration", async () => {
+  it("includes the current thread and callback prompt in the grant URL", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
 
     await permissionRequestCommand.parseAsync([
       "node",
@@ -128,14 +138,92 @@ describe("zero connector permission-request command", () => {
       "slack",
       "--permission",
       SLACK_READ_PERMISSION,
-      "--duration",
-      "24h",
+      "--callback-prompt",
+      "Re-check permission & continue",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("action=allow");
-    expect(logCalls).toContain("expiresIn=24h");
-    expect(logCalls).toContain("Requested duration: 24h");
+    expect(logCalls).toContain("threadId=thread-abc-123");
+    expect(logCalls).toContain(
+      "callbackPrompt=Re-check+permission+%26+continue",
+    );
+    expect(logCalls).toContain("end the current turn");
+    expect(logCalls).not.toContain("expiresIn=");
+  });
+
+  it("rejects callback prompts outside the current web chat", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
+    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
+
+    await expect(async () => {
+      await permissionRequestCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        SLACK_READ_PERMISSION,
+        "--callback-prompt",
+        "Continue",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "--callback-prompt can only target the current Zero web chat thread and agent",
+      ),
+    );
+  });
+
+  it("rejects callback prompts for a different agent", async () => {
+    vi.stubEnv("ZERO_AGENT_ID", "agent-current");
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+    vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", "1");
+
+    await expect(async () => {
+      await permissionRequestCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        SLACK_READ_PERMISSION,
+        "--agent",
+        "agent-other",
+        "--callback-prompt",
+        "Continue",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "--callback-prompt can only target the current Zero web chat thread and agent",
+      ),
+    );
+  });
+
+  it("rejects callback prompts when the feature is disabled", async () => {
+    vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+
+    await expect(async () => {
+      await permissionRequestCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        SLACK_READ_PERMISSION,
+        "--callback-prompt",
+        "Continue",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "--callback-prompt is not available in the current workspace",
+      ),
+    );
   });
 
   it("outputs an allow grant link for unknown endpoints", async () => {
@@ -158,7 +246,7 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).toContain("ref=cloudflare");
     expect(logCalls).toContain("permission=__unknown__");
     expect(logCalls).toContain("action=allow");
-    expect(logCalls).toContain("expiresIn=1h");
+    expect(logCalls).not.toContain("expiresIn=");
   });
 
   it("uses the agents landing page when ZERO_AGENT_ID is not set", async () => {
@@ -499,8 +587,6 @@ describe("zero connector permission-request command", () => {
       "agent",
       "--permission",
       "computer-use:write",
-      "--duration",
-      "1h",
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -528,7 +614,7 @@ describe("zero connector permission-request command", () => {
     );
   });
 
-  it.each(["--enable", "--disable"])(
+  it.each(["--enable", "--disable", "--duration", "--auto-continue"])(
     "does not expose the legacy %s flag",
     async (flag) => {
       await expect(
