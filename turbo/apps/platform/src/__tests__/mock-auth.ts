@@ -1,4 +1,6 @@
-import { vi, type Mock } from "vitest";
+import { vi } from "vitest";
+
+import { now } from "../lib/time.ts";
 
 export interface MockedInvitation {
   id: string;
@@ -159,6 +161,7 @@ export function clearMockedAuth() {
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
   verificationSequence = 0;
+  internalMockedFactorPreparations = [];
   resetMockedClerkAuthResources();
   clerkListeners.length = 0;
   mockedClerk.signOut.mockReset();
@@ -218,9 +221,13 @@ type MockedSignInPrepare = (
   params: MockedSignInPrepareParams,
 ) => Promise<MockedSignInResource>;
 
+interface MockedFactorPreparation {
+  flow: "sign-in" | "sign-up";
+  strategy: string;
+}
+
 interface MockedSignUpResource {
   prepareEmailAddressVerification: MockedSignUpPrepare;
-  prepareEmailAddressVerificationRequest: Mock<MockedSignUpPrepare>;
   verifications: {
     emailAddress: MockedEmailCodeVerification;
   };
@@ -230,10 +237,10 @@ interface MockedSignInResource {
   create: typeof clientSignInCreate;
   firstFactorVerification: MockedEmailCodeVerification;
   prepareFirstFactor: MockedSignInPrepare;
-  prepareFirstFactorRequest: Mock<MockedSignInPrepare>;
 }
 
 let verificationSequence = 0;
+let internalMockedFactorPreparations: MockedFactorPreparation[] = [];
 
 function emptyEmailCodeVerification(): MockedEmailCodeVerification {
   return {
@@ -249,7 +256,7 @@ function preparedEmailCodeVerification(
 ): MockedEmailCodeVerification {
   verificationSequence += 1;
   return {
-    expireAt: new Date(Date.now() + 10 * 60 * 1000),
+    expireAt: new Date(now() + 10 * 60 * 1000),
     nonce: `${prefix}-${verificationSequence}`,
     status: "unverified",
     strategy: "email_code",
@@ -257,37 +264,39 @@ function preparedEmailCodeVerification(
 }
 
 function createMockedSignUpResource(): MockedSignUpResource {
-  const prepareEmailAddressVerificationRequest = vi.fn<MockedSignUpPrepare>();
   const resource: MockedSignUpResource = {
-    prepareEmailAddressVerification: prepareEmailAddressVerificationRequest,
-    prepareEmailAddressVerificationRequest,
+    prepareEmailAddressVerification: (params) => {
+      internalMockedFactorPreparations.push({
+        flow: "sign-up",
+        strategy: params?.strategy ?? "email_code",
+      });
+      resource.verifications.emailAddress =
+        preparedEmailCodeVerification("sign-up");
+      return Promise.resolve(resource);
+    },
     verifications: {
       emailAddress: emptyEmailCodeVerification(),
     },
   };
-  prepareEmailAddressVerificationRequest.mockImplementation(() => {
-    resource.verifications.emailAddress =
-      preparedEmailCodeVerification("sign-up");
-    return Promise.resolve(resource);
-  });
   return resource;
 }
 
 function createMockedSignInResource(): MockedSignInResource {
-  const prepareFirstFactorRequest = vi.fn<MockedSignInPrepare>();
   const resource: MockedSignInResource = {
     create: clientSignInCreate,
     firstFactorVerification: emptyEmailCodeVerification(),
-    prepareFirstFactor: prepareFirstFactorRequest,
-    prepareFirstFactorRequest,
+    prepareFirstFactor: (params) => {
+      internalMockedFactorPreparations.push({
+        flow: "sign-in",
+        strategy: params.strategy,
+      });
+      if (params.strategy === "email_code") {
+        resource.firstFactorVerification =
+          preparedEmailCodeVerification("sign-in");
+      }
+      return Promise.resolve(resource);
+    },
   };
-  prepareFirstFactorRequest.mockImplementation((params) => {
-    if (params.strategy === "email_code") {
-      resource.firstFactorVerification =
-        preparedEmailCodeVerification("sign-in");
-    }
-    return Promise.resolve(resource);
-  });
   return resource;
 }
 
@@ -343,11 +352,8 @@ export const mockedClerk = {
   },
   sessionGetToken,
   clientSignInCreate,
-  get clientSignInPrepareFirstFactor() {
-    return internalMockedSignInResource.prepareFirstFactorRequest;
-  },
-  get clientSignUpPrepareEmailAddressVerification() {
-    return internalMockedSignUpResource.prepareEmailAddressVerificationRequest;
+  get factorPreparations() {
+    return internalMockedFactorPreparations;
   },
   client: {
     get sessions() {

@@ -1,5 +1,7 @@
 import type { Clerk } from "@clerk/clerk-js";
 
+import { now } from "./time.ts";
+
 // Clerk keeps the OTP resend control disabled for 30 seconds. This shorter
 // window covers automatic rerenders and route remounts without blocking a
 // user-visible resend.
@@ -24,9 +26,6 @@ interface ActivePreparation {
   readonly fingerprint: string;
   readonly suppressUntil: number;
 }
-
-const guardedSignInResources = new WeakSet<SignInResource>();
-const guardedSignUpResources = new WeakSet<SignUpResource>();
 
 function activeEmailCodeFingerprint(
   verification: EmailCodeVerification,
@@ -56,17 +55,17 @@ function createPreparationGuard<Resource, Params>(options: {
 
   return (params: Params): Promise<Resource> => {
     const key = options.key(params);
-    const now = Date.now();
+    const currentTime = now();
     const fingerprint = activeEmailCodeFingerprint(
       options.getVerification(options.resource),
-      now,
+      currentTime,
     );
     const activePreparation = activePreparations.get(key);
 
     if (fingerprint && activePreparation?.fingerprint !== fingerprint) {
       activePreparations.set(key, {
         fingerprint,
-        suppressUntil: now + AUTOMATIC_PREPARATION_WINDOW_MS,
+        suppressUntil: currentTime + AUTOMATIC_PREPARATION_WINDOW_MS,
       });
       return Promise.resolve(options.resource);
     }
@@ -74,7 +73,7 @@ function createPreparationGuard<Resource, Params>(options: {
     if (
       fingerprint &&
       activePreparation?.fingerprint === fingerprint &&
-      activePreparation.suppressUntil > now
+      activePreparation.suppressUntil > currentTime
     ) {
       return Promise.resolve(options.resource);
     }
@@ -85,23 +84,21 @@ function createPreparationGuard<Resource, Params>(options: {
     }
 
     const preparation = (async () => {
-      try {
-        const resource = await options.prepare(params);
-        const preparedAt = Date.now();
-        const preparedFingerprint = activeEmailCodeFingerprint(
-          options.getVerification(resource),
-          preparedAt,
-        );
-        if (preparedFingerprint) {
-          activePreparations.set(key, {
-            fingerprint: preparedFingerprint,
-            suppressUntil: preparedAt + AUTOMATIC_PREPARATION_WINDOW_MS,
-          });
-        }
-        return resource;
-      } finally {
+      const resource = await options.prepare(params).finally(() => {
         pendingPreparations.delete(key);
+      });
+      const preparedAt = now();
+      const preparedFingerprint = activeEmailCodeFingerprint(
+        options.getVerification(resource),
+        preparedAt,
+      );
+      if (preparedFingerprint) {
+        activePreparations.set(key, {
+          fingerprint: preparedFingerprint,
+          suppressUntil: preparedAt + AUTOMATIC_PREPARATION_WINDOW_MS,
+        });
       }
+      return resource;
     })();
 
     pendingPreparations.set(key, preparation);
@@ -109,11 +106,14 @@ function createPreparationGuard<Resource, Params>(options: {
   };
 }
 
-function guardSignUpResource(signUp: SignUpResource): void {
-  if (guardedSignUpResources.has(signUp)) {
+function guardSignUpResource(
+  signUp: SignUpResource,
+  guardedResources: WeakSet<SignUpResource>,
+): void {
+  if (guardedResources.has(signUp)) {
     return;
   }
-  guardedSignUpResources.add(signUp);
+  guardedResources.add(signUp);
 
   const originalPrepare = signUp.prepareEmailAddressVerification.bind(signUp);
   const guardedPrepare = createPreparationGuard<
@@ -140,11 +140,14 @@ function guardSignUpResource(signUp: SignUpResource): void {
   };
 }
 
-function guardSignInResource(signIn: SignInResource): void {
-  if (guardedSignInResources.has(signIn)) {
+function guardSignInResource(
+  signIn: SignInResource,
+  guardedResources: WeakSet<SignInResource>,
+): void {
+  if (guardedResources.has(signIn)) {
     return;
   }
-  guardedSignInResources.add(signIn);
+  guardedResources.add(signIn);
 
   const originalPrepare = signIn.prepareFirstFactor.bind(signIn);
   const guardedPrepare = createPreparationGuard<
@@ -182,12 +185,14 @@ function guardSignInResource(signIn: SignInResource): void {
  * https://github.com/clerk/javascript/issues/4324
  */
 export function installClerkEmailCodePreparationGuard(clerk: Clerk): void {
+  const guardedSignInResources = new WeakSet<SignInResource>();
+  const guardedSignUpResources = new WeakSet<SignUpResource>();
   const guardCurrentResources = (): void => {
     if (!clerk.client) {
       return;
     }
-    guardSignUpResource(clerk.client.signUp);
-    guardSignInResource(clerk.client.signIn);
+    guardSignUpResource(clerk.client.signUp, guardedSignUpResources);
+    guardSignInResource(clerk.client.signIn, guardedSignInResources);
   };
 
   guardCurrentResources();

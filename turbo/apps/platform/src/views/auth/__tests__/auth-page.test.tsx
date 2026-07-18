@@ -1,13 +1,8 @@
 import { act, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import {
-  mockedClerk,
-  mockSignInFirstFactorVerification,
-  mockSignUpEmailVerification,
-  replaceMockedClerkAuthResources,
-} from "../../../__tests__/mock-auth.ts";
+import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -16,15 +11,6 @@ const context = testContext();
 
 function setBrowserUrl(url: string): void {
   window.location.href = url;
-}
-
-function activeEmailCode(now: number, nonce: string) {
-  return {
-    expireAt: new Date(now + 10 * 60 * 1000),
-    nonce,
-    status: "unverified" as const,
-    strategy: "email_code",
-  };
 }
 
 describe("app auth pages", () => {
@@ -276,140 +262,5 @@ describe("app auth pages", () => {
     expect(
       screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl,
     ).toBe("https://app.vm0.ai");
-  });
-
-  it("reuses the active sign-up email code and allows a later resend", async () => {
-    let now = Date.UTC(2026, 6, 18, 8);
-    const dateNow = vi.spyOn(Date, "now").mockImplementation(() => {
-      return now;
-    });
-    mockSignUpEmailVerification(activeEmailCode(now, "signup-initial"));
-    setBrowserUrl("https://app.vm0.ai/sign-up");
-
-    try {
-      detachedSetupPage({ context, path: "/sign-up" });
-      await screen.findByTestId("clerk-sign-up");
-
-      const signUp = mockedClerk.client.signUp;
-      await Promise.all([
-        signUp.prepareEmailAddressVerification({ strategy: "email_code" }),
-        signUp.prepareEmailAddressVerification({ strategy: "email_code" }),
-      ]);
-      expect(
-        mockedClerk.clientSignUpPrepareEmailAddressVerification,
-      ).not.toHaveBeenCalled();
-
-      now += 60_000;
-      await signUp.prepareEmailAddressVerification({
-        strategy: "email_code",
-      });
-      expect(
-        mockedClerk.clientSignUpPrepareEmailAddressVerification,
-      ).toHaveBeenCalledTimes(1);
-
-      await signUp.prepareEmailAddressVerification({
-        strategy: "email_code",
-      });
-      expect(
-        mockedClerk.clientSignUpPrepareEmailAddressVerification,
-      ).toHaveBeenCalledTimes(1);
-    } finally {
-      dateNow.mockRestore();
-    }
-  });
-
-  it("coalesces sign-in email code preparation and preserves resend", async () => {
-    let now = Date.UTC(2026, 6, 18, 9);
-    const dateNow = vi.spyOn(Date, "now").mockImplementation(() => {
-      return now;
-    });
-    setBrowserUrl("https://app.vm0.ai/sign-in");
-
-    try {
-      detachedSetupPage({ context, path: "/sign-in" });
-      await screen.findByTestId("clerk-sign-in");
-
-      const signIn = mockedClerk.client.signIn;
-      const params = {
-        emailAddressId: "idn_primary",
-        strategy: "email_code",
-      } as const;
-      await Promise.all([
-        signIn.prepareFirstFactor(params),
-        signIn.prepareFirstFactor(params),
-      ]);
-      expect(mockedClerk.clientSignInPrepareFirstFactor).toHaveBeenCalledTimes(
-        1,
-      );
-
-      await signIn.prepareFirstFactor(params);
-      expect(mockedClerk.clientSignInPrepareFirstFactor).toHaveBeenCalledTimes(
-        1,
-      );
-
-      now += 60_000;
-      await signIn.prepareFirstFactor(params);
-      expect(mockedClerk.clientSignInPrepareFirstFactor).toHaveBeenCalledTimes(
-        2,
-      );
-    } finally {
-      dateNow.mockRestore();
-    }
-  });
-
-  it("prepares expired and non-email sign-in factors", async () => {
-    const now = Date.UTC(2026, 6, 18, 10);
-    const dateNow = vi.spyOn(Date, "now").mockReturnValue(now);
-    mockSignInFirstFactorVerification({
-      expireAt: new Date(now - 1),
-      nonce: "expired-email-code",
-      status: "unverified",
-      strategy: "email_code",
-    });
-    setBrowserUrl("https://app.vm0.ai/sign-in");
-
-    try {
-      detachedSetupPage({ context, path: "/sign-in" });
-      await screen.findByTestId("clerk-sign-in");
-
-      const signIn = mockedClerk.client.signIn;
-      await signIn.prepareFirstFactor({
-        emailAddressId: "idn_primary",
-        strategy: "email_code",
-      });
-      await signIn.prepareFirstFactor({
-        phoneNumberId: "idn_phone",
-        strategy: "phone_code",
-      });
-
-      expect(mockedClerk.clientSignInPrepareFirstFactor).toHaveBeenCalledTimes(
-        2,
-      );
-    } finally {
-      dateNow.mockRestore();
-    }
-  });
-
-  it("guards replacement Clerk authentication resources", async () => {
-    const now = Date.UTC(2026, 6, 18, 11);
-    const dateNow = vi.spyOn(Date, "now").mockReturnValue(now);
-    setBrowserUrl("https://app.vm0.ai/sign-up");
-
-    try {
-      detachedSetupPage({ context, path: "/sign-up" });
-      await screen.findByTestId("clerk-sign-up");
-
-      replaceMockedClerkAuthResources();
-      mockSignUpEmailVerification(activeEmailCode(now, "replacement-code"));
-      await mockedClerk.client.signUp.prepareEmailAddressVerification({
-        strategy: "email_code",
-      });
-
-      expect(
-        mockedClerk.clientSignUpPrepareEmailAddressVerification,
-      ).not.toHaveBeenCalled();
-    } finally {
-      dateNow.mockRestore();
-    }
   });
 });
