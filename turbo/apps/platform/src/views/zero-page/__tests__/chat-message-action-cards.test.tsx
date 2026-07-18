@@ -726,7 +726,13 @@ describe("chat message action cards", () => {
       },
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorActionCallback]: true,
+      },
+    });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
     await confirmPermissionAction(user, permissionCard);
@@ -794,7 +800,13 @@ describe("chat message action cards", () => {
       },
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorActionCallback]: true,
+      },
+    });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
     await user.click(await waitForButtonByText("Connect", connectorCard));

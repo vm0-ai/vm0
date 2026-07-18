@@ -14,6 +14,7 @@ import {
 } from "../../../lib/api";
 import {
   addRequestedCallbackSearchParams,
+  connectorActionCallbackEnabled,
   printCallbackTurnInstruction,
 } from "./action-url";
 
@@ -143,6 +144,21 @@ async function outputPermissionRequestMessage(
   }
 }
 
+const callbackPromptOption = new Option(
+  "--callback-prompt <prompt>",
+  "Start the next web chat round with this prompt after the permission is granted",
+);
+const callbackPromptAvailable = connectorActionCallbackEnabled();
+if (!callbackPromptAvailable) {
+  callbackPromptOption.hideHelp();
+}
+const callbackPromptExample = callbackPromptAvailable
+  ? '  zero connector permission-request github --permission contents:write --callback-prompt "Re-check the permission, then continue the previous task"\n'
+  : "";
+const callbackPromptNotes = callbackPromptAvailable
+  ? "  - Use --callback-prompt only when this turn needs exactly one connector or permission action\n  - Callback prompts are included in the URL; keep them concise and do not include secrets\n"
+  : "";
+
 export const permissionRequestCommand = new Command()
   .name("permission-request")
   .description("Request permission to use a connector capability")
@@ -159,17 +175,13 @@ export const permissionRequestCommand = new Command()
       "Agent ID whose permission page should be opened (defaults to ZERO_AGENT_ID)",
     ),
   )
-  .option(
-    "--callback-prompt <prompt>",
-    "Start the next web chat round with this prompt after the permission is granted",
-  )
+  .addOption(callbackPromptOption)
   .addHelpText(
     "after",
     `
 Examples:
   zero connector permission-request github --permission contents:read
-  zero connector permission-request github --permission contents:write --callback-prompt "Re-check the permission, then continue the previous task"
-  zero connector permission-request gmail --permission messages.write --agent <agent-id>
+${callbackPromptExample}  zero connector permission-request gmail --permission messages.write --agent <agent-id>
   zero connector permission-request cloudflare --permission __unknown__
   zero connector permission-request computer-use --permission computer-use:write
 
@@ -178,9 +190,7 @@ Notes:
   - Use --permission __unknown__ to request access to unknown endpoints
   - Use --agent to request a permission for another agent; defaults to ZERO_AGENT_ID
   - The user chooses the permission duration on the confirmation page
-  - Use --callback-prompt only when this turn needs exactly one connector or permission action
-  - Callback prompts are included in the URL; keep them concise and do not include secrets
-  - Permission requests update the current user's connector grants after confirmation`,
+${callbackPromptNotes}  - Permission requests update the current user's connector grants after confirmation`,
   )
   .action(
     withErrorHandler(

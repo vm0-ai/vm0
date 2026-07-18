@@ -11,6 +11,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -385,73 +386,81 @@ describe("directed connector connect page", () => {
     });
   });
 
-  it("asks the server to connect and authorize a no-auth connector", async () => {
-    mockPublicConnectorStatus(
-      publicNoAuthConnectorStatus({
-        connectorRef: "stripe",
-        label: "Public Stripe",
-      }),
-    );
-    let connectCalls = 0;
-    const threadId = "00000000-0000-4000-a000-000000000101";
-    const callbackPrompt = "Re-check Stripe, then continue";
-    let continuationPrompt: string | null = null;
-    context.mocks.api(
-      zeroConnectorNoAuthGrantContract.connect,
-      ({ body, params, respond }) => {
-        connectCalls += 1;
-        expect(params.type).toBe("stripe");
-        expect(body).toStrictEqual({
-          authMethod: "api",
-          agentId: AGENT_ID,
-          authorizeAgent: true,
+  it.each([true, false])(
+    "connects and authorizes a no-auth connector when callback continuation is %s",
+    async (callbackEnabled) => {
+      mockPublicConnectorStatus(
+        publicNoAuthConnectorStatus({
+          connectorRef: "stripe",
+          label: "Public Stripe",
+        }),
+      );
+      let connectCalls = 0;
+      const threadId = "00000000-0000-4000-a000-000000000101";
+      const callbackPrompt = "Re-check Stripe, then continue";
+      let continuationPrompt: string | null = null;
+      context.mocks.api(
+        zeroConnectorNoAuthGrantContract.connect,
+        ({ body, params, respond }) => {
+          connectCalls += 1;
+          expect(params.type).toBe("stripe");
+          expect(body).toStrictEqual({
+            authMethod: "api",
+            agentId: AGENT_ID,
+            authorizeAgent: true,
+          });
+          return respond(200, {
+            id: crypto.randomUUID(),
+            type: "stripe",
+            authMethod: body.authMethod,
+            externalId: null,
+            externalUsername: null,
+            externalEmail: null,
+            oauthScopes: null,
+            connectionStatus: "connected",
+            reconnectReason: null,
+            tokenExpiresAt: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          });
+        },
+      );
+      context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+        if ("prompt" in body) {
+          continuationPrompt = body.prompt ?? null;
+        }
+        return respond(201, {
+          runId: "00000000-0000-4000-a000-000000000201",
+          threadId,
         });
-        return respond(200, {
-          id: crypto.randomUUID(),
-          type: "stripe",
-          authMethod: body.authMethod,
-          externalId: null,
-          externalUsername: null,
-          externalEmail: null,
-          oauthScopes: null,
-          connectionStatus: "connected",
-          reconnectReason: null,
-          tokenExpiresAt: null,
-          createdAt: "2026-01-01T00:00:00Z",
-          updatedAt: "2026-01-01T00:00:00Z",
-        });
-      },
-    );
-    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
-      if ("prompt" in body) {
-        continuationPrompt = body.prompt ?? null;
-      }
-      return respond(201, {
-        runId: "00000000-0000-4000-a000-000000000201",
-        threadId,
       });
-    });
-    detachedSetupPage({
-      context,
-      path: `/connectors/stripe/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
-    });
+      detachedSetupPage({
+        context,
+        path: `/connectors/stripe/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ConnectorActionCallback]: callbackEnabled,
+        },
+      });
 
-    await waitFor(() => {
+      await waitFor(() => {
+        expect(
+          screen.getByText("Zero needs Public Stripe to proceed"),
+        ).toBeInTheDocument();
+      });
+      click(getButtonByText("Connect"));
+
+      await waitFor(() => {
+        expect(connectCalls).toBe(1);
+        expect(screen.getByText("Public Stripe connected")).toBeInTheDocument();
+        expect(continuationPrompt).toBe(
+          callbackEnabled ? callbackPrompt : null,
+        );
+      });
       expect(
-        screen.getByText("Zero needs Public Stripe to proceed"),
-      ).toBeInTheDocument();
-    });
-    click(getButtonByText("Connect"));
-
-    await waitFor(() => {
-      expect(connectCalls).toBe(1);
-      expect(screen.getByText("Public Stripe connected")).toBeInTheDocument();
-      expect(continuationPrompt).toBe(callbackPrompt);
-    });
-    expect(
-      screen.queryByRole("dialog", { name: "Public Stripe" }),
-    ).not.toBeInTheDocument();
-  });
+        screen.queryByRole("dialog", { name: "Public Stripe" }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("finishes an OpenID flow when the callback wins before Ably polling starts", async () => {
     context.mocks.data.connectors([]);
@@ -485,6 +494,9 @@ describe("directed connector connect page", () => {
     detachedSetupPage({
       context,
       path: `/connectors/steam/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorActionCallback]: true,
+      },
     });
 
     await waitFor(() => {
@@ -585,6 +597,9 @@ describe("directed connector connect page", () => {
     detachedSetupPage({
       context,
       path: `/connectors/axiom/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorActionCallback]: true,
+      },
     });
 
     await waitFor(() => {
