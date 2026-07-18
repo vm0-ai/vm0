@@ -1,13 +1,16 @@
 import { command } from "ccstate";
 import type { ZeroSteamPlayerResponse } from "@vm0/api-contracts/contracts/zero-steam-player";
-import { connectors } from "@vm0/db/schema/connector";
-import { variables } from "@vm0/db/schema/variable";
-import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";
 import { safeJsonParse, tapError } from "../utils";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import {
+  connectorCredentialRuntimeValueRef,
+  loadConnectorCredentialConnection,
+  loadConnectorCredentialValues,
+} from "./connector-credential-runtime.service";
 
 class SteamUpstreamError extends Error {
   constructor(message: string) {
@@ -380,31 +383,34 @@ export const steamPlayerData$ = command(
     signal: AbortSignal,
   ): Promise<ZeroSteamPlayerResponse | null> => {
     const db = get(db$);
-    const [row] = await db
-      .select({ steamId: variables.value })
-      .from(connectors)
-      .innerJoin(
-        variables,
-        and(
-          eq(variables.orgId, connectors.orgId),
-          eq(variables.userId, connectors.userId),
-          eq(variables.type, "connector"),
-          eq(variables.name, "STEAM_ID"),
-        ),
-      )
-      .where(
-        and(
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          eq(connectors.type, "steam"),
-          eq(connectors.authMethod, "openid"),
-          eq(connectors.needsReconnect, false),
-        ),
-      )
-      .limit(1);
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
-
-    const steamId = row?.steamId;
+    const loaded = await loadConnectorCredentialConnection({
+      db,
+      snapshot,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorRef: "steam",
+    });
+    signal.throwIfAborted();
+    if (loaded.kind !== "ok" || loaded.connection.needsReconnect) {
+      return null;
+    }
+    const steamIdValueRef = connectorCredentialRuntimeValueRef(
+      loaded.connection,
+      "STEAM_ID",
+    );
+    if (steamIdValueRef === null) {
+      return null;
+    }
+    const values = await loadConnectorCredentialValues({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      valueRefs: [steamIdValueRef],
+    });
+    signal.throwIfAborted();
+    const steamId = values.get(steamIdValueRef);
     if (!steamId || !STEAM_ID_PATTERN.test(steamId)) {
       return null;
     }

@@ -1,18 +1,7 @@
-import { getConnectorAuthMethodAccessMetadata } from "@vm0/connectors/connector-utils";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connectors";
 import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/connector-schemas";
 
 export type ConnectorCredentialStatus = "available" | "reconnect-required";
-
-function connectorAuthMethodSupportsRefresh(
-  type: ConnectorType,
-  authMethod: string,
-): boolean {
-  return (
-    getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
-    "refresh-token"
-  );
-}
 
 function connectorCredentialStatusForAccess(args: {
   readonly storedNeedsReconnect: boolean;
@@ -46,9 +35,8 @@ export function connectorRuntimeCredentialStatusForAccess(args: {
   return connectorCredentialStatusForAccess(args);
 }
 
-export function connectorCredentialStatus(args: {
-  readonly type: ConnectorType;
-  readonly authMethod: string;
+export function connectorCredentialStatusWithMethod(args: {
+  readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly storedNeedsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
   readonly now: Date;
@@ -57,44 +45,35 @@ export function connectorCredentialStatus(args: {
     storedNeedsReconnect: args.storedNeedsReconnect,
     tokenExpiresAt: args.tokenExpiresAt,
     now: args.now,
-    isRefreshable: connectorAuthMethodSupportsRefresh(
-      args.type,
-      args.authMethod,
-    ),
+    isRefreshable: connectorAuthMethodSupportsRefreshWithMethod(args.method),
   });
 }
 
-export function connectorCredentialReconnectReason(args: {
-  readonly type: ConnectorType;
-  readonly authMethod: string;
+export function connectorCredentialReconnectReasonWithMethod(args: {
+  readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly storedNeedsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
   readonly now: Date;
 }): ConnectorReconnectReason | null {
-  const isRefreshable = connectorAuthMethodSupportsRefresh(
-    args.type,
-    args.authMethod,
-  );
   const credentialStatus = connectorCredentialStatusForAccess({
     storedNeedsReconnect: args.storedNeedsReconnect,
     tokenExpiresAt: args.tokenExpiresAt,
     now: args.now,
-    isRefreshable,
+    isRefreshable: connectorAuthMethodSupportsRefreshWithMethod(args.method),
   });
   if (
     credentialStatus !== "reconnect-required" ||
     args.storedNeedsReconnect ||
     args.tokenExpiresAt === null ||
-    isRefreshable
+    connectorAuthMethodSupportsRefreshWithMethod(args.method)
   ) {
     return null;
   }
   return "credential_expired";
 }
 
-export function connectorRuntimeCredentialStatus(args: {
-  readonly type: ConnectorType;
-  readonly authMethod: string;
+export function connectorRuntimeCredentialStatusWithMethod(args: {
+  readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly storedNeedsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
   readonly now: Date;
@@ -103,9 +82,12 @@ export function connectorRuntimeCredentialStatus(args: {
     storedNeedsReconnect: args.storedNeedsReconnect,
     tokenExpiresAt: args.tokenExpiresAt,
     now: args.now,
-    isRefreshable: connectorAuthMethodSupportsRefresh(
-      args.type,
-      args.authMethod,
-    ),
+    isRefreshable: connectorAuthMethodSupportsRefreshWithMethod(args.method),
   });
+}
+
+function connectorAuthMethodSupportsRefreshWithMethod(
+  method: ConnectorAuthMethodRuntimeConfig,
+): boolean {
+  return method.access.kind === "refresh-token";
 }

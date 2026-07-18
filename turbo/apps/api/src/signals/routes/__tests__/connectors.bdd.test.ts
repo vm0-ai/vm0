@@ -409,7 +409,7 @@ describe("CONN-02: OAuth start and callback", () => {
     expectNoVisibleSecret(connected, "bdd-datadog-refresh-token");
   });
 
-  it("rejects OAuth start requests that target unsupported or unavailable auth methods", async () => {
+  it("rejects OAuth start requests that target unsupported auth methods", async () => {
     mockGitHubConnectorOAuth();
 
     const bdd = createBddApi(context);
@@ -594,7 +594,7 @@ describe("CONN-02: OAuth device authorization", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
-  it("rejects device-auth starts through visible validation, grant, and availability boundaries", async () => {
+  it("validates device-auth identity, grant, options, and session boundaries without using rollout as authorization", async () => {
     const testOauthProvider = mockTestOAuthDeviceConnectorProvider();
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -709,19 +709,18 @@ describe("CONN-02: OAuth device authorization", () => {
       "stripe cli device-auth start option mode must be one of: test, live",
     );
 
-    const disabled = await connectorsApi.requestDeviceAuthStart(
+    const switchlessStart = await connectorsApi.requestDeviceAuthStart(
       switchlessActor,
       "test-oauth-device",
       "oauth",
       undefined,
-      [403],
+      [200],
     );
-    expectApiError(disabled.body);
-    expect(disabled.body.error.message).toBe(
-      "OAuth device authorization is not enabled for this connector",
-    );
-
-    expect(testOauthProvider.deviceCodeBodies).toStrictEqual([]);
+    expect(switchlessStart.body).toMatchObject({
+      type: "test-oauth-device",
+      status: "pending",
+    });
+    expect(testOauthProvider.deviceCodeBodies).toHaveLength(1);
 
     const missingSession = await connectorsApi.requestDeviceAuthPoll(
       actor,
@@ -1301,7 +1300,7 @@ describe("CONN-02: OAuth device authorization", () => {
     });
   });
 
-  it("rejects polls after the connector auth method becomes unavailable", async () => {
+  it("continues polls after the connector feature switch is disabled", async () => {
     mockTestOAuthDeviceConnectorProvider({ deviceCode: "pending" });
 
     const bdd = createBddApi(context);
@@ -1320,22 +1319,22 @@ describe("CONN-02: OAuth device authorization", () => {
       [FeatureSwitchKey.TestOauthConnector]: false,
     });
 
-    const disabledPoll = await connectorsApi.requestDeviceAuthPoll(
+    const continuedPoll = await connectorsApi.requestDeviceAuthPoll(
       actor,
       "test-oauth-device",
       session.sessionId,
       session.sessionToken,
-      [403],
+      [200],
     );
-    expectApiError(disabledPoll.body);
-    expect(disabledPoll.body.error.message).toBe(
-      "OAuth device authorization is not enabled for this connector",
-    );
+    expect(continuedPoll.body).toStrictEqual({
+      status: "pending",
+      interval: 0,
+    });
   });
 });
 
 describe("CONN-02: external-code authorization", () => {
-  it("rejects external-code sessions through visible auth, grant, switch, and session boundaries", async () => {
+  it("validates external-code auth, grant, and session boundaries without using rollout as authorization", async () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
     const missingSessionId = randomUUID();
@@ -1360,16 +1359,16 @@ describe("CONN-02: external-code authorization", () => {
       "openai api-token auth method does not use an external-code grant",
     );
 
-    const disabled = await connectorsApi.requestExternalCodeStart(
+    const switchlessStart = await connectorsApi.requestExternalCodeStart(
       actor,
       "aws",
       "cli",
-      [403],
+      [200],
     );
-    expectApiError(disabled.body);
-    expect(disabled.body.error.message).toBe(
-      "External-code authorization is not enabled for this connector",
-    );
+    expect(switchlessStart.body).toMatchObject({
+      type: "aws",
+      status: "pending",
+    });
 
     const invalidCompleteBody = await connectorsApi.requestExternalCodeComplete(
       actor,

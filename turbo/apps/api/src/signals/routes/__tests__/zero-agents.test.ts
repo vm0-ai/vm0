@@ -42,7 +42,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     }
   });
 
-  it("filters connector grants for connector types removed from the registry", async () => {
+  it("keeps connector grants when their auth methods become hidden", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -77,6 +77,6 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
       [200],
     );
 
-    expect(response.body.enabledTypes).toStrictEqual(["github"]);
+    expect(response.body.enabledTypes).toStrictEqual(["github", "slack"]);
   });
 });

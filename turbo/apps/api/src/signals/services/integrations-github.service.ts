@@ -17,9 +17,11 @@ import { getOAuthWebOrigin } from "../routes/oauth-web-origin";
 import {
   buildGithubUserConnectAuthorizationUrl,
   findGithubInstallationByInstallationId,
+  getGithubOAuthAuthMethod,
   linkGithubVm0User,
   verifyGithubConnectSignature,
 } from "./github-oauth.service";
+import { connectorActionResolver } from "./connector-action-resolver.service";
 
 function errorResponse(status: 400 | 404 | 409, message: string, code: string) {
   return { status, body: { error: { message, code } } };
@@ -211,13 +213,23 @@ export const getGithubInstallation$ = command(
           });
     signal.throwIfAborted();
 
+    const resolver = await get(connectorActionResolver());
+    signal.throwIfAborted();
+    const resolvedMethod = await resolver.resolveNewActionMethod({
+      connectorRef: "github",
+      authMethodId: getGithubOAuthAuthMethod(),
+      expectedGrantKind: "auth-code",
+    });
+    signal.throwIfAborted();
     const connectUrl =
-      link === null
+      link === null && resolvedMethod.ok
         ? ((await buildGithubUserConnectAuthorizationUrl({
             db,
             vm0UserId: auth.userId,
             orgId: auth.orgId,
             origin,
+            authMethodId: resolvedMethod.authMethodId,
+            method: resolvedMethod.method,
             readEnv: optionalEnv,
             signal,
           })) ?? githubConnectStartUrl(origin))

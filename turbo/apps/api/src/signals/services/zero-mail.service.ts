@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   zeroMailDraftSchema,
   zeroMailDraftStatusSchema,
@@ -10,34 +10,37 @@ import {
   type ZeroMailDraftStatus,
   type ZeroMailProvider,
 } from "@vm0/api-contracts/contracts/zero-mail";
-import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
-import { hasRequiredConnectorAuthMethodScopes } from "@vm0/connectors/connector-utils";
+import { connectorAuthMethodHasRequiredScopes } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { mailDrafts } from "@vm0/db/schema/mail-draft";
-import { secrets } from "@vm0/db/schema/secret";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { z } from "zod";
 
-import { env, optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
-import { settleIncludingAbort, tapError } from "../utils";
-import { lockConnectorState } from "./auth-state-lock.service";
+import { tapError } from "../utils";
 import {
-  decryptStoredSecretValue,
-  encryptStoredSecretValue,
-} from "./crypto.utils";
+  getConnectorRuntimeMethod,
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
+import {
+  connectorCredentialRuntimeValueRef,
+  loadConnectorCredentialValues,
+  refreshConnectorCredentialAccess,
+  type ConnectorCredentialConnection,
+} from "./connector-credential-runtime.service";
 
 const L = logger("api:zero-mail");
 
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS = 60 * 60 * 1000;
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
-const GMAIL_ACCESS_TOKEN_SECRET = "GMAIL_ACCESS_TOKEN";
-const GMAIL_REFRESH_TOKEN_SECRET = "GMAIL_REFRESH_TOKEN";
+const GMAIL_ACCESS_TOKEN_ENV = "GMAIL_TOKEN";
 const oauthScopesSchema = z.array(z.string());
 
 const gmailDraftResourceSchema = z.object({
@@ -55,13 +58,11 @@ const gmailMessageResourceSchema = z.object({
   raw: z.string().optional(),
 });
 
-interface MailConnection {
-  readonly connectorId: string;
+interface MailConnection extends ConnectorCredentialConnection {
+  readonly connectorRef: "gmail";
   readonly externalEmail: string;
   readonly externalUsername: string | null;
-  readonly needsReconnect: boolean;
   readonly scopesReady: boolean;
-  readonly tokenExpiresAt: Date | null;
 }
 
 interface MailDraftResult {
@@ -172,6 +173,7 @@ function okResult(
 
 async function loadMailConnections(args: {
   readonly db: ReadonlyDb;
+  readonly snapshot: ConnectorRuntimeSnapshot;
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -179,11 +181,14 @@ async function loadMailConnections(args: {
   const rows = await args.db
     .select({
       connectorId: connectors.id,
+      connectorType: connectors.type,
       authMethod: connectors.authMethod,
       externalEmail: connectors.externalEmail,
       externalUsername: connectors.externalUsername,
+      externalId: connectors.externalId,
       needsReconnect: connectors.needsReconnect,
       oauthScopes: connectors.oauthScopes,
+      stateRevision: sql<string>`${connectors.updatedAt}::text`,
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(userConnectors)
@@ -205,21 +210,35 @@ async function loadMailConnections(args: {
     );
 
   return rows.flatMap((row): MailConnection[] => {
-    if (!row.externalEmail) {
+    if (row.connectorType !== "gmail" || !row.externalEmail) {
       return [];
     }
+    const runtimeMethod = getConnectorRuntimeMethod({
+      snapshot: args.snapshot,
+      connectorRef: row.connectorType,
+      authMethodId: row.authMethod,
+      requireExecutable: true,
+    });
+    if (!runtimeMethod) {
+      return [];
+    }
+    const oauthScopes = row.oauthScopes
+      ? oauthScopesSchema.parse(JSON.parse(row.oauthScopes))
+      : null;
     return [
       {
         connectorId: row.connectorId,
+        connectorRef: row.connectorType,
+        runtimeMethod,
         externalEmail: row.externalEmail,
         externalUsername: row.externalUsername,
+        externalId: row.externalId,
         needsReconnect: row.needsReconnect,
-        scopesReady: hasRequiredConnectorAuthMethodScopes(
-          "gmail",
-          row.authMethod,
-          row.oauthScopes
-            ? oauthScopesSchema.parse(JSON.parse(row.oauthScopes))
-            : null,
+        oauthScopes,
+        stateRevision: row.stateRevision,
+        scopesReady: connectorAuthMethodHasRequiredScopes(
+          runtimeMethod.method,
+          oauthScopes,
         ),
         tokenExpiresAt: row.tokenExpiresAt,
       },
@@ -322,137 +341,6 @@ async function loadOwnedMailDraft(args: {
   return await loadOwnedNewMailDraft(args);
 }
 
-async function upsertConnectorSecret(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly name: string;
-  readonly value: string;
-}): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(args.value);
-  await args.db
-    .insert(secrets)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      name: args.name,
-      encryptedValue,
-      description: null,
-      type: "connector",
-    })
-    .onConflictDoUpdate({
-      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
-      set: {
-        encryptedValue,
-        description: null,
-        updatedAt: sql`clock_timestamp()`,
-      },
-    });
-}
-
-async function loadConnectorTokens(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<{
-  readonly accessToken: string | null;
-  readonly refreshToken: string | null;
-}> {
-  const rows = await args.db
-    .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, args.orgId),
-        eq(secrets.userId, args.userId),
-        eq(secrets.type, "connector"),
-        inArray(secrets.name, [
-          GMAIL_ACCESS_TOKEN_SECRET,
-          GMAIL_REFRESH_TOKEN_SECRET,
-        ]),
-      ),
-    );
-  const values = new Map<string, string>();
-  for (const row of rows) {
-    values.set(row.name, await decryptStoredSecretValue(row.encryptedValue));
-  }
-  return {
-    accessToken: values.get(GMAIL_ACCESS_TOKEN_SECRET) ?? null,
-    refreshToken: values.get(GMAIL_REFRESH_TOKEN_SECRET) ?? null,
-  };
-}
-
-async function refreshMailAccessToken(args: {
-  readonly connection: MailConnection;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly refreshToken: string;
-  readonly signal: AbortSignal;
-  readonly writeDb: Db;
-}): Promise<MailAccessTokenResult> {
-  const clientId = optionalEnv("GOOGLE_OAUTH_CLIENT_ID");
-  const clientSecret = optionalEnv("GOOGLE_OAUTH_CLIENT_SECRET");
-  if (!clientId || !clientSecret) {
-    return { kind: "error", message: "Gmail OAuth is not configured" };
-  }
-
-  const refreshResult = await settleIncludingAbort(
-    refreshGoogleToken(
-      "gmail",
-      clientId,
-      clientSecret,
-      args.refreshToken,
-      args.signal,
-    ),
-  );
-  if (!refreshResult.ok) {
-    L.warn("Gmail access token refresh failed", {
-      connectorId: args.connection.connectorId,
-      error: refreshResult.error,
-    });
-    return { kind: "error", message: "Reconnect Gmail before continuing" };
-  }
-  const refreshed = refreshResult.value;
-  const nextRefreshToken = refreshed.refreshToken ?? args.refreshToken;
-  const tokenExpiresAt = new Date(
-    nowDate().getTime() +
-      (refreshed.expiresIn
-        ? refreshed.expiresIn * 1000
-        : DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS),
-  );
-  await args.writeDb.transaction(async (tx) => {
-    await lockConnectorState(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      type: "gmail",
-    });
-    await upsertConnectorSecret({
-      db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      name: GMAIL_ACCESS_TOKEN_SECRET,
-      value: refreshed.accessToken,
-    });
-    await upsertConnectorSecret({
-      db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      name: GMAIL_REFRESH_TOKEN_SECRET,
-      value: nextRefreshToken,
-    });
-    await tx
-      .update(connectors)
-      .set({
-        tokenExpiresAt,
-        needsReconnect: false,
-        reconnectReason: null,
-        updatedAt: sql`clock_timestamp()`,
-      })
-      .where(eq(connectors.id, args.connection.connectorId));
-  });
-  return { kind: "ok", accessToken: refreshed.accessToken };
-}
-
 async function resolveMailAccessToken(args: {
   readonly connection: MailConnection;
   readonly db: ReadonlyDb;
@@ -464,25 +352,48 @@ async function resolveMailAccessToken(args: {
   if (args.connection.needsReconnect || !args.connection.scopesReady) {
     return { kind: "error", message: "Reconnect Gmail before continuing" };
   }
-  const tokens = await loadConnectorTokens(args);
-  const expiresAt = args.connection.tokenExpiresAt?.getTime() ?? 0;
-  if (
-    tokens.accessToken &&
-    (expiresAt === 0 || expiresAt > nowDate().getTime() + TOKEN_REFRESH_SKEW_MS)
-  ) {
-    return { kind: "ok", accessToken: tokens.accessToken };
-  }
-  if (!tokens.refreshToken) {
+  const accessTokenValueRef = connectorCredentialRuntimeValueRef(
+    args.connection,
+    GMAIL_ACCESS_TOKEN_ENV,
+  );
+  if (accessTokenValueRef === null) {
     return { kind: "error", message: "Reconnect Gmail before continuing" };
   }
-  return await refreshMailAccessToken({
-    connection: args.connection,
+  const values = await loadConnectorCredentialValues({
+    db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    refreshToken: tokens.refreshToken,
-    signal: args.signal,
-    writeDb: args.writeDb,
+    valueRefs: [accessTokenValueRef],
   });
+  const expiresAt = args.connection.tokenExpiresAt?.getTime() ?? 0;
+  const accessToken = values.get(accessTokenValueRef);
+  if (
+    accessToken &&
+    (expiresAt === 0 || expiresAt > nowDate().getTime() + TOKEN_REFRESH_SKEW_MS)
+  ) {
+    return { kind: "ok", accessToken };
+  }
+  const refreshed = await refreshConnectorCredentialAccess({
+    connection: args.connection,
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    runtimeEnvironmentName: GMAIL_ACCESS_TOKEN_ENV,
+    signal: args.signal,
+    persist: {
+      db: args.writeDb,
+      defaultExpiresInMs: DEFAULT_ACCESS_TOKEN_EXPIRES_IN_MS,
+    },
+  });
+  if (refreshed.kind === "configuration-unavailable") {
+    return { kind: "error", message: "Gmail OAuth is not configured" };
+  }
+  return refreshed.kind === "ok"
+    ? { kind: "ok", accessToken: refreshed.accessToken }
+    : {
+        kind: "error",
+        message: "Reconnect Gmail before continuing",
+      };
 }
 
 function encodeHeader(value: string): string {
@@ -839,12 +750,14 @@ function responseDraft(args: {
 
 async function connectionForRow(args: {
   readonly db: ReadonlyDb;
+  readonly snapshot: ConnectorRuntimeSnapshot;
   readonly orgId: string;
   readonly userId: string;
   readonly row: NewMailDraftRow;
 }): Promise<MailConnection | null> {
   const connections = await loadMailConnections({
     db: args.db,
+    snapshot: args.snapshot,
     orgId: args.orgId,
     userId: args.userId,
     agentId: args.row.agentId,
@@ -860,6 +773,7 @@ async function connectionForRow(args: {
 async function accessForRow(args: {
   readonly db: ReadonlyDb;
   readonly writeDb: Db;
+  readonly snapshot: ConnectorRuntimeSnapshot;
   readonly orgId: string;
   readonly userId: string;
   readonly row: NewMailDraftRow;
@@ -953,6 +867,7 @@ async function updateNewRowFromDraft(args: {
 async function getNewDraft(args: {
   readonly db: ReadonlyDb;
   readonly writeDb: Db;
+  readonly snapshot: ConnectorRuntimeSnapshot;
   readonly orgId: string;
   readonly userId: string;
   readonly row: NewMailDraftRow;
@@ -1061,6 +976,8 @@ export const createZeroMailDraft$ = command(
       };
     }
     const db = get(db$);
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     const threadAgentId = await ownedThreadAgentId({ db, ...args });
     signal.throwIfAborted();
     if (!threadAgentId || (args.agentId && threadAgentId !== args.agentId)) {
@@ -1069,6 +986,7 @@ export const createZeroMailDraft$ = command(
     const connections = (
       await loadMailConnections({
         db,
+        snapshot,
         orgId: args.orgId,
         userId: args.userId,
         agentId: threadAgentId,
@@ -1161,9 +1079,12 @@ export const getZeroMailDraft$ = command(
     if (!row) {
       return { kind: "not_found", message: "Mail draft not found" };
     }
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     return await getNewDraft({
       db,
       writeDb: set(writeDb$),
+      snapshot,
       orgId: args.orgId,
       userId: args.userId,
       row,
@@ -1196,9 +1117,12 @@ export const updateZeroMailDraft$ = command(
     if (row.status !== "draft") {
       return { kind: "conflict", message: "This mail draft cannot be edited" };
     }
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     const access = await accessForRow({
       db,
       writeDb: set(writeDb$),
+      snapshot,
       orgId: args.orgId,
       userId: args.userId,
       row,
@@ -1278,9 +1202,12 @@ export const deleteZeroMailDraft$ = command(
         message: "Only an active draft can be deleted",
       };
     }
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     const access = await accessForRow({
       db,
       writeDb: set(writeDb$),
+      snapshot,
       orgId: args.orgId,
       userId: args.userId,
       row,
@@ -1368,12 +1295,15 @@ export const deleteZeroMailDraftsForThread$ = command(
   ): Promise<void> => {
     const db = get(db$);
     const writeDb = set(writeDb$);
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     for (const row of args.drafts) {
       await tapError(
         (async () => {
           const access = await accessForRow({
             db,
             writeDb,
+            snapshot,
             orgId: args.orgId,
             userId: args.userId,
             row,
@@ -1413,6 +1343,7 @@ interface SendDraftFields {
 async function sendNewZeroMailDraft(args: {
   readonly db: ReadonlyDb;
   readonly writeDb: Db;
+  readonly snapshot: ConnectorRuntimeSnapshot;
   readonly orgId: string;
   readonly userId: string;
   readonly row: NewMailDraftRow;
@@ -1515,9 +1446,12 @@ export const sendZeroMailDraft$ = command(
     if (!row) {
       return { kind: "not_found", message: "Mail draft not found" };
     }
+    const snapshot = await loadConnectorRuntimeSnapshot(db);
+    signal.throwIfAborted();
     return await sendNewZeroMailDraft({
       db,
       writeDb: set(writeDb$),
+      snapshot,
       orgId: args.orgId,
       userId: args.userId,
       fields: args,

@@ -9,14 +9,11 @@ import {
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
-import { connectors } from "@vm0/db/schema/connector";
 import {
   googleCalendarEventSnapshots,
   googleCalendarProcessedEvents,
   googleCalendarWatchStates,
 } from "@vm0/db/schema/google-calendar-event";
-import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
@@ -28,12 +25,14 @@ import { logger } from "../../lib/log";
 import { testOverride } from "../../lib/singleton";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
 import {
-  decryptStoredSecretValue,
-  encryptStoredSecretValue,
-} from "./crypto.utils";
+  connectorCredentialRuntimeValueRef,
+  loadConnectorCredentialConnection,
+  loadConnectorCredentialValues,
+  refreshConnectorCredentialAccess,
+} from "./connector-credential-runtime.service";
 import {
   WorkflowEventSourceTiming,
   type WorkflowEventRunTiming,
@@ -48,9 +47,7 @@ import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automat
 
 const log = logger("api:google-calendar-workflow-event");
 
-const GOOGLE_CALENDAR_ACCESS_TOKEN_SECRET = "GOOGLE_CALENDAR_ACCESS_TOKEN";
-const GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET = "GOOGLE_CALENDAR_REFRESH_TOKEN";
-const CONNECTOR_SECRET_TYPE = "connector";
+const GOOGLE_CALENDAR_ACCESS_TOKEN_ENVIRONMENT_NAME = "GOOGLE_CALENDAR_TOKEN";
 const GOOGLE_CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const WATCH_RENEWAL_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -68,23 +65,6 @@ interface GoogleCalendarAccess {
 type GoogleCalendarAccessResult =
   | { readonly kind: "ok"; readonly access: GoogleCalendarAccess }
   | { readonly kind: "bad_request"; readonly message: string };
-
-interface GoogleCalendarConnectorAccessRow {
-  readonly id: string;
-  readonly externalEmail: string | null;
-  readonly tokenExpiresAt: Date | null;
-  readonly needsReconnect: boolean;
-}
-
-interface ConnectorSecretRow {
-  readonly name: string;
-  readonly encryptedValue: string;
-}
-
-interface GoogleCalendarConnectorSecrets {
-  readonly accessSecret: ConnectorSecretRow | null;
-  readonly refreshSecret: ConnectorSecretRow | null;
-}
 
 type EnsureGoogleCalendarWatchResult =
   | { readonly kind: "ok" }
@@ -268,177 +248,6 @@ function tokenNeedsRefresh(
   );
 }
 
-function tokenExpiresAtFromExpiresIn(
-  expiresIn: number | undefined,
-  currentTime: Date,
-): Date | null {
-  return expiresIn === undefined
-    ? null
-    : new Date(currentTime.getTime() + expiresIn * 1000);
-}
-
-async function loadGoogleCalendarConnector(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId?: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarConnectorAccessRow | null> {
-  const connectorConditions = [
-    eq(connectors.orgId, args.orgId),
-    eq(connectors.userId, args.userId),
-    eq(connectors.type, "google-calendar"),
-  ];
-  if (args.connectorId !== undefined) {
-    connectorConditions.push(eq(connectors.id, args.connectorId));
-  }
-
-  const [connector] = await args.db
-    .select({
-      id: connectors.id,
-      externalEmail: connectors.externalEmail,
-      tokenExpiresAt: connectors.tokenExpiresAt,
-      needsReconnect: connectors.needsReconnect,
-    })
-    .from(connectors)
-    .where(and(...connectorConditions))
-    .limit(1);
-  args.signal.throwIfAborted();
-
-  return connector ?? null;
-}
-
-async function loadGoogleCalendarConnectorSecrets(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarConnectorSecrets> {
-  const secretRows = await args.db
-    .select({
-      name: secretsTable.name,
-      encryptedValue: secretsTable.encryptedValue,
-    })
-    .from(secretsTable)
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, CONNECTOR_SECRET_TYPE),
-      ),
-    );
-  args.signal.throwIfAborted();
-
-  return {
-    accessSecret:
-      secretRows.find((row) => {
-        return row.name === GOOGLE_CALENDAR_ACCESS_TOKEN_SECRET;
-      }) ?? null,
-    refreshSecret:
-      secretRows.find((row) => {
-        return row.name === GOOGLE_CALENDAR_REFRESH_TOKEN_SECRET;
-      }) ?? null,
-  };
-}
-
-async function markGoogleCalendarConnectorNeedsReconnect(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await args.db
-    .update(connectors)
-    .set({ needsReconnect: true, updatedAt: args.currentTime })
-    .where(eq(connectors.id, args.connectorId));
-  args.signal.throwIfAborted();
-}
-
-async function refreshGoogleCalendarAccessToken(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connector: GoogleCalendarConnectorAccessRow;
-  readonly refreshSecret: ConnectorSecretRow;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<GoogleCalendarAccessResult> {
-  const clientId = optionalEnv("GOOGLE_OAUTH_CLIENT_ID");
-  const clientSecret = optionalEnv("GOOGLE_OAUTH_CLIENT_SECRET");
-  if (!clientId || !clientSecret) {
-    return {
-      kind: "bad_request",
-      message: "Google OAuth client env vars are not configured",
-    };
-  }
-
-  const refreshToken = await decryptStoredSecretValue(
-    args.refreshSecret.encryptedValue,
-  );
-  const refreshed = await tapError(
-    refreshGoogleToken(
-      "google-calendar",
-      clientId,
-      clientSecret,
-      refreshToken,
-      args.signal,
-    ),
-  );
-  args.signal.throwIfAborted();
-  if (!refreshed) {
-    await markGoogleCalendarConnectorNeedsReconnect({
-      db: args.db,
-      connectorId: args.connector.id,
-      currentTime: args.currentTime,
-      signal: args.signal,
-    });
-    return {
-      kind: "bad_request",
-      message:
-        "Reconnect Google Calendar before using Google Calendar event automations",
-    };
-  }
-
-  const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshed.expiresIn,
-    args.currentTime,
-  );
-  await args.db
-    .update(secretsTable)
-    .set({
-      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
-      updatedAt: args.currentTime,
-    })
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, CONNECTOR_SECRET_TYPE),
-        eq(secretsTable.name, GOOGLE_CALENDAR_ACCESS_TOKEN_SECRET),
-      ),
-    );
-  args.signal.throwIfAborted();
-
-  await args.db
-    .update(connectors)
-    .set({
-      tokenExpiresAt,
-      needsReconnect: false,
-      updatedAt: args.currentTime,
-    })
-    .where(eq(connectors.id, args.connector.id));
-  args.signal.throwIfAborted();
-
-  return {
-    kind: "ok",
-    access: {
-      connectorId: args.connector.id,
-      emailAddress: args.connector.externalEmail,
-      accessToken: refreshed.accessToken,
-    },
-  };
-}
-
 async function resolveGoogleCalendarAccess(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -447,68 +256,100 @@ async function resolveGoogleCalendarAccess(args: {
   readonly signal: AbortSignal;
 }): Promise<GoogleCalendarAccessResult> {
   const currentTime = nowDate();
-  const connector = await loadGoogleCalendarConnector(args);
-  if (!connector) {
+  const snapshot = await loadConnectorRuntimeSnapshot(args.db);
+  args.signal.throwIfAborted();
+  const loaded = await loadConnectorCredentialConnection({
+    db: args.db,
+    snapshot,
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorRef: "google-calendar",
+    ...(args.connectorId === undefined
+      ? {}
+      : { connectorId: args.connectorId }),
+  });
+  args.signal.throwIfAborted();
+  if (loaded.kind === "missing") {
     return {
       kind: "bad_request",
       message:
         "Connect Google Calendar before adding a Google Calendar event automation",
     };
   }
-  if (connector.needsReconnect) {
+  if (loaded.kind === "unavailable" || loaded.connection.needsReconnect) {
     return {
       kind: "bad_request",
       message:
         "Reconnect Google Calendar before using Google Calendar event automations",
     };
   }
-
-  const { accessSecret, refreshSecret } =
-    await loadGoogleCalendarConnectorSecrets(args);
-  if (!accessSecret) {
+  const connection = loaded.connection;
+  const accessTokenValueRef = connectorCredentialRuntimeValueRef(
+    connection,
+    GOOGLE_CALENDAR_ACCESS_TOKEN_ENVIRONMENT_NAME,
+  );
+  if (accessTokenValueRef === null) {
     return {
       kind: "bad_request",
       message:
         "Reconnect Google Calendar before using Google Calendar event automations",
     };
   }
-
-  if (!tokenNeedsRefresh(connector.tokenExpiresAt, currentTime)) {
-    return {
-      kind: "ok",
-      access: {
-        connectorId: connector.id,
-        emailAddress: connector.externalEmail,
-        accessToken: await decryptStoredSecretValue(
-          accessSecret.encryptedValue,
-        ),
-      },
-    };
-  }
-
-  if (!refreshSecret) {
-    await markGoogleCalendarConnectorNeedsReconnect({
-      db: args.db,
-      connectorId: connector.id,
-      currentTime,
-      signal: args.signal,
-    });
-    return {
-      kind: "bad_request",
-      message:
-        "Reconnect Google Calendar before using Google Calendar event automations",
-    };
-  }
-
-  return await refreshGoogleCalendarAccessToken({
+  const values = await loadConnectorCredentialValues({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    connector,
-    refreshSecret,
-    currentTime,
-    signal: args.signal,
+    valueRefs: [accessTokenValueRef],
   });
+  args.signal.throwIfAborted();
+  const accessToken = values.get(accessTokenValueRef);
+  if (!accessToken) {
+    return {
+      kind: "bad_request",
+      message:
+        "Reconnect Google Calendar before using Google Calendar event automations",
+    };
+  }
+  if (!tokenNeedsRefresh(connection.tokenExpiresAt, currentTime)) {
+    return {
+      kind: "ok",
+      access: {
+        connectorId: connection.connectorId,
+        emailAddress: connection.externalEmail,
+        accessToken,
+      },
+    };
+  }
+  const refreshed = await refreshConnectorCredentialAccess({
+    connection,
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    runtimeEnvironmentName: GOOGLE_CALENDAR_ACCESS_TOKEN_ENVIRONMENT_NAME,
+    signal: args.signal,
+    persist: { db: args.db, markNeedsReconnectOnFailure: true },
+  });
+  if (refreshed.kind === "configuration-unavailable") {
+    return {
+      kind: "bad_request",
+      message: "Google OAuth client env vars are not configured",
+    };
+  }
+  if (refreshed.kind !== "ok") {
+    return {
+      kind: "bad_request",
+      message:
+        "Reconnect Google Calendar before using Google Calendar event automations",
+    };
+  }
+  return {
+    kind: "ok",
+    access: {
+      connectorId: connection.connectorId,
+      emailAddress: connection.externalEmail,
+      accessToken: refreshed.accessToken,
+    },
+  };
 }
 
 function calendarApiUrl(path: string): string {

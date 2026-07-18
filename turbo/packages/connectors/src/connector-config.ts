@@ -277,7 +277,7 @@ interface ConnectorAuthMethodDisplayConfig {
   helpText?: string;
   /** When false, this auth method is unavailable for new connector actions. */
   visible?: boolean;
-  /** When set, this auth method is only available while the feature is enabled. */
+  /** Discovery/UI rollout filter; never an authorization or execution check. */
   featureFlag?: FeatureSwitchKey;
   /** When false, feature-gated UI surfaces should not add an experimental label. */
   showExperimentalLabel?: boolean;
