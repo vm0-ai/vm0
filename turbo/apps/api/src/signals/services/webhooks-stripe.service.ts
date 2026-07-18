@@ -185,7 +185,8 @@ interface PaidWebhookOutcome {
 
 type AtomGrantTier = Extract<OrgTier, "pro" | "team" | "custom">;
 
-interface AtomGrantInvoiceDetails {
+interface AtomPlanGrantInvoiceDetails {
+  readonly kind: "plan";
   readonly orgId: string;
   readonly tier: AtomGrantTier;
   readonly grantExpiresAt: Date | null;
@@ -193,6 +194,18 @@ interface AtomGrantInvoiceDetails {
   readonly customerId: string | null;
   readonly credits: number;
 }
+
+interface AtomCreditGrantInvoiceDetails {
+  readonly kind: "credits";
+  readonly orgId: string;
+  readonly creditExpiresAt: Date;
+  readonly customerId: string | null;
+  readonly credits: number;
+}
+
+type AtomGrantInvoiceDetails =
+  | AtomPlanGrantInvoiceDetails
+  | AtomCreditGrantInvoiceDetails;
 
 interface UsageAllowanceInvoiceDetails {
   readonly orgId: string;
@@ -431,16 +444,6 @@ function creditPurchaseAmount(session: CheckoutSessionInput): number {
   return Number(metadata.creditsAmount);
 }
 
-function creditPurchaseInvoiceAmount(
-  invoice: Pick<InvoiceInput, "metadata" | "subtotal">,
-): number {
-  if (invoice.metadata?.creditsAmountMode === "metadata") {
-    return Number(invoice.metadata.creditsAmount);
-  }
-
-  return creditsFromAmountCents(invoice.subtotal);
-}
-
 function checkoutSessionInvoiceId(
   session: CheckoutSessionInput,
 ): string | null {
@@ -615,6 +618,35 @@ function atomGrantInvoiceDetails(
   }
 
   const orgId = metadata.orgId;
+  const customerId = customerIdFromInvoice(invoice);
+  if (metadata.grantType === "credits") {
+    const credits = Number(metadata.creditsAmount);
+    const creditExpiresAt = creditPurchaseExpiresAt(metadata);
+    if (
+      !orgId ||
+      !Number.isSafeInteger(credits) ||
+      credits <= 0 ||
+      !creditExpiresAt
+    ) {
+      L.warn("atom credit grant invoice has invalid metadata", {
+        invoiceId: invoice.id,
+        hasOrgId: Boolean(orgId),
+        creditsAmount: metadata.creditsAmount ?? null,
+        creditsExpiresAt:
+          metadata[CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY] ?? null,
+      });
+      return null;
+    }
+
+    return {
+      kind: "credits",
+      orgId,
+      creditExpiresAt,
+      customerId,
+      credits,
+    };
+  }
+
   const tier = atomGrantTier(metadata.tier ?? metadata.planId);
   const grantExpiresAt = atomGrantExpiresAt(metadata, line);
   if (!orgId || !tier) {
@@ -637,11 +669,12 @@ function atomGrantInvoiceDetails(
   }
 
   return {
+    kind: "plan",
     orgId,
     tier,
     grantExpiresAt,
     creditExpiresAt: atomGrantCreditExpiresAt(grantExpiresAt),
-    customerId: customerIdFromInvoice(invoice),
+    customerId,
     credits: monthlyCreditsForTier(tier),
   };
 }
@@ -1220,9 +1253,9 @@ async function handleCreditPurchaseInvoicePaid(
   }
 
   const orgId = metadata.orgId;
-  const creditsAmount = creditPurchaseInvoiceAmount(invoice);
+  const creditsAmount = creditsFromAmountCents(invoice.subtotal);
   if (!orgId || !creditsAmount || Number.isNaN(creditsAmount)) {
-    L.warn("credit_purchase invoice has invalid metadata or amount", {
+    L.warn("credit_purchase invoice has invalid metadata or subtotal", {
       invoiceId: invoice.id,
       hasOrgId: Boolean(orgId),
       subtotal: invoice.subtotal ?? null,
@@ -1264,10 +1297,34 @@ async function handleCreditPurchaseInvoicePaid(
   return { handled: true, drainOrgId: orgId };
 }
 
-async function processAtomGrantInvoicePaid(
+async function processAtomCreditGrantInvoicePaid(
   db: Db,
   invoice: InvoiceInput,
-  details: AtomGrantInvoiceDetails,
+  details: AtomCreditGrantInvoiceDetails,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const inserted = await createExpiresRecord(tx, details.orgId, {
+      source: "credit_purchase",
+      stripeInvoiceId: invoice.id,
+      amount: details.credits,
+      expiresAt: details.creditExpiresAt,
+    });
+    if (!inserted) {
+      L.debug("atom credit grant invoice already processed", {
+        invoiceId: invoice.id,
+        orgId: details.orgId,
+      });
+      return;
+    }
+
+    await grantOrgCredits(tx, details.orgId, details.credits);
+  });
+}
+
+async function processAtomPlanGrantInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+  details: AtomPlanGrantInvoiceDetails,
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
     await tx
@@ -1392,7 +1449,7 @@ async function processAtomGrantInvoicePaid(
 async function upsertAtomGrantPlanEntitlement(
   tx: WriteTx,
   invoice: InvoiceInput,
-  details: AtomGrantInvoiceDetails,
+  details: AtomPlanGrantInvoiceDetails,
 ): Promise<void> {
   const grantLine = invoiceAtomGrantLine(invoice);
   const periodStart = grantLine?.period.start;
@@ -1422,7 +1479,18 @@ async function handleAtomGrantInvoicePaid(
     return { handled: true, drainOrgId: null };
   }
 
-  const processed = await processAtomGrantInvoicePaid(db, invoice, details);
+  if (details.kind === "credits") {
+    await processAtomCreditGrantInvoicePaid(db, invoice, details);
+    L.debug("atom credit grant invoice processed", {
+      invoiceId: invoice.id,
+      orgId: details.orgId,
+      credits: details.credits,
+      creditExpiresAt: details.creditExpiresAt.toISOString(),
+    });
+    return { handled: true, drainOrgId: details.orgId };
+  }
+
+  const processed = await processAtomPlanGrantInvoicePaid(db, invoice, details);
   if (!processed) {
     return { handled: true, drainOrgId: null };
   }
