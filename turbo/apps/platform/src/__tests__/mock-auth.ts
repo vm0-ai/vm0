@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { vi, type Mock } from "vitest";
 
 export interface MockedInvitation {
   id: string;
@@ -28,6 +28,13 @@ export interface MockedClientSession {
     imageUrl?: string;
     primaryEmailAddress?: { emailAddress: string } | null;
   };
+}
+
+export interface MockedEmailCodeVerification {
+  expireAt: Date | null;
+  nonce: string | null;
+  status: "expired" | "unverified" | "verified" | null;
+  strategy: string | null;
 }
 
 interface MockedUser {
@@ -151,6 +158,8 @@ export function clearMockedAuth() {
   internalMockedInvitations = [];
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
+  verificationSequence = 0;
+  resetMockedClerkAuthResources();
   clerkListeners.length = 0;
   mockedClerk.signOut.mockReset();
   mockedClerk.openSignIn.mockReset();
@@ -189,6 +198,129 @@ const clientSignInCreate = vi.fn(
     });
   },
 );
+
+interface MockedSignUpPrepareParams {
+  redirectUrl?: string;
+  strategy: "email_code" | "email_link";
+}
+
+interface MockedSignInPrepareParams {
+  emailAddressId?: string;
+  phoneNumberId?: string;
+  strategy: string;
+}
+
+type MockedSignUpPrepare = (
+  params?: MockedSignUpPrepareParams,
+) => Promise<MockedSignUpResource>;
+
+type MockedSignInPrepare = (
+  params: MockedSignInPrepareParams,
+) => Promise<MockedSignInResource>;
+
+interface MockedSignUpResource {
+  prepareEmailAddressVerification: MockedSignUpPrepare;
+  prepareEmailAddressVerificationRequest: Mock<MockedSignUpPrepare>;
+  verifications: {
+    emailAddress: MockedEmailCodeVerification;
+  };
+}
+
+interface MockedSignInResource {
+  create: typeof clientSignInCreate;
+  firstFactorVerification: MockedEmailCodeVerification;
+  prepareFirstFactor: MockedSignInPrepare;
+  prepareFirstFactorRequest: Mock<MockedSignInPrepare>;
+}
+
+let verificationSequence = 0;
+
+function emptyEmailCodeVerification(): MockedEmailCodeVerification {
+  return {
+    expireAt: null,
+    nonce: null,
+    status: null,
+    strategy: null,
+  };
+}
+
+function preparedEmailCodeVerification(
+  prefix: string,
+): MockedEmailCodeVerification {
+  verificationSequence += 1;
+  return {
+    expireAt: new Date(Date.now() + 10 * 60 * 1000),
+    nonce: `${prefix}-${verificationSequence}`,
+    status: "unverified",
+    strategy: "email_code",
+  };
+}
+
+function createMockedSignUpResource(): MockedSignUpResource {
+  const prepareEmailAddressVerificationRequest = vi.fn<MockedSignUpPrepare>();
+  const resource: MockedSignUpResource = {
+    prepareEmailAddressVerification: prepareEmailAddressVerificationRequest,
+    prepareEmailAddressVerificationRequest,
+    verifications: {
+      emailAddress: emptyEmailCodeVerification(),
+    },
+  };
+  prepareEmailAddressVerificationRequest.mockImplementation(() => {
+    resource.verifications.emailAddress =
+      preparedEmailCodeVerification("sign-up");
+    return Promise.resolve(resource);
+  });
+  return resource;
+}
+
+function createMockedSignInResource(): MockedSignInResource {
+  const prepareFirstFactorRequest = vi.fn<MockedSignInPrepare>();
+  const resource: MockedSignInResource = {
+    create: clientSignInCreate,
+    firstFactorVerification: emptyEmailCodeVerification(),
+    prepareFirstFactor: prepareFirstFactorRequest,
+    prepareFirstFactorRequest,
+  };
+  prepareFirstFactorRequest.mockImplementation((params) => {
+    if (params.strategy === "email_code") {
+      resource.firstFactorVerification =
+        preparedEmailCodeVerification("sign-in");
+    }
+    return Promise.resolve(resource);
+  });
+  return resource;
+}
+
+let internalMockedSignUpResource = createMockedSignUpResource();
+let internalMockedSignInResource = createMockedSignInResource();
+
+function resetMockedClerkAuthResources(): void {
+  internalMockedSignUpResource = createMockedSignUpResource();
+  internalMockedSignInResource = createMockedSignInResource();
+}
+
+export function mockSignUpEmailVerification(
+  verification: MockedEmailCodeVerification,
+): void {
+  internalMockedSignUpResource.verifications.emailAddress = {
+    ...verification,
+  };
+}
+
+export function mockSignInFirstFactorVerification(
+  verification: MockedEmailCodeVerification,
+): void {
+  internalMockedSignInResource.firstFactorVerification = {
+    ...verification,
+  };
+}
+
+export function replaceMockedClerkAuthResources(): void {
+  resetMockedClerkAuthResources();
+  for (const listener of clerkListeners) {
+    listener();
+  }
+}
 const defaultBuildUrlWithAuthImpl = (to: string) => {
   return to;
 };
@@ -211,12 +343,21 @@ export const mockedClerk = {
   },
   sessionGetToken,
   clientSignInCreate,
+  get clientSignInPrepareFirstFactor() {
+    return internalMockedSignInResource.prepareFirstFactorRequest;
+  },
+  get clientSignUpPrepareEmailAddressVerification() {
+    return internalMockedSignUpResource.prepareEmailAddressVerificationRequest;
+  },
   client: {
     get sessions() {
       return internalMockedClientSessions;
     },
-    signIn: {
-      create: clientSignInCreate,
+    get signIn() {
+      return internalMockedSignInResource;
+    },
+    get signUp() {
+      return internalMockedSignUpResource;
     },
   },
   signOut: vi.fn(() => {

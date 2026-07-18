@@ -7,6 +7,7 @@ import {
   resolvePlatformRuntimeConfig,
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
+import { installClerkEmailCodePreparationGuard } from "../lib/clerk-email-code-preparation-guard.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -270,6 +271,7 @@ export const clerk$ = computed(async () => {
     signUpUrl: resolveAppAuthUrl("/sign-up"),
     afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
   });
+  installClerkEmailCodePreparationGuard(clerkInstance);
   return clerkInstance;
 });
 

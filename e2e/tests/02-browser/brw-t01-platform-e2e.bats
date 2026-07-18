@@ -67,6 +67,23 @@ encode_uri_component() {
   node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1"
 }
 
+clear_browser_requests() {
+  agent-browser network requests --clear >/dev/null
+}
+
+assert_clerk_post_request_count() {
+  local url_pattern="$1"
+  local expected_count="$2"
+  local description="$3"
+  local actual_count
+
+  actual_count="$(agent-browser --json network requests | \
+    jq -r --arg pattern "$url_pattern" \
+      '[(.data.requests // [])[] | select(.method == "POST" and (.url | test($pattern)))] | length')"
+  echo "# $description: expected $expected_count, observed $actual_count" >&3
+  assert [ "$actual_count" -eq "$expected_count" ]
+}
+
 wait_for_auth_completion() {
   local stuck_pattern="$1"
   local current_url snap
@@ -127,9 +144,19 @@ wait_for_auth_completion() {
   agent-browser find label "Password" fill "$SIGNUP_PASSWORD"
   agent-browser wait 500
   accept_legal_consent
+  clear_browser_requests
   click_continue
   agent-browser wait 5000
   step_screenshot "after-sign-up-continue"
+
+  assert_clerk_post_request_count \
+    '/v1/client/sign_ups([?]|$)' \
+    1 \
+    "Clerk sign-up creation requests"
+  assert_clerk_post_request_count \
+    '/v1/client/sign_ups/[^/?]+/prepare_verification([?]|$)' \
+    0 \
+    "redundant Clerk sign-up verification preparation requests"
 
   # Handle OTP verification if prompted
   local snap
@@ -189,6 +216,7 @@ wait_for_auth_completion() {
   echo "# Entering email: $E2E_ACCOUNT" >&3
   agent-browser find label "Email address" fill "$E2E_ACCOUNT"
   agent-browser wait 500
+  clear_browser_requests
   click_continue
   agent-browser wait 1000
 
@@ -228,6 +256,11 @@ wait_for_auth_completion() {
     echo "# Clerk sign-in did not reach OTP verification" >&3
     return 1
   fi
+
+  assert_clerk_post_request_count \
+    '/v1/client/sign_ins/[^/?]+/prepare_first_factor([?]|$)' \
+    1 \
+    "Clerk email-code sign-in preparation requests"
 
   enter_otp "$OTP"
   step_screenshot "after-sign-in-otp"
