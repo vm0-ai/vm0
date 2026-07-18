@@ -55,7 +55,7 @@ pub struct SubmitArgs {
     #[arg(long = "env")]
     env: Vec<String>,
     /// Names of inherited environment variables to pass to the local job and register for masking
-    #[arg(long = "secret-env")]
+    #[arg(long = "secret-env", value_name = "NAME")]
     secret_env: Vec<String>,
     /// Timeout in seconds waiting for a runner to complete the job (max: 24 hours)
     #[arg(long, default_value_t = DEFAULT_LOCAL_SUBMIT_TIMEOUT_SECS)]

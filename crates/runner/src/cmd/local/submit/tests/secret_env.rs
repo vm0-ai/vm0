@@ -33,6 +33,7 @@ fn help_describes_secret_environment_name_lookup() {
     let help = TestSubmitCli::command().render_help().to_string();
     let normalized_help = help.split_whitespace().collect::<Vec<_>>().join(" ");
 
+    assert!(normalized_help.contains("--secret-env <NAME>"));
     assert!(normalized_help.contains(
         "Names of inherited environment variables to pass to the local job and register for masking"
     ));
