@@ -1,12 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  CONNECTOR_TYPES,
-  type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodId,
-} from "@vm0/connectors/connectors";
+import type { ConnectorAuthMethodId } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -154,66 +150,20 @@ async function rejectProviderAuthorization(
 }
 
 describe("POST /api/zero/connectors/:type/oauth/start", () => {
-  const restoreConnectorRegistry: (() => void)[] = [];
-
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", API_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockOAuthEnv();
   });
 
-  afterEach(() => {
-    while (restoreConnectorRegistry.length > 0) {
-      restoreConnectorRegistry.pop()?.();
-    }
-  });
-
-  it("rejects auth-code OAuth start when the connector feature is disabled", async () => {
+  it("allows auth-code OAuth start when the connector feature is disabled", async () => {
     const response = await requestOauthStart("test-oauth", {
       authenticated: true,
     });
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: "test-oauth connector is not available",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
-  it("rejects OAuth start when the auth method is statically hidden", async () => {
-    mockAuthenticatedSession();
-
-    const authMethods = CONNECTOR_TYPES["google-cloud"].authMethods;
-    const originalOauth = authMethods.oauth;
-    restoreConnectorRegistry.push(() => {
-      Object.defineProperty(authMethods, "oauth", {
-        value: originalOauth,
-        configurable: true,
-        enumerable: true,
-      });
-    });
-    Object.defineProperty(authMethods, "oauth", {
-      value: {
-        ...originalOauth,
-        visible: false,
-      } satisfies ConnectorAuthMethodConfig,
-      configurable: true,
-      enumerable: true,
-    });
-
-    const response = await requestOauthStart("google-cloud", {
-      headers: authHeaders(),
-    });
-
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: {
-        message: "google-cloud connector is not available",
-        code: "FORBIDDEN",
-      },
-    });
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expectOauthState(authorizationUrl);
   });
 
   it("starts Google Cloud OAuth without a feature switch", async () => {

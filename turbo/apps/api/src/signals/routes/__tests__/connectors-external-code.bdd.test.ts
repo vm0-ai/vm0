@@ -881,7 +881,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
-  it("rejects completion after the AWS connector switch is disabled", async () => {
+  it("completes after the AWS connector switch is disabled", async () => {
     const provider = mockAwsExternalCodeProvider();
     const actor = await awsActor();
 
@@ -890,21 +890,13 @@ describe("CONN-02: external-code session lifecycle", () => {
       [FeatureSwitchKey.AwsConnector]: false,
     });
 
-    const disabled = await connectorsApi.requestExternalCodeComplete(
-      actor,
-      "aws",
-      {
-        sessionId: session.sessionId,
-        sessionToken: session.sessionToken,
-        code: awsVerificationCode(session.authorizationUrl),
-      },
-      [403],
-    );
-    expectApiError(disabled.body);
-    expect(disabled.body.error.message).toBe(
-      "External-code authorization is not enabled for this connector",
-    );
-    expect(provider.tokenRequests).toStrictEqual([]);
+    const completed = await connectorsApi.completeExternalCode(actor, "aws", {
+      sessionId: session.sessionId,
+      sessionToken: session.sessionToken,
+      code: awsVerificationCode(session.authorizationUrl),
+    });
+    expect(completed.status).toBe("complete");
+    expect(provider.tokenRequests).toHaveLength(1);
   });
 
   it("keeps an in-flight completion exclusive without superseding it", async () => {

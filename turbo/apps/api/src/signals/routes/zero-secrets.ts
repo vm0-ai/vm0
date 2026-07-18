@@ -4,11 +4,11 @@ import {
   zeroVariablesContract,
 } from "@vm0/api-contracts/contracts/zero-secrets";
 import type { SecretListResponse } from "@vm0/api-contracts/contracts/secrets";
-import { getConnectorStoredSecretDisplayInfo } from "@vm0/connectors/connector-utils";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import {
   setUserSecret$,
@@ -16,6 +16,10 @@ import {
   userSecrets,
   userVariables,
 } from "../services/zero-user-data.service";
+import {
+  getConnectorRuntimeStoredSecretDisplayInfo,
+  loadConnectorRuntimeSnapshot,
+} from "../services/connector-catalog-runtime.service";
 import { zeroSecretsDeleteRoutes } from "./zero-secrets-delete";
 import { zeroVariablesDeleteRoutes } from "./zero-variables-delete";
 
@@ -26,18 +30,19 @@ const listSecretsInner$ = computed(async (get): Promise<unknown> => {
   const storedSecrets = await get(
     userSecrets({ orgId: auth.orgId, userId: auth.userId }),
   );
+  const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
   const body: SecretListResponse = {
     secrets: storedSecrets.secrets.map((secret) => {
       const display =
         secret.type === "connector" || secret.type === "user"
-          ? getConnectorStoredSecretDisplayInfo(secret.name)
+          ? getConnectorRuntimeStoredSecretDisplayInfo(snapshot, secret.name)
           : null;
       return {
         ...secret,
         connectorDisplay: display
           ? {
-              label: display.connectorLabel,
-              environmentNames: display.envNames,
+              label: display.label,
+              environmentNames: [...display.environmentNames],
             }
           : null,
       };

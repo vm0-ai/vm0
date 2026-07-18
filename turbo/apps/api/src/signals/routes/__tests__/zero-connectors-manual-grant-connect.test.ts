@@ -776,7 +776,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
   });
 
-  it("rejects feature-gated manual grant auth when unavailable", async () => {
+  it("allows feature-gated manual grant auth outside discovery", async () => {
     await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
@@ -792,10 +792,33 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      type: "bentoml",
+      authMethod: "api-token",
+      connectionStatus: "connected",
+    });
+  });
+
+  it("rejects authored-hidden manual grant auth", async () => {
+    await seedFixture();
+    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+
+    const response = await accept(
+      client.connect({
+        params: { type: "cloudflare" },
+        body: { authMethod: "api-token", values: {} },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
       [403],
     );
 
-    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error).toStrictEqual({
+      message: "cloudflare connector is not available",
+      code: "FORBIDDEN",
+    });
   });
 
   it("publishes one connector change event on successful replacement", async () => {

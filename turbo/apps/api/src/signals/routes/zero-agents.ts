@@ -38,7 +38,7 @@ import {
   zeroAgentList,
   visibleJoinedZeroAgentCondition,
 } from "../services/zero-agent-data.service";
-import { userConnectorActionResolver } from "../services/connector-action-resolver.service";
+import { connectorActionResolver } from "../services/connector-action-resolver.service";
 import {
   updateUserConnectors,
   updateUserCustomConnectors,
@@ -485,14 +485,12 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
       agentId: params.id,
     }),
   );
-  const resolver = await get(
-    userConnectorActionResolver(auth.orgId, auth.userId),
-  );
+  const resolver = await get(connectorActionResolver());
   const availableEnabledTypes: (typeof enabledTypes)[number][] = [];
   for (const connectorRef of enabledTypes) {
     const resolved = await resolver.resolveRef({
       connectorRef,
-      requireAvailable: true,
+      requireExecutable: true,
     });
     if (resolved.ok) {
       availableEnabledTypes.push(connectorRef);
@@ -821,21 +819,18 @@ const updateAgentUserConnectorsInner$ = command(
     const uniqueTypes = Array.from(new Set(body.data.enabledTypes));
     const operation = body.data.operation ?? "replace";
     if (operation !== "remove") {
-      const resolver = await get(
-        userConnectorActionResolver(auth.orgId, auth.userId),
-      );
+      // Agent connector selection is persisted execution configuration, not a
+      // discovery surface. Validate that each connector can execute, but do
+      // not consult feature switches or authored visibility: rollout changes
+      // must not invalidate direct API updates or an existing agent config.
+      const resolver = await get(connectorActionResolver());
       signal.throwIfAborted();
       const resolved = await resolver.resolveRefs({
         connectorRefs: uniqueTypes,
-        requireAvailable: true,
+        requireExecutable: true,
       });
       signal.throwIfAborted();
       if (!resolved.ok) {
-        if (resolved.reason === "unavailable_connector") {
-          return validationError(
-            `Connector types are not available: ${resolved.connectorRef}`,
-          );
-        }
         return validationError(
           `Invalid connector types: ${resolved.connectorRef}`,
         );

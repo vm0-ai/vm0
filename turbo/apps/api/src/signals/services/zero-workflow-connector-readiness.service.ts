@@ -7,7 +7,6 @@ import {
   connectorCatalogRefSchema,
   type ConnectorCatalogRef,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
 import {
   zeroWorkflowAutomations,
@@ -57,7 +56,7 @@ type DetectWorkflowConnectorReadinessResult =
     };
 
 interface AutomationConnectorDependency {
-  readonly connectorRef: ConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly reason: string;
 }
 
@@ -134,7 +133,7 @@ async function loadAutomationConnectorDependencies(
     readonly userId: string;
     readonly workflowId: string;
   },
-): Promise<ReadonlyMap<ConnectorType, AutomationConnectorDependency>> {
+): Promise<ReadonlyMap<ConnectorCatalogRef, AutomationConnectorDependency>> {
   const automations = await db
     .select({ eventType: zeroWorkflowAutomations.eventType })
     .from(zeroWorkflowAutomations)
@@ -146,7 +145,10 @@ async function loadAutomationConnectorDependencies(
       ),
     );
 
-  const dependencies = new Map<ConnectorType, AutomationConnectorDependency>();
+  const dependencies = new Map<
+    ConnectorCatalogRef,
+    AutomationConnectorDependency
+  >();
   for (const automation of automations) {
     if (!automation.eventType) {
       continue;

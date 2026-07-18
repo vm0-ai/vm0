@@ -11,6 +11,10 @@ import type {
   ConnectorResponse,
   ScopeDiffResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
+import type {
+  ConnectorCatalogAuthMethodId,
+  ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import { githubOauthContract } from "@vm0/api-contracts/contracts/github-oauth";
 import {
@@ -41,10 +45,6 @@ import {
   zeroConnectorsSearchContract,
   type ConnectorSearchResponse,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import type {
-  ConnectorAuthMethodId,
-  ConnectorType,
-} from "@vm0/connectors/connectors";
 import { http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
 import { z } from "zod";
@@ -1139,7 +1139,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestReadConnectorByType(
       actor: ApiTestUser | null,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context })(zeroConnectorsByTypeContract);
@@ -1151,7 +1151,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async readConnectorByType(
       actor: ApiTestUser,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
     ): Promise<ConnectorResponse> {
       const response = await api.requestReadConnectorByType(actor, type, [200]);
       expectStatus(response, 200);
@@ -1160,7 +1160,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async deleteConnectorByType(
       actor: ApiTestUser,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
       statuses: readonly (204 | 401 | 404)[] = [204],
     ): Promise<void> {
       const client = setupApp({ context })(zeroConnectorsByTypeContract);
@@ -1172,7 +1172,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestScopeDiff(
       actor: ApiTestUser | null,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       const client = setupApp({ context })(zeroConnectorScopeDiffContract);
@@ -1187,7 +1187,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async readScopeDiff(
       actor: ApiTestUser,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
     ): Promise<ScopeDiffResponse> {
       const response = await api.requestScopeDiff(actor, type, [200]);
       expectStatus(response, 200);
@@ -1196,8 +1196,8 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestManualGrant(
       actor: ApiTestUser | null,
-      type: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
+      type: ConnectorCatalogRef,
+      authMethod: ConnectorCatalogAuthMethodId,
       values: Readonly<Record<string, string>>,
       options: {
         readonly statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[];
@@ -1223,8 +1223,8 @@ export function createConnectorBddApi(context: TestContext) {
 
     async connectManualGrant(
       actor: ApiTestUser,
-      type: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
+      type: ConnectorCatalogRef,
+      authMethod: ConnectorCatalogAuthMethodId,
       values: Readonly<Record<string, string>>,
       agentId?: string,
     ): Promise<ConnectorResponse> {
@@ -1241,8 +1241,8 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestOauthStart(
       actor: ApiTestUser | null,
-      type: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
+      type: ConnectorCatalogRef,
+      authMethod: ConnectorCatalogAuthMethodId,
       options: {
         readonly statuses: readonly (200 | 400 | 401 | 403 | 500)[];
         readonly agentId?: string;
@@ -1266,8 +1266,8 @@ export function createConnectorBddApi(context: TestContext) {
 
     async startOauth(
       actor: ApiTestUser,
-      type: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
+      type: ConnectorCatalogRef,
+      authMethod: ConnectorCatalogAuthMethodId,
       agentId?: string,
     ): Promise<ConnectorOauthStartResponse> {
       const response = await api.requestOauthStart(actor, type, authMethod, {
@@ -1372,8 +1372,8 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestDeviceAuthStart(
       actor: ApiTestUser | null,
-      type: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
+      type: ConnectorCatalogRef,
+      authMethod: ConnectorCatalogAuthMethodId,
       options: Readonly<Record<string, string>> | undefined,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
@@ -1392,8 +1392,8 @@ export function createConnectorBddApi(context: TestContext) {
 
     async startDeviceAuth(
       actor: ApiTestUser,
-      type: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
+      type: ConnectorCatalogRef,
+      authMethod: ConnectorCatalogAuthMethodId,
       options?: Readonly<Record<string, string>>,
     ): Promise<ConnectorOauthDeviceAuthSessionStartResponse> {
       const response = await api.requestDeviceAuthStart(
@@ -1409,7 +1409,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestDeviceAuthPoll(
       actor: ApiTestUser | null,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
       sessionId: string,
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
@@ -1429,7 +1429,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async pollDeviceAuth(
       actor: ApiTestUser,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
       sessionId: string,
       sessionToken: string,
     ): Promise<ConnectorOauthDeviceAuthSessionPollResponse> {
@@ -1446,8 +1446,8 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestExternalCodeStart(
       actor: ApiTestUser | null,
-      type: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
+      type: ConnectorCatalogRef,
+      authMethod: ConnectorCatalogAuthMethodId,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       const client = setupApp({ context })(
@@ -1465,7 +1465,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async requestExternalCodeComplete(
       actor: ApiTestUser | null,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
       args: {
         readonly sessionId: string;
         readonly sessionToken: string;
@@ -1488,8 +1488,8 @@ export function createConnectorBddApi(context: TestContext) {
 
     async startExternalCode(
       actor: ApiTestUser,
-      type: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
+      type: ConnectorCatalogRef,
+      authMethod: ConnectorCatalogAuthMethodId,
     ): Promise<ConnectorExternalCodeSessionStartResponse> {
       const response = await api.requestExternalCodeStart(
         actor,
@@ -1503,7 +1503,7 @@ export function createConnectorBddApi(context: TestContext) {
 
     async completeExternalCode(
       actor: ApiTestUser,
-      type: ConnectorType,
+      type: ConnectorCatalogRef,
       args: {
         readonly sessionId: string;
         readonly sessionToken: string;

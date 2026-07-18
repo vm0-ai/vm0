@@ -15,15 +15,12 @@ import {
   type NotionPageContentUpdatedScope,
   type NotionPageReference,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { refreshNotionToken } from "@vm0/connectors/auth-providers/connectors/notion/oauth";
-import { connectors } from "@vm0/db/schema/connector";
 import {
   notionWebhookEvents,
   notionWebhookSecrets,
   notionWorkflowPendingEvents,
   type NotionWorkflowPendingEventContext,
 } from "@vm0/db/schema/notion-event";
-import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
@@ -33,12 +30,18 @@ import { command } from "ccstate";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, safeUrlParse, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import {
+  connectorCredentialRuntimeValueRef,
+  loadConnectorCredentialConnection,
+  loadConnectorCredentialValues,
+  refreshConnectorCredentialAccess,
+} from "./connector-credential-runtime.service";
 import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
@@ -53,9 +56,7 @@ import {
 
 const log = logger("api:notion-workflow-event");
 
-const NOTION_ACCESS_TOKEN_SECRET = "NOTION_ACCESS_TOKEN";
-const NOTION_REFRESH_TOKEN_SECRET = "NOTION_REFRESH_TOKEN";
-const CONNECTOR_SECRET_TYPE = "connector";
+const NOTION_ACCESS_TOKEN_ENVIRONMENT_NAME = "NOTION_TOKEN";
 const NOTION_API_BASE = "https://api.notion.com/v1";
 const NOTION_VERSION = "2026-03-11";
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
@@ -247,22 +248,6 @@ function notionPendingEventColumns() {
   };
 }
 
-interface ConnectorSecretRow {
-  readonly name: string;
-  readonly encryptedValue: string;
-}
-
-interface NotionConnectorAccessRow {
-  readonly id: string;
-  readonly tokenExpiresAt: Date | null;
-  readonly needsReconnect: boolean;
-}
-
-interface NotionConnectorSecrets {
-  readonly accessSecret: ConnectorSecretRow | null;
-  readonly refreshSecret: ConnectorSecretRow | null;
-}
-
 interface NotionAccess {
   readonly connectorId: string;
   readonly accessToken: string;
@@ -336,15 +321,6 @@ function tokenNeedsRefresh(tokenExpiresAt: Date | null, currentTime: Date) {
   return (
     tokenExpiresAt.getTime() <= currentTime.getTime() + TOKEN_REFRESH_BUFFER_MS
   );
-}
-
-function tokenExpiresAtFromExpiresIn(
-  expiresIn: number | undefined,
-  currentTime: Date,
-): Date | null {
-  return expiresIn === undefined
-    ? null
-    : new Date(currentTime.getTime() + expiresIn * 1000);
 }
 
 function normalizeNotionUuid(value: string): string | null {
@@ -484,175 +460,6 @@ function notionEventContext(
   };
 }
 
-async function loadNotionConnector(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId?: string;
-  readonly signal: AbortSignal;
-}): Promise<NotionConnectorAccessRow | null> {
-  const connectorConditions = [
-    eq(connectors.orgId, args.orgId),
-    eq(connectors.userId, args.userId),
-    eq(connectors.type, "notion"),
-  ];
-  if (args.connectorId !== undefined) {
-    connectorConditions.push(eq(connectors.id, args.connectorId));
-  }
-
-  const [connector] = await args.db
-    .select({
-      id: connectors.id,
-      tokenExpiresAt: connectors.tokenExpiresAt,
-      needsReconnect: connectors.needsReconnect,
-    })
-    .from(connectors)
-    .where(and(...connectorConditions))
-    .limit(1);
-  args.signal.throwIfAborted();
-  return connector ?? null;
-}
-
-async function loadNotionConnectorSecrets(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<NotionConnectorSecrets> {
-  const secretRows = await args.db
-    .select({
-      name: secretsTable.name,
-      encryptedValue: secretsTable.encryptedValue,
-    })
-    .from(secretsTable)
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, CONNECTOR_SECRET_TYPE),
-      ),
-    );
-  args.signal.throwIfAborted();
-  return {
-    accessSecret:
-      secretRows.find((row) => {
-        return row.name === NOTION_ACCESS_TOKEN_SECRET;
-      }) ?? null,
-    refreshSecret:
-      secretRows.find((row) => {
-        return row.name === NOTION_REFRESH_TOKEN_SECRET;
-      }) ?? null,
-  };
-}
-
-async function markNotionConnectorNeedsReconnect(args: {
-  readonly db: Db;
-  readonly connectorId: string;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await args.db
-    .update(connectors)
-    .set({ needsReconnect: true, updatedAt: args.currentTime })
-    .where(eq(connectors.id, args.connectorId));
-  args.signal.throwIfAborted();
-}
-
-async function refreshNotionAccessToken(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connector: NotionConnectorAccessRow;
-  readonly refreshSecret: ConnectorSecretRow;
-  readonly currentTime: Date;
-  readonly signal: AbortSignal;
-}): Promise<NotionAccessResult> {
-  const clientId = optionalEnv("NOTION_OAUTH_CLIENT_ID");
-  const clientSecret = optionalEnv("NOTION_OAUTH_CLIENT_SECRET");
-  if (!clientId || !clientSecret) {
-    return {
-      kind: "bad_request",
-      message: "Notion OAuth client env vars are not configured",
-    };
-  }
-
-  const refreshToken = await decryptStoredSecretValue(
-    args.refreshSecret.encryptedValue,
-  );
-  const refreshed = await tapError(
-    refreshNotionToken(clientId, clientSecret, refreshToken, args.signal),
-  );
-  args.signal.throwIfAborted();
-  if (!refreshed) {
-    await markNotionConnectorNeedsReconnect({
-      db: args.db,
-      connectorId: args.connector.id,
-      currentTime: args.currentTime,
-      signal: args.signal,
-    });
-    return {
-      kind: "bad_request",
-      message: "Reconnect Notion before using Notion event automations",
-    };
-  }
-
-  const tokenExpiresAt = tokenExpiresAtFromExpiresIn(
-    refreshed.expiresIn,
-    args.currentTime,
-  );
-  await args.db
-    .update(secretsTable)
-    .set({
-      encryptedValue: await encryptStoredSecretValue(refreshed.accessToken),
-      updatedAt: args.currentTime,
-    })
-    .where(
-      and(
-        eq(secretsTable.orgId, args.orgId),
-        eq(secretsTable.userId, args.userId),
-        eq(secretsTable.type, CONNECTOR_SECRET_TYPE),
-        eq(secretsTable.name, NOTION_ACCESS_TOKEN_SECRET),
-      ),
-    );
-  args.signal.throwIfAborted();
-
-  if (refreshed.refreshToken) {
-    await args.db
-      .update(secretsTable)
-      .set({
-        encryptedValue: await encryptStoredSecretValue(refreshed.refreshToken),
-        updatedAt: args.currentTime,
-      })
-      .where(
-        and(
-          eq(secretsTable.orgId, args.orgId),
-          eq(secretsTable.userId, args.userId),
-          eq(secretsTable.type, CONNECTOR_SECRET_TYPE),
-          eq(secretsTable.name, NOTION_REFRESH_TOKEN_SECRET),
-        ),
-      );
-    args.signal.throwIfAborted();
-  }
-
-  await args.db
-    .update(connectors)
-    .set({
-      tokenExpiresAt,
-      needsReconnect: false,
-      updatedAt: args.currentTime,
-    })
-    .where(eq(connectors.id, args.connector.id));
-  args.signal.throwIfAborted();
-
-  return {
-    kind: "ok",
-    access: {
-      connectorId: args.connector.id,
-      accessToken: refreshed.accessToken,
-    },
-  };
-}
-
 async function resolveNotionAccess(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -661,63 +468,93 @@ async function resolveNotionAccess(args: {
   readonly signal: AbortSignal;
 }): Promise<NotionAccessResult> {
   const currentTime = nowDate();
-  const connector = await loadNotionConnector(args);
-  if (!connector) {
+  const snapshot = await loadConnectorRuntimeSnapshot(args.db);
+  args.signal.throwIfAborted();
+  const loaded = await loadConnectorCredentialConnection({
+    db: args.db,
+    snapshot,
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorRef: "notion",
+    ...(args.connectorId === undefined
+      ? {}
+      : { connectorId: args.connectorId }),
+  });
+  args.signal.throwIfAborted();
+  if (loaded.kind === "missing") {
     return {
       kind: "bad_request",
       message: "Connect Notion before adding a Notion event automation",
     };
   }
-  if (connector.needsReconnect) {
+  if (loaded.kind === "unavailable" || loaded.connection.needsReconnect) {
     return {
       kind: "bad_request",
       message: "Reconnect Notion before using Notion event automations",
     };
   }
-
-  const { accessSecret, refreshSecret } =
-    await loadNotionConnectorSecrets(args);
-  if (!accessSecret) {
+  const connection = loaded.connection;
+  const accessTokenValueRef = connectorCredentialRuntimeValueRef(
+    connection,
+    NOTION_ACCESS_TOKEN_ENVIRONMENT_NAME,
+  );
+  if (accessTokenValueRef === null) {
     return {
       kind: "bad_request",
       message: "Reconnect Notion before using Notion event automations",
     };
   }
-
-  if (!tokenNeedsRefresh(connector.tokenExpiresAt, currentTime)) {
-    return {
-      kind: "ok",
-      access: {
-        connectorId: connector.id,
-        accessToken: await decryptStoredSecretValue(
-          accessSecret.encryptedValue,
-        ),
-      },
-    };
-  }
-
-  if (!refreshSecret) {
-    await markNotionConnectorNeedsReconnect({
-      db: args.db,
-      connectorId: connector.id,
-      currentTime,
-      signal: args.signal,
-    });
-    return {
-      kind: "bad_request",
-      message: "Reconnect Notion before using Notion event automations",
-    };
-  }
-
-  return await refreshNotionAccessToken({
+  const values = await loadConnectorCredentialValues({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    connector,
-    refreshSecret,
-    currentTime,
-    signal: args.signal,
+    valueRefs: [accessTokenValueRef],
   });
+  args.signal.throwIfAborted();
+  const accessToken = values.get(accessTokenValueRef);
+  if (!accessToken) {
+    return {
+      kind: "bad_request",
+      message: "Reconnect Notion before using Notion event automations",
+    };
+  }
+  if (!tokenNeedsRefresh(connection.tokenExpiresAt, currentTime)) {
+    return {
+      kind: "ok",
+      access: {
+        connectorId: connection.connectorId,
+        accessToken,
+      },
+    };
+  }
+  const refreshed = await refreshConnectorCredentialAccess({
+    connection,
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    runtimeEnvironmentName: NOTION_ACCESS_TOKEN_ENVIRONMENT_NAME,
+    signal: args.signal,
+    persist: { db: args.db, markNeedsReconnectOnFailure: true },
+  });
+  if (refreshed.kind === "configuration-unavailable") {
+    return {
+      kind: "bad_request",
+      message: "Notion OAuth client env vars are not configured",
+    };
+  }
+  if (refreshed.kind !== "ok") {
+    return {
+      kind: "bad_request",
+      message: "Reconnect Notion before using Notion event automations",
+    };
+  }
+  return {
+    kind: "ok",
+    access: {
+      connectorId: connection.connectorId,
+      accessToken: refreshed.accessToken,
+    },
+  };
 }
 
 async function notionFetchJson<T>(

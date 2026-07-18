@@ -1,14 +1,10 @@
 import {
-  connectorAuthCodeCallbacksUseOnlyApiOrigin,
-  getConnectorAuthMethodAuthCodeCallbackOrigin,
-  getConnectorAuthMethodOpenIdAuthCallbackOrigin,
+  connectorAuthCodeGrantCallbackOrigin,
+  connectorOpenIdAuthGrantCallbackOrigin,
 } from "@vm0/connectors/connector-utils";
 import type {
-  AuthCodeGrantConnectorType,
+  ConnectorAuthMethodRuntimeConfig,
   ConnectorBrowserAuthCallbackOrigin,
-  ConnectorAuthCodeGrantAuthMethodId,
-  ConnectorOpenIdAuthGrantAuthMethodId,
-  OpenIdAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 
 import {
@@ -33,39 +29,51 @@ function resolveCallbackOrigin(
   }
 }
 
-export function getConnectorOAuthCallbackOrigin<
-  Type extends AuthCodeGrantConnectorType,
->(args: {
+export function getConnectorOAuthCallbackOriginForMethod(args: {
   readonly request: Request;
-  readonly type: Type;
-  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId<Type>;
+  readonly method: ConnectorAuthMethodRuntimeConfig;
 }): string {
-  const callbackOrigin = getConnectorAuthMethodAuthCodeCallbackOrigin(
-    args.type,
-    args.authMethod,
+  if (args.method.grant.kind !== "auth-code") {
+    throw new Error("Auth-code connector method required");
+  }
+  return resolveCallbackOrigin(
+    args.request,
+    connectorAuthCodeGrantCallbackOrigin(args.method.grant),
   );
-  return resolveCallbackOrigin(args.request, callbackOrigin);
 }
 
-export function getConnectorOpenIdCallbackOrigin<
-  Type extends OpenIdAuthGrantConnectorType,
->(args: {
+export function getConnectorOpenIdCallbackOriginForMethod(args: {
   readonly request: Request;
-  readonly type: Type;
-  readonly authMethod: ConnectorOpenIdAuthGrantAuthMethodId<Type>;
+  readonly method: ConnectorAuthMethodRuntimeConfig;
 }): string {
-  const callbackOrigin = getConnectorAuthMethodOpenIdAuthCallbackOrigin(
-    args.type,
-    args.authMethod,
+  if (args.method.grant.kind !== "openid-auth") {
+    throw new Error("OpenID connector method required");
+  }
+  return resolveCallbackOrigin(
+    args.request,
+    connectorOpenIdAuthGrantCallbackOrigin(args.method.grant),
   );
-  return resolveCallbackOrigin(args.request, callbackOrigin);
 }
 
-export function getConnectorOAuthCanonicalRedirectUrl(
+export function getConnectorOAuthCanonicalRedirectUrlForMethods(
   request: Request,
-  type: AuthCodeGrantConnectorType,
+  methods: readonly ConnectorAuthMethodRuntimeConfig[],
 ): string | null {
-  if (connectorAuthCodeCallbacksUseOnlyApiOrigin(type)) {
+  const authCodeMethods = methods.filter(
+    (
+      method,
+    ): method is Extract<
+      ConnectorAuthMethodRuntimeConfig,
+      { readonly grant: { readonly kind: "auth-code" } }
+    > => {
+      return method.grant.kind === "auth-code";
+    },
+  );
+  if (
+    authCodeMethods.every((method) => {
+      return connectorAuthCodeGrantCallbackOrigin(method.grant) === "api";
+    })
+  ) {
     return null;
   }
   return getOAuthCanonicalRedirectUrl(request);

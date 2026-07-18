@@ -6,7 +6,7 @@ import type {
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import {
   getAvailableConnectorAuthMethodIds,
-  getConnectorAuthMethodRuntimeMetadata,
+  connectorAuthMethodRuntimeMetadata,
   getConnectorEnvBindingEntries,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -44,6 +44,11 @@ import {
 } from "./connector-diagnostic-runtime.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { zeroRunContext } from "./zero-run-detail.service";
+import {
+  getConnectorRuntimeMethod,
+  loadConnectorRuntimeSnapshot,
+  type ConnectorRuntimeSnapshot,
+} from "./connector-catalog-runtime.service";
 
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
@@ -144,7 +149,11 @@ const connectorCheckFeatureStates$ = command(
 
 async function loadStoredRuntimeState(
   db: Db,
-  args: { readonly orgId: string; readonly userId: string },
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly snapshot: ConnectorRuntimeSnapshot;
+  },
 ): Promise<StoredRuntimeState> {
   return await db.transaction(async (tx) => {
     await tx.execute(
@@ -181,13 +190,18 @@ async function loadStoredRuntimeState(
         continue;
       }
 
-      const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
-        row.type,
-        row.authMethod,
-      );
-      if (!runtimeMetadata) {
+      const runtimeMethod = getConnectorRuntimeMethod({
+        snapshot: args.snapshot,
+        connectorRef: row.type,
+        authMethodId: row.authMethod,
+        requireExecutable: true,
+      });
+      if (!runtimeMethod) {
         throw new Error(`Invalid stored auth method for ${row.type}`);
       }
+      const runtimeMetadata = connectorAuthMethodRuntimeMetadata(
+        runtimeMethod.method,
+      );
       const requiredNameSet = new Set(requiredRuntimeNames);
       const storageNameByRuntimeName = new Map<string, string>();
       for (const binding of runtimeMetadata.runtimeBindings) {
@@ -1060,10 +1074,15 @@ export const resolveConnectorCheck$ = command(
     } else {
       const state =
         args.request.mode === "url"
-          ? await loadStoredRuntimeState(set(writeDb$), {
-              orgId: args.orgId,
-              userId: args.userId,
-            })
+          ? await (async () => {
+              const db = set(writeDb$);
+              const snapshot = await loadConnectorRuntimeSnapshot(db);
+              return await loadStoredRuntimeState(db, {
+                orgId: args.orgId,
+                userId: args.userId,
+                snapshot,
+              });
+            })()
           : { baseUrlVarsByType: new Map() };
       signal.throwIfAborted();
       timeline = { kind: "stored", state };
