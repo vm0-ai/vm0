@@ -22,6 +22,7 @@ interface ObservedClientHeaders {
   readonly sessionId: string | null;
   readonly type: string | null;
   readonly version: string | null;
+  readonly zeroMailVersion: string | null;
 }
 
 function observedClientHeaders(request: Request): ObservedClientHeaders {
@@ -30,6 +31,7 @@ function observedClientHeaders(request: Request): ObservedClientHeaders {
     sessionId: request.headers.get("x-client-session-id"),
     type: request.headers.get("x-client-type"),
     version: request.headers.get("x-client-version"),
+    zeroMailVersion: request.headers.get("x-zero-mail-client-version"),
   };
 }
 
@@ -88,6 +90,8 @@ describe("api client headers", () => {
     expect(second.type).toBe("App");
     expect(first.version).toBe("0.540.0");
     expect(second.version).toBe("0.540.0");
+    expect(first.zeroMailVersion).toBe("2");
+    expect(second.zeroMailVersion).toBe("2");
     expect(first.sessionId).toMatch(UUID_REGEX);
     expect(second.sessionId).toBe(first.sessionId);
     expect(first.requestId).toMatch(UUID_REGEX);
@@ -123,6 +127,8 @@ describe("api client headers", () => {
     expect(second.type).toBe("App");
     expect(first.version).toBe("0.540.0");
     expect(second.version).toBe("0.540.0");
+    expect(first.zeroMailVersion).toBe("2");
+    expect(second.zeroMailVersion).toBe("2");
     expect(first.sessionId).toMatch(UUID_REGEX);
     expect(second.sessionId).toBe(first.sessionId);
     expect(first.requestId).toMatch(UUID_REGEX);

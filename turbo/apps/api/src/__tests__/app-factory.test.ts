@@ -5,6 +5,8 @@ import {
   CLIENT_TYPE_CLI,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
+  ZERO_MAIL_CLIENT_VERSION,
+  ZERO_MAIL_CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
@@ -816,6 +818,33 @@ describe("createApp", () => {
       });
 
       expect(response.status).toBe(200);
+    });
+
+    it("forces pre-v2 mail clients to reload before mail route handlers run", async () => {
+      const app = createApp({ signal: context.signal });
+      const path = "/api/zero/mail/drafts/c0000000-0000-4000-a000-000000000001";
+      const stale = await app.request(path, {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.606.1",
+        },
+      });
+
+      expect(stale.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+      await expect(stale.json()).resolves.toStrictEqual({
+        error: "Client update required",
+      });
+
+      const current = await app.request(path, {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.606.1",
+          [ZERO_MAIL_CLIENT_VERSION_HEADER]: ZERO_MAIL_CLIENT_VERSION,
+        },
+      });
+      expect(current.status).toBe(401);
     });
 
     it("does not force upgrade other client types", async () => {

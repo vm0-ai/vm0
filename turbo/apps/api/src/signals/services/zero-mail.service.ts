@@ -5,6 +5,7 @@ import { command } from "ccstate";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   zeroMailDraftSchema,
+  zeroMailDraftStatusSchema,
   type ZeroMailDraft,
   type ZeroMailDraftStatus,
   type ZeroMailProvider,
@@ -94,6 +95,24 @@ interface NewMailDraftRow {
   readonly senderName: string | null;
   readonly senderAddress: string;
   readonly subject: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly sentAt: Date | null;
+}
+
+interface StoredNewMailDraftRow {
+  readonly id: string;
+  readonly agentId: string;
+  readonly chatThreadId: string;
+  readonly connectorId: string | null;
+  readonly gmailDraftId: string | null;
+  readonly gmailThreadId: string | null;
+  readonly gmailMessageId: string | null;
+  readonly sentGmailMessageId: string | null;
+  readonly status: ZeroMailDraftStatus | null;
+  readonly senderName: string | null;
+  readonly senderAddress: string | null;
+  readonly subject: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly sentAt: Date | null;
@@ -237,7 +256,7 @@ async function loadOwnedNewMailDraft(args: {
   readonly userId: string;
   readonly mailDraftId: string;
 }): Promise<NewMailDraftRow | null> {
-  const [row] = await args.db
+  const [row]: readonly StoredNewMailDraftRow[] = await args.db
     .select({
       id: mailDrafts.id,
       agentId: chatThreads.agentComposeId,
@@ -266,10 +285,34 @@ async function loadOwnedNewMailDraft(args: {
       ),
     )
     .limit(1);
-  if (!row) {
+  return newMailDraftRow(row);
+}
+
+function newMailDraftRow(
+  row: StoredNewMailDraftRow | undefined,
+): NewMailDraftRow | null {
+  if (
+    !row?.gmailDraftId ||
+    !row.gmailThreadId ||
+    !row.gmailMessageId ||
+    !row.senderAddress ||
+    !row.subject
+  ) {
     return null;
   }
-  return row;
+  const status = zeroMailDraftStatusSchema.safeParse(row.status);
+  if (!status.success) {
+    return null;
+  }
+  return {
+    ...row,
+    gmailDraftId: row.gmailDraftId,
+    gmailThreadId: row.gmailThreadId,
+    gmailMessageId: row.gmailMessageId,
+    status: status.data,
+    senderAddress: row.senderAddress,
+    subject: row.subject,
+  };
 }
 
 async function loadOwnedMailDraft(args: {
@@ -949,30 +992,47 @@ async function getNewDraft(args: {
       responseDraft({ row: args.row, details: null, detailAvailable: false }),
     );
   }
-  const access = await accessForRow(args);
-  if (access.kind !== "ok") {
-    return access;
-  }
   if (args.row.status === "sent") {
+    const stored = okResult(
+      args.row.id,
+      responseDraft({ row: args.row, details: null, detailAvailable: false }),
+    );
     if (!args.row.sentGmailMessageId) {
-      return okResult(
-        args.row.id,
-        responseDraft({ row: args.row, details: null, detailAvailable: false }),
-      );
+      return stored;
     }
-    const sent = await gmailGetMessage({
-      accessToken: access.accessToken,
-      gmailMessageId: args.row.sentGmailMessageId,
-      signal: args.signal,
-    });
+    const access = await accessForRow(args);
+    if (access.kind !== "ok") {
+      return stored;
+    }
+    const sent = await tapError(
+      gmailGetMessage({
+        accessToken: access.accessToken,
+        gmailMessageId: args.row.sentGmailMessageId,
+        signal: args.signal,
+      }),
+      (error) => {
+        L.warn("Failed to enrich sent Gmail draft card", {
+          mailDraftId: args.row.id,
+          gmailMessageId: args.row.sentGmailMessageId,
+          error,
+        });
+      },
+    );
+    if (!sent) {
+      return stored;
+    }
     return okResult(
       args.row.id,
       responseDraft({
         row: args.row,
-        details: sent?.details ?? null,
-        detailAvailable: sent?.details !== null && sent !== null,
+        details: sent.details,
+        detailAvailable: sent.details !== null,
       }),
     );
+  }
+  const access = await accessForRow(args);
+  if (access.kind !== "ok") {
+    return access;
   }
   const gmail = await gmailGetDraft({
     accessToken: access.accessToken,
@@ -1285,7 +1345,7 @@ export const loadZeroMailDraftCleanupForThread$ = command(
     },
     signal: AbortSignal,
   ): Promise<readonly NewMailDraftRow[]> => {
-    const rows = await get(db$)
+    const rows: readonly StoredNewMailDraftRow[] = await get(db$)
       .select({
         id: mailDrafts.id,
         agentId: chatThreads.agentComposeId,
@@ -1318,7 +1378,10 @@ export const loadZeroMailDraftCleanupForThread$ = command(
         ),
       );
     signal.throwIfAborted();
-    return rows;
+    return rows.flatMap((row) => {
+      const draft = newMailDraftRow(row);
+      return draft ? [draft] : [];
+    });
   },
 );
 

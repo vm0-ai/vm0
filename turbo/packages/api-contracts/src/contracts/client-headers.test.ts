@@ -12,6 +12,8 @@ import {
   CLIENT_TYPE_MITM_ADDON,
   CLIENT_TYPE_RUNNER,
   CLIENT_VERSION_HEADER,
+  ZERO_MAIL_CLIENT_VERSION,
+  ZERO_MAIL_CLIENT_VERSION_HEADER,
 } from "./client-headers";
 
 describe("client header contract", () => {
@@ -39,13 +41,19 @@ describe("client header contract", () => {
       CLIENT_TYPE_HEADER,
       CLIENT_SESSION_ID_HEADER,
       CLIENT_REQUEST_ID_HEADER,
+      ZERO_MAIL_CLIENT_VERSION_HEADER,
     ]);
     expect(CLIENT_HEADER_NAMES).toStrictEqual([
       "X-Client-Version",
       "X-Client-Type",
       "X-Client-Session-Id",
       "X-Client-Request-Id",
+      "X-Zero-Mail-Client-Version",
     ]);
+  });
+
+  it("identifies clients that understand link-backed Gmail draft cards", () => {
+    expect(ZERO_MAIL_CLIENT_VERSION).toBe("2");
   });
 
   it("keeps the force upgrade status stable for app clients", () => {

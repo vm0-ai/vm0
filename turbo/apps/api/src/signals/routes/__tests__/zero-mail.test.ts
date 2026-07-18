@@ -299,6 +299,8 @@ describe("POST /api/zero/mail/drafts", () => {
       content: created.body.mailDraftUrl,
     });
 
+    await connectors.deleteConnectorByType(fixture.actor, "gmail");
+
     const loaded = await accept(
       client().getDraft({
         headers: authHeaders(),
@@ -307,10 +309,10 @@ describe("POST /api/zero/mail/drafts", () => {
       [200],
     );
     expect(loaded.body.mailDraft).toMatchObject({
-      to: ["final@example.com"],
       subject: "Updated subject",
-      body: "Updated body",
       status: "sent",
+      detailAvailable: false,
+      from: "sender@example.com",
     });
   });
 
