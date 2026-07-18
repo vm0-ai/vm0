@@ -6,7 +6,7 @@ import ast
 from enum import Enum, auto
 from pathlib import Path
 
-from flow_metadata_linter.ast_helpers import _static_call_argument_nodes
+from flow_metadata_linter.ast_helpers import _static_first_call_argument_nodes
 from flow_metadata_linter.paths import ADDON_ROOT as _ADDON_ROOT
 from flow_metadata_linter.registry import REGISTERED_METADATA_KEYS as _REGISTERED_METADATA_KEYS
 
@@ -167,7 +167,7 @@ def _metadata_collection_call_violations(
             and node.func.attr == "fromkeys"
         ):
             violations: list[str] = []
-            for keys_arg in _static_call_argument_nodes(node.args, 0):
+            for keys_arg in _static_first_call_argument_nodes(node.args):
                 violations.extend(
                     _metadata_collection_violations(
                         path, keys_arg, _MetadataCollectionMode.KEY_SEQUENCE
@@ -197,7 +197,7 @@ def _metadata_collection_call_violations(
         return []
     if node.func.id == "dict" and mode is not _MetadataCollectionMode.PAIR_ITERABLE:
         violations = []
-        for update_arg in _static_call_argument_nodes(node.args, 0):
+        for update_arg in _static_first_call_argument_nodes(node.args):
             violations.extend(
                 _metadata_collection_violations(
                     path, update_arg, _MetadataCollectionMode.MAPPING_INPUT
@@ -207,7 +207,7 @@ def _metadata_collection_call_violations(
         return violations
     if node.func.id == "zip" and mode is not _MetadataCollectionMode.KEY_SEQUENCE:
         violations = []
-        for keys_arg in _static_call_argument_nodes(node.args, 0):
+        for keys_arg in _static_first_call_argument_nodes(node.args):
             violations.extend(
                 _metadata_collection_violations(
                     path, keys_arg, _MetadataCollectionMode.KEY_SEQUENCE
@@ -216,7 +216,7 @@ def _metadata_collection_call_violations(
         return violations
     if node.func.id in _SEQUENCE_WRAPPER_CALLS:
         violations = []
-        for collection_arg in _static_call_argument_nodes(node.args, 0):
+        for collection_arg in _static_first_call_argument_nodes(node.args):
             violations.extend(_metadata_collection_violations(path, collection_arg, mode))
         return violations
     return []
