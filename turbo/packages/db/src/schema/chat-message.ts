@@ -107,6 +107,12 @@ export const chatMessages = pgTable(
     generationTemplate: jsonb(
       "generation_template",
     ).$type<ChatMessageGenerationTemplate>(),
+    // Database-only rollout marker for API versions that still read legacy
+    // mail cards. Drop this column after the link-only reader has fully
+    // deployed; migrations run before API traffic promotion.
+    mailDraftId: uuid("mail_draft_id").unique(
+      "chat_messages_mail_draft_id_unique",
+    ),
     recommendedFollowups: jsonb(
       "recommended_followups",
     ).$type<ChatMessageRecommendedFollowups>(),

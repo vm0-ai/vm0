@@ -1,5 +1,6 @@
 import {
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -7,6 +8,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { ZeroMailDraftStatus } from "@vm0/api-contracts/contracts/zero-mail";
+import type { LegacyMailDraftData } from "@vm0/db/jsonb-contracts/mail-draft";
 import { chatThreads } from "./chat-thread";
 import { connectors } from "./connector";
 
@@ -14,28 +16,29 @@ export const mailDrafts = pgTable(
   "mail_drafts",
   {
     id: uuid("id").primaryKey(),
-    chatThreadId: uuid("chat_thread_id")
-      .notNull()
-      .references(
-        () => {
-          return chatThreads.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    // Rolling-deployment bridge for API pods built before Gmail-backed draft
+    // resources. New code never reads or writes this payload.
+    draft: jsonb("draft").$type<LegacyMailDraftData>(),
+    chatThreadId: uuid("chat_thread_id").references(
+      () => {
+        return chatThreads.id;
+      },
+      { onDelete: "cascade" },
+    ),
     connectorId: uuid("connector_id").references(
       () => {
         return connectors.id;
       },
       { onDelete: "set null" },
     ),
-    gmailDraftId: text("gmail_draft_id").notNull(),
-    gmailThreadId: text("gmail_thread_id").notNull(),
-    gmailMessageId: text("gmail_message_id").notNull(),
+    gmailDraftId: text("gmail_draft_id"),
+    gmailThreadId: text("gmail_thread_id"),
+    gmailMessageId: text("gmail_message_id"),
     sentGmailMessageId: text("sent_gmail_message_id"),
-    status: text("status").$type<ZeroMailDraftStatus>().notNull(),
+    status: text("status").$type<ZeroMailDraftStatus>(),
     senderName: text("sender_name"),
-    senderAddress: text("sender_address").notNull(),
-    subject: text("subject").notNull(),
+    senderAddress: text("sender_address"),
+    subject: text("subject"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     sentAt: timestamp("sent_at"),

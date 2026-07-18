@@ -72,6 +72,7 @@ function DetailField({
 }
 
 function MailDraftDetails({ draft }: { readonly draft: ZeroMailDraft }) {
+  const attachments = draft.version === 3 ? draft.attachments : [];
   return (
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
       <DetailField
@@ -94,13 +95,13 @@ function MailDraftDetails({ draft }: { readonly draft: ZeroMailDraft }) {
           {draft.body || "(No message)"}
         </div>
       </div>
-      {draft.attachments.length > 0 ? (
+      {attachments.length > 0 ? (
         <div className="grid gap-2">
           <div className="text-xs font-medium text-muted-foreground">
             Attachments
           </div>
           <div className="grid gap-2">
-            {draft.attachments.map((attachment) => {
+            {attachments.map((attachment) => {
               return (
                 <div
                   key={`${attachment.filename}-${attachment.contentType}-${attachment.size}`}
