@@ -74,10 +74,10 @@ async fn create_uncommitted_snapshot(
         .map_err(|e| SnapshotError::Setup(format!("snapshot socket id: {e}")))?;
 
     // Check prerequisites (binary, kernel, rootfs, kvm, runtime dir, etc.).
-    prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
-        binary_path: &config.binary_path,
-        kernel_path: &config.kernel_path,
-        rootfs_path: &config.rootfs_path,
+    prerequisites::check_prerequisites(prerequisites::PrerequisiteConfig {
+        binary_path: config.binary_path.clone(),
+        kernel_path: config.kernel_path.clone(),
+        rootfs_path: config.rootfs_path.clone(),
         mode: prerequisites::PrerequisiteMode::SnapshotCreate,
     })
     .await
@@ -105,6 +105,7 @@ async fn create_uncommitted_snapshot(
         dns_port: None,
     }
     .into_checked()
+    .await
     .map_err(|e| SnapshotError::Setup(e.to_string()))?;
 
     // 2. Create NBD COW device backed by the rootfs image.

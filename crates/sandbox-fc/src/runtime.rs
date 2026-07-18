@@ -38,7 +38,8 @@ impl FirecrackerRuntime {
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
         }
-        .into_checked()?;
+        .into_checked()
+        .await?;
         let netns_pool = NetnsPoolHandle::create_checked(netns_config)
             .await
             .map_err(|e| SandboxError::Initialization {
