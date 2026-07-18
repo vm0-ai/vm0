@@ -15,7 +15,6 @@ export interface PlatformRuntimeConfig {
 
 const PRODUCTION_DOMAIN = "vm0.ai";
 export const PRODUCTION_SATELLITE_HOSTNAME = "okou.ai";
-export const PRODUCTION_SATELLITE_ORIGIN = `https://${PRODUCTION_SATELLITE_HOSTNAME}`;
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
 function browserHostname(): string | null {
@@ -26,7 +25,11 @@ function browserHostname(): string | null {
 }
 
 export function isProductionSatelliteHostname(hostname: string): boolean {
-  return hostname.toLowerCase() === PRODUCTION_SATELLITE_HOSTNAME;
+  const normalizedHostname = hostname.toLowerCase();
+  return (
+    normalizedHostname === PRODUCTION_SATELLITE_HOSTNAME ||
+    normalizedHostname.endsWith(`.${PRODUCTION_SATELLITE_HOSTNAME}`)
+  );
 }
 
 function isProductionHostname(hostname: string): boolean {

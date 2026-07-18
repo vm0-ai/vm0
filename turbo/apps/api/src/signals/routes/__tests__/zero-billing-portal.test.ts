@@ -123,6 +123,7 @@ describe("POST /api/zero/billing/portal", () => {
   it.each([
     `${APP_ORIGIN}/settings/billing`,
     "https://okou.ai/settings/billing",
+    "https://console.okou.ai/settings/billing",
   ])("returns portal URL to the allowed origin %s", async (returnUrl) => {
     const customerId = `cus-portal-${randomUUID().slice(0, 8)}`;
     const fixture = await track(
@@ -165,7 +166,7 @@ describe("POST /api/zero/billing/portal", () => {
 
   it.each([
     "https://evil.example.com/settings/billing",
-    "https://preview.okou.ai/settings/billing",
+    "https://okou.ai.evil.example/settings/billing",
   ])("returns 400 for the disallowed origin in %s", async (returnUrl) => {
     mockEnv("APP_URL", APP_ORIGIN);
     mocks.clerk.session(

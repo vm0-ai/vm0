@@ -240,7 +240,8 @@
         var isProductionHost =
           hostname === "vm0.ai" ||
           hostname.endsWith(".vm0.ai") ||
-          hostname === "okou.ai";
+          hostname === "okou.ai" ||
+          hostname.endsWith(".okou.ai");
         if (!isProductionHost) return;
 
         var initialized = false;
@@ -317,7 +318,10 @@
       (function () {
         var h = location.hostname.toLowerCase();
         var production =
-          h === "vm0.ai" || h.endsWith(".vm0.ai") || h === "okou.ai";
+          h === "vm0.ai" ||
+          h.endsWith(".vm0.ai") ||
+          h === "okou.ai" ||
+          h.endsWith(".okou.ai");
         var k = production
           ? "%VITE_CLERK_PUBLISHABLE_KEY_PROD%"
           : "%VITE_CLERK_PUBLISHABLE_KEY_PREVIEW%";

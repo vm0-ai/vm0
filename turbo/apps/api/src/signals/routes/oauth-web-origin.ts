@@ -6,6 +6,8 @@ type Vm0HostRole = "api" | "www";
 
 function isVm0Host(hostname: string, role: Vm0HostRole): boolean {
   return (
+    (role === "www" &&
+      (hostname === "okou.ai" || hostname.endsWith(".okou.ai"))) ||
     hostname === `${role}.vm0.ai` ||
     hostname === `${role}.vm6.ai` ||
     hostname.endsWith(`-${role}.vm6.ai`) ||
@@ -26,10 +28,6 @@ function isTrustedOrigin(origin: string, role: Vm0HostRole): boolean {
 
   if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
     return url.protocol === "http:" || url.protocol === "https:";
-  }
-
-  if (role === "www" && url.origin === "https://okou.ai") {
-    return true;
   }
 
   return url.protocol === "https:" && isVm0Host(url.hostname, role);

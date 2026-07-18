@@ -5,7 +5,6 @@ import {
   derivePlatformServiceOrigin,
   isProductionSatelliteHostname,
   PRODUCTION_SATELLITE_HOSTNAME,
-  PRODUCTION_SATELLITE_ORIGIN,
   type PlatformService,
   resolvePlatformEnvironment,
   resolvePlatformRuntimeConfig,
@@ -20,6 +19,10 @@ const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
 const VM0_ONBOARDING_PATH = "/onboarding/491858";
 const VM0_ONBOARDING_EXPERIMENT = "491858";
 const CLERK_PRIMARY_APP_ORIGIN = "https://app.vm0.ai";
+const CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN =
+  /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*okou\.ai(?::\d+)?$/i;
+
+type AllowedAuthRedirectOrigin = string | RegExp;
 
 export interface ClerkSatelliteConfig {
   readonly domain: typeof PRODUCTION_SATELLITE_HOSTNAME;
@@ -159,16 +162,16 @@ export function resolveAppAuthUrl(
 }
 
 // Clerk allowedRedirectOrigins for the current host: this app plus its www
-// and api siblings. Production also includes the exact satellite and primary
-// app origins so Clerk can safely return between app.vm0.ai and okou.ai.
-export function getAllowedAuthRedirectOrigins(): string[] {
+// and api siblings. Production also includes the satellite domain family and
+// primary app so Clerk can safely return between app.vm0.ai and *.okou.ai.
+export function getAllowedAuthRedirectOrigins(): AllowedAuthRedirectOrigin[] {
   const self = resolveAppOrigin();
   if (!self) {
     return [];
   }
   const productionOrigins =
     resolvePlatformEnvironment() === "production"
-      ? [CLERK_PRIMARY_APP_ORIGIN, PRODUCTION_SATELLITE_ORIGIN]
+      ? [CLERK_PRIMARY_APP_ORIGIN, CLERK_SATELLITE_REDIRECT_ORIGIN_PATTERN]
       : [];
   return [
     ...new Set([
@@ -180,7 +183,7 @@ export function getAllowedAuthRedirectOrigins(): string[] {
   ];
 }
 
-export function getAllowedAuthRedirectOriginsForCurrentPage(): string[] {
+export function getAllowedAuthRedirectOriginsForCurrentPage(): AllowedAuthRedirectOrigin[] {
   return getAllowedAuthRedirectOrigins();
 }
 
@@ -228,9 +231,12 @@ function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
 
 function isAllowedRedirectOrigin(
   redirectUrl: URL,
-  allowedRedirectOrigins: readonly string[],
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[],
 ): boolean {
   return allowedRedirectOrigins.some((allowedOrigin) => {
+    if (allowedOrigin instanceof RegExp) {
+      return allowedOrigin.test(redirectUrl.origin);
+    }
     const url = parseUrl(allowedOrigin);
     if (!url) {
       return false;
@@ -241,7 +247,7 @@ function isAllowedRedirectOrigin(
 
 function readAllowedRedirectUrl(
   params: URLSearchParams,
-  allowedRedirectOrigins: readonly string[],
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[],
 ): string | null {
   const rawRedirectUrl = params.get("redirect_url");
   if (!rawRedirectUrl) {
@@ -259,7 +265,7 @@ function readAllowedRedirectUrl(
 
 export function buildSignupRedirectUrl(
   signUpSearch: string,
-  allowedRedirectOrigins: readonly string[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
 ): string {
   const appUrl = resolveAppUrl();
   const params = new URLSearchParams(signUpSearch);
@@ -279,7 +285,7 @@ export function buildSignupRedirectUrl(
 
 export function buildSignInRedirectUrl(
   signInSearch: string,
-  allowedRedirectOrigins: readonly string[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
 ): string {
   const params = new URLSearchParams(signInSearch);
   const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);

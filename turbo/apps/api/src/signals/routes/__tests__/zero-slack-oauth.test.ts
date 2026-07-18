@@ -264,22 +264,24 @@ describe("Slack OAuth API routes", () => {
       );
     });
 
-    it("does not trust okou.ai subdomains as web origins", async () => {
+    it("trusts okou.ai subdomains as web origins", async () => {
       const response = await appRequest("/api/zero/slack/oauth/install", {
         origin: API_ORIGIN,
-        headers: { "x-vm0-web-origin": "https://preview.okou.ai" },
+        headers: { "x-vm0-web-origin": "https://console.okou.ai" },
       });
 
       expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe(
-        `${WEB_ORIGIN}/api/zero/slack/oauth/install`,
+      const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.origin).toBe("https://slack.com");
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
       );
     });
 
-    it("does not trust a noncanonical okou.ai port as a web origin", async () => {
+    it("does not trust lookalike okou.ai web origins", async () => {
       const response = await appRequest("/api/zero/slack/oauth/install", {
         origin: API_ORIGIN,
-        headers: { "x-vm0-web-origin": "https://okou.ai:8443" },
+        headers: { "x-vm0-web-origin": "https://okou.ai.evil.example" },
       });
 
       expect(response.status).toBe(307);

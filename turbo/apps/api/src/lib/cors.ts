@@ -45,7 +45,7 @@ function getAllowedOrigin(origin: string | undefined): string | null {
     return null;
   }
 
-  if (hostname.endsWith(".vm0.ai")) {
+  if (hostname.endsWith(".vm0.ai") || hostname.endsWith(".okou.ai")) {
     return normalizedOrigin;
   }
 

@@ -149,12 +149,17 @@ afterAll(() => {
 });
 
 describe("portable platform runtime environment", () => {
-  it("selects production services and public config on okou.ai", async () => {
-    setBrowserUrl("https://okou.ai/agents");
+  it("selects production services and public config on an okou.ai subdomain", async () => {
+    setBrowserUrl("https://console.okou.ai/agents");
     const runtime = await loadRuntimeSurfaces();
 
     expect(runtime.apiBase.resolveApiBase()).toBe("https://api.vm0.ai");
     expect(runtime.auth.resolveWebOrigin()).toBe("https://www.vm0.ai");
+    expect(
+      runtime.platformHost.isProductionSatelliteHostname(
+        "okou.ai.evil.example",
+      ),
+    ).toBeFalsy();
     expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
       environment: "production",
       clerkPublishableKey: PRODUCTION_CLERK_KEY,

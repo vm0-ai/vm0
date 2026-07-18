@@ -76,12 +76,29 @@ describe("platform auth URLs", () => {
 
     expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.vm0.ai/sign-in");
     expect(resolveClerkSatelliteConfig()).toBeNull();
-    expect(getAllowedAuthRedirectOrigins()).toStrictEqual([
+    const allowedOrigins = getAllowedAuthRedirectOrigins();
+    expect(
+      allowedOrigins.filter((origin) => {
+        return typeof origin === "string";
+      }),
+    ).toStrictEqual([
       "https://app.vm0.ai",
       "https://www.vm0.ai",
       "https://api.vm0.ai",
-      "https://okou.ai",
     ]);
+    expect(
+      allowedOrigins.some((origin) => {
+        return origin instanceof RegExp && origin.test("https://app.okou.ai");
+      }),
+    ).toBeTruthy();
+    expect(
+      allowedOrigins.some((origin) => {
+        return (
+          origin instanceof RegExp &&
+          origin.test("https://okou.ai.evil.example")
+        );
+      }),
+    ).toBeFalsy();
   });
 
   it("uses primary app auth for the exact production satellite", () => {
@@ -92,21 +109,32 @@ describe("platform auth URLs", () => {
       domain: "okou.ai",
       isSatellite: true,
     });
-    expect(getAllowedAuthRedirectOrigins()).toStrictEqual([
+    const allowedOrigins = getAllowedAuthRedirectOrigins();
+    expect(
+      allowedOrigins.filter((origin) => {
+        return typeof origin === "string";
+      }),
+    ).toStrictEqual([
       "https://okou.ai",
       "https://www.vm0.ai",
       "https://api.vm0.ai",
       "https://app.vm0.ai",
     ]);
+    expect(
+      allowedOrigins.some((origin) => {
+        return origin instanceof RegExp && origin.test("https://app.okou.ai");
+      }),
+    ).toBeTruthy();
   });
 
-  it("does not treat an okou.ai subdomain as the production satellite", () => {
-    setBrowserUrl("https://preview.okou.ai/agents");
+  it("uses the root satellite config on okou.ai subdomains", () => {
+    setBrowserUrl("https://console.okou.ai/agents");
 
-    expect(resolveAppAuthUrl("/sign-in")).toBe(
-      "https://preview.okou.ai/sign-in",
-    );
-    expect(resolveClerkSatelliteConfig()).toBeNull();
+    expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.vm0.ai/sign-in");
+    expect(resolveClerkSatelliteConfig()).toStrictEqual({
+      domain: "okou.ai",
+      isSatellite: true,
+    });
   });
 });
 
@@ -180,7 +208,7 @@ describe("platform auth redirects", () => {
   });
 
   it("redirects an unauthenticated satellite user through primary auth", async () => {
-    setBrowserUrl("https://okou.ai/agents?utm_source=okou-launch");
+    setBrowserUrl("https://console.okou.ai/agents?utm_source=okou-launch");
 
     detachedSetupPage({
       context,
@@ -194,7 +222,7 @@ describe("platform auth redirects", () => {
       expect(url.origin).toBe("https://app.vm0.ai");
       expect(url.pathname).toBe("/sign-in");
       expect(url.searchParams.get("redirect_url")).toBe(
-        "https://okou.ai/agents?utm_source=okou-launch",
+        "https://console.okou.ai/agents?utm_source=okou-launch",
       );
     });
 
