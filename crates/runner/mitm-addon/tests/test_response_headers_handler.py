@@ -1,11 +1,41 @@
 """Tests for the mitm addon responseheaders hook."""
 
+from types import SimpleNamespace
+
+import pytest
+from mitmproxy import http
 from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import model_usage_pricing
 from tests.flow_helpers import header_map, response_stream
-from tests.model_provider_flow_helpers import signed_usage_pricing_headers
+from tests.model_provider_flow_helpers import RealFlowFactory, signed_usage_pricing_headers
+
+_FIXED_TIME = 1_750_000_000
+
+
+def _fix_pricing_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        model_usage_pricing,
+        "time",
+        SimpleNamespace(time=lambda: _FIXED_TIME),
+    )
+
+
+def _signed_pricing_flow(
+    real_flow: RealFlowFactory,
+    issued_at: object,
+) -> http.HTTPFlow:
+    flow = real_flow(with_response=False, host="model.vm0.ai")
+    flow.request.headers["authorization"] = "Bearer proxy-secret"
+    flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
+    flow.response = tutils.tresp(
+        status_code=200,
+        headers=header_map(signed_usage_pricing_headers(issued_at=issued_at)),
+    )
+    return flow
 
 
 class TestResponseHeadersHandler:
@@ -49,15 +79,19 @@ class TestResponseHeadersHandler:
 
         assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
 
-    def test_accepts_and_strips_signed_model_usage_pricing(self, real_flow):
-        flow = real_flow(with_response=False, host="model.vm0.ai")
-        flow.request.headers["authorization"] = "Bearer proxy-secret"
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0-model"
-        flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map(signed_usage_pricing_headers()),
-        )
+    @pytest.mark.parametrize(
+        "issued_at",
+        [_FIXED_TIME - 300, _FIXED_TIME + 300],
+        ids=["oldest-accepted", "furthest-future-accepted"],
+    )
+    def test_accepts_and_strips_signed_model_usage_pricing_at_clock_skew_boundary(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        issued_at: int,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, issued_at)
 
         mitm_addon.responseheaders(flow)
 
@@ -70,6 +104,49 @@ class TestResponseHeadersHandler:
                 "tokens.output": 6000,
             },
         }
+        assert flow.response is not None
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
+        "issued_at",
+        [_FIXED_TIME - 301, _FIXED_TIME + 301],
+        ids=["too-old", "too-far-future"],
+    )
+    def test_rejects_and_strips_signed_model_usage_pricing_outside_clock_skew(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        issued_at: int,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, issued_at)
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert flow.response is not None
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
+        "issued_at",
+        [True, str(_FIXED_TIME)],
+        ids=["boolean", "string"],
+    )
+    def test_rejects_and_strips_invalid_signed_model_usage_pricing_issued_at(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        issued_at: object,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, issued_at)
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert flow.response is not None
         assert "x-vm0-usage-pricing" not in flow.response.headers
         assert "x-vm0-usage-pricing-signature" not in flow.response.headers
 
