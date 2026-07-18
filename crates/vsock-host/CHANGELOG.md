@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.59](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.58...vsock-host-v0.17.59) (2026-07-18)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** preserve graceful shutdown failure details ([#22073](https://github.com/vm0-ai/vm0/issues/22073)) ([50ad121](https://github.com/vm0-ai/vm0/commit/50ad1210ebd12c90f294bd0e16e208deb8c4366c))
+
 ## [0.17.58](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.57...vsock-host-v0.17.58) (2026-07-16)
 
 

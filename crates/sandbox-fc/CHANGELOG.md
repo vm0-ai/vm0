@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.133](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.132...sandbox-fc-v0.37.133) (2026-07-18)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** preserve graceful shutdown failure details ([#22073](https://github.com/vm0-ai/vm0/issues/22073)) ([50ad121](https://github.com/vm0-ai/vm0/commit/50ad1210ebd12c90f294bd0e16e208deb8c4366c))
+
+
+### Refactoring
+
+* **sandbox-fc:** isolate prerequisite probes ([#22079](https://github.com/vm0-ai/vm0/issues/22079)) ([ef58dab](https://github.com/vm0-ai/vm0/commit/ef58dab67a77da5a060d045295701f9f052fccbe))
+
 ## [0.37.132](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.131...sandbox-fc-v0.37.132) (2026-07-17)
 
 ## [0.37.131](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.130...sandbox-fc-v0.37.131) (2026-07-17)

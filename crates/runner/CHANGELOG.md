@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.146.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.10...runner-rs-v0.146.11) (2026-07-18)
+
+
+### Bug Fixes
+
+* **mitm-addon:** drain retained usage after executor shutdown ([#22071](https://github.com/vm0-ai/vm0/issues/22071)) ([541764e](https://github.com/vm0-ai/vm0/commit/541764eb57a94e5cb68ce107f01029276cf7b692))
+* **mitm-addon:** report x ndjson row failures ([#22067](https://github.com/vm0-ai/vm0/issues/22067)) ([6455d60](https://github.com/vm0-ai/vm0/commit/6455d60b1af7d29f89e8fc2dd85e2f38652dc32e))
+* **runner:** reject stale heartbeat snapshots ([#22076](https://github.com/vm0-ai/vm0/issues/22076)) ([d91617a](https://github.com/vm0-ai/vm0/commit/d91617a24c17a394a9836033548808350dcc05db))
+
+
+### Refactoring
+
+* **mitm-addon:** make catalog snapshot identity explicit ([#22066](https://github.com/vm0-ai/vm0/issues/22066)) ([cfd9bf3](https://github.com/vm0-ai/vm0/commit/cfd9bf33635c66aa09ca26a5a6a737a860283df4))
+
+
+### Performance Improvements
+
+* **mitm-addon:** bound starred argument expansion ([#22070](https://github.com/vm0-ai/vm0/issues/22070)) ([489da2c](https://github.com/vm0-ai/vm0/commit/489da2c719d4b36caf4041bd1b3ccb9d47262fee))
+
 ## [0.146.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.9...runner-rs-v0.146.10) (2026-07-18)
 
 

@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.285.0](https://github.com/vm0-ai/vm0/compare/api-v1.284.0...api-v1.285.0) (2026-07-18)
+
+
+### Features
+
+* **api:** drive connector credentials from runtime catalog ([#21886](https://github.com/vm0-ai/vm0/issues/21886)) ([94adb1e](https://github.com/vm0-ai/vm0/commit/94adb1eee0622505eafdadb19a497f26278c6d36))
+* **mail:** link gmail drafts for read-only review ([#22074](https://github.com/vm0-ai/vm0/issues/22074)) ([a56d364](https://github.com/vm0-ai/vm0/commit/a56d364854f85d81e6315e1755e6b9974d1ba13a))
+* **platform:** recognize okou.ai as a production clerk satellite ([#22063](https://github.com/vm0-ai/vm0/issues/22063)) ([4c18b84](https://github.com/vm0-ai/vm0/commit/4c18b846ebe689323fcd214f956f8a326c580060))
+
+
+### Bug Fixes
+
+* require canonical automation id for workflow callbacks ([#22060](https://github.com/vm0-ai/vm0/issues/22060)) ([0f41a1d](https://github.com/vm0-ai/vm0/commit/0f41a1dbf224715d4b187a4383d3681fb0b9a0c2))
+* **runner:** reject stale heartbeat snapshots ([#22076](https://github.com/vm0-ai/vm0/issues/22076)) ([d91617a](https://github.com/vm0-ai/vm0/commit/d91617a24c17a394a9836033548808350dcc05db))
+
+
+### Refactoring
+
+* **mail:** publish draft cards through assistant links ([#22069](https://github.com/vm0-ai/vm0/issues/22069)) ([14a7584](https://github.com/vm0-ai/vm0/commit/14a758448046133eb93f797beab2c8b41b376ad5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.0
+    * @vm0/connectors bumped to 1.171.0
+    * @vm0/core bumped to 8.441.1
+    * @vm0/db bumped to 1.121.0
+
 ## [1.284.0](https://github.com/vm0-ai/vm0/compare/api-v1.283.3...api-v1.284.0) (2026-07-18)
 
 
