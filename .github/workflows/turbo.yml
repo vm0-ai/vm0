@@ -1129,7 +1129,8 @@ jobs:
             /tmp/e2e-token-runner.json
           retention-days: 1
 
-  # Build the canonical Cloudflare app artifact independently of Vercel.
+  # Build the canonical Cloudflare app artifact independently of Vercel, then
+  # deploy the verified R2 artifact to a Pages preview branch.
   build-app-cf:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1152,6 +1153,8 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
+      CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
@@ -1308,6 +1311,57 @@ jobs:
             --if-none-match "*"
 
           echo "Artifact ready: ${artifact_uri}/"
+
+      - name: Prepare Cloudflare Pages preview
+        id: pages-preview
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
+          canonical_dist="$(mktemp -d)"
+          pages_dist="$(mktemp -d)"
+          branch="preview-${ARTIFACT_SHA:0:12}"
+
+          aws s3 cp "$artifact_uri/" "$canonical_dist/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive
+          bash .github/scripts/prepare-okou-pages-dist.sh \
+            "$canonical_dist" \
+            "$pages_dist"
+
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "dist=$pages_dist" >> "$GITHUB_OUTPUT"
+          echo "url=https://${branch}.${CF_PAGES_PROJECT_NAME}.pages.dev" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Cloudflare Pages preview
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PAGES_BRANCH: ${{ steps.pages-preview.outputs.branch }}
+          PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
+        working-directory: turbo
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
+          pnpm --filter @vm0/host-worker exec wrangler pages deploy "$PAGES_DIST" \
+            --project-name "$CF_PAGES_PROJECT_NAME" \
+            --branch "$PAGES_BRANCH" \
+            --commit-hash "$ARTIFACT_SHA" \
+            --commit-dirty=false
+
+      - name: Record Cloudflare Pages preview
+        env:
+          PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
+        run: |
+          echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
 
   # Deploy app (Vite SPA)
   deploy-app:

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if (( $# != 2 )); then
+  echo "usage: $0 <canonical-dist> <empty-pages-dist>" >&2
+  exit 1
+fi
+
+canonical_dist="$1"
+pages_dist="$2"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+headers_file="${script_dir}/../pages/okou-app/_headers"
+
+if [[ ! -f "${canonical_dist}/index.html" ]]; then
+  echo "canonical app artifact must contain index.html" >&2
+  exit 1
+fi
+
+if [[ ! -d "$pages_dist" ]] || [[ -n "$(find "$pages_dist" -mindepth 1 -print -quit)" ]]; then
+  echo "Pages output directory must exist and be empty: $pages_dist" >&2
+  exit 1
+fi
+
+cp -a "${canonical_dist}/." "$pages_dist/"
+find "$pages_dist" -type f -name '*.map' -delete
+rm -f \
+  "${pages_dist}/.gitkeep" \
+  "${pages_dist}/manifest.json" \
+  "${pages_dist}/ready.json"
+cp "$headers_file" "${pages_dist}/_headers"
