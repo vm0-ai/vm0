@@ -23,6 +23,7 @@ def signed_usage_pricing_headers(
     unit_prices: dict[str, object] | None = None,
     *,
     unit_size: int = 1_000_000,
+    issued_at: object | None = None,
 ) -> dict[str, str]:
     if unit_prices is None:
         unit_prices = {
@@ -36,7 +37,7 @@ def signed_usage_pricing_headers(
             json.dumps(
                 {
                     "version": 1,
-                    "issuedAt": int(time.time()),
+                    "issuedAt": int(time.time()) if issued_at is None else issued_at,
                     "unitSize": unit_size,
                     "unitPrices": unit_prices,
                 },
