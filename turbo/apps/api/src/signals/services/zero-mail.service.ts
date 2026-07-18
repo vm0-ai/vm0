@@ -1457,8 +1457,6 @@ export const deleteZeroMailDraft$ = command(
   },
 );
 
-export const cancelZeroMailDraft$ = deleteZeroMailDraft$;
-
 export const deleteZeroMailDraftsForThread$ = command(
   async (
     { get, set },

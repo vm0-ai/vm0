@@ -11,7 +11,6 @@ import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
-  cancelZeroMailDraft$,
   createZeroMailDraft$,
   deleteZeroMailDraft$,
   getZeroMailDraft$,
@@ -170,7 +169,7 @@ const cancelDraftInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   return mutationResponse(
     await set(
-      cancelZeroMailDraft$,
+      deleteZeroMailDraft$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
