@@ -218,6 +218,7 @@ export function TiptapInstructionsEditor({
       attributes: {
         class: editorClassName,
         "aria-label": ariaLabel,
+        "data-rich-text-editor": "",
         "data-placeholder": placeholder,
       },
     },

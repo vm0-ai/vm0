@@ -1,10 +1,15 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import {
   chatThreadByIdContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  zeroAgentInstructionsContract,
+  zeroAgentsByIdContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -81,6 +86,27 @@ function prepareDefaultAgent(): void {
   ]);
 }
 
+function prepareAgentInstructions(content: string): void {
+  prepareDefaultAgent();
+  context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+    return respond(200, {
+      agentId: AGENT_ID,
+      ownerId: "test-user-123",
+      description: null,
+      displayName: "Zero",
+      sound: null,
+      avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+      visibility: "public",
+    });
+  });
+  context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
+    return respond(200, { content, filename: null });
+  });
+}
+
 function createThread(id: string, title: string): SidebarThread {
   return {
     id,
@@ -135,6 +161,51 @@ afterAll(() => {
 });
 
 describe("zero sidebar mac shortcuts", () => {
+  it("uses cmd+b to bold agent instructions without collapsing the sidebar", async () => {
+    const user = userEvent.setup({ delay: null });
+    prepareAgentInstructions("Review release notes");
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}?tab=instructions`,
+    });
+
+    await screen.findByRole("heading", { name: "Zero" });
+    await waitFor(() => {
+      expect(
+        document.querySelector(
+          '[contenteditable="true"][aria-label="Instructions editor"]',
+        ),
+      ).toBeInstanceOf(HTMLElement);
+    });
+    const editor = document.querySelector(
+      '[contenteditable="true"][aria-label="Instructions editor"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("instructions editor not found");
+    }
+    await waitFor(() => {
+      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
+    });
+
+    await user.click(editor);
+    await user.keyboard("{Meta>}a{/Meta}");
+    fireEvent.keyDown(editor, {
+      key: "b",
+      code: "KeyB",
+      keyCode: 66,
+      metaKey: true,
+    });
+
+    await waitFor(() => {
+      expect(editor.querySelector("strong")).toHaveTextContent(
+        "Review release notes",
+      );
+    });
+    expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
+  });
+
   it("toggles the sidebar with cmd+b while the chat composer is focused", async () => {
     prepareDefaultAgent();
     mockSidebarThreadStory([createThread(THREAD_ID, "Release plan")]);

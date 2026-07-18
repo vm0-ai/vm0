@@ -130,12 +130,22 @@ export const toggleSidebarOff$ = command(({ get, set }) => {
   }
 });
 
+function isRichTextEditorTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest("[data-rich-text-editor]") !== null
+  );
+}
+
 export const setupGlobalKeyboardShortcuts$ = command(
   ({ set }, signal: AbortSignal) => {
     setupGlobalShortcut(
       {
         "mod+b": {
           allowInEditableTarget: true,
+          shouldHandle: (event) => {
+            return !isRichTextEditorTarget(event.target);
+          },
           run: () => {
             set(toggleSidebarOff$);
           },
