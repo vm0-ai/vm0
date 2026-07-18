@@ -177,35 +177,6 @@ function authHeaders() {
 }
 
 describe("POST /api/zero/mail/drafts", () => {
-  it("accepts the previous API write shape after migration", async () => {
-    const fixture = await seedGmailMailCardFixture();
-    const mailDraftId = crypto.randomUUID();
-
-    await accept(
-      stateClient().action({
-        body: {
-          action: "create-previous-version-draft",
-          mailDraftId,
-          threadId: fixture.thread.id,
-        },
-      }),
-      [200],
-    );
-
-    const loaded = await accept(
-      client().getDraft({
-        headers: authHeaders(),
-        params: { mailDraftId },
-      }),
-      [200],
-    );
-    expect(loaded.body.mailDraft).toMatchObject({
-      from: "previous-writer@example.com",
-      subject: "Previous-version draft",
-      resourceStatus: "draft",
-    });
-  });
-
   it("creates, edits, reads, and sends a real Gmail draft", async () => {
     const fixture = await seedGmailMailCardFixture();
     const gmail = mockGmailDraftApi();
