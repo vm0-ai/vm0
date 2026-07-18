@@ -30,8 +30,8 @@
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
-    "@vitest/coverage-v8": "^4.1.9",
-    "@vitest/ui": "^4.1.9",
+    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/ui": "^4.1.10",
     "@vm0/firewalls-generator": "workspace:*",
     "dotenv-cli": "^11.0.0",
     "e2b": "^2.10.3",
@@ -40,7 +40,7 @@
     "tsx": "^4.21.0",
     "turbo": "^2.10.3",
     "typescript": "6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "pnpm": {
     "peerDependencyRules": {
