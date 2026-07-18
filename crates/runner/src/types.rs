@@ -1347,6 +1347,8 @@ pub struct HeartbeatState {
     pub runner_id: String,
     pub runner_name: String,
     pub group: String,
+    pub snapshot_generation: u64,
+    pub snapshot_sequence: u64,
     pub total_vcpu: u32,
     pub total_memory_mb: u32,
     pub max_concurrent: usize,
@@ -2035,6 +2037,8 @@ mod tests {
             runner_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             runner_name: "runner-1".into(),
             group: "vm0/production".into(),
+            snapshot_generation: 7,
+            snapshot_sequence: 42,
             total_vcpu: 16,
             total_memory_mb: 32768,
             max_concurrent: 8,
@@ -2061,6 +2065,8 @@ mod tests {
         let json: serde_json::Value = serde_json::to_value(&state).unwrap();
         assert_eq!(json["runnerId"], "550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(json["runnerName"], "runner-1");
+        assert_eq!(json["snapshotGeneration"], 7);
+        assert_eq!(json["snapshotSequence"], 42);
         assert_eq!(json["totalVcpu"], 16);
         assert_eq!(json["totalMemoryMb"], 32768);
         assert_eq!(json["maxConcurrent"], 8);

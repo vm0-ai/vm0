@@ -216,6 +216,8 @@ function runnerHeartbeatBody(
   args: {
     readonly runnerId?: string;
     readonly group?: string;
+    readonly snapshotGeneration?: RunnerHeartbeatBody["snapshotGeneration"];
+    readonly snapshotSequence?: RunnerHeartbeatBody["snapshotSequence"];
     readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
     readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
     readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];
@@ -229,6 +231,12 @@ function runnerHeartbeatBody(
     runnerId: args.runnerId ?? randomUUID(),
     runnerName: "bdd-runner",
     group: args.group ?? "vm0/test",
+    ...(args.snapshotGeneration === undefined
+      ? {}
+      : { snapshotGeneration: args.snapshotGeneration }),
+    ...(args.snapshotSequence === undefined
+      ? {}
+      : { snapshotSequence: args.snapshotSequence }),
     totalVcpu: 8,
     totalMemoryMb: 16_384,
     maxConcurrent: args.maxConcurrent ?? 2,
@@ -961,6 +969,8 @@ export function createRunsApi(context: TestContext) {
       args: {
         readonly runnerId?: string;
         readonly group?: string;
+        readonly snapshotGeneration?: RunnerHeartbeatBody["snapshotGeneration"];
+        readonly snapshotSequence?: RunnerHeartbeatBody["snapshotSequence"];
         readonly admittableProfiles?: RunnerHeartbeatBody["admittableProfiles"];
         readonly maxConcurrent?: RunnerHeartbeatBody["maxConcurrent"];
         readonly allocatedVcpu?: RunnerHeartbeatBody["allocatedVcpu"];

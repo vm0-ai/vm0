@@ -1443,6 +1443,8 @@ mod tests {
             runner_id: "runner-heartbeat-test".to_string(),
             runner_name: "runner test".to_string(),
             group: "vm0/test".to_string(),
+            snapshot_generation: 7,
+            snapshot_sequence: 42,
             total_vcpu: 8,
             total_memory_mb: 32768,
             max_concurrent: 4,
