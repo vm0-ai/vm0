@@ -39,7 +39,7 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
-import { createBddApi } from "./helpers/api-bdd";
+import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   awsVerificationCode,
   createConnectorBddApi,
@@ -2190,6 +2190,41 @@ describe("connector catalog valid lifecycle", () => {
       ]),
     );
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
+  });
+
+  it("rejects new auth-code actions for an authored-hidden external method", async () => {
+    configureSource();
+    const hidden = publicAuthMethod({
+      id: "oauth",
+      grantKind: "auth-code",
+    });
+    hidden.visible = false;
+    const release = buildRelease({
+      version: "2026-07-15.external-hidden-auth-code",
+      connectorRef: "slack",
+      label: "Catalog Slack",
+      mutatePublic: (artifact) => {
+        setArtifactAuthMethods(artifact, [hidden]);
+      },
+      mutatePrivate: (artifact) => {
+        setArtifactAuthMethods(artifact, [slackPrivateAuthMethod()]);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    mockEnv("CONNECTOR_CATALOG_SOURCE_MODE", "external");
+
+    const response = await connectorsApi.requestOauthStart(
+      bdd.user(),
+      "slack",
+      "oauth",
+      { statuses: [403] },
+    );
+    expectApiError(response.body);
+    expect(response.body.error).toStrictEqual({
+      message: "slack connector is not available",
+      code: "FORBIDDEN",
+    });
   });
 
   it("revokes an external auth-code credential through its selected method", async () => {

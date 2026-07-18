@@ -225,11 +225,23 @@ function createConnectorActionResolver(
     resolveMethod,
 
     resolveNewActionMethod(input) {
-      const resolved = resolveMethod(input);
-      if (resolved.ok && !resolved.runtimeMethod.availableForNewActions) {
-        return { ok: false, reason: "hidden_auth_method" };
+      const runtimeConnector = getConnectorRuntimeConnector(
+        snapshot,
+        input.connectorRef,
+      );
+      const catalogMethod = runtimeConnector?.catalogConnector.authMethods.find(
+        (method) => {
+          return method.id === input.authMethodId;
+        },
+      );
+      if (catalogMethod?.grantKind === input.expectedGrantKind) {
+        const runtimeMethod = runtimeConnector?.methods.get(input.authMethodId);
+        if (runtimeMethod && !runtimeMethod.availableForNewActions) {
+          return { ok: false, reason: "hidden_auth_method" };
+        }
       }
-      return resolved;
+
+      return resolveMethod(input);
     },
 
     resolveRefs(input) {
