@@ -21,7 +21,6 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { tapError } from "../utils";
 import {
@@ -35,7 +34,6 @@ import {
   refreshConnectorCredentialAccess,
   type ConnectorCredentialConnection,
 } from "./connector-credential-runtime.service";
-import { insertChatMessage } from "./zero-chat-message.service";
 
 const L = logger("api:zero-mail");
 
@@ -806,48 +804,22 @@ async function persistCreatedDraft(args: {
   readonly gmail: GmailDraftValue;
   readonly connection: MailConnection;
   readonly threadId: string;
-  readonly userId: string;
 }): Promise<void> {
   const createdAt = nowDate();
-  const link = mailDraftUrl(args.mailDraftId);
-  const created = await args.db.transaction(async (tx) => {
-    const message = await insertChatMessage(tx, {
-      chatThreadId: args.threadId,
-      role: "assistant",
-      content: link,
-    });
-    if (!message) {
-      throw new Error("Mail draft message insert did not return an id");
-    }
-    await tx.insert(mailDrafts).values({
-      id: args.mailDraftId,
-      chatThreadId: args.threadId,
-      connectorId: args.connection.connectorId,
-      gmailDraftId: args.gmail.draftId,
-      gmailThreadId: args.gmail.threadId,
-      gmailMessageId: args.gmail.messageId,
-      status: "draft",
-      senderName: args.gmail.details.fromName ?? null,
-      senderAddress: args.gmail.details.from,
-      subject: args.gmail.details.subject,
-      createdAt,
-      updatedAt: createdAt,
-    });
-    return message.id;
+  await args.db.insert(mailDrafts).values({
+    id: args.mailDraftId,
+    chatThreadId: args.threadId,
+    connectorId: args.connection.connectorId,
+    gmailDraftId: args.gmail.draftId,
+    gmailThreadId: args.gmail.threadId,
+    gmailMessageId: args.gmail.messageId,
+    status: "draft",
+    senderName: args.gmail.details.fromName ?? null,
+    senderAddress: args.gmail.details.from,
+    subject: args.gmail.details.subject,
+    createdAt,
+    updatedAt: createdAt,
   });
-  await tapError(
-    publishUserSignal(
-      [args.userId],
-      `chatThreadMessageCreated:${args.threadId}`,
-    ),
-    (error) => {
-      L.warn("Failed to publish Gmail draft creation", {
-        threadId: args.threadId,
-        messageId: created,
-        error,
-      });
-    },
-  );
 }
 
 async function markDeleted(args: {
@@ -1072,7 +1044,6 @@ export const createZeroMailDraft$ = command(
       gmail,
       connection,
       threadId: args.threadId,
-      userId: args.userId,
     });
     signal.throwIfAborted();
     const stored = await loadOwnedNewMailDraft({

@@ -277,7 +277,7 @@ function buildIntegrationToolsPrompt(
         crossIntegrationMessage,
         ...(zeroMailEnabled
           ? [
-              "- Email from web chat: use `zero mail list` to inspect the current agent's authorized Gmail and Outlook accounts, `zero mail connect gmail|outlook` to get a connect or authorization link, and `zero mail send --help` to create a persistent editable mail card. `zero mail send` creates the card but does not send the message; the user sends or cancels it from the card. The card appears automatically, so do not repeat the draft or command output in your response.",
+              "- Email from web chat: use `zero mail list` to inspect the current agent's authorized Gmail and Outlook accounts, `zero mail connect gmail|outlook` to get a connect or authorization link, and `zero mail send --help` to create a persistent editable mail card. `zero mail send` creates the card but does not send the message; the user sends or cancels it from the card. After the command succeeds, include the returned Card URL exactly once in your assistant response so the platform renders the card. Do not repeat the draft text or the rest of the command output.",
             ]
           : []),
         ...localFileContextLines,

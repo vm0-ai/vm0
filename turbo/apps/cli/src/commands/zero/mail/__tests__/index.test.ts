@@ -104,7 +104,7 @@ describe("zero mail", () => {
     );
   });
 
-  it("creates a persistent mail card without asking the model to echo JSON", async () => {
+  it("creates a persistent mail card and guides the model to share its URL", async () => {
     server.use(
       http.post(
         "http://localhost:3000/api/zero/mail/drafts",
@@ -174,7 +174,7 @@ describe("zero mail", () => {
     expect(output).toContain("sender@example.com");
     expect(output).toContain(MAIL_DRAFT_ID);
     expect(output).toContain(`https://app.vm0.ai/mail/drafts/${MAIL_DRAFT_ID}`);
-    expect(output).toContain("do not repeat the draft");
+    expect(output).toContain("Include the Card URL in your response");
     expect(output).not.toContain('"mailDraft"');
   });
 });

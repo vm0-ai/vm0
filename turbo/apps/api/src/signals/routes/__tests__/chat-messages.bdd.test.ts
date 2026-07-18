@@ -1629,7 +1629,7 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
     expect(appendSystemPrompt).toContain("zero mail send --help");
     expect(appendSystemPrompt).toContain(
-      "The card appears automatically, so do not repeat the draft",
+      "include the returned Card URL exactly once in your assistant response",
     );
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
