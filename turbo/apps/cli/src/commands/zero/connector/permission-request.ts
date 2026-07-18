@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { findFirewallMetadataPermission } from "@vm0/connectors/firewall-metadata/policy";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
@@ -13,14 +12,11 @@ import {
   createComputerUseAuthorizationRequest,
   getZeroConnectorCatalogPermissions,
 } from "../../../lib/api";
-
-const DEFAULT_PERMISSION_GRANT_DURATION: UserPermissionGrantExpiresIn = "1h";
-const PERMISSION_GRANT_DURATIONS = [
-  "1h",
-  "24h",
-  "7d",
-  "always",
-] as const satisfies readonly UserPermissionGrantExpiresIn[];
+import {
+  addRequestedCallbackSearchParams,
+  connectorActionCallbackEnabled,
+  printCallbackTurnInstruction,
+} from "./action-url";
 
 function permissionDescription(permission: string): string {
   return permission === UNKNOWN_PERMISSION_GRANT
@@ -70,13 +66,9 @@ function printPermissionRequestMessage(args: {
   readonly permission: string;
   readonly label: string;
   readonly url: string;
-  readonly duration: UserPermissionGrantExpiresIn;
 }): void {
   console.log(
     `You can allow ${permissionDescription(args.permission)} for your connector access: [Manage ${args.label} permissions](${args.url})`,
-  );
-  console.log(
-    `Requested duration: ${args.duration}. Use --duration 1h|24h|7d|always to choose a different grant lifetime.`,
   );
 }
 
@@ -126,8 +118,8 @@ async function outputPermissionRequestMessage(
   connectorRef: string,
   label: string,
   permission: string,
-  duration: UserPermissionGrantExpiresIn,
   agentId: string | undefined,
+  callbackPrompt: string | undefined,
 ): Promise<void> {
   const platformOrigin = await getPlatformOrigin();
 
@@ -135,8 +127,8 @@ async function outputPermissionRequestMessage(
     ref: connectorRef,
     permission,
     action: "allow",
-    expiresIn: duration,
   });
+  addRequestedCallbackSearchParams(urlParams, callbackPrompt, agentId);
 
   const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
   const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
@@ -146,9 +138,26 @@ async function outputPermissionRequestMessage(
     permission,
     label,
     url,
-    duration,
   });
+  if (callbackPrompt !== undefined) {
+    printCallbackTurnInstruction();
+  }
 }
+
+const callbackPromptOption = new Option(
+  "--callback-prompt <prompt>",
+  "Start the next web chat round with this prompt after the permission is granted",
+);
+const callbackPromptAvailable = connectorActionCallbackEnabled();
+if (!callbackPromptAvailable) {
+  callbackPromptOption.hideHelp();
+}
+const callbackPromptExample = callbackPromptAvailable
+  ? '  zero connector permission-request github --permission contents:write --callback-prompt "Re-check the permission, then continue the previous task"\n'
+  : "";
+const callbackPromptNotes = callbackPromptAvailable
+  ? "  - Use --callback-prompt only when this turn needs exactly one connector or permission action\n  - Callback prompts are included in the URL; keep them concise and do not include secrets\n"
+  : "";
 
 export const permissionRequestCommand = new Command()
   .name("permission-request")
@@ -162,25 +171,17 @@ export const permissionRequestCommand = new Command()
   )
   .addOption(
     new Option(
-      "--duration <duration>",
-      "Requested allow duration: 1h, 24h, 7d, or always",
-    )
-      .choices([...PERMISSION_GRANT_DURATIONS])
-      .default(DEFAULT_PERMISSION_GRANT_DURATION),
-  )
-  .addOption(
-    new Option(
       "--agent <id>",
       "Agent ID whose permission page should be opened (defaults to ZERO_AGENT_ID)",
     ),
   )
+  .addOption(callbackPromptOption)
   .addHelpText(
     "after",
     `
 Examples:
   zero connector permission-request github --permission contents:read
-  zero connector permission-request github --permission contents:write --duration 24h
-  zero connector permission-request gmail --permission messages.write --agent <agent-id>
+${callbackPromptExample}  zero connector permission-request gmail --permission messages.write --agent <agent-id>
   zero connector permission-request cloudflare --permission __unknown__
   zero connector permission-request computer-use --permission computer-use:write
 
@@ -188,9 +189,8 @@ Notes:
   - Outputs a platform URL for the user to allow the permission
   - Use --permission __unknown__ to request access to unknown endpoints
   - Use --agent to request a permission for another agent; defaults to ZERO_AGENT_ID
-  - Requests default to --duration 1h; use 24h or 7d for longer user-approved work
-  - Use --duration always only when the user explicitly asks for persistent access
-  - Permission requests update the current user's connector grants after confirmation`,
+  - The user chooses the permission duration on the confirmation page
+${callbackPromptNotes}  - Permission requests update the current user's connector grants after confirmation`,
   )
   .action(
     withErrorHandler(
@@ -198,8 +198,8 @@ Notes:
         connectorRef: string,
         opts: {
           permission: string;
-          duration: UserPermissionGrantExpiresIn;
           agent?: string;
+          callbackPrompt?: string;
         },
       ) => {
         if (
@@ -208,9 +208,16 @@ Notes:
             permission: opts.permission,
           })
         ) {
+          if (opts.callbackPrompt !== undefined) {
+            throw new Error(
+              "--callback-prompt is not supported for Computer Use authorization requests",
+            );
+          }
           await printComputerUsePermissionRequestMessage();
           return;
         }
+
+        const agentId = opts.agent ?? process.env.ZERO_AGENT_ID;
 
         const metadata = await getZeroConnectorCatalogPermissions(connectorRef);
         if (!metadata) {
@@ -230,8 +237,8 @@ Notes:
           connectorRef,
           metadata.label,
           opts.permission,
-          opts.duration,
-          opts.agent ?? process.env.ZERO_AGENT_ID,
+          agentId,
+          opts.callbackPrompt,
         );
       },
     ),

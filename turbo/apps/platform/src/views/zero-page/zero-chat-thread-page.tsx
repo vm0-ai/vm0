@@ -148,12 +148,13 @@ import {
   type RunGroupFold,
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
-import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
+import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import {
   emptyMailDraftSignalsById$,
   type MailDraftSignals,
 } from "../../signals/chat-page/mail-draft.ts";
+import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -5339,6 +5340,14 @@ function createPermissionActionHandler(params: {
   expirationAvailable: boolean;
   expiresIn: UserPermissionGrantExpiresIn;
   applyGrant: ApplyUserPermissionGrantFn;
+  runCallback: (
+    args: {
+      readonly threadId: string;
+      readonly agentId: string;
+      readonly callbackPrompt: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
 }): () => void {
   return () => {
     const permissionName =
@@ -5347,18 +5356,30 @@ function createPermissionActionHandler(params: {
       status: params.status,
       runUserGrant: () => {
         detach(
-          params.applyGrant(
-            {
-              agentId: params.block.agentId,
-              connectorRef: params.block.connectorRef,
-              permission: permissionName,
-              action: params.block.action,
-              ...(params.expirationAvailable
-                ? { expiresIn: params.expiresIn }
-                : {}),
-            },
-            params.pageSignal,
-          ),
+          (async () => {
+            await params.applyGrant(
+              {
+                agentId: params.block.agentId,
+                connectorRef: params.block.connectorRef,
+                permission: permissionName,
+                action: params.block.action,
+                ...(params.expirationAvailable
+                  ? { expiresIn: params.expiresIn }
+                  : {}),
+              },
+              params.pageSignal,
+            );
+            if (params.block.callbackPrompt && params.block.threadId) {
+              await params.runCallback(
+                {
+                  threadId: params.block.threadId,
+                  agentId: params.block.agentId,
+                  callbackPrompt: params.block.callbackPrompt,
+                },
+                params.pageSignal,
+              );
+            }
+          })(),
           Reason.DomCallback,
         );
       },
@@ -5464,6 +5485,7 @@ function PermissionActionCardForTarget({
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const permissionMetadataLoadable = useLoadable(signals.metadata$);
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
+  const runCallback = useSet(runChatActionCallback$);
   const savedGrant =
     grantLoadable.state === "hasData" ? grantLoadable.data : null;
   const savedGrantActive = savedGrant
@@ -5516,6 +5538,7 @@ function PermissionActionCardForTarget({
         expirationAvailable,
         expiresIn,
         applyGrant,
+        runCallback,
       })}
     />
   );
@@ -5538,12 +5561,31 @@ function PermissionActionCard({ signals }: { signals: PermissionSignals }) {
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
+  const runCallback = useSet(runChatActionCallback$);
+  const pageSignal = useGet(pageSignal$);
 
   if (!active) {
     return null;
   }
 
-  return <ConnectModal agentId={active.agentId} onClose={close} />;
+  return (
+    <ConnectModal
+      agentId={active.agentId}
+      onClose={close}
+      onSuccess={async () => {
+        if (active.callbackPrompt && active.threadId) {
+          await runCallback(
+            {
+              threadId: active.threadId,
+              agentId: active.agentId,
+              callbackPrompt: active.callbackPrompt,
+            },
+            pageSignal,
+          );
+        }
+      }}
+    />
+  );
 }
 
 function isImageFilename(filename: string): boolean {

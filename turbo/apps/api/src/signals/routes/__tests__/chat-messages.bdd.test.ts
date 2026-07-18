@@ -42,6 +42,10 @@ import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  deleteVm0ManagedDefaultModelKey,
+  seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+} from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
@@ -216,6 +220,13 @@ async function entitledChatActor(): Promise<EntitledChatActor> {
     visibility: "private",
   });
   return { actor, agentId: agent.agentId, runnerGroup, providerId };
+}
+
+async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
+  onTestFinished(async () => {
+    await deleteVm0ManagedDefaultModelKey(context);
+  });
+  return await seedVm0ManagedModelKeyState(context, selectedModel);
 }
 
 async function sendChatRun(
@@ -512,14 +523,17 @@ async function readThreadTitleFromEvents(
 async function completeChatRunOk(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
-  options: { readonly lastEventSequence?: number } = {},
+  options: {
+    readonly cliAgentType?: "claude-code" | "codex";
+    readonly lastEventSequence?: number;
+  } = {},
 ): Promise<void> {
   const history = `bdd chat session history ${runId}`;
   const historyHash = createHash("sha256").update(history).digest("hex");
   await webhooks.requestAgentCheckpoint(
     {
       runId,
-      cliAgentType: "claude-code",
+      cliAgentType: options.cliAgentType ?? "claude-code",
       cliAgentSessionId: `bdd-cli-${runId}`,
       cliAgentSessionHistoryHash: historyHash,
     },
@@ -2356,6 +2370,57 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
+    await cancelChatRun(actor, second.runId);
+  }, 90_000);
+
+  it("resumes the CLI session when switching between GPT and Auto", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("VM0_MODEL_PROXY_TOKEN", "vm0-model-proxy-token");
+    mockOptionalEnv("VM0_MODEL_PROXY_HOST", "https://www.vm0.test");
+    await seedVm0ManagedModelKey("gpt-5.5");
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.5",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+      {
+        model: "vm0-model",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: "start on GPT before switching to Auto",
+      model: "gpt-5.5",
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
+      cliAgentType: "codex",
+    });
+    await flushWaitUntilForTest();
+
+    await seedVm0ManagedModelKey("vm0-model");
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue on Auto in the same session",
+      model: "vm0-model",
+    });
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession?.sessionId).toBe(
+      `bdd-cli-${first.runId}`,
+    );
+    expect(claimEnvironment(secondClaim.claim).OPENAI_MODEL).toBe("vm0-model");
+
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 

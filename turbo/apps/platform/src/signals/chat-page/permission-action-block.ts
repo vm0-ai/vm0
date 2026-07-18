@@ -4,6 +4,10 @@ import {
   rewritePlatformHostname,
 } from "../api-base.ts";
 import { parseUserPermissionGrantExpiresIn } from "../permission-allow/permission-grant-expiration.ts";
+import {
+  chatActionCallbackFromUrl,
+  type ChatActionCallback,
+} from "./action-callback.ts";
 
 type PermissionAction = "allow" | "deny";
 
@@ -19,6 +23,8 @@ export interface PermissionActionDescriptor {
   expiresIn: UserPermissionGrantExpiresIn | null;
   search: string;
   originalUrl: string;
+  callbackPrompt: ChatActionCallback["callbackPrompt"];
+  threadId: ChatActionCallback["threadId"];
 }
 
 export function permissionActionResourceKey(
@@ -175,6 +181,7 @@ export function parsePermissionActionUrl(
     action === "allow"
       ? parseUserPermissionGrantExpiresIn(url.searchParams.get("expiresIn"))
       : null;
+  const actionCallback = chatActionCallbackFromUrl(url);
 
   if (
     !path.agentId ||
@@ -197,5 +204,6 @@ export function parsePermissionActionUrl(
     expiresIn,
     search: url.searchParams.toString(),
     originalUrl: value,
+    ...actionCallback,
   };
 }
