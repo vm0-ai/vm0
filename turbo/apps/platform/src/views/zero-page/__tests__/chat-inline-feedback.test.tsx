@@ -197,10 +197,14 @@ async function replaceFeedbackNote(
   await fastUser.keyboard(value);
 }
 
-function dispatchDocumentShortcut(key: string): KeyboardEvent {
+function dispatchDocumentShortcut(
+  key: string,
+  init?: Omit<KeyboardEventInit, "key">,
+): KeyboardEvent {
   const event = new KeyboardEvent("keydown", {
     bubbles: true,
     cancelable: true,
+    ...init,
     key,
   });
   document.dispatchEvent(event);
@@ -208,7 +212,7 @@ function dispatchDocumentShortcut(key: string): KeyboardEvent {
 }
 
 describe("chat inline feedback", () => {
-  it("inserts feedback as an atomic inline prompt item", async () => {
+  it("inserts feedback as an atomic block followed by a text line", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
     let sentPrompt: string | undefined;
@@ -243,26 +247,40 @@ describe("chat inline feedback", () => {
       },
     });
 
+    const composerEditor = await findComposerEditor();
+    await user.click(composerEditor);
+    await user.keyboard("Context before feedback.");
+
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
     await user.click(await screen.findByText("Provide feedback"));
 
-    const composerEditor = await findComposerEditor();
-    await waitFor(() => {
-      expect(
-        composerEditor.querySelector("[data-composer-inline-feedback]"),
-      ).toHaveTextContent(assistantReply);
+    const feedbackBlock = await waitFor(() => {
+      const element = composerEditor.querySelector("[data-composer-feedback]");
+      expect(element).toHaveTextContent(assistantReply);
       expect(feedbackNotes()).toHaveLength(0);
+      return element;
     });
+    expect(feedbackBlock?.tagName).toBe("DIV");
+    expect(feedbackBlock?.parentElement).toBe(composerEditor);
+    expect(feedbackBlock?.previousElementSibling).toHaveTextContent(
+      "Context before feedback.",
+    );
+    expect(feedbackBlock?.nextElementSibling?.tagName).toBe("P");
+    expect(feedbackBlock?.nextElementSibling).toHaveTextContent("");
 
-    await user.keyboard("Make the dates explicit.{Enter}");
+    await user.keyboard("Make the dates explicit.");
+    expect(feedbackBlock?.nextElementSibling).toHaveTextContent(
+      "Make the dates explicit.",
+    );
+    await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(sentPrompt).toBeDefined();
     });
-    expect(sentPrompt).toContain("Feedback on this part of your reply:");
-    expect(sentPrompt).toContain(`> ${assistantReply}`);
-    expect(sentPrompt).toContain("Make the dates explicit.");
+    expect(sentPrompt).toBe(
+      `Context before feedback.\nFeedback on this part of your reply:\n\n> ${assistantReply}\nMake the dates explicit.`,
+    );
   });
 
   it("keeps ordinary text and inline feedback in one composer document", async () => {
@@ -766,6 +784,48 @@ describe("chat inline feedback", () => {
     await waitForDeferredSelectionCapture();
 
     expect(composerEditor).toHaveFocus();
+  });
+
+  it("dismisses the inline feedback toolbar after the system copy shortcut", async () => {
+    const assistantReply = "Copy this passage with the system shortcut.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-copy-shortcut-user",
+          role: "user",
+          content: "Review this passage",
+          runId: "run-feedback-copy-shortcut",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-copy-shortcut-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-copy-shortcut",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    const event = dispatchDocumentShortcut("c", { ctrlKey: true });
+    expect(event.defaultPrevented).toBeFalsy();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    });
   });
 
   it("focuses the inline feedback composer when started from the keyboard shortcut", async () => {

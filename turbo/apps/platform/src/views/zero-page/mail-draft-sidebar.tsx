@@ -100,10 +100,10 @@ function MailDraftDetails({ draft }: { readonly draft: ZeroMailDraft }) {
             Attachments
           </div>
           <div className="grid gap-2">
-            {draft.attachments.map((attachment, index) => {
+            {draft.attachments.map((attachment) => {
               return (
                 <div
-                  key={`${attachment.filename}-${index}`}
+                  key={`${attachment.filename}-${attachment.contentType}-${attachment.size}`}
                   className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5"
                 >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">

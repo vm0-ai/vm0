@@ -120,14 +120,26 @@ def _catalog_snapshot(
     version: str,
     firewalls: dict[str, dict],
 ) -> builtin_firewall_cache.BuiltinFirewallCatalogSnapshot:
-    key = (f"catalog-cache/{version}.json", 1, 1, len(version), len(firewalls))
+    key = builtin_firewall_cache.CatalogFileKey(
+        absolute_path=f"catalog-cache/{version}.json",
+        st_dev=1,
+        st_ino=1,
+        st_mtime_ns=len(version),
+        st_size=len(firewalls),
+    )
     digest = f"sha256:{digest_char * 64}"
     return builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
         dependency_file_key=key,
         catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
-            identity=("cache", digest, version, key),
+            identity=builtin_firewall_cache.CatalogIdentity(
+                source="cache",
+                catalog_digest=digest,
+                catalog_version=version,
+                file_key=key,
+            ),
             firewalls=firewalls,
         ),
+        cache_path=key.absolute_path,
     )
 
 
@@ -549,9 +561,26 @@ class TestRegistryBuiltinCache:
                 )
             },
         )
+        assert snapshot.catalog is not None
+        rewritten_key = builtin_firewall_cache.CatalogFileKey(
+            absolute_path="catalog-cache/catalog-a.json",
+            st_dev=1,
+            st_ino=2,
+            st_mtime_ns=3,
+            st_size=4,
+        )
         rewritten_snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
-            dependency_file_key=("catalog-cache/catalog-a.json", 1, 2, 3, 4),
-            catalog=snapshot.catalog,
+            dependency_file_key=rewritten_key,
+            catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
+                identity=builtin_firewall_cache.CatalogIdentity(
+                    source=snapshot.catalog.identity.source,
+                    catalog_digest=snapshot.catalog.identity.catalog_digest,
+                    catalog_version=snapshot.catalog.identity.catalog_version,
+                    file_key=rewritten_key,
+                ),
+                firewalls=snapshot.catalog.firewalls,
+            ),
+            cache_path=rewritten_key.absolute_path,
         )
         expected_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -1334,6 +1363,11 @@ class TestRegistryBuiltinCache:
 
             snapshot = registry_firewalls.load_catalog_snapshot(str(cache_path))
             assert snapshot.catalog is not None
+            assert snapshot.dependency_file_key is not None
+            assert snapshot.dependency_file_key.absolute_path == str(cache_path.absolute())
+            assert snapshot.catalog.identity.source == "cache"
+            assert snapshot.catalog.identity.catalog_version == "catalog-a"
+            assert snapshot.catalog.identity.file_key == snapshot.dependency_file_key
             retained_catalog = builtin_firewall_cache._cache_state.catalog
             assert retained_catalog is snapshot.catalog
 

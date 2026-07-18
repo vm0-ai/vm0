@@ -131,10 +131,10 @@ def _catalog_source_for_name(
         )
     catalog_firewall = cached_catalog.firewalls.get(raw_name)
     if catalog_firewall is None:
-        _, catalog_digest, catalog_version, _ = cached_catalog.identity
         raise FirewallEntryResolutionError(
             f'builtin firewall "{raw_name}" missing from catalog cache '
-            f"(catalog_digest={catalog_digest}, catalog_version={catalog_version})"
+            f"(catalog_digest={cached_catalog.identity.catalog_digest}, "
+            f"catalog_version={cached_catalog.identity.catalog_version})"
         )
     return catalog_firewall, cached_catalog.identity
 

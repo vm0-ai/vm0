@@ -24,8 +24,7 @@ export function parseMessageBodyBlocks(
   message: PagedChatMessage,
 ): ParsedBodyBlock[] {
   const content = chatMessageBodyContent(message);
-  const { blocks } = parseBodyBlocks(content, {
+  return parseBodyBlocks(content, {
     previews: message.role === "assistant",
-  });
-  return blocks;
+  }).blocks;
 }

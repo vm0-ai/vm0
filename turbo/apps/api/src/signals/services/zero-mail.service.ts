@@ -1188,6 +1188,7 @@ export const sendZeroMailDraft$ = command(
     });
     if (!current) {
       const deleted = await markDeleted({ db: set(writeDb$), row });
+      signal.throwIfAborted();
       return okResult(
         row.id,
         responseDraft({ row: deleted, details: null, detailAvailable: false }),
@@ -1200,6 +1201,7 @@ export const sendZeroMailDraft$ = command(
     });
     if (!sent) {
       const deleted = await markDeleted({ db: set(writeDb$), row });
+      signal.throwIfAborted();
       return okResult(
         row.id,
         responseDraft({ row: deleted, details: null, detailAvailable: false }),

@@ -14,7 +14,7 @@ from flow_metadata_linter.ast_helpers import (
     _pattern_names,
     _scope_bound_name_visitor,
     _statement_can_fall_through,
-    _static_call_argument_nodes,
+    _static_first_call_argument_nodes,
     _target_names,
     _type_alias_target_names,
     _type_alias_value,
@@ -675,10 +675,10 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
                 self._record_metadata_merge_key_violations(keyword.value)
         if isinstance(node.func, ast.Attribute) and self._is_metadata_alias_value(node.func.value):
             if node.func.attr in _METADATA_METHODS_WITH_KEY_ARGUMENTS and node.args:
-                for key_arg in _static_call_argument_nodes(node.args, 0):
+                for key_arg in _static_first_call_argument_nodes(node.args):
                     self._add_violations(_metadata_key_expression_violations(self.path, key_arg))
             if node.func.attr in _METADATA_METHODS_WITH_DICT_ARGUMENTS:
-                for update_arg in _static_call_argument_nodes(node.args, 0):
+                for update_arg in _static_first_call_argument_nodes(node.args):
                     self._record_metadata_dict_key_violations(update_arg)
                 for keyword in node.keywords:
                     if keyword.arg is None:

@@ -236,7 +236,7 @@ describe("chat message action cards", () => {
             {
               filename: "report.pdf",
               contentType: "application/pdf",
-              size: 248192,
+              size: 248_192,
             },
           ],
           createdAt,
@@ -269,7 +269,7 @@ describe("chat message action cards", () => {
             {
               filename: "report.pdf",
               contentType: "application/pdf",
-              size: 248192,
+              size: 248_192,
             },
           ],
           createdAt,
