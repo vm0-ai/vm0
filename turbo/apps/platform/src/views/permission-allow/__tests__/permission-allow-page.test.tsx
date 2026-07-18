@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import {
   zeroConnectorCatalogContract,
@@ -70,7 +71,10 @@ describe("permission allow page", () => {
   it("lets a user grant an expiring connector permission to an agent", async () => {
     mockNow();
     const agentId = "c0000000-0000-4000-a000-000000000001";
+    const threadId = "c0000000-0000-4000-a000-000000000101";
+    const callbackPrompt = "Re-check Slack access, then continue";
     let capturedBody: unknown = null;
+    let capturedContinuationBody: unknown = null;
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(200, {
@@ -128,10 +132,17 @@ describe("permission allow page", () => {
         ]);
       },
     );
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      capturedContinuationBody = body;
+      return respond(201, {
+        runId: "c0000000-0000-4000-a000-000000000201",
+        threadId,
+      });
+    });
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
       user: {
         id: "test-user-123",
         fullName: "Dana Analyst",
@@ -178,6 +189,11 @@ describe("permission allow page", () => {
           expiresIn: "24h",
         },
       ],
+    });
+    expect(capturedContinuationBody).toMatchObject({
+      agentId,
+      threadId,
+      prompt: callbackPrompt,
     });
   });
 

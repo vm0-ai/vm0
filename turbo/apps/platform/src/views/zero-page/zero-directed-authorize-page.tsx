@@ -31,6 +31,10 @@ import {
   setDirectedAuthorizeConnectModalKey$,
   type DirectedAuthorizeConnectModalKey,
 } from "../../signals/connectors-page/directed-authorize-type.ts";
+import {
+  routeChatActionCallback$,
+  runChatActionCallback$,
+} from "../../signals/chat-page/action-callback.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { reloadAgentConnectorAuthorizations$ } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
@@ -286,13 +290,21 @@ function runDirectedAuthorize(params: {
   ) => Promise<boolean>;
   readonly openConnectModal: () => void;
   readonly reloadAuthorization: () => void;
+  readonly onSuccess: () => void | Promise<void>;
 }): void {
   if (!params.canAuthorize) {
     return;
   }
   if (params.isConnected) {
     detach(
-      params.authorize(params.connectorType, params.agentId, params.signal),
+      (async () => {
+        await params.authorize(
+          params.connectorType,
+          params.agentId,
+          params.signal,
+        );
+        await params.onSuccess();
+      })(),
       Reason.DomCallback,
     );
     return;
@@ -337,6 +349,7 @@ function runDirectedAuthorize(params: {
         }
         if (connected) {
           params.reloadAuthorization();
+          await params.onSuccess();
         }
       })(),
       Reason.DomCallback,
@@ -361,6 +374,8 @@ function DirectedAuthorizeCard() {
   const setDirectedAuthorizeConnectModalKey = useSet(
     setDirectedAuthorizeConnectModalKey$,
   );
+  const actionCallback = useGet(routeChatActionCallback$);
+  const runCallback = useSet(runChatActionCallback$);
   const connectorTypeForState = params?.connectorType ?? null;
   const agentName = useDirectedAuthorizeAgentName(params?.agentId ?? null);
   const { item, isConnected, catalogLoading, unavailable } =
@@ -394,6 +409,18 @@ function DirectedAuthorizeCard() {
     : null;
   const connectorLabel = item?.label ?? connectorType;
   const connectorDescription = item?.helpText ?? "";
+  const handleAuthorizeSuccess = async () => {
+    if (actionCallback.callbackPrompt && actionCallback.threadId) {
+      await runCallback(
+        {
+          threadId: actionCallback.threadId,
+          agentId,
+          callbackPrompt: actionCallback.callbackPrompt,
+        },
+        signal,
+      );
+    }
+  };
 
   const handleAuthorize = () => {
     runDirectedAuthorize({
@@ -409,6 +436,7 @@ function DirectedAuthorizeCard() {
       connect,
       connectNoAuth,
       reloadAuthorization,
+      onSuccess: handleAuthorizeSuccess,
       openConnectModal: () => {
         setDirectedAuthorizeConnectModalKey({ connectorType, agentId, signal });
       },
@@ -432,7 +460,10 @@ function DirectedAuthorizeCard() {
         <ConnectModal
           selectedType={connectorType}
           agentId={agentId}
-          onSuccess={reloadAuthorization}
+          onSuccess={async () => {
+            reloadAuthorization();
+            await handleAuthorizeSuccess();
+          }}
           onClose={() => {
             setDirectedAuthorizeConnectModalKey(null);
           }}

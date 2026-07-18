@@ -18,6 +18,12 @@ import {
   isComputerUsePermissionTarget,
   printComputerUsePermissionGuidance,
 } from "./computer-use-guidance";
+import {
+  CALLBACK_PROMPT_PLACEHOLDER,
+  connectorActionUrl,
+  currentChatSupportsActionCallback,
+  printCallbackActionUrlExample,
+} from "./action-url";
 
 interface CheckConnectorOptions {
   readonly connector?: string;
@@ -390,18 +396,31 @@ function printConnectorConnectionStatus(
   } else if (!isConnected) {
     console.log(`The ${ctx.label} connector is not connected.`);
     if (ctx.agentId && hasPermission) {
-      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorRef}/connect?agentId=${ctx.agentId}`;
+      const connectUrl = connectorActionUrl({
+        origin: ctx.platformOrigin,
+        path: `/connectors/${ctx.connectorRef}/connect`,
+        agentId: ctx.agentId,
+      });
       console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
+      printCallbackActionUrlExample(connectUrl, ctx.agentId);
     } else if (!ctx.agentId) {
-      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorRef}/connect`;
+      const connectUrl = connectorActionUrl({
+        origin: ctx.platformOrigin,
+        path: `/connectors/${ctx.connectorRef}/connect`,
+      });
       console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
     }
   } else if (isExpired) {
-    const url = `${ctx.platformOrigin}/connectors`;
+    const url = connectorActionUrl({
+      origin: ctx.platformOrigin,
+      path: `/connectors/${ctx.connectorRef}/connect`,
+      agentId: ctx.agentId,
+    });
     console.log(
       `The ${ctx.label} connector is connected but has expired and needs to be reconnected.`,
     );
     console.log(`Reconnect it at: [Reconnect ${ctx.label}](${url})`);
+    printCallbackActionUrlExample(url, ctx.agentId);
   } else {
     console.log(`The ${ctx.label} connector is connected and active.`);
   }
@@ -427,13 +446,18 @@ function printAgentAuthorizationStatus(
         : `The ${ctx.label} connector is authorized for this agent, but it is not connected.`,
     );
   } else {
-    const url = `${ctx.platformOrigin}/connectors/${ctx.connectorRef}/authorize?agentId=${ctx.agentId}`;
+    const url = connectorActionUrl({
+      origin: ctx.platformOrigin,
+      path: `/connectors/${ctx.connectorRef}/authorize`,
+      agentId: ctx.agentId,
+    });
     console.log(
       isConnected
         ? `The ${ctx.label} connector is not authorized for this agent (${ctx.agentId}).`
         : `The ${ctx.label} connector needs to be connected and authorized for this agent (${ctx.agentId}).`,
     );
     console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
+    printCallbackActionUrlExample(url, ctx.agentId);
   }
 }
 
@@ -599,6 +623,7 @@ function printNamedPolicyResult(
   connectorRef: string,
   permission: string,
   policy: ConnectorCheckPolicy,
+  agentId: string | undefined,
 ): void {
   switch (policy.outcome) {
     case "allow": {
@@ -632,8 +657,11 @@ function printNamedPolicyResult(
           ? `Result: "${permission}" is in the deny list — denied.`
           : `Result: The unknown-endpoint policy denies "${permission}".`,
       );
-      console.log(
-        `To request this permission, run: ${permissionRequestCommand(connectorRef, permission)}`,
+      printPermissionRequestCommands(
+        connectorRef,
+        permission,
+        agentId,
+        "To request this permission, run",
       );
       return;
     case "ask":
@@ -642,8 +670,11 @@ function printNamedPolicyResult(
           ? `Result: "${permission}" is in the ask list — blocked until approval.`
           : `Result: The unknown-endpoint policy blocks "${permission}" until approval.`,
       );
-      console.log(
-        `To request this permission, run: ${permissionRequestCommand(connectorRef, permission)}`,
+      printPermissionRequestCommands(
+        connectorRef,
+        permission,
+        agentId,
+        "To request this permission, run",
       );
       return;
     case "unavailable":
@@ -656,12 +687,32 @@ function permissionRequestCommand(
   connectorRef: string,
   permission: string,
 ): string {
-  return `zero connector permission-request ${connectorRef} --permission ${permission} --duration 1h`;
+  return `zero connector permission-request ${connectorRef} --permission ${permission}`;
+}
+
+function printPermissionRequestCommands(
+  connectorRef: string,
+  permission: string,
+  agentId: string | undefined,
+  introduction: string,
+): void {
+  const command = permissionRequestCommand(connectorRef, permission);
+  console.log(`${introduction}: ${command}`);
+  if (!currentChatSupportsActionCallback(agentId)) {
+    return;
+  }
+
+  console.log("");
+  console.log(
+    "Or, if this is the only connector or permission action needed, run the callback command below. After the user completes this action, Zero will automatically start the next round with the callback prompt:",
+  );
+  console.log(`${command} --callback-prompt "${CALLBACK_PROMPT_PLACEHOLDER}"`);
 }
 
 function printUnknownEndpointPolicy(
   connectorRef: string,
   policy: ConnectorCheckPolicy,
+  agentId: string | undefined,
 ): void {
   switch (policy.outcome) {
     case "allow":
@@ -675,16 +726,22 @@ function printUnknownEndpointPolicy(
       console.log(
         "Result: No permission matched. The unknown endpoint policy denies this request.",
       );
-      console.log(
-        `To request access to unknown endpoints, run: ${permissionRequestCommand(connectorRef, "__unknown__")}`,
+      printPermissionRequestCommands(
+        connectorRef,
+        "__unknown__",
+        agentId,
+        "To request access to unknown endpoints, run",
       );
       return;
     case "ask":
       console.log(
         "Result: No permission matched. The unknown endpoint policy requires approval.",
       );
-      console.log(
-        `To request access to unknown endpoints, run: ${permissionRequestCommand(connectorRef, "__unknown__")}`,
+      printPermissionRequestCommands(
+        connectorRef,
+        "__unknown__",
+        agentId,
+        "To request access to unknown endpoints, run",
       );
       return;
     case "unavailable":
@@ -693,7 +750,10 @@ function printUnknownEndpointPolicy(
   }
 }
 
-function printUrlPermissionDiagnostic(result: ResolvedUrlDiagnostic): void {
+function printUrlPermissionDiagnostic(
+  result: ResolvedUrlDiagnostic,
+  agentId: string | undefined,
+): void {
   console.log("## Step 3: Permission policy check (auto-detected from URL)");
   console.log("");
   console.log(
@@ -715,6 +775,7 @@ function printUrlPermissionDiagnostic(result: ResolvedUrlDiagnostic): void {
         result.connector.connectorRef,
         permission.name,
         permission.policy,
+        agentId,
       );
     }
   } else {
@@ -725,6 +786,7 @@ function printUrlPermissionDiagnostic(result: ResolvedUrlDiagnostic): void {
     printUnknownEndpointPolicy(
       result.connector.connectorRef,
       result.permission.policy,
+      agentId,
     );
   }
   console.log("");
@@ -733,6 +795,7 @@ function printUrlPermissionDiagnostic(result: ResolvedUrlDiagnostic): void {
 function printEnvironmentPermissionDiagnostic(
   result: ResolvedEnvironmentDiagnostic,
   permissionName: string | undefined,
+  agentId: string | undefined,
 ): void {
   if (result.permission === null) {
     return;
@@ -752,6 +815,7 @@ function printEnvironmentPermissionDiagnostic(
     result.connector.connectorRef,
     permissionName,
     result.permission,
+    agentId,
   );
   console.log("");
 }
@@ -880,11 +944,12 @@ How connectors work:
       console.log("");
 
       if (result.mode === "url") {
-        printUrlPermissionDiagnostic(result);
+        printUrlPermissionDiagnostic(result, ctx.agentId);
       } else {
         printEnvironmentPermissionDiagnostic(
           result,
           request.mode === "environment" ? request.permission : undefined,
+          ctx.agentId,
         );
       }
 

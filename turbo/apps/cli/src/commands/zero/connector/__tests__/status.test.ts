@@ -126,6 +126,9 @@ describe("zero connector status command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("ZERO_AGENT_ID", "");
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
   });
 
   afterEach(() => {
@@ -253,6 +256,35 @@ describe("zero connector status command", () => {
       expect(logCalls).not.toContain("is not connected");
       expect(logCalls).not.toContain("[Connect github]");
       expect(logCalls).not.toContain("zero connector check");
+      expect(logCalls).not.toContain("callbackPrompt=");
+    });
+
+    it("prints a callback URL example in the current web chat", async () => {
+      vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
+      vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
+      server.use(
+        stubConnector(connectedGithub),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        `/connectors/github/authorize?agentId=${AGENT_UUID}`,
+      );
+      expect(logCalls).toContain("threadId=thread-abc-123");
+      expect(logCalls).toContain(
+        "callbackPrompt=SOMETHING_AGENT_WANT_TO_BE_CALLBACK",
+      );
+      expect(logCalls).toContain("automatically start the next round");
     });
 
     it("uses the production app origin in authorization links", async () => {

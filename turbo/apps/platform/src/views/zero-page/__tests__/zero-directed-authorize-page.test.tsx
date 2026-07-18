@@ -4,6 +4,7 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
@@ -166,10 +167,22 @@ function mockConnectorOpenIdStart(args?: { readonly onStart?: () => void }): {
 describe("directed connector authorize page", () => {
   it("authorizes a connected connector and recognizes existing authorization", async () => {
     mockConnectedConnector("gmail");
+    const threadId = "00000000-0000-4000-a000-000000000101";
+    const callbackPrompt = "Re-check Gmail, then continue";
+    let continuationPrompt: string | null = null;
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      if ("prompt" in body) {
+        continuationPrompt = body.prompt ?? null;
+      }
+      return respond(201, {
+        runId: "00000000-0000-4000-a000-000000000201",
+        threadId,
+      });
+    });
 
     detachedSetupPage({
       context,
-      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
     });
 
     await waitFor(() => {
@@ -181,6 +194,7 @@ describe("directed connector authorize page", () => {
     await waitFor(() => {
       expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
+      expect(continuationPrompt).toBe(callbackPrompt);
     });
   });
 

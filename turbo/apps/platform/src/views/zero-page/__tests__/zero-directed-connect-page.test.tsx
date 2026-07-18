@@ -4,6 +4,8 @@ import {
   zeroConnectorOpenIdStartContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
@@ -391,6 +393,9 @@ describe("directed connector connect page", () => {
       }),
     );
     let connectCalls = 0;
+    const threadId = "00000000-0000-4000-a000-000000000101";
+    const callbackPrompt = "Re-check Stripe, then continue";
+    let continuationPrompt: string | null = null;
     context.mocks.api(
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
@@ -417,9 +422,18 @@ describe("directed connector connect page", () => {
         });
       },
     );
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      if ("prompt" in body) {
+        continuationPrompt = body.prompt ?? null;
+      }
+      return respond(201, {
+        runId: "00000000-0000-4000-a000-000000000201",
+        threadId,
+      });
+    });
     detachedSetupPage({
       context,
-      path: `/connectors/stripe/connect?agentId=${AGENT_ID}`,
+      path: `/connectors/stripe/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
     });
 
     await waitFor(() => {
@@ -432,6 +446,7 @@ describe("directed connector connect page", () => {
     await waitFor(() => {
       expect(connectCalls).toBe(1);
       expect(screen.getByText("Public Stripe connected")).toBeInTheDocument();
+      expect(continuationPrompt).toBe(callbackPrompt);
     });
     expect(
       screen.queryByRole("dialog", { name: "Public Stripe" }),
@@ -440,6 +455,9 @@ describe("directed connector connect page", () => {
 
   it("finishes an OpenID flow when the callback wins before Ably polling starts", async () => {
     context.mocks.data.connectors([]);
+    const threadId = "00000000-0000-4000-a000-000000000102";
+    const callbackPrompt = "Re-check Steam, then continue";
+    let continuationPrompt: string | null = null;
     const { authWindow } = mockConnectorOpenIdStart({
       popupClosed: false,
       onStart: () => {
@@ -453,8 +471,21 @@ describe("directed connector connect page", () => {
       },
     });
     mockPublicConnectorStatus(steamOpenIdConnectorStatus());
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: ["steam"] });
+    });
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      continuationPrompt = body.prompt ?? null;
+      return respond(201, {
+        runId: "00000000-0000-4000-a000-000000000202",
+        threadId,
+      });
+    });
 
-    detachedSetupPage({ context, path: "/connectors/steam/connect" });
+    detachedSetupPage({
+      context,
+      path: `/connectors/steam/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+    });
 
     await waitFor(() => {
       expect(
@@ -468,6 +499,7 @@ describe("directed connector connect page", () => {
         "https://openid.test/steam/authorize",
       );
       expect(screen.getByText("Public Steam connected")).toBeInTheDocument();
+      expect(continuationPrompt).toBe(callbackPrompt);
     });
   });
 
@@ -518,6 +550,9 @@ describe("directed connector connect page", () => {
       }),
     );
     let submittedValues: Record<string, string> | null = null;
+    const threadId = "00000000-0000-4000-a000-000000000103";
+    const callbackPrompt = "Re-check Axiom, then continue";
+    let continuationPrompt: string | null = null;
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
@@ -540,9 +575,16 @@ describe("directed connector connect page", () => {
         });
       },
     );
+    context.mocks.api(chatMessagesContract.send, ({ body, respond }) => {
+      continuationPrompt = body.prompt ?? null;
+      return respond(201, {
+        runId: "00000000-0000-4000-a000-000000000203",
+        threadId,
+      });
+    });
     detachedSetupPage({
       context,
-      path: `/connectors/axiom/connect?agentId=${AGENT_ID}`,
+      path: `/connectors/axiom/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
     });
 
     await waitFor(() => {
@@ -565,6 +607,7 @@ describe("directed connector connect page", () => {
       expect(submittedValues).toStrictEqual({
         apiToken: "xaat-directed-connect",
       });
+      expect(continuationPrompt).toBe(callbackPrompt);
       expect(
         screen.queryByRole("dialog", { name: "Public Axiom" }),
       ).not.toBeInTheDocument();
