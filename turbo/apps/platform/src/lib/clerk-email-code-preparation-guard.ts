@@ -10,6 +10,8 @@ const AUTOMATIC_PREPARATION_WINDOW_MS = 5000;
 // for Clerk's complete disabled-resend interval so a slow reload cannot send a
 // replacement code.
 const SIGN_UP_CREATION_PREPARATION_WINDOW_MS = 30_000;
+// Persist only the expiration timestamp; Clerk and user identifiers stay in
+// the SDK-managed client state.
 const SIGN_UP_PREPARATION_STORAGE_KEY =
   "vm0:clerk-sign-up-email-code-preparation";
 
@@ -116,11 +118,10 @@ function createPreparationGuard<Resource, Params>(options: {
   activePreparations: ActivePreparations;
   getVerification: (resource: Resource) => EmailCodeVerification;
   key: (params: Params) => string;
+  pendingPreparations: Map<string, Promise<Resource>>;
   prepare: (params: Params) => Promise<Resource>;
   resource: Resource;
 }): (params: Params) => Promise<Resource> {
-  const pendingPreparations = new Map<string, Promise<Resource>>();
-
   return (params: Params): Promise<Resource> => {
     const key = options.key(params);
     const currentTime = now();
@@ -158,14 +159,14 @@ function createPreparationGuard<Resource, Params>(options: {
       }
     }
 
-    const pendingPreparation = pendingPreparations.get(key);
+    const pendingPreparation = options.pendingPreparations.get(key);
     if (pendingPreparation) {
       return pendingPreparation;
     }
 
     const preparation = (async () => {
       const resource = await options.prepare(params).finally(() => {
-        pendingPreparations.delete(key);
+        options.pendingPreparations.delete(key);
       });
       const preparedAt = now();
       const preparedFingerprint = activeEmailCodeFingerprint(
@@ -179,7 +180,7 @@ function createPreparationGuard<Resource, Params>(options: {
       return resource;
     })();
 
-    pendingPreparations.set(key, preparation);
+    options.pendingPreparations.set(key, preparation);
     return preparation;
   };
 }
@@ -188,6 +189,7 @@ function guardSignUpResource(
   signUp: SignUpResource,
   guardedResources: WeakSet<SignUpResource>,
   activePreparations: ActivePreparations,
+  pendingPreparations: Map<string, Promise<SignUpResource>>,
 ): void {
   if (guardedResources.has(signUp)) {
     return;
@@ -207,6 +209,7 @@ function guardSignUpResource(
     key: () => {
       return SIGN_UP_EMAIL_CODE_KEY;
     },
+    pendingPreparations,
     prepare: originalPrepare,
     resource: signUp,
   });
@@ -245,6 +248,7 @@ function guardSignInResource(
   signIn: SignInResource,
   guardedResources: WeakSet<SignInResource>,
   activePreparations: ActivePreparations,
+  pendingPreparations: Map<string, Promise<SignInResource>>,
 ): void {
   if (guardedResources.has(signIn)) {
     return;
@@ -266,6 +270,7 @@ function guardSignInResource(
       }
       return params.strategy;
     },
+    pendingPreparations,
     prepare: originalPrepare,
     resource: signIn,
   });
@@ -290,6 +295,8 @@ function guardSignInResource(
 export function installClerkEmailCodePreparationGuard(clerk: Clerk): void {
   const signInActivePreparations = new Map<string, ActivePreparation>();
   const signUpActivePreparations = createSignUpActivePreparations();
+  const signInPendingPreparations = new Map<string, Promise<SignInResource>>();
+  const signUpPendingPreparations = new Map<string, Promise<SignUpResource>>();
   const guardedSignInResources = new WeakSet<SignInResource>();
   const guardedSignUpResources = new WeakSet<SignUpResource>();
   const guardCurrentResources = (): void => {
@@ -300,11 +307,13 @@ export function installClerkEmailCodePreparationGuard(clerk: Clerk): void {
       clerk.client.signUp,
       guardedSignUpResources,
       signUpActivePreparations,
+      signUpPendingPreparations,
     );
     guardSignInResource(
       clerk.client.signIn,
       guardedSignInResources,
       signInActivePreparations,
+      signInPendingPreparations,
     );
   };
 

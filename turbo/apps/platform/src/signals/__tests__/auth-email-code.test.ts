@@ -65,7 +65,7 @@ describe("clerk email code preparation", () => {
     ]);
   });
 
-  it("reuses the code sent by sign-up creation without verification metadata", async () => {
+  it("reuses the sign-up creation code across a full-page reload", async () => {
     let now = Date.UTC(2026, 6, 18, 8, 30);
     mockNow(now);
 
@@ -178,6 +178,28 @@ describe("clerk email code preparation", () => {
 
     expect(mockedClerk.factorPreparations).toStrictEqual([
       { flow: "sign-in", strategy: "email_code" },
+      { flow: "sign-in", strategy: "email_code" },
+    ]);
+  });
+
+  it("coalesces sign-in preparation across replacement resources", async () => {
+    const now = Date.UTC(2026, 6, 18, 9, 40);
+    mockNow(now);
+
+    await setupAuthSignals("/sign-in");
+
+    const params = {
+      emailAddressId: "idn_primary",
+      strategy: "email_code",
+    } as const;
+    const preparation = mockedClerk.client.signIn.prepareFirstFactor(params);
+    replaceMockedClerkAuthResources();
+    const replacementPreparation =
+      mockedClerk.client.signIn.prepareFirstFactor(params);
+
+    expect(replacementPreparation).toBe(preparation);
+    await Promise.all([preparation, replacementPreparation]);
+    expect(mockedClerk.factorPreparations).toStrictEqual([
       { flow: "sign-in", strategy: "email_code" },
     ]);
   });
