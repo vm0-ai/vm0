@@ -1299,7 +1299,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("renders user html-like text literally", async () => {
+  it("renders user html through markdown", async () => {
     const threadId = "thread-user-html-like-text";
     mockChatLifecycle(context, {
       threadId,
@@ -1318,12 +1318,13 @@ describe("chat lifecycle", () => {
       const bubble = document.querySelector(".zero-chat-bubble-user");
       expect(bubble).toBeInstanceOf(HTMLElement);
       expect(
-        within(bubble as HTMLElement).getByText("<span> 123 </span>"),
+        within(bubble as HTMLElement).getByText("123"),
       ).toBeInTheDocument();
       return bubble as HTMLElement;
     });
 
-    expect(userBubble.querySelector("span")).toBeNull();
+    const renderedSpan = userBubble.querySelector(".wmde-markdown span");
+    expect(renderedSpan).toBeInstanceOf(HTMLSpanElement);
   });
 
   it("ignores usage-only pages for rendering and thinking state", async () => {
