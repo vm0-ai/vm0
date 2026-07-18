@@ -1504,7 +1504,7 @@ jobs:
         with:
           node-version: 22
       - name: Install E2E dependencies
-        run: npm install -g agent-browser@0.22.0
+        run: npm install -g agent-browser@0.32.1
       - name: Run browser E2E tests
         continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
         run: |
