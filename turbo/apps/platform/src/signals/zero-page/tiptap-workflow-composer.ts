@@ -170,7 +170,7 @@ const FEEDBACK_ITEM_NODE_NAME = "feedbackItem";
 const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
 const INLINE_FILE_NODE_NAME = "inlineFile";
-const INLINE_FEEDBACK_NODE_NAME = "inlineFeedback";
+const PROMPT_FEEDBACK_NODE_NAME = "promptFeedback";
 const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 const CHAT_THREAD_MENTION_CLASS =
   "rounded bg-primary/10 px-1 text-primary whitespace-nowrap";
@@ -811,38 +811,40 @@ function createInlineFileNodeView(
   };
 }
 
-interface InlineFeedbackNodeAttributes {
+interface PromptFeedbackNodeAttributes {
   readonly feedbackId: number;
   readonly quote: string;
 }
 
-function inlineFeedbackNodeAttributes(
+function promptFeedbackNodeAttributes(
   node: ProseMirrorNode,
-): InlineFeedbackNodeAttributes {
+): PromptFeedbackNodeAttributes {
   const feedbackId: unknown = node.attrs.feedbackId;
   const quote: unknown = node.attrs.quote;
   if (typeof feedbackId !== "number" || typeof quote !== "string") {
-    throw new Error("Inline feedback node attributes are invalid");
+    throw new Error("Prompt feedback node attributes are invalid");
   }
   return { feedbackId, quote };
 }
 
-function inlineFeedbackNodeText(node: ProseMirrorNode): string {
-  const { feedbackId, quote } = inlineFeedbackNodeAttributes(node);
-  return formatFeedbackPrompt([{ id: feedbackId, quote, note: "" }]);
+function promptFeedbackNodeText(node: ProseMirrorNode): string {
+  const { feedbackId, quote } = promptFeedbackNodeAttributes(node);
+  return formatFeedbackPrompt([{ id: feedbackId, quote, note: "" }]).trimEnd();
 }
 
-function createInlineFeedbackNodeView(
+function createPromptFeedbackNodeView(
   node: ProseMirrorNode,
   removeFeedback: () => void,
 ): NodeView {
-  const dom = document.createElement("span");
-  dom.dataset.composerInlineFeedback = "";
-  dom.className =
-    "mx-0.5 inline-flex max-w-full align-middle items-center gap-1 rounded-md border " +
+  const dom = document.createElement("div");
+  dom.dataset.composerFeedback = "";
+  dom.className = "flex min-w-0";
+  dom.contentEditable = "false";
+  const chip = document.createElement("div");
+  chip.className =
+    "inline-flex max-w-full items-center gap-1 rounded-md border " +
     "border-border/80 bg-background/90 px-1.5 py-0.5 text-foreground " +
     "shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
-  dom.contentEditable = "false";
   const icon = document.createElement("span");
   icon.className = "flex h-4 w-4 shrink-0 items-center justify-center";
   icon.append(
@@ -863,11 +865,12 @@ function createInlineFeedbackNodeView(
   removeButton.append(
     createComposerIcon(11, 1.8, ["M18 6l-12 12", "M6 6l12 12"]),
   );
-  dom.append(icon, quote, removeButton);
+  chip.append(icon, quote, removeButton);
+  dom.append(chip);
 
   let currentNode = node;
   function render(nextNode: ProseMirrorNode): void {
-    quote.textContent = inlineFeedbackNodeAttributes(nextNode).quote;
+    quote.textContent = promptFeedbackNodeAttributes(nextNode).quote;
   }
   removeButton.addEventListener("mousedown", (event) => {
     event.preventDefault();
@@ -968,16 +971,16 @@ function insertFeedbackItem(editor: Editor, item: FeedbackItem): void {
   editor.commands.focus("end");
 }
 
-function insertInlineFeedbackItem(editor: Editor, item: FeedbackItem): void {
+function insertPromptFeedbackItem(editor: Editor, item: FeedbackItem): void {
   editor
     .chain()
     .focus()
     .insertContent([
       {
-        type: INLINE_FEEDBACK_NODE_NAME,
+        type: PROMPT_FEEDBACK_NODE_NAME,
         attrs: { feedbackId: item.id, quote: item.quote },
       },
-      { type: "text", text: " " },
+      { type: "paragraph" },
     ])
     .run();
 }
@@ -994,8 +997,8 @@ function removeFeedbackItem(editor: Editor, id: number): void {
       return false;
     }
     if (
-      node.type.name === INLINE_FEEDBACK_NODE_NAME &&
-      inlineFeedbackNodeAttributes(node).feedbackId === id
+      node.type.name === PROMPT_FEEDBACK_NODE_NAME &&
+      promptFeedbackNodeAttributes(node).feedbackId === id
     ) {
       itemPosition = position;
       itemSize = node.nodeSize;
@@ -1029,8 +1032,8 @@ function feedbackItemsFromWorkflowComposer(
       });
       return false;
     }
-    if (node.type.name === INLINE_FEEDBACK_NODE_NAME) {
-      const attributes = inlineFeedbackNodeAttributes(node);
+    if (node.type.name === PROMPT_FEEDBACK_NODE_NAME) {
+      const attributes = promptFeedbackNodeAttributes(node);
       items.push({
         id: attributes.feedbackId,
         quote: attributes.quote,
@@ -1356,9 +1359,6 @@ function nodeText(
     if (leafNode.type.name === INLINE_FILE_NODE_NAME) {
       return inlineFileNodeText(leafNode);
     }
-    if (leafNode.type.name === INLINE_FEEDBACK_NODE_NAME) {
-      return inlineFeedbackNodeText(leafNode);
-    }
     return leafNode.type.name === "hardBreak" ? "\n" : "";
   });
 }
@@ -1397,6 +1397,11 @@ function workflowComposerDocToString(editor: Editor): string {
         quote: attributes.quote,
         note: feedbackNoteFromNode(node),
       });
+      continue;
+    }
+    if (node.type.name === PROMPT_FEEDBACK_NODE_NAME) {
+      flushFeedbackItems();
+      textBlocks.push(promptFeedbackNodeText(node));
       continue;
     }
     flushFeedbackItems();
@@ -1691,13 +1696,12 @@ function createInlineFileNode(): Node<undefined, unknown> {
   });
 }
 
-function createInlineFeedbackNode(
+function createPromptFeedbackNode(
   runtime: WorkflowComposerRuntime,
 ): Node<undefined, unknown> {
   return Node.create({
-    name: INLINE_FEEDBACK_NODE_NAME,
-    group: "inline",
-    inline: true,
+    name: PROMPT_FEEDBACK_NODE_NAME,
+    group: "block",
     atom: true,
     draggable: true,
     selectable: true,
@@ -1708,21 +1712,18 @@ function createInlineFeedbackNode(
       };
     },
     parseHTML() {
-      return [{ tag: "span[data-composer-inline-feedback]" }];
+      return [{ tag: "div[data-composer-feedback]" }];
     },
     renderHTML({ HTMLAttributes }) {
-      return [
-        "span",
-        { ...HTMLAttributes, "data-composer-inline-feedback": "" },
-      ];
+      return ["div", { ...HTMLAttributes, "data-composer-feedback": "" }];
     },
     renderText({ node }) {
-      return inlineFeedbackNodeText(node);
+      return promptFeedbackNodeText(node);
     },
     addNodeView() {
       return ({ node }) => {
-        return createInlineFeedbackNodeView(node, () => {
-          runtime.removeFeedback(inlineFeedbackNodeAttributes(node).feedbackId);
+        return createPromptFeedbackNodeView(node, () => {
+          runtime.removeFeedback(promptFeedbackNodeAttributes(node).feedbackId);
         });
       };
     },
@@ -1771,7 +1772,7 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
       createTemplateAttachmentNode(runtime),
       createInlineTemplateNode(runtime),
       createInlineFileNode(),
-      createInlineFeedbackNode(runtime),
+      createPromptFeedbackNode(runtime),
       createFeedbackItemNode(runtime),
       ChatThreadMentionNode,
       WorkflowHighlight,
@@ -2151,7 +2152,7 @@ function createComposerFeedback(
   return createFeedbackSignals(threadId ?? "", {
     insertItem(item) {
       if (inlinePromptItems) {
-        insertInlineFeedbackItem(editor, item);
+        insertPromptFeedbackItem(editor, item);
       } else {
         insertFeedbackItem(editor, item);
       }

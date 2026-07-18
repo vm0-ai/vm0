@@ -208,7 +208,7 @@ function dispatchDocumentShortcut(key: string): KeyboardEvent {
 }
 
 describe("chat inline feedback", () => {
-  it("inserts feedback as an atomic inline prompt item", async () => {
+  it("inserts feedback as an atomic block followed by a text line", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
     let sentPrompt: string | undefined;
@@ -243,26 +243,40 @@ describe("chat inline feedback", () => {
       },
     });
 
+    const composerEditor = await findComposerEditor();
+    await user.click(composerEditor);
+    await user.keyboard("Context before feedback.");
+
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
     await user.click(await screen.findByText("Provide feedback"));
 
-    const composerEditor = await findComposerEditor();
-    await waitFor(() => {
-      expect(
-        composerEditor.querySelector("[data-composer-inline-feedback]"),
-      ).toHaveTextContent(assistantReply);
+    const feedbackBlock = await waitFor(() => {
+      const element = composerEditor.querySelector("[data-composer-feedback]");
+      expect(element).toHaveTextContent(assistantReply);
       expect(feedbackNotes()).toHaveLength(0);
+      return element;
     });
+    expect(feedbackBlock?.tagName).toBe("DIV");
+    expect(feedbackBlock?.parentElement).toBe(composerEditor);
+    expect(feedbackBlock?.previousElementSibling).toHaveTextContent(
+      "Context before feedback.",
+    );
+    expect(feedbackBlock?.nextElementSibling?.tagName).toBe("P");
+    expect(feedbackBlock?.nextElementSibling).toHaveTextContent("");
 
-    await user.keyboard("Make the dates explicit.{Enter}");
+    await user.keyboard("Make the dates explicit.");
+    expect(feedbackBlock?.nextElementSibling).toHaveTextContent(
+      "Make the dates explicit.",
+    );
+    await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(sentPrompt).toBeDefined();
     });
-    expect(sentPrompt).toContain("Feedback on this part of your reply:");
-    expect(sentPrompt).toContain(`> ${assistantReply}`);
-    expect(sentPrompt).toContain("Make the dates explicit.");
+    expect(sentPrompt).toBe(
+      `Context before feedback.\nFeedback on this part of your reply:\n\n> ${assistantReply}\nMake the dates explicit.`,
+    );
   });
 
   it("keeps ordinary text and inline feedback in one composer document", async () => {
