@@ -18,7 +18,9 @@ import { convert, type FormatCallback } from "html-to-text";
 import { Resend } from "resend";
 import { delay } from "signal-timers";
 import { Webhook } from "svix";
+import { z } from "zod";
 
+import { executeRawRows } from "../../lib/db-raw-rows";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
@@ -91,84 +93,100 @@ interface ReceivedEmailAttachment {
   readonly downloadUrl: string;
 }
 
-interface AgentReplyTemplate {
-  readonly template: "agent-reply";
-  readonly props: {
-    readonly agentName: string;
-    readonly output: string;
-    readonly logsUrl?: string;
-    readonly unsubscribeUrl?: string;
-  };
-}
+const emailTemplateSchema = z.discriminatedUnion("template", [
+  z.object({
+    template: z.literal("agent-reply"),
+    props: z.object({
+      agentName: z.string(),
+      output: z.string(),
+      logsUrl: z.string().optional(),
+      unsubscribeUrl: z.string().optional(),
+    }),
+  }),
+  z.object({
+    template: z.literal("inbound-error"),
+    props: z.object({
+      errorMessage: z.string(),
+      unsubscribeUrl: z.string().optional(),
+    }),
+  }),
+  z.object({
+    template: z.literal("data-export-ready"),
+    props: z.object({
+      downloadUrl: z.string(),
+      expiresAt: z.string(),
+      artifactCount: z.number(),
+      unsubscribeUrl: z.string().optional(),
+    }),
+  }),
+  z.object({
+    template: z.literal("developer-support"),
+    props: z.object({
+      title: z.string(),
+      description: z.string(),
+      reference: z.string(),
+      userId: z.string(),
+      userEmail: z.string(),
+      orgId: z.string(),
+      orgName: z.string(),
+      runId: z.string(),
+      downloadUrl: z.string(),
+      expiresAt: z.string(),
+    }),
+  }),
+  z.object({
+    template: z.literal("credit-low-balance"),
+    props: z.object({
+      orgName: z.string(),
+      remainingCredits: z.number(),
+      thresholdCredits: z.number(),
+      billingUrl: z.string(),
+      unsubscribeUrl: z.string().optional(),
+    }),
+  }),
+]);
 
-interface InboundErrorTemplate {
-  readonly template: "inbound-error";
-  readonly props: {
-    readonly errorMessage: string;
-    readonly unsubscribeUrl?: string;
-  };
-}
+const postSendActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("save_thread_session"),
+    userId: z.string(),
+    agentId: z.string(),
+    agentSessionId: z.string(),
+    replyToToken: z.string(),
+    orgId: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal("update_thread_session"),
+    sessionId: z.string(),
+    agentSessionId: z.string().optional(),
+  }),
+]);
 
-interface DataExportReadyTemplate {
-  readonly template: "data-export-ready";
-  readonly props: {
-    readonly downloadUrl: string;
-    readonly expiresAt: string;
-    readonly artifactCount: number;
-    readonly unsubscribeUrl?: string;
-  };
-}
+export type EmailTemplate = z.output<typeof emailTemplateSchema>;
+type PostSendAction = z.output<typeof postSendActionSchema>;
+type SaveThreadSessionAction = Extract<
+  PostSendAction,
+  { readonly action: "save_thread_session" }
+>;
+type UpdateThreadSessionAction = Extract<
+  PostSendAction,
+  { readonly action: "update_thread_session" }
+>;
 
-interface DeveloperSupportTemplate {
-  readonly template: "developer-support";
-  readonly props: {
-    readonly title: string;
-    readonly description: string;
-    readonly reference: string;
-    readonly userId: string;
-    readonly userEmail: string;
-    readonly orgId: string;
-    readonly orgName: string;
-    readonly runId: string;
-    readonly downloadUrl: string;
-    readonly expiresAt: string;
-  };
-}
-
-interface CreditLowBalanceTemplate {
-  readonly template: "credit-low-balance";
-  readonly props: {
-    readonly orgName: string;
-    readonly remainingCredits: number;
-    readonly thresholdCredits: number;
-    readonly billingUrl: string;
-    readonly unsubscribeUrl?: string;
-  };
-}
-
-export type EmailTemplate =
-  | AgentReplyTemplate
-  | InboundErrorTemplate
-  | DataExportReadyTemplate
-  | DeveloperSupportTemplate
-  | CreditLowBalanceTemplate;
-
-interface SaveThreadSessionAction {
-  readonly action: "save_thread_session";
-  readonly userId: string;
-  readonly agentId: string;
-  readonly agentSessionId: string;
-  readonly replyToToken: string;
-  readonly orgId?: string;
-}
-
-interface UpdateThreadSessionAction {
-  readonly action: "update_thread_session";
-  readonly sessionId: string;
-  readonly agentSessionId?: string;
-}
-
-type PostSendAction = SaveThreadSessionAction | UpdateThreadSessionAction;
+const emailAddressesSchema = z.union([z.string(), z.array(z.string())]);
+const outboxRowSchema = z.object({
+  id: z.string(),
+  from_address: z.string(),
+  to_addresses: emailAddressesSchema,
+  cc_addresses: emailAddressesSchema.nullable(),
+  subject: z.string(),
+  reply_to: z.string().nullable(),
+  headers: z.record(z.string(), z.string()).nullable(),
+  template: emailTemplateSchema,
+  post_send_action: postSendActionSchema.nullable(),
+  attempts: z.int(),
+});
+type OutboxRow = z.output<typeof outboxRowSchema>;
 
 interface EnqueueEmailOptions {
   readonly from: string;
@@ -179,19 +197,6 @@ interface EnqueueEmailOptions {
   readonly replyTo?: string;
   readonly headers?: Record<string, string>;
   readonly threadAction?: PostSendAction;
-}
-
-interface OutboxRow extends Record<string, unknown> {
-  readonly id: string;
-  readonly from_address: string;
-  readonly to_addresses: unknown;
-  readonly cc_addresses: unknown;
-  readonly subject: string;
-  readonly reply_to: string | null;
-  readonly headers: unknown;
-  readonly template: unknown;
-  readonly post_send_action: unknown;
-  readonly attempts: number;
 }
 
 interface OrgIdentity {
@@ -537,18 +542,6 @@ async function getMessageId(resendId: string): Promise<string | null> {
     : null;
 }
 
-function normalizeAddresses(raw: unknown): string[] {
-  if (typeof raw === "string") {
-    return [raw];
-  }
-  if (Array.isArray(raw)) {
-    return raw.filter((value): value is string => {
-      return typeof value === "string";
-    });
-  }
-  return [];
-}
-
 async function findSuppressedAddress(
   tx: Transaction,
   addresses: readonly string[],
@@ -583,8 +576,10 @@ async function findSuppressedAddress(
   );
 }
 
+type EmailThreadSessionDb = Pick<Db, "insert" | "update">;
+
 async function saveEmailThreadSession(
-  db: Db,
+  db: EmailThreadSessionDb,
   action: SaveThreadSessionAction,
   lastEmailMessageId: string | null,
 ): Promise<void> {
@@ -599,7 +594,7 @@ async function saveEmailThreadSession(
 }
 
 async function updateEmailThreadSession(
-  db: Db,
+  db: EmailThreadSessionDb,
   action: UpdateThreadSessionAction,
   lastEmailMessageId: string | null,
 ): Promise<void> {
@@ -616,7 +611,7 @@ async function updateEmailThreadSession(
 }
 
 async function executePostSendAction(
-  db: Db,
+  db: EmailThreadSessionDb,
   action: PostSendAction,
   resendId: string,
 ): Promise<void> {
@@ -640,7 +635,10 @@ async function processOutboxItem(
     .set({ status: "sending", attempts })
     .where(eq(emailOutbox.id, itemId));
 
-  const toAddresses = normalizeAddresses(row.to_addresses);
+  const toAddresses =
+    typeof row.to_addresses === "string"
+      ? [row.to_addresses]
+      : row.to_addresses;
   const suppressedAddress = await findSuppressedAddress(tx, toAddresses);
   if (suppressedAddress) {
     await tx
@@ -655,12 +653,12 @@ async function processOutboxItem(
 
   const result = await sendEmailDirect({
     from: row.from_address,
-    to: row.to_addresses as string | readonly string[],
+    to: row.to_addresses,
     subject: row.subject,
-    template: row.template as EmailTemplate,
-    cc: (row.cc_addresses as string | readonly string[] | null) ?? undefined,
+    template: row.template,
+    cc: row.cc_addresses ?? undefined,
     replyTo: row.reply_to ?? undefined,
-    headers: (row.headers as Record<string, string> | null) ?? undefined,
+    headers: row.headers ?? undefined,
   });
 
   if (!result.ok) {
@@ -688,24 +686,26 @@ async function processOutboxItem(
     .set({ status: "sent", resendId: result.resendId })
     .where(eq(emailOutbox.id, itemId));
 
-  const postSendAction = row.post_send_action as PostSendAction | null;
+  const postSendAction = row.post_send_action;
   if (postSendAction) {
-    await executePostSendAction(tx as Db, postSendAction, result.resendId);
+    await executePostSendAction(tx, postSendAction, result.resendId);
   }
   return true;
 }
 
 async function drainById(db: Db, itemId: string): Promise<boolean> {
   return await db.transaction(async (tx) => {
-    const rows = await tx.execute<OutboxRow>(
+    const rows = await executeRawRows(
+      tx,
       sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
              reply_to, headers, template, post_send_action, attempts
           FROM email_outbox
           WHERE id = ${itemId}
             AND status = 'pending'
           FOR UPDATE SKIP LOCKED`,
+      outboxRowSchema,
     );
-    const row = rows.rows[0];
+    const row = rows[0];
     return row ? await processOutboxItem(tx, row) : false;
   });
 }
@@ -716,7 +716,8 @@ async function drainNextOutboxItem(
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
     const currentTime = new Date(currentTimeMs);
-    const rows = await tx.execute<OutboxRow>(
+    const rows = await executeRawRows(
+      tx,
       sql`SELECT id, from_address, to_addresses, cc_addresses, subject,
              reply_to, headers, template, post_send_action, attempts
           FROM email_outbox
@@ -725,8 +726,9 @@ async function drainNextOutboxItem(
           ORDER BY created_at ASC
           LIMIT 1
           FOR UPDATE SKIP LOCKED`,
+      outboxRowSchema,
     );
-    const row = rows.rows[0];
+    const row = rows[0];
     return row ? await processOutboxItem(tx, row, currentTimeMs) : false;
   });
 }

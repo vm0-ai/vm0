@@ -163,6 +163,12 @@ export default [
   ...config,
   {
     files: ["src/**/*.ts"],
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json",
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     plugins: {
       api: apiLintPlugin,
     },
@@ -173,7 +179,16 @@ export default [
       "api/no-logger-info": "error",
       "api/no-new-promise": "error",
       "api/no-store-in-params": "error",
+      "api/require-execute-row-schema": "error",
       "api/signal-check-await": "error",
+    },
+  },
+  {
+    files: ["src/lib/db-raw-rows.ts"],
+    rules: {
+      // This is the single reviewed boundary that turns driver rows into
+      // schema-derived values before returning them to application code.
+      "api/require-execute-row-schema": "off",
     },
   },
   {

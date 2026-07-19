@@ -99,10 +99,6 @@ interface QueuedRunMaintenanceResult {
   readonly timedOutRuns: readonly QueuedRunMaintenanceTimeout[];
 }
 
-interface LockedQueueRunRow extends Record<string, unknown> {
-  readonly status: string;
-}
-
 async function timedOutQueuedRunsWithMarkerNotifications(
   tx: DbTransaction,
   rows: readonly TimedOutQueuedRunRow[],
@@ -241,13 +237,11 @@ async function promoteQueuedCandidate(
       return { status: "full" };
     }
 
-    const lockedRunRows = await tx.execute<LockedQueueRunRow>(sql`
-      SELECT ${agentRuns.status} AS "status"
-      FROM ${agentRuns}
-      WHERE ${agentRuns.id} = ${args.row.runId}
-      FOR UPDATE
-    `);
-    const lockedRun = lockedRunRows.rows[0];
+    const [lockedRun] = await tx
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, args.row.runId))
+      .for("update");
     if (!lockedRun) {
       await tx
         .delete(agentRunQueue)

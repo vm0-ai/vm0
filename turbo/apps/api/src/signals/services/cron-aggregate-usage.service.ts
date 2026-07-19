@@ -23,7 +23,7 @@ export const aggregateUsageDaily$ = command(
     );
     const targetDate = yesterday.toISOString().split("T")[0]!;
 
-    const result = await db.execute(sql`
+    const { rowCount } = await db.execute(sql`
       INSERT INTO ${usageDaily} (user_id, org_id, date, run_count, run_time_ms)
       SELECT
         ${agentRuns.userId},
@@ -45,7 +45,7 @@ export const aggregateUsageDaily$ = command(
 
     return {
       date: targetDate,
-      aggregated: result.rowCount ?? 0,
+      aggregated: rowCount ?? 0,
     };
   },
 );

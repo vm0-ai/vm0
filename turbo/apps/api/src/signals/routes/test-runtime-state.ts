@@ -16,7 +16,9 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { eq, sql } from "drizzle-orm";
+import { z } from "zod";
 
+import { executeRawRows } from "../../lib/db-raw-rows";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -53,14 +55,11 @@ const orgAdmissionLockGate = testOverride<OrgAdmissionLockGate | null>(() => {
   return null;
 });
 
-interface OrgAdmissionLockHolderRow extends Record<string, unknown> {
-  readonly holderPid: number;
-}
-
-interface OrgAdmissionLockStateRow extends Record<string, unknown> {
-  readonly held: boolean;
-  readonly waiting: boolean;
-}
+const orgAdmissionLockHolderRowSchema = z.object({ holderPid: z.int() });
+const orgAdmissionLockStateRowSchema = z.object({
+  held: z.boolean(),
+  waiting: z.boolean(),
+});
 
 function createOrgAdmissionLockGate(signal: AbortSignal): OrgAdmissionLockGate {
   const released = createDeferredPromise<void>(signal);
@@ -93,13 +92,17 @@ async function holdOrgAdmissionLock(
   orgAdmissionLockGate.set(gate);
   await onRejection(
     db.transaction(async (tx) => {
-      const result = await tx.execute<OrgAdmissionLockHolderRow>(sql`
-        SELECT
-          pg_backend_pid() AS "holderPid",
-          pg_advisory_xact_lock(hashtext(${orgId}))
-      `);
+      const rows = await executeRawRows(
+        tx,
+        sql`
+          SELECT
+            pg_backend_pid() AS "holderPid",
+            pg_advisory_xact_lock(hashtext(${orgId}))
+        `,
+        orgAdmissionLockHolderRowSchema,
+      );
       signal.throwIfAborted();
-      const holder = result.rows[0];
+      const holder = rows[0];
       if (!holder) {
         throw new Error("Failed to acquire org admission lock");
       }
@@ -121,34 +124,38 @@ async function readOrgAdmissionLockState(
   if (holderPid === null || holderPid === undefined) {
     return { held: false, waiting: false };
   }
-  const result = await db.execute<OrgAdmissionLockStateRow>(sql`
-    SELECT
-      EXISTS (
-        SELECT 1
-        FROM pg_locks held
-        WHERE
-          held.pid = ${holderPid}
-          AND held.locktype = 'advisory'
-          AND held.granted
-      ) AS "held",
-      EXISTS (
-        SELECT 1
-        FROM pg_locks held
-        INNER JOIN pg_locks waiting
-          ON waiting.locktype = held.locktype
-          AND waiting.database IS NOT DISTINCT FROM held.database
-          AND waiting.classid IS NOT DISTINCT FROM held.classid
-          AND waiting.objid IS NOT DISTINCT FROM held.objid
-          AND waiting.objsubid IS NOT DISTINCT FROM held.objsubid
-        WHERE
-          held.pid = ${holderPid}
-          AND held.locktype = 'advisory'
-          AND held.granted
-          AND NOT waiting.granted
-      ) AS "waiting"
-  `);
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT
+        EXISTS (
+          SELECT 1
+          FROM pg_locks held
+          WHERE
+            held.pid = ${holderPid}
+            AND held.locktype = 'advisory'
+            AND held.granted
+        ) AS "held",
+        EXISTS (
+          SELECT 1
+          FROM pg_locks held
+          INNER JOIN pg_locks waiting
+            ON waiting.locktype = held.locktype
+            AND waiting.database IS NOT DISTINCT FROM held.database
+            AND waiting.classid IS NOT DISTINCT FROM held.classid
+            AND waiting.objid IS NOT DISTINCT FROM held.objid
+            AND waiting.objsubid IS NOT DISTINCT FROM held.objsubid
+          WHERE
+            held.pid = ${holderPid}
+            AND held.locktype = 'advisory'
+            AND held.granted
+            AND NOT waiting.granted
+        ) AS "waiting"
+    `,
+    orgAdmissionLockStateRowSchema,
+  );
   signal.throwIfAborted();
-  const state = result.rows[0];
+  const state = rows[0];
   if (!state) {
     throw new Error("Failed to read org admission lock state");
   }

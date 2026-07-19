@@ -28,7 +28,9 @@ import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-co
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { z } from "zod";
 
+import { executeRawRows } from "../../../lib/db-raw-rows";
 import { mockEnv } from "../../../lib/env";
 import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -65,6 +67,7 @@ const BULK_INSERT_CHUNK = 500;
 const TARGET_ATTACHMENT_COUNT = 6;
 const MOCK_R2_LIST_DELAY_MS = 10;
 const STATUSES = ["completed", "completed", "failed", "running"] as const;
+const queryPlanRowSchema = z.object({ "QUERY PLAN": z.string() });
 
 const chatThreadClient = setupApp({ context })(chatThreadByIdContract);
 const chatThreadMessagesClient = setupApp({ context })(
@@ -540,14 +543,18 @@ async function logPlannerDiagnostic(
       model_providers,
       credit_expires_record
   `);
-  const plan = await db.execute<{ "QUERY PLAN": string }>(sql`
-    EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
-    SELECT zero_runs.id, agent_runs.status
-    FROM zero_runs
-    INNER JOIN agent_runs ON zero_runs.id = agent_runs.id
-    WHERE zero_runs.chat_thread_id = ${fixture.threadId}
-  `);
-  const lines = plan.rows.map((row) => {
+  const plan = await executeRawRows(
+    db,
+    sql`
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+      SELECT zero_runs.id, agent_runs.status
+      FROM zero_runs
+      INNER JOIN agent_runs ON zero_runs.id = agent_runs.id
+      WHERE zero_runs.chat_thread_id = ${fixture.threadId}
+    `,
+    queryPlanRowSchema,
+  );
+  const lines = plan.map((row) => {
     return row["QUERY PLAN"];
   });
   process.stdout.write(

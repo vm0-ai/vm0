@@ -60,6 +60,11 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
+import {
+  executeRawRows,
+  pgInt8ToSafeIntegerSchema,
+  pgTimestampWithoutTimezoneToDateSchema,
+} from "../../lib/db-raw-rows";
 import { type Db, db$, writeDb$ } from "../external/db";
 import {
   inferMimetype,
@@ -135,25 +140,28 @@ type ChatMessageRow = {
   readonly workflowAutomationUserTimezone: string | null;
 };
 
-type ArtifactListSqlRow = Record<string, unknown> & {
-  readonly row_id: string;
-  readonly run_id: string;
-  readonly external_id: string;
-  readonly filename: string | null;
-  readonly content_type: string | null;
-  readonly size_bytes: number | string | null;
-  readonly url: string;
-  readonly preview_image_url: string | null;
-  readonly metadata: unknown;
-  readonly created_at: Date | string;
-  readonly cursor_created_at: string;
-  readonly thread_id: string;
-  readonly thread_title: string | null;
-  readonly agent_id: string;
-  readonly agent_name: string | null;
-  readonly agent_avatar_url: string | null;
-  readonly is_favorited: boolean;
-};
+const artifactListSqlRowSchema = z.object({
+  row_id: z.string(),
+  run_id: z.string(),
+  external_id: z.string(),
+  filename: z.string().nullable(),
+  content_type: z.string().nullable(),
+  size_bytes: pgInt8ToSafeIntegerSchema.nullable(),
+  url: z.string(),
+  preview_image_url: z.string().nullable(),
+  metadata: z.unknown(),
+  created_at: pgTimestampWithoutTimezoneToDateSchema,
+  cursor_created_at: z.string(),
+  thread_id: z.string(),
+  thread_title: z.string().nullable(),
+  agent_id: z.string(),
+  agent_name: z.string().nullable(),
+  agent_avatar_url: z.string().nullable(),
+  is_favorited: z.boolean(),
+});
+type ArtifactListSqlRow = z.output<typeof artifactListSqlRowSchema>;
+
+const artifactVisibilityRowSchema = z.object({ visible: z.boolean() });
 
 type ChatSearchMessageRow = {
   readonly messageId: string;
@@ -1030,12 +1038,6 @@ function artifactVisibilityConditions(args: {
   ];
 }
 
-function artifactRowCreatedAt(row: ArtifactListSqlRow): Date {
-  return row.created_at instanceof Date
-    ? row.created_at
-    : new Date(row.created_at);
-}
-
 function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
   const filename = row.filename ?? row.external_id;
   const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
@@ -1050,9 +1052,9 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     threadTitle: row.thread_title,
     filename,
     contentType: row.content_type ?? inferMimetype(filename),
-    size: Number(row.size_bytes ?? 0),
+    size: row.size_bytes ?? 0,
     url: row.url,
-    createdAt: artifactRowCreatedAt(row).toISOString(),
+    createdAt: row.created_at.toISOString(),
     ...(row.preview_image_url
       ? { previewImageUrl: row.preview_image_url }
       : {}),
@@ -1123,8 +1125,10 @@ export const zeroArtifacts$ = command(
       : sql``;
     const conditions = artifactVisibilityConditions(args);
 
-    const rows = await db.execute<ArtifactListSqlRow>(sql`
-      WITH scoped_artifacts AS (
+    const rows = await executeRawRows(
+      db,
+      sql`
+        WITH scoped_artifacts AS (
         SELECT
           ${runUploadedFiles.id} AS row_id,
           ${runUploadedFiles.runId} AS run_id,
@@ -1182,13 +1186,15 @@ export const zeroArtifacts$ = command(
         AND ${userArtifactFavorites.artifactUrl} = deduped_artifacts.url
       ${keysetClause}
       ORDER BY created_at DESC, row_id DESC
-      LIMIT ${limit + 1}
-    `);
+        LIMIT ${limit + 1}
+      `,
+      artifactListSqlRowSchema,
+    );
     signal.throwIfAborted();
 
     // Over-fetch one row to detect whether a further page exists.
-    const hasMore = rows.rows.length > limit;
-    const pageRows = hasMore ? rows.rows.slice(0, limit) : rows.rows;
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
     const lastRow = pageRows.at(-1);
     const nextCursor =
       hasMore && lastRow
@@ -1214,8 +1220,10 @@ async function artifactUrlIsVisible(
     ...artifactVisibilityConditions(args),
     sql`${runUploadedFiles.url} = ${args.artifactUrl}`,
   ];
-  const result = await db.execute<{ readonly visible: boolean }>(sql`
-    SELECT EXISTS (
+  const rows = await executeRawRows(
+    db,
+    sql`
+      SELECT EXISTS (
       SELECT 1
       FROM ${runUploadedFiles}
       INNER JOIN ${agentRuns}
@@ -1237,9 +1245,11 @@ async function artifactUrlIsVisible(
         ON ${agentComposes.id} = ${chatThreads.agentComposeId}
       WHERE ${sql.join(conditions, sql` AND `)}
       LIMIT 1
-    ) AS visible
-  `);
-  return result.rows[0]?.visible === true;
+      ) AS visible
+    `,
+    artifactVisibilityRowSchema,
+  );
+  return rows[0]?.visible === true;
 }
 
 export const favoriteArtifact$ = command(
@@ -1686,19 +1696,19 @@ export const deleteChatThread$ = command(
     const writeDb = set(writeDb$);
 
     const deletion = await writeDb.transaction(async (tx) => {
-      const lockedRows = await tx.execute<{
-        readonly id: string;
-        readonly agentComposeId: string;
-      }>(sql`
-        SELECT
-          ${chatThreads.id} AS "id",
-          ${chatThreads.agentComposeId} AS "agentComposeId"
-        FROM ${chatThreads}
-        WHERE ${chatThreads.id} = ${args.threadId}
-          AND ${chatThreads.userId} = ${args.userId}
-        FOR UPDATE
-      `);
-      const ownedThread = lockedRows.rows[0];
+      const [ownedThread] = await tx
+        .select({
+          id: chatThreads.id,
+          agentComposeId: chatThreads.agentComposeId,
+        })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        )
+        .for("update");
       if (!ownedThread) {
         return {
           deleted: false,

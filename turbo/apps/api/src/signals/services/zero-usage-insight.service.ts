@@ -5,7 +5,13 @@ import type {
   UsageInsightChatRow,
   UsageInsightResponse,
 } from "@vm0/api-contracts/contracts/zero-usage-insight";
+import { z } from "zod";
 
+import {
+  executeRawRows,
+  pgInt8ToSafeIntegerSchema,
+  pgTimestampWithoutTimezoneToDateSchema,
+} from "../../lib/db-raw-rows";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 
@@ -44,12 +50,36 @@ interface UsageInsightSqlParams {
   tzLit: string;
 }
 
-interface UsageInsightBucketRow extends Record<string, unknown> {
-  ts: Date | string;
-  bucket: string;
-  credits: string;
-  tokens: string;
-}
+const usageInsightBucketRowSchema = z.object({
+  ts: pgTimestampWithoutTimezoneToDateSchema,
+  bucket: z.string(),
+  credits: pgInt8ToSafeIntegerSchema,
+  tokens: pgInt8ToSafeIntegerSchema,
+});
+type UsageInsightBucketRow = z.output<typeof usageInsightBucketRowSchema>;
+
+const usageInsightGrandTotalRowSchema = z.object({
+  grand_credits: pgInt8ToSafeIntegerSchema,
+  grand_tokens: pgInt8ToSafeIntegerSchema,
+});
+
+const usageInsightChannelTotalRowSchema = z.object({
+  source: z.enum(["email", "slack"]),
+  credits: pgInt8ToSafeIntegerSchema,
+  tokens: pgInt8ToSafeIntegerSchema,
+});
+
+const usageInsightTopChatRowSchema = z.object({
+  thread_id: z.string().nullable(),
+  thread_title: z.string().nullable(),
+  credits: pgInt8ToSafeIntegerSchema,
+  tokens: pgInt8ToSafeIntegerSchema,
+  rn: pgInt8ToSafeIntegerSchema,
+});
+
+const usageInsightCountRowSchema = z.object({
+  cnt: pgInt8ToSafeIntegerSchema,
+});
 
 interface UsageInsightArgs {
   readonly userId: string;
@@ -342,8 +372,7 @@ function pivotBucketRows(
     { series: Record<string, number>; tokens: Record<string, number> }
   >();
   for (const row of rows) {
-    const tsStr =
-      row.ts instanceof Date ? row.ts.toISOString() : String(row.ts);
+    const tsStr = row.ts.toISOString();
     if (!bucketMap.has(tsStr)) {
       bucketMap.set(tsStr, { series: {}, tokens: {} });
     }
@@ -351,8 +380,8 @@ function pivotBucketRows(
     if (!entry) {
       continue;
     }
-    entry.series[row.bucket] = Number(row.credits);
-    entry.tokens[row.bucket] = Number(row.tokens);
+    entry.series[row.bucket] = row.credits;
+    entry.tokens[row.bucket] = row.tokens;
   }
   return [...bucketMap.entries()]
     .sort(([a], [b]) => {
@@ -364,7 +393,8 @@ function pivotBucketRows(
 }
 
 function queryUsageInsightSourceBuckets(db: Db, p: UsageInsightSqlParams) {
-  return db.execute<UsageInsightBucketRow>(
+  return executeRawRows(
+    db,
     sql.raw(`
       ${usageRowsWith(p)}
       SELECT
@@ -383,13 +413,15 @@ function queryUsageInsightSourceBuckets(db: Db, p: UsageInsightSqlParams) {
       GROUP BY 1, 2
       ORDER BY 1
     `),
+    usageInsightBucketRowSchema,
   );
 }
 
 function queryUsageInsightAgentBuckets(db: Db, p: UsageInsightSqlParams) {
   const agentName = agentNameExpr();
 
-  return db.execute<UsageInsightBucketRow>(
+  return executeRawRows(
+    db,
     sql.raw(`
       ${usageRowsWith(p)},
       agent_totals AS (
@@ -422,6 +454,7 @@ function queryUsageInsightAgentBuckets(db: Db, p: UsageInsightSqlParams) {
       GROUP BY 1, 2
       ORDER BY 1
     `),
+    usageInsightBucketRowSchema,
   );
 }
 
@@ -429,10 +462,8 @@ async function queryUsageInsightGrandTotal(
   db: Db,
   p: UsageInsightSqlParams,
 ): Promise<{ grandTotalCredits: number; grandTotalTokens: number }> {
-  const rows = await db.execute<{
-    grand_credits: string;
-    grand_tokens: string;
-  }>(
+  const rows = await executeRawRows(
+    db,
     sql.raw(`
       ${usageRowsWith(p)}
       SELECT
@@ -440,10 +471,11 @@ async function queryUsageInsightGrandTotal(
         COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS grand_tokens
       FROM usage_rows ${USAGE_ROW_ALIAS}
     `),
+    usageInsightGrandTotalRowSchema,
   );
   return {
-    grandTotalCredits: Number(rows.rows[0]?.grand_credits ?? 0),
-    grandTotalTokens: Number(rows.rows[0]?.grand_tokens ?? 0),
+    grandTotalCredits: rows[0]?.grand_credits ?? 0,
+    grandTotalTokens: rows[0]?.grand_tokens ?? 0,
   };
 }
 
@@ -456,11 +488,8 @@ async function queryUsageInsightChannelTotals(
   slackCredits: number;
   slackTokens: number;
 }> {
-  const rows = await db.execute<{
-    source: string;
-    credits: string;
-    tokens: string;
-  }>(
+  const rows = await executeRawRows(
+    db,
     sql.raw(`
       ${usageRowsWith(p)}
       SELECT
@@ -472,18 +501,19 @@ async function queryUsageInsightChannelTotals(
       WHERE zr.trigger_source IN ('email', 'slack')
       GROUP BY 1
     `),
+    usageInsightChannelTotalRowSchema,
   );
   let emailCredits = 0;
   let emailTokens = 0;
   let slackCredits = 0;
   let slackTokens = 0;
-  for (const row of rows.rows) {
+  for (const row of rows) {
     if (row.source === "email") {
-      emailCredits = Number(row.credits);
-      emailTokens = Number(row.tokens);
-    } else if (row.source === "slack") {
-      slackCredits = Number(row.credits);
-      slackTokens = Number(row.tokens);
+      emailCredits = row.credits;
+      emailTokens = row.tokens;
+    } else {
+      slackCredits = row.credits;
+      slackTokens = row.tokens;
     }
   }
   return { emailCredits, emailTokens, slackCredits, slackTokens };
@@ -497,13 +527,8 @@ async function queryUsageInsightTopChats(
   chatOtherCount: number;
   chatOtherCredits: number;
 }> {
-  const rows = await db.execute<{
-    thread_id: string | null;
-    thread_title: string | null;
-    credits: string;
-    tokens: string;
-    rn: string;
-  }>(
+  const rows = await executeRawRows(
+    db,
     sql.raw(`
       ${usageRowsWith(p)},
       agg AS (
@@ -531,28 +556,30 @@ async function queryUsageInsightTopChats(
       FROM agg WHERE rn > 100
       ORDER BY rn
     `),
+    usageInsightTopChatRowSchema,
   );
 
   const chats: UsageInsightChatRow[] = [];
   let chatOtherCredits = 0;
   let hasChatOverflow = false;
-  for (const row of rows.rows) {
-    if (Number(row.rn) > 100) {
-      chatOtherCredits = Number(row.credits);
+  for (const row of rows) {
+    if (row.rn > 100) {
+      chatOtherCredits = row.credits;
       hasChatOverflow = true;
     } else if (row.thread_id) {
       chats.push({
         threadId: row.thread_id,
         threadTitle: row.thread_title ?? null,
-        credits: Number(row.credits),
-        tokens: Number(row.tokens),
+        credits: row.credits,
+        tokens: row.tokens,
       });
     }
   }
 
   let chatOtherCount = 0;
   if (hasChatOverflow) {
-    const countRows = await db.execute<{ cnt: string }>(
+    const countRows = await executeRawRows(
+      db,
       sql.raw(`
         ${usageRowsWith(p)},
         agg AS (
@@ -565,8 +592,9 @@ async function queryUsageInsightTopChats(
         )
         SELECT COUNT(*)::bigint AS cnt FROM agg WHERE rn > 100
       `),
+      usageInsightCountRowSchema,
     );
-    chatOtherCount = Number(countRows.rows[0]?.cnt ?? 0);
+    chatOtherCount = countRows[0]?.cnt ?? 0;
   }
 
   return { chats, chatOtherCount, chatOtherCredits };
@@ -600,7 +628,7 @@ export const zeroUsageInsight$ = command(
         : await queryUsageInsightAgentBuckets(db, params);
 
     signal.throwIfAborted();
-    const buckets = pivotBucketRows(bucketsResult.rows);
+    const buckets = pivotBucketRows(bucketsResult);
     const { grandTotalCredits, grandTotalTokens } =
       await queryUsageInsightGrandTotal(db, params);
     signal.throwIfAborted();

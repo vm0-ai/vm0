@@ -1,13 +1,21 @@
 import { command } from "ccstate";
 import { sql } from "drizzle-orm";
-import type {
-  UsageRecordKind,
-  UsageRecordRow,
-  UsageRecordResponse,
-  UsageRecordScope,
-  UsageRecordSource,
+import {
+  type UsageRecordKind,
+  type UsageRecordRow,
+  type UsageRecordResponse,
+  type UsageRecordScope,
+  type UsageRecordSource,
+  usageRecordKindSchema,
+  usageRecordSourceSchema,
 } from "@vm0/api-contracts/contracts/zero-usage-record";
+import { z } from "zod";
 
+import {
+  executeRawRows,
+  pgInt8ToSafeIntegerSchema,
+  pgTimestampWithoutTimezoneToDateSchema,
+} from "../../lib/db-raw-rows";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
@@ -49,29 +57,53 @@ interface UsageRecordArgs {
   readonly source?: UsageRecordSource;
 }
 
-interface UsageRecordSqlRow extends Record<string, unknown> {
-  row_key: string;
-  source: string;
-  user_id: string;
-  thread_id: string | null;
-  run_id: string | null;
-  title: string | null;
-  credits: string;
-  tokens: string;
-  last_activity: Date | string;
-}
-
 interface UsageRecordIntermediateRow extends UsageRecordRow {
   readonly rowKey: string;
   readonly userId: string;
 }
 
-interface UsageRecordBreakdownSqlRow extends Record<string, unknown> {
-  row_key: string;
-  kind: string;
-  provider: string;
-  credits: string;
-}
+const usageRecordSqlRowSchema = z
+  .object({
+    row_key: z.string(),
+    source: usageRecordSourceSchema,
+    user_id: z.string(),
+    thread_id: z.string().nullable(),
+    run_id: z.string().nullable(),
+    title: z.string().nullable(),
+    credits: pgInt8ToSafeIntegerSchema,
+    tokens: pgInt8ToSafeIntegerSchema,
+    last_activity: pgTimestampWithoutTimezoneToDateSchema,
+  })
+  .transform((row): UsageRecordIntermediateRow => {
+    return {
+      rowKey: row.row_key,
+      source: row.source,
+      userId: row.user_id,
+      threadId: row.thread_id,
+      runId: row.run_id,
+      title: row.title,
+      credits: row.credits,
+      tokens: row.tokens,
+      breakdown: [],
+      member: null,
+      lastActivityAt: row.last_activity.toISOString(),
+    };
+  });
+
+const usageRecordTotalsSqlRowSchema = z.object({
+  total: pgInt8ToSafeIntegerSchema,
+  total_credits: pgInt8ToSafeIntegerSchema,
+});
+
+const usageRecordBreakdownSqlRowSchema = z.object({
+  row_key: z.string(),
+  kind: usageRecordKindSchema,
+  provider: z.string(),
+  credits: pgInt8ToSafeIntegerSchema,
+});
+type UsageRecordBreakdownSqlRow = z.output<
+  typeof usageRecordBreakdownSqlRowSchema
+>;
 
 function pgLit(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
@@ -217,7 +249,8 @@ async function queryUsageRecordRows(
   offset: number,
 ): Promise<UsageRecordIntermediateRow[]> {
   const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
-  const result = await db.execute<UsageRecordSqlRow>(
+  return await executeRawRows(
+    db,
     sql.raw(`
       ${recordCte}
       SELECT row_key, source, user_id, thread_id, run_id, title, credits, tokens, last_activity
@@ -226,26 +259,8 @@ async function queryUsageRecordRows(
       ORDER BY last_activity DESC
       LIMIT ${pageSize} OFFSET ${offset}
     `),
+    usageRecordSqlRowSchema,
   );
-  return result.rows.map((row) => {
-    const lastActivity =
-      row.last_activity instanceof Date
-        ? row.last_activity.toISOString()
-        : new Date(row.last_activity).toISOString();
-    return {
-      rowKey: row.row_key,
-      source: row.source as UsageRecordSource,
-      userId: row.user_id,
-      threadId: row.thread_id,
-      runId: row.run_id,
-      title: row.title,
-      credits: Number(row.credits),
-      tokens: Number(row.tokens),
-      breakdown: [],
-      member: null,
-      lastActivityAt: lastActivity,
-    };
-  });
 }
 
 async function queryUsageRecordTotals(
@@ -254,16 +269,18 @@ async function queryUsageRecordTotals(
   sourceFilterLit: string | null,
 ): Promise<{ total: number; totalCredits: number }> {
   const where = sourceFilterLit ? `WHERE source = ${sourceFilterLit}` : "";
-  const result = await db.execute<{ total: string; total_credits: string }>(
+  const rows = await executeRawRows(
+    db,
     sql.raw(`
       ${recordCte}
       SELECT COUNT(*)::bigint AS total, COALESCE(SUM(credits), 0)::bigint AS total_credits
       FROM record ${where}
     `),
+    usageRecordTotalsSqlRowSchema,
   );
   return {
-    total: Number(result.rows[0]?.total ?? 0),
-    totalCredits: Number(result.rows[0]?.total_credits ?? 0),
+    total: rows[0]?.total ?? 0,
+    totalCredits: rows[0]?.total_credits ?? 0,
   };
 }
 
@@ -305,7 +322,8 @@ async function queryUsageRecordBreakdown(
   const sourceSql = sourceExpr("zr.trigger_source");
   const kindSql = usageKindExpr("ue.kind");
 
-  const result = await db.execute<UsageRecordBreakdownSqlRow>(
+  const rows = await executeRawRows(
+    db,
     sql.raw(`
       WITH usage_rows AS (
         SELECT
@@ -339,14 +357,15 @@ async function queryUsageRecordBreakdown(
       HAVING SUM(credits) > 0
       ORDER BY row_key, kind, provider
     `),
+    usageRecordBreakdownSqlRowSchema,
   );
 
   const byRow = new Map<
     string,
     Map<UsageRecordKind, UsageRecordBreakdownSqlRow[]>
   >();
-  for (const row of result.rows) {
-    const kind = row.kind as UsageRecordKind;
+  for (const row of rows) {
+    const kind = row.kind;
     const kinds = byRow.get(row.row_key) ?? new Map();
     const providers = kinds.get(kind) ?? [];
     providers.push(row);
@@ -371,7 +390,7 @@ async function queryUsageRecordBreakdown(
       const providers = providerRows.map((row) => {
         return {
           provider: row.provider,
-          credits: Number(row.credits),
+          credits: row.credits,
         };
       });
       breakdown.push({

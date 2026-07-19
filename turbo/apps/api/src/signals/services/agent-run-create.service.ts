@@ -408,11 +408,6 @@ interface LaunchRunIdentity {
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
 
-interface LockedRunPersistenceRow extends Record<string, unknown> {
-  readonly status: string;
-  readonly sandboxId: string | null;
-}
-
 interface DerivedPersistenceResult {
   readonly status: RunStatus;
   readonly sandboxId?: string;
@@ -5433,15 +5428,14 @@ async function lockRunForDerivedPersistence(
   tx: DbTransaction,
   runId: string,
 ): Promise<DerivedPersistenceResult | null> {
-  const rows = await tx.execute<LockedRunPersistenceRow>(sql`
-    SELECT
-      ${agentRuns.status} AS "status",
-      ${agentRuns.sandboxId} AS "sandboxId"
-    FROM ${agentRuns}
-    WHERE ${agentRuns.id} = ${runId}
-    FOR UPDATE
-  `);
-  const row = rows.rows[0];
+  const [row] = await tx
+    .select({
+      status: agentRuns.status,
+      sandboxId: agentRuns.sandboxId,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("update");
   if (!row) {
     return null;
   }

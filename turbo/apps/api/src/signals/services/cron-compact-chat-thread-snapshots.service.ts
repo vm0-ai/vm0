@@ -4,7 +4,9 @@ import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
 import { chatThreadSnapshots } from "@vm0/db/schema/chat-thread-snapshot";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { z } from "zod";
 
+import { executeRawRows } from "../../lib/db-raw-rows";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
@@ -35,11 +37,13 @@ function chatThreadSnapshotBatchSize(): number {
   return parsed;
 }
 
-interface SnapshotBatchRow extends Record<string, unknown> {
-  readonly scopes: number;
-  readonly eventsApplied: number;
-  readonly removedDeletedAgentThreads: number;
-}
+const snapshotBatchRowSchema = z.object({
+  scopes: z.int(),
+  eventsApplied: z.int(),
+  removedDeletedAgentThreads: z.int(),
+});
+
+const prunedEventsRowSchema = z.object({ count: z.int() });
 
 function allScopesCte(staleCutoff: Date): SQL {
   return sql`
@@ -231,18 +235,20 @@ async function compactChatThreadSnapshotBatch(
   const staleCutoff = new Date(
     updatedAt.getTime() - CHAT_THREAD_SNAPSHOT_STALE_MS,
   );
-  const result = await db.execute<SnapshotBatchRow>(
+  const rows = await executeRawRows(
+    db,
     compactChatThreadSnapshotBatchSql({
       updatedAt,
       staleCutoff,
       batchSize: chatThreadSnapshotBatchSize(),
     }),
+    snapshotBatchRowSchema,
   );
 
   return {
-    scopes: result.rows[0]?.scopes ?? 0,
-    eventsApplied: result.rows[0]?.eventsApplied ?? 0,
-    removedDeletedAgentThreads: result.rows[0]?.removedDeletedAgentThreads ?? 0,
+    scopes: rows[0]?.scopes ?? 0,
+    eventsApplied: rows[0]?.eventsApplied ?? 0,
+    removedDeletedAgentThreads: rows[0]?.removedDeletedAgentThreads ?? 0,
   };
 }
 
@@ -259,29 +265,33 @@ async function compactChatThreadSnapshotsForAllScopes(
 
   signal?.throwIfAborted();
   const cutoff = new Date(nowDate().getTime() - CHAT_THREAD_EVENT_RETENTION_MS);
-  const pruned = await db.execute<{ readonly count: number }>(sql`
-    WITH pruned AS (
-      DELETE FROM ${chatThreadEvents} event
-      USING ${chatThreadSnapshots} snapshot
-      INNER JOIN ${chatThreadEvents} marker
-        ON marker.id = snapshot.latest_event_id
-       AND marker.user_id = snapshot.user_id
-       AND marker.org_id = snapshot.org_id
-      WHERE event.user_id = snapshot.user_id
-        AND event.org_id = snapshot.org_id
-        AND event.created_at < ${cutoff}
-        AND (event.created_at, event.id) < (marker.created_at, marker.id)
-      RETURNING 1
-    )
-    SELECT COUNT(*)::int AS "count"
-    FROM pruned
-  `);
+  const pruned = await executeRawRows(
+    db,
+    sql`
+      WITH pruned AS (
+        DELETE FROM ${chatThreadEvents} event
+        USING ${chatThreadSnapshots} snapshot
+        INNER JOIN ${chatThreadEvents} marker
+          ON marker.id = snapshot.latest_event_id
+         AND marker.user_id = snapshot.user_id
+         AND marker.org_id = snapshot.org_id
+        WHERE event.user_id = snapshot.user_id
+          AND event.org_id = snapshot.org_id
+          AND event.created_at < ${cutoff}
+          AND (event.created_at, event.id) < (marker.created_at, marker.id)
+        RETURNING 1
+      )
+      SELECT COUNT(*)::int AS "count"
+      FROM pruned
+    `,
+    prunedEventsRowSchema,
+  );
 
   return {
     scopes: compacted.scopes,
     eventsApplied: compacted.eventsApplied,
     removedDeletedAgentThreads: compacted.removedDeletedAgentThreads,
-    eventsPruned: pruned.rows[0]?.count ?? 0,
+    eventsPruned: pruned[0]?.count ?? 0,
   };
 }
 
