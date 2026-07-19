@@ -596,7 +596,7 @@ async function insertStorageVersionAndUpdateHead(args: {
   readonly fileCount: number;
 }): Promise<void> {
   await args.db.transaction(async (tx) => {
-    await tx
+    const [insertedVersion] = await tx
       .insert(storageVersions)
       .values({
         id: args.input.versionId,
@@ -608,28 +608,23 @@ async function insertStorageVersionAndUpdateHead(args: {
         message: args.input.message ?? null,
         createdBy: args.input.runId ? "agent" : "user",
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: storageVersions.id });
 
-    await tx
-      .update(storageVersions)
-      .set({ archiveSize: args.archiveSize })
-      .where(
-        and(
-          eq(storageVersions.storageId, args.storageId),
-          eq(storageVersions.id, args.input.versionId),
-        ),
-      );
-
-    const [version] = await tx
-      .select({ id: storageVersions.id })
-      .from(storageVersions)
-      .where(
-        and(
-          eq(storageVersions.storageId, args.storageId),
-          eq(storageVersions.id, args.input.versionId),
-        ),
-      )
-      .limit(1);
+    let version = insertedVersion;
+    if (!version) {
+      const [updatedVersion] = await tx
+        .update(storageVersions)
+        .set({ archiveSize: args.archiveSize })
+        .where(
+          and(
+            eq(storageVersions.storageId, args.storageId),
+            eq(storageVersions.id, args.input.versionId),
+          ),
+        )
+        .returning({ id: storageVersions.id });
+      version = updatedVersion;
+    }
 
     if (!version) {
       throw new Error(`Version ${args.input.versionId} not found after insert`);
