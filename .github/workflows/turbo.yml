@@ -1188,6 +1188,19 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "prefix=okou-app/$sha" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve Cloudflare Pages preview branch
+        id: pages-branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          branch="$(bash .github/scripts/resolve-okou-pages-branch.sh \
+            "$EVENT_NAME" \
+            "$PULL_REQUEST_NUMBER" \
+            "$MERGE_GROUP_HEAD_REF")"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
       - name: Check for existing artifact
         id: existing
         env:
@@ -1316,7 +1329,7 @@ jobs:
         id: pages-preview
         env:
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
-          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
         run: |
           set -euo pipefail
 
@@ -1327,7 +1340,6 @@ jobs:
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
           canonical_dist="$(mktemp -d)"
           pages_dist="$(mktemp -d)"
-          branch="preview-${ARTIFACT_SHA:0:12}"
 
           aws s3 cp "$artifact_uri/" "$canonical_dist/" \
             --endpoint-url "$r2_endpoint" \
@@ -1337,16 +1349,15 @@ jobs:
             "$pages_dist"
 
           {
-            echo "branch=$branch"
             echo "dist=$pages_dist"
-            echo "url=https://${branch}.${CF_PAGES_PROJECT_NAME}.pages.dev"
+            echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
           } >> "$GITHUB_OUTPUT"
 
       - name: Deploy Cloudflare Pages preview
         env:
           ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: ${{ steps.pages-preview.outputs.branch }}
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
         working-directory: turbo
         run: |
