@@ -16,6 +16,7 @@ export const printful = {
           "3. Copy the token and use it as a Bearer token\n\n" +
           "For account-level Private Tokens, Printful requires an `X-PF-Store-Id` header on store-scoped requests.",
         storage: {
+          version: 1,
           secrets: ["PRINTFUL_TOKEN"],
           variables: [],
         },

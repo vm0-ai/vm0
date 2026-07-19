@@ -12,6 +12,7 @@ export const armature = {
         helpText:
           "1. Sign in to your Armature account\n2. Follow the [Armature API docs](https://armature.tech/docs) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["ARMATURE_API_KEY"],
           variables: [],
         },

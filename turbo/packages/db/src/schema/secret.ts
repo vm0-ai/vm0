@@ -1,4 +1,5 @@
 import {
+  check,
   pgTable,
   uuid,
   text,
@@ -7,6 +8,8 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { connectors } from "./connector";
 
 /**
  * Secrets table
@@ -21,6 +24,17 @@ export const secrets = pgTable(
     encryptedValue: text("encrypted_value").notNull(),
     description: text("description"),
     type: varchar("type", { length: 50 }).notNull().default("user"),
+    connectorId: uuid("connector_id").references(
+      () => {
+        return connectors.id;
+      },
+      {
+        // Pre-#22122 API instances delete the connector row first. Current
+        // code deletes owned credentials explicitly; #22126 removes this
+        // rollout cascade after those instances have drained.
+        onDelete: "cascade",
+      },
+    ),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -30,11 +44,18 @@ export const secrets = pgTable(
     return [
       index("idx_secrets_type").on(table.type),
       index("idx_secrets_org").on(table.orgId),
+      index("idx_secrets_connector")
+        .on(table.connectorId)
+        .where(sql`${table.connectorId} IS NOT NULL`),
       uniqueIndex("idx_secrets_org_user_name_type").on(
         table.orgId,
         table.userId,
         table.name,
         table.type,
+      ),
+      check(
+        "chk_secrets_connector_owner_type",
+        sql`${table.connectorId} IS NULL OR ${table.type} = 'connector'`,
       ),
     ];
   },

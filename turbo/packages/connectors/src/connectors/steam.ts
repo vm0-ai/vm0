@@ -11,6 +11,7 @@ export const steam = {
         label: "Steam sign-in",
         helpText: "Sign in with Steam to connect your player account.",
         storage: {
+          version: 1,
           secrets: [],
           variables: ["STEAM_ID"],
         },

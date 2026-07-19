@@ -17,6 +17,7 @@ export const linear = {
           clientSecretEnv: "LINEAR_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["LINEAR_ACCESS_TOKEN", "LINEAR_REFRESH_TOKEN"],
           variables: [],
         },

@@ -19,6 +19,7 @@ export const checkr = {
         helpText:
           "1. Log in to the [Checkr Dashboard](https://dashboard.checkr.com)\n2. Go to **Account Settings > Developer Settings**\n3. Copy a live or test API key for the account you want to connect\n4. Use only keys and actions that comply with your background check authorization and compliance process",
         storage: {
+          version: 1,
           secrets: ["CHECKR_TOKEN"],
           variables: [],
         },

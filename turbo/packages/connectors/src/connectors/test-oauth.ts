@@ -77,6 +77,7 @@ export const testOauth = {
         helpText: "Test-only OAuth provider. Only reachable in dev/preview.",
         client: TEST_OAUTH_CLIENT,
         storage: {
+          version: 1,
           secrets: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
           variables: ["TEST_OAUTH_API_TENANT_ID"],
         },
@@ -105,6 +106,7 @@ export const testOauth = {
           "Secondary test-only OAuth method used to exercise method-aware provider registration.",
         client: TEST_OAUTH_CLIENT,
         storage: {
+          version: 1,
           secrets: [
             "TEST_OAUTH_API_ACCESS_TOKEN",
             "TEST_OAUTH_API_REFRESH_TOKEN",
@@ -139,6 +141,7 @@ export const testOauth = {
         helpText:
           "Test-only manual method used to exercise refreshable access without a platform auth client.",
         storage: {
+          version: 1,
           secrets: ["TEST_OAUTH_TOKEN", "TEST_OAUTH_API_TOKEN_ACCESS_TOKEN"],
           variables: [
             "TEST_OAUTH_API_TOKEN_INPUT_VAR",

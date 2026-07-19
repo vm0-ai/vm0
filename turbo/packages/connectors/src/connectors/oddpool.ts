@@ -12,6 +12,7 @@ export const oddpool = {
         helpText:
           "1. Sign in to your Oddpool account\n2. Follow the [Oddpool API docs](https://docs.oddpool.com/llms.txt) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["ODDPOOL_API_KEY"],
           variables: [],
         },

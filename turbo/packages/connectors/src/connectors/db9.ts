@@ -12,6 +12,7 @@ export const db9 = {
         helpText:
           "1. Log in to [db9](https://db9.ai)\n2. Go to **Settings > API Keys**\n3. Create a new API key\n4. Copy the 128-character hex token",
         storage: {
+          version: 1,
           secrets: ["DB9_API_KEY"],
           variables: [],
         },

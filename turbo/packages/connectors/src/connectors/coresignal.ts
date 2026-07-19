@@ -12,6 +12,7 @@ export const coresignal = {
         helpText:
           "1. Log in to the [Coresignal self-service dashboard](https://dashboard.coresignal.com)\n2. Open **API Keys** from your account settings or homepage\n3. Copy an API key\n4. Use it in requests with the `apikey` header",
         storage: {
+          version: 1,
           secrets: ["CORESIGNAL_TOKEN"],
           variables: [],
         },

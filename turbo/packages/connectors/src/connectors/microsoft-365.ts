@@ -25,6 +25,7 @@ export const microsoft365 = {
           clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: [
             "MICROSOFT_365_ACCESS_TOKEN",
             "MICROSOFT_365_REFRESH_TOKEN",

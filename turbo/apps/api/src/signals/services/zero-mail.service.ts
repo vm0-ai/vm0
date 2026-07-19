@@ -268,6 +268,7 @@ async function loadMailConnections(args: {
       needsReconnect: connectors.needsReconnect,
       oauthScopes: connectors.oauthScopes,
       stateRevision: sql<string>`${connectors.updatedAt}::text`,
+      storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(userConnectors)
@@ -315,6 +316,7 @@ async function loadMailConnections(args: {
         needsReconnect: row.needsReconnect,
         oauthScopes,
         stateRevision: row.stateRevision,
+        storageVersion: row.storageVersion,
         scopesReady: connectorAuthMethodHasRequiredScopes(
           runtimeMethod.method,
           oauthScopes,

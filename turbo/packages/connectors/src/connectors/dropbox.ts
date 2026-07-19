@@ -18,6 +18,7 @@ export const dropbox = {
           clientSecretEnv: "DROPBOX_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["DROPBOX_ACCESS_TOKEN", "DROPBOX_REFRESH_TOKEN"],
           variables: [],
         },
@@ -54,6 +55,7 @@ export const dropbox = {
         helpText:
           "1. Go to the [Dropbox App Console](https://www.dropbox.com/developers/apps)\n2. Select your app (or create a new one)\n3. Click the button to generate an access token for your own account\n4. Copy the generated OAuth 2 access token",
         storage: {
+          version: 1,
           secrets: ["DROPBOX_TOKEN"],
           variables: [],
         },

@@ -12,6 +12,7 @@ export const nyne = {
         helpText:
           "1. Sign in at [nyne.ai](https://nyne.ai)\n2. Open your dashboard → **API Keys**\n3. Copy your **API Key** and **API Secret**\n4. Nyne authenticates each request with both `X-API-Key` and `X-API-Secret` headers on `https://api.nyne.ai`",
         storage: {
+          version: 1,
           secrets: ["NYNE_API_KEY", "NYNE_API_SECRET"],
           variables: [],
         },

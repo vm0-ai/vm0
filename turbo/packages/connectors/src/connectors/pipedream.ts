@@ -12,6 +12,7 @@ export const pipedream = {
         helpText:
           "1. Log in to [Pipedream](https://pipedream.com)\n2. Open **My Account → API Key** in your user settings\n3. Copy your user API key\n4. Pipedream sends this key as `Authorization: Bearer <api key>`",
         storage: {
+          version: 1,
           secrets: ["PIPEDREAM_TOKEN"],
           variables: [],
         },

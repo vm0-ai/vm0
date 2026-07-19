@@ -17,6 +17,7 @@ export const intervalsIcu = {
           clientSecretEnv: "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["INTERVALS_ICU_ACCESS_TOKEN"],
           variables: [],
         },

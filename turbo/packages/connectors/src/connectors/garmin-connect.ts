@@ -19,6 +19,7 @@ export const garminConnect = {
           clientSecretEnv: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: [
             "GARMIN_CONNECT_ACCESS_TOKEN",
             "GARMIN_CONNECT_REFRESH_TOKEN",

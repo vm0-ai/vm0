@@ -17,6 +17,7 @@ export const x = {
           clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["X_ACCESS_TOKEN", "X_REFRESH_TOKEN"],
           variables: [],
         },

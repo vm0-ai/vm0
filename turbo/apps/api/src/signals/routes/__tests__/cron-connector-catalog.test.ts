@@ -39,6 +39,10 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
+import {
+  readConnectorCredentialStorageState,
+  setConnectorCredentialStorageState,
+} from "./helpers/connector-credential-storage-state";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   awsVerificationCode,
@@ -220,7 +224,7 @@ function buildPrivateConnector(connectorRef: string): JsonRecord {
     authMethods: [
       {
         id: "api-token",
-        storage: { secrets: [PRIVATE_VALUE], variables: [] },
+        storage: { version: 1, secrets: [PRIVATE_VALUE], variables: [] },
         grant: {
           kind: "manual",
           fields: [
@@ -284,6 +288,7 @@ function manualPrivateAuthMethod(args: {
   return {
     id: args.id,
     storage: {
+      version: 1,
       secrets:
         args.access === "refresh-token"
           ? [accessTokenName, credentialName]
@@ -341,7 +346,7 @@ function devicePrivateAuthMethod(args?: {
       clientType: "public",
       clientId: args?.clientId ?? "external-device-client",
     },
-    storage: { secrets: [accessTokenName], variables: [] },
+    storage: { version: 1, secrets: [accessTokenName], variables: [] },
     grant: {
       kind: "device-auth",
       scopes: [...(args?.scopes ?? [])],
@@ -367,7 +372,7 @@ function steamPrivateAuthMethod(args?: {
   const steamIdName = args?.steamIdName ?? "STEAM_ID";
   return {
     id: "openid",
-    storage: { secrets: [], variables: [steamIdName] },
+    storage: { version: 1, secrets: [], variables: [steamIdName] },
     grant: {
       kind: "openid-auth",
       callbackOrigin: args?.callbackOrigin ?? "api",
@@ -401,6 +406,7 @@ function awsPrivateAuthMethod(): JsonRecord {
       clientId: "arn:aws:signin:::devtools/cross-device",
     },
     storage: {
+      version: 1,
       secrets: [
         refreshTokenName,
         dpopKeyName,
@@ -465,6 +471,7 @@ function deelPrivateAuthMethod(): JsonRecord {
       clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
     },
     storage: {
+      version: 1,
       secrets: [accessTokenName, refreshTokenName],
       variables: [],
     },
@@ -507,6 +514,7 @@ function gmailPrivateAuthMethod(): JsonRecord {
       clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
     },
     storage: {
+      version: 1,
       secrets: [accessTokenName, refreshTokenName],
       variables: [],
     },
@@ -549,6 +557,7 @@ function cloudflarePrivateAuthMethod(): JsonRecord {
       clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
     },
     storage: {
+      version: 1,
       secrets: [accessTokenName, refreshTokenName],
       variables: [],
     },
@@ -592,7 +601,7 @@ function unsupportedWebAuthCodePrivateAuthMethod(): JsonRecord {
       clientIdEnv: "CLOUDFLARE_OAUTH_CLIENT_ID",
       clientSecretEnv: "CLOUDFLARE_OAUTH_CLIENT_SECRET",
     },
-    storage: { secrets: [accessTokenName], variables: [] },
+    storage: { version: 1, secrets: [accessTokenName], variables: [] },
     grant: {
       kind: "auth-code",
       scopes: [],
@@ -609,6 +618,7 @@ function unsupportedWebAuthCodePrivateAuthMethod(): JsonRecord {
 
 function slackPrivateAuthMethod(
   accessTokenName = "CATALOG_SLACK_ACCESS_TOKEN",
+  storageVersion = 1,
 ): JsonRecord {
   return {
     id: "oauth",
@@ -618,7 +628,11 @@ function slackPrivateAuthMethod(
       clientIdEnv: "SLACK_OAUTH_CLIENT_ID",
       clientSecretEnv: "SLACK_OAUTH_CLIENT_SECRET",
     },
-    storage: { secrets: [accessTokenName], variables: [] },
+    storage: {
+      version: storageVersion,
+      secrets: [accessTokenName],
+      variables: [],
+    },
     grant: {
       kind: "auth-code",
       scopes: ["channels:read", "chat:write"],
@@ -649,6 +663,7 @@ function datadogPrivateAuthMethod(scopes: readonly string[]): JsonRecord {
       clientSecretEnv: "DATADOG_OAUTH_CLIENT_SECRET",
     },
     storage: {
+      version: 1,
       secrets: [accessTokenName, refreshTokenName],
       variables: [domainName],
     },
@@ -2185,6 +2200,19 @@ describe("connector catalog valid lifecycle", () => {
       steamId: STEAM_TEST_ID,
       profile: { personaName: "catalog-player" },
     });
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorRef: "steam",
+      variableNames: ["CATALOG_STEAM_ID"],
+    });
+    expect(storageState.connector?.storage_version).toBe(1);
+    expect(storageState.variables).toStrictEqual([
+      {
+        name: "CATALOG_STEAM_ID",
+        connector_id: storageState.connector?.id,
+      },
+    ]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
 
@@ -2355,7 +2383,7 @@ describe("connector catalog valid lifecycle", () => {
       },
       mutatePrivate: (artifact) => {
         setArtifactAuthMethods(artifact, [
-          slackPrivateAuthMethod("FIRST_RELEASE_SLACK_TOKEN"),
+          slackPrivateAuthMethod("FIRST_RELEASE_SLACK_TOKEN", 7),
         ]);
       },
     });
@@ -2412,7 +2440,7 @@ describe("connector catalog valid lifecycle", () => {
       },
       mutatePrivate: (artifact) => {
         setArtifactAuthMethods(artifact, [
-          slackPrivateAuthMethod("SECOND_RELEASE_SLACK_TOKEN"),
+          slackPrivateAuthMethod("SECOND_RELEASE_SLACK_TOKEN", 8),
         ]);
       },
     });
@@ -2433,6 +2461,19 @@ describe("connector catalog valid lifecycle", () => {
         return secret.name;
       }),
     ).toContain("FIRST_RELEASE_SLACK_TOKEN");
+    const firstStorageState = await readConnectorCredentialStorageState(
+      context,
+      {
+        orgId: actor.orgId ?? "",
+        userId: actor.userId,
+        connectorRef: "slack",
+        secretNames: ["FIRST_RELEASE_SLACK_TOKEN"],
+      },
+    );
+    expect(firstStorageState.connector?.storage_version).toBe(7);
+    expect(firstStorageState.secrets?.[0]?.connector_id).toBe(
+      firstStorageState.connector?.id,
+    );
 
     const secondStart = await connectorsApi.startOauth(actor, "slack", "oauth");
     const secondState = new URL(secondStart.authorizationUrl).searchParams.get(
@@ -2454,6 +2495,15 @@ describe("connector catalog valid lifecycle", () => {
         return secret.name;
       }),
     ).toContain("SECOND_RELEASE_SLACK_TOKEN");
+    const secondStorageState = await readConnectorCredentialStorageState(
+      context,
+      {
+        orgId: actor.orgId ?? "",
+        userId: actor.userId,
+        connectorRef: "slack",
+      },
+    );
+    expect(secondStorageState.connector?.storage_version).toBe(8);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(
       callsBeforeProviderResume,
     );
@@ -2530,7 +2580,9 @@ describe("connector catalog valid lifecycle", () => {
         ]);
       },
       mutatePrivate: (artifact) => {
-        setArtifactAuthMethods(artifact, [gmailPrivateAuthMethod()]);
+        const method = gmailPrivateAuthMethod();
+        recordValue(method.storage, "storage").version = 7;
+        setArtifactAuthMethods(artifact, [method]);
       },
     });
     serveObjects(catalogObjects([connectedRelease], connectedRelease));
@@ -2596,6 +2648,12 @@ describe("connector catalog valid lifecycle", () => {
     await connectorsApi.completeOauthCallback("gmail", {
       code: "external-readiness",
       state: oauthState,
+    });
+    await setConnectorCredentialStorageState(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorRef: "gmail",
+      storageVersion: null,
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };
@@ -2670,6 +2728,28 @@ describe("connector catalog valid lifecycle", () => {
         return secret.name === "CATALOG_GMAIL_ACCESS_TOKEN";
       })?.description,
     ).toBe(initialAccessTokenDescription);
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorRef: "gmail",
+      secretNames: [
+        "CATALOG_GMAIL_ACCESS_TOKEN",
+        "CATALOG_GMAIL_REFRESH_TOKEN",
+      ],
+    });
+    expect(storageState.connector?.storage_version).toBe(7);
+    expect(storageState.secrets).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "CATALOG_GMAIL_ACCESS_TOKEN",
+          connector_id: storageState.connector?.id,
+        }),
+        expect.objectContaining({
+          name: "CATALOG_GMAIL_REFRESH_TOKEN",
+          connector_id: storageState.connector?.id,
+        }),
+      ]),
+    );
     const unavailableRelease = buildRelease({
       version: "2026-07-15.external-readiness-unavailable",
       connectorRef: "gmail",
@@ -3757,6 +3837,34 @@ describe("connector catalog rejection and latest-valid retention", () => {
     );
   });
 
+  it("accepts one connector sharing storage names across auth methods", async () => {
+    configureSource();
+    const release = buildRelease({
+      version: "same-connector-storage-sharing",
+      mutatePublic: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        const methods = arrayValue(connector.authMethods, "authMethods");
+        const second = structuredClone(firstRecord(methods, "authMethods"));
+        second.id = "backup-token";
+        second.label = "Backup Token";
+        methods.push(second);
+      },
+      mutatePrivate: (artifact) => {
+        const connector = firstRecord(artifact.connectors, "connectors");
+        const methods = arrayValue(connector.authMethods, "authMethods");
+        const second = structuredClone(firstRecord(methods, "authMethods"));
+        second.id = "backup-token";
+        methods.push(second);
+      },
+    });
+    serveObjects(catalogObjects([release], release));
+
+    expect((await syncCatalog()).body).toMatchObject({
+      outcome: "accepted",
+      active: { catalogVersion: release.version },
+    });
+  });
+
   it.each([
     {
       name: "invalid JSON",
@@ -3853,6 +3961,49 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
+      name: "missing storage version",
+      expected: "invalid-artifact",
+      release: () => {
+        return buildRelease({
+          version: "missing-storage-version",
+          mutatePrivate: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            const method = firstRecord(connector.authMethods, "authMethods");
+            delete recordValue(method.storage, "storage").version;
+          },
+        });
+      },
+    },
+    {
+      name: "non-positive storage version",
+      expected: "invalid-artifact",
+      release: () => {
+        return buildRelease({
+          version: "non-positive-storage-version",
+          mutatePrivate: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            const method = firstRecord(connector.authMethods, "authMethods");
+            recordValue(method.storage, "storage").version = 0;
+          },
+        });
+      },
+    },
+    {
+      name: "unsafe storage version",
+      expected: "invalid-artifact",
+      release: () => {
+        return buildRelease({
+          version: "unsafe-storage-version",
+          mutatePrivate: (artifact) => {
+            const connector = firstRecord(artifact.connectors, "connectors");
+            const method = firstRecord(connector.authMethods, "authMethods");
+            recordValue(method.storage, "storage").version =
+              Number.MAX_SAFE_INTEGER + 1;
+          },
+        });
+      },
+    },
+    {
       name: "legacy auth-method visibility field",
       expected: "invalid-artifact",
       release: () => {
@@ -3926,6 +4077,81 @@ describe("connector catalog rejection and latest-valid retention", () => {
           mutatePublic: (artifact) => {
             const connector = firstRecord(artifact.connectors, "connectors");
             firstRecord(connector.authMethods, "authMethods").id = "oauth";
+          },
+        });
+      },
+    },
+    {
+      name: "cross-connector storage secret collision",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "cross-connector-storage-secret",
+          mutatePublic: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = "zz-external-other";
+            second.label = "External Other";
+            connectors.push(second);
+          },
+          mutatePrivate: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = "zz-external-other";
+            connectors.push(second);
+          },
+        });
+      },
+    },
+    {
+      name: "cross-connector storage variable collision",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "cross-connector-storage-variable",
+          mutatePublic: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const second = structuredClone(
+              firstRecord(connectors, "connectors"),
+            );
+            second.connectorRef = "zz-external-other";
+            second.label = "External Other";
+            connectors.push(second);
+          },
+          mutatePrivate: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            const firstConnector = firstRecord(connectors, "connectors");
+            const firstMethod = firstRecord(
+              firstConnector.authMethods,
+              "authMethods",
+            );
+            recordValue(firstMethod.storage, "storage").variables = [
+              "SHARED_VARIABLE",
+            ];
+            recordValue(
+              recordValue(firstMethod.access, "access").envBindings,
+              "envBindings",
+            ).SHARED_VARIABLE = "$vars.SHARED_VARIABLE";
+
+            const second = structuredClone(firstConnector);
+            second.connectorRef = "zz-external-other";
+            const secondMethod = firstRecord(second.authMethods, "authMethods");
+            recordValue(secondMethod.storage, "storage").secrets = [
+              "OTHER_TOKEN",
+            ];
+            firstRecord(
+              recordValue(secondMethod.grant, "grant").fields,
+              "fields",
+            ).privateName = "OTHER_TOKEN";
+            recordValue(
+              recordValue(secondMethod.access, "access").envBindings,
+              "envBindings",
+            ).SERVICE_TOKEN = "$secrets.OTHER_TOKEN";
+            connectors.push(second);
           },
         });
       },

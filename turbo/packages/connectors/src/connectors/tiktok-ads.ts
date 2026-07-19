@@ -21,6 +21,7 @@ export const tiktokAds = {
           clientSecretEnv: "TIKTOK_ADS_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["TIKTOK_ADS_ACCESS_TOKEN", "TIKTOK_ADS_REFRESH_TOKEN"],
           variables: [],
         },

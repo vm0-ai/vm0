@@ -12,6 +12,7 @@ export const trellis = {
         helpText:
           "1. Sign in to your Trellis account\n2. Follow the [Trellis API docs](https://docs.trellistech.com) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["TRELLIS_API_KEY"],
           variables: [],
         },

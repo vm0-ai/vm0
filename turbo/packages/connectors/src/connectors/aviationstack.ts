@@ -12,6 +12,7 @@ export const aviationstack = {
         helpText:
           "1. Sign in to the [AviationStack dashboard](https://aviationstack.com/dashboard)\n2. Copy the **API Access Key** shown on the main dashboard\n3. Pass it as the `access_key` query parameter on every request",
         storage: {
+          version: 1,
           secrets: ["AVIATIONSTACK_TOKEN"],
           variables: [],
         },

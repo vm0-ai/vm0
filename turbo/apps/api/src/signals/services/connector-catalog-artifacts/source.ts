@@ -95,6 +95,7 @@ const connectorAuthClientSourceSchema = z.union([
 
 const connectorStorageSourceSchema = z
   .object({
+    version: z.number().int().positive(),
     secrets: z.array(privateNameSchema),
     variables: z.array(privateNameSchema),
   })

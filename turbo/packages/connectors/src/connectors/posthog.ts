@@ -19,6 +19,7 @@ export const posthog = {
           clientSecretEnv: "POSTHOG_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["POSTHOG_ACCESS_TOKEN", "POSTHOG_REFRESH_TOKEN"],
           variables: [],
         },
@@ -76,6 +77,7 @@ export const posthog = {
         helpText:
           "1. Log in to [PostHog](https://app.posthog.com)\n2. Navigate to **Personal API keys** in your account settings\n3. Click **+ Create a personal API Key**\n4. Enter a descriptive label for the key\n5. Choose the scopes (permissions) required for your use case\n6. Copy the key immediately (it will not be shown again after refreshing the page)",
         storage: {
+          version: 1,
           secrets: ["POSTHOG_TOKEN"],
           variables: [],
         },

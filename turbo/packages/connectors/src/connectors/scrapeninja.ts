@@ -10,6 +10,7 @@ export const scrapeninja = {
       "api-token": {
         label: "RapidAPI Key",
         storage: {
+          version: 1,
           secrets: ["SCRAPENINJA_TOKEN"],
           variables: [],
         },

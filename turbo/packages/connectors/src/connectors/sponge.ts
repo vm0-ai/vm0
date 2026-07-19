@@ -13,6 +13,7 @@ export const sponge = {
         helpText:
           "1. Sign in to the [Sponge Wallet dashboard](https://wallet.paysponge.com)\n2. Open **Settings → Master API Keys**\n3. Click **Create master key**, name it, and copy the value (prefix `sponge_master_...`)\n\nThe master key is the platform credential. Sponge agent runtime keys are minted on demand through it — store the master key once and never embed it in agent traffic.",
         storage: {
+          version: 1,
           secrets: ["SPONGE_MASTER_KEY"],
           variables: [],
         },

@@ -20,6 +20,7 @@ export const quickbooks = {
           clientSecretEnv: "QUICKBOOKS_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["QUICKBOOKS_ACCESS_TOKEN", "QUICKBOOKS_REFRESH_TOKEN"],
           variables: ["QUICKBOOKS_REALM_ID"],
         },

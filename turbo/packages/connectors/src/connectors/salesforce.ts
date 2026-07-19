@@ -10,6 +10,7 @@ export const salesforce = {
       "api-token": {
         label: "API Token",
         storage: {
+          version: 1,
           secrets: ["SALESFORCE_TOKEN"],
           variables: ["SALESFORCE_INSTANCE"],
         },

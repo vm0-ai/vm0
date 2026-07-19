@@ -19,6 +19,7 @@ export const calCom = {
           clientSecretEnv: "CALCOM_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["CALCOM_ACCESS_TOKEN", "CALCOM_REFRESH_TOKEN"],
           variables: [],
         },
@@ -59,6 +60,7 @@ export const calCom = {
         helpText:
           "1. Log in to [Cal.com](https://app.cal.com)\n2. Go to **Settings** → **Developer** → **API Keys**\n3. Click **Create API Key**\n4. Copy the generated key",
         storage: {
+          version: 1,
           secrets: ["CALCOM_TOKEN"],
           variables: [],
         },

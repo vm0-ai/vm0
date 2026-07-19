@@ -13,6 +13,7 @@ export const segment = {
         helpText:
           "1. Log in to [Segment](https://app.segment.com)\n2. Open the workspace you want to manage\n3. Create a Public API token with the permissions required for your workflow\n4. Copy the token",
         storage: {
+          version: 1,
           secrets: ["SEGMENT_TOKEN"],
           variables: [],
         },

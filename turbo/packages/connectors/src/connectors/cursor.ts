@@ -12,6 +12,7 @@ export const cursor = {
         helpText:
           "1. Sign in at [cursor.com](https://cursor.com)\n2. Open **Dashboard → API Keys** ([cursor.com/dashboard/api](https://cursor.com/dashboard/api))\n3. Click **Create API Key**\n4. Copy the key (it begins with `key_`). Paste it here.",
         storage: {
+          version: 1,
           secrets: ["CURSOR_TOKEN"],
           variables: [],
         },

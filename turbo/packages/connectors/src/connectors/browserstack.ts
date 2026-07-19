@@ -13,6 +13,7 @@ export const browserstack = {
         helpText:
           "1. Sign in to [BrowserStack](https://www.browserstack.com) and open **Account Settings**\n2. Copy your **Username** and **Access Key** from the **Authentication & Security** section\n3. Paste both values below — these credentials work across Live, Automate, App Live, and App Automate",
         storage: {
+          version: 1,
           secrets: ["BROWSERSTACK_USERNAME", "BROWSERSTACK_ACCESS_KEY"],
           variables: [],
         },

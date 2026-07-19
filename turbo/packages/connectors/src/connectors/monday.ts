@@ -17,6 +17,7 @@ export const monday = {
           clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["MONDAY_ACCESS_TOKEN", "MONDAY_REFRESH_TOKEN"],
           variables: [],
         },

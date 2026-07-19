@@ -12,6 +12,7 @@ export const onyx = {
         helpText:
           "1. Log in to [Onyx Cloud](https://cloud.onyx.app)\n2. Go to **Settings → Accounts & Access**\n3. Click **Create New Token**\n4. Give it a name and choose an expiration\n5. Copy the token immediately — it is shown only once",
         storage: {
+          version: 1,
           secrets: ["ONYX_TOKEN"],
           variables: [],
         },

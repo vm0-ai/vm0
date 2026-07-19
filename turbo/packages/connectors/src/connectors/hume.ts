@@ -13,6 +13,7 @@ export const hume = {
         helpText:
           "1. Log in to the [Hume Portal](https://app.hume.ai)\n2. Navigate to the **API Keys** page\n3. Copy your API key",
         storage: {
+          version: 1,
           secrets: ["HUME_TOKEN"],
           variables: [],
         },

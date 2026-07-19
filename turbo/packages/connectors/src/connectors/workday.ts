@@ -15,6 +15,7 @@ export const workday = {
         helpText:
           "Register an API Client for Integrations in Workday, generate a refresh token for the integration user, then provide the tenant connection details.",
         storage: {
+          version: 1,
           secrets: [
             "WORKDAY_CLIENT_SECRET",
             "WORKDAY_REFRESH_TOKEN",

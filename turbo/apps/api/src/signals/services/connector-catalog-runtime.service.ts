@@ -426,6 +426,7 @@ function runtimeMethod(args: {
               }),
         };
   const storage = {
+    version: args.privateMethod.storage.version,
     secrets: [...args.privateMethod.storage.secrets],
     variables: [...args.privateMethod.storage.variables],
   };

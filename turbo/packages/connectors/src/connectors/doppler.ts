@@ -12,6 +12,7 @@ export const doppler = {
         helpText:
           "1. Log in to [Doppler](https://dashboard.doppler.com)\n2. Go to your project, then select a config (environment)\n3. Click the **Access** tab\n4. Click **+ Generate Service Token**\n5. Set permissions to **Read** and copy the token",
         storage: {
+          version: 1,
           secrets: ["DOPPLER_TOKEN"],
           variables: [],
         },

@@ -11,6 +11,7 @@ export const netter = {
         helpText:
           "1. Sign in to your Netter account\n2. Follow the [Netter API docs](https://netter.ai/docs) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["NETTER_API_KEY"],
           variables: [],
         },

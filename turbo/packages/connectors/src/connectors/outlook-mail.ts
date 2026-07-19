@@ -16,6 +16,7 @@ export const outlookMail = {
           clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["OUTLOOK_MAIL_ACCESS_TOKEN", "OUTLOOK_MAIL_REFRESH_TOKEN"],
           variables: [],
         },

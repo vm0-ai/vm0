@@ -19,6 +19,7 @@ export const canva = {
           clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["CANVA_ACCESS_TOKEN", "CANVA_REFRESH_TOKEN"],
           variables: [],
         },

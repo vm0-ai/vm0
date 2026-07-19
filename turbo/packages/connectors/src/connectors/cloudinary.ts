@@ -12,6 +12,7 @@ export const cloudinary = {
         helpText:
           "1. Log in to the [Cloudinary Console](https://console.cloudinary.com/settings/api-keys)\n2. Go to **Settings** → **API Keys**\n3. Copy your **Cloud Name**, **API Key**, and **API Secret**",
         storage: {
+          version: 1,
           secrets: ["CLOUDINARY_TOKEN", "CLOUDINARY_API_SECRET"],
           variables: ["CLOUDINARY_CLOUD_NAME"],
         },

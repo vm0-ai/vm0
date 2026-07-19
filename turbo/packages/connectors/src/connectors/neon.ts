@@ -19,6 +19,7 @@ export const neon = {
           clientSecretEnv: "NEON_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["NEON_ACCESS_TOKEN", "NEON_REFRESH_TOKEN"],
           variables: [],
         },
@@ -58,6 +59,7 @@ export const neon = {
         helpText:
           "1. Log in to [Neon Console](https://console.neon.tech)\n2. Navigate to **Account settings > API keys**\n3. Click the button to create a new API key\n4. Copy and store the secret token immediately (it is only displayed once)",
         storage: {
+          version: 1,
           secrets: ["NEON_TOKEN"],
           variables: [],
         },

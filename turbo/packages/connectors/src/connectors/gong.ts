@@ -13,6 +13,7 @@ export const gong = {
         helpText:
           "1. In Gong, go to **Company Settings → Ecosystem → API** (requires the Technical Administrator permission profile)\n2. Click **Create** to generate an Access Key and Access Key Secret\n3. Copy both values — the secret is shown only once\n4. Copy the **API Base URL** shown on the same screen (e.g. `api.gong.io`, or your region-specific host)",
         storage: {
+          version: 1,
           secrets: ["GONG_ACCESS_KEY", "GONG_ACCESS_KEY_SECRET"],
           variables: ["GONG_API_BASE"],
         },

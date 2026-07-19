@@ -186,6 +186,8 @@ function validateCatalogAndConnectorSemantics(args: {
       return [connector.connectorRef, connector];
     }),
   );
+  const secretOwners = new Map<string, string>();
+  const variableOwners = new Map<string, string>();
 
   for (const publicConnector of args.publicArtifact.connectors) {
     if (!categoryIds.has(publicConnector.category)) {
@@ -230,6 +232,26 @@ function validateCatalogAndConnectorSemantics(args: {
       }),
     });
     validateConnectorSourceSemantics(connectorSource);
+    for (const method of privateConnector.authMethods) {
+      for (const secretName of method.storage.secrets) {
+        const owner = secretOwners.get(secretName);
+        if (owner !== undefined && owner !== publicConnector.connectorRef) {
+          throw new Error(
+            `Connector storage secret ${secretName} is claimed by ${owner} and ${publicConnector.connectorRef}`,
+          );
+        }
+        secretOwners.set(secretName, publicConnector.connectorRef);
+      }
+      for (const variableName of method.storage.variables) {
+        const owner = variableOwners.get(variableName);
+        if (owner !== undefined && owner !== publicConnector.connectorRef) {
+          throw new Error(
+            `Connector storage variable ${variableName} is claimed by ${owner} and ${publicConnector.connectorRef}`,
+          );
+        }
+        variableOwners.set(variableName, publicConnector.connectorRef);
+      }
+    }
   }
 }
 

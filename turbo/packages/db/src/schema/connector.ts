@@ -1,4 +1,6 @@
 import {
+  bigint,
+  check,
   pgTable,
   uuid,
   varchar,
@@ -8,6 +10,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * Connectors table
@@ -21,6 +24,7 @@ export const connectors = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     type: varchar("type", { length: 64 }).notNull(), // "github"
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
+    storageVersion: bigint("storage_version", { mode: "number" }),
 
     // External account info (from OAuth)
     externalId: varchar("external_id", { length: 255 }),
@@ -44,6 +48,10 @@ export const connectors = pgTable(
         table.orgId,
         table.userId,
         table.type,
+      ),
+      check(
+        "chk_connectors_storage_version_positive",
+        sql`${table.storageVersion} IS NULL OR ${table.storageVersion} > 0`,
       ),
     ];
   },

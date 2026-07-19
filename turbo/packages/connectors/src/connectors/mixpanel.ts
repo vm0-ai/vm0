@@ -13,6 +13,7 @@ export const mixpanel = {
         helpText:
           "1. In Mixpanel, open **Organization Settings → Service Accounts** (or **Project Settings → Service Accounts**)\n2. Click **Add Service Account**, give it a name, and choose a role (minimum **Member**); optionally set an expiration\n3. Copy the **Username** and **Secret** immediately — the secret is only shown once\n4. Open **Project Settings → Overview → Access Keys** and copy your **Project ID**\n5. Paste all three values below",
         storage: {
+          version: 1,
           secrets: [
             "MIXPANEL_SERVICE_ACCOUNT_USERNAME",
             "MIXPANEL_SERVICE_ACCOUNT_SECRET",
