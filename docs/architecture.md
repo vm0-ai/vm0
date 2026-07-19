@@ -132,7 +132,7 @@ The orchestration layer coordinates job execution between web API and runners.
 
 #### Per-Thread Chat Scheduling
 
-Chat threads run at most one run at a time. Queued work lives in
+A chat thread runs at most one run at a time. Queued work lives in
 `chat_message_queue` with two item types: `user_message` (a chat message
 waiting for its run) and `workflow_event` (a fired workflow automation event
 carrying its encrypted payload). Admission and consumption serialize on a
