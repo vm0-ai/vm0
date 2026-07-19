@@ -396,11 +396,22 @@ impl VsockHost {
     /// Stream a guest file to a host path and atomically rename it into place
     /// after the exec operation exits successfully.
     ///
+    /// A successful copy creates missing host parent directories as needed and
+    /// replaces an existing non-directory destination with a newly created
+    /// regular file owned by the host process's effective user. The published
+    /// file has mode `0o600`; metadata from an existing destination is not
+    /// preserved.
+    ///
     /// Options are validated before guest work starts. When `missing_ok` is
     /// enabled, a guest helper result that reports the path does not resolve
     /// to a regular file is treated as success with `bytes_copied == 0`
     /// without publishing a host file. Host-side setup and validation errors
-    /// can still fail the operation.
+    /// can still fail the operation, and setup may leave newly created parent
+    /// directories behind.
+    ///
+    /// Failures before the final rename leave an existing destination
+    /// unchanged. An error reported after the rename does not roll back the
+    /// published destination.
     ///
     /// The guest path must be non-empty and must not contain NUL bytes.
     ///
@@ -420,8 +431,8 @@ impl VsockHost {
     /// Stream a guest file to a host path and report when the helper exec
     /// frame is about to be written to the guest.
     ///
-    /// This has the same copy semantics as `copy_file`, including option
-    /// validation and `missing_ok` handling.
+    /// This has the same copy semantics as [`copy_file`](Self::copy_file),
+    /// including option validation and `missing_ok` handling.
     pub async fn copy_file_with_write_observer(
         &self,
         path: &str,

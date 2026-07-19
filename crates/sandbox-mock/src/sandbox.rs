@@ -1,4 +1,7 @@
 use std::collections::VecDeque;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -500,7 +503,18 @@ impl Sandbox for MockSandbox {
         {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(host_path, &bytes)?;
+        let parent = host_path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let mut temp_file = tempfile::NamedTempFile::new_in(parent)?;
+        #[cfg(unix)]
+        temp_file
+            .as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        temp_file.write_all(&bytes)?;
+        temp_file.flush()?;
+        temp_file.persist(host_path).map_err(|error| error.error)?;
         Ok(CopyFileResult {
             bytes_copied: bytes.len() as u64,
         })
