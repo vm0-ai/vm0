@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { appendCapturedPreviewBypassToUrl } from "../../lib/preview-bypass-cookie.ts";
 import { clerk$, resolveAppAuthUrl, resolveWebOrigin } from "../auth.ts";
 import { searchParams$ } from "../route.ts";
 import {
@@ -17,6 +18,7 @@ function onboardingUrl(searchParams: URLSearchParams): string {
   if (search) {
     url.search = search;
   }
+  appendCapturedPreviewBypassToUrl(url);
   return url.toString();
 }
 

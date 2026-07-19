@@ -49,6 +49,10 @@ function mockSignedInUser(): void {
   });
 }
 
+function setBrowserUrl(url: string): void {
+  window.location.href = url;
+}
+
 function getFetchForTest() {
   // eslint-disable-next-line ccstate/no-direct-fetch -- this regression test file covers fetch$ itself.
   return context.store.get(fetch$);
@@ -134,6 +138,55 @@ describe("api client headers", () => {
     expect(first.requestId).toMatch(UUID_REGEX);
     expect(second.requestId).toMatch(UUID_REGEX);
     expect(second.requestId).not.toBe(first.requestId);
+  });
+
+  it("forwards the captured omby preview bypass to vm6 API requests", async () => {
+    setBrowserUrl(
+      "https://pr-22085-app.omby.ai/?x-vercel-protection-bypass=preview-secret",
+    );
+    mockSignedInUser();
+    const observedBypassHeaders: (string | null)[] = [];
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    context.mocks.api(
+      zeroUserConnectorsContract.get,
+      ({ request, respond }) => {
+        observedBypassHeaders.push(
+          request.headers.get("x-vercel-protection-bypass"),
+        );
+        return respond(200, { enabledTypes: [] });
+      },
+    );
+    context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {
+      observedBypassHeaders.push(
+        request.headers.get("x-vercel-protection-bypass"),
+      );
+      return new Response(null, { status: 204 });
+    });
+
+    const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
+    await accept(client.get({ params: { id: agentId } }), [200]);
+    await getFetchForTest()("/api/zero/preview-bypass-test");
+
+    expect(observedBypassHeaders).toStrictEqual([
+      "preview-secret",
+      "preview-secret",
+    ]);
+  });
+
+  it("does not forward an omby lookalike preview bypass", async () => {
+    setBrowserUrl(
+      "https://pr-22085-app.omby.ai.evil.example/?x-vercel-protection-bypass=preview-secret",
+    );
+    mockSignedInUser();
+    let observedBypassHeader: string | null = "not-called";
+    context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {
+      observedBypassHeader = request.headers.get("x-vercel-protection-bypass");
+      return new Response(null, { status: 204 });
+    });
+
+    await getFetchForTest()("/api/zero/preview-bypass-test");
+
+    expect(observedBypassHeader).toBeNull();
   });
 
   it("opens the force upgrade dialog for contract client responses", async () => {
