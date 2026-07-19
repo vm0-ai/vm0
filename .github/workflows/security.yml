@@ -273,7 +273,13 @@ jobs:
             .github/scripts/tests/*.sh
           )
           bash -n "${script_files[@]}"
-          shellcheck .github/scripts/runner-behavior-*.sh
+          shellcheck \
+            .github/scripts/check-workflow-shell-compatibility.sh \
+            .github/scripts/runner-behavior-*.sh \
+            .github/scripts/tests/check-workflow-shell-compatibility-test.sh
+          # actionlint assumes Bash when shell is omitted and does not model the
+          # sh default used by container jobs.
+          .github/scripts/check-workflow-shell-compatibility.sh
           for test_script in .github/scripts/tests/*.sh; do
             bash "$test_script"
           done
