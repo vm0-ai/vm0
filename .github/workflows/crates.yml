@@ -103,7 +103,7 @@ jobs:
 
           # scripts/crate-changed.sh: exit 0=changed, 1=not changed, 2+=error
           check_crate() {
-            local rc=0
+            rc=0
             ./scripts/crate-changed.sh "$1" "$BASE_REF" && rc=0 || rc=$?
             if [ $rc -eq 0 ]; then
               echo "$1-changed=true" >> "$GITHUB_OUTPUT"
