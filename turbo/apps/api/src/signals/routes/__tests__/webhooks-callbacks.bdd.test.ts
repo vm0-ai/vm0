@@ -14,6 +14,11 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { expireAtomGrantFixture } from "../../../test-fixtures/org-metadata";
 import {
+  readStorageS3PrefixFixture,
+  seedStorageFixture,
+  seedStorageVersionFixture,
+} from "../../../test-fixtures/storage";
+import {
   deleteOrgPlanEntitlementFixture,
   readOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
@@ -1721,8 +1726,10 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
       throw new Error("Expected the sandbox storage prepare to succeed");
     }
     expect(prepared.body.existing).toBeFalsy();
-    expect(prepared.body.uploads?.archive.key).toBe(
-      `${orgOf(actor)}/artifact/${storageName}/${prepared.body.versionId}/archive.tar.gz`,
+    expect(prepared.body.uploads?.archive.key).toMatch(
+      new RegExp(
+        `^${orgOf(actor)}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/${prepared.body.versionId}/archive\\.tar\\.gz$`,
+      ),
     );
     expect(prepared.body.uploads?.archive.presignedUrl).toMatch(/^https/);
     expect(prepared.body.uploads?.manifest.presignedUrl).toMatch(/^https/);
@@ -4556,6 +4563,126 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(preserved.subscriptionStatus).toBe("active");
   });
 
+  it("spares other users' objects on legacy shared prefixes during user teardown", async () => {
+    const bdd = createBddApi(context);
+    api.configureClerkWebhookSecret();
+    bdd.acceptAgentStorageWrites();
+
+    const doomed = bdd.user();
+    const orgId = orgOf(doomed);
+    const peer = bdd.user({ orgId, orgRole: "org:member" });
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [{ publicUserData: { userId: peer.userId } }],
+      },
+    );
+
+    // Legacy prefixes carry no user segment, so two users' same-named
+    // artifacts share one prefix. Seed that production shape plus an
+    // exclusive legacy prefix for the doomed user.
+    const sharedPrefix = `${orgId}/artifact/memory`;
+    const doomedShared = await seedStorageFixture({
+      orgId,
+      userId: doomed.userId,
+      name: "memory",
+      type: "artifact",
+      s3Prefix: sharedPrefix,
+    });
+    const peerShared = await seedStorageFixture({
+      orgId,
+      userId: peer.userId,
+      name: "memory",
+      type: "artifact",
+      s3Prefix: sharedPrefix,
+    });
+    const doomedVersion = await seedStorageVersionFixture({
+      storageId: doomedShared.storageId,
+      versionId: createHash("sha256").update(randomUUID()).digest("hex"),
+    });
+    const peerVersion = await seedStorageVersionFixture({
+      storageId: peerShared.storageId,
+      versionId: createHash("sha256").update(randomUUID()).digest("hex"),
+    });
+    const exclusivePrefix = `${orgId}/artifact/scratch`;
+    await seedStorageFixture({
+      orgId,
+      userId: doomed.userId,
+      name: "scratch",
+      type: "artifact",
+      s3Prefix: exclusivePrefix,
+    });
+
+    const listedPrefixes: string[] = [];
+    const deletedKeys: string[] = [];
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = commandInput(command);
+      if (typeof input.Prefix === "string") {
+        listedPrefixes.push(input.Prefix);
+        return Promise.resolve({
+          Contents: [
+            {
+              Key: `${input.Prefix}stale.bin`,
+              Size: 1,
+              LastModified: nowDate(),
+            },
+          ],
+        });
+      }
+      const removal = input.Delete as
+        | { readonly Objects?: readonly { readonly Key?: string }[] }
+        | undefined;
+      for (const object of removal?.Objects ?? []) {
+        if (object.Key) {
+          deletedKeys.push(object.Key);
+        }
+      }
+      return Promise.resolve({});
+    });
+
+    api.verifyNextClerkWebhook({
+      type: "user.deleted",
+      data: { id: doomed.userId },
+    });
+    const response = await api.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
+
+    await waitForExpectation(() => {
+      // The exclusive prefix is wiped wholesale (bounded listing), which
+      // also removes orphan objects that never got a version row.
+      expect(listedPrefixes).toContain(`${exclusivePrefix}/`);
+      // The shared prefix falls back to per-version deletion: only the
+      // doomed user's version directory is listed.
+      expect(listedPrefixes).toContain(`${doomedVersion.s3Key}/`);
+    });
+    expect(listedPrefixes).not.toContain(`${sharedPrefix}/`);
+    expect(deletedKeys).toContain(`${exclusivePrefix}/stale.bin`);
+    expect(deletedKeys).toContain(`${doomedVersion.s3Key}/stale.bin`);
+    for (const key of deletedKeys) {
+      expect(key.startsWith(`${peerVersion.s3Key}/`)).toBeFalsy();
+    }
+
+    // The doomed user's rows are gone while the peer's survive untouched.
+    await waitForExpectation(async () => {
+      await expect(
+        readStorageS3PrefixFixture({
+          orgId,
+          userId: doomed.userId,
+          name: "memory",
+          type: "artifact",
+        }),
+      ).rejects.toThrow();
+    });
+    await expect(
+      readStorageS3PrefixFixture({
+        orgId,
+        userId: peer.userId,
+        name: "memory",
+        type: "artifact",
+      }),
+    ).resolves.toBe(sharedPrefix);
+  });
+
   it("does not update a Stripe subscription already canceled upstream", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
@@ -4687,7 +4814,8 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     ).Prefix;
     expect(
       typeof firstCleanupS3Prefix === "string" &&
-        firstCleanupS3Prefix.startsWith(`${orgOf(doomed)}/artifact/`),
+        firstCleanupS3Prefix.startsWith(`${orgOf(doomed)}/`) &&
+        firstCleanupS3Prefix.endsWith("/"),
     ).toBeTruthy();
 
     await waitForExpectation(() => {

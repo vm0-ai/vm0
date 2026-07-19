@@ -26,6 +26,8 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
  *   `webhooks-agent-storage.test.ts`.
  */
 
+const UUID_PATTERN =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createStoragesBddApi(context);
@@ -69,11 +71,15 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
       files: v1Files,
     });
     expect(prepared.existing).toBeFalsy();
-    expect(prepared.uploads?.archive.key).toBe(
-      `${actor.orgId}/artifact/${name}/${prepared.versionId}/archive.tar.gz`,
+    expect(prepared.uploads?.archive.key).toMatch(
+      new RegExp(
+        `^${actor.orgId}/${UUID_PATTERN}/${prepared.versionId}/archive\\.tar\\.gz$`,
+      ),
     );
-    expect(prepared.uploads?.manifest.key).toBe(
-      `${actor.orgId}/artifact/${name}/${prepared.versionId}/manifest.json`,
+    expect(prepared.uploads?.manifest.key).toMatch(
+      new RegExp(
+        `^${actor.orgId}/${UUID_PATTERN}/${prepared.versionId}/manifest\\.json$`,
+      ),
     );
     expect(prepared.uploads?.archive.presignedUrl).toMatch(/^https?:\/\//);
 
@@ -189,8 +195,10 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
     expect("url" in headDownload ? headDownload.url : "").toMatch(
       /^https?:\/\//,
     );
-    expect(api.lastPresignedUrlKey()).toBe(
-      `${actor.orgId}/artifact/${name}/${preparedV2.versionId}/archive.tar.gz`,
+    expect(api.lastPresignedUrlKey()).toMatch(
+      new RegExp(
+        `^${actor.orgId}/${UUID_PATTERN}/${preparedV2.versionId}/archive\\.tar\\.gz$`,
+      ),
     );
 
     const ordered = await api.listStorages(actor, "artifact");
