@@ -48,7 +48,7 @@ async function loadDequeueTarget(
     )
     .where(
       and(
-        eq(zeroWorkflowAutomations.id, event.triggerId),
+        eq(zeroWorkflowAutomations.id, event.automationId),
         eq(zeroWorkflowAutomations.orgId, event.orgId),
       ),
     )
@@ -86,7 +86,7 @@ export const drainWorkflowQueueForThread$ = command(
       if (!target) {
         log.debug("Dropping workflow queue event without automation", {
           eventId: event.id,
-          triggerId: event.triggerId,
+          automationId: event.automationId,
         });
         await publishChatThreadWorkflowQueueChangedSafely(
           event.userId,
@@ -104,7 +104,7 @@ export const drainWorkflowQueueForThread$ = command(
       if (!params) {
         log.error("Dropping undecryptable workflow queue event", {
           eventId: event.id,
-          triggerId: event.triggerId,
+          automationId: event.automationId,
         });
         continue;
       }
@@ -146,7 +146,7 @@ export const drainWorkflowQueueForThread$ = command(
       if (result.kind === "conflict") {
         log.debug("Skipping unfireable workflow queue event", {
           eventId: event.id,
-          triggerId: event.triggerId,
+          automationId: event.automationId,
           message: result.message,
         });
         continue;

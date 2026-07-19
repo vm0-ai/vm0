@@ -28,8 +28,8 @@ export const chatMessageQueueItemType = pgEnum("chat_message_queue_item_type", [
  * - `user_message`: the message body lives in `chat_messages`
  *   (`chat_message_id` points at it); the queue row only carries the
  *   queued state.
- * - `workflow_event`: the row carries the trigger event itself
- *   (`trigger_id` / `trigger_source` / `trigger_brief` / `encrypted_params`)
+ * - `workflow_event`: the row carries the automation event itself
+ *   (`automation_id` / `trigger_source` / `trigger_brief` / `encrypted_params`)
  *   and materializes into a chat message at claim time.
  *
  * Replaces the dropped `zero_workflow_queue_events` table (FIFO key was
@@ -59,8 +59,16 @@ export const chatMessageQueue = pgTable(
       },
       { onDelete: "cascade" },
     ),
-    // workflow_event payload. Trigger deletion cascades here, which also
-    // covers workflow deletion (triggers cascade from workflows).
+    // workflow_event payload. Automation deletion cascades here, which also
+    // covers workflow deletion (automations cascade from workflows).
+    automationId: uuid("automation_id").references(
+      () => {
+        return zeroWorkflowAutomations.id;
+      },
+      { onDelete: "cascade" },
+    ),
+    // Rollback compatibility for API releases that predate automation_id.
+    // Remove after the canonical API has been live for a full rollback release.
     triggerId: uuid("trigger_id").references(
       () => {
         return zeroWorkflowAutomations.id;
@@ -83,7 +91,11 @@ export const chatMessageQueue = pgTable(
         table.chatThreadId,
         table.createdAt,
       ),
-      // Per-trigger lookups: schedule tick coalescing and source display.
+      // Per-automation lookups: schedule tick coalescing and source display.
+      index("idx_chat_message_queue_automation")
+        .on(table.automationId)
+        .where(sql`${table.automationId} IS NOT NULL`),
+      // Rollback compatibility for API releases that still query trigger_id.
       index("idx_chat_message_queue_trigger")
         .on(table.triggerId)
         .where(sql`${table.triggerId} IS NOT NULL`),

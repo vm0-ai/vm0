@@ -212,6 +212,11 @@ describe("workflow queue API", () => {
     expect(queue.body.pending).toHaveLength(2);
     expect(
       queue.body.pending.map((event) => {
+        return event.automationId;
+      }),
+    ).toStrictEqual([automation.automationId, automation.automationId]);
+    expect(
+      queue.body.pending.map((event) => {
         return event.triggerId;
       }),
     ).toStrictEqual([automation.automationId, automation.automationId]);

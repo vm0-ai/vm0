@@ -36,6 +36,7 @@ function queueResponse(
     pending: [
       {
         id: EVENT_ID_1,
+        automationId: "e0000001-0000-4000-a000-000000000001",
         triggerId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
         triggerBrief: "Webhook event second",
@@ -43,6 +44,7 @@ function queueResponse(
       },
       {
         id: EVENT_ID_2,
+        automationId: "e0000001-0000-4000-a000-000000000001",
         triggerId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
         triggerBrief: "Webhook event third",
