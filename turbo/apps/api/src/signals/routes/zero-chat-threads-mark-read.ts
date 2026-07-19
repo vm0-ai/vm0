@@ -14,14 +14,14 @@ import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route-entry";
 
 function latestRunFinishCreatedAtSql() {
-  return sql<Date>`(
+  return sql`(
     SELECT ${chatMessages.createdAt}
     FROM ${chatMessages}
     WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
       AND ${chatMessages.runLifecycleEvent} IS NOT NULL
     ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
     LIMIT 1
-  )`.mapWith(chatMessages.createdAt);
+  )`;
 }
 
 const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {

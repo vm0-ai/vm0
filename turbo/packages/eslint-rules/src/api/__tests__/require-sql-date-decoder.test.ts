@@ -14,15 +14,25 @@ ruleTester.run("require-sql-date-decoder", requireSqlDateDecoder, {
     {
       code: `
         import { sql } from "drizzle-orm";
-        const value = sql<Date>\`MAX(\${events.createdAt})\`.mapWith(events.createdAt);
+        const value = sql\`GREATEST(\${events.createdAt}, NOW())\`
+          .mapWith(events.createdAt);
+      `,
+    },
+    {
+      code: `
+        const selection = { createdAt: events.createdAt };
+      `,
+    },
+    {
+      code: `
+        import { max } from "drizzle-orm";
+        const selection = { lastCreatedAt: max(events.createdAt) };
       `,
     },
     {
       code: `
         import { sql } from "drizzle-orm";
-        const value = sql<Date | null>\`NULL::timestamp\`
-          .mapWith(events.createdAt)
-          .as("created_at");
+        const update = { expiresAt: sql\`GREATEST(\${events.createdAt}, NOW())\` };
       `,
     },
     {
@@ -34,7 +44,9 @@ ruleTester.run("require-sql-date-decoder", requireSqlDateDecoder, {
     {
       code: `
         import * as drizzle from "drizzle-orm";
-        const value = drizzle.sql<Date>\`NOW()\`.mapWith(events.createdAt);
+        const value = drizzle.sql<Date | null>\`NULL::timestamp\`
+          .mapWith(events.createdAt)
+          .as("created_at");
       `,
     },
     {
@@ -56,7 +68,7 @@ ruleTester.run("require-sql-date-decoder", requireSqlDateDecoder, {
     {
       code: `
         import { sql } from "drizzle-orm";
-        const value = sql<number>\`COUNT(*)\`;
+        const value = sql<string>\`LOWER(\${events.name})\`;
       `,
     },
     {
@@ -96,6 +108,13 @@ ruleTester.run("require-sql-date-decoder", requireSqlDateDecoder, {
       code: `
         const value = sql<Date>\`NOW()\`;
         import { sql } from "drizzle-orm";
+      `,
+      errors: [{ messageId: "missingDecoder" }],
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
+        const update = { expiresAt: sql<Date>\`NOW()\` };
       `,
       errors: [{ messageId: "missingDecoder" }],
     },

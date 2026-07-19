@@ -66,14 +66,14 @@ export const requireSqlDateDecoder = createRule({
     type: "problem",
     docs: {
       description:
-        "Require a runtime decoder for Date-valued Drizzle sql expressions",
+        "Prevent Date-valued Drizzle sql type assertions without a runtime decoder",
       recommended: true,
       requiresTypeChecking: false,
     },
     schema: [],
     messages: {
       missingDecoder:
-        "`sql<Date>` only declares a static type. Call `.mapWith(...)` with a timestamp column decoder before using the expression.",
+        "`sql<Date>` does not decode database values. Select a Drizzle column or helper directly, call `.mapWith(...)` for a returned raw expression, or remove the Date generic when the SQL is not returned.",
     },
   },
   create(context) {

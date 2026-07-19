@@ -89,12 +89,12 @@ async function loadUsageMessageContext(tx: WriteTx, runId: string) {
       pendingCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'pending')::int`,
       processedCount: sql<number>`COUNT(${usageEvent.id}) FILTER (WHERE ${usageEvent.status} = 'processed')::int`,
       totalCredits: sql<number>`COALESCE(SUM(${usageCreditsExpression()}) FILTER (WHERE ${usageEvent.status} = 'processed'), 0)::bigint`,
-      settledAt: sql<Date>`COALESCE(
+      settledAt: sql`COALESCE(
         MAX(${usageEvent.processedAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
         MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
         MAX(${agentRuns.completedAt}),
         MAX(${agentRuns.createdAt})
-      )`.mapWith(usageEvent.processedAt),
+      )`.mapWith(agentRuns.createdAt),
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))

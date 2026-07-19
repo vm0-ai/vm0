@@ -13,7 +13,7 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
-import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, max, sql } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { getDatasetName, queryAxiom } from "../external/axiom";
@@ -140,6 +140,12 @@ interface ActiveUserRow {
   readonly lastActivity: Date;
 }
 
+interface ActiveUserQueryRow {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly lastActivity: Date | null;
+}
+
 interface OrgUserPair {
   readonly orgId: string;
   readonly userId: string;
@@ -242,10 +248,6 @@ interface NetworkQueryResult {
 interface CurrentOrgMemberScope {
   readonly orgsWithCurrentMembers: Set<string>;
   readonly memberKeys: Set<string>;
-}
-
-function normalizeDbDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
 }
 
 type PermissionLabelResolver = (
@@ -765,17 +767,21 @@ async function queryCurrentOrgMembers(
   return { orgsWithCurrentMembers, memberKeys };
 }
 
-function mergeActiveUserRows(rows: ActiveUserRow[]): ActiveUserRow[] {
+function mergeActiveUserRows(rows: ActiveUserQueryRow[]): ActiveUserRow[] {
   const byUser = new Map<string, ActiveUserRow>();
   for (const row of rows) {
-    const normalizedRow = {
-      ...row,
-      lastActivity: normalizeDbDate(row.lastActivity),
-    };
+    const lastActivity = row.lastActivity;
+    if (lastActivity === null) {
+      throw new Error("Active-user aggregate returned null lastActivity");
+    }
     const key = `${row.orgId}:${row.userId}`;
     const existing = byUser.get(key);
-    if (!existing || normalizedRow.lastActivity > existing.lastActivity) {
-      byUser.set(key, normalizedRow);
+    if (!existing || lastActivity > existing.lastActivity) {
+      byUser.set(key, {
+        orgId: row.orgId,
+        userId: row.userId,
+        lastActivity,
+      });
     }
   }
   return [...byUser.values()];
@@ -791,9 +797,7 @@ async function queryActiveUsers(
       .select({
         orgId: agentRuns.orgId,
         userId: agentRuns.userId,
-        lastActivity: sql<Date>`MAX(${agentRuns.completedAt})`
-          .mapWith(agentRuns.completedAt)
-          .as("last_activity"),
+        lastActivity: max(agentRuns.completedAt).as("last_activity"),
       })
       .from(agentRuns)
       .where(
@@ -807,9 +811,7 @@ async function queryActiveUsers(
       .select({
         orgId: usageEvent.orgId,
         userId: usageEvent.userId,
-        lastActivity: sql<Date>`MAX(${usageEvent.processedAt})`
-          .mapWith(usageEvent.processedAt)
-          .as("last_activity"),
+        lastActivity: max(usageEvent.processedAt).as("last_activity"),
       })
       .from(usageEvent)
       .where(
@@ -1310,9 +1312,7 @@ export const aggregateInsights$ = command(
       .select({
         orgId: insightsDaily.orgId,
         userId: insightsDaily.userId,
-        lastUpdated: sql<Date>`MAX(${insightsDaily.updatedAt})`
-          .mapWith(insightsDaily.updatedAt)
-          .as("last_updated"),
+        lastUpdated: max(insightsDaily.updatedAt).as("last_updated"),
       })
       .from(insightsDaily)
       .where(
@@ -1324,11 +1324,13 @@ export const aggregateInsights$ = command(
       .groupBy(insightsDaily.orgId, insightsDaily.userId);
     signal.throwIfAborted();
 
-    const lastAggMap = new Map(
-      lastAggRows.map((row) => {
-        return [`${row.orgId}:${row.userId}`, normalizeDbDate(row.lastUpdated)];
-      }),
-    );
+    const lastAggMap = new Map<string, Date>();
+    for (const row of lastAggRows) {
+      if (row.lastUpdated === null) {
+        throw new Error("Insights aggregate returned null lastUpdated");
+      }
+      lastAggMap.set(`${row.orgId}:${row.userId}`, row.lastUpdated);
+    }
 
     const usersToAggregate = activeUsers.filter((user) => {
       const lastAgg = lastAggMap.get(`${user.orgId}:${user.userId}`);

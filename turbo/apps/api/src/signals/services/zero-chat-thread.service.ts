@@ -89,11 +89,11 @@ function chatMessageOrderSequenceSql() {
 }
 
 function matchedMessageCreatedAtSql(messageId: string) {
-  return sql<Date>`(
+  return sql`(
     SELECT ${matchedChatMessage.createdAt}
     FROM ${chatMessages} AS matched_chat_message
     WHERE ${matchedChatMessage.id} = ${messageId}
-  )`.mapWith(matchedChatMessage.createdAt);
+  )`;
 }
 
 type ChatMessageRow = {
@@ -349,7 +349,7 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowAutomationAtTime: sql<Date | null>`(
+  workflowAutomationAtTime: sql`(
     SELECT "zero_workflow_automations"."at_time"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"

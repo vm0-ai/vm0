@@ -15,6 +15,35 @@ pnpm db:migrate    # Run pending migrations
 pnpm db:studio     # Open Drizzle Studio UI
 ```
 
+## Query Result Mapping
+
+Prefer Drizzle's schema-aware result mapping in this order:
+
+1. Select a schema column directly.
+2. Use a Drizzle helper such as `max()`, `min()`, or `count()`.
+3. Use `sql` only when the expression cannot be represented otherwise, and
+   attach `.mapWith(column)` or a dedicated decoder when the database driver's
+   value needs runtime conversion.
+
+`sql<T>` is only a compile-time assertion. It does not convert driver values.
+Do not wrap a directly selectable column in `sql<T>`, and never rely on
+`sql<Date>` to produce a JavaScript `Date`. The
+`api/require-sql-date-decoder` rule enforces this for API code.
+
+Whether a decoder is required depends on the driver's runtime value, not on
+whether the TypeScript type is primitive. For example, PostgreSQL `count()` may
+need number conversion, while JSON or array values may already be decoded by
+the configured driver.
+
+Runtime decoders apply only to selected or returned fields. Predicates,
+ordering expressions, and write-only values should use untyped `sql` without
+`.mapWith()`.
+
+For set operations such as `UNION ALL`, Drizzle uses the leftmost selection's
+field decoders for the combined result. Attach the required decoder to a
+database-typed placeholder such as `NULL::timestamp` in the leftmost query when
+later branches return mapped values.
+
 ## Migration Workflows
 
 ### Auto-Generated (simple changes)

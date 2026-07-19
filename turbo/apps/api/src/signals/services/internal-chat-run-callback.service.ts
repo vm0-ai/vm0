@@ -25,6 +25,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  max,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -771,9 +772,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 
   const [message] = await db
     .select({
-      lastEventAt: sql<Date | null>`MAX(${chatMessages.createdAt})`.mapWith(
-        chatMessages.createdAt,
-      ),
+      lastEventAt: max(chatMessages.createdAt),
     })
     .from(chatMessages)
     .where(
@@ -787,14 +786,13 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
     return;
   }
 
-  const lastEventMs =
-    message.lastEventAt instanceof Date
-      ? message.lastEventAt.getTime()
-      : new Date(message.lastEventAt).getTime();
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "last_event_to_complete",
-    durationMs: Math.max(0, run.completedAt.getTime() - lastEventMs),
+    durationMs: Math.max(
+      0,
+      run.completedAt.getTime() - message.lastEventAt.getTime(),
+    ),
     success: true,
     runId,
   });
