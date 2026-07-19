@@ -173,7 +173,8 @@ async fn copy_file_streams_to_temp_then_renames() {
     fixture.assert_readiness(NormalOperationReadiness::Idle);
     fixture.assert_host_bytes(b"line 1\nline 2\n");
     assert_eq!(mode(&fixture.host_path), 0o600);
-    let new_metadata = std::fs::metadata(&fixture.host_path).unwrap();
+    let new_metadata = std::fs::symlink_metadata(&fixture.host_path).unwrap();
+    assert!(new_metadata.is_file());
     assert_ne!(
         (old_metadata.dev(), old_metadata.ino()),
         (new_metadata.dev(), new_metadata.ino())

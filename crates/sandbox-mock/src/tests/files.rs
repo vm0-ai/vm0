@@ -68,7 +68,8 @@ async fn sandbox_copy_file_replaces_existing_destination_with_private_file() {
 
     assert_eq!(result.bytes_copied, 12);
     assert_eq!(std::fs::read(&path).unwrap(), b"new host log");
-    let new_metadata = std::fs::metadata(&path).unwrap();
+    let new_metadata = std::fs::symlink_metadata(&path).unwrap();
+    assert!(new_metadata.is_file());
     assert_eq!(new_metadata.permissions().mode() & 0o777, 0o600);
     assert_ne!(
         (old_metadata.dev(), old_metadata.ino()),
