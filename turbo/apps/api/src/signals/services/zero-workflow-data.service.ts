@@ -522,49 +522,36 @@ export function zeroWorkflowList(args: {
   });
 }
 
-interface RunWorkflowRef {
+export interface RunWorkflowRef {
   readonly name: string;
   readonly workflowId: string;
 }
 
-/**
- * Workflows injectable into a run on `agentId` by `userId`: the agent's public
- * workflows plus the caller's own private ones. On a slug collision the fixed
- * priority wins — the caller's own private beats public, then earliest
- * `created_at` — and only that single workflow is injected.
- */
-export async function loadWorkflowsForRun(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly agentId: string;
-  },
-): Promise<readonly RunWorkflowRef[]> {
-  const rows = await db
-    .select({
-      id: zeroWorkflows.id,
-      name: zeroWorkflows.name,
-      visibility: zeroWorkflows.visibility,
-      ownerUserId: zeroWorkflows.ownerUserId,
-      createdAt: zeroWorkflows.createdAt,
-    })
-    .from(zeroWorkflows)
-    .where(
-      and(
-        eq(zeroWorkflows.orgId, args.orgId),
-        eq(zeroWorkflows.agentId, args.agentId),
-        or(
-          eq(zeroWorkflows.visibility, "public"),
-          eq(zeroWorkflows.ownerUserId, args.userId),
-        ),
-      ),
-    )
-    // Priority within a slug: caller's own private first, then earliest created.
-    .orderBy(...workflowRunPrioritySort(args.userId));
+export interface RunWorkflowSourceRow {
+  readonly id: string;
+  readonly name: string;
+  readonly visibility: "public" | "private";
+  readonly ownerUserId: string;
+  readonly createdAt: Date;
+}
+
+export function workflowsForRunFromRows(
+  rows: readonly RunWorkflowSourceRow[],
+  userId: string,
+): readonly RunWorkflowRef[] {
+  const prioritizedRows = [...rows].sort((left, right) => {
+    const leftPrivateOwner =
+      left.visibility === "private" && left.ownerUserId === userId;
+    const rightPrivateOwner =
+      right.visibility === "private" && right.ownerUserId === userId;
+    if (leftPrivateOwner !== rightPrivateOwner) {
+      return leftPrivateOwner ? -1 : 1;
+    }
+    return left.createdAt.getTime() - right.createdAt.getTime();
+  });
 
   const bySlug = new Map<string, RunWorkflowRef>();
-  for (const row of rows) {
+  for (const row of prioritizedRows) {
     if (!bySlug.has(row.name)) {
       bySlug.set(row.name, { name: row.name, workflowId: row.id });
     }

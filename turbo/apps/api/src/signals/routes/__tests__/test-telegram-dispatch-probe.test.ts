@@ -353,7 +353,7 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
           trigger_source: "telegram",
         }),
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_load_connector_scopes",
+          op_type: "api_dispatch_pre_create_zero_load_execution_scope_snapshot",
           span_kind: "nested",
           trigger_source: "telegram",
         }),

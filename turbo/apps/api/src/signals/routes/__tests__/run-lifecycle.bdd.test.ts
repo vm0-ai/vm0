@@ -246,11 +246,9 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_prepare_args",
   "api_dispatch_pre_create_zero_resolve_agent_id",
   "api_dispatch_pre_create_zero_load_agent",
-  "api_dispatch_pre_create_zero_load_user_info",
-  "api_dispatch_pre_create_zero_resolve_automation_context",
-  "api_dispatch_pre_create_zero_load_connector_scopes",
-  "api_dispatch_pre_create_zero_load_workflows",
-  "api_dispatch_pre_create_zero_resolve_permission_policies",
+  "api_dispatch_pre_create_zero_load_prompt_snapshot",
+  "api_dispatch_pre_create_zero_load_execution_scope_snapshot",
+  "api_dispatch_pre_create_zero_resolve_firewall_metadata",
   "api_dispatch_pre_create_zero_build_create_run_args",
 ] as const;
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
@@ -7588,6 +7586,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const misc = createMiscRoutesApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
@@ -7614,12 +7614,53 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       sound: "direct",
       visibility: "private",
     });
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-context",
+    });
+    await api.enableAgentConnectors(actor, agent.agentId, ["slack"]);
+    await api.applyUserPermissionGrant(actor, {
+      agentId: agent.agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+    });
+    const customConnector = await connectors.createCustomConnector(actor, {
+      slug: `bdd-context-${randomUUID().slice(0, 8)}`,
+      displayName: "BDD Context API",
+      prefixes: ["https://context.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      customConnector.id,
+      "bdd-context-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+      customConnector.id,
+    ]);
+    const workflowName = "bdd-context-workflow";
+    await misc.createWorkflow(
+      actor,
+      agent.agentId,
+      workflowName,
+      { content: "# BDD context workflow\nUse the combined run context." },
+      [201],
+    );
 
     const run = await api.createRun(actor, {
       agentId: agent.agentId,
       prompt: "summarize release",
       modelProvider: "anthropic-api-key",
     });
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_zero_load_prompt_snapshot",
+      "api_dispatch_pre_create_zero_load_execution_scope_snapshot",
+      "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+    ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -7723,6 +7764,21 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       throw new Error("Expected the claim to expose the zero token");
     }
     expect(claim.secretValues).toContain(zeroToken);
+    expect(findFirewallEntry(claim.firewalls, "slack")).toStrictEqual({
+      kind: "builtin",
+      name: "slack",
+    });
+    expect(claim.networkPolicies?.slack?.allow).toContain("chat:write");
+    expect(claim.networkPolicies?.slack?.allow).toContain("conversations:read");
+    const customConnectorName = `custom_connector_${customConnector.id.replaceAll("-", "")}`;
+    expect(
+      inlineFirewallApis(claim.firewalls, customConnectorName),
+    ).toHaveLength(1);
+    expect(
+      claim.storageManifest?.storages.map((storage) => {
+        return storage.mountPath;
+      }),
+    ).toContain(`/home/user/.claude/skills/${workflowName}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

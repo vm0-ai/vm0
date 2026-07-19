@@ -12,9 +12,17 @@ import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
 
-interface AgentConnectorScope {
+export interface AgentConnectorScope {
   readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
+}
+
+export interface AgentConnectorTypeRow {
+  readonly connectorType: string;
+}
+
+export interface AgentCustomConnectorRow {
+  readonly customConnectorId: string;
 }
 
 interface ZeroBackedComposeAgent {
@@ -22,15 +30,15 @@ interface ZeroBackedComposeAgent {
   readonly visibility: ZeroAgentVisibility;
 }
 
-async function loadAgentAllowedConnectorTypes(
+async function loadAgentAllowedConnectorTypeRows(
   db: ReadonlyDb,
   args: {
     readonly userId: string;
     readonly orgId: string;
     readonly agentId: string;
   },
-): Promise<readonly ConnectorCatalogRef[]> {
-  const rows = await db
+): Promise<readonly AgentConnectorTypeRow[]> {
+  return await db
     .select({ connectorType: userConnectors.connectorType })
     .from(userConnectors)
     .where(
@@ -40,22 +48,17 @@ async function loadAgentAllowedConnectorTypes(
         eq(userConnectors.agentId, args.agentId),
       ),
     );
-
-  return rows.flatMap((row) => {
-    const parsed = connectorCatalogRefSchema.safeParse(row.connectorType);
-    return parsed.success ? [parsed.data] : [];
-  });
 }
 
-async function loadAgentAllowedCustomConnectorIds(
+async function loadAgentAllowedCustomConnectorRows(
   db: ReadonlyDb,
   args: {
     readonly userId: string;
     readonly orgId: string;
     readonly agentId: string;
   },
-): Promise<readonly string[]> {
-  const rows = await db
+): Promise<readonly AgentCustomConnectorRow[]> {
+  return await db
     .select({ customConnectorId: userCustomConnectors.customConnectorId })
     .from(userCustomConnectors)
     .where(
@@ -65,10 +68,20 @@ async function loadAgentAllowedCustomConnectorIds(
         eq(userCustomConnectors.agentId, args.agentId),
       ),
     );
+}
 
-  return rows.map((row) => {
+export function agentConnectorScopeFromRows(args: {
+  readonly connectorRows: readonly AgentConnectorTypeRow[];
+  readonly customConnectorRows: readonly AgentCustomConnectorRow[];
+}): AgentConnectorScope {
+  const allowedConnectorTypes = args.connectorRows.flatMap((row) => {
+    const parsed = connectorCatalogRefSchema.safeParse(row.connectorType);
+    return parsed.success ? [parsed.data] : [];
+  });
+  const allowedCustomConnectorIds = args.customConnectorRows.map((row) => {
     return row.customConnectorId;
   });
+  return { allowedConnectorTypes, allowedCustomConnectorIds };
 }
 
 export async function loadAgentConnectorScope(
@@ -79,11 +92,11 @@ export async function loadAgentConnectorScope(
     readonly agentId: string;
   },
 ): Promise<AgentConnectorScope> {
-  const [allowedConnectorTypes, allowedCustomConnectorIds] = await Promise.all([
-    loadAgentAllowedConnectorTypes(db, args),
-    loadAgentAllowedCustomConnectorIds(db, args),
+  const [connectorRows, customConnectorRows] = await Promise.all([
+    loadAgentAllowedConnectorTypeRows(db, args),
+    loadAgentAllowedCustomConnectorRows(db, args),
   ]);
-  return { allowedConnectorTypes, allowedCustomConnectorIds };
+  return agentConnectorScopeFromRows({ connectorRows, customConnectorRows });
 }
 
 export async function loadZeroBackedComposeAgent(

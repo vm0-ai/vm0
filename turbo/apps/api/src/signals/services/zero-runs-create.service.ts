@@ -13,14 +13,11 @@ import {
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   agentComposeVersions,
   agentComposes,
 } from "@vm0/db/schema/agent-compose";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -42,11 +39,13 @@ import {
   type ApiDispatchTimingActionType,
   type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
-import { loadAgentConnectorScope } from "./agent-connector-scope.service";
-import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
-import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import {
+  loadZeroRunExecutionScopeSnapshot,
+  loadZeroRunPromptContextSnapshot,
+  type UserInfo,
+} from "./zero-run-bootstrap-context.service";
+import type { RunWorkflowRef } from "./zero-workflow-data.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type ZeroRunOrigin =
@@ -93,32 +92,8 @@ interface ZeroAgentRunRecord {
   readonly content: ZeroAgentComposeContent;
 }
 
-interface UserInfo {
-  readonly name: string | null;
-  readonly email: string | null;
-  readonly timezone: string | null;
-  readonly slackDisplayName?: string;
-  readonly slackUserId?: string;
-  readonly teamsUserDisplayName?: string;
-  readonly teamsUserPrincipalName?: string;
-  readonly teamsUserId?: string;
-  readonly telegramDisplayName?: string;
-  readonly telegramUsername?: string;
-  readonly telegramUserId?: string;
-  readonly telegramLanguage?: string;
-  readonly agentphoneHandle?: string;
-}
-
 function optionalAgentSetting(value: string | null): string | undefined {
   return value === null ? undefined : value;
-}
-
-interface ZeroRunPromptContext {
-  readonly userInfo: UserInfo;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly zeroScrapeEnabled: boolean;
-  readonly zeroWebSearchEnabled: boolean;
-  readonly zeroMailEnabled: boolean;
 }
 
 interface ZeroAgentConfig {
@@ -556,181 +531,6 @@ function zeroRunOrigin(args: {
   return "zero_run";
 }
 
-/**
- * Resolves the firewall policies for a run.
- *
- * Runs resolve from the caller's agent permission grants. Automation-initiated
- * runs pass through the same agent-run permission path as chat runs.
- */
-async function resolveZeroRunPermissionPolicies(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly agent: ZeroAgentRunRecord;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
-    readonly checkedAt: Date;
-  },
-  signal: AbortSignal,
-): Promise<FirewallPolicies | null> {
-  const grants = await loadActiveUserPermissionGrants(
-    db,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      agentId: args.agent.id,
-    },
-    args.checkedAt,
-  );
-  signal.throwIfAborted();
-
-  const resolved = await resolveFirewallServerMetadataPolicies(
-    permissionGrantsToFirewallPolicies(grants),
-    [...args.allowedConnectorTypes],
-  );
-  signal.throwIfAborted();
-
-  return resolved;
-}
-
-async function loadZeroRunWorkflowPermissionContext(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly agent: ZeroAgentRunRecord;
-    readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
-    readonly apiStartTime: number;
-    readonly timing: ApiDispatchTimingCollector;
-  },
-  signal: AbortSignal,
-) {
-  const workflows = await measureZeroPreCreate(
-    args.timing,
-    "api_dispatch_pre_create_zero_load_workflows",
-    async () => {
-      return await loadWorkflowsForRun(db, {
-        userId: args.userId,
-        orgId: args.orgId,
-        agentId: args.agent.id,
-      });
-    },
-  );
-  signal.throwIfAborted();
-
-  const runPermissionPolicies = await measureZeroPreCreate(
-    args.timing,
-    "api_dispatch_pre_create_zero_resolve_permission_policies",
-    async () => {
-      return await resolveZeroRunPermissionPolicies(
-        db,
-        {
-          orgId: args.orgId,
-          userId: args.userId,
-          agent: args.agent,
-          allowedConnectorTypes: args.allowedConnectorTypes,
-          checkedAt: new Date(args.apiStartTime),
-        },
-        signal,
-      );
-    },
-  );
-  signal.throwIfAborted();
-
-  return { workflows, runPermissionPolicies };
-}
-
-async function loadUserInfo(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<UserInfo> {
-  const [row] = await db
-    .select({
-      name: userCache.name,
-      email: userCache.email,
-      timezone: orgMembersMetadata.timezone,
-    })
-    .from(userCache)
-    .leftJoin(
-      orgMembersMetadata,
-      and(
-        eq(orgMembersMetadata.userId, args.userId),
-        eq(orgMembersMetadata.orgId, args.orgId),
-      ),
-    )
-    .where(eq(userCache.userId, args.userId))
-    .limit(1);
-
-  return {
-    name: row?.name ?? null,
-    email: row?.email ?? null,
-    timezone: row?.timezone ?? null,
-  };
-}
-
-async function loadZeroRunFeatureSwitchState(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<{
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly zeroScrapeEnabled: boolean;
-  readonly zeroWebSearchEnabled: boolean;
-  readonly zeroMailEnabled: boolean;
-}> {
-  const context = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  return {
-    featureSwitchContext: context,
-    zeroScrapeEnabled: isFeatureEnabled(FeatureSwitchKey.ZeroScrape, context),
-    zeroWebSearchEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ZeroWebSearch,
-      context,
-    ),
-    zeroMailEnabled: isFeatureEnabled(FeatureSwitchKey.ZeroMail, context),
-  };
-}
-
-async function loadZeroRunPromptContext(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<ZeroRunPromptContext> {
-  const [userInfo, featureSwitchState] = await Promise.all([
-    loadUserInfo(db, args),
-    loadZeroRunFeatureSwitchState(db, args),
-  ]);
-  return { userInfo, ...featureSwitchState };
-}
-
-async function triggerAgentIdForAuth(
-  db: Db,
-  auth: AuthContext & { readonly orgId: string },
-): Promise<string | undefined> {
-  if (auth.tokenType !== "sandbox" && auth.tokenType !== "zero") {
-    return undefined;
-  }
-
-  const [parentRun] = await db
-    .select({ agentComposeId: agentSessions.agentComposeId })
-    .from(agentRuns)
-    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(eq(agentRuns.id, auth.runId))
-    .limit(1);
-
-  return parentRun?.agentComposeId ?? undefined;
-}
-
 function createRunBody(args: {
   readonly body: ZeroRunCreateBody;
   readonly agent: ZeroAgentRunRecord;
@@ -867,36 +667,62 @@ async function resolveZeroRunAgentId(
   );
 }
 
-async function loadZeroRunConnectorScopes(
+async function loadZeroRunPostAuthorizationContext(
   db: Db,
   args: {
-    readonly auth: AuthContext & { readonly orgId: string };
+    readonly userId: string;
+    readonly orgId: string;
     readonly agentId: string;
+    readonly triggerRunId: string | undefined;
+    readonly apiStartTime: number;
+    readonly timing: ApiDispatchTimingCollector;
   },
   signal: AbortSignal,
-): Promise<{
-  readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
-  readonly allowedCustomConnectorIds: readonly string[];
-}> {
-  const scope = await loadAgentConnectorScope(db, {
-    userId: args.auth.userId,
-    orgId: args.auth.orgId,
-    agentId: args.agentId,
-  });
+) {
+  const [promptContext, executionScope] = await Promise.all([
+    measureZeroPreCreate(
+      args.timing,
+      "api_dispatch_pre_create_zero_load_prompt_snapshot",
+      async () => {
+        return await loadZeroRunPromptContextSnapshot(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+        });
+      },
+    ),
+    measureZeroPreCreate(
+      args.timing,
+      "api_dispatch_pre_create_zero_load_execution_scope_snapshot",
+      async () => {
+        return await loadZeroRunExecutionScopeSnapshot(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+          agentId: args.agentId,
+          triggerRunId: args.triggerRunId,
+          checkedAt: new Date(args.apiStartTime),
+        });
+      },
+    ),
+  ]);
   signal.throwIfAborted();
-  return scope;
-}
 
-async function resolveZeroRunAutomationPreCreateContext(
-  db: Db,
-  args: CreateZeroRunCommandArgs,
-  signal: AbortSignal,
-): Promise<{
-  readonly triggerAgentId: string | undefined;
-}> {
-  const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
+  const runPermissionPolicies = await measureZeroPreCreate(
+    args.timing,
+    "api_dispatch_pre_create_zero_resolve_firewall_metadata",
+    async () => {
+      return await resolveFirewallServerMetadataPolicies(
+        permissionGrantsToFirewallPolicies(executionScope.permissionGrants),
+        [...executionScope.allowedConnectorTypes],
+      );
+    },
+  );
   signal.throwIfAborted();
-  return { triggerAgentId };
+
+  return {
+    ...promptContext,
+    ...executionScope,
+    runPermissionPolicies,
+  };
 }
 
 function buildZeroCreateAgentRunArgs(args: {
@@ -909,7 +735,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
-  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
+  readonly workflows: readonly RunWorkflowRef[];
   readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
@@ -989,7 +815,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
+  readonly workflows: readonly RunWorkflowRef[];
   readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
@@ -1049,7 +875,7 @@ interface ZeroRunAfterPreCreateBase {
   readonly zeroWebSearchEnabled: boolean;
   readonly zeroMailEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
+  readonly workflows: readonly RunWorkflowRef[];
   readonly allowedConnectorTypes: readonly ConnectorCatalogRef[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
@@ -1152,43 +978,22 @@ export const createZeroIntegrationRun$ = command(
       zeroScrapeEnabled,
       zeroWebSearchEnabled,
       zeroMailEnabled,
-    } = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_user_info",
-      async () => {
-        return await loadZeroRunPromptContext(db, {
-          userId: args.userId,
-          orgId: args.orgId,
-        });
-      },
-    );
-    signal.throwIfAborted();
-    const { allowedConnectorTypes, allowedCustomConnectorIds } =
-      await measureZeroPreCreate(
+      allowedConnectorTypes,
+      allowedCustomConnectorIds,
+      workflows,
+      runPermissionPolicies,
+    } = await loadZeroRunPostAuthorizationContext(
+      db,
+      {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentId: agent.id,
+        triggerRunId: undefined,
+        apiStartTime: args.apiStartTime,
         timing,
-        "api_dispatch_pre_create_zero_load_connector_scopes",
-        async () => {
-          return await loadAgentConnectorScope(db, {
-            userId: args.userId,
-            orgId: args.orgId,
-            agentId: agent.id,
-          });
-        },
-      );
-    signal.throwIfAborted();
-    const { workflows, runPermissionPolicies } =
-      await loadZeroRunWorkflowPermissionContext(
-        db,
-        {
-          orgId: args.orgId,
-          userId: args.userId,
-          agent,
-          allowedConnectorTypes,
-          apiStartTime: args.apiStartTime,
-          timing,
-        },
-        signal,
-      );
+      },
+      signal,
+    );
 
     return await set(
       createAgentRunAfterZeroPreCreate$,
@@ -1251,62 +1056,33 @@ export const createZeroRun$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
+    const triggerRunId =
+      args.auth.tokenType === "sandbox" || args.auth.tokenType === "zero"
+        ? args.auth.runId
+        : undefined;
     const {
       userInfo,
       featureSwitchContext,
       zeroScrapeEnabled,
       zeroWebSearchEnabled,
       zeroMailEnabled,
-    } = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_user_info",
-      async () => {
-        return await loadZeroRunPromptContext(db, {
-          userId: args.auth.userId,
-          orgId: args.auth.orgId,
-        });
+      allowedConnectorTypes,
+      allowedCustomConnectorIds,
+      workflows,
+      runPermissionPolicies,
+      triggerAgentId,
+    } = await loadZeroRunPostAuthorizationContext(
+      db,
+      {
+        userId: args.auth.userId,
+        orgId: args.auth.orgId,
+        agentId: agent.id,
+        triggerRunId,
+        apiStartTime: args.apiStartTime,
+        timing,
       },
+      signal,
     );
-    signal.throwIfAborted();
-    const automationContext = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_resolve_automation_context",
-      async () => {
-        return await resolveZeroRunAutomationPreCreateContext(db, args, signal);
-      },
-    );
-    signal.throwIfAborted();
-    const { triggerAgentId } = automationContext;
-    const connectorScopes = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_connector_scopes",
-      async () => {
-        return await loadZeroRunConnectorScopes(
-          db,
-          {
-            auth: args.auth,
-            agentId: agent.id,
-          },
-          signal,
-        );
-      },
-    );
-    signal.throwIfAborted();
-    const { allowedConnectorTypes, allowedCustomConnectorIds } =
-      connectorScopes;
-    const { workflows, runPermissionPolicies } =
-      await loadZeroRunWorkflowPermissionContext(
-        db,
-        {
-          orgId: args.auth.orgId,
-          userId: args.auth.userId,
-          agent,
-          allowedConnectorTypes,
-          apiStartTime: args.apiStartTime,
-          timing,
-        },
-        signal,
-      );
 
     return await set(
       createAgentRunAfterZeroPreCreate$,
