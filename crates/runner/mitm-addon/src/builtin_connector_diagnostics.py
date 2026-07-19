@@ -206,16 +206,18 @@ def resolve_shared_base_ownership(
       ``candidate`` is ``None``.
 
     ``hint_status`` is ``absent`` when no intent was supplied, ``used`` when
-    intent selected the owner, ``ignored`` when a matching intent lost to a
-    unique route owner, and ``outside_candidate_set`` when intent named no
-    candidate. Route-owner reasons can use ``absent``, ``ignored``, or
-    ``outside_candidate_set``; hint-owner reasons use ``used``; ambiguous and
-    base-only reasons use ``absent`` or ``outside_candidate_set``.
+    intent selected the owner, ``ignored`` when a matching intent was not used
+    because a unique route owner took precedence, and ``outside_candidate_set``
+    when intent named no candidate. Route-owner reasons can use ``absent``,
+    ``ignored``, or ``outside_candidate_set``; hint-owner reasons use ``used``;
+    ambiguous and base-only reasons use ``absent`` or
+    ``outside_candidate_set``.
 
     The current caller copies ownership fields into connector diagnostic proxy
     logs only after accepting a non-``None`` candidate and finding no existing
     request auth material. Consequently, logged ``ownership_reason`` values are
-    currently limited to ``route_owner`` and ``hint_owner``; suppressing reasons
+    currently limited to ``route_owner`` and ``hint_owner``, while
+    ``ownership_hint_status`` follows the combinations above. Suppressing reasons
     remain returned outcomes only.
     """
     catalog = diagnostic_snapshot.catalog
