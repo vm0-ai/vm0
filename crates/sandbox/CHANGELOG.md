@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.27](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.26...sandbox-v0.19.27) (2026-07-19)
+
+
+### Bug Fixes
+
+* **sandbox:** align copy file publication contract ([#22120](https://github.com/vm0-ai/vm0/issues/22120)) ([715edec](https://github.com/vm0-ai/vm0/commit/715edecda445be930c12c5e5c54e053752dc0ebf))
+
 ## [0.19.26](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.25...sandbox-v0.19.26) (2026-07-16)
 
 
