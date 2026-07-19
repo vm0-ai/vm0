@@ -35,7 +35,7 @@ function statusLabel(status: ZeroMailDraftStatus): string {
 
 function MailDraftCardSkeleton() {
   return (
-    <div className="flex h-[92px] w-full max-w-xl items-center gap-3 rounded-xl border border-border/70 bg-card px-4">
+    <div className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3">
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
         <IconLoader2 className="animate-spin text-muted-foreground" size={16} />
       </span>
@@ -63,17 +63,18 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
   const draft = draftLoadable.data;
   const deleted = draft.status === "deleted";
   const selected = selectedMailDraftId === signals.mailDraftId;
+  const recipients = draft.to.join(", ") || "(No recipient)";
   const content = (
     <>
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-background">
         <ConnectorIcon icon={GMAIL_ICON} size={23} />
       </span>
-      <span className="min-w-0 flex-1 self-stretch py-0.5">
-        <span className="line-clamp-2 min-h-10 text-sm font-medium leading-5 text-foreground">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium leading-5 text-foreground">
           {draft.subject || "(No subject)"}
         </span>
-        <span className="mt-1 block truncate text-xs text-muted-foreground">
-          {draft.fromName ?? draft.from}
+        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+          To: {recipients}
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-1.5 self-center">
@@ -103,7 +104,7 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
         aria-label={`Deleted email: ${draft.subject || "No subject"}`}
         data-mail-draft-card
         data-mail-draft-status="deleted"
-        className="flex h-[92px] w-full max-w-xl cursor-default items-center gap-3 rounded-xl border border-border/60 bg-card px-4 opacity-70"
+        className="flex min-h-[76px] w-full max-w-xl cursor-default items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70"
       >
         {content}
       </div>
@@ -121,7 +122,7 @@ function EnabledMailDraftCard({ signals }: MailDraftCardProps) {
         openSidebar(signals.mailDraftId);
       }}
       className={cn(
-        "flex h-[92px] w-full max-w-xl items-center gap-3 rounded-xl border bg-card px-4 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        "flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         selected ? "border-ring/60 bg-muted/20" : "border-border/70",
       )}
     >
