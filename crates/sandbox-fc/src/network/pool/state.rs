@@ -1413,6 +1413,15 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    const TEST_SYNC_TIMEOUT: Duration = Duration::from_secs(5);
+
+    async fn wait_for_sync<T>(phase: &'static str, future: impl Future<Output = T>) -> T {
+        match tokio::time::timeout(TEST_SYNC_TIMEOUT, future).await {
+            Ok(value) => value,
+            Err(_) => panic!("test synchronization timed out waiting for {phase}"),
+        }
+    }
+
     async fn blocking_plain_creation(
         name: &'static str,
         entered: Arc<tokio::sync::Notify>,
@@ -1907,7 +1916,7 @@ mod tests {
         let mut pool = NetnsPool::from_state_for_test(state);
         let inner = pool.inner.clone();
         let activation = tokio::spawn(async move { inner.activate_dns_readiness().await });
-        entered.notified().await;
+        wait_for_sync("DNS readiness probe to start", entered.notified()).await;
 
         activation.abort();
         assert!(activation.await.unwrap_err().is_cancelled());
@@ -1974,7 +1983,12 @@ mod tests {
         let mut completion = state.completion_wake_tx.subscribe();
         state.spawn_proxy_creation_for_test(async { Ok(test_info("vm0-ns-test-bad")) });
         let mut pool = NetnsPool::from_state_for_test(state);
-        completion.changed().await.unwrap();
+        wait_for_sync(
+            "parallel proxy namespace creation to complete",
+            completion.changed(),
+        )
+        .await
+        .unwrap();
 
         let mut lease = Some(pool.acquire().await.unwrap());
 
@@ -2124,8 +2138,12 @@ mod tests {
             let handle = handle.clone();
             async move { handle.acquire().await }
         });
-        entered.notified().await;
-        waiting.notified().await;
+        wait_for_sync("plain namespace creation to start", entered.notified()).await;
+        wait_for_sync(
+            "shared acquire to wait for namespace creation",
+            waiting.notified(),
+        )
+        .await;
 
         let guard = handle
             .inner
@@ -2162,8 +2180,16 @@ mod tests {
             let handle = handle.clone();
             async move { handle.acquire().await }
         });
-        entered.notified().await;
-        waiting.notified().await;
+        wait_for_sync(
+            "plain namespace creation to start before acquire cancellation",
+            entered.notified(),
+        )
+        .await;
+        wait_for_sync(
+            "shared acquire to wait before cancellation",
+            waiting.notified(),
+        )
+        .await;
         acquire.abort();
         let _ = acquire.await;
 
@@ -2308,13 +2334,12 @@ mod tests {
         drop(pool);
         release.notify_one();
 
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        wait_for_sync("late namespace deletion after pool drop", async {
             while deleted.load(Ordering::SeqCst) == 0 {
                 tokio::task::yield_now().await;
             }
         })
-        .await
-        .expect("late pending namespace should be deleted after pool drop");
+        .await;
     }
 
     #[tokio::test]
@@ -2339,12 +2364,15 @@ mod tests {
             let handle = handle.clone();
             async move { handle.cleanup().await }
         });
-        loop {
-            if !handle.inner.state.lock().await.active {
-                break;
+        wait_for_sync("cleanup to mark namespace pool inactive", async {
+            loop {
+                if !handle.inner.state.lock().await.active {
+                    break;
+                }
+                tokio::task::yield_now().await;
             }
-            tokio::task::yield_now().await;
-        }
+        })
+        .await;
 
         let err = handle.acquire().await.unwrap_err();
         assert!(matches!(err, NetworkError::PoolNotActive));
@@ -2378,7 +2406,11 @@ mod tests {
                 (outcome, lease)
             }
         });
-        flush_entered.notified().await;
+        wait_for_sync(
+            "shared release conntrack flush to start",
+            flush_entered.notified(),
+        )
+        .await;
 
         let guard = handle
             .inner
@@ -2416,7 +2448,11 @@ mod tests {
                 (outcome, lease)
             }
         });
-        flush_entered.notified().await;
+        wait_for_sync(
+            "shared release conntrack flush to start before cleanup",
+            flush_entered.notified(),
+        )
+        .await;
 
         handle.cleanup().await.unwrap();
         flush_release.notify_one();
@@ -2451,7 +2487,10 @@ mod tests {
             tokio::pin!(release);
             tokio::select! {
                 outcome = &mut release => panic!("release completed before flush was cancelled: {outcome:?}"),
-                _ = flush_entered.notified() => {}
+                _ = wait_for_sync(
+                    "release conntrack flush to start before cancellation",
+                    flush_entered.notified(),
+                ) => {}
             }
         }
 
@@ -2496,7 +2535,10 @@ mod tests {
         let mut release = Box::pin(handle.release(&mut lease));
         tokio::select! {
             outcome = &mut release => panic!("release completed before flush finished: {outcome:?}"),
-            _ = flush_entered.notified() => {}
+            _ = wait_for_sync(
+                "trusted release conntrack flush to start",
+                flush_entered.notified(),
+            ) => {}
         }
         let guard = handle.inner.state.lock().await;
         first_flush_release.notify_one();
@@ -2547,7 +2589,10 @@ mod tests {
             tokio::pin!(release);
             tokio::select! {
                 result = &mut release => panic!("release completed before flush was cancelled: {result:?}"),
-                _ = flush_entered.notified() => {}
+                _ = wait_for_sync(
+                    "direct release conntrack flush to start before cancellation",
+                    flush_entered.notified(),
+                ) => {}
             }
         }
 
@@ -2668,7 +2713,10 @@ mod tests {
             tokio::pin!(release);
             tokio::select! {
                 outcome = &mut release => panic!("release completed before delete was cancelled: {outcome:?}"),
-                _ = delete_entered.notified() => {}
+                _ = wait_for_sync(
+                    "untrusted release namespace deletion to start",
+                    delete_entered.notified(),
+                ) => {}
             }
         }
 
@@ -2714,7 +2762,10 @@ mod tests {
         let mut release = Box::pin(handle.release(&mut lease));
         tokio::select! {
             outcome = &mut release => panic!("release completed before delete finished: {outcome:?}"),
-            _ = delete_entered.notified() => {}
+            _ = wait_for_sync(
+                "namespace deletion to start before release commit",
+                delete_entered.notified(),
+            ) => {}
         }
         let guard = handle.inner.state.lock().await;
         first_delete_release.notify_one();
@@ -2764,7 +2815,11 @@ mod tests {
             let handle = handle.clone();
             async move { handle.cleanup().await }
         });
-        delete_entered.notified().await;
+        wait_for_sync(
+            "shared cleanup namespace deletion to start",
+            delete_entered.notified(),
+        )
+        .await;
 
         let guard = handle
             .inner
@@ -2797,7 +2852,11 @@ mod tests {
             let handle = handle.clone();
             async move { handle.cleanup().await }
         });
-        delete_entered.notified().await;
+        wait_for_sync(
+            "cleanup namespace deletion to start before cancellation",
+            delete_entered.notified(),
+        )
+        .await;
         cleanup.abort();
         let _ = cleanup.await;
 
@@ -2966,7 +3025,10 @@ mod tests {
             tokio::pin!(cleanup);
             tokio::select! {
                 result = &mut cleanup => panic!("cleanup completed before pending task was released: {result:?}"),
-                _ = entered.notified() => {}
+                _ = wait_for_sync(
+                    "pending namespace creation to start before cleanup cancellation",
+                    entered.notified(),
+                ) => {}
             }
         }
 
@@ -3005,7 +3067,10 @@ mod tests {
             tokio::pin!(acquire);
             tokio::select! {
                 result = &mut acquire => panic!("acquire completed before pending task was released: {result:?}"),
-                _ = entered.notified() => {}
+                _ = wait_for_sync(
+                    "pending namespace creation to start before acquire cancellation",
+                    entered.notified(),
+                ) => {}
             }
         }
 
@@ -3048,7 +3113,10 @@ mod tests {
             tokio::pin!(deletion);
             tokio::select! {
                 _ = &mut deletion => panic!("delete completed before test released it"),
-                _ = entered.notified() => {}
+                _ = wait_for_sync(
+                    "queued namespace deletion to start before cancellation",
+                    entered.notified(),
+                ) => {}
             }
         }
 
