@@ -26,6 +26,9 @@ const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
 const STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 const STREAM_JSON_SHELL_READ_BUFFER_BYTES: usize = 8 * 1024;
+// Integration contract with guest-agent's ordinary stdout framing policy.
+const ORDINARY_STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
+const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 #[cfg(unix)]
 const STREAM_JSON_SHELL_CANCEL_POLL_TIMEOUT_MS: libc::c_int = 100;
 
@@ -119,6 +122,13 @@ fn run_scenario(scenario: MockScenario<'_>, prompt: &str, output_format: &str) -
         MockScenario::Fail(msg) => {
             eprintln!("{msg}");
             ExitCode::from(1)
+        }
+        MockScenario::StdoutOverLimit { newline } => {
+            run_stdout_over_limit_scenario(output_format, newline)
+        }
+        MockScenario::StdoutInvalidUtf8 => run_stdout_invalid_utf8_scenario(output_format),
+        MockScenario::StdoutRecordBoundaries => {
+            run_stdout_record_boundaries_scenario(output_format)
         }
         MockScenario::StuckTool { deaf, close_stdout } => {
             run_stuck_tool_scenario(output_format, deaf, close_stdout)
@@ -382,6 +392,63 @@ fn ignore_sigterm() {
 
 fn hang_until_reaped() {
     std::thread::sleep(REAPABLE_HANG_DURATION);
+}
+
+fn write_stdout_limit(stdout: &mut impl Write, byte: u8) -> std::io::Result<()> {
+    let chunk = [byte; STDOUT_STREAM_CHUNK_BYTES];
+    for _ in 0..ORDINARY_STDOUT_MAX_LINE_BYTES / STDOUT_STREAM_CHUNK_BYTES {
+        stdout.write_all(&chunk)?;
+    }
+    Ok(())
+}
+
+fn run_stdout_over_limit_scenario(output_format: &str, newline: bool) -> ExitCode {
+    if output_format != "stream-json" {
+        return ExitCode::from(1);
+    }
+
+    let stdout = std::io::stdout();
+    let mut stdout = stdout.lock();
+    let _ = write_stdout_limit(&mut stdout, b'x');
+    let suffix: &[u8] = if newline { b"x\n" } else { b"x" };
+    let _ = stdout.write_all(suffix);
+    let _ = stdout.flush();
+    drop(stdout);
+    hang_until_reaped();
+    ExitCode::from(1)
+}
+
+fn run_stdout_invalid_utf8_scenario(output_format: &str) -> ExitCode {
+    if output_format != "stream-json" {
+        return ExitCode::from(1);
+    }
+
+    let stdout = std::io::stdout();
+    let mut stdout = stdout.lock();
+    let _ = stdout.write_all(b"do-not-log-invalid-stdout-\xff\n");
+    let _ = stdout.flush();
+    drop(stdout);
+    hang_until_reaped();
+    ExitCode::from(1)
+}
+
+fn run_stdout_record_boundaries_scenario(output_format: &str) -> ExitCode {
+    if output_format != "stream-json" {
+        return ExitCode::from(1);
+    }
+
+    let stdout = std::io::stdout();
+    let mut stdout = stdout.lock();
+    let result = stdout
+        .write_all(b"crlf-record\r\n")
+        .and_then(|()| write_stdout_limit(&mut stdout, b'x'))
+        .and_then(|()| stdout.write_all(b"\neof-record"))
+        .and_then(|()| stdout.flush());
+    if let Err(error) = result {
+        eprintln!("write stdout record-boundary fixture: {error}");
+        return ExitCode::from(1);
+    }
+    ExitCode::SUCCESS
 }
 
 fn run_stuck_tool_scenario(output_format: &str, deaf: bool, close_stdout: bool) -> ExitCode {

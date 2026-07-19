@@ -56,6 +56,9 @@ pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
 /// Documented maximum byte length for one returned stderr line after CRLF normalization.
 pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 
+/// Integration contract for one accepted ordinary CLI stdout record.
+pub const CLI_STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
+
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.
 pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
     "[stderr line omitted: exceeded diagnostic size limit]";
@@ -644,6 +647,10 @@ fn read_codex_session_history_events_for_path(
 /// - `@fail-no-newline:<message>` → stderr EOF without trailing newline
 /// - `@fail-invalid-utf8` → stderr bytes that are not valid UTF-8
 /// - `@fail-invalid-utf8-long` → invalid UTF-8 whose lossy form exceeds the limit
+/// - `@stdout-over-limit-no-newline` → oversized stdout record followed by a hang
+/// - `@stdout-over-limit-newline` → oversized LF stdout record followed by a hang
+/// - `@stdout-invalid-utf8` → invalid UTF-8 stdout followed by a hang
+/// - `@stdout-record-boundaries` → exact-limit, CRLF, and EOF stdout records
 /// - `@stuck-tool-deaf` → forced-termination SIGKILL escalation path
 /// - `@stuck-tool-closed-stdout-deaf` → stdout EOF before forced termination
 ///

@@ -6,6 +6,10 @@ const FAIL_NO_NEWLINE_MARKER: &str = "@fail-no-newline:";
 const FAIL_INVALID_UTF8_MARKER: &str = "@fail-invalid-utf8";
 const FAIL_INVALID_UTF8_LONG_MARKER: &str = "@fail-invalid-utf8-long";
 const FAIL_MARKER: &str = "@fail:";
+const STDOUT_OVER_LIMIT_NO_NEWLINE_MARKER: &str = "@stdout-over-limit-no-newline";
+const STDOUT_OVER_LIMIT_NEWLINE_MARKER: &str = "@stdout-over-limit-newline";
+const STDOUT_INVALID_UTF8_MARKER: &str = "@stdout-invalid-utf8";
+const STDOUT_RECORD_BOUNDARIES_MARKER: &str = "@stdout-record-boundaries";
 const STUCK_TOOL_CLOSED_STDOUT_DEAF_MARKER: &str = "@stuck-tool-closed-stdout-deaf";
 const STUCK_TOOL_DEAF_MARKER: &str = "@stuck-tool-deaf";
 const STUCK_TOOL_MARKER: &str = "@stuck-tool";
@@ -27,6 +31,9 @@ pub(crate) enum MockScenario<'a> {
     FailInvalidUtf8,
     FailInvalidUtf8Long,
     Fail(&'a str),
+    StdoutOverLimit { newline: bool },
+    StdoutInvalidUtf8,
+    StdoutRecordBoundaries,
     StuckTool { deaf: bool, close_stdout: bool },
     OrphanPipe,
     HangAfterResult { deaf: bool },
@@ -54,6 +61,9 @@ enum ScenarioKind {
     FailInvalidUtf8,
     FailInvalidUtf8Long,
     Fail,
+    StdoutOverLimit { newline: bool },
+    StdoutInvalidUtf8,
+    StdoutRecordBoundaries,
     StuckTool { deaf: bool, close_stdout: bool },
     OrphanPipe,
     HangAfterResult { deaf: bool },
@@ -106,6 +116,26 @@ const SCENARIO_RULES: &[ScenarioRule] = &[
         marker: FAIL_MARKER,
         match_kind: ScenarioMatchKind::PrefixPayload,
         scenario_kind: ScenarioKind::Fail,
+    },
+    ScenarioRule {
+        marker: STDOUT_OVER_LIMIT_NO_NEWLINE_MARKER,
+        match_kind: ScenarioMatchKind::Exact,
+        scenario_kind: ScenarioKind::StdoutOverLimit { newline: false },
+    },
+    ScenarioRule {
+        marker: STDOUT_OVER_LIMIT_NEWLINE_MARKER,
+        match_kind: ScenarioMatchKind::Exact,
+        scenario_kind: ScenarioKind::StdoutOverLimit { newline: true },
+    },
+    ScenarioRule {
+        marker: STDOUT_INVALID_UTF8_MARKER,
+        match_kind: ScenarioMatchKind::Exact,
+        scenario_kind: ScenarioKind::StdoutInvalidUtf8,
+    },
+    ScenarioRule {
+        marker: STDOUT_RECORD_BOUNDARIES_MARKER,
+        match_kind: ScenarioMatchKind::Exact,
+        scenario_kind: ScenarioKind::StdoutRecordBoundaries,
     },
     ScenarioRule {
         marker: STUCK_TOOL_CLOSED_STDOUT_DEAF_MARKER,
@@ -210,6 +240,13 @@ impl ScenarioKind {
             (Self::WriteEnvJson, ScenarioMatch::Payload(path)) => MockScenario::WriteEnvJson(path),
             (Self::FailInvalidUtf8, ScenarioMatch::Marker) => MockScenario::FailInvalidUtf8,
             (Self::FailInvalidUtf8Long, ScenarioMatch::Marker) => MockScenario::FailInvalidUtf8Long,
+            (Self::StdoutOverLimit { newline }, ScenarioMatch::Marker) => {
+                MockScenario::StdoutOverLimit { newline }
+            }
+            (Self::StdoutInvalidUtf8, ScenarioMatch::Marker) => MockScenario::StdoutInvalidUtf8,
+            (Self::StdoutRecordBoundaries, ScenarioMatch::Marker) => {
+                MockScenario::StdoutRecordBoundaries
+            }
             (Self::StuckTool { deaf, close_stdout }, ScenarioMatch::Marker) => {
                 MockScenario::StuckTool { deaf, close_stdout }
             }
@@ -320,6 +357,19 @@ mod tests {
             ("@fail-invalid-utf8-long", MockScenario::FailInvalidUtf8Long),
             ("@fail:boom", MockScenario::Fail("boom")),
             (
+                "@stdout-over-limit-no-newline",
+                MockScenario::StdoutOverLimit { newline: false },
+            ),
+            (
+                "@stdout-over-limit-newline",
+                MockScenario::StdoutOverLimit { newline: true },
+            ),
+            ("@stdout-invalid-utf8", MockScenario::StdoutInvalidUtf8),
+            (
+                "@stdout-record-boundaries",
+                MockScenario::StdoutRecordBoundaries,
+            ),
+            (
                 "@stuck-tool-closed-stdout-deaf",
                 MockScenario::StuckTool {
                     deaf: true,
@@ -426,6 +476,22 @@ mod tests {
         );
         assert_eq!(
             MockScenario::from_prompt("@fail-invalid-utf8-long-suffix"),
+            MockScenario::Shell
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@stdout-over-limit-no-newline-suffix"),
+            MockScenario::Shell
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@stdout-over-limit-newline-suffix"),
+            MockScenario::Shell
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@stdout-invalid-utf8-suffix"),
+            MockScenario::Shell
+        );
+        assert_eq!(
+            MockScenario::from_prompt("@stdout-record-boundaries-suffix"),
             MockScenario::Shell
         );
     }
