@@ -73,6 +73,13 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
         const result = await client.execute<Row>(query());
       `,
     },
+    {
+      code: `
+        async function run(client: Client, query: string) {
+          return await client.execute<Row>(query);
+        }
+      `,
+    },
   ],
   invalid: [
     {
@@ -138,6 +145,54 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
         const result = await database.transaction(async (transaction) => {
           return await transaction.execute(query());
         });
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `
+        import type { SQLWrapper } from "drizzle-orm";
+        async function unsafe(executor: Executor, query: SQLWrapper) {
+          const result = await executor.execute(query);
+        }
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `
+        import type { SQLWrapper as DrizzleQuery } from "drizzle-orm";
+        type Query = DrizzleQuery;
+        async function unsafe(db: Database, query: Query) {
+          const result = await db.execute<Row>(query);
+        }
+      `,
+      errors: [{ messageId: "rowTypeArgument" }, { messageId: "rawResult" }],
+    },
+    {
+      code: `
+        import { sql, type SQL } from "drizzle-orm";
+        function query(): SQL {
+          if (condition) {
+            return sql\`SELECT 1 AS value\`;
+          }
+          return sql\`SELECT 2 AS value\`;
+        }
+        const rows = (await db.execute(query())).rows;
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `
+        import type { SQLWrapper } from "drizzle-orm";
+        const result = await db.execute(query as unknown as SQLWrapper);
+      `,
+      errors: [{ messageId: "rawResult" }],
+    },
+    {
+      code: `
+        import type * as drizzle from "drizzle-orm";
+        async function unsafe(db: Database, query: drizzle.SQLWrapper) {
+          return await db.execute(query);
+        }
       `,
       errors: [{ messageId: "rawResult" }],
     },

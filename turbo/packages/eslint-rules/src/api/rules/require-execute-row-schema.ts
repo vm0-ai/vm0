@@ -190,6 +190,110 @@ export const requireExecuteRowSchema = createRule({
       return importedName === "sql" ? "sql" : null;
     }
 
+    function isDrizzleSqlTypeImport(identifier: TSESTree.Identifier): boolean {
+      const variable = ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier,
+      );
+      const definition = variable?.defs.find((candidate) => {
+        return candidate.type === "ImportBinding";
+      });
+      if (
+        !definition ||
+        definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
+        definition.parent.source.value !== "drizzle-orm" ||
+        definition.node.type !== AST_NODE_TYPES.ImportSpecifier
+      ) {
+        return false;
+      }
+      const importedName =
+        definition.node.imported.type === AST_NODE_TYPES.Identifier
+          ? definition.node.imported.name
+          : definition.node.imported.value;
+      return importedName === "SQL" || importedName === "SQLWrapper";
+    }
+
+    function isDrizzleNamespaceImport(
+      identifier: TSESTree.Identifier,
+    ): boolean {
+      const variable = ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier,
+      );
+      return (
+        variable?.defs.some((candidate) => {
+          return (
+            candidate.type === "ImportBinding" &&
+            candidate.parent.type === AST_NODE_TYPES.ImportDeclaration &&
+            candidate.parent.source.value === "drizzle-orm" &&
+            candidate.node.type === AST_NODE_TYPES.ImportNamespaceSpecifier
+          );
+        }) === true
+      );
+    }
+
+    function isDrizzleNamespaceType(
+      typeName: TSESTree.TSQualifiedName,
+    ): boolean {
+      return (
+        typeName.left.type === AST_NODE_TYPES.Identifier &&
+        isDrizzleNamespaceImport(typeName.left) &&
+        (typeName.right.name === "SQL" || typeName.right.name === "SQLWrapper")
+      );
+    }
+
+    function localTypeAlias(
+      identifier: TSESTree.Identifier,
+    ): TSESTree.TypeNode | null {
+      const variable = ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier,
+      );
+      const definition = variable?.defs.find((candidate) => {
+        return (
+          candidate.type === "Type" &&
+          candidate.node.type === AST_NODE_TYPES.TSTypeAliasDeclaration
+        );
+      });
+      return definition?.node.type === AST_NODE_TYPES.TSTypeAliasDeclaration
+        ? definition.node.typeAnnotation
+        : null;
+    }
+
+    function isDrizzleSqlType(
+      typeNode: TSESTree.TypeNode,
+      seen: ReadonlySet<TSESTree.Node>,
+    ): boolean {
+      if (seen.has(typeNode)) {
+        return false;
+      }
+      const nextSeen = new Set(seen);
+      nextSeen.add(typeNode);
+
+      if (typeNode.type === AST_NODE_TYPES.TSTypeReference) {
+        if (typeNode.typeName.type === AST_NODE_TYPES.TSQualifiedName) {
+          return isDrizzleNamespaceType(typeNode.typeName);
+        }
+        if (typeNode.typeName.type !== AST_NODE_TYPES.Identifier) {
+          return false;
+        }
+        if (isDrizzleSqlTypeImport(typeNode.typeName)) {
+          return true;
+        }
+        const alias = localTypeAlias(typeNode.typeName);
+        return alias !== null && isDrizzleSqlType(alias, nextSeen);
+      }
+      if (
+        typeNode.type === AST_NODE_TYPES.TSUnionType ||
+        typeNode.type === AST_NODE_TYPES.TSIntersectionType
+      ) {
+        return typeNode.types.some((member) => {
+          return isDrizzleSqlType(member, nextSeen);
+        });
+      }
+      return false;
+    }
+
     function isDrizzleSqlTag(tag: TSESTree.Expression): boolean {
       if (tag.type === AST_NODE_TYPES.Identifier) {
         return drizzleImportKind(tag) === "sql";
@@ -234,9 +338,30 @@ export const requireExecuteRowSchema = createRule({
       return initializer ?? null;
     }
 
-    function localFunctionResult(
+    function variableDeclaredType(
       identifier: TSESTree.Identifier,
-    ): TSESTree.Expression | null {
+    ): TSESTree.TypeNode | null {
+      const variable = ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier,
+      );
+      for (const declaration of variable?.identifiers ?? []) {
+        const annotation = declaration.typeAnnotation?.typeAnnotation;
+        if (annotation) {
+          return annotation;
+        }
+      }
+      return null;
+    }
+
+    type LocalFunction =
+      | TSESTree.FunctionDeclaration
+      | TSESTree.FunctionExpression
+      | TSESTree.ArrowFunctionExpression;
+
+    function localFunction(
+      identifier: TSESTree.Identifier,
+    ): LocalFunction | null {
       const variable = ASTUtils.findVariable(
         context.sourceCode.getScope(identifier),
         identifier,
@@ -256,7 +381,13 @@ export const requireExecuteRowSchema = createRule({
         initializer?.type === AST_NODE_TYPES.FunctionExpression
           ? initializer
           : null;
-      const body = functionNode?.body ?? variableFunction?.body;
+      return functionNode ?? variableFunction;
+    }
+
+    function localFunctionResult(
+      identifier: TSESTree.Identifier,
+    ): TSESTree.Expression | null {
+      const body = localFunction(identifier)?.body;
       if (!body) {
         return null;
       }
@@ -270,6 +401,12 @@ export const requireExecuteRowSchema = createRule({
         return null;
       }
       return returns[0]?.argument ?? null;
+    }
+
+    function localFunctionDeclaredResult(
+      identifier: TSESTree.Identifier,
+    ): TSESTree.TypeNode | null {
+      return localFunction(identifier)?.returnType?.typeAnnotation ?? null;
     }
 
     function isDrizzleQueryExpression(
@@ -287,7 +424,14 @@ export const requireExecuteRowSchema = createRule({
       }
       if (
         expression.type === AST_NODE_TYPES.TSAsExpression ||
-        expression.type === AST_NODE_TYPES.TSTypeAssertion ||
+        expression.type === AST_NODE_TYPES.TSTypeAssertion
+      ) {
+        return (
+          isDrizzleSqlType(expression.typeAnnotation, nextSeen) ||
+          isDrizzleQueryExpression(expression.expression, nextSeen)
+        );
+      }
+      if (
         expression.type === AST_NODE_TYPES.TSNonNullExpression ||
         expression.type === AST_NODE_TYPES.ChainExpression
       ) {
@@ -295,9 +439,15 @@ export const requireExecuteRowSchema = createRule({
       }
       if (expression.type === AST_NODE_TYPES.Identifier) {
         const initializer = variableInitializer(expression);
-        return (
+        if (
           initializer !== null &&
           isDrizzleQueryExpression(initializer, nextSeen)
+        ) {
+          return true;
+        }
+        const declaredType = variableDeclaredType(expression);
+        return (
+          declaredType !== null && isDrizzleSqlType(declaredType, nextSeen)
         );
       }
       if (expression.type === AST_NODE_TYPES.ConditionalExpression) {
@@ -321,8 +471,12 @@ export const requireExecuteRowSchema = createRule({
         expression.callee.type === AST_NODE_TYPES.Identifier
       ) {
         const returned = localFunctionResult(expression.callee);
+        if (returned !== null && isDrizzleQueryExpression(returned, nextSeen)) {
+          return true;
+        }
+        const declaredResult = localFunctionDeclaredResult(expression.callee);
         return (
-          returned !== null && isDrizzleQueryExpression(returned, nextSeen)
+          declaredResult !== null && isDrizzleSqlType(declaredResult, nextSeen)
         );
       }
       if (
