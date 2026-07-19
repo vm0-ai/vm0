@@ -335,6 +335,8 @@ pub enum CliTerminationReason {
     InitialPromptStdin,
     /// Event delivery overloaded or stopped and required termination.
     EventDelivery,
+    /// CLI stdout framing or decoding failed and required termination.
+    StdoutIngestion,
 }
 
 impl CliTerminationReason {
@@ -348,6 +350,7 @@ impl CliTerminationReason {
             Self::HeartbeatPanic => "heartbeat_panic",
             Self::InitialPromptStdin => "initial_prompt_stdin",
             Self::EventDelivery => "event_delivery",
+            Self::StdoutIngestion => "stdout_ingestion",
         }
     }
 }
@@ -685,6 +688,21 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn stdout_ingestion_termination_reason_has_stable_serialization() {
+        let reason = CliTerminationReason::StdoutIngestion;
+        assert_eq!(reason.as_str(), "stdout_ingestion");
+        assert_eq!(
+            serde_json::to_value(reason).unwrap(),
+            serde_json::json!("stdout_ingestion")
+        );
+        assert_eq!(
+            serde_json::from_value::<CliTerminationReason>(serde_json::json!("stdout_ingestion"))
+                .unwrap(),
+            reason
+        );
     }
 
     #[test]

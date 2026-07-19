@@ -70,6 +70,7 @@ pub(super) enum TerminationReason {
     HeartbeatError,
     HeartbeatPanic,
     EventDelivery,
+    StdoutIngestion,
 }
 
 impl TerminationReason {
@@ -81,6 +82,7 @@ impl TerminationReason {
             TerminationReason::HeartbeatError => "heartbeat error",
             TerminationReason::HeartbeatPanic => "heartbeat panic",
             TerminationReason::EventDelivery => "event delivery",
+            TerminationReason::StdoutIngestion => "stdout ingestion",
         }
     }
 }
@@ -225,6 +227,7 @@ pub(super) enum ControlTerminationLog {
     HeartbeatTaskPanicked,
     HeartbeatStoppedBeforeStatus,
     EventDeliveryFailed { error: String },
+    StdoutIngestionFailed { error: String },
 }
 
 impl ControlTerminationLog {
@@ -264,6 +267,12 @@ impl ControlTerminationLog {
                 log_warn!(
                     LOG_TAG,
                     "Event delivery failed, SIGTERM pgid={pgid}: {error}"
+                );
+            }
+            Self::StdoutIngestionFailed { error } => {
+                log_warn!(
+                    LOG_TAG,
+                    "CLI stdout ingestion failed, SIGTERM pgid={pgid}: {error}"
                 );
             }
         }
@@ -570,6 +579,7 @@ fn diagnostic_termination_reason(reason: TerminationReason) -> DiagnosticTermina
         TerminationReason::HeartbeatError => DiagnosticTerminationReason::HeartbeatError,
         TerminationReason::HeartbeatPanic => DiagnosticTerminationReason::HeartbeatPanic,
         TerminationReason::EventDelivery => DiagnosticTerminationReason::EventDelivery,
+        TerminationReason::StdoutIngestion => DiagnosticTerminationReason::StdoutIngestion,
     }
 }
 
