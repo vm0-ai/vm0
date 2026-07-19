@@ -929,8 +929,10 @@ export const deleteZeroConnectorLocalState$ = command(
       }
       signal.throwIfAborted();
 
-      await tx.delete(connectors).where(eq(connectors.id, existing.id));
-      signal.throwIfAborted();
+      await deleteConnectorOwnedCredentialRows(tx, {
+        connectorId: existing.id,
+        signal,
+      });
 
       await deleteConnectorScopedSecretNames(tx, {
         connectorId: existing.id,
@@ -950,6 +952,8 @@ export const deleteZeroConnectorLocalState$ = command(
         ),
         signal,
       });
+      await tx.delete(connectors).where(eq(connectors.id, existing.id));
+      signal.throwIfAborted();
 
       return { deleted: true, pendingTokenRevoke };
     });
@@ -1141,6 +1145,19 @@ async function deleteConnectorScopedVariableNames(
         ),
       ),
     );
+  args.signal.throwIfAborted();
+}
+
+async function deleteConnectorOwnedCredentialRows(
+  db: Db,
+  args: {
+    readonly connectorId: string;
+    readonly signal: AbortSignal;
+  },
+): Promise<void> {
+  await db.delete(secrets).where(eq(secrets.connectorId, args.connectorId));
+  args.signal.throwIfAborted();
+  await db.delete(variables).where(eq(variables.connectorId, args.connectorId));
   args.signal.throwIfAborted();
 }
 

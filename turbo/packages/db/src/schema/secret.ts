@@ -29,6 +29,9 @@ export const secrets = pgTable(
         return connectors.id;
       },
       {
+        // Pre-#22122 API instances delete the connector row first. Current
+        // code deletes owned credentials explicitly; #22126 removes this
+        // rollout cascade after those instances have drained.
         onDelete: "cascade",
       },
     ),

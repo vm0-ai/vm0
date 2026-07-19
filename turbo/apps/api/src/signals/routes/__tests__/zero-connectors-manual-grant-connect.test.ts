@@ -343,6 +343,38 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     );
   });
 
+  it("deletes connector-owned secret and variable state on disconnect", async () => {
+    const fixture = await seedFixture();
+    await accept(
+      setupApp({ context })(zeroConnectorManualGrantContract).connect({
+        params: { type: "zendesk" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            ZENDESK_API_TOKEN: "zendesk-token",
+            ZENDESK_EMAIL: "support@example.com",
+            ZENDESK_SUBDOMAIN: "example",
+          },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    await deleteConnector(fixture, "zendesk");
+
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorRef: "zendesk",
+      secretNames: ["ZENDESK_API_TOKEN"],
+      variableNames: ["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"],
+    });
+    expect(storageState.connector).toBeNull();
+    expect(storageState.secrets).toStrictEqual([]);
+    expect(storageState.variables).toStrictEqual([]);
+  });
+
   it("claims a legacy null-owner credential during manual connection", async () => {
     const fixture = await seedFixture();
     await seedLegacyConnectorSecret(context, {

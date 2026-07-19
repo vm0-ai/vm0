@@ -728,6 +728,7 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
     .delete(modelProviderAuthSessions)
     .where(eq(modelProviderAuthSessions.orgId, orgId));
   await db.delete(secrets).where(eq(secrets.orgId, orgId));
+  await db.delete(variables).where(eq(variables.orgId, orgId));
   await db.delete(connectors).where(eq(connectors.orgId, orgId));
   await db
     .delete(connectorOauthDeviceAuthorizationSessions)
@@ -735,7 +736,6 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   await db
     .delete(connectorExternalCodeSessions)
     .where(eq(connectorExternalCodeSessions.orgId, orgId));
-  await db.delete(variables).where(eq(variables.orgId, orgId));
   await db.delete(usageDaily).where(eq(usageDaily.orgId, orgId));
   await db.delete(exportJobs).where(eq(exportJobs.orgId, orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.orgId, orgId));
@@ -788,8 +788,8 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
     .delete(modelProviderAuthSessions)
     .where(eq(modelProviderAuthSessions.userId, userId));
   await db.delete(secrets).where(eq(secrets.userId, userId));
-  await db.delete(connectors).where(eq(connectors.userId, userId));
   await db.delete(variables).where(eq(variables.userId, userId));
+  await db.delete(connectors).where(eq(connectors.userId, userId));
   await db.delete(usageDaily).where(eq(usageDaily.userId, userId));
   await db.delete(exportJobs).where(eq(exportJobs.userId, userId));
   await db.delete(cliTokens).where(eq(cliTokens.userId, userId));
