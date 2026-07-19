@@ -15,10 +15,22 @@ from tests.aws_sigv4_helpers import (
 )
 
 _INVALID_UNICODE = "\ud800"
+# Header-auth vector: https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sig-v4-header-based-auth.html
+# Presigned vector: https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-query-string-auth.html
+_AWS_S3_EXAMPLE_HOST = "examplebucket.s3.amazonaws.com"
+_AWS_S3_EXAMPLE_TIMESTAMP = "20130524T000000Z"
+_AWS_S3_EMPTY_PAYLOAD_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 
 def _credentials() -> AwsSigV4Credentials:
     return signer_test_credentials()
+
+
+def _aws_s3_example_credentials() -> AwsSigV4Credentials:
+    return AwsSigV4Credentials(
+        "AKIAIOSFODNN7EXAMPLE",
+        "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    )
 
 
 def _header_auth_headers() -> list[tuple[str, str]]:
@@ -29,6 +41,23 @@ def _header_auth_headers() -> list[tuple[str, str]]:
         ),
         ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
         ("Host", STS_HOST),
+    ]
+
+
+def _aws_s3_header_auth_headers(content_hash: str) -> list[tuple[str, str]]:
+    return [
+        (
+            "Authorization",
+            aws_sigv4_authorization(
+                date="20130524",
+                service="s3",
+                signed_headers="host;range;x-amz-content-sha256;x-amz-date",
+            ),
+        ),
+        ("Range", "bytes=0-9"),
+        ("X-Amz-Content-Sha256", content_hash),
+        ("X-Amz-Date", _AWS_S3_EXAMPLE_TIMESTAMP),
+        ("Host", _AWS_S3_EXAMPLE_HOST),
     ]
 
 
@@ -414,19 +443,87 @@ def test_header_auth_streaming_content_hash_header_raises_signing_error() -> Non
         )
 
 
-@pytest.mark.parametrize("header_value", ["a" * 64, "UNSIGNED-PAYLOAD", " \t" + "a" * 64 + "\t "])
-def test_header_auth_supported_content_hash_header_signs(header_value: str) -> None:
+@pytest.mark.parametrize(
+    "header_value",
+    [_AWS_S3_EMPTY_PAYLOAD_HASH, f" \t{_AWS_S3_EMPTY_PAYLOAD_HASH}\t "],
+)
+@pytest.mark.parametrize(
+    "body",
+    [None, b"different body"],
+    ids=["reference-body", "different-body"],
+)
+def test_header_auth_content_hash_controls_aws_reference_signature(
+    header_value: str,
+    body: bytes | None,
+) -> None:
     _url, headers = sign_request(
-        method="POST",
-        url="https://sts.amazonaws.com/",
-        headers=_header_auth_headers_with_content_hash(header_value),
-        body=b"hello",
-        credentials=_credentials(),
+        method="GET",
+        url=f"https://{_AWS_S3_EXAMPLE_HOST}/test.txt",
+        headers=_aws_s3_header_auth_headers(header_value),
+        body=body,
+        credentials=_aws_s3_example_credentials(),
     )
 
     authorization = {name.lower(): value for name, value in headers}["authorization"]
-    assert "Credential=AKIDEXAMPLE/" in authorization
-    assert "x-amz-content-sha256" in authorization
+    assert authorization == (
+        "AWS4-HMAC-SHA256 "
+        "Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, "
+        "SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, "
+        "Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41"
+    )
+
+
+@pytest.mark.parametrize("header_value", ["UNSIGNED-PAYLOAD", " \tUNSIGNED-PAYLOAD\t "])
+@pytest.mark.parametrize("body", [b"first body", b"different body"])
+def test_header_auth_unsigned_payload_controls_reference_signature(
+    header_value: str,
+    body: bytes,
+) -> None:
+    _url, headers = sign_request(
+        method="GET",
+        url=f"https://{_AWS_S3_EXAMPLE_HOST}/test.txt",
+        headers=_aws_s3_header_auth_headers(header_value),
+        body=body,
+        credentials=_aws_s3_example_credentials(),
+    )
+
+    authorization = {name.lower(): value for name, value in headers}["authorization"]
+    assert authorization == (
+        "AWS4-HMAC-SHA256 "
+        "Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, "
+        "SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, "
+        "Signature=edacce68e5445863e1f916719fac26d3be9c1581fccd7878ade0879597fc0dc1"
+    )
+
+
+def test_presigned_s3_unsigned_payload_matches_aws_reference_signature() -> None:
+    placeholder_scope = urllib.parse.quote(
+        "PLACEHOLDER/20130524/us-east-1/s3/aws4_request",
+        safe="",
+    )
+    presigned_url = (
+        f"https://{_AWS_S3_EXAMPLE_HOST}/test.txt"
+        "?X-Amz-Algorithm=AWS4-HMAC-SHA256"
+        f"&X-Amz-Credential={placeholder_scope}"
+        f"&X-Amz-Date={_AWS_S3_EXAMPLE_TIMESTAMP}"
+        "&X-Amz-Expires=86400"
+        "&X-Amz-SignedHeaders=host"
+        "&X-Amz-Signature=placeholder"
+    )
+
+    signed_url, _headers = sign_request(
+        method="GET",
+        url=presigned_url,
+        headers=[("Host", _AWS_S3_EXAMPLE_HOST)],
+        body=None,
+        credentials=_aws_s3_example_credentials(),
+    )
+
+    query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(signed_url).query))
+    assert (
+        query["X-Amz-Signature"]
+        == "aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"
+    )
 
 
 def test_presigned_query_invalid_content_hash_header_raises_signing_error() -> None:
