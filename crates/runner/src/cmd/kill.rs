@@ -1863,6 +1863,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn orphan_exit_wait_fails_when_identity_changes() {
+        let target = make_target(200, "sbox-123");
+        let identity = target.identity.as_ref().unwrap();
+        let changed = ProcessStat {
+            pgid: identity.pgid + 1,
+            starttime: identity.starttime + 1,
+            ..process_stat(identity)
+        };
+
+        let result =
+            wait_for_orphan_exit_with(identity, Duration::from_secs(1), Duration::ZERO, |_| {
+                std::future::ready(ProcessStatRead::Found(changed.clone()))
+            })
+            .await;
+
+        let Err(failure) = result else {
+            panic!("changed process identity should fail the exit wait");
+        };
+        assert_eq!(
+            failure,
+            OrphanExitFailure::IdentityChanged {
+                expected_pgid: identity.pgid,
+                observed_pgid: identity.pgid + 1,
+                expected_starttime: identity.starttime,
+                observed_starttime: identity.starttime + 1,
+            }
+        );
+        assert_eq!(
+            failure.to_string(),
+            format!(
+                "process identity changed while waiting for termination \
+                 (PGID {} -> {}, starttime {} -> {})",
+                identity.pgid,
+                identity.pgid + 1,
+                identity.starttime,
+                identity.starttime + 1
+            )
+        );
+    }
+
+    #[tokio::test]
     async fn orphan_exit_wait_recovers_from_transient_unverifiable_read() {
         let target = make_target(200, "sbox-123");
         let identity = target.identity.as_ref().unwrap();
@@ -1889,18 +1930,31 @@ mod tests {
         })
         .await;
 
+        let Err(failure) = result else {
+            panic!("unverifiable process state should fail at the exit deadline");
+        };
         assert_eq!(
-            result,
-            Err(OrphanExitFailure::Unverifiable(
-                "process stat is invalid".into()
-            ))
+            failure,
+            OrphanExitFailure::Unverifiable("process stat is invalid".into())
+        );
+        assert_eq!(
+            failure.to_string(),
+            "process termination could not be verified: process stat is invalid"
         );
     }
 
     #[tokio::test]
-    async fn process_group_signal_is_followed_by_real_exit_observation() {
-        let mut child = tokio::process::Command::new("sleep")
+    async fn orphan_kill_validates_signals_and_waits_for_real_exit() {
+        let base_dir = tempfile::tempdir().unwrap();
+        let sandbox_id = "test-sandbox";
+        let workspace = base_dir.path().join("workspaces").join(sandbox_id);
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        let firecracker = base_dir.path().join("firecracker");
+        std::os::unix::fs::symlink("/bin/sleep", &firecracker).unwrap();
+
+        let mut child = tokio::process::Command::new(&firecracker)
             .arg("60")
+            .current_dir(&workspace)
             .process_group(0)
             .kill_on_drop(true)
             .stdin(std::process::Stdio::null())
@@ -1912,20 +1966,25 @@ mod tests {
         let ProcessStatRead::Found(stat) = process::read_process_stat_checked(pid).await else {
             panic!("spawned process stat should be readable");
         };
-        let identity = FirecrackerProcessIdentity {
+        let target = KillTarget {
             pid,
-            pgid: stat.pgid,
-            starttime: stat.starttime,
-            sandbox_id: "test-sandbox".into(),
-            base_dir: None,
+            ppid: None,
+            run_id: None,
+            sandbox_id: sandbox_id.into(),
+            base_dir: Some(base_dir.path().to_path_buf()),
+            identity: Some(FirecrackerProcessIdentity {
+                pid,
+                pgid: stat.pgid,
+                starttime: stat.starttime,
+                sandbox_id: sandbox_id.into(),
+                base_dir: Some(base_dir.path().to_path_buf()),
+            }),
         };
 
-        let signal_result = signal_process_group(pid, identity.pgid);
-        let exit_result = wait_for_orphan_exit(&identity).await;
+        let outcome = kill_orphan_process_group(&target).await;
         let status = child.wait().await.unwrap();
 
-        assert_eq!(signal_result, ProcessGroupSignalResult::Signaled);
-        assert_eq!(exit_result, Ok(()));
+        assert!(matches!(outcome, KillOutcome::OrphanKilled(killed) if killed == target));
         assert!(!status.success());
     }
 
