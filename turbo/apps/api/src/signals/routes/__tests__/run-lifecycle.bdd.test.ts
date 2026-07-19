@@ -4851,7 +4851,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const { actor, runnerGroup } = await entitledRunActor();
     failIfChatCallbackRouteIsFetched();
 
-    const workflowName = "bdd-codex-kit";
+    const workflowNames = ["bdd-codex-kit", "bdd-codex-research"] as const;
 
     await misc.upsertPersonalModelProvider(
       actor,
@@ -4890,13 +4890,15 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       visibility: "private",
     });
     // Workflows are created directly under the owning agent (agent-scoped 1:N).
-    await misc.createWorkflow(
-      actor,
-      agent.agentId,
-      workflowName,
-      { content: "# BDD codex kit\nUse this workflow for codex runs." },
-      [201],
-    );
+    for (const workflowName of workflowNames) {
+      await misc.createWorkflow(
+        actor,
+        agent.agentId,
+        workflowName,
+        { content: `# ${workflowName}\nUse this workflow for codex runs.` },
+        [201],
+      );
+    }
     const thread = await chat.createThread(actor, { agentId: agent.agentId });
     const sent = await chat.requestSendMessage(
       actor,
@@ -4920,11 +4922,11 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        storage_manifest_source_workflow_skill_resolved_count_bucket: "1",
+        storage_manifest_source_workflow_skill_resolved_count_bucket: "2",
         storage_manifest_source_workflow_skill_planned_presign_count_bucket:
-          "1",
+          "2",
         storage_manifest_source_workflow_skill_non_system_presign_count_bucket:
-          "1",
+          "2",
       }),
     );
     expect(
@@ -4935,13 +4937,13 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     ).toStrictEqual(
       expect.objectContaining({
         storage_manifest_source_workflow_skill_planned_presign_count_bucket:
-          "1",
+          "2",
         storage_manifest_source_workflow_skill_non_system_presign_count_bucket:
-          "1",
+          "2",
       }),
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      workflowName,
+      ...workflowNames,
       agent.agentId,
       thread.id,
     ]);
@@ -4964,7 +4966,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       claim.storageManifest?.storages.map((storage) => {
         return storage.mountPath;
       }) ?? [];
-    expect(mountPaths).toContain(`/home/user/.codex/skills/${workflowName}`);
+    for (const workflowName of workflowNames) {
+      expect(mountPaths).toContain(`/home/user/.codex/skills/${workflowName}`);
+    }
     expect(
       mountPaths.some((mountPath) => {
         return mountPath.startsWith("/home/user/.claude/skills/");
