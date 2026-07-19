@@ -128,8 +128,8 @@ class TestAddonConfiguration:
         loader = Loader(_RecordingMaster())
 
         with (
-            patch.object(mitm_addon.mitmproxy_compat.version, "VERSION", "12.2.3"),
-            pytest.raises(RuntimeError, match=r"requires mitmproxy 12\.2\.2; found 12\.2\.3"),
+            patch.object(mitm_addon.mitmproxy_compat.version, "VERSION", "12.2.4"),
+            pytest.raises(RuntimeError, match=r"requires mitmproxy 12\.2\.3; found 12\.2\.4"),
         ):
             mitm_addon.load(loader)
 

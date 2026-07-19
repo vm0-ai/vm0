@@ -12,7 +12,7 @@ dev = [
     "Brotli>=1.2.0",
     "basedpyright>=1.39",
     # Private mitmproxy API use is guarded in src/mitmproxy_compat.py.
-    "mitmproxy==12.2.2",
+    "mitmproxy==12.2.3",
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.8",
@@ -23,7 +23,7 @@ test = [
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
     # Keep tests on the exact runtime version from crates/runner/src/deps.rs.
-    "mitmproxy==12.2.2",
+    "mitmproxy==12.2.3",
     "wsproto>=1.2",
 ]
 

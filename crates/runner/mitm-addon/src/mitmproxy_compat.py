@@ -9,7 +9,7 @@ from mitmproxy.proxy.layers.http._hooks import HttpRequestHeadersHook
 # Keep this synchronized with ``crates/runner/src/deps.rs`` and the Python
 # test dependencies. Re-audit the private imports and generator behavior before
 # accepting another version.
-_SUPPORTED_MITMPROXY_VERSION = "12.2.2"
+_SUPPORTED_MITMPROXY_VERSION = "12.2.3"
 _BRIDGE_MARKER_ATTRIBUTE = "_vm0_request_end_stream_bridge"
 _REQUEST_END_STREAM_METADATA = "_vm0_request_end_stream"
 
