@@ -239,7 +239,7 @@ def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) ->
 
 
 def _request_method_forbids_managed_credentials(method: str) -> bool:
-    return method.upper() == "TRACE"
+    return method.upper() in ("TRACE", "TRACK")
 
 
 def _firewall_auth_context_needs_resolution(context: _FirewallAuthContext) -> bool:
@@ -615,7 +615,7 @@ def _preflight_firewall_auth(
         log_proxy_entry(
             context.proxy_log_path,
             "warn",
-            "Refusing to inject firewall credentials into TRACE request",
+            f"Refusing to inject firewall credentials into {request_method} request",
             type="firewall",
             firewall_base=context.firewall_base,
             request_method=request_method,
@@ -625,7 +625,7 @@ def _preflight_firewall_auth(
             status=403,
             action="BLOCK",
             error_code="unsafe_auth_method",
-            message="Firewall credentials cannot be injected into TRACE requests",
+            message=f"Firewall credentials cannot be injected into {request_method} requests",
             permission=context.allow.name,
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE

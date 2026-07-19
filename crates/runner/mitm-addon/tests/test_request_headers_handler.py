@@ -944,6 +944,7 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
 
 
+@pytest.mark.parametrize("request_method", ["trace", "track"])
 @pytest.mark.parametrize(
     "auth_config",
     [
@@ -952,13 +953,14 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
     ],
     ids=["headers", "query"],
 )
-async def test_capture_enabled_trace_with_managed_auth_defers_to_request_block(
+async def test_capture_enabled_reflection_method_with_managed_auth_defers_to_request_block(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
     headers,
     auth_config,
+    request_method,
 ):
     reg_path = _write_registry(
         tmp_path,
@@ -982,7 +984,7 @@ async def test_capture_enabled_trace_with_managed_auth_defers_to_request_block(
         with_response=False,
         client_ip="10.200.0.5",
         host="api.github.com",
-        method="trace",
+        method=request_method,
         path="/diagnostic?client=visible",
         request_headers=headers(
             ("Host", "api.github.com"),
