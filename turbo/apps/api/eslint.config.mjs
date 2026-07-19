@@ -163,6 +163,12 @@ export default [
   ...config,
   {
     files: ["src/**/*.ts"],
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json",
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     plugins: {
       api: apiLintPlugin,
     },
