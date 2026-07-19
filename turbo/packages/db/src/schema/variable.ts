@@ -40,7 +40,9 @@ export const variables = pgTable(
   (table) => {
     return [
       index("idx_variables_org").on(table.orgId),
-      index("idx_variables_connector").on(table.connectorId),
+      index("idx_variables_connector")
+        .on(table.connectorId)
+        .where(sql`${table.connectorId} IS NOT NULL`),
       uniqueIndex("idx_variables_org_user_type_name").on(
         table.orgId,
         table.userId,

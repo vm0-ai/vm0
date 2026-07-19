@@ -41,7 +41,9 @@ export const secrets = pgTable(
     return [
       index("idx_secrets_type").on(table.type),
       index("idx_secrets_org").on(table.orgId),
-      index("idx_secrets_connector").on(table.connectorId),
+      index("idx_secrets_connector")
+        .on(table.connectorId)
+        .where(sql`${table.connectorId} IS NOT NULL`),
       uniqueIndex("idx_secrets_org_user_name_type").on(
         table.orgId,
         table.userId,

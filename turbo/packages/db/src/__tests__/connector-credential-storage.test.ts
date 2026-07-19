@@ -23,16 +23,14 @@ describe("connector credential storage schema", () => {
         return check.name;
       }),
     ).toContain("chk_connectors_storage_version_positive");
-    expect(
-      secretConfig.indexes.map((index) => {
-        return index.config.name;
-      }),
-    ).toContain("idx_secrets_connector");
-    expect(
-      variableConfig.indexes.map((index) => {
-        return index.config.name;
-      }),
-    ).toContain("idx_variables_connector");
+    const secretOwnerIndex = secretConfig.indexes.find((index) => {
+      return index.config.name === "idx_secrets_connector";
+    });
+    const variableOwnerIndex = variableConfig.indexes.find((index) => {
+      return index.config.name === "idx_variables_connector";
+    });
+    expect(secretOwnerIndex?.config.where).toBeDefined();
+    expect(variableOwnerIndex?.config.where).toBeDefined();
     expect(
       secretConfig.checks.map((check) => {
         return check.name;

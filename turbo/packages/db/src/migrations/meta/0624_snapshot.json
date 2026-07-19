@@ -1,5 +1,5 @@
 {
-  "id": "71529177-9795-4dc4-820c-c21dea7e97ed",
+  "id": "73b3fd5f-9c6f-49b2-ba92-526087919ba3",
   "prevId": "ee770b5f-fc36-4270-a53f-99fba557ae39",
   "version": "7",
   "dialect": "postgresql",
@@ -13490,6 +13490,7 @@
             }
           ],
           "isUnique": false,
+          "where": "\"secrets\".\"connector_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -17590,6 +17591,7 @@
             }
           ],
           "isUnique": false,
+          "where": "\"variables\".\"connector_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
