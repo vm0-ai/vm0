@@ -212,7 +212,7 @@ function dispatchDocumentShortcut(
 }
 
 describe("chat inline feedback", () => {
-  it("inserts feedback as an atomic block followed by a text line", async () => {
+  it("keeps the composer caret after inserting atomic block feedback", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The rollout dates are unclear in this summary.";
     let sentPrompt: string | undefined;
@@ -253,7 +253,12 @@ describe("chat inline feedback", () => {
 
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
-    await user.click(await screen.findByText("Provide feedback"));
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+    const shortcutEvent = dispatchDocumentShortcut("f");
+    expect(shortcutEvent.defaultPrevented).toBeTruthy();
+    expect(window.getSelection()?.rangeCount).toBe(1);
 
     const feedbackBlock = await waitFor(() => {
       const element = composerEditor.querySelector("[data-composer-feedback]");
@@ -269,17 +274,22 @@ describe("chat inline feedback", () => {
     expect(feedbackBlock?.nextElementSibling?.tagName).toBe("P");
     expect(feedbackBlock?.nextElementSibling).toHaveTextContent("");
 
-    await user.keyboard("Make the dates explicit.");
-    expect(feedbackBlock?.nextElementSibling).toHaveTextContent(
-      "Make the dates explicit.",
-    );
+    await waitFor(() => {
+      const selection = window.getSelection();
+      expect(
+        composerEditor.contains(selection?.focusNode ?? null),
+      ).toBeTruthy();
+    });
+
+    await user.keyboard("补充具体日期");
+    expect(feedbackBlock?.nextElementSibling).toHaveTextContent("补充具体日期");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(sentPrompt).toBeDefined();
     });
     expect(sentPrompt).toBe(
-      `Context before feedback.\nFeedback on this part of your reply:\n\n> ${assistantReply}\nMake the dates explicit.`,
+      `Context before feedback.\nFeedback on this part of your reply:\n\n> ${assistantReply}\n补充具体日期`,
     );
   });
 

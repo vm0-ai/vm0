@@ -355,12 +355,12 @@ function createFeedbackItemSignals({
   threadId,
   editor,
   selectionState$,
-  closeSelectionToolbar$,
+  hideSelectionToolbar$,
 }: {
   threadId: string;
   editor: FeedbackEditorAdapter;
   selectionState$: State<FeedbackSelection | null>;
-  closeSelectionToolbar$: Command<void, []>;
+  hideSelectionToolbar$: Command<void, []>;
 }) {
   const itemsState$ = state<readonly FeedbackItem[]>([]);
   const rangesState$ = state<ReadonlyMap<number, Range>>(new Map());
@@ -405,7 +405,7 @@ function createFeedbackItemSignals({
     set(rangesState$, ranges);
     set(setFeedbackHighlight$, threadId, ranges);
     editor.insertItem(item);
-    set(closeSelectionToolbar$);
+    set(hideSelectionToolbar$);
   });
   const removeFeedback$ = command(({ get, set }, id: number) => {
     const items = get(itemsState$).filter((item) => {
@@ -664,7 +664,7 @@ export function createFeedbackSignals(
     threadId,
     editor,
     selectionState$: selection.selectionState$,
-    closeSelectionToolbar$: selection.closeSelectionToolbar$,
+    hideSelectionToolbar$: selection.hideSelectionToolbar$,
   });
   const setSelectionToolbarRef$ = createSelectionToolbarRef({
     resetSelectionToolbarSignal$: selection.resetSelectionToolbarSignal$,
