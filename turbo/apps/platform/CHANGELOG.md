@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.609.0](https://github.com/vm0-ai/vm0/compare/app-v0.608.0...app-v0.609.0) (2026-07-19)
+
+
+### Features
+
+* remove workflow queue feature switch and legacy dispatch paths ([#22091](https://github.com/vm0-ai/vm0/issues/22091)) ([ecde8ca](https://github.com/vm0-ai/vm0/commit/ecde8caec9fcb742a79102a9ef3778f62f46eb38))
+
+
+### Bug Fixes
+
+* **platform:** organize mobile chat completion layout ([#22089](https://github.com/vm0-ai/vm0/issues/22089)) ([da7a84e](https://github.com/vm0-ai/vm0/commit/da7a84eb898e0ea1a83029885177bcfde3f8838c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.1
+    * @vm0/connectors bumped to 1.172.0
+    * @vm0/core bumped to 8.442.0
+
 ## [0.608.0](https://github.com/vm0-ai/vm0/compare/app-v0.607.0...app-v0.608.0) (2026-07-18)
 
 

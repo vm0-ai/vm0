@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.286.0](https://github.com/vm0-ai/vm0/compare/api-v1.285.0...api-v1.286.0) (2026-07-19)
+
+
+### Features
+
+* remove workflow queue feature switch and legacy dispatch paths ([#22091](https://github.com/vm0-ai/vm0/issues/22091)) ([ecde8ca](https://github.com/vm0-ai/vm0/commit/ecde8caec9fcb742a79102a9ef3778f62f46eb38))
+
+
+### Refactoring
+
+* reduce fallback slop in teams activity handling ([#22086](https://github.com/vm0-ai/vm0/issues/22086)) ([b93235a](https://github.com/vm0-ai/vm0/commit/b93235a36164caf66671283feb605f3868c2961d))
+
+
+### Performance Improvements
+
+* **api:** collapse zero bootstrap reads ([#22084](https://github.com/vm0-ai/vm0/issues/22084)) ([1879581](https://github.com/vm0-ai/vm0/commit/18795818b13bba43b3985ed5ad434d7114ad08a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.1
+    * @vm0/connectors bumped to 1.172.0
+    * @vm0/core bumped to 8.442.0
+    * @vm0/db bumped to 1.121.1
+
 ## [1.285.0](https://github.com/vm0-ai/vm0/compare/api-v1.284.0...api-v1.285.0) (2026-07-18)
 
 

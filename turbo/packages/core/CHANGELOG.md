@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.442.0](https://github.com/vm0-ai/vm0/compare/core-v8.441.1...core-v8.442.0) (2026-07-19)
+
+
+### Features
+
+* remove workflow queue feature switch and legacy dispatch paths ([#22091](https://github.com/vm0-ai/vm0/issues/22091)) ([ecde8ca](https://github.com/vm0-ai/vm0/commit/ecde8caec9fcb742a79102a9ef3778f62f46eb38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.1
+    * @vm0/connectors bumped to 1.172.0
+
 ## [8.441.1](https://github.com/vm0-ai/vm0/compare/core-v8.441.0...core-v8.441.1) (2026-07-18)
 
 

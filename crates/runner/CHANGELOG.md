@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.11...runner-rs-v0.146.12) (2026-07-19)
+
+
+### Bug Fixes
+
+* **runner:** accept sidecar metadata without allocated bytes ([#22096](https://github.com/vm0-ai/vm0/issues/22096)) ([2ccbc39](https://github.com/vm0-ai/vm0/commit/2ccbc39806bbe286bfff04390e4252b15eae5beb))
+
 ## [0.146.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.10...runner-rs-v0.146.11) (2026-07-18)
 
 
