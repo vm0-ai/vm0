@@ -521,37 +521,36 @@ function commitExistingStorageVersion(args: {
   readonly signal: AbortSignal;
 }): Computed<Promise<CommitStorageResponse>> {
   return computed(async (get): Promise<CommitStorageResponse> => {
-    const verification =
-      args.storage.type === "artifact" && args.version.fileCount === 0
-        ? verifyArchiveHead(
-            await get(
-              s3ObjectHead(args.bucket, `${args.version.s3Key}/archive.tar.gz`),
-            ),
-            0,
-          )
-        : await get(
-            verifyUploadedStorageFiles({
-              bucket: args.bucket,
-              s3Key: args.version.s3Key,
-              fileCount: args.version.fileCount,
-              signal: args.signal,
-            }),
-          );
+    const explicitEmptyArtifact =
+      args.storage.type === "artifact" && args.version.fileCount === 0;
+    const verification = explicitEmptyArtifact
+      ? null
+      : await get(
+          verifyUploadedStorageFiles({
+            bucket: args.bucket,
+            s3Key: args.version.s3Key,
+            fileCount: args.version.fileCount,
+            signal: args.signal,
+          }),
+        );
     args.signal.throwIfAborted();
 
-    if (verification.kind !== "verified") {
+    if (verification && verification.kind !== "verified") {
       return s3FilesMissingConflict();
     }
 
+    const verifiedArchiveSize =
+      verification?.kind === "verified" ? verification.archiveSize : undefined;
     const archiveSizeChanged =
-      args.version.archiveSize !== verification.archiveSize;
+      verifiedArchiveSize !== undefined &&
+      args.version.archiveSize !== verifiedArchiveSize;
     const headChanged = args.storage.headVersionId !== args.input.versionId;
     if (archiveSizeChanged || headChanged) {
       await args.db.transaction(async (tx) => {
         if (archiveSizeChanged) {
           await tx
             .update(storageVersions)
-            .set({ archiveSize: verification.archiveSize })
+            .set({ archiveSize: verifiedArchiveSize })
             .where(
               and(
                 eq(storageVersions.id, args.version.id),
