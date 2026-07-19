@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.146.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.13...runner-rs-v0.146.14) (2026-07-19)
+
+
+### Performance Improvements
+
+* **storage:** propagate encoded archive sizes ([#22142](https://github.com/vm0-ai/vm0/issues/22142)) ([10fc760](https://github.com/vm0-ai/vm0/commit/10fc7608fdd82ab064da0dfc280667bba0cd64a8))
+
 ## [0.146.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.12...runner-rs-v0.146.13) (2026-07-19)
 
 
