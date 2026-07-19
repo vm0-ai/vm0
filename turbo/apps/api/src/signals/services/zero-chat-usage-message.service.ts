@@ -16,7 +16,6 @@ import {
   pgIntegerDecoder,
   pgInt8ToSafeIntegerDecoder,
   pgTextDecoder,
-  pgTimestampWithoutTimezoneToDateDecoder,
 } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -87,7 +86,7 @@ async function loadUsageMessageContext(tx: WriteTx, runId: string) {
         MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
         MAX(${agentRuns.completedAt}),
         MAX(${agentRuns.createdAt})
-      )`.mapWith(pgTimestampWithoutTimezoneToDateDecoder),
+      )`.mapWith(agentRuns.createdAt),
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))

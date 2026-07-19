@@ -43,6 +43,7 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { alias } from "drizzle-orm/pg-core";
 import {
   and,
@@ -71,7 +72,6 @@ import {
   nullableDriverValueDecoder,
   pgBooleanDecoder,
   pgIntegerDecoder,
-  pgTimestampWithoutTimezoneToDateDecoder,
   pgTextDecoder,
   zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
@@ -99,7 +99,7 @@ const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 const nullableIntegerDecoder = nullableDriverValueDecoder(pgIntegerDecoder);
 const nullableTimestampDecoder = nullableDriverValueDecoder(
-  pgTimestampWithoutTimezoneToDateDecoder,
+  zeroWorkflowAutomations.atTime,
 );
 const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
 const matchedChatMessage = alias(chatMessages, "matched_chat_message");

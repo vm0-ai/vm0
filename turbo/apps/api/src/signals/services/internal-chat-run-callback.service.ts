@@ -32,10 +32,7 @@ import { z } from "zod";
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
 import { executeRawRows } from "../../lib/db-raw-rows";
-import {
-  nullableDriverValueDecoder,
-  pgTimestampWithoutTimezoneToDateDecoder,
-} from "../../lib/db-structured-result";
+import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
@@ -778,7 +775,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
   const [message] = await db
     .select({
       lastEventAt: sql`MAX(${chatMessages.createdAt})`.mapWith(
-        nullableDriverValueDecoder(pgTimestampWithoutTimezoneToDateDecoder),
+        nullableDriverValueDecoder(chatMessages.createdAt),
       ),
     })
     .from(chatMessages)

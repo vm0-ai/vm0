@@ -1,11 +1,7 @@
-import type { DriverValueDecoder } from "drizzle-orm";
+import type { Column, DriverValueDecoder } from "drizzle-orm";
 import type { output, ZodEnum, ZodType } from "zod";
 
-import {
-  pgInt8ToBigIntSchema,
-  pgInt8ToSafeIntegerSchema,
-  pgTimestampWithoutTimezoneToDateSchema,
-} from "./db-raw-rows";
+import { pgInt8ToBigIntSchema, pgInt8ToSafeIntegerSchema } from "./db-raw-rows";
 
 function invalidDriverValue(expected: string): never {
   throw new TypeError(`Expected ${expected} from PostgreSQL`);
@@ -81,12 +77,14 @@ export const pgInt8ToSafeIntegerDecoder = zodDriverValueDecoder(
 export const pgInt8ToBigIntDecoder =
   zodDriverValueDecoder(pgInt8ToBigIntSchema);
 
-export const pgTimestampWithoutTimezoneToDateDecoder = zodDriverValueDecoder(
-  pgTimestampWithoutTimezoneToDateSchema,
-);
-
+export function nullableDriverValueDecoder<TColumn extends Column>(
+  decoder: TColumn,
+): DriverValueDecoder<TColumn["_"]["data"] | null, unknown>;
 export function nullableDriverValueDecoder<TData, TDriverParam>(
   decoder: DriverValueDecoder<TData, TDriverParam>,
-): DriverValueDecoder<TData | null, TDriverParam> {
+): DriverValueDecoder<TData | null, TDriverParam>;
+export function nullableDriverValueDecoder(
+  decoder: DriverValueDecoder<unknown, unknown>,
+): DriverValueDecoder<unknown, unknown> {
   return decoder;
 }

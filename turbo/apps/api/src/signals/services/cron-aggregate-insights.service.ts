@@ -20,7 +20,6 @@ import {
   pgIntegerDecoder,
   pgInt8ToSafeIntegerDecoder,
   pgTextDecoder,
-  pgTimestampWithoutTimezoneToDateDecoder,
 } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { getDatasetName, queryAxiom } from "../external/axiom";
@@ -792,7 +791,7 @@ async function queryActiveUsers(
         orgId: agentRuns.orgId,
         userId: agentRuns.userId,
         lastActivity: sql`MAX(${agentRuns.completedAt})`
-          .mapWith(pgTimestampWithoutTimezoneToDateDecoder)
+          .mapWith(agentRuns.completedAt)
           .as("last_activity"),
       })
       .from(agentRuns)
@@ -808,7 +807,7 @@ async function queryActiveUsers(
         orgId: usageEvent.orgId,
         userId: usageEvent.userId,
         lastActivity: sql`MAX(${usageEvent.processedAt})`
-          .mapWith(pgTimestampWithoutTimezoneToDateDecoder)
+          .mapWith(usageEvent.processedAt)
           .as("last_activity"),
       })
       .from(usageEvent)
@@ -1301,7 +1300,7 @@ export const aggregateInsights$ = command(
         orgId: insightsDaily.orgId,
         userId: insightsDaily.userId,
         lastUpdated: sql`MAX(${insightsDaily.updatedAt})`
-          .mapWith(pgTimestampWithoutTimezoneToDateDecoder)
+          .mapWith(insightsDaily.updatedAt)
           .as("last_updated"),
       })
       .from(insightsDaily)

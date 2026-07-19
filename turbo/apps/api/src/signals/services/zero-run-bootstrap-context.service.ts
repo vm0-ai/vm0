@@ -27,7 +27,6 @@ import { z } from "zod";
 
 import {
   nullableDriverValueDecoder,
-  pgTimestampWithoutTimezoneToDateDecoder,
   pgTextDecoder,
   zodDriverValueDecoder,
   zodEnumDriverValueDecoder,
@@ -99,7 +98,7 @@ const nullablePermissionGrantActionDecoder = nullableDriverValueDecoder(
   permissionGrantActionDecoder,
 );
 const nullableTimestampDecoder = nullableDriverValueDecoder(
-  pgTimestampWithoutTimezoneToDateDecoder,
+  zeroWorkflows.createdAt,
 );
 
 interface ExecutionScopeSnapshotQueryRow {
