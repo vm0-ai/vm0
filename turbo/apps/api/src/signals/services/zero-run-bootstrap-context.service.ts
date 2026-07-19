@@ -220,7 +220,9 @@ function emptyExecutionScopeSnapshotFields() {
     visibility: sql<ZeroWorkflowVisibility | null>`NULL::text`.as("visibility"),
     ownerUserId: sql<string | null>`NULL::text`.as("owner_user_id"),
     action: sql<FirewallPermissionGrantAction | null>`NULL::text`.as("action"),
-    createdAt: sql<Date | null>`NULL::timestamp`.as("created_at"),
+    createdAt: sql<Date | null>`NULL::timestamp`
+      .mapWith(zeroWorkflows.createdAt)
+      .as("created_at"),
   };
 }
 
@@ -271,7 +273,9 @@ async function queryZeroRunExecutionScopeSnapshot(
       ownerUserId: sql<string | null>`${zeroWorkflows.ownerUserId}`.as(
         "owner_user_id",
       ),
-      createdAt: sql<Date | null>`${zeroWorkflows.createdAt}`.as("created_at"),
+      createdAt: sql<Date | null>`${zeroWorkflows.createdAt}`
+        .mapWith(zeroWorkflows.createdAt)
+        .as("created_at"),
     })
     .from(zeroWorkflows)
     .where(
