@@ -35,7 +35,7 @@ import {
   isNull,
   sql,
 } from "drizzle-orm";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -56,6 +56,7 @@ import {
 } from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
+import { executeRawRows } from "../../lib/db-raw-rows";
 import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
@@ -325,6 +326,7 @@ const sendBody$ = bodyResultOf(chatMessagesContract.send);
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
+const idRowSchema = z.object({ id: z.string() });
 
 function forbidden(message: string) {
   return {
@@ -825,30 +827,34 @@ async function activeRunExistsForThread(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
-  const runs = await db.execute<{ readonly id: string }>(sql`
-    SELECT ${zeroRuns.id} AS "id"
-    FROM ${zeroRuns}
-    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-    WHERE ${zeroRuns.chatThreadId} = ${threadId}
-      AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-      AND (
-        NOT EXISTS (
-          SELECT 1
-          FROM ${agentRunCallbacks}
-          WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
-            AND ${agentRunCallbacks.internalKind} = 'chat'
-            AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+  const runs = await executeRawRows(
+    db,
+    sql`
+      SELECT ${zeroRuns.id} AS "id"
+      FROM ${zeroRuns}
+      INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+      WHERE ${zeroRuns.chatThreadId} = ${threadId}
+        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM ${agentRunCallbacks}
+            WHERE ${agentRunCallbacks.runId} = ${zeroRuns.id}
+              AND ${agentRunCallbacks.internalKind} = 'chat'
+              AND ${agentRunCallbacks.payload}->>'queuedMessageId' IS NOT NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              AND ${chatMessages.role} = 'user'
+          )
         )
-        OR EXISTS (
-          SELECT 1
-          FROM ${chatMessages}
-          WHERE ${chatMessages.runId} = ${zeroRuns.id}
-            AND ${chatMessages.role} = 'user'
-        )
-      )
-    LIMIT 1
-  `);
-  return runs.rows[0] !== undefined;
+      LIMIT 1
+    `,
+    idRowSchema,
+  );
+  return runs[0] !== undefined;
 }
 
 async function resolveClientMessageSend(params: {

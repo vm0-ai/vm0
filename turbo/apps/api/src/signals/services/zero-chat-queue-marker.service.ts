@@ -20,10 +20,6 @@ export interface QueueMarkerRevokeNotification {
   readonly userId: string;
 }
 
-interface LockedRunStatusRow extends Record<string, unknown> {
-  readonly status: string;
-}
-
 export async function appendQueuedRunAssistantMarker(
   tx: DbTransaction,
   args: {
@@ -33,13 +29,11 @@ export async function appendQueuedRunAssistantMarker(
     readonly createdAfter?: Date;
   },
 ): Promise<void> {
-  const runRows = await tx.execute<LockedRunStatusRow>(sql`
-    SELECT ${agentRuns.status} AS "status"
-    FROM ${agentRuns}
-    WHERE ${agentRuns.id} = ${args.runId}
-    FOR UPDATE
-  `);
-  const run = runRows.rows[0];
+  const [run] = await tx
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, args.runId))
+    .for("update");
   if (run?.status !== "queued") {
     return;
   }

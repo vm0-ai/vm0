@@ -7,7 +7,12 @@ import {
   VM0_MODEL_ALIAS_TO_MODEL,
   VM0_MODEL_TO_PROVIDER,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { z } from "zod";
 
+import {
+  executeRawRows,
+  pgInt8ToSafeIntegerSchema,
+} from "../../lib/db-raw-rows";
 import { type Db, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 
@@ -38,13 +43,23 @@ interface ModelRankingResult {
   readonly rows: readonly ModelRankingRow[];
 }
 
-interface RawModelRankingRow extends Record<string, unknown> {
-  readonly model: string;
-  readonly input_tokens: string | number | bigint;
-  readonly output_tokens: string | number | bigint;
-  readonly total_tokens: string | number | bigint;
-  readonly previous_total_tokens: string | number | bigint;
-}
+const modelRankingSqlRowSchema = z
+  .object({
+    model: z.string(),
+    input_tokens: pgInt8ToSafeIntegerSchema,
+    output_tokens: pgInt8ToSafeIntegerSchema,
+    total_tokens: pgInt8ToSafeIntegerSchema,
+    previous_total_tokens: pgInt8ToSafeIntegerSchema,
+  })
+  .transform((row): ModelRankingRow => {
+    return {
+      model: row.model,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      totalTokens: row.total_tokens,
+      previousTotalTokens: row.previous_total_tokens,
+    };
+  });
 
 function getModelAliasEntries() {
   return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
@@ -110,16 +125,6 @@ function currentWindow(
   return { start: startOfUtcWeek(now), end };
 }
 
-function toNumber(value: string | number | bigint): number {
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "bigint") {
-    return Number(value);
-  }
-  return Number(value);
-}
-
 function utcTimestampParam(date: Date): string {
   return date.toISOString().replace("T", " ").replace("Z", "");
 }
@@ -163,7 +168,7 @@ async function replaceModelStats(
   const windowStartParam = utcTimestampParam(windowStart);
   const windowEndParam = utcTimestampParam(windowEnd);
 
-  const result = await db.transaction(async (tx) => {
+  const insertedCount = await db.transaction(async (tx) => {
     await tx.execute(sql`
       DELETE FROM ${modelStat}
       WHERE ${modelStat.hourStart} >= ${windowStartParam}::timestamp
@@ -171,7 +176,7 @@ async function replaceModelStats(
         AND ${modelStat.model} IN (${modelStatsModelIdSql})
     `);
 
-    return tx.execute(sql`
+    const { rowCount } = await tx.execute(sql`
       WITH usage_rows AS (
         SELECT
           date_trunc('hour', ${modelUsageObservation.observedAt})::timestamp AS hour_start,
@@ -263,9 +268,10 @@ async function replaceModelStats(
         updated_at = NOW()
       RETURNING id
     `);
+    return rowCount ?? 0;
   });
 
-  return result.rowCount ?? 0;
+  return insertedCount;
 }
 
 async function deleteExpiredModelUsageObservations(
@@ -293,8 +299,10 @@ async function selectModelRankings(
   const previousStartParam = utcTimestampParam(previousStart);
   const previousEndParam = utcTimestampParam(previousEnd);
 
-  const result = await db.execute<RawModelRankingRow>(sql`
-    WITH current_period AS (
+  const rows = await executeRawRows(
+    db,
+    sql`
+      WITH current_period AS (
       SELECT
         ${modelExpr} AS model,
         COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
@@ -326,18 +334,10 @@ async function selectModelRankings(
     LEFT JOIN previous_period ON previous_period.model = current_period.model
     WHERE current_period.total_tokens > 0
     ORDER BY current_period.total_tokens DESC
-    LIMIT 50
-  `);
-
-  const rows = result.rows.map((row) => {
-    return {
-      model: row.model,
-      inputTokens: toNumber(row.input_tokens),
-      outputTokens: toNumber(row.output_tokens),
-      totalTokens: toNumber(row.total_tokens),
-      previousTotalTokens: toNumber(row.previous_total_tokens),
-    };
-  });
+      LIMIT 50
+    `,
+    modelRankingSqlRowSchema,
+  );
 
   return {
     period,

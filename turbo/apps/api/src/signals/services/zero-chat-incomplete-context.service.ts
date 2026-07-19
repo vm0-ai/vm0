@@ -1,7 +1,9 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 
+import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
 
@@ -25,11 +27,11 @@ interface IncompleteRound extends IncompleteRoundSelection {
   readonly messages: IncompleteRoundMessage[];
 }
 
-interface IncompleteRoundFrontierRow extends Record<string, unknown> {
-  readonly runId: string;
-  readonly runStatus: string;
-  readonly isSuccess: boolean;
-}
+const incompleteRoundFrontierRowSchema = z.object({
+  runId: z.string(),
+  runStatus: z.string(),
+  isSuccess: z.boolean(),
+});
 
 function isIncompleteRunStatus(value: string): value is IncompleteRunStatus {
   return value === "cancelled" || value === "failed" || value === "timeout";
@@ -50,8 +52,10 @@ async function selectIncompleteRoundFrontier(
   // Terminal chat materialization runs in waitUntil, so lifecycle rows can lag
   // behind agent_runs.status. Walk the existing recent-message index instead.
   // The fixed 21-run frontier is the 20-round output plus one boundary candidate.
-  const result = await db.execute<IncompleteRoundFrontierRow>(sql`
-    WITH RECURSIVE incomplete_frontier AS (
+  const rows = await executeRawRows(
+    db,
+    sql`
+      WITH RECURSIVE incomplete_frontier AS (
       SELECT
         ARRAY[]::uuid[] AS seen_run_ids,
         NULL::uuid AS run_id,
@@ -104,12 +108,14 @@ async function selectIncompleteRoundFrontier(
       is_success AS "isSuccess"
     FROM incomplete_frontier
     WHERE depth > 0
-    ORDER BY depth
-  `);
+      ORDER BY depth
+    `,
+    incompleteRoundFrontierRowSchema,
+  );
 
   const rounds: IncompleteRoundSelection[] = [];
   let successfulRunId: string | null = null;
-  for (const row of result.rows) {
+  for (const row of rows) {
     if (row.isSuccess) {
       successfulRunId = row.runId;
       break;

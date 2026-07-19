@@ -58,7 +58,9 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { variables as variablesTable } from "@vm0/db/schema/variable";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 
+import { executeRawRows, pgInt8ToBigIntSchema } from "../../lib/db-raw-rows";
 import { optionalEnv } from "../../lib/env";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -99,6 +101,10 @@ const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
 const FIREWALL_AUTH_REFRESH_TIMEOUT_MS = 30_000;
 const REFRESH_TIMEOUT_ERROR_CODE = "oauth_refresh_timeout";
 const MAX_OAUTH_REFRESH_LOG_FIELD_LENGTH = 128;
+const databaseTimestampMicrosRowSchema = z.object({
+  now: pgInt8ToBigIntSchema,
+});
+
 function firewallAuthRefreshTimeoutMs(): number {
   const configured = optionalEnv("FIREWALL_AUTH_REFRESH_TIMEOUT_MS");
   if (configured === undefined) {
@@ -1506,14 +1512,16 @@ function refreshSourceStateFromRow(args: {
 }
 
 async function currentDatabaseTimestampMicros(db: Db): Promise<bigint> {
-  const result = await db.execute<{ now: bigint | number | string }>(
+  const rows = await executeRawRows(
+    db,
     sql`SELECT (EXTRACT(EPOCH FROM clock_timestamp()) * 1000000)::bigint AS now`,
+    databaseTimestampMicrosRowSchema,
   );
-  const row = result.rows[0];
+  const row = rows[0];
   if (!row) {
     throw new Error("Failed to read database timestamp");
   }
-  return BigInt(row.now);
+  return row.now;
 }
 
 function shouldUseLockedCurrentAccess(args: {

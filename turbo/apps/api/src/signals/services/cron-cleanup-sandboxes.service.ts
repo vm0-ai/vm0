@@ -424,13 +424,13 @@ async function cleanupExpiredRunnerJobs(
   db: Db,
   signal: AbortSignal,
 ): Promise<number> {
-  const result = await db.execute(sql`
+  const { rowCount } = await db.execute(sql`
     DELETE FROM ${runnerJobQueue}
     WHERE ${runnerJobQueue.expiresAt} <= now()
   `);
   signal.throwIfAborted();
 
-  const deletedCount = Number(result.rowCount ?? 0);
+  const deletedCount = rowCount ?? 0;
   if (deletedCount > 0) {
     L.debug("Cleaned up expired runner job queue entries", {
       count: deletedCount,
@@ -443,13 +443,13 @@ async function cleanupExpiredCustomConnectorAuthRefs(
   db: Db,
   signal: AbortSignal,
 ): Promise<number> {
-  const result = await db.execute(sql`
+  const { rowCount } = await db.execute(sql`
     DELETE FROM ${agentRunCustomConnectorAuthRefs}
     WHERE ${agentRunCustomConnectorAuthRefs.expiresAt} <= now()
   `);
   signal.throwIfAborted();
 
-  const deletedCount = Number(result.rowCount ?? 0);
+  const deletedCount = rowCount ?? 0;
   if (deletedCount > 0) {
     L.debug("Cleaned up expired custom connector auth refs", {
       count: deletedCount,
