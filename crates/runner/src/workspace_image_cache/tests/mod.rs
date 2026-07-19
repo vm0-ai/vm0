@@ -1675,11 +1675,61 @@ async fn session_history_sidecar_publish_and_probe_hit() {
     let metadata: serde_json::Value =
         serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
     assert!(metadata.get("historyGenerationRunId").is_none());
+    assert!(metadata["allocatedBytes"].as_u64().is_some());
     let held_states = cache.held_session_states().await;
     assert_eq!(
         held_states[0].workspace_caches[0].profile,
         TEST_PROFILE_NAME
     );
+    let sidecar = cache
+        .probe_session_history_sidecar(&cache_key, &identity)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        sidecar.representation,
+        WorkspaceSessionHistorySidecarRepresentation::Raw
+    );
+    assert_eq!(sidecar.encoded_size, history.len() as u64);
+    assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn session_history_sidecar_metadata_without_allocated_bytes_remains_restoreable() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-without-allocated-bytes";
+    let history = br#"{"type":"message","content":"without allocated bytes"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let identity =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let metadata_path = paths
+        .session_workspace_cache_entry_dir(&cache_key)
+        .join("session-history.metadata.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
+    assert!(
+        metadata
+            .as_object_mut()
+            .unwrap()
+            .remove("allocatedBytes")
+            .is_some()
+    );
+    fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
+        .await
+        .unwrap();
+
     let sidecar = cache
         .probe_session_history_sidecar(&cache_key, &identity)
         .await

@@ -35,7 +35,8 @@ struct WorkspaceSessionHistorySidecarMetadata {
     representation: WorkspaceSessionHistorySidecarRepresentation,
     encoded_size: u64,
     body_file: WorkspaceImageFileIdentity,
-    allocated_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    allocated_bytes: Option<u64>,
 }
 
 impl WorkspaceSessionHistorySidecarMetadata {
@@ -60,7 +61,7 @@ impl WorkspaceSessionHistorySidecarMetadata {
             representation: source.representation,
             encoded_size: source.encoded_size,
             body_file: WorkspaceImageFileIdentity::from_metadata(body_metadata),
-            allocated_bytes: allocated_bytes(body_metadata),
+            allocated_bytes: Some(allocated_bytes(body_metadata)),
         })
     }
 
