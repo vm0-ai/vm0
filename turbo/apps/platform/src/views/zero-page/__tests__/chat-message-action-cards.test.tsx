@@ -320,6 +320,12 @@ describe("chat message action cards", () => {
       });
       expect(cards).toHaveLength(2);
     });
+    for (const card of cards) {
+      expect(
+        within(card).getByText("To: recipient@example.com"),
+      ).toBeInTheDocument();
+      expect(within(card).queryByText("sender@example.com")).toBeNull();
+    }
     const untrustedLink = queryAllByRoleFast("link").find((link) => {
       return link.textContent === "Untrusted email";
     });
