@@ -11,7 +11,7 @@ use crate::ids::RunId;
 use crate::restored_session_identity::{RestoredSessionIdentity, RestoredSessionIdentityFields};
 
 use super::fs::{
-    allocated_bytes, ensure_workspace_cache_entry_dir, remove_workspace_cache_path_if_exists,
+    ensure_workspace_cache_entry_dir, remove_workspace_cache_path_if_exists,
     workspace_cache_existing_path_allocated_bytes,
 };
 use super::metadata::WorkspaceImageFileIdentity;
@@ -35,8 +35,6 @@ struct WorkspaceSessionHistorySidecarMetadata {
     representation: WorkspaceSessionHistorySidecarRepresentation,
     encoded_size: u64,
     body_file: WorkspaceImageFileIdentity,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    allocated_bytes: Option<u64>,
 }
 
 impl WorkspaceSessionHistorySidecarMetadata {
@@ -61,7 +59,6 @@ impl WorkspaceSessionHistorySidecarMetadata {
             representation: source.representation,
             encoded_size: source.encoded_size,
             body_file: WorkspaceImageFileIdentity::from_metadata(body_metadata),
-            allocated_bytes: Some(allocated_bytes(body_metadata)),
         })
     }
 

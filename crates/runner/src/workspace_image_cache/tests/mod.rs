@@ -1675,7 +1675,7 @@ async fn session_history_sidecar_publish_and_probe_hit() {
     let metadata: serde_json::Value =
         serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
     assert!(metadata.get("historyGenerationRunId").is_none());
-    assert!(metadata["allocatedBytes"].as_u64().is_some());
+    assert!(metadata.get("allocatedBytes").is_none());
     let held_states = cache.held_session_states().await;
     assert_eq!(
         held_states[0].workspace_caches[0].profile,
@@ -1695,14 +1695,14 @@ async fn session_history_sidecar_publish_and_probe_hit() {
 }
 
 #[tokio::test]
-async fn session_history_sidecar_metadata_without_allocated_bytes_remains_restoreable() {
+async fn session_history_sidecar_metadata_with_allocated_bytes_remains_restoreable() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
     let cache = SessionWorkspaceCache::new(paths.clone());
     let run_id = RunId::new_v4();
-    let session_id = "sess-sidecar-without-allocated-bytes";
-    let history = br#"{"type":"message","content":"without allocated bytes"}"#;
+    let session_id = "sess-sidecar-with-allocated-bytes";
+    let history = br#"{"type":"message","content":"with allocated bytes"}"#;
     let cache_key = write_current_cache_entry(
         &cache,
         run_id,
@@ -1723,8 +1723,8 @@ async fn session_history_sidecar_metadata_without_allocated_bytes_remains_restor
         metadata
             .as_object_mut()
             .unwrap()
-            .remove("allocatedBytes")
-            .is_some()
+            .insert("allocatedBytes".into(), 4096_u64.into())
+            .is_none()
     );
     fs::write(&metadata_path, serde_json::to_vec(&metadata).unwrap())
         .await
