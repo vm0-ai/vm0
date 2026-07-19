@@ -4,6 +4,7 @@ import { gzipSync } from "node:zlib";
 import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 
 import type { TestContext } from "../../../../__tests__/test-context";
+import { readStorageS3PrefixFixture } from "../../../../test-fixtures/storage";
 import type { ApiTestUser } from "./api-bdd";
 import { createStoragesBddApi } from "./api-bdd-storages";
 
@@ -55,9 +56,15 @@ export async function commitMemoryVersion(
     files: entries,
   });
 
+  const s3Prefix = await readStorageS3PrefixFixture({
+    orgId: actor.orgId,
+    userId: actor.userId,
+    name: MEMORY_ARTIFACT_NAME,
+    type: "artifact",
+  });
   return {
     versionId: prepared.versionId,
-    s3Key: `${actor.orgId}/artifact/${MEMORY_ARTIFACT_NAME}/${prepared.versionId}`,
+    s3Key: `${s3Prefix}/${prepared.versionId}`,
   };
 }
 

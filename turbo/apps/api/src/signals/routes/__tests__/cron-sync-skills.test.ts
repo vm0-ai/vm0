@@ -458,8 +458,10 @@ describe("GET /api/cron/sync-skills", () => {
     const alphaVersion = buildMockSkillVersion(EXTRA_SKILLS.alphaSkill);
     const alphaArchivePut = s3CallsByName("PutObjectCommand").find(
       (command) => {
+        const key = commandInput(command).Key;
         return (
-          commandInput(command).Key === `${alphaVersion.s3Key}/archive.tar.gz`
+          typeof key === "string" &&
+          key.endsWith(`/${alphaVersion.versionHash}/archive.tar.gz`)
         );
       },
     );

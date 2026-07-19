@@ -386,12 +386,16 @@ describe("POST /api/zero/integrations/slack/connect", () => {
     );
 
     expect(artifactStorage).toMatchObject({
-      s3Prefix: `${fixture.orgId}/artifact/artifact`,
+      s3Prefix: expect.stringMatching(
+        new RegExp(
+          `^${fixture.orgId}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+        ),
+      ),
       headVersionId: expect.any(String),
       versionId: expect.any(String),
     });
     expect(artifactStorage?.versionS3Key).toBe(
-      `${fixture.orgId}/artifact/artifact/${artifactStorage?.versionId}`,
+      `${artifactStorage?.s3Prefix}/${artifactStorage?.versionId}`,
     );
     expect(context.mocks.s3.send).not.toHaveBeenCalledWith(
       expect.objectContaining({

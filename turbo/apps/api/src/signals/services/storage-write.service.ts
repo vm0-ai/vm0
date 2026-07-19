@@ -25,6 +25,7 @@ import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
 } from "./storage-content-hash.service";
+import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 const L = logger("storage-write");
 
@@ -307,14 +308,16 @@ async function upsertStorageForPrepare(args: {
   readonly storageOwner: string;
   readonly input: PrepareStorageInput;
 }): Promise<StorageRow | undefined> {
+  const { storageId, s3Prefix } = newStorageS3Location(args.orgId);
   const [storage] = await args.db
     .insert(storages)
     .values({
+      id: storageId,
       userId: args.storageOwner,
       orgId: args.orgId,
       name: args.input.storageName,
       type: args.input.storageType,
-      s3Prefix: `${args.orgId}/${args.input.storageType}/${args.input.storageName}`,
+      s3Prefix,
       size: 0,
       fileCount: 0,
     })

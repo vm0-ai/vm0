@@ -39,6 +39,7 @@ import {
   type ApiDispatchTimingDimensionsInput,
 } from "./api-dispatch-timing.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
+import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
 type StorageType = "artifact" | "volume";
 type ManifestStorage = StorageManifest["storages"][number];
@@ -1152,14 +1153,16 @@ async function findOrCreateArtifactStorage(
     args.timing,
     "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
     async () => {
+      const location = newStorageS3Location(args.orgId);
       return await args.db
         .insert(storages)
         .values({
+          id: location.storageId,
           orgId: args.orgId,
           userId: args.userId,
           name: args.name,
           type: "artifact",
-          s3Prefix: `${args.orgId}/artifact/${args.name}`,
+          s3Prefix: location.s3Prefix,
         })
         .onConflictDoNothing()
         .returning({
