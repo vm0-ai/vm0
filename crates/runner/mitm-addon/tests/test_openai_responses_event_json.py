@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 import usage.openai_responses as openai_responses
 from usage import (
     extract_openai_responses_usage_from_event_json,
@@ -221,6 +223,26 @@ def test_large_non_terminal_event_is_ignored():
         openai_responses._classify_responses_event_type(body)
         == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
     )
+    assert extract_openai_responses_usage_from_event_json(body) is None
+
+
+def test_large_documented_non_usage_event_skips_full_extractor(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def reject_full_extractor(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("known non-usage event entered the full extractor")
+
+    monkeypatch.setattr(
+        openai_responses,
+        "JsonSelectiveExtractor",
+        reject_full_extractor,
+    )
+    body = (
+        b'{"type":"response.output_item.done","item":{"content":"'
+        + b"x" * (5 * 1024 * 1024)
+        + b'"}}'
+    )
+
     assert extract_openai_responses_usage_from_event_json(body) is None
 
 
