@@ -1892,14 +1892,8 @@ mod tests {
         );
         assert_eq!(
             failure.to_string(),
-            format!(
-                "process identity changed while waiting for termination \
-                 (PGID {} -> {}, starttime {} -> {})",
-                identity.pgid,
-                identity.pgid + 1,
-                identity.starttime,
-                identity.starttime + 1
-            )
+            "process identity changed while waiting for termination \
+             (PGID 1200 -> 1201, starttime 123456 -> 123457)"
         );
     }
 
@@ -1982,9 +1976,9 @@ mod tests {
         };
 
         let outcome = kill_orphan_process_group(&target).await;
-        let status = child.wait().await.unwrap();
-
         assert!(matches!(outcome, KillOutcome::OrphanKilled(killed) if killed == target));
+
+        let status = child.wait().await.unwrap();
         assert!(!status.success());
     }
 
