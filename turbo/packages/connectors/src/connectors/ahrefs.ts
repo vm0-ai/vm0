@@ -19,6 +19,7 @@ export const ahrefs = {
           clientSecretEnv: "AHREFS_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["AHREFS_ACCESS_TOKEN", "AHREFS_REFRESH_TOKEN"],
           variables: [],
         },
@@ -51,6 +52,7 @@ export const ahrefs = {
         helpText:
           "1. Log in to [Ahrefs](https://ahrefs.com) as a workspace owner or admin\n2. Go to **Account settings > API keys**\n3. Create a new API key\n4. Copy the API key and use it in the `Authorization: Bearer <YOUR_API_KEY>` header",
         storage: {
+          version: 1,
           secrets: ["AHREFS_TOKEN"],
           variables: [],
         },

@@ -12,6 +12,7 @@ export const typeform = {
         helpText:
           "1. Log in to [Typeform](https://admin.typeform.com)\n2. Open the account menu (top-right) and pick **Personal tokens**\n3. Click **Generate a new token**, name it, and choose the scopes you need (e.g. `forms:read`, `responses:read`, `webhooks:write`)\n4. Copy the token (format: `tfp_...`)",
         storage: {
+          version: 1,
           secrets: ["TYPEFORM_TOKEN"],
           variables: [],
         },

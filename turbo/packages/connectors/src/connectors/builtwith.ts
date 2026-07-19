@@ -12,6 +12,7 @@ export const builtwith = {
         helpText:
           "1. Log in to [BuiltWith](https://api.builtwith.com)\n2. Open the **API access** page in your account\n3. Copy your **API key**\n4. Pass it as the `KEY` query parameter on every request",
         storage: {
+          version: 1,
           secrets: ["BUILTWITH_TOKEN"],
           variables: [],
         },

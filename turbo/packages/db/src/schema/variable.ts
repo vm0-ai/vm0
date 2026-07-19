@@ -1,4 +1,5 @@
 import {
+  check,
   pgTable,
   uuid,
   text,
@@ -7,6 +8,8 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { connectors } from "./connector";
 
 /**
  * Variables table
@@ -21,6 +24,14 @@ export const variables = pgTable(
     value: text("value").notNull(),
     description: text("description"),
     type: varchar("type", { length: 50 }).notNull().default("user"),
+    connectorId: uuid("connector_id").references(
+      () => {
+        return connectors.id;
+      },
+      {
+        onDelete: "cascade",
+      },
+    ),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -29,11 +40,16 @@ export const variables = pgTable(
   (table) => {
     return [
       index("idx_variables_org").on(table.orgId),
+      index("idx_variables_connector").on(table.connectorId),
       uniqueIndex("idx_variables_org_user_type_name").on(
         table.orgId,
         table.userId,
         table.type,
         table.name,
+      ),
+      check(
+        "chk_variables_connector_owner_type",
+        sql`${table.connectorId} IS NULL OR ${table.type} = 'connector'`,
       ),
     ];
   },

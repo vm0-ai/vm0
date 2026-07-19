@@ -12,6 +12,7 @@ export const kugelAudio = {
         helpText:
           "1. Sign in to your KugelAudio account\n2. Follow the [KugelAudio API docs](https://docs.kugelaudio.com/) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["KUGELAUDIO_API_KEY"],
           variables: [],
         },

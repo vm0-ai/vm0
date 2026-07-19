@@ -17,6 +17,7 @@ export const hubspot = {
           clientSecretEnv: "HUBSPOT_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["HUBSPOT_ACCESS_TOKEN", "HUBSPOT_REFRESH_TOKEN"],
           variables: [],
         },

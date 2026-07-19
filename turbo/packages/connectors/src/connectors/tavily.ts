@@ -12,6 +12,7 @@ export const tavily = {
         helpText:
           "1. Go to [app.tavily.com](https://app.tavily.com/) and sign up for a free account\n2. After signing in, your API key will be available on the dashboard\n3. Copy the API key (it will start with `tvly-`)",
         storage: {
+          version: 1,
           secrets: ["TAVILY_TOKEN"],
           variables: [],
         },

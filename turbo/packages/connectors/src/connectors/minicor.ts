@@ -12,6 +12,7 @@ export const minicor = {
         helpText:
           "1. Sign in to your Minicor account\n2. Follow the [Minicor API docs](https://www.minicor.com/docs) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["MINICOR_API_KEY"],
           variables: [],
         },

@@ -17,6 +17,7 @@ export const outlookCalendar = {
           clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: [
             "OUTLOOK_CALENDAR_ACCESS_TOKEN",
             "OUTLOOK_CALENDAR_REFRESH_TOKEN",

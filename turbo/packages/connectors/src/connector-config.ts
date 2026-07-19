@@ -213,6 +213,7 @@ export type ConnectorRevokeInputBindings = Record<
 >;
 
 export interface ConnectorStorageConfig {
+  readonly version: number;
   readonly secrets: readonly string[];
   readonly variables: readonly string[];
 }

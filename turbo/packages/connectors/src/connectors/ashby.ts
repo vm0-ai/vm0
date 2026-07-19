@@ -12,6 +12,7 @@ export const ashby = {
         helpText:
           "1. In Ashby, open **Admin** → **Integrations** → **API Keys**\n2. Create or select an API key with the candidate and job access your workflow needs\n3. Copy the raw API key and paste it here.",
         storage: {
+          version: 1,
           secrets: ["ASHBY_TOKEN"],
           variables: [],
         },

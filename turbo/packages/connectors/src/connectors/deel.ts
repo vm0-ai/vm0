@@ -19,6 +19,7 @@ export const deel = {
           clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["DEEL_ACCESS_TOKEN", "DEEL_REFRESH_TOKEN"],
           variables: [],
         },
@@ -60,6 +61,7 @@ export const deel = {
         helpText:
           "1. Create a [Deel](https://app.deel.com) account and verify your email\n2. Navigate to the **Developer Center**\n3. Select the **API Sandbox** tab (or **Production** for live credentials)\n4. Click **Create Sandbox** and enter a unique email and password\n5. Click **Confirm** to finalize sandbox creation\n6. Locate your **API Key / Access Token** in the Developer Center\n7. Copy and store the token securely",
         storage: {
+          version: 1,
           secrets: ["DEEL_TOKEN"],
           variables: [],
         },

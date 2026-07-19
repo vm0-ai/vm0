@@ -19,7 +19,11 @@ export const copper = {
           clientIdEnv: "COPPER_OAUTH_CLIENT_ID",
           clientSecretEnv: "COPPER_OAUTH_CLIENT_SECRET",
         },
-        storage: { secrets: ["COPPER_ACCESS_TOKEN"], variables: [] },
+        storage: {
+          version: 1,
+          secrets: ["COPPER_ACCESS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
           scopes: ["developer/v1/all"],

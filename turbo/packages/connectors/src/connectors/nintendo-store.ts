@@ -18,6 +18,7 @@ export const nintendoStore = {
           clientId: "5c38e31cd085304b",
         },
         storage: {
+          version: 1,
           secrets: [
             "NINTENDO_STORE_SESSION_TOKEN",
             "NINTENDO_STORE_ACCESS_TOKEN",

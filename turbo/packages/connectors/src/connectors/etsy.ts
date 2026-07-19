@@ -15,6 +15,7 @@ export const etsy = {
           "3. Copy the **Keystring** and **Shared Secret**\n" +
           "4. Paste both values joined with a colon: `keystring:shared_secret`",
         storage: {
+          version: 1,
           secrets: ["ETSY_TOKEN"],
           variables: [],
         },

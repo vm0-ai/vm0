@@ -13,6 +13,7 @@ export const browserless = {
         helpText:
           "1. Sign up or log in at [Browserless](https://browserless.io/account/)\n2. Navigate to the account dashboard\n3. Copy your API token from the dashboard",
         storage: {
+          version: 1,
           secrets: ["BROWSERLESS_TOKEN"],
           variables: [],
         },

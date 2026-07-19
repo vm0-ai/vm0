@@ -12,6 +12,7 @@ export const limrun = {
         helpText:
           "1. Sign in to your Limrun account\n2. Follow the [Limrun API docs](https://docs.limrun.com/docs) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["LIMRUN_API_KEY"],
           variables: [],
         },

@@ -12,6 +12,7 @@ export const zep = {
         helpText:
           "1. Log in to [app.getzep.com](https://app.getzep.com)\n2. Go to **Settings**\n3. Navigate to **API Keys**\n4. Click **Create API Key** and copy the key",
         storage: {
+          version: 1,
           secrets: ["ZEP_TOKEN"],
           variables: [],
         },

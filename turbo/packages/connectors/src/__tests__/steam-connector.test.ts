@@ -36,6 +36,7 @@ describe("Steam connector config", () => {
   it("exposes SteamID and the vm0-owned Web API key to runtime metadata", () => {
     expect(getConnectorAuthMethodRuntimeMetadata("steam", "openid")).toEqual({
       storage: {
+        version: 1,
         secrets: [],
         variables: ["STEAM_ID"],
       },

@@ -20,6 +20,7 @@ export const googleForms = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["GOOGLE_FORMS_ACCESS_TOKEN", "GOOGLE_FORMS_REFRESH_TOKEN"],
           variables: [],
         },

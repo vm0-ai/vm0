@@ -16,6 +16,7 @@ export const base44 = {
           clientId: "base44_cli",
         },
         storage: {
+          version: 1,
           secrets: ["BASE44_ACCESS_TOKEN", "BASE44_REFRESH_TOKEN"],
           variables: [],
         },

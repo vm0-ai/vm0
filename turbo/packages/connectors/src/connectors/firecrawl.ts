@@ -12,6 +12,7 @@ export const firecrawl = {
         helpText:
           "1. Log in to [Firecrawl](https://www.firecrawl.dev)\n2. Go to your **Dashboard**\n3. Copy your **API Key**",
         storage: {
+          version: 1,
           secrets: ["FIRECRAWL_TOKEN"],
           variables: [],
         },

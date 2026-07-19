@@ -13,6 +13,7 @@ export const huggingFace = {
         helpText:
           "1. Log in to [Hugging Face](https://huggingface.co)\n2. Go to **Settings → Access Tokens**\n3. Create a new token with the required permissions\n4. Copy the token",
         storage: {
+          version: 1,
           secrets: ["HUGGING_FACE_TOKEN"],
           variables: [],
         },

@@ -12,6 +12,7 @@ export const klaviyo = {
         helpText:
           "1. Log in to [Klaviyo](https://www.klaviyo.com/)\n2. Go to **Account > Settings > API keys**\n3. Click **Create Private API Key**\n4. Grant the scopes your workflow needs (e.g. `profiles:write`, `lists:write`, `events:write`, `subscriptions:write`)\n5. Copy the key (format: `pk_...`)",
         storage: {
+          version: 1,
           secrets: ["KLAVIYO_TOKEN"],
           variables: [],
         },

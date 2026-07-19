@@ -12,6 +12,7 @@ export const maskdb = {
         helpText:
           "1. Open your [maskdb dashboard](https://github.com/e7h4n/maskdb)\n2. Mint a maskdb token with the `db:query` and `db:metadata` scopes (read-only). It starts with `mk_`\n3. Paste the token here",
         storage: {
+          version: 1,
           secrets: ["MASKDB_TOKEN"],
           variables: [],
         },

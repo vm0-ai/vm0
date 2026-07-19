@@ -12,6 +12,7 @@ export const drive9 = {
         helpText:
           "1. Log in to [drive9](https://drive9.ai)\n2. Go to **Settings > API Keys**\n3. Create a new API key\n4. Copy the key (format: `drive9_sk_...`)",
         storage: {
+          version: 1,
           secrets: ["DRIVE9_TOKEN"],
           variables: [],
         },

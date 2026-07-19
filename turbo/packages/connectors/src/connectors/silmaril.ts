@@ -12,6 +12,7 @@ export const silmaril = {
         helpText:
           "1. Sign in to your Silmaril account\n2. Follow the [Silmaril API docs](https://www.silmaril.dev/docs) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["SILMARIL_API_KEY"],
           variables: [],
         },

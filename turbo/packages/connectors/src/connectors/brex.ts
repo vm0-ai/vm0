@@ -13,6 +13,7 @@ export const brex = {
         helpText:
           "1. In Brex, create or obtain an API user token with the permissions required for your workflow\n2. Confirm the token is intended for the production API at `https://api.brex.com`\n3. Copy the token",
         storage: {
+          version: 1,
           secrets: ["BREX_TOKEN"],
           variables: [],
         },

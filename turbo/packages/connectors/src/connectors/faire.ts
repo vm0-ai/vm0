@@ -20,6 +20,7 @@ export const faire = {
         helpText:
           "1. In the Faire portal, go to **Settings > Integrations**\n2. Generate an API key for a direct integration, or request one from Faire for a custom integration\n3. Copy the access token for the brand account you want to connect",
         storage: {
+          version: 1,
           secrets: ["FAIRE_TOKEN"],
           variables: [],
         },

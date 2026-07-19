@@ -19,6 +19,7 @@ export const zoom = {
           clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["ZOOM_ACCESS_TOKEN", "ZOOM_REFRESH_TOKEN"],
           variables: [],
         },

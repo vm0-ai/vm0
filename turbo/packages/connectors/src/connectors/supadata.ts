@@ -12,6 +12,7 @@ export const supadata = {
         helpText:
           "1. Go to the [Supadata Dashboard](https://dash.supadata.ai)\n2. Sign up for an account (no credit card required)\n3. Your API key will be generated automatically\n4. Use it in API requests with the header `x-api-key: [your_api_key]`",
         storage: {
+          version: 1,
           secrets: ["SUPADATA_TOKEN"],
           variables: [],
         },

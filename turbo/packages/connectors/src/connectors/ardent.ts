@@ -11,6 +11,7 @@ export const ardent = {
         helpText:
           "1. Sign in to your Ardent account\n2. Follow the [Ardent API docs](https://docs.tryardent.com/) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["ARDENT_API_KEY"],
           variables: [],
         },

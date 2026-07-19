@@ -13,6 +13,7 @@ export const freshdesk = {
         helpText:
           "1. Log in to Freshdesk and click your profile picture (top right), then **Profile Settings**\n2. On the right pane, click **View API Key** and complete the captcha\n3. Copy the API key\n4. Enter your Freshdesk subdomain — the prefix of `https://<subdomain>.freshdesk.com`",
         storage: {
+          version: 1,
           secrets: ["FRESHDESK_TOKEN"],
           variables: ["FRESHDESK_DOMAIN"],
         },

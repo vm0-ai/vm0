@@ -24,6 +24,7 @@ import {
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { setConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -374,6 +375,43 @@ describe("POST /api/zero/mail/drafts/link", () => {
       [409],
     );
     expect(conflict.body.error.message).toContain("already linked");
+  });
+
+  it("does not refresh a known mismatched Gmail storage version", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setConnectorCredentialStorageState(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      connectorRef: "gmail",
+      storageVersion: 2,
+      tokenExpiresAt: "2020-01-01T00:00:00.000Z",
+    });
+    let refreshCalls = 0;
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        refreshCalls += 1;
+        return HttpResponse.json({
+          access_token: "must-not-be-written",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+    expect(response.body.error.message).toBe(
+      "Reconnect Gmail before continuing",
+    );
+    expect(refreshCalls).toBe(0);
   });
 
   it("deletes Gmail only for an explicit draft deletion", async () => {

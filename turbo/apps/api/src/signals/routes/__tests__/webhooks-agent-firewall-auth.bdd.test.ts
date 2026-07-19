@@ -25,6 +25,10 @@ import {
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  readConnectorCredentialStorageState,
+  setConnectorCredentialStorageState,
+} from "./helpers/connector-credential-storage-state";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -32,10 +36,9 @@ const ORG_SENTINEL_USER_ID = "__org__";
  * HOOK-02 / FW: firewall auth template resolution and connector refresh
  * through POST /api/webhooks/agent/firewall/auth.
  *
- * Given state is constructed through public routes only: the dev-gated
- * /api/cli/auth/test-token route provisions a run-ready org, zero agent and
- * run creation use the normal product APIs, and connector/provider rows come
- * from /api/cli/auth/test-connector and /api/cli/auth/test-codex-oauth.
+ * Given state is constructed through public routes. The narrow test-only
+ * connector credential state route is used only for persisted metadata that
+ * an old deployment can leave behind but no production API exposes.
  *
  * Unreachable through public APIs (kept out of this file deliberately):
  * - Advisory-lock concurrency branches (locked refresh divergence and
@@ -283,7 +286,7 @@ describe("FW-3: billable firewall lease", () => {
       throw new Error("Expected firewall actor to have an org");
     }
     await seedOrgMetadata({
-      orgId: actor.orgId,
+      orgId: actor.orgId ?? "",
       tier: "limited-free-1",
       credits: 20_000,
     });
@@ -315,7 +318,7 @@ describe("FW-3: billable firewall lease", () => {
       throw new Error("Expected firewall actor to have an org");
     }
     await seedOrgMetadata({
-      orgId: actor.orgId,
+      orgId: actor.orgId ?? "",
       tier: "pro-suspend",
       credits: 20_000,
     });
@@ -603,6 +606,71 @@ describe("FW-4: test-oauth connector refresh", () => {
     }
     expect(served.body.headers.Authorization).toBe("Bearer fresh-access-1");
     expect(served.body.refreshedConnectors).toStrictEqual([]);
+
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorRef: "test-oauth",
+      secretNames: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
+    });
+    expect(storageState.connector?.storage_version).toBe(1);
+    expect(storageState.secrets).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "TEST_OAUTH_ACCESS_TOKEN",
+          connector_id: storageState.connector?.id,
+        }),
+        expect.objectContaining({
+          name: "TEST_OAUTH_REFRESH_TOKEN",
+          connector_id: storageState.connector?.id,
+        }),
+      ]),
+    );
+  });
+
+  it("does not call the provider for a known storage version mismatch", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    await fw.seedTestConnector(actor, {
+      connectorName: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "stale-access",
+      refreshToken: "refresh-1",
+      expiresIn: -60,
+    });
+    await setConnectorCredentialStorageState(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorRef: "test-oauth",
+      storageVersion: 2,
+    });
+    let providerCalls = 0;
+    fw.mockTestOauthTokenRefresh(() => {
+      providerCalls += 1;
+      return fw.oauthTokenResponse({
+        accessToken: "must-not-be-written",
+        expiresIn: 3600,
+      });
+    });
+
+    const response = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({
+          TEST_OAUTH_TOKEN: "stale-access",
+        }),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+        },
+        secretConnectorMap: { TEST_OAUTH_TOKEN: "test-oauth" },
+      },
+      [424],
+    );
+    if (response.status !== 424) {
+      throw new Error("Expected mismatched storage version to be unavailable");
+    }
+    expect(response.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+    expect(providerCalls).toBe(0);
   });
 
   it("defaults the refreshed expiry when the provider omits expires_in", async () => {

@@ -19,6 +19,7 @@ export const reddit = {
           clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["REDDIT_ACCESS_TOKEN", "REDDIT_REFRESH_TOKEN"],
           variables: [],
         },

@@ -11,6 +11,7 @@ export const replicas = {
         helpText:
           "1. Sign in to your Replicas account\n2. Follow the [Replicas API docs](https://docs.tryreplicas.com) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["REPLICAS_API_KEY"],
           variables: [],
         },

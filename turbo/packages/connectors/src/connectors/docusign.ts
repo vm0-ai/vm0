@@ -19,6 +19,7 @@ export const docusign = {
           clientSecretEnv: "DOCUSIGN_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["DOCUSIGN_ACCESS_TOKEN", "DOCUSIGN_REFRESH_TOKEN"],
           variables: [],
         },

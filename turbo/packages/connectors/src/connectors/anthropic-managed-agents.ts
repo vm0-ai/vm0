@@ -12,6 +12,7 @@ export const anthropicManagedAgents = {
         helpText:
           "1. Sign up at [Anthropic Console](https://console.anthropic.com)\n2. Go to **API Keys** and create a new key\n3. Ensure your account has Managed Agents (beta) access\n4. Copy the API key (starts with `sk-ant-`)",
         storage: {
+          version: 1,
           secrets: ["ANTHROPIC_MANAGED_AGENTS_TOKEN"],
           variables: [],
         },

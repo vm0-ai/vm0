@@ -20,6 +20,7 @@ export const googleContacts = {
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: [
             "GOOGLE_CONTACTS_ACCESS_TOKEN",
             "GOOGLE_CONTACTS_REFRESH_TOKEN",

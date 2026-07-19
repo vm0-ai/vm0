@@ -12,6 +12,7 @@ export const pipedrive = {
         helpText:
           "1. In Pipedrive, click your avatar (top right) → **Personal Preferences** → **API**\n2. Copy your personal API token\n3. Paste it here",
         storage: {
+          version: 1,
           secrets: ["PIPEDRIVE_TOKEN"],
           variables: [],
         },

@@ -19,6 +19,7 @@ export const supabase = {
           clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["SUPABASE_ACCESS_TOKEN", "SUPABASE_REFRESH_TOKEN"],
           variables: [],
         },
@@ -64,6 +65,7 @@ export const supabase = {
         helpText:
           "1. Log in to the [Supabase Dashboard](https://supabase.com/dashboard)\n2. Open your project's **Connect** dialog, or go to **Project Settings > API Keys**\n3. For legacy keys, copy the `anon` key (for client-side) or `service_role` key (for server-side) from the **Legacy API Keys** tab\n4. For new keys, open the **API Keys** tab, click **Create new API Keys** if needed, and copy the value from the **Publishable key** section",
         storage: {
+          version: 1,
           secrets: ["SUPABASE_TOKEN"],
           variables: [],
         },

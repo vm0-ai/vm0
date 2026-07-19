@@ -20,6 +20,7 @@ export const datadog = {
           clientSecretEnv: "DATADOG_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["DATADOG_ACCESS_TOKEN", "DATADOG_REFRESH_TOKEN"],
           variables: ["DATADOG_DOMAIN"],
         },

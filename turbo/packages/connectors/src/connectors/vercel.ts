@@ -17,6 +17,7 @@ export const vercel = {
           clientSecretEnv: "VERCEL_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["VERCEL_ACCESS_TOKEN"],
           variables: [],
         },

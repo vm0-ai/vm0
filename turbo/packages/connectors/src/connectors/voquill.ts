@@ -12,6 +12,7 @@ export const voquill = {
         helpText:
           "1. Sign in to your Voquill account\n2. Follow the [Voquill API docs](https://docs.voquill.com/) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["VOQUILL_API_KEY"],
           variables: [],
         },

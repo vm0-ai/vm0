@@ -13,6 +13,7 @@ export const servicenow = {
         helpText:
           "1. In ServiceNow, create (or pick) a dedicated service user with the roles the integration needs — `itil` for incident/change, `cmdb_read` for CMDB, etc.\n2. Set a password on that user under **User Administration → Users**\n3. Enter the username, password, and your ServiceNow instance subdomain — the prefix of `https://<subdomain>.service-now.com`",
         storage: {
+          version: 1,
           secrets: ["SERVICENOW_USERNAME", "SERVICENOW_PASSWORD"],
           variables: ["SERVICENOW_INSTANCE"],
         },

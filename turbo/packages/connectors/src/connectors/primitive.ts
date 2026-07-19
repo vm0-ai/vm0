@@ -12,6 +12,7 @@ export const primitive = {
         helpText:
           "1. Sign in to your primitive account\n2. Follow the [primitive OpenAPI spec](https://www.primitive.dev/openapi.json) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["PRIMITIVE_API_KEY"],
           variables: [],
         },

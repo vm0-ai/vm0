@@ -12,6 +12,7 @@ export const diffbot = {
         helpText:
           "1. Log in to [Diffbot](https://app.diffbot.com/get-started/)\n2. Open your account dashboard\n3. Copy the **API token** shown on the dashboard\n4. Pass it as the `token` query parameter on every request",
         storage: {
+          version: 1,
           secrets: ["DIFFBOT_TOKEN"],
           variables: [],
         },

@@ -14,6 +14,7 @@ export const bfl = {
         helpText:
           "1. Go to the [Black Forest Labs dashboard](https://dashboard.bfl.ai)\n2. Navigate to **API → Keys** in your project sidebar\n3. Click **Add Key** and give the key a descriptive name\n4. Copy the API key immediately — you will not be able to see the full key again",
         storage: {
+          version: 1,
           secrets: ["BFL_API_KEY"],
           variables: [],
         },

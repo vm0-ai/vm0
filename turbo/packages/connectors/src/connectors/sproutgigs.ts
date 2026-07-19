@@ -20,6 +20,7 @@ export const sproutgigs = {
         helpText:
           "1. Log in to [SproutGigs](https://sproutgigs.com)\n2. Open **Account Settings** and go to the **Settings** tab\n3. Create or reset your API secret\n4. Enter your SproutGigs user ID and API secret. SproutGigs signs requests with HTTP Basic Auth using `USER_ID:API_SECRET`.",
         storage: {
+          version: 1,
           secrets: ["SPROUTGIGS_API_SECRET"],
           variables: ["SPROUTGIGS_USER_ID"],
         },

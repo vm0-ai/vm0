@@ -12,6 +12,7 @@ export const qiita = {
         helpText:
           "1. Log in to [Qiita](https://qiita.com)\n2. Go to **Settings > Applications**\n3. Create a new access token with the desired scopes (e.g., `read_qiita`, `write_qiita`)\n4. Copy the generated token\n5. Use it in API requests with the header `Authorization: Bearer [your_token]`",
         storage: {
+          version: 1,
           secrets: ["QIITA_TOKEN"],
           variables: [],
         },

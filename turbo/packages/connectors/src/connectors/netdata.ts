@@ -13,6 +13,7 @@ export const netdata = {
         helpText:
           "1. Log in to [Netdata Cloud](https://app.netdata.cloud)\n2. Click your profile picture in the bottom-left corner\n3. Select **User Settings**\n4. Navigate to **API Tokens**\n5. Create a token with the scopes required for your use case and copy it",
         storage: {
+          version: 1,
           secrets: ["NETDATA_TOKEN"],
           variables: [],
         },

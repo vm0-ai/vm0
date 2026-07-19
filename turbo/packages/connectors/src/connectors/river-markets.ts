@@ -12,6 +12,7 @@ export const riverMarkets = {
         helpText:
           "1. Sign in to your River Markets account\n2. Follow the [River Markets API docs](https://docs.rivermarkets.com/introduction) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["RIVER_MARKETS_API_KEY"],
           variables: [],
         },

@@ -18,6 +18,7 @@ export const metaAds = {
           clientSecretEnv: "META_ADS_OAUTH_CLIENT_SECRET",
         },
         storage: {
+          version: 1,
           secrets: ["META_ADS_ACCESS_TOKEN", "META_ADS_REFRESH_TOKEN"],
           variables: [],
         },

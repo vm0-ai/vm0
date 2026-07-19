@@ -13,6 +13,7 @@ export const fal = {
         helpText:
           "1. Go to the [fal Dashboard Keys page](https://fal.ai/dashboard/keys)\n2. Click the **Create Key** button\n3. Provide a name for your key and select the appropriate scope (**API** for calling models, or **ADMIN** for full access)\n4. Copy the key immediately — you will not be able to see it again",
         storage: {
+          version: 1,
           secrets: ["FAL_TOKEN"],
           variables: [],
         },

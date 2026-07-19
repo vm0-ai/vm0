@@ -11,6 +11,7 @@ export const salesgraph = {
         helpText:
           "1. Sign in to your Salesgraph account\n2. Follow the [Salesgraph API docs](https://docs.salesgraph.com) to create or copy an API key\n3. Paste the key here.",
         storage: {
+          version: 1,
           secrets: ["SALESGRAPH_API_KEY"],
           variables: [],
         },
