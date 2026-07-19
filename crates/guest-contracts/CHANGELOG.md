@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.16](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.15...guest-contracts-v0.3.16) (2026-07-19)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound ordinary cli stdout ingestion ([#22095](https://github.com/vm0-ai/vm0/issues/22095)) ([4641dd5](https://github.com/vm0-ai/vm0/commit/4641dd5e1340bb204866e0433eb4adbe5eb955f2))
+
 ## [0.3.15](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.14...guest-contracts-v0.3.15) (2026-07-17)
 
 

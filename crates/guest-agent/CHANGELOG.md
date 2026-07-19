@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.10...guest-agent-v0.53.11) (2026-07-19)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound ordinary cli stdout ingestion ([#22095](https://github.com/vm0-ai/vm0/issues/22095)) ([4641dd5](https://github.com/vm0-ai/vm0/commit/4641dd5e1340bb204866e0433eb4adbe5eb955f2))
+
 ## [0.53.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.9...guest-agent-v0.53.10) (2026-07-18)
 
 ## [0.53.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.53.8...guest-agent-v0.53.9) (2026-07-17)
