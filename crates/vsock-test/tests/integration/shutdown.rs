@@ -10,7 +10,7 @@ async fn test_shutdown() {
 
     h.host().shutdown(Duration::from_secs(5)).await.unwrap();
 
-    h.finish_ignore_guest();
+    h.finish();
 }
 
 #[tokio::test]
@@ -25,5 +25,5 @@ async fn test_shutdown_after_exec() {
 
     h.host().shutdown(Duration::from_secs(5)).await.unwrap();
 
-    h.finish_ignore_guest();
+    h.finish();
 }
