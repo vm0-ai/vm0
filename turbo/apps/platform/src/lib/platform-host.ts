@@ -15,6 +15,8 @@ export interface PlatformRuntimeConfig {
 
 const PRODUCTION_DOMAIN = "vm0.ai";
 const OKOU_PRODUCTION_DOMAIN = "okou.ai";
+const OKOU_PREVIEW_DOMAIN = "omby.ai";
+const PREVIEW_SERVICE_DOMAIN = "vm6.ai";
 export const PRODUCTION_SATELLITE_HOSTNAME = "app.okou.ai";
 const PLATFORM_SERVICE_LABELS = ["platform", "app", "www", "api"] as const;
 
@@ -81,6 +83,18 @@ export function rewritePlatformHostname(
   return hostname;
 }
 
+function rewritePreviewServiceHostname(
+  hostname: string,
+  target: PlatformService,
+): string {
+  const rewrittenHostname = rewritePlatformHostname(hostname, target);
+  const okouPreviewSuffix = `.${OKOU_PREVIEW_DOMAIN}`;
+  if (!rewrittenHostname.endsWith(okouPreviewSuffix)) {
+    return rewrittenHostname;
+  }
+  return `${rewrittenHostname.slice(0, -okouPreviewSuffix.length)}.${PREVIEW_SERVICE_DOMAIN}`;
+}
+
 export function derivePlatformServiceOrigin(
   currentOrigin: string,
   target: PlatformService,
@@ -91,7 +105,7 @@ export function derivePlatformServiceOrigin(
   // hostname. They all share the canonical API and web services.
   url.hostname = isProductionHostname(url.hostname)
     ? `${target}.${PRODUCTION_DOMAIN}`
-    : rewritePlatformHostname(url.hostname, target);
+    : rewritePreviewServiceHostname(url.hostname, target);
 
   return url.origin;
 }

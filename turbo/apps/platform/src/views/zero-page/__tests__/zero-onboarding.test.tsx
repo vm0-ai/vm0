@@ -54,6 +54,31 @@ describe("zero onboarding", () => {
     });
   });
 
+  it("forwards the omby preview bypass through the Clerk onboarding handoff", async () => {
+    mockOnboardingNeeded();
+    mockedClerk.buildUrlWithAuth.mockImplementation((to) => {
+      const url = new URL(to);
+      url.searchParams.set("__clerk_db_jwt", "dvb_test_handoff");
+      return url.toString();
+    });
+    setBrowserUrl("https://pr-22085-app.omby.ai/");
+
+    detachedSetupPage({
+      context,
+      path: "/?x-vercel-protection-bypass=preview-secret",
+    });
+
+    await waitFor(() => {
+      const url = new URL(window.location.href);
+      expect(url.origin).toBe("https://pr-22085-www.vm6.ai");
+      expect(url.pathname).toBe("/onboarding/491858");
+      expect(url.searchParams.get("x-vercel-protection-bypass")).toBe(
+        "preview-secret",
+      );
+      expect(url.searchParams.get("__clerk_db_jwt")).toBe("dvb_test_handoff");
+    });
+  });
+
   it("redirects direct onboarding visits to external onboarding", async () => {
     setBrowserUrl("https://app.vm7.ai:8443/");
     detachedSetupPage({

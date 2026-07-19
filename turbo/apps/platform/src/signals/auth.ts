@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
+import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
 import {
   derivePlatformServiceOrigin,
   isProductionSatelliteHostname,
@@ -143,6 +144,7 @@ export function resolveWebAuthUrl(
   if (options.redirectUrl) {
     url.searchParams.set("redirect_url", options.redirectUrl);
   }
+  appendCapturedPreviewBypassToUrl(url);
   return url.toString();
 }
 
@@ -225,8 +227,10 @@ function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
     params.set("vm0_experiment", VM0_ONBOARDING_EXPERIMENT);
   }
   setCurrentLandingContext(params);
-  const query = params.toString();
-  return `${onboardingBaseUrl()}${VM0_ONBOARDING_PATH}${query ? `?${query}` : ""}`;
+  const url = new URL(VM0_ONBOARDING_PATH, onboardingBaseUrl());
+  url.search = params.toString();
+  appendCapturedPreviewBypassToUrl(url);
+  return url.toString();
 }
 
 function isAllowedRedirectOrigin(

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  appendPreviewBypassToUrl,
   buildPreviewBypassCookie,
   writePreviewBypassCookie,
 } from "../preview-bypass-cookie.ts";
@@ -56,5 +57,35 @@ describe("preview bypass cookie", () => {
     expect(setCookie).toHaveBeenCalledWith(
       "x-vercel-protection-bypass=preview%20secret; Path=/; Max-Age=3600; SameSite=Lax; Domain=.vm6.ai; Secure",
     );
+  });
+
+  it("forwards an omby host cookie only to the vm6 preview domain", () => {
+    const location = {
+      hostname: "pr-22085-app.omby.ai",
+      protocol: "https:",
+      search: "",
+    };
+    const cookie = "x-vercel-protection-bypass=preview%20secret";
+    const apiUrl = new URL("https://pr-22085-api.vm6.ai/api/zero/status");
+    const lookalikeUrl = new URL(
+      "https://pr-22085-api.vm6.ai.evil.example/api/zero/status",
+    );
+    const otherPreviewUrl = new URL(
+      "https://pr-22086-api.vm6.ai/api/zero/status",
+    );
+
+    appendPreviewBypassToUrl(apiUrl, location, cookie);
+    appendPreviewBypassToUrl(lookalikeUrl, location, cookie);
+    appendPreviewBypassToUrl(otherPreviewUrl, location, cookie);
+
+    expect(apiUrl.searchParams.get("x-vercel-protection-bypass")).toBe(
+      "preview secret",
+    );
+    expect(
+      lookalikeUrl.searchParams.has("x-vercel-protection-bypass"),
+    ).toBeFalsy();
+    expect(
+      otherPreviewUrl.searchParams.has("x-vercel-protection-bypass"),
+    ).toBeFalsy();
   });
 });

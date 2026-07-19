@@ -790,6 +790,32 @@ describe("createApp", () => {
       expect(allowHeaders).toContain("X-Client-Version");
     });
 
+    it("allows okou preview app origins", async () => {
+      mockEnv("ENV", "preview");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://pr-22085-app.omby.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://pr-22085-app.omby.ai",
+      );
+    });
+
+    it("does not allow lookalike okou preview origins", async () => {
+      mockEnv("ENV", "preview");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://pr-22085-app.omby.ai.evil.example" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
     it("rejects disallowed origins by omitting the allow-origin header", async () => {
       mockEnv("ENV", "production");
       const app = createApp({ signal: context.signal });

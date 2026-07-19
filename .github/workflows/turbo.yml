@@ -1129,7 +1129,8 @@ jobs:
             /tmp/e2e-token-runner.json
           retention-days: 1
 
-  # Build the canonical Cloudflare app artifact independently of Vercel.
+  # Build the canonical Cloudflare app artifact independently of Vercel, then
+  # deploy the verified R2 artifact to a Pages preview branch.
   build-app-cf:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1152,6 +1153,10 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATIC_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
+      CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+      CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
+      CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
@@ -1184,6 +1189,19 @@ jobs:
           sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "prefix=okou-app/$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Cloudflare Pages preview branch
+        id: pages-branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          branch="$(bash .github/scripts/resolve-okou-pages-branch.sh \
+            "$EVENT_NAME" \
+            "$PULL_REQUEST_NUMBER" \
+            "$MERGE_GROUP_HEAD_REF")"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - name: Check for existing artifact
         id: existing
@@ -1308,6 +1326,84 @@ jobs:
             --if-none-match "*"
 
           echo "Artifact ready: ${artifact_uri}/"
+
+      - name: Prepare Cloudflare Pages preview
+        id: pages-preview
+        env:
+          ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+        run: |
+          set -euo pipefail
+
+          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+
+          r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
+          canonical_dist="$(mktemp -d)"
+          pages_dist="$(mktemp -d)"
+
+          aws s3 cp "$artifact_uri/" "$canonical_dist/" \
+            --endpoint-url "$r2_endpoint" \
+            --recursive
+          bash .github/scripts/prepare-okou-pages-dist.sh \
+            "$canonical_dist" \
+            "$pages_dist"
+
+          {
+            echo "dist=$pages_dist"
+            echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
+            if [[ "$PAGES_BRANCH" == pr-*-app ]]; then
+              : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+              echo "custom-domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
+              echo "custom-url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
+            else
+              echo "custom-domain="
+              echo "custom-url="
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Cloudflare Pages preview
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+          PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
+        working-directory: turbo
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
+          pnpm --filter @vm0/host-worker exec wrangler pages deploy "$PAGES_DIST" \
+            --project-name "$CF_PAGES_PROJECT_NAME" \
+            --branch "$PAGES_BRANCH" \
+            --commit-hash "$ARTIFACT_SHA" \
+            --commit-dirty=false
+
+      - name: Configure Cloudflare Pages custom preview domain
+        if: steps.pages-preview.outputs.custom-domain != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-preview.outputs.custom-domain }}
+        run: |
+          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
+          bash .github/scripts/manage-okou-pages-domain.sh \
+            ensure \
+            "$CLOUDFLARE_ACCOUNT_ID" \
+            "$CF_PAGES_PREVIEW_ZONE_ID" \
+            "$CF_PAGES_PROJECT_NAME" \
+            "$PAGES_CUSTOM_DOMAIN" \
+            "$PAGES_BRANCH"
+
+      - name: Record Cloudflare Pages preview
+        env:
+          PAGES_CUSTOM_URL: ${{ steps.pages-preview.outputs.custom-url }}
+          PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
+        run: |
+          echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$PAGES_CUSTOM_URL" ]]; then
+            echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # Deploy app (Vite SPA)
   deploy-app:
