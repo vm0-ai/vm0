@@ -237,6 +237,21 @@ describe("portable platform runtime environment", () => {
     );
   });
 
+  it("routes okou preview services through vm6.ai", async () => {
+    setBrowserUrl("https://pr-22085-app.omby.ai/agents");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-22085-api.vm6.ai",
+    );
+    expect(runtime.auth.resolveWebOrigin()).toBe("https://pr-22085-www.vm6.ai");
+    expect(runtime.platformHost.resolvePlatformRuntimeConfig()).toMatchObject({
+      environment: "preview",
+      clerkPublishableKey: PREVIEW_CLERK_KEY,
+      vapidPublicKey: PREVIEW_VAPID_KEY,
+    });
+  });
+
   it("keeps unrecognized provider hosts on the same origin", async () => {
     setBrowserUrl("https://deployment.pages.dev/agents");
     const runtime = await loadRuntimeSurfaces();

@@ -51,7 +51,9 @@ function getAllowedOrigin(origin: string | undefined): string | null {
 
   if (
     deployEnv === "preview" &&
-    (hostname.endsWith(".vm6.ai") || hostname.endsWith(".vm7.ai"))
+    (hostname.endsWith(".vm6.ai") ||
+      hostname.endsWith(".vm7.ai") ||
+      hostname.endsWith(".omby.ai"))
   ) {
     return normalizedOrigin;
   }
