@@ -20,12 +20,15 @@ interface DrainChatThreadQueueInput {
 }
 
 /**
- * The single per-thread scheduler entry. User messages are attempted first;
- * the workflow drain then observes the newly-created active run and stops, or
- * consumes the oldest workflow event when no user message dispatched.
+ * The single per-thread scheduler entry: terminal run callbacks, cancel,
+ * resume, and the stale sweep all converge here. User messages are attempted
+ * first; the workflow drain then observes the newly-created active run and
+ * stops, or consumes the oldest workflow event when no user message
+ * dispatched. Both halves serialize on the same per-thread advisory lock and
+ * pop in `ORDER BY created_at, id` order.
  *
- * Compatibility-specific reads remain inside the two drain halves until the
- * follow-up cleanup removes the old queue representations.
+ * This entry is the designated mounting point for a future unified per-thread
+ * rate limiter: admission delays belong here, before either drain half runs.
  */
 export const drainChatThreadQueueForThread$ = command(
   async (

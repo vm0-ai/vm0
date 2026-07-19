@@ -14,7 +14,6 @@ import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -37,7 +36,6 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-messages";
 
 const context = testContext();
@@ -358,21 +356,6 @@ function expectResponseStatus(
   }
 }
 
-async function enableGmailWorkflowAutomations(
-  actor: ApiTestUser & { readonly orgId: string },
-  options: { readonly workflowQueue?: boolean } = {},
-): Promise<void> {
-  await updateFeatureSwitchesForUser(
-    context,
-    actor,
-    options.workflowQueue === false
-      ? { [FeatureSwitchKey.WorkflowQueue]: false }
-      : options.workflowQueue
-        ? { [FeatureSwitchKey.WorkflowQueue]: true }
-        : {},
-  );
-}
-
 async function configureWorkspaceModelProvider(
   actor: ApiTestUser,
 ): Promise<void> {
@@ -648,7 +631,6 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailMessageMocks(gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await enableGmailWorkflowAutomations(actor);
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
 
@@ -804,7 +786,6 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailLabelAppliedMocks("Label_support_new", gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await enableGmailWorkflowAutomations(actor);
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
 
@@ -870,75 +851,6 @@ describe("POST /api/webhooks/gmail", () => {
     );
   });
 
-  it("starts an event run when the automation's previous run is still active", async () => {
-    const gmailEmail = uniqueGmailEmail();
-    configureGmailEnv();
-    configureGmailWatchMock();
-    configureGmailMessageMocks(gmailEmail);
-
-    const { actor, workflowId } = await setupFixture();
-    // Pin the workflow queue off: this test covers the legacy concurrent
-    // dispatch path that remains behind the switch.
-    await enableGmailWorkflowAutomations(actor, { workflowQueue: false });
-    await connectGmail(actor, gmailEmail);
-    await configureWorkspaceModelProvider(actor);
-
-    const created = await accept(
-      automationsClient().create({
-        headers: authHeaders(actor),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "gmail-new-message",
-          eventConfig: {
-            provider: "gmail",
-            event: "new_message",
-            match: { subject: { contains: "invoice" } },
-          },
-        },
-      }),
-      [201],
-    );
-    const chatThreadId = requireAutomationChatThreadId(created.body);
-    await configureAutomationThreadModel(actor, chatThreadId);
-    const activeRun = await runAutomationNow(actor, created.body.id);
-    expect(activeRun.chatThreadId).toBe(chatThreadId);
-    const triggerBriefsBeforeWebhook = await workflowAutomationBriefs(
-      actor,
-      chatThreadId,
-    );
-
-    const response = await postGmailWebhook(
-      gmailPushBody({
-        emailAddress: gmailEmail,
-        historyId: 101,
-        messageId: "pubsub-active-run",
-      }),
-    );
-
-    expectResponseStatus(response, 200);
-    expect(response.body).toMatchObject({ dispatched: 1, duplicates: 0 });
-
-    const expectedAutomationBrief = [
-      "Gmail new message",
-      "From: Customer Example <customer@example.com>",
-      "Subject: Invoice needs a reply",
-    ].join("\n");
-    const triggerBriefsAfterWebhook = await workflowAutomationBriefs(
-      actor,
-      chatThreadId,
-    );
-    expect(triggerBriefsAfterWebhook).toContain(expectedAutomationBrief);
-    expect(triggerBriefsAfterWebhook).toHaveLength(
-      triggerBriefsBeforeWebhook.length + 1,
-    );
-    await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
-      {
-        lastRunAt: expect.any(String),
-      },
-    );
-  });
-
   it("preserves metadata-only context through the workflow queue", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
@@ -947,7 +859,6 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailMessageMocks(gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await enableGmailWorkflowAutomations(actor, { workflowQueue: true });
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
 

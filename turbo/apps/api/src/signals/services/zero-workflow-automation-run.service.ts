@@ -4,7 +4,7 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
-import { command, type Computed } from "ccstate";
+import { command } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
@@ -25,11 +25,7 @@ import {
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import {
-  admitWorkflowAutomationEvent,
-  workflowQueueEnabledForOwner,
-} from "./chat-message-queue.service";
+import { admitWorkflowAutomationEvent } from "./chat-message-queue.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 
 export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
@@ -380,34 +376,18 @@ async function buildTimedWorkflowAutomationRunInput(args: {
 }
 
 /**
- * Workflow-queue admission: with the switch on, an event fired while the
- * workflow is busy (or its queue is paused/non-empty) is persisted as a queue
- * event instead of creating a run. Returns true when the event was enqueued.
+ * Workflow-queue admission: an event fired while the workflow is busy (or its
+ * queue is paused/non-empty) is persisted as a queue event instead of creating
+ * a run. Returns true when the event was enqueued.
  */
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
-
 async function enqueueWorkflowAutomationEventIfBusy(input: {
-  readonly get: ComputedGetter;
   readonly db: Db;
   readonly args: RunWorkflowAutomationNowArgs;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  const { get, db, args, signal } = input;
+  const { db, args, signal } = input;
   const { automation, chatThreadId } = args.due;
   if (args.bypassWorkflowQueue === true) {
-    return false;
-  }
-  const overrides = await get(
-    userFeatureSwitchOverrides(automation.orgId, automation.ownerUserId),
-  );
-  signal.throwIfAborted();
-  if (
-    !workflowQueueEnabledForOwner({
-      orgId: automation.orgId,
-      userId: automation.ownerUserId,
-      overrides,
-    })
-  ) {
     return false;
   }
   const admission = await admitWorkflowAutomationEvent(db, {
@@ -483,7 +463,7 @@ async function recordWorkflowAutomationRunStart(input: {
 
 export const runWorkflowAutomationNow$ = command(
   async (
-    { get, set },
+    { set },
     args: RunWorkflowAutomationNowArgs,
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult> => {
@@ -492,7 +472,6 @@ export const runWorkflowAutomationNow$ = command(
     const timing = workflowAutomationTiming(args);
 
     const enqueued = await enqueueWorkflowAutomationEventIfBusy({
-      get,
       db,
       args,
       signal,
