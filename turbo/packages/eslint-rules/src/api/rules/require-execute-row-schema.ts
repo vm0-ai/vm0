@@ -154,9 +154,20 @@ export const requireExecuteRowSchema = createRule({
     },
   },
   create(context) {
-    function drizzleImportKind(
+    type DrizzleImportBinding =
+      | {
+          readonly kind: "namespace";
+          readonly typeOnly: boolean;
+        }
+      | {
+          readonly kind: "named";
+          readonly importedName: string;
+          readonly typeOnly: boolean;
+        };
+
+    function drizzleImportBinding(
       identifier: TSESTree.Identifier,
-    ): "namespace" | "sql" | null {
+    ): DrizzleImportBinding | null {
       const variable = ASTUtils.findVariable(
         context.sourceCode.getScope(identifier),
         identifier,
@@ -167,69 +178,59 @@ export const requireExecuteRowSchema = createRule({
       if (
         !definition ||
         definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
-        definition.parent.source.value !== "drizzle-orm" ||
-        definition.parent.importKind === "type"
+        definition.parent.source.value !== "drizzle-orm"
       ) {
         return null;
       }
 
       const specifier = definition.node;
       if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
-        return "namespace";
+        return {
+          kind: "namespace",
+          typeOnly: definition.parent.importKind === "type",
+        };
       }
-      if (
-        specifier.type !== AST_NODE_TYPES.ImportSpecifier ||
-        specifier.importKind === "type"
-      ) {
+      if (specifier.type !== AST_NODE_TYPES.ImportSpecifier) {
         return null;
       }
-      const importedName =
-        specifier.imported.type === AST_NODE_TYPES.Identifier
-          ? specifier.imported.name
-          : specifier.imported.value;
-      return importedName === "sql" ? "sql" : null;
+      return {
+        kind: "named",
+        importedName:
+          specifier.imported.type === AST_NODE_TYPES.Identifier
+            ? specifier.imported.name
+            : specifier.imported.value,
+        typeOnly:
+          definition.parent.importKind === "type" ||
+          specifier.importKind === "type",
+      };
+    }
+
+    function drizzleImportKind(
+      identifier: TSESTree.Identifier,
+    ): "namespace" | "sql" | null {
+      const binding = drizzleImportBinding(identifier);
+      if (!binding || binding.typeOnly) {
+        return null;
+      }
+      if (binding.kind === "namespace") {
+        return "namespace";
+      }
+      return binding.importedName === "sql" ? "sql" : null;
     }
 
     function isDrizzleSqlTypeImport(identifier: TSESTree.Identifier): boolean {
-      const variable = ASTUtils.findVariable(
-        context.sourceCode.getScope(identifier),
-        identifier,
+      const binding = drizzleImportBinding(identifier);
+      return (
+        binding?.kind === "named" &&
+        (binding.importedName === "SQL" ||
+          binding.importedName === "SQLWrapper")
       );
-      const definition = variable?.defs.find((candidate) => {
-        return candidate.type === "ImportBinding";
-      });
-      if (
-        !definition ||
-        definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
-        definition.parent.source.value !== "drizzle-orm" ||
-        definition.node.type !== AST_NODE_TYPES.ImportSpecifier
-      ) {
-        return false;
-      }
-      const importedName =
-        definition.node.imported.type === AST_NODE_TYPES.Identifier
-          ? definition.node.imported.name
-          : definition.node.imported.value;
-      return importedName === "SQL" || importedName === "SQLWrapper";
     }
 
     function isDrizzleNamespaceImport(
       identifier: TSESTree.Identifier,
     ): boolean {
-      const variable = ASTUtils.findVariable(
-        context.sourceCode.getScope(identifier),
-        identifier,
-      );
-      return (
-        variable?.defs.some((candidate) => {
-          return (
-            candidate.type === "ImportBinding" &&
-            candidate.parent.type === AST_NODE_TYPES.ImportDeclaration &&
-            candidate.parent.source.value === "drizzle-orm" &&
-            candidate.node.type === AST_NODE_TYPES.ImportNamespaceSpecifier
-          );
-        }) === true
-      );
+      return drizzleImportBinding(identifier)?.kind === "namespace";
     }
 
     function isDrizzleNamespaceType(
