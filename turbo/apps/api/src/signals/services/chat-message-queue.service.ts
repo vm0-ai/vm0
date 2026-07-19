@@ -1,6 +1,4 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { FeatureSwitchKey } from "@vm0/core";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -85,18 +83,6 @@ export async function decryptWorkflowQueueEventParams(
     return null;
   }
   return workflowQueueEventParamsWireSchema.parse(JSON.parse(raw));
-}
-
-export function workflowQueueEnabledForOwner(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly overrides: Record<string, boolean>;
-}): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.WorkflowQueue, {
-    userId: args.userId,
-    orgId: args.orgId,
-    overrides: args.overrides,
-  });
 }
 
 function chatMessageQueueLock(chatThreadId: string) {

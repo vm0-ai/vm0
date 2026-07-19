@@ -4,10 +4,8 @@ import {
   zeroWorkflowQueueContract,
   type WorkflowQueueResponse,
 } from "@vm0/api-contracts/contracts/zero-workflow-queue";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { openHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 
 export interface WorkflowQueueSignals {
@@ -37,10 +35,6 @@ export function createWorkflowQueueSignals(
   const queue$ = computed(
     async (get): Promise<WorkflowQueueResponse | null> => {
       get(reloadVersion$);
-      const switches = get(featureSwitch$);
-      if (!switches[FeatureSwitchKey.WorkflowQueue]) {
-        return null;
-      }
       const client = get(zeroClient$)(zeroWorkflowQueueContract);
       const response = await accept(
         client.get({ params: { threadId } }),

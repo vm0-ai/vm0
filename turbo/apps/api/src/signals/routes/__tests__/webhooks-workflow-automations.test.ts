@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -10,7 +9,6 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -341,73 +339,5 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       throw new Error("Expected a webhook automation");
     }
     expect(after.disabledReason).toBeNull();
-  });
-
-  it("starts an event run when the automation's previous run is still active", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    // Pin the workflow queue off: this test covers the legacy concurrent
-    // dispatch path that remains behind the switch.
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowQueue]: false,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-
-    const created = await accept(
-      automationsClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: { kind: "event", eventType: "webhook-received" },
-      }),
-      [201],
-    );
-    if (
-      created.body.kind !== "event" ||
-      created.body.eventType !== "webhook-received" ||
-      !created.body.webhookUrl ||
-      !created.body.webhookSecret
-    ) {
-      throw new Error("Expected a webhook automation with a one-time secret");
-    }
-
-    const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
-    if (!token) {
-      throw new Error("Expected webhook URL token");
-    }
-
-    // The first delivery starts a run that stays active (nothing claims or
-    // completes it).
-    const first = await postWorkflowWebhook({
-      token,
-      rawBody: JSON.stringify({ event: "active-run" }),
-      secret: created.body.webhookSecret,
-    });
-    expect(first.status).toBe(200);
-    expect(first.body).toMatchObject({
-      success: true,
-      duplicate: false,
-      runId: expect.any(String),
-    });
-    const firstRunId = isRecord(first.body) ? first.body.runId : null;
-
-    // A second, distinct delivery still starts a new event run even though
-    // the previous run is active.
-    const second = await postWorkflowWebhook({
-      token,
-      rawBody: JSON.stringify({ event: "active-run-second" }),
-      secret: created.body.webhookSecret,
-    });
-
-    expect(second.status).toBe(200);
-    expect(second.body).toMatchObject({
-      success: true,
-      duplicate: false,
-      runId: expect.any(String),
-    });
-    expect(isRecord(second.body) ? second.body.runId : null).not.toBe(
-      firstRunId,
-    );
-
-    const automation = await wf.readAutomation(created.body.id);
-    expect(typeof automation.lastRunAt).toBe("string");
   });
 });

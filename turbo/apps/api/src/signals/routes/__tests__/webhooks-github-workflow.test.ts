@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -11,7 +11,6 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -29,6 +28,10 @@ function authHeaders() {
 
 function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
+}
+
+function queueClient() {
+  return setupApp({ context })(zeroWorkflowQueueContract);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -128,11 +131,6 @@ async function postGithubWebhook(args: {
 describe("POST /api/webhooks/github for workflow automations", () => {
   it("dispatches matching label events and de-duplicates deliveries", async () => {
     const { fixture, actor, agentId, workflowId } = await setupFixture();
-    // Pin the workflow queue off: this test covers the legacy concurrent
-    // dispatch path that remains behind the switch.
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowQueue]: false,
-    });
     const runnerGroup = runsApi.configureRunnerGroup();
     const installed = await gh.installGithubApp(actor, agentId, {
       oauthCode: {
@@ -211,36 +209,36 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     await flushWaitUntilForTest();
     await flushWaitUntilForTest();
 
-    // Two deliveries matched two automations each; the duplicate redelivery was
-    // recorded as processed and added nothing. Exactly four distinct
-    // workflow-event runs exist: two admitted within the pro concurrency
-    // limit (claimable through the runner API) and two queued behind it
-    // (visible on the org run queue).
-    const runIds = new Set<string>();
+    // Two deliveries matched two automations each; the duplicate redelivery
+    // was recorded as processed and added nothing. Under the per-thread
+    // workflow queue, the first matched event creates the only admitted run
+    // and the remaining three wait as pending workflow queue events.
     await runsApi.heartbeatRunner(runnerGroup);
-    for (let index = 0; index < 2; index += 1) {
-      const polled = await runsApi.pollRunner(runnerGroup);
-      const runId = polled.body.job?.runId;
-      if (!runId) {
-        throw new Error(
-          `Expected an admitted workflow event run #${index + 1}`,
-        );
-      }
-      runIds.add(runId);
-      await runsApi.claimRunnerJob(runId);
+    const polled = await runsApi.pollRunner(runnerGroup);
+    const admittedRunId = polled.body.job?.runId;
+    if (!admittedRunId) {
+      throw new Error("Expected an admitted workflow event run");
     }
-    const queueState = await runsApi.readRunQueue(actor);
-    expect(queueState.body.queue).toHaveLength(2);
-    for (const entry of queueState.body.queue) {
-      expect(entry.triggerSource).toBe("workflow-event");
-      if (!entry.runId) {
-        throw new Error("Expected queued workflow event run id");
-      }
-      runIds.add(entry.runId);
-    }
-    expect(runIds.size).toBe(4);
+    await runsApi.claimRunnerJob(admittedRunId);
+    const idle = await runsApi.pollRunner(runnerGroup);
+    expect(idle.body.job).toBeNull();
 
-    for (const runId of runIds) {
+    const queueState = await runsApi.readRunQueue(actor);
+    expect(queueState.body.queue).toHaveLength(0);
+
+    if (!created.body.chatThreadId) {
+      throw new Error("Expected the automation to have a chat thread");
+    }
+    const queue = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: created.body.chatThreadId },
+      }),
+      [200],
+    );
+    expect(queue.body.pending).toHaveLength(3);
+
+    for (const runId of [admittedRunId]) {
       const timingEvents = sandboxOperationEventsForRun(runId);
       const actionTypes = new Set(
         timingEvents.map((event) => {

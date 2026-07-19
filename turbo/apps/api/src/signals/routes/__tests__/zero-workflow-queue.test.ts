@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -15,7 +14,6 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -50,9 +48,7 @@ interface Scenario {
   readonly runnerGroup: string;
 }
 
-async function setup(
-  options: { readonly workflowQueue?: boolean } = {},
-): Promise<Scenario> {
+async function setup(): Promise<Scenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
   mockEnv("CRON_SECRET", CRON_SECRET);
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
@@ -67,14 +63,6 @@ async function setup(
     agentId: agent.agentId,
     name: WORKFLOW_NAME,
   });
-  const fixture = { orgId: actor.orgId, userId: actor.userId };
-  await updateFeatureSwitchesForUser(
-    context,
-    fixture,
-    options.workflowQueue === false
-      ? { [FeatureSwitchKey.WorkflowQueue]: false }
-      : { [FeatureSwitchKey.WorkflowQueue]: true },
-  );
   mocks.clerk.session(actor.userId, actor.orgId);
   context.mocks.s3.send.mockResolvedValue({});
   return {
@@ -251,15 +239,6 @@ describe("workflow queue", () => {
     // The queue is empty: completing the last run creates nothing new.
     await completeRunThroughSandbox(scenario, afterSecond[2]!);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(3);
-  });
-
-  it("keeps the current concurrent behavior when the switch is off", async () => {
-    const scenario = await setup({ workflowQueue: false });
-    const automation = await createWebhookAutomation(scenario);
-
-    expectAcceptedRunId(await postWorkflowWebhook(automation, "first"));
-    expectAcceptedRunId(await postWorkflowWebhook(automation, "second"));
-    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
   });
 
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {

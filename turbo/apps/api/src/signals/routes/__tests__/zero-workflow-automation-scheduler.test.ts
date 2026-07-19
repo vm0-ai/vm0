@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
@@ -21,7 +19,6 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -398,50 +395,6 @@ describe("zero workflow automation scheduler", () => {
         "u",
       ),
     );
-    await disableAutomation(automation.automationId);
-  });
-
-  it("skips an automation whose previous run is still active", async () => {
-    const scenario = await setup();
-    // Pin the workflow queue off: this test covers the legacy skip-while-busy
-    // scheduler path that remains behind the switch.
-    await updateFeatureSwitchesForUser(
-      context,
-      { orgId: scenario.orgId, userId: scenario.userId },
-      { [FeatureSwitchKey.WorkflowQueue]: false },
-    );
-    mocks.clerk.session(scenario.userId, scenario.orgId);
-    const automation = await createDueLoopAutomation(scenario, 60);
-
-    // First tick fires a run that stays active (never claimed or completed).
-    await executeDueWorkflowAutomations();
-    await onlyWorkflowRunMessage(automation.threadId);
-
-    // Re-arm the schedule through the public update route, then move time
-    // past the recomputed next run.
-    const updated = await accept(
-      automationsClient().update({
-        headers: authHeaders(),
-        params: { id: automation.automationId },
-        body: { schedule: { type: "loop", intervalSeconds: 60 } },
-      }),
-      [200],
-    );
-    if (!updated.body.nextRunAt) {
-      throw new Error("Expected the loop automation to be rescheduled");
-    }
-    mockNow(Date.parse(updated.body.nextRunAt) + 1000);
-
-    await executeDueWorkflowAutomations();
-
-    // The due automation was skipped: no second run message and the schedule is
-    // left untouched for the next tick.
-    const messages = await workflowRunMessages(automation.threadId);
-    expect(messages).toHaveLength(1);
-    const read = await wf.readAutomation(automation.automationId);
-    expect(read.enabled).toBeTruthy();
-    expect(read.nextRunAt).toBe(updated.body.nextRunAt);
-
     await disableAutomation(automation.automationId);
   });
 

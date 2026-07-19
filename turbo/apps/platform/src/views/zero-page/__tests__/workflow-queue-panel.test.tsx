@@ -3,7 +3,6 @@ import {
   zeroWorkflowQueueContract,
   type WorkflowQueueResponse,
 } from "@vm0/api-contracts/contracts/zero-workflow-queue";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -66,9 +65,7 @@ function buttonByLabel(label: string): HTMLElement {
   return button;
 }
 
-async function openAutomationsPanel(
-  workflowQueueEnabled = true,
-): Promise<void> {
+async function openAutomationsPanel(): Promise<void> {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
     threadTitle: "Workflow queue thread",
@@ -91,9 +88,6 @@ async function openAutomationsPanel(
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
-    featureSwitches: {
-      [FeatureSwitchKey.WorkflowQueue]: workflowQueueEnabled,
-    },
   });
 
   await waitFor(() => {
@@ -189,23 +183,6 @@ describe("workflow queue panel", () => {
     await waitFor(() => {
       expect(screen.getByText(/Queue paused/)).toBeInTheDocument();
       expect(buttonByLabel("Resume queue")).toBeInTheDocument();
-    });
-  });
-
-  it("hides the queue UI when the feature switch is off", async () => {
-    context.mocks.api(zeroWorkflowQueueContract.get, ({ respond }) => {
-      return respond(200, queueResponse());
-    });
-
-    await openAutomationsPanel(false);
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("workflow-queue-section"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByTestId("workflow-queue-badge"),
-      ).not.toBeInTheDocument();
     });
   });
 });
