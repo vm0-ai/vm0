@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.286.2](https://github.com/vm0-ai/vm0/compare/api-v1.286.1...api-v1.286.2) (2026-07-19)
+
+
+### Performance Improvements
+
+* **storage:** propagate encoded archive sizes ([#22142](https://github.com/vm0-ai/vm0/issues/22142)) ([10fc760](https://github.com/vm0-ai/vm0/commit/10fc7608fdd82ab064da0dfc280667bba0cd64a8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.202.2
+    * @vm0/core bumped to 8.442.1
+    * @vm0/db bumped to 1.121.2
+
 ## [1.286.1](https://github.com/vm0-ai/vm0/compare/api-v1.286.0...api-v1.286.1) (2026-07-19)
 
 
