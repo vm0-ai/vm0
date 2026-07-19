@@ -792,7 +792,7 @@ jobs:
 
   # Deploy API application with preview database and E2E bootstrap data
   deploy-api:
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     concurrency:
       group: deploy-api-${{ needs.prepare.outputs.job-ref }}
