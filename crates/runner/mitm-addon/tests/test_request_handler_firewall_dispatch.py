@@ -1162,6 +1162,7 @@ async def test_http_firewall_without_managed_credentials_still_matches(
     assert "Authorization" not in flow.request.headers
 
 
+@pytest.mark.parametrize("request_method", ["trace", "track"])
 @pytest.mark.parametrize(
     "auth_config",
     [
@@ -1177,13 +1178,14 @@ async def test_http_firewall_without_managed_credentials_still_matches(
     ],
     ids=["headers", "query", "aws-sigv4", "auth-base"],
 )
-async def test_trace_firewall_with_managed_credentials_blocks_before_auth(
+async def test_reflection_method_firewall_with_managed_credentials_blocks_before_auth(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
     headers,
     auth_config,
+    request_method,
 ):
     reg_path = _write_registry(
         tmp_path,
@@ -1206,7 +1208,7 @@ async def test_trace_firewall_with_managed_credentials_blocks_before_auth(
         with_response=False,
         client_ip="10.200.0.5",
         host="api.github.com",
-        method="trace",
+        method=request_method,
         path="/diagnostic?client=visible",
         request_headers=headers(
             ("Host", "api.github.com"),
@@ -1215,11 +1217,12 @@ async def test_trace_firewall_with_managed_credentials_blocks_before_auth(
     )
     original_headers = tuple(flow.request.headers.fields)
     original_path = flow.request.path
+    original_url = flow.request.url
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
-        fake_forwarder_upstream(body=b"Authorization: Bearer reflected-by-trace") as upstream,
+        fake_forwarder_upstream(body=b"Authorization: Bearer reflected-by-request") as upstream,
     ):
         await mitm_addon.request(flow)
 
@@ -1234,10 +1237,13 @@ async def test_trace_firewall_with_managed_credentials_blocks_before_auth(
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     assert tuple(flow.request.headers.fields) == original_headers
     assert flow.request.path == original_path
+    assert flow.request.url == original_url
     body = json.loads(flow.response.content)
     assert body == {
         "error": "unsafe_auth_method",
-        "message": "Firewall credentials cannot be injected into TRACE requests",
+        "message": (
+            f"Firewall credentials cannot be injected into {request_method.upper()} requests"
+        ),
         "permission": "github",
         "base": "https://api.github.com",
     }
@@ -1245,14 +1251,16 @@ async def test_trace_firewall_with_managed_credentials_blocks_before_auth(
     assert proxy_log_entry["level"] == "warn"
     assert proxy_log_entry["type"] == "firewall"
     assert proxy_log_entry["firewall_base"] == "https://api.github.com"
-    assert proxy_log_entry["request_method"] == "TRACE"
+    assert proxy_log_entry["request_method"] == request_method.upper()
 
 
-async def test_trace_firewall_without_managed_credentials_still_matches(
+@pytest.mark.parametrize("request_method", ["trace", "track"])
+async def test_reflection_method_firewall_without_managed_credentials_still_matches(
     tmp_path,
     real_flow,
     mitm_ctx,
     fake_firewall_headers,
+    request_method,
 ):
     reg_path = _write_registry(
         tmp_path,
@@ -1276,7 +1284,7 @@ async def test_trace_firewall_without_managed_credentials_still_matches(
         with_response=False,
         client_ip="10.200.0.5",
         host="api.github.com",
-        method="TRACE",
+        method=request_method,
         path="/diagnostic",
     )
 
@@ -1291,6 +1299,34 @@ async def test_trace_firewall_without_managed_credentials_still_matches(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.metadata.get(metadata_keys.FIREWALL_ERROR) is None
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+
+
+async def test_non_reflection_method_with_managed_credentials_still_matches(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        method="PROPFIND",
+        path="/webdav/resource",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer resolved"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata.get(metadata_keys.FIREWALL_ERROR) is None
 
 
 @pytest.mark.parametrize(
