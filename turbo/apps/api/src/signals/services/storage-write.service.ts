@@ -16,6 +16,8 @@ import {
   downloadManifest,
   generatePresignedPutUrl,
   s3ObjectExists,
+  s3ObjectHead,
+  type S3ObjectHead,
   verifyS3FilesExist,
 } from "../external/s3";
 import { tapError } from "../utils";
@@ -458,6 +460,58 @@ function s3FilesMissingConflict(): Extract<
   };
 }
 
+type ArchiveVerification =
+  | { readonly kind: "verified"; readonly archiveSize: number }
+  | { readonly kind: "missing-archive" }
+  | { readonly kind: "invalid-archive-size" };
+
+type UploadedStorageFilesVerification =
+  | ArchiveVerification
+  | { readonly kind: "missing-manifest" };
+
+function verifyArchiveHead(
+  archiveHead: S3ObjectHead,
+  fileCount: number,
+): ArchiveVerification {
+  if (archiveHead.kind === "missing") {
+    return fileCount === 0
+      ? { kind: "verified", archiveSize: 0 }
+      : { kind: "missing-archive" };
+  }
+
+  const archiveSize = archiveHead.contentLength;
+  if (
+    archiveSize === undefined ||
+    !Number.isSafeInteger(archiveSize) ||
+    archiveSize <= 0
+  ) {
+    return { kind: "invalid-archive-size" };
+  }
+  return { kind: "verified", archiveSize };
+}
+
+function verifyUploadedStorageFiles(args: {
+  readonly bucket: string;
+  readonly s3Key: string;
+  readonly fileCount: number;
+  readonly signal: AbortSignal;
+}): Computed<Promise<UploadedStorageFilesVerification>> {
+  return computed(async (get): Promise<UploadedStorageFilesVerification> => {
+    const manifestKey = `${args.s3Key}/manifest.json`;
+    const archiveKey = `${args.s3Key}/archive.tar.gz`;
+    const [manifestExists, archiveHead] = await Promise.all([
+      get(s3ObjectExists(args.bucket, manifestKey)),
+      get(s3ObjectHead(args.bucket, archiveKey)),
+    ]);
+    args.signal.throwIfAborted();
+
+    if (!manifestExists) {
+      return { kind: "missing-manifest" };
+    }
+    return verifyArchiveHead(archiveHead, args.fileCount);
+  });
+}
+
 function commitExistingStorageVersion(args: {
   readonly db: Db;
   readonly bucket: string;
@@ -467,27 +521,53 @@ function commitExistingStorageVersion(args: {
   readonly signal: AbortSignal;
 }): Computed<Promise<CommitStorageResponse>> {
   return computed(async (get): Promise<CommitStorageResponse> => {
-    const exists = await get(
-      verifyS3FilesExist(
-        args.bucket,
-        args.version.s3Key,
-        args.version.fileCount,
-        {
-          allowMissingObjectsForEmptyVersion: args.storage.type === "artifact",
-        },
-      ),
-    );
+    const explicitEmptyArtifact =
+      args.storage.type === "artifact" && args.version.fileCount === 0;
+    const verification = explicitEmptyArtifact
+      ? null
+      : await get(
+          verifyUploadedStorageFiles({
+            bucket: args.bucket,
+            s3Key: args.version.s3Key,
+            fileCount: args.version.fileCount,
+            signal: args.signal,
+          }),
+        );
     args.signal.throwIfAborted();
 
-    if (!exists) {
+    if (verification && verification.kind !== "verified") {
       return s3FilesMissingConflict();
     }
 
-    if (args.storage.headVersionId !== args.input.versionId) {
-      await args.db
-        .update(storages)
-        .set({ headVersionId: args.input.versionId, updatedAt: nowDate() })
-        .where(eq(storages.id, args.storage.id));
+    const verifiedArchiveSize =
+      verification?.kind === "verified" ? verification.archiveSize : undefined;
+    const archiveSizeChanged =
+      verifiedArchiveSize !== undefined &&
+      args.version.archiveSize !== verifiedArchiveSize;
+    const headChanged = args.storage.headVersionId !== args.input.versionId;
+    if (archiveSizeChanged || headChanged) {
+      await args.db.transaction(async (tx) => {
+        if (archiveSizeChanged) {
+          await tx
+            .update(storageVersions)
+            .set({ archiveSize: verifiedArchiveSize })
+            .where(
+              and(
+                eq(storageVersions.id, args.version.id),
+                eq(storageVersions.storageId, args.storage.id),
+              ),
+            );
+        }
+        if (headChanged) {
+          await tx
+            .update(storages)
+            .set({
+              headVersionId: args.input.versionId,
+              updatedAt: nowDate(),
+            })
+            .where(eq(storages.id, args.storage.id));
+        }
+      });
       args.signal.throwIfAborted();
     }
 
@@ -505,73 +585,45 @@ function commitExistingStorageVersion(args: {
   });
 }
 
-function verifyUploadedStorageFiles(args: {
-  readonly bucket: string;
-  readonly s3Key: string;
-  readonly fileCount: number;
-  readonly signal: AbortSignal;
-}): Computed<Promise<ReturnType<typeof badRequestMessage> | null>> {
-  return computed(
-    async (get): Promise<ReturnType<typeof badRequestMessage> | null> => {
-      const manifestKey = `${args.s3Key}/manifest.json`;
-      const archiveKey = `${args.s3Key}/archive.tar.gz`;
-      const [manifestExists, archiveExists] = await Promise.all([
-        get(s3ObjectExists(args.bucket, manifestKey)),
-        args.fileCount > 0
-          ? get(s3ObjectExists(args.bucket, archiveKey))
-          : Promise.resolve(true),
-      ]);
-      args.signal.throwIfAborted();
-
-      if (!manifestExists) {
-        return badRequestMessage(
-          "Manifest not uploaded - upload failed or incomplete",
-        );
-      }
-
-      if (args.fileCount > 0 && !archiveExists) {
-        return badRequestMessage(
-          "Archive not uploaded - upload failed or incomplete",
-        );
-      }
-
-      return null;
-    },
-  );
-}
-
 async function insertStorageVersionAndUpdateHead(args: {
   readonly db: Db;
   readonly storageId: string;
   readonly s3Key: string;
   readonly input: CommitStorageInput;
   readonly size: number;
+  readonly archiveSize: number;
   readonly fileCount: number;
 }): Promise<void> {
   await args.db.transaction(async (tx) => {
-    await tx
+    const [insertedVersion] = await tx
       .insert(storageVersions)
       .values({
         id: args.input.versionId,
         storageId: args.storageId,
         s3Key: args.s3Key,
         size: args.size,
+        archiveSize: args.archiveSize,
         fileCount: args.fileCount,
         message: args.input.message ?? null,
         createdBy: args.input.runId ? "agent" : "user",
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: storageVersions.id });
 
-    const [version] = await tx
-      .select({ id: storageVersions.id })
-      .from(storageVersions)
-      .where(
-        and(
-          eq(storageVersions.storageId, args.storageId),
-          eq(storageVersions.id, args.input.versionId),
-        ),
-      )
-      .limit(1);
+    let version = insertedVersion;
+    if (!version) {
+      const [updatedVersion] = await tx
+        .update(storageVersions)
+        .set({ archiveSize: args.archiveSize })
+        .where(
+          and(
+            eq(storageVersions.storageId, args.storageId),
+            eq(storageVersions.id, args.input.versionId),
+          ),
+        )
+        .returning({ id: storageVersions.id });
+      version = updatedVersion;
+    }
 
     if (!version) {
       throw new Error(`Version ${args.input.versionId} not found after insert`);
@@ -599,7 +651,7 @@ function commitNewStorageVersion(args: {
   return computed(async (get): Promise<CommitStorageResponse> => {
     const s3Key = `${args.storage.s3Prefix}/${args.input.versionId}`;
     const fileCount = args.input.files.length;
-    const uploadError = await get(
+    const uploadVerification = await get(
       verifyUploadedStorageFiles({
         bucket: args.bucket,
         s3Key,
@@ -607,8 +659,24 @@ function commitNewStorageVersion(args: {
         signal: args.signal,
       }),
     );
-    if (uploadError) {
-      return uploadError;
+    if (uploadVerification.kind !== "verified") {
+      switch (uploadVerification.kind) {
+        case "missing-manifest": {
+          return badRequestMessage(
+            "Manifest not uploaded - upload failed or incomplete",
+          );
+        }
+        case "missing-archive": {
+          return badRequestMessage(
+            "Archive not uploaded - upload failed or incomplete",
+          );
+        }
+        case "invalid-archive-size": {
+          return badRequestMessage(
+            "Archive has invalid or missing content length",
+          );
+        }
+      }
     }
 
     const size = totalSize(args.input.files);
@@ -618,6 +686,7 @@ function commitNewStorageVersion(args: {
       s3Key,
       input: args.input,
       size,
+      archiveSize: uploadVerification.archiveSize,
       fileCount,
     });
     args.signal.throwIfAborted();

@@ -220,8 +220,8 @@ function commandName(command: unknown): string {
 function mockObjectStorageObjectsExist(context: TestContext): void {
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     const name = commandName(command);
-    if (name === "HeadObjectCommand" || name === "PutObjectCommand") {
-      return Promise.resolve({});
+    if (name === "HeadObjectCommand") {
+      return Promise.resolve({ ContentLength: 1024 });
     }
     return Promise.resolve({});
   });

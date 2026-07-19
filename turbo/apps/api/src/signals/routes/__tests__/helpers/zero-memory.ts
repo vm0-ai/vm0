@@ -46,6 +46,8 @@ export async function commitMemoryVersion(
     storageType: "artifact",
     files: entries,
   });
+  storagesApi.mockStorageObjectExistsOnce();
+  storagesApi.mockStorageObjectExistsOnce();
   await storagesApi.commitStorage(actor, {
     storageName: MEMORY_ARTIFACT_NAME,
     storageType: "artifact",
@@ -142,6 +144,12 @@ function commandKey(command: unknown): string {
   return (input as { Key: string }).Key;
 }
 
+function commandName(command: unknown): string {
+  return typeof command === "object" && command !== null
+    ? command.constructor.name
+    : "";
+}
+
 export function mockMemoryContent(
   context: TestContext,
   args: MemoryContentMockArgs,
@@ -175,9 +183,15 @@ export function mockMemoryContent(
   context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
     const key = commandKey(cmd);
     if (key === `${args.s3Key}/manifest.json`) {
+      if (commandName(cmd) === "HeadObjectCommand") {
+        return Promise.resolve({ ContentLength: manifestBuffer.length });
+      }
       return Promise.resolve({ Body: asyncIterableOf(manifestBuffer) });
     }
     if (key === `${args.s3Key}/archive.tar.gz`) {
+      if (commandName(cmd) === "HeadObjectCommand") {
+        return Promise.resolve({ ContentLength: archive.length });
+      }
       return Promise.resolve({ Body: asyncIterableOf(archive) });
     }
     return Promise.resolve({});

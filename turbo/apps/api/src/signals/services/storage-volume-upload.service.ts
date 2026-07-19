@@ -241,11 +241,15 @@ const uploadVolumeServerSideInner$ = command(
           storageId: storage.id,
           s3Key,
           size: totalSize,
+          archiveSize: archiveBuffer.length,
           fileCount: files.length,
           message: null,
           createdBy: "user",
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: storageVersions.id,
+          set: { archiveSize: archiveBuffer.length },
+        });
       signal.throwIfAborted();
 
       const [version] = await tx

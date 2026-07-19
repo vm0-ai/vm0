@@ -362,6 +362,7 @@ export const ensureAgentPhoneArtifactStorage$ = command(
     const versionId = computeContentHashFromHashes(currentStorage.id, []);
     const s3Key = `${currentStorage.s3Prefix}/${versionId}`;
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
+    const archiveBuffer = createEmptyTarGz();
 
     await Promise.all([
       get(
@@ -376,7 +377,7 @@ export const ensureAgentPhoneArtifactStorage$ = command(
         putS3Object(
           bucketName,
           `${s3Key}/archive.tar.gz`,
-          createEmptyTarGz(),
+          archiveBuffer,
           "application/gzip",
         ),
       ),
@@ -391,11 +392,15 @@ export const ensureAgentPhoneArtifactStorage$ = command(
           storageId: currentStorage.id,
           s3Key,
           size: 0,
+          archiveSize: archiveBuffer.length,
           fileCount: 0,
           message: "Initial empty artifact (auto-created)",
           createdBy: "user",
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: storageVersions.id,
+          set: { archiveSize: archiveBuffer.length },
+        });
 
       await tx
         .update(storages)

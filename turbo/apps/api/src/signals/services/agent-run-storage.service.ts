@@ -129,6 +129,7 @@ interface StorageResolution {
   readonly storageId: string;
   readonly versionId: string;
   readonly s3Key: string;
+  readonly archiveSize: number | null;
   readonly fileCount: number;
   readonly resolvedOrgId: string;
 }
@@ -152,6 +153,7 @@ interface StorageIndexEntry {
   readonly headVersion: {
     readonly id: string;
     readonly s3Key: string;
+    readonly archiveSize: number | null;
     readonly fileCount: number;
   } | null;
 }
@@ -1084,6 +1086,7 @@ async function loadStorageIndex(
       headVersionId: storages.headVersionId,
       versionId: storageVersions.id,
       s3Key: storageVersions.s3Key,
+      archiveSize: storageVersions.archiveSize,
       fileCount: storageVersions.fileCount,
     })
     .from(storages)
@@ -1108,7 +1111,12 @@ async function loadStorageIndex(
       headVersionId: row.headVersionId,
       headVersion:
         row.versionId && row.s3Key && row.fileCount !== null
-          ? { id: row.versionId, s3Key: row.s3Key, fileCount: row.fileCount }
+          ? {
+              id: row.versionId,
+              s3Key: row.s3Key,
+              archiveSize: row.archiveSize,
+              fileCount: row.fileCount,
+            }
           : null,
     });
   }
@@ -1210,6 +1218,7 @@ async function insertInitialArtifactVersion(args: {
             storageId: args.storage.id,
             s3Key: args.s3Key,
             size: 0,
+            archiveSize: 0,
             fileCount: 0,
             message: "Initial empty artifact",
             createdBy: args.userId,
@@ -1305,6 +1314,7 @@ function resolveLatestVersion(
     storageId: entry.storageId,
     versionId: entry.headVersion.id,
     s3Key: entry.headVersion.s3Key,
+    archiveSize: entry.headVersion.archiveSize,
     fileCount: entry.headVersion.fileCount,
     resolvedOrgId: lookup.orgId,
   };
@@ -1327,6 +1337,7 @@ async function resolvePinnedVersion(
     .select({
       id: storageVersions.id,
       s3Key: storageVersions.s3Key,
+      archiveSize: storageVersions.archiveSize,
       fileCount: storageVersions.fileCount,
     })
     .from(storageVersions)
@@ -1342,6 +1353,7 @@ async function resolvePinnedVersion(
       storageId: storage.storageId,
       versionId: exactMatch.id,
       s3Key: exactMatch.s3Key,
+      archiveSize: exactMatch.archiveSize,
       fileCount: exactMatch.fileCount,
       resolvedOrgId: lookup.orgId,
     };
@@ -1360,6 +1372,7 @@ async function resolvePinnedVersion(
     .select({
       id: storageVersions.id,
       s3Key: storageVersions.s3Key,
+      archiveSize: storageVersions.archiveSize,
       fileCount: storageVersions.fileCount,
     })
     .from(storageVersions)
@@ -1387,6 +1400,7 @@ async function resolvePinnedVersion(
     storageId: storage.storageId,
     versionId: match.id,
     s3Key: match.s3Key,
+    archiveSize: match.archiveSize,
     fileCount: match.fileCount,
     resolvedOrgId: lookup.orgId,
   };
@@ -1551,6 +1565,14 @@ function storageArchiveKey(resolved: StorageResolution): string {
   return `${resolved.s3Key}/archive.tar.gz`;
 }
 
+function knownArchiveSize(resolved: StorageResolution): number | undefined {
+  return resolved.archiveSize !== null &&
+    Number.isSafeInteger(resolved.archiveSize) &&
+    resolved.archiveSize > 0
+    ? resolved.archiveSize
+    : undefined;
+}
+
 function isSystemOwnedStoragePlan(plan: ResolvedManifestStoragePlan): boolean {
   return plan.resolved.resolvedOrgId === SYSTEM_ORG_ID;
 }
@@ -1619,6 +1641,7 @@ function buildStorageManifestEntry(args: {
   readonly plan: ResolvedManifestStoragePlan;
   readonly archiveUrl: string;
 }): ManifestStorage {
+  const archiveSize = knownArchiveSize(args.plan.resolved);
   return {
     name: args.plan.name,
     mountPath: args.plan.mountPath,
@@ -1628,6 +1651,7 @@ function buildStorageManifestEntry(args: {
       ? { instructionsTargetFilename: args.plan.instructionsTargetFilename }
       : {}),
     archiveUrl: args.archiveUrl,
+    ...(archiveSize === undefined ? {} : { archiveSize }),
   };
 }
 
@@ -1779,10 +1803,12 @@ async function buildArtifactEntryFromInput(
       true,
     ),
   );
+  const archiveSize = knownArchiveSize(resolved);
 
   return {
     ...entryBase,
     archiveUrl,
+    ...(archiveSize === undefined ? {} : { archiveSize }),
   };
 }
 

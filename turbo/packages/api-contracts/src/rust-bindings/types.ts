@@ -104,6 +104,9 @@ export const rustTypeBindings = [
           archiveUrl: [
             "Optional presigned URL for downloading the artifact archive. Explicit empty artifacts may omit it.",
           ],
+          archiveSize: [
+            "Optional exact encoded archive size in bytes. Older queued manifests may omit it.",
+          ],
           empty: [
             "Whether this artifact version is explicitly empty and can be prepared without downloading an archive.",
           ],
@@ -132,6 +135,9 @@ export const rustTypeBindings = [
             "Optional filename used when storage instructions are written into the mount.",
           ],
           archiveUrl: ["Presigned URL for downloading the storage archive."],
+          archiveSize: [
+            "Optional exact encoded archive size in bytes. Older queued manifests may omit it.",
+          ],
         },
       },
     ],

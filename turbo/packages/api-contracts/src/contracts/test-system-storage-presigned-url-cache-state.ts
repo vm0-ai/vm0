@@ -55,6 +55,12 @@ export const testSystemStoragePresignedUrlCacheStateActionBodySchema =
       version_id: z.string(),
       s3_prefix: z.string(),
       s3_key: z.string(),
+      archive_size: z
+        .number()
+        .int()
+        .positive()
+        .max(Number.MAX_SAFE_INTEGER)
+        .nullable(),
     }),
     z.object({
       action: z.literal("delete-storage-version"),

@@ -208,6 +208,9 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain(
       "pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,",
     );
+    expect(firstRender.match(/pub archive_size: Option<u64>,/g)).toHaveLength(
+      2,
+    );
   });
 
   it("keeps storage manifest field overrides aligned with entry schemas", () => {

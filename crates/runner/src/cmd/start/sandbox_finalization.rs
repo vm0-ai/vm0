@@ -1244,6 +1244,7 @@ mod tests {
                         vas_version_id: "v1".into(),
                         instructions_target_filename: None,
                         archive_url: "https://example.com/current-storage.tar.gz".into(),
+                        archive_size: None,
                     }],
                     artifacts: vec![ArtifactEntry {
                         mount_path: current_artifact_path.clone(),
@@ -1253,6 +1254,7 @@ mod tests {
                         archive_url: Some("https://example.com/current-artifact.tar.gz".into()),
                         empty: None,
                         missing_root_policy: None,
+                        archive_size: None,
                     }],
                 };
                 let promotion = test_promotion_context(

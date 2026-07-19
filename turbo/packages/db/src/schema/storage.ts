@@ -67,6 +67,7 @@ export const storageVersions = pgTable("storage_versions", {
     ),
   s3Key: text("s3_key").notNull(),
   size: bigint("size", { mode: "number" }).notNull().default(0),
+  archiveSize: bigint("archive_size", { mode: "number" }),
   fileCount: integer("file_count").notNull().default(0),
   message: text("message"),
   createdBy: text("created_by").notNull(),

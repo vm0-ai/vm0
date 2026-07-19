@@ -155,11 +155,19 @@ export function createStoragesBddApi(context: TestContext) {
       context.mocks.s3.getSignedUrl.mockResolvedValue(url);
     },
 
-    mockStorageObjectsExist(): void {
-      context.mocks.s3.send.mockResolvedValue({});
+    mockStorageObjectsExist(contentLength = 1024): void {
+      context.mocks.s3.send.mockResolvedValue({
+        ContentLength: contentLength,
+      });
     },
 
-    mockStorageObjectExistsOnce(): void {
+    mockStorageObjectExistsOnce(contentLength = 1024): void {
+      context.mocks.s3.send.mockResolvedValueOnce({
+        ContentLength: contentLength,
+      });
+    },
+
+    mockStorageObjectWithoutContentLengthOnce(): void {
       context.mocks.s3.send.mockResolvedValueOnce({});
     },
 

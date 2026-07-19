@@ -540,7 +540,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     authenticate,
 
     acceptAgentStorageWrites(): void {
-      context.mocks.s3.send.mockResolvedValue({});
+      context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
     },
 
     mockClerkUsers,

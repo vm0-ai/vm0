@@ -849,7 +849,7 @@ function mockSessionHistoryBlob(hash: string, history: string): void {
         },
       });
     }
-    return Promise.resolve({});
+    return Promise.resolve({ ContentLength: 1024 });
   });
 }
 

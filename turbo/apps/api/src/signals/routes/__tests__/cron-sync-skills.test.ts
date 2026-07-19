@@ -56,6 +56,7 @@ interface MockSkillVersion {
   readonly s3Prefix: string;
   readonly s3Key: string;
   readonly size: number;
+  readonly archiveSize: number;
   readonly fileCount: number;
   readonly frontmatter: {
     readonly name: string;
@@ -141,6 +142,7 @@ async function seedCurrentSkillVersions(
         s3_prefix: version.s3Prefix,
         s3_key: version.s3Key,
         size: version.size,
+        archive_size: version.archiveSize,
         file_count: version.fileCount,
         frontmatter: version.frontmatter,
       };
@@ -248,6 +250,7 @@ function buildMockSkillVersion(skill: MockSkillEntry): MockSkillVersion {
     size: skill.files.reduce((sum, file) => {
       return sum + Buffer.byteLength(file.content);
     }, 0),
+    archiveSize: createMockTarball([skill]).length,
     fileCount: skill.files.length,
     frontmatter: {
       name: skill.name,
@@ -357,6 +360,9 @@ async function findSkillByUrl(url: string): Promise<{
 async function findSystemStorageByName(name: string): Promise<{
   readonly type: string;
   readonly headVersionId: string | null;
+  readonly size: number;
+  readonly versionSize: number | null;
+  readonly archiveSize: number | null;
 } | null> {
   return await findSystemStorageByNameState(context, name);
 }
@@ -449,9 +455,24 @@ describe("GET /api/cron/sync-skills", () => {
         `vm0-ai/vm0-skills/tree/main/${EXTRA_SKILLS.alphaSkill.name}`,
       ),
     );
+    const alphaVersion = buildMockSkillVersion(EXTRA_SKILLS.alphaSkill);
+    const alphaArchivePut = s3CallsByName("PutObjectCommand").find(
+      (command) => {
+        return (
+          commandInput(command).Key === `${alphaVersion.s3Key}/archive.tar.gz`
+        );
+      },
+    );
+    const alphaArchiveBody = commandInput(alphaArchivePut).Body;
+    if (!Buffer.isBuffer(alphaArchiveBody)) {
+      throw new Error("Expected the alpha skill archive upload body");
+    }
     expect(alphaStorage).toMatchObject({
       type: "volume",
       headVersionId: expect.any(String),
+      size: alphaVersion.size,
+      versionSize: alphaVersion.size,
+      archiveSize: alphaArchiveBody.length,
     });
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(4);
   });

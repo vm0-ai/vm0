@@ -21,6 +21,9 @@ interface CronSyncSkillRow {
 interface CronSyncStorageRow {
   readonly type: string;
   readonly headVersionId: string | null;
+  readonly size: number;
+  readonly versionSize: number | null;
+  readonly archiveSize: number | null;
 }
 
 function requestCronSyncSkillsState(
@@ -138,6 +141,9 @@ export async function findSystemStorageByNameState(
     ? {
         type: response.storage.type,
         headVersionId: response.storage.head_version_id,
+        size: response.storage.size,
+        versionSize: response.storage.version_size,
+        archiveSize: response.storage.archive_size,
       }
     : null;
 }
