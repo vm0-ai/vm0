@@ -7,7 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { Editor, Extension, Node, type JSONContent } from "@tiptap/core";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Slice, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   Plugin,
   PluginKey,
@@ -2062,8 +2062,17 @@ function createInsertTextCommands(editor: Editor) {
     editor.chain().focus().insertContent(value).run();
   });
   const insertPromptMarkdown$ = command((_context, value: string) => {
-    const content = valueToWorkflowComposerDoc(value).content ?? [];
-    editor.chain().focus().insertContent(content).run();
+    const doc = editor.schema.nodeFromJSON(valueToWorkflowComposerDoc(value));
+    const slice = Slice.maxOpen(doc.content, true);
+    editor
+      .chain()
+      .focus()
+      .command(({ tr }) => {
+        tr.replaceSelection(slice);
+        return true;
+      })
+      .scrollIntoView()
+      .run();
   });
   const appendText$ = command((_context, value: string) => {
     const text = value.trim();
