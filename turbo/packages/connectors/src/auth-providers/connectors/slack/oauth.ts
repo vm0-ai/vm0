@@ -88,11 +88,14 @@ export async function exchangeSlackCode(
   if (!data.authed_user?.access_token) {
     throw new Error("No user access token in Slack response");
   }
+  if (!data.authed_user.id) {
+    throw new Error("No authenticated user id in Slack response");
+  }
 
   return {
     accessToken: data.authed_user.access_token,
     scopes: data.authed_user.scope?.split(",") ?? [],
-    userId: data.authed_user.id ?? "",
+    userId: data.authed_user.id,
   };
 }
 

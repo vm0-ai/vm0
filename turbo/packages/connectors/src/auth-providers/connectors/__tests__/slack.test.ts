@@ -99,6 +99,26 @@ describe("connector/providers/slack", () => {
         ),
       ).rejects.toThrow("No user access token");
     });
+
+    it("throws when no authenticated user id is returned", async () => {
+      const handler = http.post("https://slack.com/api/oauth.v2.access", () => {
+        return HttpResponse.json({
+          ok: true,
+          authed_user: { access_token: "xoxp-test-token" },
+        });
+      });
+      server.use(handler);
+
+      await expect(
+        exchangeSlackCode(
+          authCodeGrant(),
+          "client-id",
+          "client-secret",
+          "test-code",
+          "https://example.com/callback",
+        ),
+      ).rejects.toThrow("No authenticated user id");
+    });
   });
 
   describe("fetchSlackUserInfo", () => {
