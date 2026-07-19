@@ -5410,9 +5410,11 @@ function PermissionActionCardContent({
   expiresAt: string | null;
   onClick: () => void;
 }) {
-  const expiryText = expirationAvailable
+  const rawExpiryText = expirationAvailable
     ? permissionGrantExpiryText(expiresAt)
     : null;
+  const expiryText =
+    rawExpiryText === "Expires in less than 1 hour" ? null : rawExpiryText;
   const showDurationSelect =
     expirationAvailable &&
     (status.kind === "ready" ||
