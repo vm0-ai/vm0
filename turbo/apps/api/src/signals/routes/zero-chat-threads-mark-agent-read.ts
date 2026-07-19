@@ -52,7 +52,7 @@ function latestRunFinishCreatedAtSql() {
       AND ${chatMessages.runLifecycleEvent} IS NOT NULL
     ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC
     LIMIT 1
-  )`;
+  )`.mapWith(chatMessages.createdAt);
 }
 
 const markAgentReadInner$ = command(

@@ -94,7 +94,7 @@ async function loadUsageMessageContext(tx: WriteTx, runId: string) {
         MAX(${usageEvent.createdAt}) FILTER (WHERE ${usageEvent.status} = 'processed'),
         MAX(${agentRuns.completedAt}),
         MAX(${agentRuns.createdAt})
-      )`,
+      )`.mapWith(usageEvent.processedAt),
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))

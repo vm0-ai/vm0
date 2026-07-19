@@ -3281,7 +3281,10 @@ async function expireActiveUsageAllowanceWindows(
       return db
         .update(orgUsageAllowanceWindows)
         .set({
-          expiresAt: sql<Date>`GREATEST(${timestampWithoutTimeZone(args.at)}::timestamp, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`,
+          expiresAt:
+            sql<Date>`GREATEST(${timestampWithoutTimeZone(args.at)}::timestamp, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`.mapWith(
+              orgUsageAllowanceWindows.expiresAt,
+            ),
           updatedAt: args.updatedAt,
         })
         .where(

@@ -93,7 +93,7 @@ function matchedMessageCreatedAtSql(messageId: string) {
     SELECT ${matchedChatMessage.createdAt}
     FROM ${chatMessages} AS matched_chat_message
     WHERE ${matchedChatMessage.id} = ${messageId}
-  )`;
+  )`.mapWith(matchedChatMessage.createdAt);
 }
 
 type ChatMessageRow = {

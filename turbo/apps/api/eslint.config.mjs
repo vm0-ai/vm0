@@ -173,6 +173,7 @@ export default [
       "api/no-logger-info": "error",
       "api/no-new-promise": "error",
       "api/no-store-in-params": "error",
+      "api/require-sql-date-decoder": "error",
       "api/signal-check-await": "error",
     },
   },

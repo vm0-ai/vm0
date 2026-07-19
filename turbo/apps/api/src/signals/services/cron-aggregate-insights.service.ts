@@ -791,9 +791,9 @@ async function queryActiveUsers(
       .select({
         orgId: agentRuns.orgId,
         userId: agentRuns.userId,
-        lastActivity: sql<Date>`MAX(${agentRuns.completedAt})`.as(
-          "last_activity",
-        ),
+        lastActivity: sql<Date>`MAX(${agentRuns.completedAt})`
+          .mapWith(agentRuns.completedAt)
+          .as("last_activity"),
       })
       .from(agentRuns)
       .where(
@@ -807,9 +807,9 @@ async function queryActiveUsers(
       .select({
         orgId: usageEvent.orgId,
         userId: usageEvent.userId,
-        lastActivity: sql<Date>`MAX(${usageEvent.processedAt})`.as(
-          "last_activity",
-        ),
+        lastActivity: sql<Date>`MAX(${usageEvent.processedAt})`
+          .mapWith(usageEvent.processedAt)
+          .as("last_activity"),
       })
       .from(usageEvent)
       .where(
@@ -1310,9 +1310,9 @@ export const aggregateInsights$ = command(
       .select({
         orgId: insightsDaily.orgId,
         userId: insightsDaily.userId,
-        lastUpdated: sql<Date>`MAX(${insightsDaily.updatedAt})`.as(
-          "last_updated",
-        ),
+        lastUpdated: sql<Date>`MAX(${insightsDaily.updatedAt})`
+          .mapWith(insightsDaily.updatedAt)
+          .as("last_updated"),
       })
       .from(insightsDaily)
       .where(

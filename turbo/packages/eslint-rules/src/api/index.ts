@@ -6,6 +6,7 @@ import { noNewPromise } from "./rules/no-new-promise.ts";
 import { noPackageVariable } from "./rules/no-package-variable.ts";
 import { noStoreInParams } from "./rules/no-store-in-params.ts";
 import { noTestViMocks } from "./rules/no-test-vi-mocks.ts";
+import { requireSqlDateDecoder } from "./rules/require-sql-date-decoder.ts";
 import { signalCheckAwait } from "./rules/signal-check-await.ts";
 
 export const apiLintPlugin = {
@@ -22,6 +23,7 @@ export const apiLintPlugin = {
     "no-package-variable": noPackageVariable,
     "no-store-in-params": noStoreInParams,
     "no-test-vi-mocks": noTestViMocks,
+    "require-sql-date-decoder": requireSqlDateDecoder,
     "signal-check-await": signalCheckAwait,
   },
 };

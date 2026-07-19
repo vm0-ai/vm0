@@ -771,7 +771,9 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 
   const [message] = await db
     .select({
-      lastEventAt: sql<Date | null>`MAX(${chatMessages.createdAt})`,
+      lastEventAt: sql<Date | null>`MAX(${chatMessages.createdAt})`.mapWith(
+        chatMessages.createdAt,
+      ),
     })
     .from(chatMessages)
     .where(
