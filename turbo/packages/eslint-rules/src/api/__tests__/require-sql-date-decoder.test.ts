@@ -40,6 +40,22 @@ ruleTester.run("require-sql-date-decoder", requireSqlDateDecoder, {
     {
       code: `
         import { sql } from "drizzle-orm";
+        function render(sql: (strings: TemplateStringsArray) => string) {
+          return sql<Date>\`NOW()\`;
+        }
+      `,
+    },
+    {
+      code: `
+        import * as drizzle from "drizzle-orm";
+        function render(drizzle: { sql: (strings: TemplateStringsArray) => string }) {
+          return drizzle.sql<Date>\`NOW()\`;
+        }
+      `,
+    },
+    {
+      code: `
+        import { sql } from "drizzle-orm";
         const value = sql<number>\`COUNT(*)\`;
       `,
     },
@@ -73,6 +89,13 @@ ruleTester.run("require-sql-date-decoder", requireSqlDateDecoder, {
       code: `
         import * as drizzle from "drizzle-orm";
         const value = drizzle.sql<Date>\`NOW()\`.as("created_at");
+      `,
+      errors: [{ messageId: "missingDecoder" }],
+    },
+    {
+      code: `
+        const value = sql<Date>\`NOW()\`;
+        import { sql } from "drizzle-orm";
       `,
       errors: [{ messageId: "missingDecoder" }],
     },

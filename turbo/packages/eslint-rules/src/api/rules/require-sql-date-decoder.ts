@@ -1,4 +1,8 @@
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import {
+  AST_NODE_TYPES,
+  ASTUtils,
+  type TSESTree,
+} from "@typescript-eslint/utils";
 
 import { createRule } from "../utils.ts";
 
@@ -73,43 +77,59 @@ export const requireSqlDateDecoder = createRule({
     },
   },
   create(context) {
-    const sqlIdentifiers = new Set<string>();
-    const drizzleNamespaces = new Set<string>();
+    function drizzleImportKind(
+      identifier: TSESTree.Identifier,
+    ): "namespace" | "sql" | null {
+      const variable = ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier,
+      );
+      const definition = variable?.defs.find((candidate) => {
+        return candidate.type === "ImportBinding";
+      });
+      if (
+        !definition ||
+        definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
+        definition.parent.source.value !== "drizzle-orm" ||
+        definition.parent.importKind === "type"
+      ) {
+        return null;
+      }
+
+      const specifier = definition.node;
+      if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
+        return "namespace";
+      }
+      if (
+        specifier.type !== AST_NODE_TYPES.ImportSpecifier ||
+        specifier.importKind === "type"
+      ) {
+        return null;
+      }
+      if (
+        (specifier.imported.type === AST_NODE_TYPES.Identifier &&
+          specifier.imported.name === "sql") ||
+        (specifier.imported.type === AST_NODE_TYPES.Literal &&
+          specifier.imported.value === "sql")
+      ) {
+        return "sql";
+      }
+      return null;
+    }
 
     function isDrizzleSqlTag(tag: TSESTree.Expression): boolean {
       if (tag.type === AST_NODE_TYPES.Identifier) {
-        return sqlIdentifiers.has(tag.name);
+        return drizzleImportKind(tag) === "sql";
       }
       return (
         tag.type === AST_NODE_TYPES.MemberExpression &&
         tag.object.type === AST_NODE_TYPES.Identifier &&
-        drizzleNamespaces.has(tag.object.name) &&
+        drizzleImportKind(tag.object) === "namespace" &&
         memberName(tag) === "sql"
       );
     }
 
     return {
-      ImportDeclaration(node: TSESTree.ImportDeclaration): void {
-        if (node.source.value !== "drizzle-orm") {
-          return;
-        }
-
-        for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
-            drizzleNamespaces.add(specifier.local.name);
-            continue;
-          }
-          if (
-            specifier.type === AST_NODE_TYPES.ImportSpecifier &&
-            ((specifier.imported.type === AST_NODE_TYPES.Identifier &&
-              specifier.imported.name === "sql") ||
-              (specifier.imported.type === AST_NODE_TYPES.Literal &&
-                specifier.imported.value === "sql"))
-          ) {
-            sqlIdentifiers.add(specifier.local.name);
-          }
-        }
-      },
       TaggedTemplateExpression(node: TSESTree.TaggedTemplateExpression): void {
         const typeArgument = node.typeArguments?.params[0];
         if (
