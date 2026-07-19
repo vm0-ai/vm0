@@ -1217,6 +1217,7 @@ async def test_reflection_method_firewall_with_managed_credentials_blocks_before
     )
     original_headers = tuple(flow.request.headers.fields)
     original_path = flow.request.path
+    original_url = flow.request.url
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -1236,6 +1237,7 @@ async def test_reflection_method_firewall_with_managed_credentials_blocks_before
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     assert tuple(flow.request.headers.fields) == original_headers
     assert flow.request.path == original_path
+    assert flow.request.url == original_url
     body = json.loads(flow.response.content)
     assert body == {
         "error": "unsafe_auth_method",
