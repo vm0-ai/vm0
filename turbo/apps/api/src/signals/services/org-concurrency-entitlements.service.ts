@@ -1,6 +1,7 @@
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { and, eq, gt, inArray, sql } from "drizzle-orm";
 
+import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { nowDate } from "../external/time";
 import type { Db } from "../external/db";
@@ -72,7 +73,10 @@ export async function activePaidConcurrencySlots(
 ): Promise<number> {
   const [row] = await db
     .select({
-      slots: sql<number>`COALESCE(SUM(${orgConcurrencySubscriptions.slots}), 0)::int`,
+      slots:
+        sql`COALESCE(SUM(${orgConcurrencySubscriptions.slots}), 0)::int`.mapWith(
+          pgIntegerDecoder,
+        ),
     })
     .from(orgConcurrencySubscriptions)
     .where(
@@ -89,7 +93,7 @@ export async function activePaidConcurrencySlots(
       ),
     );
 
-  return Number(row?.slots ?? 0);
+  return row?.slots ?? 0;
 }
 
 export async function activeConcurrencySubscriptions(

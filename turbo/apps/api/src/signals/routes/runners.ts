@@ -51,6 +51,10 @@ import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { executeRawRows } from "../../lib/db-raw-rows";
+import {
+  nullableDriverValueDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
@@ -589,9 +593,10 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
-      historyGenerationRunId: sql<
-        string | null
-      >`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`,
+      historyGenerationRunId:
+        sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`.mapWith(
+          nullableDriverValueDecoder(pgTextDecoder),
+        ),
       createdAt: runnerJobQueue.createdAt,
     })
     .from(runnerJobQueue)

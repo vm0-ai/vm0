@@ -32,6 +32,10 @@ import { z } from "zod";
 import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
 import { escapeAplString } from "../../lib/axiom-apl";
 import { executeRawRows } from "../../lib/db-raw-rows";
+import {
+  nullableDriverValueDecoder,
+  pgTimestampWithoutTimezoneToDateDecoder,
+} from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
@@ -773,7 +777,9 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
 
   const [message] = await db
     .select({
-      lastEventAt: sql<Date | null>`MAX(${chatMessages.createdAt})`,
+      lastEventAt: sql`MAX(${chatMessages.createdAt})`.mapWith(
+        nullableDriverValueDecoder(pgTimestampWithoutTimezoneToDateDecoder),
+      ),
     })
     .from(chatMessages)
     .where(
@@ -787,14 +793,13 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
     return;
   }
 
-  const lastEventMs =
-    message.lastEventAt instanceof Date
-      ? message.lastEventAt.getTime()
-      : new Date(message.lastEventAt).getTime();
   recordSandboxOperation({
     sandboxType: "runner",
     actionType: "last_event_to_complete",
-    durationMs: Math.max(0, run.completedAt.getTime() - lastEventMs),
+    durationMs: Math.max(
+      0,
+      run.completedAt.getTime() - message.lastEventAt.getTime(),
+    ),
     success: true,
     runId,
   });

@@ -20,6 +20,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, sql } from "drizzle-orm";
 
+import { pgIntegerDecoder } from "../../lib/db-structured-result";
 import { buildAgentResponseMessage } from "../../lib/slack-blocks";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -186,7 +187,10 @@ async function countThreadMentioners(args: {
 }): Promise<number> {
   const [row] = await args.db
     .select({
-      count: sql<number>`count(distinct ${slackOrgThreadSessions.connectionId})::int`,
+      count:
+        sql`count(distinct ${slackOrgThreadSessions.connectionId})::int`.mapWith(
+          pgIntegerDecoder,
+        ),
     })
     .from(slackOrgThreadSessions)
     .innerJoin(

@@ -114,9 +114,13 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, count, eq, inArray, or, sql } from "drizzle-orm";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
+import {
+  pgNullDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import {
   badRequestMessage,
   notFound,
@@ -645,7 +649,9 @@ interface PersistedRunEnvironmentSnapshot {
   readonly variables: readonly PersistedRunEnvironmentVariable[];
 }
 
-type PersistedRunEnvironmentRowKind = "variable" | "secret";
+const persistedRunEnvironmentRowKindDecoder = zodEnumDriverValueDecoder(
+  z.enum(["variable", "secret"]),
+);
 
 interface CustomConnectorRuntimeContext {
   readonly firewalls: readonly ExpandedFirewallConfig[];
@@ -1678,7 +1684,7 @@ async function multiAuthModelProviderEnvironment(
     .select({
       name: secretsTable.name,
       encryptedValue: hasFirewallAuth
-        ? sql<string | null>`NULL`
+        ? sql`NULL`.mapWith(pgNullDecoder)
         : secretsTable.encryptedValue,
     })
     .from(secretsTable)
@@ -2058,7 +2064,9 @@ async function loadPersistedRunEnvironmentSnapshot(
   const secretNamesToLoad = [...new Set(referencedSecretNames)];
   const variableQuery = db
     .select({
-      kind: sql<PersistedRunEnvironmentRowKind>`'variable'`.as("kind"),
+      kind: sql`'variable'`
+        .mapWith(persistedRunEnvironmentRowKindDecoder)
+        .as("kind"),
       name: variables.name,
       value: variables.value,
       userId: variables.userId,
@@ -2079,7 +2087,9 @@ async function loadPersistedRunEnvironmentSnapshot(
       ? await variableQuery.unionAll(
           db
             .select({
-              kind: sql<PersistedRunEnvironmentRowKind>`'secret'`.as("kind"),
+              kind: sql`'secret'`
+                .mapWith(persistedRunEnvironmentRowKindDecoder)
+                .as("kind"),
               name: secretsTable.name,
               value: secretsTable.encryptedValue,
               userId: secretsTable.userId,

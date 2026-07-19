@@ -15,6 +15,13 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command, computed, type Computed } from "ccstate";
 import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 
+import {
+  nullableDriverValueDecoder,
+  pgIntegerDecoder,
+  pgInt8ToSafeIntegerDecoder,
+  pgTextDecoder,
+  pgTimestampWithoutTimezoneToDateDecoder,
+} from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { getDatasetName, queryAxiom } from "../external/axiom";
 import { clerk$ } from "../external/clerk";
@@ -30,6 +37,7 @@ const AGGREGATION_REPROCESS_OVERLAP_MS = 5 * 60_000;
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
 const UUID_SHAPE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 
 interface AgentInfo {
   readonly agentId: string | null;
@@ -242,10 +250,6 @@ interface NetworkQueryResult {
 interface CurrentOrgMemberScope {
   readonly orgsWithCurrentMembers: Set<string>;
   readonly memberKeys: Set<string>;
-}
-
-function normalizeDbDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
 }
 
 type PermissionLabelResolver = (
@@ -622,7 +626,7 @@ function aggregateOrgCredits(
       agentNames: new Set<string>(),
       agentCredits: new Map<string, number>(),
     };
-    const amount = Number(row.credits);
+    const amount = row.credits;
     existing.credits += amount;
     existing.agentNames.add(row.agentName);
     existing.agentCredits.set(
@@ -768,14 +772,10 @@ async function queryCurrentOrgMembers(
 function mergeActiveUserRows(rows: ActiveUserRow[]): ActiveUserRow[] {
   const byUser = new Map<string, ActiveUserRow>();
   for (const row of rows) {
-    const normalizedRow = {
-      ...row,
-      lastActivity: normalizeDbDate(row.lastActivity),
-    };
     const key = `${row.orgId}:${row.userId}`;
     const existing = byUser.get(key);
-    if (!existing || normalizedRow.lastActivity > existing.lastActivity) {
-      byUser.set(key, normalizedRow);
+    if (!existing || row.lastActivity > existing.lastActivity) {
+      byUser.set(key, row);
     }
   }
   return [...byUser.values()];
@@ -791,9 +791,9 @@ async function queryActiveUsers(
       .select({
         orgId: agentRuns.orgId,
         userId: agentRuns.userId,
-        lastActivity: sql<Date>`MAX(${agentRuns.completedAt})`.as(
-          "last_activity",
-        ),
+        lastActivity: sql`MAX(${agentRuns.completedAt})`
+          .mapWith(pgTimestampWithoutTimezoneToDateDecoder)
+          .as("last_activity"),
       })
       .from(agentRuns)
       .where(
@@ -807,9 +807,9 @@ async function queryActiveUsers(
       .select({
         orgId: usageEvent.orgId,
         userId: usageEvent.userId,
-        lastActivity: sql<Date>`MAX(${usageEvent.processedAt})`.as(
-          "last_activity",
-        ),
+        lastActivity: sql`MAX(${usageEvent.processedAt})`
+          .mapWith(pgTimestampWithoutTimezoneToDateDecoder)
+          .as("last_activity"),
       })
       .from(usageEvent)
       .where(
@@ -864,7 +864,7 @@ function mergeAgentRows(
     add({ ...row, credits: 0 });
   }
   for (const row of creditRows) {
-    add({ ...row, runs: 0, credits: Number(row.credits) });
+    add({ ...row, runs: 0 });
   }
 
   const result = new Map<string, AgentInfo[]>();
@@ -893,11 +893,12 @@ async function queryCompletedRunCounts(
       orgId: agentRuns.orgId,
       userId: agentRuns.userId,
       agentId: zeroAgents.id,
-      agentName:
-        sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
-          "agent_name",
-        ),
-      runs: sql<number>`COUNT(DISTINCT ${agentRuns.id})::int`.as("runs"),
+      agentName: sql`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`
+        .mapWith(pgTextDecoder)
+        .as("agent_name"),
+      runs: sql`COUNT(DISTINCT ${agentRuns.id})::int`
+        .mapWith(pgIntegerDecoder)
+        .as("runs"),
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
@@ -920,15 +921,7 @@ async function queryCompletedRunCounts(
     );
   signal.throwIfAborted();
 
-  return rows.map((row) => {
-    return {
-      orgId: row.orgId,
-      userId: row.userId,
-      agentId: row.agentId,
-      agentName: row.agentName,
-      runs: Number(row.runs),
-    };
-  });
+  return rows;
 }
 
 async function queryUsageEventCreditRows(
@@ -943,19 +936,18 @@ async function queryUsageEventCreditRows(
     .select({
       orgId: usageEvent.orgId,
       userId: usageEvent.userId,
-      agentId: sql<
-        string | null
-      >`CASE WHEN ${isRunless} THEN NULL ELSE ${zeroAgents.id}::text END`.as(
-        "agent_id",
-      ),
+      agentId:
+        sql`CASE WHEN ${isRunless} THEN NULL ELSE ${zeroAgents.id}::text END`
+          .mapWith(nullableTextDecoder)
+          .as("agent_id"),
       agentName:
-        sql<string>`CASE WHEN ${isRunless} THEN ${OTHER_USAGE_AGENT_NAME} ELSE COALESCE(${zeroAgents.displayName}, ${zeroAgents.name}, 'Unknown agent') END`.as(
-          "agent_name",
-        ),
+        sql`CASE WHEN ${isRunless} THEN ${OTHER_USAGE_AGENT_NAME} ELSE COALESCE(${zeroAgents.displayName}, ${zeroAgents.name}, 'Unknown agent') END`
+          .mapWith(pgTextDecoder)
+          .as("agent_name"),
       credits:
-        sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`.as(
-          "credits",
-        ),
+        sql`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`
+          .mapWith(pgInt8ToSafeIntegerDecoder)
+          .as("credits"),
     })
     .from(usageEvent)
     .leftJoin(
@@ -984,9 +976,7 @@ async function queryUsageEventCreditRows(
     );
   signal.throwIfAborted();
 
-  return rows.map((row) => {
-    return { ...row, credits: Number(row.credits) };
-  });
+  return rows;
 }
 
 async function queryNetworkRunAgentRows(
@@ -1006,9 +996,9 @@ async function queryNetworkRunAgentRows(
           orgId: agentRuns.orgId,
           userId: agentRuns.userId,
           agentName:
-            sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
-              "agent_name",
-            ),
+            sql`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`
+              .mapWith(pgTextDecoder)
+              .as("agent_name"),
         })
         .from(agentRuns)
         .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
@@ -1310,9 +1300,9 @@ export const aggregateInsights$ = command(
       .select({
         orgId: insightsDaily.orgId,
         userId: insightsDaily.userId,
-        lastUpdated: sql<Date>`MAX(${insightsDaily.updatedAt})`.as(
-          "last_updated",
-        ),
+        lastUpdated: sql`MAX(${insightsDaily.updatedAt})`
+          .mapWith(pgTimestampWithoutTimezoneToDateDecoder)
+          .as("last_updated"),
       })
       .from(insightsDaily)
       .where(
@@ -1326,7 +1316,7 @@ export const aggregateInsights$ = command(
 
     const lastAggMap = new Map(
       lastAggRows.map((row) => {
-        return [`${row.orgId}:${row.userId}`, normalizeDbDate(row.lastUpdated)];
+        return [`${row.orgId}:${row.userId}`, row.lastUpdated];
       }),
     );
 

@@ -7,6 +7,11 @@ import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { command } from "ccstate";
 import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 
+import {
+  pgIntegerDecoder,
+  pgInt8ToSafeIntegerDecoder,
+  pgTextDecoder,
+} from "../../lib/db-structured-result";
 import { writeDb$, type Db } from "../external/db";
 
 const MS_PER_DAY = 86_400_000;
@@ -56,12 +61,12 @@ async function queryAgentRunsDaily(
 
   const rows = await db
     .select({
-      date: sql<string>`DATE(${agentRuns.createdAt})`.as("date"),
-      run_count: sql<number>`COUNT(*)::int`.as("run_count"),
+      date: sql`DATE(${agentRuns.createdAt})`.mapWith(pgTextDecoder).as("date"),
+      run_count: sql`COUNT(*)::int`.mapWith(pgIntegerDecoder).as("run_count"),
       run_time_ms:
-        sql<number>`COALESCE(SUM(EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000), 0)::bigint`.as(
-          "run_time_ms",
-        ),
+        sql`COALESCE(SUM(EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000), 0)::bigint`
+          .mapWith(pgInt8ToSafeIntegerDecoder)
+          .as("run_time_ms"),
     })
     .from(agentRuns)
     .where(
@@ -75,13 +80,7 @@ async function queryAgentRunsDaily(
     )
     .groupBy(sql`DATE(${agentRuns.createdAt})`);
 
-  return rows.map((row) => {
-    return {
-      date: String(row.date),
-      run_count: Number(row.run_count),
-      run_time_ms: Number(row.run_time_ms),
-    };
-  });
+  return rows;
 }
 
 async function appendAgentRunsDaily(

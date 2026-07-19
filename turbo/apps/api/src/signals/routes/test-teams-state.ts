@@ -26,6 +26,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { bodyResultOf, queryOf } from "../context/request";
@@ -546,7 +547,9 @@ function recentTeamsRuns(db: ReadonlyDb, orgId: string | null | undefined) {
       triggerSource: zeroRuns.triggerSource,
       userId: agentRuns.userId,
       error: agentRuns.error,
-      promptPreview: sql<string>`substring(${agentRuns.prompt}, 1, 200)`,
+      promptPreview: sql`substring(${agentRuns.prompt}, 1, 200)`.mapWith(
+        pgTextDecoder,
+      ),
     })
     .from(agentRuns)
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))

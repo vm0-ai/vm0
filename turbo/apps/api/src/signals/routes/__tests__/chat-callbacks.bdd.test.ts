@@ -996,6 +996,15 @@ describe("CHAT-02: completed chat callback", () => {
     await flushWaitUntilForTest();
 
     expect(followupRequests).toBe(1);
+    expect(sandboxOperationEventsForRun(run.runId)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "last_event_to_complete",
+          duration_ms: expect.any(Number),
+          success: true,
+        }),
+      ]),
+    );
     const after = await chat.listThreadMessages(actor, run.threadId);
     const marker = lifecycleMarkers(after.messages, run.runId, "completed")[0];
     if (!marker) {
