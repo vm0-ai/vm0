@@ -1154,6 +1154,8 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATIC_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
       CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
+      CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
+      CF_PAGES_PREVIEW_ZONE_ID: ${{ vars.CF_PAGES_PREVIEW_ZONE_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
@@ -1351,6 +1353,14 @@ jobs:
           {
             echo "dist=$pages_dist"
             echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
+            if [[ "$PAGES_BRANCH" == pr-*-app ]]; then
+              : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+              echo "custom-domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
+              echo "custom-url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}"
+            else
+              echo "custom-domain="
+              echo "custom-url="
+            fi
           } >> "$GITHUB_OUTPUT"
 
       - name: Deploy Cloudflare Pages preview
@@ -1369,11 +1379,31 @@ jobs:
             --commit-hash "$ARTIFACT_SHA" \
             --commit-dirty=false
 
+      - name: Configure Cloudflare Pages custom preview domain
+        if: steps.pages-preview.outputs.custom-domain != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-preview.outputs.custom-domain }}
+        run: |
+          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
+          bash .github/scripts/manage-okou-pages-domain.sh \
+            ensure \
+            "$CLOUDFLARE_ACCOUNT_ID" \
+            "$CF_PAGES_PREVIEW_ZONE_ID" \
+            "$CF_PAGES_PROJECT_NAME" \
+            "$PAGES_CUSTOM_DOMAIN" \
+            "$PAGES_BRANCH"
+
       - name: Record Cloudflare Pages preview
         env:
+          PAGES_CUSTOM_URL: ${{ steps.pages-preview.outputs.custom-url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
         run: |
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "$PAGES_CUSTOM_URL" ]]; then
+            echo "Cloudflare Pages custom preview: ${PAGES_CUSTOM_URL}" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # Deploy app (Vite SPA)
   deploy-app:
