@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 pub(crate) use shell_quote::quote_shell_arg as shell_quote;
@@ -17,6 +17,7 @@ use vsock_proto::ExecTermination;
 static WRITE_FILE_HELPER: Once = Once::new();
 const WRITE_FILE_HELPER_BIN: &str = env!("CARGO_BIN_EXE_guest-write-file-test-helper");
 const BLOCKING_WRITE_SUFFIX: &str = ".vm0-vsock-test-block";
+const GUEST_FINISH_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn install_write_file_helper() {
     WRITE_FILE_HELPER.call_once(|| {
@@ -114,6 +115,18 @@ fn cleanup_guest(guest: &mut Option<JoinHandle<io::Result<()>>>) {
     if let Some(g) = guest.take() {
         let _ = g.join();
     }
+}
+
+fn join_guest_with_timeout(guest: JoinHandle<io::Result<()>>) -> thread::Result<io::Result<()>> {
+    let started = Instant::now();
+    while !guest.is_finished() {
+        assert!(
+            started.elapsed() < GUEST_FINISH_TIMEOUT,
+            "guest thread did not terminate within {GUEST_FINISH_TIMEOUT:?} after host disconnect",
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    guest.join()
 }
 
 fn create_temp_dir(prefix: &str) -> tempfile::TempDir {
@@ -229,17 +242,17 @@ impl Harness {
     pub(crate) fn finish(mut self) {
         drop(self.host.take());
         if let Some(g) = self.guest.take() {
-            g.join()
+            join_guest_with_timeout(g)
                 .expect("guest thread panicked")
                 .expect("guest returned error");
         }
     }
 
-    /// Finish without asserting guest result (for shutdown tests where guest exits differently)
+    /// Finish without asserting the guest result after abandoning an in-flight operation.
     pub(crate) fn finish_ignore_guest(mut self) {
         drop(self.host.take());
         if let Some(g) = self.guest.take() {
-            let _ = g.join();
+            let _ = join_guest_with_timeout(g);
         }
     }
 }
