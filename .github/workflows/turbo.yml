@@ -1345,13 +1345,13 @@ jobs:
       - name: Deploy Cloudflare Pages preview
         env:
           ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_BRANCH: ${{ steps.pages-preview.outputs.branch }}
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
         working-directory: turbo
         run: |
           set -euo pipefail
-          : "${CLOUDFLARE_API_TOKEN:?CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN secret is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
           pnpm --filter @vm0/host-worker exec wrangler pages deploy "$PAGES_DIST" \
             --project-name "$CF_PAGES_PROJECT_NAME" \
             --branch "$PAGES_BRANCH" \
