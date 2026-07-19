@@ -15,6 +15,8 @@ from tests.aws_sigv4_helpers import (
 )
 
 _INVALID_UNICODE = "\ud800"
+# Header-auth vector: https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sig-v4-header-based-auth.html
+# Presigned vector: https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sigv4-query-string-auth.html
 _AWS_S3_EXAMPLE_HOST = "examplebucket.s3.amazonaws.com"
 _AWS_S3_EXAMPLE_TIMESTAMP = "20130524T000000Z"
 _AWS_S3_EMPTY_PAYLOAD_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
