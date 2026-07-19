@@ -47,6 +47,39 @@ async fn sandbox_copy_file_missing_ok_default_preserves_existing_host_file() {
     assert_eq!(std::fs::read(&path).unwrap(), b"old host log");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn sandbox_copy_file_replaces_existing_destination_with_private_file() {
+    use std::io::Read;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let sandbox = MockSandbox::new("test-1");
+    sandbox.push_copy_file_result(Ok(b"new host log".to_vec()));
+    let (_host_dir, path) = temp_host_path("replace-existing.log");
+    std::fs::write(&path, b"old host log").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+    let mut old_file = std::fs::File::open(&path).unwrap();
+    let old_metadata = old_file.metadata().unwrap();
+
+    let result = sandbox
+        .copy_file("/tmp/system.log", &path, copy_file_options(false))
+        .await
+        .unwrap();
+
+    assert_eq!(result.bytes_copied, 12);
+    assert_eq!(std::fs::read(&path).unwrap(), b"new host log");
+    let new_metadata = std::fs::symlink_metadata(&path).unwrap();
+    assert!(new_metadata.is_file());
+    assert_eq!(new_metadata.permissions().mode() & 0o777, 0o600);
+    assert_ne!(
+        (old_metadata.dev(), old_metadata.ino()),
+        (new_metadata.dev(), new_metadata.ino())
+    );
+    let mut old_bytes = Vec::new();
+    old_file.read_to_end(&mut old_bytes).unwrap();
+    assert_eq!(old_bytes, b"old host log");
+}
+
 #[tokio::test]
 async fn sandbox_copy_file_rejects_queued_bytes_over_max() {
     let sandbox = MockSandbox::new("test-1");

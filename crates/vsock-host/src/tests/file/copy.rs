@@ -1,5 +1,5 @@
-use std::io;
-use std::os::unix::fs::PermissionsExt;
+use std::io::{self, Read};
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -122,6 +122,10 @@ async fn copy_file_rejects_max_bytes_above_stream_budget() {
 #[tokio::test]
 async fn copy_file_streams_to_temp_then_renames() {
     let mut fixture = CopyFileFixture::new("vsock-host-copy", "system.log").await;
+    fixture.write_host_bytes(b"old host log");
+    std::fs::set_permissions(&fixture.host_path, std::fs::Permissions::from_mode(0o640)).unwrap();
+    let mut old_file = std::fs::File::open(&fixture.host_path).unwrap();
+    let old_metadata = old_file.metadata().unwrap();
     let copy_task = fixture.spawn_copy("/tmp/vm0-system-run.log", default_copy_options());
 
     let start = fixture.expect_start().await;
@@ -169,6 +173,15 @@ async fn copy_file_streams_to_temp_then_renames() {
     fixture.assert_readiness(NormalOperationReadiness::Idle);
     fixture.assert_host_bytes(b"line 1\nline 2\n");
     assert_eq!(mode(&fixture.host_path), 0o600);
+    let new_metadata = std::fs::symlink_metadata(&fixture.host_path).unwrap();
+    assert!(new_metadata.is_file());
+    assert_ne!(
+        (old_metadata.dev(), old_metadata.ino()),
+        (new_metadata.dev(), new_metadata.ino())
+    );
+    let mut old_bytes = Vec::new();
+    old_file.read_to_end(&mut old_bytes).unwrap();
+    assert_eq!(old_bytes, b"old host log");
     fixture.assert_no_temp_files();
 }
 

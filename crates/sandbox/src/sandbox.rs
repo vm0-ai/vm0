@@ -227,13 +227,23 @@ pub trait Sandbox: Send + Sync + Any {
 
     /// Stream a guest file to a host path and publish copied contents.
     ///
+    /// A successful copy creates missing host parent directories as needed and
+    /// atomically replaces an existing non-directory destination with a newly
+    /// created private regular file. On Unix hosts, the published file has mode
+    /// `0o600`. Metadata from an existing destination is not preserved.
+    ///
     /// The guest path must be non-empty and must not contain NUL bytes.
     ///
     /// If [`CopyFileOptions::missing_ok`] is enabled, a backend result that
     /// reports the path does not resolve to a regular file is treated as
     /// success with `bytes_copied == 0` without publishing a host file or
     /// replacing an existing host file. Host-side setup and validation errors
-    /// can still fail the operation.
+    /// can still fail the operation, and setup may leave newly created parent
+    /// directories behind.
+    ///
+    /// Failures before host publication leave an existing destination
+    /// unchanged. An error reported after publication does not imply that the
+    /// destination was rolled back.
     async fn copy_file(
         &self,
         path: &str,
