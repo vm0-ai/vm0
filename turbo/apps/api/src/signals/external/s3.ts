@@ -639,6 +639,13 @@ export function s3ObjectContentLength(
   );
 }
 
+export type S3ObjectHead =
+  | { readonly kind: "missing" }
+  | {
+      readonly kind: "found";
+      readonly contentLength: number | undefined;
+    };
+
 function isS3NotFoundError(error: unknown): boolean {
   const candidate = error as {
     readonly name?: string;
@@ -649,6 +656,37 @@ function isS3NotFoundError(error: unknown): boolean {
   );
 }
 
+export function s3ObjectHead(
+  bucket: string,
+  key: string,
+): Computed<Promise<S3ObjectHead>> {
+  return s3ObjectHeadWithClient(s3ClientForBucket(bucket), bucket, key);
+}
+
+function s3ObjectHeadWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+): Computed<Promise<S3ObjectHead>> {
+  return computed(async (get): Promise<S3ObjectHead> => {
+    const client = get(client$);
+    const result = await settle(
+      client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
+    );
+    if (!result.ok) {
+      if (isS3NotFoundError(result.error)) {
+        return { kind: "missing" };
+      }
+      throw result.error;
+    }
+
+    return {
+      kind: "found",
+      contentLength: result.value.ContentLength,
+    };
+  });
+}
+
 function s3ObjectContentLengthWithClient(
   client$: Computed<S3Client>,
   bucket: string,
@@ -656,18 +694,12 @@ function s3ObjectContentLengthWithClient(
   maxBytes: number | undefined,
 ): Computed<Promise<number | undefined>> {
   return computed(async (get): Promise<number | undefined> => {
-    const client = get(client$);
-    const result = await settle(
-      client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
-    );
-    if (!result.ok) {
-      if (isS3NotFoundError(result.error)) {
-        return undefined;
-      }
-      throw result.error;
+    const result = await get(s3ObjectHeadWithClient(client$, bucket, key));
+    if (result.kind === "missing") {
+      return undefined;
     }
 
-    const contentLength = result.value.ContentLength;
+    const contentLength = result.contentLength;
     if (contentLength === undefined) {
       return undefined;
     }
@@ -693,14 +725,11 @@ function s3ObjectExistsWithClient(
   return computed(async (get): Promise<boolean> => {
     const client = get(client$);
     const result = await settle(
-      (async () => {
-        await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-      })(),
+      client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
     );
     if (result.ok) {
       return true;
     }
-
     if (isS3NotFoundError(result.error)) {
       return false;
     }

@@ -130,6 +130,18 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
     expectApiError(missingArchive.body);
     expect(missingArchive.body.error.message).toContain("Archive not uploaded");
 
+    api.mockStorageObjectExistsOnce();
+    api.mockStorageObjectWithoutContentLengthOnce();
+    const invalidArchiveMetadata = await api.requestCommitStorage(
+      actor,
+      v1Commit,
+      [400],
+    );
+    expectApiError(invalidArchiveMetadata.body);
+    expect(invalidArchiveMetadata.body.error.message).toContain(
+      "invalid or missing content length",
+    );
+
     const committed = await api.commitStorage(actor, {
       ...v1Commit,
       message: "version one",
@@ -297,6 +309,8 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
       storageType: "artifact",
       files: [],
     });
+    api.mockStorageObjectExistsOnce();
+    api.mockStorageObjectMissingOnce();
     const committedEmpty = await api.commitStorage(actor, {
       storageName: emptyName,
       storageType: "artifact",
@@ -414,6 +428,7 @@ describe("FILE-01 storage prepare, commit, list, and download", () => {
     const runs = createRunsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
+    api.mockStorageObjectsExist();
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     runs.configureRunnerGroup();

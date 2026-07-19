@@ -251,6 +251,8 @@ export const runnersPollContract = c.router({
 /**
  * Storage entry in manifest
  */
+const archiveSizeSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
+
 export const storageEntrySchema = z.object({
   name: z.string(),
   mountPath: z.string(),
@@ -258,6 +260,7 @@ export const storageEntrySchema = z.object({
   vasVersionId: z.string(),
   instructionsTargetFilename: z.string().optional(),
   archiveUrl: z.string(),
+  archiveSize: archiveSizeSchema.optional(),
 });
 
 /**
@@ -277,6 +280,7 @@ export const artifactEntrySchema = z
     vasStorageId: z.string(),
     vasVersionId: z.string(),
     archiveUrl: z.string().optional(),
+    archiveSize: archiveSizeSchema.optional(),
     empty: z.boolean().optional(),
     missingRootPolicy: artifactMissingRootPolicySchema.optional(),
   })

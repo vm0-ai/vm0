@@ -229,6 +229,7 @@ fn generated_storage_manifest_serializes_claim_shape() {
             vas_version_id: "version-1".to_string(),
             instructions_target_filename: None,
             archive_url: "https://storage.example/workspace.tar.gz".to_string(),
+            archive_size: None,
         }],
         artifacts: vec![runner_storage::ArtifactEntry {
             mount_path: "/home/user/.claude/projects/project".to_string(),
@@ -238,6 +239,7 @@ fn generated_storage_manifest_serializes_claim_shape() {
             archive_url: Some("https://storage.example/artifact.tar.gz".to_string()),
             empty: None,
             missing_root_policy: None,
+            archive_size: None,
         }],
     };
 

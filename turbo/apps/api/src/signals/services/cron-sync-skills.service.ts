@@ -390,13 +390,13 @@ async function upsertSkillStorage(args: {
       name: args.context.storageName,
       type: "volume",
       s3Prefix: args.upload.s3Prefix,
-      size: args.upload.archiveBuffer.length,
+      size: args.context.totalSize,
       fileCount: args.context.files.length,
     })
     .onConflictDoUpdate({
       target: [storages.orgId, storages.userId, storages.name, storages.type],
       set: {
-        size: args.upload.archiveBuffer.length,
+        size: args.context.totalSize,
         fileCount: args.context.files.length,
         updatedAt: args.timestamp,
       },
@@ -427,12 +427,16 @@ async function insertSkillStorageVersion(args: {
       id: args.context.versionHash,
       storageId: args.storageId,
       s3Key: args.upload.s3Key,
-      size: args.upload.archiveBuffer.length,
+      size: args.context.totalSize,
+      archiveSize: args.upload.archiveBuffer.length,
       fileCount: args.context.files.length,
       message: `Synced from ${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}@${args.commitSha.slice(0, 7)}`,
       createdBy: "system",
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: storageVersions.id,
+      set: { archiveSize: args.upload.archiveBuffer.length },
+    });
   args.signal.throwIfAborted();
 }
 
@@ -448,7 +452,7 @@ async function updateSkillStorageHead(args: {
     .update(storages)
     .set({
       headVersionId: args.context.versionHash,
-      size: args.upload.archiveBuffer.length,
+      size: args.context.totalSize,
       fileCount: args.context.files.length,
       updatedAt: args.timestamp,
     })

@@ -174,6 +174,7 @@ async function seedStorageVersionForAction(
       storageId: storage.id,
       s3Key: body.s3_key,
       size: 1,
+      archiveSize: body.archive_size,
       fileCount: 1,
       message: "Seeded by system storage presigned URL cache route test",
       createdBy: "test",
@@ -184,6 +185,7 @@ async function seedStorageVersionForAction(
         storageId: sql`excluded.storage_id`,
         s3Key: sql`excluded.s3_key`,
         size: sql`excluded.size`,
+        archiveSize: sql`excluded.archive_size`,
         fileCount: sql`excluded.file_count`,
       },
     });

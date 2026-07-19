@@ -146,6 +146,7 @@ async function seedCurrentSkillVersionsForAction(
           storageId,
           s3Key: version.s3_key,
           size: version.size,
+          archiveSize: version.archive_size,
           fileCount: version.file_count,
           message: "Preseeded by cron sync skills route test",
           createdBy: "system",
@@ -158,6 +159,7 @@ async function seedCurrentSkillVersionsForAction(
         storageId: sql`excluded.storage_id`,
         s3Key: sql`excluded.s3_key`,
         size: sql`excluded.size`,
+        archiveSize: sql`excluded.archive_size`,
         fileCount: sql`excluded.file_count`,
       },
     });
@@ -256,14 +258,24 @@ async function readStorageByNameForAction(
     .select({
       type: storages.type,
       headVersionId: storages.headVersionId,
+      size: storages.size,
+      versionSize: storageVersions.size,
+      archiveSize: storageVersions.archiveSize,
     })
     .from(storages)
+    .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
     .where(eq(storages.name, body.name))
     .limit(1);
   signal.throwIfAborted();
   return actionOk({
     storage: row
-      ? { type: row.type, head_version_id: row.headVersionId }
+      ? {
+          type: row.type,
+          head_version_id: row.headVersionId,
+          size: row.size,
+          version_size: row.versionSize,
+          archive_size: row.archiveSize,
+        }
       : null,
   });
 }

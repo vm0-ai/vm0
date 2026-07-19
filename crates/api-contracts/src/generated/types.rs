@@ -36,6 +36,9 @@ pub mod runners {
             /// Optional presigned URL for downloading the artifact archive. Explicit empty artifacts may omit it.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub archive_url: Option<String>,
+            /// Optional exact encoded archive size in bytes. Older queued manifests may omit it.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub archive_size: Option<u64>,
             /// Whether this artifact version is explicitly empty and can be prepared without downloading an archive.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub empty: Option<bool>,
@@ -61,6 +64,9 @@ pub mod runners {
             pub instructions_target_filename: Option<String>,
             /// Presigned URL for downloading the storage archive.
             pub archive_url: String,
+            /// Optional exact encoded archive size in bytes. Older queued manifests may omit it.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub archive_size: Option<u64>,
         }
 
         /// Runner storage manifest containing all volume and artifact mounts.

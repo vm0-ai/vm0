@@ -183,6 +183,7 @@ async function seedStorageVersion(args: {
   readonly versionId: string;
   readonly s3Prefix: string;
   readonly s3Key: string;
+  readonly archiveSize: number | null;
 }): Promise<void> {
   await stateAction({
     action: "seed-storage-version",
@@ -192,6 +193,7 @@ async function seedStorageVersion(args: {
     version_id: args.versionId,
     s3_prefix: args.s3Prefix,
     s3_key: args.s3Key,
+    archive_size: args.archiveSize,
   });
 }
 
@@ -329,6 +331,7 @@ describe("system storage presigned URL cache", () => {
               versionId: skill.versionId,
               s3Prefix: skill.s3Prefix,
               s3Key: skill.s3Key,
+              archiveSize: 1024,
             });
 
             const firstRun = await api.createRun(actor, {
@@ -343,6 +346,7 @@ describe("system storage presigned URL cache", () => {
                 return storage.vasStorageName === skill.storageName;
               },
             );
+            expect(firstSkillEntry?.archiveSize).toBe(1024);
 
             // The system skill storage is shared platform state, so
             // concurrently running files' claims may hold cache rows under
@@ -389,6 +393,7 @@ describe("system storage presigned URL cache", () => {
     const api = createRunsApi(context);
     const storages = createStoragesBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    storages.mockStorageObjectsExist(2048);
     const skill = isolatedSystemSkillStorage();
     const primaryFile = storageTextFile(
       "primary.txt",
@@ -422,6 +427,7 @@ describe("system storage presigned URL cache", () => {
             versionId: skill.versionId,
             s3Prefix: skill.s3Prefix,
             s3Key: skill.s3Key,
+            archiveSize: null,
           });
 
           const systemRun = await api.createRun(actor, {
@@ -431,11 +437,15 @@ describe("system storage presigned URL cache", () => {
           });
           await api.heartbeatRunner(runnerGroup);
           const systemClaim = await api.claimRunnerJob(systemRun.runId);
-          expect(
-            systemClaim.storageManifest?.storages.find((storage) => {
+          const systemStorage = systemClaim.storageManifest?.storages.find(
+            (storage) => {
               return storage.vasStorageName === skill.storageName;
-            }),
-          ).toMatchObject({ vasVersionId: skill.versionId });
+            },
+          );
+          expect(systemStorage).toMatchObject({
+            vasVersionId: skill.versionId,
+          });
+          expect(systemStorage?.archiveSize).toBeUndefined();
 
           // A system row without a HEAD is intentionally treated as missing,
           // so the same injected volume must resolve from the primary org.
@@ -461,7 +471,10 @@ describe("system storage presigned URL cache", () => {
             fallbackClaim.storageManifest?.storages.find((storage) => {
               return storage.vasStorageName === skill.storageName;
             }),
-          ).toMatchObject({ vasVersionId: primary.versionId });
+          ).toMatchObject({
+            vasVersionId: primary.versionId,
+            archiveSize: 2048,
+          });
           expect(
             fallbackClaim.storageManifest?.artifacts.some((artifact) => {
               return artifact.vasStorageName === "memory";

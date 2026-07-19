@@ -1344,8 +1344,9 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();
+    const volumeArchiveSize = 12_345;
     storages.mockStoragePresignedUrls();
-    storages.mockStorageObjectsExist();
+    storages.mockStorageObjectsExist(volumeArchiveSize);
 
     const volumeName = `bdd-vol-${randomUUID().slice(0, 8)}`;
     const volumeFile = storageTextFile("data/cache.txt", "bdd volume payload");
@@ -1355,6 +1356,25 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
       files: [volumeFile],
     });
     const volumeVersion = prepared.versionId;
+    await storages.commitStorage(actor, {
+      storageName: volumeName,
+      storageType: "volume",
+      versionId: volumeVersion,
+      files: [volumeFile],
+    });
+    const refreshedVolumeArchiveSize = 23_456;
+    const forcedPrepare = await storages.prepareStorage(actor, {
+      storageName: volumeName,
+      storageType: "volume",
+      files: [volumeFile],
+      force: true,
+    });
+    expect(forcedPrepare).toMatchObject({
+      versionId: volumeVersion,
+      existing: false,
+      uploads: expect.any(Object),
+    });
+    storages.mockStorageObjectsExist(refreshedVolumeArchiveSize);
     await storages.commitStorage(actor, {
       storageName: volumeName,
       storageType: "volume",
@@ -1414,7 +1434,12 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
     const claim1 = await api.claimRunnerJob(r1.runId);
     expect(claim1.storageManifest?.storages).toMatchObject([
-      { name: "data", mountPath: "/data", vasVersionId: volumeVersion },
+      {
+        name: "data",
+        mountPath: "/data",
+        vasVersionId: volumeVersion,
+        archiveSize: refreshedVolumeArchiveSize,
+      },
     ]);
     const memory1 = claim1.storageManifest?.artifacts.find((artifact) => {
       return artifact.vasStorageName === "memory";
