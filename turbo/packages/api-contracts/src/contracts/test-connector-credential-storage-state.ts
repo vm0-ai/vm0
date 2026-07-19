@@ -51,6 +51,14 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       description: z.string().nullable(),
     }),
     z.object({
+      action: z.literal("seed-connector"),
+      org_id: z.string(),
+      user_id: z.string(),
+      connector_ref: z.string(),
+      auth_method: z.string(),
+      storage_version: z.number().int().positive(),
+    }),
+    z.object({
       action: z.literal("set-connector-state"),
       org_id: z.string(),
       user_id: z.string(),

@@ -94,6 +94,26 @@ export async function seedOwnedConnectorSecret(
   return response.connector_id;
 }
 
+export async function seedConnectorStorageRow(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorRef: string;
+    readonly authMethod: string;
+    readonly storageVersion: number;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "seed-connector",
+    org_id: args.orgId,
+    user_id: args.userId,
+    connector_ref: args.connectorRef,
+    auth_method: args.authMethod,
+    storage_version: args.storageVersion,
+  });
+}
+
 export async function setConnectorCredentialStorageState(
   context: TestContext,
   args: {

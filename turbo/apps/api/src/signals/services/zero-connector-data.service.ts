@@ -31,7 +31,7 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -933,6 +933,7 @@ export const deleteZeroConnectorLocalState$ = command(
       signal.throwIfAborted();
 
       await deleteConnectorScopedSecretNames(tx, {
+        connectorId: existing.id,
         orgId: args.orgId,
         userId: args.userId,
         names: connectorAuthMethodOwnedSecretNames(
@@ -941,6 +942,7 @@ export const deleteZeroConnectorLocalState$ = command(
         signal,
       });
       await deleteConnectorScopedVariableNames(tx, {
+        connectorId: existing.id,
         orgId: args.orgId,
         userId: args.userId,
         names: connectorAuthMethodOwnedVariableNames(
@@ -1085,6 +1087,7 @@ async function deleteVariableNames(
 async function deleteConnectorScopedSecretNames(
   db: Db,
   args: {
+    readonly connectorId: string;
     readonly orgId: string;
     readonly userId: string;
     readonly names: readonly string[];
@@ -1102,6 +1105,10 @@ async function deleteConnectorScopedSecretNames(
         eq(secrets.userId, args.userId),
         eq(secrets.type, "connector"),
         inArray(secrets.name, [...args.names]),
+        or(
+          isNull(secrets.connectorId),
+          eq(secrets.connectorId, args.connectorId),
+        ),
       ),
     );
   args.signal.throwIfAborted();
@@ -1110,6 +1117,7 @@ async function deleteConnectorScopedSecretNames(
 async function deleteConnectorScopedVariableNames(
   db: Db,
   args: {
+    readonly connectorId: string;
     readonly orgId: string;
     readonly userId: string;
     readonly names: readonly string[];
@@ -1127,6 +1135,10 @@ async function deleteConnectorScopedVariableNames(
         eq(variables.userId, args.userId),
         eq(variables.type, "connector"),
         inArray(variables.name, [...args.names]),
+        or(
+          isNull(variables.connectorId),
+          eq(variables.connectorId, args.connectorId),
+        ),
       ),
     );
   args.signal.throwIfAborted();
@@ -1144,7 +1156,7 @@ async function cleanupExistingStoredConnectorForLocalConnect(
   },
 ): Promise<PendingConnectorTokenRevoke | null> {
   const [existing] = await db
-    .select({ authMethod: connectors.authMethod })
+    .select({ id: connectors.id, authMethod: connectors.authMethod })
     .from(connectors)
     .where(
       and(
@@ -1183,12 +1195,14 @@ async function cleanupExistingStoredConnectorForLocalConnect(
   }
 
   await deleteConnectorScopedSecretNames(db, {
+    connectorId: existing.id,
     orgId: args.orgId,
     userId: args.userId,
     names: connectorAuthMethodOwnedSecretNames(existingRuntimeMethod.method),
     signal: args.signal,
   });
   await deleteConnectorScopedVariableNames(db, {
+    connectorId: existing.id,
     orgId: args.orgId,
     userId: args.userId,
     names: connectorAuthMethodOwnedVariableNames(existingRuntimeMethod.method),
@@ -1308,12 +1322,14 @@ export const connectManualGrantConnector$ = command(
       signal.throwIfAborted();
 
       await deleteConnectorScopedSecretNames(tx, {
+        connectorId: connectorRow.id,
         orgId: args.orgId,
         userId: args.userId,
         names: omittedSecretNames,
         signal,
       });
       await deleteConnectorScopedVariableNames(tx, {
+        connectorId: connectorRow.id,
         orgId: args.orgId,
         userId: args.userId,
         names: omittedVariableNames,
@@ -1914,6 +1930,7 @@ async function upsertConnectorTokenConnectionRow(
 async function deleteObsoleteConnectorScopedStateForTokenConnect(
   db: Db,
   args: {
+    readonly connectorId: string;
     readonly orgId: string;
     readonly userId: string;
     readonly runtimeMethod: ConnectorRuntimeMethod;
@@ -1945,12 +1962,14 @@ async function deleteObsoleteConnectorScopedStateForTokenConnect(
     return !targetVariableNames.has(name);
   });
   await deleteConnectorScopedSecretNames(db, {
+    connectorId: args.connectorId,
     orgId: args.orgId,
     userId: args.userId,
     names: obsoleteSecretNames,
     signal: args.signal,
   });
   await deleteConnectorScopedVariableNames(db, {
+    connectorId: args.connectorId,
     orgId: args.orgId,
     userId: args.userId,
     names: obsoleteVariableNames,
@@ -2034,6 +2053,7 @@ async function commitConnectorTokenConnection(args: {
   args.signal.throwIfAborted();
 
   await deleteObsoleteConnectorScopedStateForTokenConnect(args.db, {
+    connectorId: connectorRow.id,
     orgId: args.orgId,
     userId: args.userId,
     runtimeMethod: args.runtimeMethod,

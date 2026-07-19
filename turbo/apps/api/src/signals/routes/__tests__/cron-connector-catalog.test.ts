@@ -39,7 +39,10 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
-import { readConnectorCredentialStorageState } from "./helpers/connector-credential-storage-state";
+import {
+  readConnectorCredentialStorageState,
+  setConnectorCredentialStorageState,
+} from "./helpers/connector-credential-storage-state";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   awsVerificationCode,
@@ -2197,6 +2200,19 @@ describe("connector catalog valid lifecycle", () => {
       steamId: STEAM_TEST_ID,
       profile: { personaName: "catalog-player" },
     });
+    const storageState = await readConnectorCredentialStorageState(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorRef: "steam",
+      variableNames: ["CATALOG_STEAM_ID"],
+    });
+    expect(storageState.connector?.storage_version).toBe(1);
+    expect(storageState.variables).toStrictEqual([
+      {
+        name: "CATALOG_STEAM_ID",
+        connector_id: storageState.connector?.id,
+      },
+    ]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforeAction);
   });
 
@@ -2632,6 +2648,12 @@ describe("connector catalog valid lifecycle", () => {
     await connectorsApi.completeOauthCallback("gmail", {
       code: "external-readiness",
       state: oauthState,
+    });
+    await setConnectorCredentialStorageState(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorRef: "gmail",
+      storageVersion: null,
     });
     zeroMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const headers = { authorization: "Bearer clerk-session" };

@@ -13,6 +13,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,
+  seedConnectorStorageRow,
   seedLegacyConnectorSecret,
   seedOwnedConnectorSecret,
 } from "./helpers/connector-credential-storage-state";
@@ -376,7 +377,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     });
   });
 
-  it("refuses to overwrite a credential owned by another connector", async () => {
+  it("preserves a foreign-owned credential when reconnecting an existing connector", async () => {
     const fixture = await seedFixture();
     const ownerId = await seedOwnedConnectorSecret(context, {
       orgId: fixture.orgId,
@@ -387,6 +388,13 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       name: "OPENAI_TOKEN",
       encryptedValue: "owner-value",
       description: "owner description",
+    });
+    await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorRef: "openai",
+      authMethod: "api-token",
+      storageVersion: 1,
     });
 
     const response = await createApp({ signal: context.signal }).request(
@@ -417,7 +425,24 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       encrypted_value: "owner-value",
       description: "owner description",
     });
-    expect(storageState.connector).toBeNull();
+    expect(storageState.connector?.storage_version).toBe(1);
+
+    await deleteConnector(fixture, "openai");
+    const stateAfterDelete = await readConnectorCredentialStorageState(
+      context,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        connectorRef: "github",
+        secretNames: ["OPENAI_TOKEN"],
+      },
+    );
+    expect(stateAfterDelete.secrets?.[0]).toStrictEqual({
+      name: "OPENAI_TOKEN",
+      connector_id: ownerId,
+      encrypted_value: "owner-value",
+      description: "owner description",
+    });
   });
 
   it("connects Zendesk manual grant fields using public field ids", async () => {

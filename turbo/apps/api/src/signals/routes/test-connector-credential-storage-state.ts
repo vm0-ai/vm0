@@ -21,6 +21,13 @@ const actionBody$ = bodyResultOf(
   testConnectorCredentialStorageStateContract.action,
 );
 
+/**
+ * This route is explicitly mounted only by tests. Connector owner/version
+ * metadata has no production API, and historical null or cross-owner states
+ * cannot be constructed through one. Keeping that exception here lets route
+ * tests exercise the real public behavior without registering a production
+ * diagnostics surface.
+ */
 type ConnectorCredentialStorageAction<
   TAction extends TestConnectorCredentialStorageStateActionBody["action"],
 > = Extract<TestConnectorCredentialStorageStateActionBody, { action: TAction }>;
@@ -162,6 +169,28 @@ async function seedOwnedSecret(
   return actionOk({ connector_id: connectorId });
 }
 
+async function seedConnector(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"seed-connector">,
+  signal: AbortSignal,
+) {
+  const [connector] = await db
+    .insert(connectors)
+    .values({
+      orgId: body.org_id,
+      userId: body.user_id,
+      type: body.connector_ref,
+      authMethod: body.auth_method,
+      storageVersion: body.storage_version,
+    })
+    .returning({ id: connectors.id });
+  signal.throwIfAborted();
+  if (!connector) {
+    throw new Error("Expected connector storage test fixture");
+  }
+  return actionOk({ connector_id: connector.id });
+}
+
 async function setConnectorState(
   db: Db,
   body: ConnectorCredentialStorageAction<"set-connector-state">,
@@ -220,6 +249,9 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);
+      }
+      case "seed-connector": {
+        return await seedConnector(db, body, signal);
       }
       case "set-connector-state": {
         return await setConnectorState(db, body, signal);

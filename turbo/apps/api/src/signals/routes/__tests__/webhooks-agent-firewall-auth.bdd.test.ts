@@ -561,7 +561,7 @@ describe("FW-3: billable firewall lease", () => {
 });
 
 describe("FW-4: test-oauth connector refresh", () => {
-  it("refreshes an expired connector token and serves the stored token afterwards", async () => {
+  it("refreshes a legacy null-version token and records the selected version", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
@@ -570,6 +570,12 @@ describe("FW-4: test-oauth connector refresh", () => {
       accessToken: "stale-access",
       refreshToken: "refresh-1",
       expiresIn: -60,
+    });
+    await setConnectorCredentialStorageState(context, {
+      orgId: actor.orgId ?? "",
+      userId: actor.userId,
+      connectorRef: "test-oauth",
+      storageVersion: null,
     });
     fw.mockTestOauthTokenRefresh(() => {
       return fw.oauthTokenResponse({
