@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.286.1](https://github.com/vm0-ai/vm0/compare/api-v1.286.0...api-v1.286.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **api:** decode workflow timestamps in bootstrap snapshot ([#22121](https://github.com/vm0-ai/vm0/issues/22121)) ([53de781](https://github.com/vm0-ai/vm0/commit/53de781043b38f450d09b22b8d8c85852fd2b234))
+
 ## [1.286.0](https://github.com/vm0-ai/vm0/compare/api-v1.285.0...api-v1.286.0) (2026-07-19)
 
 

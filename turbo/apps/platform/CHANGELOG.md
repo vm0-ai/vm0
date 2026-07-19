@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.609.1](https://github.com/vm0-ai/vm0/compare/app-v0.609.0...app-v0.609.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **platform:** keep pasted prompt text inline ([#22107](https://github.com/vm0-ai/vm0/issues/22107)) ([c12a0f9](https://github.com/vm0-ai/vm0/commit/c12a0f9bdcba2aa68ee420735eafd9ab4c4e604e))
+* **platform:** preserve feedback composer IME caret ([#22108](https://github.com/vm0-ai/vm0/issues/22108)) ([da0d781](https://github.com/vm0-ai/vm0/commit/da0d7819168fc8808061ac9bcfef687f43f140d2))
+
 ## [0.609.0](https://github.com/vm0-ai/vm0/compare/app-v0.608.0...app-v0.609.0) (2026-07-19)
 
 

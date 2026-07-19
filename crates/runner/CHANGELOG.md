@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.146.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.12...runner-rs-v0.146.13) (2026-07-19)
+
+
+### Bug Fixes
+
+* **runner:** block managed credentials on track requests ([#22131](https://github.com/vm0-ai/vm0/issues/22131)) ([d5ab2e3](https://github.com/vm0-ai/vm0/commit/d5ab2e3cf937a85ee2f6adc72de83b1c41a09e06))
+* **runner:** wait for orphan exit before cleanup ([#22119](https://github.com/vm0-ai/vm0/issues/22119)) ([57c35f1](https://github.com/vm0-ai/vm0/commit/57c35f10bc7464af009b0c7217b1c91660ae8dca))
+
+
+### Documentation
+
+* **mitm-addon:** define shared-base ownership status contract ([#22117](https://github.com/vm0-ai/vm0/issues/22117)) ([76455e1](https://github.com/vm0-ai/vm0/commit/76455e132cb84b395aeead621f9541668dc9bcdd))
+
+
+### Performance Improvements
+
+* **mitm-addon:** skip documented responses non-usage events ([#22129](https://github.com/vm0-ai/vm0/issues/22129)) ([802432e](https://github.com/vm0-ai/vm0/commit/802432e55de35e037c3a88b5122299a0a9339563))
+
 ## [0.146.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.146.11...runner-rs-v0.146.12) (2026-07-19)
 
 
