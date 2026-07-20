@@ -25,11 +25,12 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const writeDb = set(writeDb$);
+  const updatedAt = nowDate();
 
   const updated = await writeDb.transaction(async (tx) => {
     const [thread] = await tx
       .update(chatThreads)
-      .set({ title: body.data.title, renamedAt: nowDate() })
+      .set({ title: body.data.title, renamedAt: updatedAt, updatedAt })
       .where(
         and(eq(chatThreads.id, params.id), eq(chatThreads.userId, auth.userId)),
       )

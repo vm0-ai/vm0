@@ -10,6 +10,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
+import { nowDate } from "../external/time";
 import { safeJsonParse, tapError } from "../utils";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
 import {
@@ -229,7 +230,7 @@ async function updateChatThreadTitle(
   const updated = await db.transaction(async (tx) => {
     const [thread] = await tx
       .update(chatThreads)
-      .set({ title })
+      .set({ title, updatedAt: nowDate() })
       .where(
         and(
           eq(chatThreads.id, threadId),

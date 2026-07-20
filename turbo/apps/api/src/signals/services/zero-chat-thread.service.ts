@@ -1035,7 +1035,7 @@ export function zeroChatThreadArtifacts(args: {
   );
 }
 
-function artifactVisibilityConditions(args: {
+function artifactCallerVisibilityConditions(args: {
   readonly userId: string;
   readonly orgId: string;
 }): SQL[] {
@@ -1043,6 +1043,11 @@ function artifactVisibilityConditions(args: {
     sql`${agentRuns.orgId} = ${args.orgId}`,
     sql`${chatThreads.userId} = ${args.userId}`,
     sql`${agentComposes.orgId} = ${args.orgId}`,
+  ];
+}
+
+function artifactFileVisibilityConditions(): SQL[] {
+  return [
     sql`${runUploadedFiles.url} IS NOT NULL`,
     sql`(
       NOT EXISTS (
@@ -1055,6 +1060,16 @@ function artifactVisibilityConditions(args: {
       )
       OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
     )`,
+  ];
+}
+
+function artifactVisibilityConditions(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): SQL[] {
+  return [
+    ...artifactCallerVisibilityConditions(args),
+    ...artifactFileVisibilityConditions(),
   ];
 }
 
@@ -1088,6 +1103,10 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
 // first page as before.
 const ARTIFACTS_DEFAULT_LIMIT = 10_000;
 const ARTIFACTS_MAX_LIMIT = 10_000;
+// Re-read a small overlap on every new sync. Artifact writes are idempotently
+// merged by artifactItemId in IndexedDB, so replaying rows is safe and closes
+// the gap where a transaction starts before syncUntil but commits afterward.
+const ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES = 5;
 
 const artifactHistoryCursorSchema = z.object({
   createdAt: z.string(),
@@ -1156,19 +1175,61 @@ async function listChangedArtifacts(args: {
   readonly syncUntil: string;
   readonly signal: AbortSignal;
 }): Promise<ZeroArtifactsResult> {
+  // Metadata returned with an artifact can change without changing the file
+  // row itself. Treat the latest source timestamp as the artifact's effective
+  // update time so cross-device thread and agent edits are synchronized too.
+  const effectiveUpdatedAt = sql`GREATEST(
+    ${runUploadedFiles.updatedAt},
+    visible_runs.metadata_updated_at
+  )`;
   const lowerBoundClause = args.cursor
-    ? sql`(${runUploadedFiles.updatedAt}, ${runUploadedFiles.id}) > (${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
-    : sql`${runUploadedFiles.updatedAt} >= ${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC'`;
-  const conditions = artifactVisibilityConditions(args.query);
+    ? sql`(${effectiveUpdatedAt}, ${runUploadedFiles.id}) > (${args.cursor.updatedAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
+    : sql`${effectiveUpdatedAt} >= (${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`;
+  const callerConditions = artifactCallerVisibilityConditions(args.query);
+  const fileConditions = artifactFileVisibilityConditions();
   const rows = await executeRawRows(
     args.db,
     sql`
-      WITH changed_artifact_ids AS MATERIALIZED (
-        SELECT ${runUploadedFiles.id}
-        FROM ${runUploadedFiles}
-        WHERE ${runUploadedFiles.url} IS NOT NULL
+      WITH visible_runs AS MATERIALIZED (
+        SELECT
+          ${agentRuns.id} AS run_id,
+          GREATEST(
+            ${chatThreads.updatedAt},
+            ${agentComposes.updatedAt},
+            ${zeroAgents.updatedAt}
+          ) AS metadata_updated_at
+        FROM ${agentRuns}
+        INNER JOIN ${zeroRuns}
+          ON ${zeroRuns.id} = ${agentRuns.id}
+        INNER JOIN ${chatThreads}
+          ON ${chatThreads.id} = COALESCE(
+            ${zeroRuns.chatThreadId},
+            (
+              SELECT ${chatMessages.chatThreadId}
+              FROM ${chatMessages}
+              WHERE ${chatMessages.runId} = ${zeroRuns.id}
+              ORDER BY ${chatMessages.createdAt} ASC
+              LIMIT 1
+            )
+          )
+        INNER JOIN ${agentComposes}
+          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        INNER JOIN ${zeroAgents}
+          ON ${zeroAgents.id} = ${agentComposes.id}
+        WHERE ${sql.join(callerConditions, sql` AND `)}
+      ),
+      changed_artifact_ids AS MATERIALIZED (
+        SELECT
+          ${runUploadedFiles.id} AS row_id,
+          ${effectiveUpdatedAt} AS effective_updated_at
+        FROM visible_runs
+        INNER JOIN ${runUploadedFiles}
+          ON ${runUploadedFiles.runId} = visible_runs.run_id
+        WHERE ${sql.join(fileConditions, sql` AND `)}
           AND ${lowerBoundClause}
-          AND ${runUploadedFiles.updatedAt} < ${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'
+          AND ${effectiveUpdatedAt} < ${args.syncUntil}::timestamptz AT TIME ZONE 'UTC'
+        ORDER BY ${effectiveUpdatedAt} ASC, ${runUploadedFiles.id} ASC
+        LIMIT ${args.limit + 1}
       )
       SELECT
         ${runUploadedFiles.id} AS row_id,
@@ -1186,7 +1247,7 @@ async function listChangedArtifacts(args: {
           'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
         ) AS cursor_created_at,
         to_char(
-          ${runUploadedFiles.updatedAt},
+          changed_artifact_ids.effective_updated_at,
           'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
         ) AS cursor_updated_at,
         ${chatThreads.id} AS thread_id,
@@ -1197,7 +1258,7 @@ async function listChangedArtifacts(args: {
         (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
       FROM changed_artifact_ids
       INNER JOIN ${runUploadedFiles}
-        ON ${runUploadedFiles.id} = changed_artifact_ids.id
+        ON ${runUploadedFiles.id} = changed_artifact_ids.row_id
       INNER JOIN ${agentRuns}
         ON ${agentRuns.id} = ${runUploadedFiles.runId}
       INNER JOIN ${zeroRuns}
@@ -1221,9 +1282,8 @@ async function listChangedArtifacts(args: {
         ON ${userArtifactFavorites.orgId} = ${args.query.orgId}
         AND ${userArtifactFavorites.userId} = ${args.query.userId}
         AND ${userArtifactFavorites.artifactUrl} = ${runUploadedFiles.url}
-      WHERE ${sql.join(conditions, sql` AND `)}
-      ORDER BY ${runUploadedFiles.updatedAt} ASC, ${runUploadedFiles.id} ASC
-      LIMIT ${args.limit + 1}
+      ORDER BY changed_artifact_ids.effective_updated_at ASC,
+        changed_artifact_ids.row_id ASC
     `,
     artifactListSqlRowSchema,
   );
@@ -1384,7 +1444,7 @@ export const zeroArtifacts$ = command(
 );
 
 async function artifactUrlIsVisible(
-  db: Db,
+  db: Pick<Db, "execute">,
   args: ArtifactFavoriteArgs,
 ): Promise<boolean> {
   const conditions = [
@@ -1423,6 +1483,40 @@ async function artifactUrlIsVisible(
   return rows[0]?.visible === true;
 }
 
+async function touchArtifactFavoriteChange(
+  db: Pick<Db, "execute">,
+  args: ArtifactFavoriteArgs,
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE ${runUploadedFiles}
+    SET updated_at = clock_timestamp()
+    WHERE ${runUploadedFiles.url} = ${args.artifactUrl}
+      AND EXISTS (
+        SELECT 1
+        FROM ${agentRuns}
+        INNER JOIN ${zeroRuns}
+          ON ${zeroRuns.id} = ${agentRuns.id}
+        INNER JOIN ${chatThreads}
+          ON ${chatThreads.id} = COALESCE(
+            ${zeroRuns.chatThreadId},
+            (
+              SELECT ${chatMessages.chatThreadId}
+              FROM ${chatMessages}
+              WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+              ORDER BY ${chatMessages.createdAt} ASC
+              LIMIT 1
+            )
+          )
+        INNER JOIN ${agentComposes}
+          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        WHERE ${agentRuns.id} = ${runUploadedFiles.runId}
+          AND ${agentRuns.orgId} = ${args.orgId}
+          AND ${chatThreads.userId} = ${args.userId}
+          AND ${agentComposes.orgId} = ${args.orgId}
+      )
+  `);
+}
+
 export const favoriteArtifact$ = command(
   async (
     { set },
@@ -1430,28 +1524,33 @@ export const favoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const db = set(writeDb$);
-    const visible = await artifactUrlIsVisible(db, args);
-    signal.throwIfAborted();
-    if (!visible) {
-      return false;
-    }
+    const visible = await db.transaction(async (tx) => {
+      if (!(await artifactUrlIsVisible(tx, args))) {
+        return false;
+      }
 
-    await db
-      .insert(userArtifactFavorites)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        artifactUrl: args.artifactUrl,
-      })
-      .onConflictDoNothing({
-        target: [
-          userArtifactFavorites.orgId,
-          userArtifactFavorites.userId,
-          userArtifactFavorites.artifactUrl,
-        ],
-      });
+      const inserted = await tx
+        .insert(userArtifactFavorites)
+        .values({
+          orgId: args.orgId,
+          userId: args.userId,
+          artifactUrl: args.artifactUrl,
+        })
+        .onConflictDoNothing({
+          target: [
+            userArtifactFavorites.orgId,
+            userArtifactFavorites.userId,
+            userArtifactFavorites.artifactUrl,
+          ],
+        })
+        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
+      if (inserted.length > 0) {
+        await touchArtifactFavoriteChange(tx, args);
+      }
+      return true;
+    });
     signal.throwIfAborted();
-    return true;
+    return visible;
   },
 );
 
@@ -1462,15 +1561,21 @@ export const unfavoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const db = set(writeDb$);
-    await db
-      .delete(userArtifactFavorites)
-      .where(
-        and(
-          eq(userArtifactFavorites.orgId, args.orgId),
-          eq(userArtifactFavorites.userId, args.userId),
-          eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
-        ),
-      );
+    await db.transaction(async (tx) => {
+      const deleted = await tx
+        .delete(userArtifactFavorites)
+        .where(
+          and(
+            eq(userArtifactFavorites.orgId, args.orgId),
+            eq(userArtifactFavorites.userId, args.userId),
+            eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
+          ),
+        )
+        .returning({ artifactUrl: userArtifactFavorites.artifactUrl });
+      if (deleted.length > 0) {
+        await touchArtifactFavoriteChange(tx, args);
+      }
+    });
     signal.throwIfAborted();
   },
 );
