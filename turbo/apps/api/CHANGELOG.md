@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.286.4](https://github.com/vm0-ai/vm0/compare/api-v1.286.3...api-v1.286.4) (2026-07-20)
+
+
+### Refactoring
+
+* **api:** validate structured sql result rows ([#22160](https://github.com/vm0-ai/vm0/issues/22160)) ([64b23fb](https://github.com/vm0-ai/vm0/commit/64b23fba25b78252a1378e3d42324fe561f040ab))
+
 ## [1.286.3](https://github.com/vm0-ai/vm0/compare/api-v1.286.2...api-v1.286.3) (2026-07-20)
 
 
