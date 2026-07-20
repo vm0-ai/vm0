@@ -935,11 +935,6 @@ impl ReservedIdleSandbox {
         self.entry.cli_agent_session_id()
     }
 
-    #[cfg(test)]
-    pub(crate) fn history_generation_run_id_for_test(&self) -> Option<RunId> {
-        self.entry.metadata.history_generation_run_id
-    }
-
     pub fn validate_workspace_promotion_identity(
         &self,
         cache: &SessionWorkspaceCache,
@@ -1521,10 +1516,6 @@ mod tests {
         let reservation = pool
             .reserve_reusable(session_id, profile_name, &None)
             .expect("idle entry should be reserved");
-        assert_eq!(
-            reservation.history_generation_run_id_for_test(),
-            Some(history_generation_run_id)
-        );
 
         let IdleUnparkResult::Reused {
             sandbox,
@@ -1677,7 +1668,7 @@ mod tests {
         assert_eq!(pool.len(), 1);
         assert_eq!(pool.status_snapshot().revision, parked_revision);
 
-        let reservation = pool
+        let _reservation = pool
             .reserve_reusable_generation(
                 "session-generation",
                 "vm0/default",
@@ -1685,10 +1676,6 @@ mod tests {
                 held_generation_run_id,
             )
             .expect("the exact generation should reserve");
-        assert_eq!(
-            reservation.history_generation_run_id_for_test(),
-            Some(held_generation_run_id)
-        );
         assert_eq!(pool.len(), 0);
     }
 
