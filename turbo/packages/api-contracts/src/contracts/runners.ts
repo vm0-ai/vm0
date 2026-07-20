@@ -88,13 +88,6 @@ const sessionAffinityLocalResourceSchema = z.enum([
 const runnerLocalAdmissionResourceSchema = z.enum(["reusableSandbox", "fresh"]);
 
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
-export const sessionHistoryGenerationRelationshipSchema = z.enum([
-  "exact",
-  "different",
-  "fresh",
-  "unknown_target",
-  "unknown_reserved",
-]);
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
@@ -110,8 +103,6 @@ const runnerClaimTelemetrySchema = z.object({
   sessionAffinityResource: sessionAffinityResourceSchema.optional(),
   sessionAffinityLocalResource: sessionAffinityLocalResourceSchema.optional(),
   localAdmissionResource: runnerLocalAdmissionResourceSchema.optional(),
-  sessionHistoryGenerationRelationship:
-    sessionHistoryGenerationRelationshipSchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
@@ -738,9 +729,6 @@ export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
 export type SessionHistoryDownloadSource = z.infer<
   typeof sessionHistoryDownloadSourceSchema
->;
-export type SessionHistoryGenerationRelationship = z.infer<
-  typeof sessionHistoryGenerationRelationshipSchema
 >;
 export type SessionHistorySizeBucket = z.infer<
   typeof sessionHistorySizeBucketSchema

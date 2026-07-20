@@ -935,7 +935,8 @@ impl ReservedIdleSandbox {
         self.entry.cli_agent_session_id()
     }
 
-    pub(crate) fn history_generation_run_id(&self) -> Option<RunId> {
+    #[cfg(test)]
+    pub(crate) fn history_generation_run_id_for_test(&self) -> Option<RunId> {
         self.entry.metadata.history_generation_run_id
     }
 
@@ -1521,7 +1522,7 @@ mod tests {
             .reserve_reusable(session_id, profile_name, &None)
             .expect("idle entry should be reserved");
         assert_eq!(
-            reservation.history_generation_run_id(),
+            reservation.history_generation_run_id_for_test(),
             Some(history_generation_run_id)
         );
 
@@ -1685,7 +1686,7 @@ mod tests {
             )
             .expect("the exact generation should reserve");
         assert_eq!(
-            reservation.history_generation_run_id(),
+            reservation.history_generation_run_id_for_test(),
             Some(held_generation_run_id)
         );
         assert_eq!(pool.len(), 0);
