@@ -20,10 +20,29 @@ auth_header="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
 pages_domains_url="${api_base}/accounts/${account_id}/pages/projects/${project_name}/domains"
 dns_records_url="${api_base}/zones/${zone_id}/dns_records"
 
-cloudflare_request() {
-  curl --fail-with-body --silent --show-error "$@" \
+cloudflare_response() {
+  curl --silent --show-error "$@" \
     --header "$auth_header" \
     --header "Content-Type: application/json"
+}
+
+cloudflare_request() {
+  cloudflare_response --fail-with-body "$@"
+}
+
+pages_domain_state() {
+  cloudflare_response "${pages_domains_url}/${domain}"
+}
+
+pages_domain_missing() {
+  jq -e 'any(.errors[]?; .code == 8000021)' >/dev/null
+}
+
+require_cloudflare_success() {
+  if jq -e '.success == false' >/dev/null; then
+    jq -r '.errors[]? | "Cloudflare API error \(.code): \(.message)"' >&2
+    return 1
+  fi
 }
 
 dns_record() {
@@ -77,16 +96,17 @@ case "$action" in
   ensure)
     : "${branch:?branch is required for ensure}"
 
-    domains="$(cloudflare_request "$pages_domains_url")"
-    if ! jq -e --arg domain "$domain" \
-      '.result[] | select(.name == $domain)' <<< "$domains" >/dev/null; then
+    domain_state="$(pages_domain_state)"
+    if pages_domain_missing <<< "$domain_state"; then
       cloudflare_request \
         --request POST \
         "$pages_domains_url" \
         --data "$(jq -n --arg name "$domain" '{name: $name}')" >/dev/null
+      domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
+    else
+      require_cloudflare_success <<< "$domain_state"
     fi
 
-    domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
     domain_status="$(jq -r '.result.status' <<< "$domain_state")"
     verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
 
@@ -112,9 +132,11 @@ case "$action" in
     echo "Cloudflare Pages custom branch domain configured: https://${domain}"
     ;;
   delete)
-    domains="$(cloudflare_request "$pages_domains_url")"
-    if jq -e --arg domain "$domain" \
-      '.result[] | select(.name == $domain)' <<< "$domains" >/dev/null; then
+    domain_state="$(pages_domain_state)"
+    if pages_domain_missing <<< "$domain_state"; then
+      :
+    else
+      require_cloudflare_success <<< "$domain_state"
       cloudflare_request \
         --request DELETE \
         "${pages_domains_url}/${domain}" >/dev/null

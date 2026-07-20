@@ -36,10 +36,19 @@ done
 
 case "$url" in
   */pages/projects/okou-app/domains)
-    printf '{"result":[{"name":"pr-22239-app.omby.ai"}]}\n'
+    if [[ "$method" != "POST" ]]; then
+      echo "the paginated Pages domain list must not be used for existence checks" >&2
+      exit 1
+    fi
+    printf '{"success":true,"result":{"name":"pr-22239-app.omby.ai"}}\n'
     ;;
   */pages/projects/okou-app/domains/pr-22239-app.omby.ai)
-    printf '{"result":{"status":"active","verification_data":{"status":"active"}}}\n'
+    if [[ "${MOCK_PAGES_DOMAIN_EXISTS:-true}" == "false" ]] && \
+      ! grep -q -- '--request POST' "$MOCK_CURL_LOG"; then
+      printf '{"success":false,"errors":[{"code":8000021,"message":"domain does not exist"}],"result":null}\n'
+    else
+      printf '{"success":true,"result":{"status":"active","verification_data":{"status":"active"}}}\n'
+    fi
     ;;
   *'/dns_records?type=CNAME&name=pr-22239-app.omby.ai')
     jq -n --arg content "$MOCK_DNS_CONTENT" '{result:[{
@@ -82,5 +91,12 @@ export MOCK_DNS_CONTENT="okou-app.pages.dev"
 PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
   ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
 grep -q -- '--request PUT' "$request_log"
+
+: > "$request_log"
+export MOCK_PAGES_DOMAIN_EXISTS="false"
+export MOCK_DNS_CONTENT="pr-22239-app.okou-app.pages.dev"
+PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
+grep -q -- '--request POST' "$request_log"
 
 echo "manage-okou-pages-domain tests passed"
