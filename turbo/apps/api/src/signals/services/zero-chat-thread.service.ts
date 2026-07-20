@@ -1257,8 +1257,8 @@ async function listArtifactHistory(args: {
   readonly syncUntil: string;
   readonly signal: AbortSignal;
 }): Promise<ZeroArtifactsResult> {
-  // The full path returns raw visible rows. URL canonicalization happens in
-  // the IndexedDB merge so this query never sorts the complete history by URL.
+  // The full path returns raw visible rows. IndexedDB owns stable-ID merging
+  // and hosted-run shadowing, so this query avoids a history-wide URL sort.
   const keysetClause = args.cursor
     ? sql`AND (${runUploadedFiles.createdAt}, ${runUploadedFiles.id}) < (${args.cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${args.cursor.rowId}::uuid)`
     : sql``;

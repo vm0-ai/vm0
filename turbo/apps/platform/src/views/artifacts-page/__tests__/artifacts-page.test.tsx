@@ -1491,45 +1491,6 @@ describe("artifacts page", () => {
     });
   });
 
-  it("deduplicates raw full-load rows before caching them", async () => {
-    setupTeam();
-    const scope = testAuthScope("remote-full-url-dedup");
-    const sharedUrl = "https://artifacts.example.com/full-shared.html";
-    const olderArtifact = createArtifact({
-      artifactItemId: "full-older:file-1",
-      runId: "full-older",
-      filename: "full-older.html",
-      url: sharedUrl,
-      createdAt: "2026-01-02T00:00:00Z",
-    });
-    const newerArtifact = createArtifact({
-      artifactItemId: "full-newer:file-1",
-      runId: "full-newer",
-      filename: "full-newer.html",
-      url: sharedUrl,
-      createdAt: "2026-01-03T00:00:00Z",
-    });
-    context.mocks.api(artifactsContract.list, ({ query, respond }) => {
-      expect(query.updatedAfter).toBeUndefined();
-      return respond(200, {
-        artifacts: [newerArtifact, olderArtifact],
-        truncated: false,
-        nextCursor: null,
-        syncUntil: "2026-01-04T00:00:00.000Z",
-      });
-    });
-
-    setupArtifactsPage({ scope });
-
-    await screen.findByText("full-newer.html");
-    expect(screen.queryByText("full-older.html")).not.toBeInTheDocument();
-    await waitFor(async () => {
-      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
-        newerArtifact.artifactItemId,
-      ]);
-    });
-  });
-
   it("normalizes older remote artifacts without a size", async () => {
     setupTeam();
     const scope = testAuthScope("remote-size-default");
@@ -1606,45 +1567,6 @@ describe("artifacts page", () => {
         resolvedChatIdb(db),
       ).readStore.readLastSyncedAt(),
     ).resolves.toBe("2026-01-04T00:00:00.000Z");
-  });
-
-  it("keeps the newest artifact when an incremental page repeats a URL", async () => {
-    setupTeam();
-    const scope = testAuthScope("remote-url-dedup");
-    const sharedUrl = "https://artifacts.example.com/shared.html";
-    const cachedArtifact = createArtifact({
-      artifactItemId: "cached-shared:file-1",
-      runId: "cached-shared",
-      filename: "old-shared.html",
-      url: sharedUrl,
-      createdAt: "2026-01-02T00:00:00Z",
-    });
-    const remoteArtifact = createArtifact({
-      artifactItemId: "remote-shared:file-1",
-      runId: "remote-shared",
-      filename: "new-shared.html",
-      url: sharedUrl,
-      createdAt: "2026-01-03T00:00:00Z",
-    });
-    await seedCachedArtifacts(scope, [cachedArtifact]);
-    context.mocks.api(artifactsContract.list, ({ respond }) => {
-      return respond(200, {
-        artifacts: [remoteArtifact],
-        truncated: false,
-        nextCursor: null,
-        syncUntil: "2026-01-04T00:00:00.000Z",
-      });
-    });
-
-    setupArtifactsPage({ scope });
-
-    await screen.findByText("new-shared.html");
-    expect(screen.queryByText("old-shared.html")).not.toBeInTheDocument();
-    await waitFor(async () => {
-      await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
-        remoteArtifact.artifactItemId,
-      ]);
-    });
   });
 
   it("replaces the cache when the server omits incremental sync metadata", async () => {
@@ -1752,7 +1674,7 @@ describe("artifacts page", () => {
         artifactItemId: `windowed-${label}:file`,
         runId: `windowed-${label}`,
         filename: `windowed-${label}.html`,
-        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+        createdAt: new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString(),
       });
     });
     mockArtifacts(many);
@@ -1799,7 +1721,7 @@ describe("artifacts page", () => {
         artifactItemId: `keyboard-windowed-${label}:file`,
         runId: `keyboard-windowed-${label}`,
         filename: `keyboard-windowed-${label}.html`,
-        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+        createdAt: new Date(Date.UTC(2026, 0, 2, 0, -index)).toISOString(),
       });
     });
     mockArtifacts(many);

@@ -278,13 +278,6 @@ function artifactIsHosted(item: ArtifactItem): boolean {
   );
 }
 
-function artifactIsNewer(left: ArtifactItem, right: ArtifactItem): boolean {
-  if (left.createdAt !== right.createdAt) {
-    return left.createdAt > right.createdAt;
-  }
-  return left.artifactItemId > right.artifactItemId;
-}
-
 function mergeArtifactItems(
   cached: readonly ArtifactItem[],
   changed: readonly ArtifactItem[],
@@ -304,23 +297,16 @@ function mergeArtifactItems(
         return item.runId;
       }),
   );
-  const byUrl = new Map<string, ArtifactItem>();
-  for (const item of byId.values()) {
-    if (hostedRunIds.has(item.runId) && !artifactIsHosted(item)) {
-      continue;
-    }
-    const existing = byUrl.get(item.url);
-    if (!existing || artifactIsNewer(item, existing)) {
-      byUrl.set(item.url, item);
-    }
-  }
-
-  return Array.from(byUrl.values()).sort((left, right) => {
-    if (left.createdAt !== right.createdAt) {
-      return right.createdAt.localeCompare(left.createdAt);
-    }
-    return right.artifactItemId.localeCompare(left.artifactItemId);
-  });
+  return Array.from(byId.values())
+    .filter((item) => {
+      return !hostedRunIds.has(item.runId) || artifactIsHosted(item);
+    })
+    .sort((left, right) => {
+      if (left.createdAt !== right.createdAt) {
+        return right.createdAt.localeCompare(left.createdAt);
+      }
+      return right.artifactItemId.localeCompare(left.artifactItemId);
+    });
 }
 
 // Remote source: read the last-known cache immediately, request only rows that

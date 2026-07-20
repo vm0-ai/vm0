@@ -997,55 +997,6 @@ describe("GET /api/zero/artifacts", () => {
     expect(new Set(collected)).toStrictEqual(new Set(created));
   }, 120_000);
 
-  it("returns duplicate URLs as raw rows during a full load", async () => {
-    const owner = await artifactActor("Artifacts API raw full load agent");
-    const sharedId = randomUUID();
-    owner.objectStore.addObject({
-      bucket: "test-user-artifacts",
-      key: `artifacts/${owner.actor.userId}/${sharedId}/shared.html`,
-      size: 512,
-    });
-
-    const runIds: string[] = [];
-    for (const prompt of ["first shared upload", "second shared upload"]) {
-      const run = await sendChatRun(owner.actor, {
-        agentId: owner.agentId,
-        prompt,
-      });
-      const { claim, sandboxHeaders } = await claimChatRun(
-        owner.runnerGroup,
-        run.runId,
-      );
-      await chat.completeUploadWithBearer(
-        `Bearer ${zeroTokenFromClaim(claim)}`,
-        { id: sharedId, contentType: "text/html" },
-        [200],
-      );
-      await completeChatRunOk(run.runId, sandboxHeaders);
-      runIds.push(run.runId);
-    }
-
-    const response = await chat.listArtifacts(owner.actor);
-    const sharedRows = response.artifacts.filter((artifact) => {
-      return artifact.fileId === sharedId;
-    });
-    expect(sharedRows).toHaveLength(2);
-    expect(
-      new Set(
-        sharedRows.map((artifact) => {
-          return artifact.runId;
-        }),
-      ),
-    ).toStrictEqual(new Set(runIds));
-    expect(
-      new Set(
-        sharedRows.map((artifact) => {
-          return artifact.url;
-        }),
-      ),
-    ).toHaveLength(1);
-  }, 120_000);
-
   it("returns only artifacts updated within the incremental sync window", async () => {
     const owner = await artifactActor("Artifacts API incremental agent");
     const existing = await createHostedArtifact({
